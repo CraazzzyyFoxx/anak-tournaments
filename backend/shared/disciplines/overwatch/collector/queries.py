@@ -35,6 +35,7 @@ def _apply_filters(
     date_to: datetime | None,
 ) -> sa.Select:
     snap = models.UserRankSnapshot
+    query = query.where(snap.discipline == "overwatch")
     if user_id is not None:
         query = query.where(snap.user_id == user_id)
     if social_account_id is not None:
@@ -96,7 +97,7 @@ class RankQueries:
         if not rows:
             return []
 
-        state = models.BattleTagRankState
+        state = models.RankAccountState
         polled_at: dict[int, datetime | None] = dict(
             (
                 await session.execute(
@@ -125,7 +126,7 @@ class RankQueries:
             series.append(
                 schemas.RankSeries(
                     social_account_id=bt_id,
-                    battle_tag=last.battle_tag,
+                    handle=last.handle,
                     role=role_key,
                     platform=platform_key,
                     points=[_point(snaps[i], at) for at, i in filled],
@@ -162,7 +163,7 @@ class RankQueries:
         return [
             schemas.CurrentRank(
                 social_account_id=s.social_account_id,
-                battle_tag=s.battle_tag,
+                handle=s.handle,
                 role=s.role,
                 platform=s.platform,
                 rank_value=s.rank_value,

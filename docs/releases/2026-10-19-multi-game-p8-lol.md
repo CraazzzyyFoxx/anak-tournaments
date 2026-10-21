@@ -19,6 +19,7 @@ documentation, on `develop`, not pushed). The production rehearsal is a P9 gate.
 * Deliberately **not** declared: `balancer_role_settings` (roles weigh neutrally), native ranks/ladder, collector,
   ingestors/decoder, `derive_match`, achievement conditions, analytics. LoL metadata reports `catalog_sync` true and
   `native_rank_collection`, `native_ladder`, `achievement_conditions`, `analytics` false (asserted live).
+  *(2026-10-21: LoL native ranks and the Riot collector shipped — `docs/releases/2026-10-21-riot-lol.md`.)*
 * D99: `dragons` became a stat-code token; the module directories stay exempt, so no manifest entry was needed.
 
 ## 2. Side-selection preset (R1)

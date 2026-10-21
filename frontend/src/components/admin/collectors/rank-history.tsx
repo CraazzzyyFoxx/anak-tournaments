@@ -26,7 +26,7 @@ const SOURCE_FILTER = ["scheduled", "registration", "manual"] as const;
 const FETCH_LIMIT = 200;
 
 /**
- * Live OverFast worker fetch log.
+ * Live fetch log of the game's rank collector.
  *
  * Rows that resolve to a known player link through to that person's page:
  * per-player inspection is People's job now (F14 ·3), so this screen stays
@@ -37,7 +37,7 @@ const FETCH_LIMIT = 200;
  * row is found past the newest 200 rather than only inside them; search and
  * paging run over the fetched rows.
  */
-export function RankTaskHistory() {
+export function RankTaskHistory({ discipline }: Readonly<{ discipline: string }>) {
   const t = useTranslations("collectors.rank");
   const tCommon = useTranslations("collectors.common");
   const format = useFormatter();
@@ -68,9 +68,9 @@ export function RankTaskHistory() {
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 
   const query = useQuery({
-    queryKey: adminQueryKeys.rankFetchLog(workspaceId, status || "all", source || "all"),
+    queryKey: adminQueryKeys.rankFetchLog(workspaceId, discipline, status || "all", source || "all"),
     queryFn: () =>
-      adminService.getRankFetchLog({
+      adminService.getRankFetchLog(discipline, {
         status: status || undefined,
         source: source || undefined,
         limit: FETCH_LIMIT
@@ -90,9 +90,9 @@ export function RankTaskHistory() {
         )
       },
       {
-        accessorKey: "battle_tag",
+        accessorKey: "handle",
         header: t("history.battleTag"),
-        meta: columnMeta<RankFetchLogRow>({ searchValue: (row) => row.battle_tag }),
+        meta: columnMeta<RankFetchLogRow>({ searchValue: (row) => row.handle }),
         cell: ({ row }) =>
           row.original.user_id != null ? (
             <Link
@@ -100,10 +100,10 @@ export function RankTaskHistory() {
               className="font-medium text-primary underline-offset-2 hover:underline"
               onClick={(event) => event.stopPropagation()}
             >
-              {row.original.battle_tag}
+              {row.original.handle}
             </Link>
           ) : (
-            <span className="font-medium">{row.original.battle_tag}</span>
+            <span className="font-medium">{row.original.handle}</span>
           )
       },
       {

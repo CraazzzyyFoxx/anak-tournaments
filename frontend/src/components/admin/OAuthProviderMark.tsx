@@ -6,11 +6,12 @@ import type { OAuthProvider } from "@/types/rbac.types";
 
 export const PROVIDER_META: Record<
   OAuthProvider,
-  { labelKey: "providerDiscord" | "providerTwitch" | "providerBattleNet" | "providerGoogle" | "providerGitHub"; icon: string | null; iconClass?: string }
+  { labelKey: "providerDiscord" | "providerTwitch" | "providerBattleNet" | "providerRiot" | "providerGoogle" | "providerGitHub"; icon: string | null; iconClass?: string }
 > = {
   discord: { labelKey: "providerDiscord", icon: "/discord.png" },
   twitch: { labelKey: "providerTwitch", icon: "/twitch.png" },
   battlenet: { labelKey: "providerBattleNet", icon: "/battlenet.svg", iconClass: "invert grayscale" },
+  riot: { labelKey: "providerRiot", icon: "/riot.png" },
   google: { labelKey: "providerGoogle", icon: null },
   github: { labelKey: "providerGitHub", icon: null }
 };

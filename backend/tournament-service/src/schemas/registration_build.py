@@ -52,7 +52,7 @@ class AdmissionChips:
     signals the requirements were evaluated FROM, which is why they stay separate
     columns on the read. They are lifted out of ``requirements[].detail`` rather
     than resolved a second time: the batch already paid for the
-    ``battle_tag_state`` row and the entitlement pass, and a second resolution
+    ``rank.account_state`` row and the entitlement pass, and a second resolution
     could make the admin column and the player's own card disagree.
 
     Both list handlers -- public participants and admin registrations -- build

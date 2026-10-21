@@ -10,7 +10,8 @@
 //  - a module that failed to load is a retryable error, never the "no renderer" fallback.
 import { NextIntlClientProvider } from "next-intl";
 import { act, lazy, type ComponentProps, type ReactNode } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot, hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
@@ -340,5 +341,35 @@ describe("DisciplineWidget", () => {
 
     expect(container.querySelector("[data-slot]")?.textContent).toBe("overwatch editor");
     expect(loadDisciplineUI).toHaveBeenCalledTimes(1);
+  });
+
+  it("hydrates what the server rendered when the module settled in the browser first", async () => {
+    // The server never loads a module; another widget on the page can settle it before this boundary hydrates.
+    const ui = moduleOf("overwatch");
+    loadDisciplineUI.mockResolvedValue(ui);
+    const page = (
+      <NextIntlClientProvider locale="en" messages={en}>
+        <DisciplineWidget
+          discipline="overwatch"
+          slot="nativeRankEditor"
+          capabilities={NONE}
+          props={EDITOR_PROPS}
+          fallback={<p>generic</p>}
+        />
+      </NextIntlClientProvider>
+    );
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(page);
+    document.body.appendChild(container);
+    peekDisciplineUI.mockReturnValue(ui);
+
+    const onRecoverableError = vi.fn();
+    await act(async () => {
+      mounted.push({ root: hydrateRoot(container, page, { onRecoverableError }), container });
+    });
+    await settle();
+
+    expect(onRecoverableError).not.toHaveBeenCalled();
+    expect(container.querySelector("[data-slot]")?.textContent).toBe("overwatch editor");
   });
 });

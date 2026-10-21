@@ -245,15 +245,16 @@ and tournament consumers pass the owner's discipline.
 
 Resolution uses the caller's registration/author override, then workspace canon, then
 `discipline(code).native_ranks`; the effective source is `native`, not `ow`. Overwatch's reader
-reduces its latest account snapshots by role and normalizes onto the owner's grid. LoL has no
-native reader or ladder: a LoL mix, including a clone, requires a tiered LoL grid before any owner
-or scoring rows are written (422 `division_grid_required` otherwise). No other game's default
-can satisfy it. Workspace grid defaults are independent per discipline; tournament pins are
-preserved and do not require workspace activation.
+reduces its latest account snapshots by role and normalizes onto the owner's grid. LoL's reader
+is its module's (`native_ranks`, Solo/Duo); a LoL mix no longer requires an organiser grid — it
+falls back to LoL's own ladder. No other game's default can satisfy it. Workspace grid defaults
+are independent per discipline; tournament pins are preserved and do not require workspace
+activation.
 
-For Overwatch, a member's rank value can exist in nine places — the two stored layers, the mix
-ranker's hidden rating, the native snapshot, the two effective values the resolver computes, and
-the three historical records (registration, tournament roster seat, recorded mix seat).
+For a game with a native layer (Overwatch, LoL), a member's rank value can exist in nine places —
+the two stored layers, the mix ranker's hidden rating, the native snapshot, the two effective values
+the resolver computes, and the three historical records (registration, tournament roster seat,
+recorded mix seat).
 `ranks.list` (`src/services/rank_overview.py`) puts these on one screen as a long-format table,
 scoped to the discipline: one row per rank value, no grouping, a single `UNION ALL` so the
 filters, the sort, the exact total and the page all run in Postgres. The two effective layers are

@@ -28,20 +28,18 @@ var Routes = []edge.RouteSpec{
 	// match-log enqueue (src/routes/match_logs.py); admin-role gated in the handler.
 	{Method: "POST", Pattern: "/api/v1/logs/{id}", Queue: "rpc.stats.logs.process_tournament", IDParam: "id", Auth: edge.AuthRequired},
 
-	// OverFast rank history (src/routes/rank_history.py); public reads.
+	// Rank history (src/rpc/rank.py); public reads. `discipline` names the game (default overwatch).
 	{Method: "GET", Pattern: "/api/v1/users/{id}/rank-history", Queue: "rpc.stats.rank.user_history", IDParam: "id", AllQuery: true, Auth: edge.AuthNone},
-	{Method: "GET", Pattern: "/api/v1/users/{id}/current-ranks", Queue: "rpc.stats.rank.user_current", IDParam: "id", Query: []string{"platform"}, Auth: edge.AuthNone},
-	{Method: "GET", Pattern: "/api/v1/battle-tags/{id}/rank-history", Queue: "rpc.stats.rank.battle_tag_history", IDParam: "id", AllQuery: true, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/current-ranks", Queue: "rpc.stats.rank.user_current", IDParam: "id", Query: []string{"platform", "discipline"}, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/game-accounts/{id}/rank-history", Queue: "rpc.stats.rank.game_account_history", IDParam: "id", AllQuery: true, Auth: edge.AuthNone},
 
-	// OverFast rank collection admin (src/rpc/rank.py); rank.read / rank.update,
-	// where `workspace_id` is both the authorization scope and the data filter
-	// (rank rows reach a workspace through the tag's player) — so it must reach
-	// the handler on every one of these.
-	{Method: "GET", Pattern: "/api/v1/admin/rank/stats", Queue: "rpc.stats.rank.stats", Query: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	// Rank collection admin (src/rpc/rank.py); rank.read / rank.update, where `workspace_id` is both the
+	// authorization scope and the data filter, and `discipline` names the game's collector.
+	{Method: "GET", Pattern: "/api/v1/admin/rank/stats", Queue: "rpc.stats.rank.stats", Query: []string{"workspace_id", "discipline"}, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/admin/rank/fetch-log", Queue: "rpc.stats.rank.fetch_log", AllQuery: true, Auth: edge.AuthRequired},
-	{Method: "GET", Pattern: "/api/v1/admin/rank/users/{id}/collection", Queue: "rpc.stats.rank.user_collection", IDParam: "id", Query: []string{"workspace_id"}, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/rank/collect", Queue: "rpc.stats.rank.collect", Body: true, Query: []string{"workspace_id"}, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/rank/reenable-disabled", Queue: "rpc.stats.rank.reenable_disabled", Body: true, Query: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/rank/users/{id}/collection", Queue: "rpc.stats.rank.user_collection", IDParam: "id", Query: []string{"workspace_id", "discipline"}, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/rank/collect", Queue: "rpc.stats.rank.collect", Body: true, Query: []string{"workspace_id", "discipline"}, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/admin/rank/reenable-disabled", Queue: "rpc.stats.rank.reenable_disabled", Body: true, Query: []string{"workspace_id", "discipline"}, Auth: edge.AuthRequired},
 
 	// Subscription collection admin (src/rpc/subscription.py); subscription.read /
 	// subscription.update, where `workspace_id` is both the authorization scope and

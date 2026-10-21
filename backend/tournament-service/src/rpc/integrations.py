@@ -756,7 +756,7 @@ def register(broker: Any, logger: Any) -> None:
                     source_grids=source_grids,
                     source_version_id=body.source_version_id,
                     include_icons=body.include_icons,
-                    include_ow_rank_mappings=body.include_ow_rank_mappings,
+                    include_native_rank_mappings=body.include_native_rank_mappings,
                 )
             )
 
@@ -789,7 +789,7 @@ def register(broker: Any, logger: Any) -> None:
                 source_grids=source_grids,
                 source_version_id=body.source_version_id,
                 include_icons=body.include_icons,
-                include_ow_rank_mappings=body.include_ow_rank_mappings,
+                include_native_rank_mappings=body.include_native_rank_mappings,
             )
             job = await division_grid_import_jobs.import_jobs_service.create_import_job(
                 session,
@@ -799,7 +799,7 @@ def register(broker: Any, logger: Any) -> None:
                 source_grid_id=body.source_grid_id,
                 source_version_id=body.source_version_id,
                 include_icons=body.include_icons,
-                include_ow_rank_mappings=body.include_ow_rank_mappings,
+                include_native_rank_mappings=body.include_native_rank_mappings,
                 source_fingerprint=preflight.source_fingerprint,
             )
             await record_admin_audit(
@@ -815,7 +815,7 @@ def register(broker: Any, logger: Any) -> None:
                     "source_workspace_id": source_workspace.id,
                     "source_version_id": body.source_version_id,
                     "include_icons": body.include_icons,
-                    "include_ow_rank_mappings": body.include_ow_rank_mappings,
+                    "include_native_rank_mappings": body.include_native_rank_mappings,
                 },
             )
             await session.commit()

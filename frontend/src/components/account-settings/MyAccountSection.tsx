@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EditableAvatar } from "@/components/ui/editable-avatar";
 import { SocialIcon } from "@/components/social/SocialIcon";
+import { SITE_NAME } from "@/config/site";
 import { getSocialProviderConfig, sortSocialAccounts } from "@/lib/social/providers";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,7 @@ import { SettingsGroup } from "./SettingsGroup";
 import { userQueryKeys } from "@/lib/users/query-keys";
 
 // Providers a user can OAuth-link (and thereby verify).
-const OAUTH_ADDABLE = ["battlenet", "discord", "twitch"] as const;
+const OAUTH_ADDABLE = ["battlenet", "riot", "discord", "twitch"] as const;
 
 export default function MyAccountSection() {
   const t = useTranslations("accountSettings");
@@ -293,6 +294,9 @@ export default function MyAccountSection() {
                 );
               })}
             </div>
+            <p className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">
+              {t("linked.riotNotice", { siteName: SITE_NAME })}
+            </p>
             <p className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">{t("linked.footnote")}</p>
           </>
         )}

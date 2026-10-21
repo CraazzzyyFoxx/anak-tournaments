@@ -71,6 +71,7 @@ describe("GET /auth/sso", () => {
 
   afterEach(() => {
     requestCookies = {};
+    vi.restoreAllMocks();
   });
 
   it("rejects a missing ticket without calling ssoExchange", async () => {
@@ -130,6 +131,7 @@ describe("GET /auth/sso", () => {
   it("error-redirects (without leaking the error) when the ticket exchange fails, and still clears the guard cookie", async () => {
     withGuardCookie();
     ssoExchangeShouldThrow = true;
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
 
     const res = await GET(req("https://tenant.example.com/auth/sso?ticket=tic-1&next=%2Fdashboard"));
 
@@ -140,5 +142,6 @@ describe("GET /auth/sso", () => {
     const cookies = setCookieHeaders(res);
     expect(cookies.length).toBe(1);
     expect(cookies[0]).toMatch(/^owt_xdomain_guard=;/);
+    expect(error).toHaveBeenCalledWith("SSO ticket exchange error:", new Error("boom"));
   });
 });

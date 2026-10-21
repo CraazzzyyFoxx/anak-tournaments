@@ -89,7 +89,7 @@ def test_marketplace_import_requires_one_explicit_grid_and_version() -> None:
     assert request.source_grid_id == 22
     assert request.source_version_id == 33
     assert request.include_icons is True
-    assert request.include_ow_rank_mappings is True
+    assert request.include_native_rank_mappings is True
 
 
 def test_marketplace_import_rejects_legacy_set_default_switch() -> None:
@@ -632,7 +632,7 @@ def test_single_version_import_preflight_honors_selected_version_and_options() -
                 source_grids=[grid],
                 source_version_id=20,
                 include_icons=False,
-                include_ow_rank_mappings=True,
+                include_native_rank_mappings=True,
             )
 
         assert result.grids_count == 1
@@ -650,13 +650,13 @@ def test_single_version_import_request_has_only_explicit_options() -> None:
         source_grid_id=5,
         source_version_id=20,
         include_icons=True,
-        include_ow_rank_mappings=False,
+        include_native_rank_mappings=False,
     )
 
     assert request.source_grid_id == 5
     assert request.source_version_id == 20
     assert request.include_icons is True
-    assert request.include_ow_rank_mappings is False
+    assert request.include_native_rank_mappings is False
 
 
 def test_single_version_copy_import_creates_an_editable_draft() -> None:
@@ -754,7 +754,7 @@ def test_import_job_creation_is_idempotent_and_durable() -> None:
                 source_grid_id=5,
                 source_version_id=20,
                 include_icons=True,
-                include_ow_rank_mappings=False,
+                include_native_rank_mappings=False,
                 source_fingerprint="a" * 64,
             )
             reused = await import_jobs_service.create_import_job(
@@ -765,7 +765,7 @@ def test_import_job_creation_is_idempotent_and_durable() -> None:
                 source_grid_id=5,
                 source_version_id=20,
                 include_icons=True,
-                include_ow_rank_mappings=False,
+                include_native_rank_mappings=False,
                 source_fingerprint="a" * 64,
             )
 
@@ -774,7 +774,7 @@ def test_import_job_creation_is_idempotent_and_durable() -> None:
             "source_grid_id": 5,
             "source_version_id": 20,
             "include_icons": True,
-            "include_ow_rank_mappings": False,
+            "include_native_rank_mappings": False,
             "source_fingerprint": "a" * 64,
         }
         assert created.requested_by_user_id == 42
@@ -807,7 +807,7 @@ def test_import_job_creation_requeues_a_failed_job() -> None:
                 source_grid_id=5,
                 source_version_id=20,
                 include_icons=True,
-                include_ow_rank_mappings=True,
+                include_native_rank_mappings=True,
                 source_fingerprint="a" * 64,
             )
 

@@ -554,6 +554,29 @@ class MixSelfSignupTests(IsolatedAsyncioTestCase):
         self.assertIn("Battle.net", _reply_text(view))
         self.assertEqual([button["url"] for button in row["components"]], [f"{SITE}/?settings=profile"])
 
+    async def test_a_missing_player_names_no_provider_and_points_at_the_profile(self) -> None:
+        """``player_not_linked`` reaches every game's mix -- a LoL player with Discord
+        and Riot linked but no player profile gets it too -- so the copy must not
+        send anyone to link a provider they may already have."""
+        rpc = _Rpc(
+            {
+                IDENTITY_SUBJECT: rpc_ok(IDENTITY),
+                "rpc.balancer.custom.self_join": rpc_error("forbidden", "player_not_linked"),
+            }
+        )
+        dispatcher = _dispatcher()
+
+        with patch.object(dispatcher_module, "request_rpc", rpc):
+            outcome = await dispatcher.perform(4242, "mix.join", "42")
+
+        self.assertEqual((outcome.status, outcome.message), ("failed", "player_not_linked"))
+        for locale in ("ru", "en"):
+            view = dispatcher.reply(outcome, "mix.join", locale)
+            _container, row = view.to_components()
+            for provider in ("Battle.net", "Riot"):
+                self.assertNotIn(provider, _reply_text(view))
+            self.assertEqual([button["url"] for button in row["components"]], [f"{SITE}/?settings=profile"])
+
     async def test_a_closed_signup_is_worded_without_a_profile_link(self) -> None:
         rpc = _Rpc(
             {

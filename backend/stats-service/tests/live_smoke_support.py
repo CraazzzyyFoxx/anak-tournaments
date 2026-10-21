@@ -438,7 +438,12 @@ class LiveStack:
         return int(queue.get("consumers", 0)) if queue else 0
 
     def provision(self) -> None:
-        migrated_env = {**os.environ, "DATABASE_URL": self.db_url, "OWT_APPLY_ENCOUNTER_LAYER_DROP": "1"}
+        migrated_env = {
+            **os.environ,
+            "DATABASE_URL": self.db_url,
+            "OWT_APPLY_ENCOUNTER_LAYER_DROP": "1",
+            "OWT_APPLY_LEGACY_DROP": "1",
+        }
         # Every dependency is awaited (bounded) before anything is created in it.
         wait_until(lambda: self.mgmt("overview").status == 200, "RabbitMQ management API", timeout=120)
         wait_until(lambda: self._redis_client(0).ping(), "Redis to answer PING", timeout=60)

@@ -59,7 +59,7 @@ const PAGE_SIZE = 30;
 const LAYER_ICON: Record<RankLayer, LucideIcon> = {
   canon: Building2,
   author: NotebookPen,
-  ow: Radar,
+  native: Radar,
   hidden: EyeOff,
   effective_tournament: Trophy,
   effective_mix: Shuffle,
@@ -193,7 +193,7 @@ function RowRole({ role, discipline, axis }: Readonly<{ role: string | null; dis
 function RowDivision({ row }: Readonly<{ row: RankOverviewRow }>) {
   const tBracket = useTranslations("adminBracket");
   const grid = useDivisionGrid(row.discipline);
-  const { division, ow_division: owDivision, ow_tier: owTier } = row;
+  const { division, native_division: nativeDivision, native_tier: nativeTier } = row;
   return (
     <div className="flex items-center gap-2">
       {division == null ? null : (
@@ -204,12 +204,12 @@ function RowDivision({ row }: Readonly<{ row: RankOverviewRow }>) {
           </span>
         </>
       )}
-      {owDivision ? (
+      {nativeDivision ? (
         // The native ladder's own naming, kept beside the workspace grid's:
         // the two disagree, and the scrape is only readable as itself.
         <span className="whitespace-nowrap text-xs capitalize text-muted-foreground">
-          {owDivision}
-          {owTier == null ? "" : ` ${owTier}`}
+          {nativeDivision}
+          {nativeTier == null ? "" : ` ${nativeTier}`}
         </span>
       ) : null}
     </div>
@@ -290,7 +290,7 @@ function RankOverviewRows({
       key: "layer",
       label: t("filters.layer"),
       kind: "multi",
-      options: RANK_LAYERS.filter((value) => value !== "ow" || nativeRankName !== null).map((value) => ({
+      options: RANK_LAYERS.filter((value) => value !== "native" || nativeRankName !== null).map((value) => ({
         value,
         label: t(`layers.${value}`, { game: nativeRankName ?? "" }),
       })),

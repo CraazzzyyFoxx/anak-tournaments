@@ -9,9 +9,9 @@ from shared.disciplines import DISCIPLINES, rated_role_codes
 from shared.disciplines.overwatch.ranks import best_rank_per_role
 
 
-def test_overwatch_declares_a_native_rank_layer_and_lol_none() -> None:
+def test_both_games_declare_a_native_rank_layer() -> None:
     assert DISCIPLINES["overwatch"].native_ranks is not None
-    assert DISCIPLINES["lol"].native_ranks is None
+    assert DISCIPLINES["lol"].native_ranks is not None
 
 
 def test_the_overwatch_layer_keeps_a_players_best_rank_per_role_across_accounts() -> None:

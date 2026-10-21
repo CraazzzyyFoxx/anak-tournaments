@@ -6,14 +6,20 @@ import { RankHealthDashboard } from "@/components/admin/collectors/rank-health";
 import { RankTaskHistory } from "@/components/admin/collectors/rank-history";
 import { RankMappingTab } from "./RankMappingTab";
 import { RankSettingsPanel } from "@/components/admin/collectors/rank-settings";
+import { collectsRanks } from "@/components/admin/collectors/rank-shared";
 import { useCollectorTab } from "@/components/admin/collectors/useCollectorTab";
 import { LinkTabs } from "@/components/kit/LinkTabs";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { useGameScope } from "@/hooks/useGameScope";
 import { usePermissions } from "@/hooks/usePermissions";
 
 /**
- * The OverFast rank collector: is the worker healthy, what has it been doing,
- * and how is it configured.
+ * The rank collector of the picked game: OverFast for Overwatch, the Riot API
+ * for League — is the worker healthy, what has it been doing, and how is it
+ * configured. The game is `?discipline=` (the same param the Mapping slot
+ * reads), else the first game that collects ranks.
  *
  * Health and the fetch log are one view — a `?tab=history` slot used to hide
  * the log behind a third row of tabs under the hub's, and the two answer the
@@ -34,6 +40,8 @@ export default function RankCollectorPage() {
   const t = useTranslations("collectors");
   const { canAccessPermission, isSuperuser } = usePermissions();
   const canRead = canAccessPermission("rank.read");
+  const gameScope = useGameScope({ pageClass: "platform", axis: "all", filter: collectsRanks });
+  const discipline = gameScope.game;
 
   const { activeKey, items } = useCollectorTab("rank", [
     { key: "status", label: t("views.status") },
@@ -54,14 +62,25 @@ export default function RankCollectorPage() {
   return (
     <div className="space-y-4">
       <LinkTabs items={items} activeKey={activeKey} level={2} ariaLabel={t("views.rankAria")} />
-      {activeKey === "settings" ? (
-        <RankSettingsPanel />
-      ) : activeKey === "mapping" ? (
+      {activeKey === "mapping" ? (
         <RankMappingTab />
       ) : (
         <>
-          <RankHealthDashboard />
-          <RankTaskHistory />
+          <GameScopeControl scope={gameScope} variant="single" />
+          {discipline === null ? (
+            gameScope.isError ? (
+              <PageStateCard state="error" onAction={gameScope.refetch} />
+            ) : gameScope.resolution === null ? (
+              <Skeleton className="h-40 w-full rounded-xl" />
+            ) : null
+          ) : activeKey === "settings" ? (
+            <RankSettingsPanel key={discipline} discipline={discipline} />
+          ) : (
+            <>
+              <RankHealthDashboard discipline={discipline} />
+              <RankTaskHistory discipline={discipline} />
+            </>
+          )}
         </>
       )}
     </div>

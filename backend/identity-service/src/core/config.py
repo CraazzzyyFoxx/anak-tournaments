@@ -65,6 +65,13 @@ class Settings(BaseServiceSettings):
     BATTLENET_CLIENT_SECRET: str | None = None
     BATTLENET_REGION: str = "eu"
 
+    # Riot Sign-On (RSO). The PUUID is the OAuth subject; account-v1 ``accounts/me`` on this regional cluster gives the
+    # Riot ID. Off until Riot approves the production client.
+    RIOT_OAUTH_ENABLED: bool = False
+    RIOT_CLIENT_ID: str | None = None
+    RIOT_CLIENT_SECRET: str | None = None
+    RIOT_ACCOUNT_CLUSTER: str = "europe"
+
     # The one OAuth callback URL registered with every provider: always the
     # platform apex, never derived from the request host, because providers only
     # accept a static pre-registered redirect_uri. The originating host, post-auth

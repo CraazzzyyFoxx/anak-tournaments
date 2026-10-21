@@ -69,7 +69,7 @@ player-facing subset see [`../frontend/src/i18n/GLOSSARY.md`](../frontend/src/i1
 | **Mix lobby** | One of the (at most six) matches a pickup mix runs at once — `mix.lobby`, keyed `(custom_game_id, lobby_index)`. Owns that match's balance document, pager position, next map and `balanced_at`; the mix itself owns none of them. Rendered as «лобби A … F» in the Russian UI. Membership is derived from the lobby's selected variant, never stored; only the host's `lobby_pin` is. |
 | **Draft** | The live alternative to the balancer: captains pick players in a snake order, server-authoritative clock, optimistic concurrency on `version`. |
 | **Rank layer** | Where a player's rank number came from: registration or author override, then workspace canon, then the module's native rank. Stored ranks are scoped to the discipline's rated module roles by `role_id`; the workspace and author books are never merged. The effective source on the wire is `native`, not `ow`. |
-| **Native ladder** | A game's own rank ladder declared by its module: Overwatch has 45 tiers; LoL has none. It is not a workspace's organizer-defined division grid. |
+| **Native ladder** | A game's own rank ladder declared by its module: Overwatch has 45 tiers, LoL 31 (league-v4 Iron IV … Challenger). It is not a workspace's organizer-defined division grid; a game with one seeds new grids from it and falls back to it when it has no grid. |
 | **Native rank** | A player's rank on that ladder, read through the module's `native_ranks` hook and normalized to the owning grid; the resolver's last layer. A discipline without that hook never reads another game's snapshots. |
 | **Mix ranker** | The host-selectable alternative to flat points per win (`user_config.rating_mode = ranker`): each member keeps a hidden OpenSkill rating per catalog role of the discipline's rated dimension next to the open rank. Open slots (`flex`) hold no hidden rating and move no host book. Idea and specification: [mixtura-ranker](https://github.com/mixtura-dev/mixtura-ranker) by Dmitriy (@dmelackov); implemented in `balancer-service/src/domain/mix_ranker.py`. |
 | **Open / hidden / effective rating** | Mix ranker terms. *Open* — the rank in the host's book, set by people. *Hidden* — the statistical `(mu, sigma)` per workspace member and catalog `role_id`, derived from mix history. *Effective* — the open rating corrected towards the hidden one; what a ranker host's mixes are balanced on. |
@@ -95,7 +95,7 @@ player-facing subset see [`../frontend/src/i18n/GLOSSARY.md`](../frontend/src/i1
 | **Playtime** | Time a player spent on a hero, reported as a share of the match. |
 | **MVP impact** | The scoring model that ranks a player's contribution within a match; the basis of MVP achievements. |
 | **Achievement** | A declarative rule (a JSON condition tree) evaluated against match data, plus a manual grant/revoke overlay. |
-| **Rank snapshot** | A point-in-time Overwatch rank fetched from OverFast for a linked BattleTag; the series behind rank history. |
+| **Rank snapshot** | A point-in-time native rank of a linked game account in `rank.rank_snapshot` (one `discipline` per row): Overwatch per role from OverFast for a BattleTag, League of Legends per queue (Solo/Duo, Flex) from the Riot API for a Riot ID; the series behind rank history. |
 
 ## Platform mechanics
 

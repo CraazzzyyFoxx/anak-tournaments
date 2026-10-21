@@ -6,10 +6,15 @@ import { useTranslations } from "next-intl";
 import { StatusPill } from "@/components/kit/StatusPill";
 import type { Tone } from "@/components/kit/tone";
 import type { RankCollectionStats } from "@/types/admin.types";
+import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 import type { CollectorHealth } from "./collector-state";
 
 export { formatDate, formatInterval, formatRelative } from "@/components/kit/format-time";
+
+/** The rank collector's games: those that declare native rank collection (spec §3.7). */
+export const collectsRanks = (games: DisciplineDescriptor[]) =>
+  games.filter((game) => game.capabilities.native_rank_collection);
 
 /**
  * Tone per fetch status that needs attention. `ok` and `pending` are absent on
@@ -98,7 +103,7 @@ export function rankParsingOutage(
   if (!stats.enabled) return null;
   const last = stats.last_success_at ? Date.parse(stats.last_success_at) : Number.NaN;
   const staleMs = Number.isNaN(last) ? Number.POSITIVE_INFINITY : now - last;
-  if (stats.overfast_circuit_state === "open") return { reason: "circuit_open", staleMs };
+  if (stats.upstream_circuit_state === "open") return { reason: "circuit_open", staleMs };
   // "Never succeeded" is not staleness: a freshly seeded collector has nothing
   // to be late with, and the tab already reads "never". The Prometheus rule
   // RankCollectionNeverSucceeded owns that case, with a 30m grace period.

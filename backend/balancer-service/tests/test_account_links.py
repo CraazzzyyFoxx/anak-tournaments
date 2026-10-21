@@ -39,27 +39,31 @@ def connections(monkeypatch):
 
 
 def test_no_connections_means_both_links_are_missing(connections) -> None:
-    assert asyncio.run(account_links.missing_account_links(SESSION, 42)) == frozenset({"discord", "battlenet"})
+    assert asyncio.run(account_links.missing_account_links(SESSION, 42, "overwatch")) == frozenset(
+        {"discord", "battlenet"}
+    )
 
 
 def test_only_discord_linked_names_battlenet(connections) -> None:
     connections.providers = [SocialProvider.DISCORD]
-    assert asyncio.run(account_links.missing_account_links(SESSION, 42)) == frozenset({"battlenet"})
+    assert asyncio.run(account_links.missing_account_links(SESSION, 42, "overwatch")) == frozenset({"battlenet"})
 
 
 def test_only_battlenet_linked_names_discord(connections) -> None:
     connections.providers = [SocialProvider.BATTLENET]
-    assert asyncio.run(account_links.missing_account_links(SESSION, 42)) == frozenset({"discord"})
+    assert asyncio.run(account_links.missing_account_links(SESSION, 42, "overwatch")) == frozenset({"discord"})
 
 
 def test_both_linked_is_empty(connections) -> None:
     connections.providers = [SocialProvider.DISCORD, SocialProvider.BATTLENET]
-    assert asyncio.run(account_links.missing_account_links(SESSION, 42)) == frozenset()
+    assert asyncio.run(account_links.missing_account_links(SESSION, 42, "overwatch")) == frozenset()
 
 
 def test_an_unrelated_link_does_not_satisfy_either_requirement(connections) -> None:
     """Twitch/Boosty connections exist on the same table; neither proves a
     BattleTag nor a Discord identity."""
     connections.providers = [SocialProvider.TWITCH]
-    assert asyncio.run(account_links.missing_account_links(SESSION, 42)) == frozenset({"discord", "battlenet"})
+    assert asyncio.run(account_links.missing_account_links(SESSION, 42, "overwatch")) == frozenset(
+        {"discord", "battlenet"}
+    )
     assert connections.asked == [["discord", "battlenet"]]

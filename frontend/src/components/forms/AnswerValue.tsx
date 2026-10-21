@@ -6,8 +6,9 @@ import { useFormatter } from "@/lib/datetime/client";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { useRoleName } from "@/hooks/useRoleName";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { findRole, ratedDimension, type RoleOntology } from "@/lib/roster/ontology";
+import { findRole, ratedDimension, type LadderedOntology, type RoleOntology } from "@/lib/roster/ontology";
 import type { RoleRef } from "@/lib/roster/team-format";
 import { cn } from "@/lib/utils";
 import type { FieldKind } from "@/types/forms.types";
@@ -32,8 +33,14 @@ export interface AnswerValueProps {
   /** The field's kind. Omit for a value whose field is unknown (a stale answer). */
   kind?: FieldKind;
   labels?: { yes: string; no: string };
-  ontology?: RoleOntology | null;
-  grid?: DivisionGrid;
+  /**
+   * The owner game's role dictionary and native ladder. Required, `null` while
+   * it loads: a `role_ranks` answer is keyed by role code (without the
+   * dictionary every glyph is "unknown role" and every name the bare code) and
+   * holds a rank on that game's own scale, so its crest comes off the native
+   * ladder, never a workspace grid that would rename the number under it.
+   */
+  ontology: LadderedOntology | null;
 }
 
 const EMPTY = <span className="text-[color:var(--aqt-fg-dim)]">&mdash;</span>;
@@ -67,6 +74,9 @@ export function RoleRankList({
   grid,
   ontology,
 }: Readonly<{ entries: readonly RoleRankEntry[]; grid?: DivisionGrid; ontology?: RoleOntology | null }>) {
+  // The glyph's own title goes through the same hook; the raw `name` printed
+  // "Tank" beside a glyph titled "Танк".
+  const nameOf = useRoleName();
   return (
     <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
       {entries.map((entry, index) => {
@@ -75,7 +85,7 @@ export function RoleRankList({
         const division = grid && Number.isFinite(sr) ? resolveDivisionFromRank(grid, sr) : null;
         const ref = typeof entry.role === "string" ? { dimension: ontology ? ratedDimension(ontology)?.code ?? "" : "", role: entry.role } : entry.role;
         const role = ontology ? findRole(ontology, ref) : null;
-        const label = role?.name ?? ref.role;
+        const label = role ? nameOf(role) : ref.role;
         return (
           <span
             key={`${ref.dimension}:${ref.role}-${index}`}
@@ -109,7 +119,6 @@ export function AnswerValue({
   kind,
   labels = { yes: "Yes", no: "No" },
   ontology,
-  grid,
 }: Readonly<AnswerValueProps>): ReactNode {
   const format = useFormatter();
   if (value === null || value === undefined || value === "") return EMPTY;
@@ -138,8 +147,10 @@ export function AnswerValue({
         return (left < 0 ? Infinity : left) - (right < 0 ? Infinity : right) || a.localeCompare(b);
       });
     if (entries.length === 0) return EMPTY;
+    // A game without a native ladder serves an empty one: no crest, none borrowed.
+    const nativeLadder = ontology?.native_ladder.length ? { tiers: [...ontology.native_ladder] } : undefined;
     return (
-      <RoleRankList entries={entries.map(([role, rank]) => ({ role, rank }))} grid={grid} ontology={ontology} />
+      <RoleRankList entries={entries.map(([role, rank]) => ({ role, rank }))} grid={nativeLadder} ontology={ontology} />
     );
   }
 

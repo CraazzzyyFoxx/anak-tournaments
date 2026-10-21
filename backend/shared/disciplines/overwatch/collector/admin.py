@@ -31,34 +31,9 @@ class RankAdminService:
         admin only sees the tags of a player who is a member of their workspace,
         and gets ``[]`` for anybody else.
         """
-        acc = models.SocialAccount
-        state = models.BattleTagRankState
-        query = (
-            sa.select(acc, state)
-            .outerjoin(state, state.social_account_id == acc.id)
-            .where(acc.user_id == user_id, acc.provider == SocialProvider.BATTLENET)
-            .order_by(acc.username.asc())
+        return await service.rank_state_service.repo.user_collection(
+            session, user_id, provider=SocialProvider.BATTLENET, workspace_id=workspace_id
         )
-        if workspace_id is not None:
-            query = query.where(acc.id.in_(service.workspace_account_ids(workspace_id)))
-        rows = (await session.execute(query)).all()
-
-        result: list[dict[str, Any]] = []
-        for tag, st in rows:
-            result.append(
-                {
-                    "social_account_id": tag.id,
-                    "battle_tag": tag.username,
-                    "status": st.status if st is not None else None,
-                    "last_checked_at": st.last_checked_at if st is not None else None,
-                    "last_success_at": st.last_success_at if st is not None else None,
-                    "last_error": st.last_error if st is not None else None,
-                    "consecutive_failures": st.consecutive_failures if st is not None else 0,
-                    "next_eligible_at": st.next_eligible_at if st is not None else None,
-                    "priority_tier": st.priority_tier if st is not None else 0,
-                }
-            )
-        return result
 
     async def list_fetch_log(
         self,
@@ -80,37 +55,16 @@ class RankAdminService:
         fetch history. Rows whose account was deleted (``social_account_id IS NULL``)
         fall out of a scoped read — they cannot be attributed to a workspace.
         """
-        log = models.RankFetchLog
-        acc = models.SocialAccount
-        query = (
-            sa.select(log, acc.user_id.label("user_id"))
-            .outerjoin(acc, acc.id == log.social_account_id)
-            .order_by(log.id.desc())
+        return await service.rank_state_service.log_repo.list_recent(
+            session,
+            discipline=service.DISCIPLINE,
+            provider=SocialProvider.BATTLENET,
+            workspace_id=workspace_id,
+            status=status,
+            source=source,
+            before_id=before_id,
+            limit=limit,
         )
-        if workspace_id is not None:
-            query = query.where(log.social_account_id.in_(service.workspace_account_ids(workspace_id)))
-        if status:
-            query = query.where(log.status == status)
-        if source:
-            query = query.where(log.source == source)
-        if before_id is not None:
-            query = query.where(log.id < before_id)
-        query = query.limit(max(1, min(limit, 200)))
-        rows = (await session.execute(query)).all()
-        return [
-            {
-                "id": row.RankFetchLog.id,
-                "social_account_id": row.RankFetchLog.social_account_id,
-                "user_id": row.user_id,
-                "battle_tag": row.RankFetchLog.battle_tag,
-                "status": row.RankFetchLog.status,
-                "source": row.RankFetchLog.source,
-                "error": row.RankFetchLog.error,
-                "snapshots_written": row.RankFetchLog.snapshots_written,
-                "created_at": row.RankFetchLog.created_at,
-            }
-            for row in rows
-        ]
 
     async def get_collection_stats(self, session: AsyncSession, *, workspace_id: int | None = None) -> dict[str, Any]:
         """Assemble the admin health dashboard: DB aggregates + current config echo.
@@ -141,14 +95,14 @@ class RankAdminService:
             "scope": cfg.scope,
             "interval_seconds": cfg.interval_seconds,
             "rate_limit_per_minute": cfg.rate_limit_per_minute,
-            # Live upstream state, read from the worker's own OverFast client: an
-            # open circuit means every tag fetch is refused before it leaves the
-            # process, which no DB aggregate can show (the fetch_log simply stops
-            # growing). ``invalid_battle_tags_24h`` counts handles the client
-            # rejects outright — those never recover without an operator.
-            "overfast_base_url": tasks.rank_client.base_url,
-            "overfast_circuit_state": tasks.rank_client.circuit_state,
-            "invalid_battle_tags_24h": raw["invalid_battle_tags_24h"],
+            # Live upstream state, read from the worker's own client (the upstream is
+            # OverFast for this collector): an open circuit means every tag fetch is
+            # refused before it leaves the process, which no DB aggregate can show
+            # (the fetch_log simply stops growing). ``invalid_handles_24h`` counts
+            # handles the client rejects outright — those never recover without an operator.
+            "upstream_base_url": tasks.rank_client.base_url,
+            "upstream_circuit_state": tasks.rank_client.circuit_state,
+            "invalid_handles_24h": raw["invalid_handles_24h"],
         }
 
     async def _resolve_target_tags(
@@ -170,7 +124,9 @@ class RankAdminService:
         else:
             return []
         if workspace_id is not None:
-            query = query.where(acc.id.in_(service.workspace_account_ids(workspace_id)))
+            query = query.where(
+                acc.id.in_(service.workspace_account_ids(workspace_id, provider=SocialProvider.BATTLENET))
+            )
         return list((await session.scalars(query)).all())
 
     async def reenable_disabled(

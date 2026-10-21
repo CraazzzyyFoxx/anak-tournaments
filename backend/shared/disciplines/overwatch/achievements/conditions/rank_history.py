@@ -2,7 +2,7 @@
 
 Grain: user (user_id,).
 
-Both nodes read ``overwatch_rank.rank_snapshot``, the append-only history of
+Both nodes read ``rank.rank_snapshot``, the append-only history of
 observed rank changes. Those rows hang off ``players.user`` and carry no
 workspace of their own, so every query here restricts to the users who hold a
 roster spot in this workspace — the same ``Player -> WorkspaceMember ->
@@ -45,7 +45,7 @@ DIVISION_INDEX: dict[str, int] = {value: index for index, value in enumerate(DIV
 #: Worse than any real tier, so a snapshot with no tier loses the peak tie-break.
 _NO_TIER = 99
 
-_SNAPSHOT_TABLES = ("overwatch_rank.rank_snapshot", "tournament.player")
+_SNAPSHOT_TABLES = ("rank.rank_snapshot", "tournament.player")
 
 
 def _workspace_user_ids(context: EvalContext) -> sa.Select:
@@ -75,6 +75,7 @@ def _ranked_snapshots(
 ) -> sa.Select:
     """Ranked snapshots of this workspace's users, narrowed by the optional filters."""
     query = sa.select(*columns).where(
+        models.UserRankSnapshot.discipline == context.discipline,
         models.UserRankSnapshot.is_ranked.is_(True),
         models.UserRankSnapshot.division.is_not(None),
         models.UserRankSnapshot.user_id.in_(_workspace_user_ids(context)),

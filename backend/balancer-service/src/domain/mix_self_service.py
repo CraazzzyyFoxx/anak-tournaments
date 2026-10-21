@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from shared.core.social import SocialProvider
+
 __all__ = ("MAX_ROSTER", "MixSelfPolicy", "mix_self_policy")
 
 #: Same ceiling the host's own roster write enforces
@@ -49,7 +51,7 @@ def mix_self_policy(
 ) -> MixSelfPolicy:
     """The caller's own rights over one mix.
 
-    ``missing_links`` is a subset of ``{"discord", "battlenet"}``;
+    ``missing_links`` is a subset of the mix game's required providers (Discord first);
     ``has_player`` says whether the account resolves to a ``players.user`` row;
     ``self_join_denied`` is the negative-RBAC overlay on ``custom_game.self_join``.
     """
@@ -61,10 +63,10 @@ def mix_self_policy(
     can_leave = on_roster
 
     identity_blocker: str | None = None
-    if "discord" in missing_links:
+    if SocialProvider.DISCORD in missing_links:
         identity_blocker = "discord_not_linked"
-    elif "battlenet" in missing_links:
-        identity_blocker = "battlenet_not_linked"
+    elif missing_links:
+        identity_blocker = f"{min(missing_links)}_not_linked"
     elif not has_player:
         identity_blocker = "player_not_linked"
     elif self_join_denied:

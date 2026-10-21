@@ -13,7 +13,7 @@ Layout:
 - ``registry.py`` -- the requirement list; adding one is an entry plus a resolver
 - ``evaluate.py`` -- the pure decision; synchronous, no I/O, ever
 - ``resolve.py``  -- all the I/O, batched once per list
-- ``profile_visibility.py`` -- the batched ``battle_tag_state`` read -> :class:`ProfileSignal`
+- ``profile_visibility.py`` -- the batched ``rank.account_state`` read -> :class:`ProfileSignal`
 - ``gates.py``    -- HTTP projection: raise from ``blockers``
 
 ``requirements/`` holds one module per requirement: the mapping from its raw

@@ -52,7 +52,7 @@ async def _native_ranks(session: AsyncSession, user_ids: Sequence[int]) -> dict[
 #: The collection RPCs the collector serves (``collector.handlers.HANDLERS`` holds the bodies).
 _COLLECTION_HANDLERS = (
     "rank.user_history",
-    "rank.battle_tag_history",
+    "rank.game_account_history",
     "rank.user_current",
     "rank.fetch_log",
     "rank.stats",

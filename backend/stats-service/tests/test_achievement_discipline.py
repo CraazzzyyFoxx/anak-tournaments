@@ -773,11 +773,13 @@ class RunnerScopeTests(_DbCase):
         self.assertIsNot(caches.leaf_cache("overwatch"), caches.leaf_cache("lol"))
         self.assertIs(caches.leaf_cache("lol"), caches.leaf_cache("lol"))
         self.assertTrue((await caches.grid("overwatch", None)).tiers)
-        # LoL has no ladder and this workspace gave it no grid: its failure is its own, and remembered.
+        # LoL plays on its own ladder, never Overwatch's grid.
+        self.assertEqual((await caches.grid("lol", None)).tiers[0].slug, "challenger")
+        # A game with no ladder and no grid of its own: its failure is its own, and remembered.
         with self.assertRaises(BaseAPIException) as first:
-            await caches.grid("lol", None)
+            await caches.grid("chess", None)
         with self.assertRaises(BaseAPIException) as second:
-            await caches.grid("lol", None)
+            await caches.grid("chess", None)
         self.assertIs(first.exception, second.exception)
         self.assertTrue((await caches.grid("overwatch", self.ow_cup)).tiers)
 

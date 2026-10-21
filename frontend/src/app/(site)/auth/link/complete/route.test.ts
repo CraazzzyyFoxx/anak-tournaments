@@ -83,6 +83,7 @@ describe("GET /auth/link/complete", () => {
 
   afterEach(() => {
     requestCookies = {};
+    vi.restoreAllMocks();
   });
 
   it("redirects to login and does not call completeLink when there is no live session", async () => {
@@ -170,6 +171,7 @@ describe("GET /auth/link/complete", () => {
   it("error-redirects (without leaking the error) when the ticket redeem fails, and still clears the guard cookie", async () => {
     requestCookies.owt_access_token = { value: "session-token-abc" };
     withGuardCookie();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     completeLinkError = new Error("boom");
 
     const res = await GET(req("https://tenant.example.com/auth/link/complete?ticket=tic-1&next=%2Faccount"));
@@ -180,11 +182,13 @@ describe("GET /auth/link/complete", () => {
     const setCookies = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
     expect(setCookies.length).toBe(1);
     expect(setCookies[0]).toMatch(/^owt_xdomain_guard=;/);
+    expect(error).toHaveBeenCalledWith("Link ticket exchange error:", completeLinkError);
   });
 
   it("surfaces a refused link's own code so the user sees why, not a generic failure", async () => {
     requestCookies.owt_access_token = { value: "session-token-abc" };
     withGuardCookie();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     completeLinkError = new OAuthLinkFailedError("link_taken", "already linked to a different account");
 
     const res = await GET(req("https://tenant.example.com/auth/link/complete?ticket=tic-1&next=%2Faccount"));
@@ -194,5 +198,6 @@ describe("GET /auth/link/complete", () => {
     const setCookies = res.headers.getSetCookie ? res.headers.getSetCookie() : [];
     expect(setCookies.length).toBe(1);
     expect(setCookies[0]).toMatch(/^owt_xdomain_guard=;/);
+    expect(error).toHaveBeenCalledWith("Link ticket exchange error:", completeLinkError);
   });
 });

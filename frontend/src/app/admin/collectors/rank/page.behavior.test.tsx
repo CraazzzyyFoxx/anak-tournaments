@@ -25,6 +25,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getMatchingAdminRoute } from "@/components/admin/admin-navigation";
+import type * as RankSettings from "@/components/admin/collectors/rank-settings";
 import en from "@/i18n/messages/en.json";
 import RankCollectorPage from "./page";
 
@@ -67,10 +68,13 @@ vi.mock("@/services/admin.service", () => ({
     reenableDisabledRankCollection: vi.fn()
   }
 }));
+// Factories are hoisted above the imports, so the fixture is loaded inside one.
+vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 
 // The config form itself is the panel's contract (and 45 OW ranks' worth of
 // rendering); what this page owes is mounting it for the right slot.
-vi.mock("@/components/admin/collectors/rank-settings", () => ({
+vi.mock("@/components/admin/collectors/rank-settings", async (importOriginal) => ({
+  ...(await importOriginal<typeof RankSettings>()),
   RankSettingsPanel: () => <p>rank settings panel</p>
 }));
 
@@ -93,7 +97,16 @@ vi.mock("next/navigation", () => ({
 // A tab is a link; clicking it is a navigation, which in the app is Next's
 // router and here is the same `replace` the harness re-renders on.
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
+  default: ({
+    href,
+    children,
+    prefetch: _prefetch,
+    ...rest
+  }: {
+    href: string;
+    children: ReactNode;
+    prefetch?: boolean | null;
+  }) => (
     <a
       href={href}
       {...rest}
@@ -143,9 +156,9 @@ const STATS = {
   scope: "workspace",
   interval_seconds: 3600,
   rate_limit_per_minute: 30,
-  overfast_base_url: "https://overfast.craazzzyyfoxx.me",
-  overfast_circuit_state: "closed",
-  invalid_battle_tags_24h: 0
+  upstream_base_url: "https://overfast.craazzzyyfoxx.me",
+  upstream_circuit_state: "closed",
+  invalid_handles_24h: 0
 };
 
 const mounted: { root: Root; container: HTMLElement }[] = [];
@@ -221,7 +234,7 @@ beforeEach(() => {
     {
       id: 1,
       created_at: "2026-09-03T09:00:00Z",
-      battle_tag: "Anak#2107",
+      handle: "Anak#2107",
       status: "ok",
       source: "scheduled",
       snapshots_written: 2,
@@ -260,7 +273,7 @@ describe("RankCollectorPage", () => {
   it("shows health and the fetch log on one screen; an old ?tab=history link lands there", async () => {
     const container = await mount("?tab=history");
 
-    expect(getRankCollectionStats).toHaveBeenCalled();
+    expect(getRankCollectionStats).toHaveBeenCalledWith("overwatch");
     expect(getRankFetchLog).toHaveBeenCalled();
     expect(container.textContent).toContain("Task history");
     expect(container.querySelector('a[href="/admin/people/42"]')?.textContent).toBe("Anak#2107");
@@ -273,10 +286,10 @@ describe("RankCollectorPage", () => {
   // circuit opened, and this screen kept reading healthy for a day — the error
   // ratio FALLS when fetches stop happening, so every tile agreed nothing was
   // wrong. A stopped collector has to say so on the screen, not only in a metric.
-  it("says battle-tag parsing is down when the upstream circuit is open", async () => {
+  it("says rank collection is down when the upstream circuit is open", async () => {
     getRankCollectionStats.mockResolvedValue({
       ...STATS,
-      overfast_circuit_state: "open",
+      upstream_circuit_state: "open",
       // Unchanged from the healthy fixture on purpose: a clean error ratio must
       // not be able to hide a dead upstream.
       error_rate_24h: 0.02
@@ -285,7 +298,7 @@ describe("RankCollectorPage", () => {
     const container = await mount();
 
     const alert = container.querySelector("[role=alert]");
-    expect(alert?.textContent).toContain("Battle-tag rank parsing is down");
+    expect(alert?.textContent).toContain("Rank collection is down");
     expect(alert?.textContent).toContain("overfast.craazzzyyfoxx.me");
   });
 
@@ -297,15 +310,19 @@ describe("RankCollectorPage", () => {
 
     const container = await mount();
 
-    expect(container.querySelector("[role=alert]")?.textContent).toContain(
-      "Battle-tag rank parsing is down"
-    );
+    expect(container.querySelector("[role=alert]")?.textContent).toContain("Rank collection is down");
   });
 
   it("stays quiet while collection is healthy", async () => {
     const container = await mount();
 
     expect(container.querySelector("[role=alert]")).toBeNull();
+  });
+
+  it("reads League's collector when League is the picked game", async () => {
+    await mount("?discipline=lol");
+    expect(getRankCollectionStats).toHaveBeenCalledWith("lol");
+    expect(getRankFetchLog.mock.calls.at(-1)?.[0]).toBe("lol");
   });
 
   it("defaults to Status and writes the slot to the URL when a tab is clicked", async () => {

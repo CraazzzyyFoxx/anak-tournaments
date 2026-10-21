@@ -129,7 +129,7 @@ describe("the person hub's Ranks tab", () => {
     expect(navigation.current()).toBe("/admin/people/42?tab=ranks&discipline=lol");
     expect(selectedGames()).toEqual(both("League of Legends"));
     expect(listRanks.mock.calls.at(-1)?.[1]).toMatchObject({ discipline: "lol" });
-    // League collects no native ranks: its own unsupported state, never Overwatch's history.
-    expect(container.querySelector("[data-rank-history]")).toBeNull();
+    // League collects its own native ranks: its own history, never Overwatch's.
+    expect(container.querySelector("[data-rank-history=lol]")).not.toBeNull();
   });
 });

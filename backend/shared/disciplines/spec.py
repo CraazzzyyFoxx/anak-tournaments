@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
+    from pydantic import BaseModel
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from shared.catalog_sync import CatalogImageMirror
@@ -30,6 +31,11 @@ CatalogSync = Callable[["AsyncSession", "CatalogImageMirror"], Awaitable[None]]
 #: A game's native rank layer: ``players.user`` ids -> ``{user_id: {role code: rank}}``, the best rank a player
 #: holds per role of the rated dimension on the game's own ladder; the core places it on a division grid. Reads only.
 NativeRanks = Callable[["AsyncSession", Sequence[int]], Awaitable[dict[int, dict[str, int]]]]
+
+#: The admin rank overview's SQL twin of ``native_ranks``: ``(members CTE with player_id, CTE name suffix)`` -> a CTE of
+#: the newest ranked snapshot per account and role with the columns ``user_id, handle (the account label), platform,
+#: role, rank_value, division, tier, captured_at, snapshot_id``. ``None``: the core's OverFast twin.
+NativeRankRows = Callable[[Any, str], Any]
 
 #: A collection RPC the module serves (``rank.collect``): ``(session, caller or None for a public read, gateway data)``.
 #: The handler validates its own payload and authorizes the caller; it returns what the RPC envelope serializes.
@@ -49,6 +55,10 @@ StartJobs = Callable[..., Awaitable[None]]
 #: ``stop_jobs()``: the call itself stops the module's schedules; awaiting the result releases its clients. The worker
 #: calls it when shutdown begins and awaits it once consumers have drained.
 StopJobs = Callable[[], Awaitable[None]]
+
+#: ``settings_schema(key)``: the model a write to one of the module's own ``Settings`` keys is validated against
+#: (imported on call), ``None`` for a key the module does not own.
+SettingsSchema = Callable[[str], "type[BaseModel] | None"]
 
 #: ``achievement_conditions()``: import the module's leaf conditions, which register themselves with
 #: ``shared.domain.achievements.registry`` under the module's code. Imports its own implementation only when called.
@@ -81,9 +91,11 @@ __all__ = (
     "FormatDimensionSpec",
     "FormatRuleSpec",
     "NativeRanks",
+    "NativeRankRows",
     "NativeTier",
     "RegisterJobs",
     "RoleSpec",
+    "SettingsSchema",
     "StartJobs",
     "StopJobs",
     "StatAggregation",
@@ -180,7 +192,8 @@ class TeamFormatPreset:
 class NativeTier:
     """One sub-tier of a game's native ladder, numbered 1 from the top.
 
-    ``native_division``/``native_tier`` are the names the game's rank source reports.
+    ``native_division``/``native_tier`` are the names the game's rank source reports. ``native_tier`` is ``None`` for an
+    unsplit tier (LoL apex).
     """
 
     number: int
@@ -190,7 +203,7 @@ class NativeTier:
     rank_max: int | None
     icon_url: str
     native_division: str
-    native_tier: int
+    native_tier: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,11 +218,12 @@ class DisciplineSpec:
     #: Allowed ``attrs.class`` values of a ``character``; ``()`` leaves the class unchecked.
     character_classes: tuple[str, ...] = ()
     catalog_sync: CatalogSync | None = field(default=None, compare=False)
-    #: Where a player's rank on the game's own ladder comes from; ``None`` when the game has none (LoL: ranks are
-    #: entered by the organiser).
+    #: Where a player's rank on the game's own ladder comes from; ``None`` when the organiser enters ranks.
     native_ranks: NativeRanks | None = field(default=None, compare=False)
-    #: The game's own ladder, top tier first; ``()`` when the organiser enters ranks (LoL).
+    #: The game's own ladder, top tier first; ``()`` when the organiser enters ranks.
     native_ladder: tuple[NativeTier, ...] = ()
+    #: See ``NativeRankRows``; only a module with ``native_ranks`` declares it.
+    native_rank_rows: NativeRankRows | None = field(default=None, compare=False)
     #: The role ontology; exactly one dimension is ``rated``.
     dimensions: tuple[DimensionSpec, ...] = ()
     #: Team-format presets; the first is what an owner without a format of its own gets.
@@ -222,13 +236,15 @@ class DisciplineSpec:
     #: Process lifecycle hooks (optional plain callables): ``configure_runtime`` wires the collection handlers (every
     #: process serving them), ``register_jobs`` binds consumers on the worker's broker, ``start_jobs`` declares the
     #: module's dead-letter queues and starts schedules and clients, ``stop_jobs`` stops them. A worker runs only the selected
-    #: disciplines' hooks, so a game without background jobs (LoL) triggers none.
+    #: disciplines' hooks, so a game without background jobs triggers none.
     configure_runtime: ConfigureRuntime | None = field(default=None, compare=False)
     register_jobs: RegisterJobs | None = field(default=None, compare=False)
     start_jobs: StartJobs | None = field(default=None, compare=False)
     stop_jobs: StopJobs | None = field(default=None, compare=False)
     #: RPC suffix (``rank.collect``) -> handler for the collection operations the module serves.
     collection_handlers: dict[str, CollectionHandler] = field(default_factory=dict, compare=False, hash=False)
+    #: The models of the module's own ``Settings`` keys (``shared.schemas.settings.settings_schema`` asks it).
+    settings_schema: SettingsSchema | None = field(default=None, compare=False)
     #: Raw producers the module decodes: source kind -> ``decode(raw, ctx)``. ``shared.disciplines.INGESTORS`` keys
     #: them by ``(code, kind)``; a kind not listed here is unsupported, never routed to another producer.
     ingestors: dict[str, Decoder] = field(default_factory=dict, compare=False, hash=False)

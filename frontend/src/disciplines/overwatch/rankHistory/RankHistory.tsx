@@ -24,6 +24,7 @@ export default function RankHistory({ userId }: Readonly<SlotProps["rankHistory"
   const [granularity, setGranularity] = useRankHistoryGranularity();
   const dateFrom = useMemo(() => getDefaultDateFrom(granularity), [granularity]);
   const history = useUserRankHistory(userId, {
+    discipline: "overwatch",
     granularity: BACKEND_GRANULARITY[granularity],
     dateFrom
   });

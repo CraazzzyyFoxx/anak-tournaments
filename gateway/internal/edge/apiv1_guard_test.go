@@ -386,7 +386,6 @@ func TestApiV1_MigratedReadsHitDispatcher(t *testing.T) {
 		// app-service (was /api/v1/core)
 		"/api/v1/catalog/overwatch/character",
 		"/api/v1/catalog/lol/character/5",
-		"/api/v1/catalog/legacy/hero/5",
 		"/api/v1/statistics/overwatch/characters/5/leaderboard",
 		"/api/v1/statistics/overwatch/characters/playtime",
 		"/api/v1/users/5/characters",
@@ -403,7 +402,8 @@ func TestApiV1_MigratedReadsHitDispatcher(t *testing.T) {
 		"/api/v1/users/5/tournaments/9",
 		"/api/v1/users/5/maps/summary",
 		"/api/v1/users/someblizzname",
-		"/api/v1/statistics/dashboard",
+		"/api/v1/admin/dashboard",
+		"/api/v1/admin/dashboard/trends",
 		"/api/v1/statistics/won-maps",
 		"/api/v1/workspaces",
 		"/api/v1/workspaces/5",
@@ -411,7 +411,7 @@ func TestApiV1_MigratedReadsHitDispatcher(t *testing.T) {
 		// stats-service (was /api/parser), folded into /api/v1
 		"/api/v1/users/5/rank-history",
 		"/api/v1/users/5/current-ranks",
-		"/api/v1/battle-tags/5/rank-history",
+		"/api/v1/game-accounts/5/rank-history",
 		// discord-service (moved from app + stats; paths unchanged)
 		"/api/v1/workspaces/5/discord/roles",
 		"/api/v1/workspaces/5/discord/channels",

@@ -74,8 +74,8 @@ async def user_history(session: AsyncSession, user: AuthUser | None, data: dict[
     return schemas.RankHistoryResponse(user_id=user_id, series=series, generated_at=datetime.now(UTC))
 
 
-async def battle_tag_history(session: AsyncSession, user: AuthUser | None, data: dict[str, Any]) -> object:
-    # GET /battle-tags/{battle_tag_id}/rank-history (public; path id = social_account_id).
+async def game_account_history(session: AsyncSession, user: AuthUser | None, data: dict[str, Any]) -> object:
+    # GET /game-accounts/{id}/rank-history (public; path id = social_account_id).
     social_account_id = c.require_id(data)
     granularity = c.q1(data, "granularity", str, "daily")
     date_from, date_to = resolve_date_range(granularity, _dt(data, "date_from"), _dt(data, "date_to"))
@@ -153,7 +153,7 @@ async def reenable_disabled(session: AsyncSession, user: AuthUser | None, data: 
 
 HANDLERS = {
     "rank.user_history": user_history,
-    "rank.battle_tag_history": battle_tag_history,
+    "rank.game_account_history": game_account_history,
     "rank.user_current": user_current,
     "rank.fetch_log": fetch_log,
     "rank.stats": stats,

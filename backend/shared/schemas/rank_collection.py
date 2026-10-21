@@ -30,19 +30,20 @@ class RankHistoryPoint(BaseModel):
     tier: int | None
     is_ranked: bool
     season: int | None
+    #: League of Legends only (league points, season wins/losses); null for other games.
+    lp: int | None = None
+    wins: int | None = None
+    losses: int | None = None
 
 
 class RankSeries(BaseModel):
-    """One time series for a (battle_tag, role, platform) tuple.
-
-    The frontend pivots a list of these into either grouping: fix a battle tag
-    and draw a line per role, or fix a role and draw a line per battle tag.
-    """
+    """One time series of one game account: per (role, platform) for Overwatch, per ``queue`` for League."""
 
     social_account_id: int
-    battle_tag: str
-    role: str
-    platform: str
+    handle: str
+    role: str | None
+    platform: str | None
+    queue: str | None = None
     points: list[RankHistoryPoint]
     current: RankHistoryPoint | None
     peak_rank_value: int | None
@@ -57,14 +58,18 @@ class RankHistoryResponse(BaseModel):
 
 class CurrentRank(BaseModel):
     social_account_id: int
-    battle_tag: str
-    role: str
-    platform: str
+    handle: str
+    role: str | None
+    platform: str | None
+    queue: str | None = None
     rank_value: int | None
     division: str | None
     tier: int | None
     is_ranked: bool
     season: int | None
+    lp: int | None = None
+    wins: int | None = None
+    losses: int | None = None
     captured_at: datetime
 
 
@@ -76,7 +81,7 @@ class CurrentRanksResponse(BaseModel):
 
 class CollectionStatusRead(BaseModel):
     social_account_id: int
-    battle_tag: str
+    handle: str
     status: str | None = None
     last_checked_at: datetime | None = None
     last_success_at: datetime | None = None
@@ -140,14 +145,13 @@ class RankCollectionStats(BaseModel):
     scope: str
     interval_seconds: int
     rate_limit_per_minute: int
-    overfast_base_url: str = ""
-    """OverFast instance the worker fetches from — named on the dashboard so an
-    outage points at a host instead of at "the collector"."""
-    overfast_circuit_state: str = "closed"
-    """``closed`` / ``half_open`` / ``open``. Open = every tag fetch is being
-    refused upstream-side; the collector looks idle but is broken."""
-    invalid_battle_tags_24h: int = 0
-    """Fetches rejected because the stored handle is not a battletag."""
+    upstream_base_url: str = ""
+    """The upstream the worker fetches from (OverFast instance, Riot API cluster) — named on the dashboard so an outage
+    points at a host instead of at "the collector"."""
+    upstream_circuit_state: str = "closed"
+    """``closed`` / ``half_open`` / ``open``. Open = every fetch is refused before it leaves the process."""
+    invalid_handles_24h: int = 0
+    """Fetches rejected because the stored handle is malformed for its game."""
 
 
 class FetchLogRead(BaseModel):
@@ -158,7 +162,7 @@ class FetchLogRead(BaseModel):
     # Owning player (resolved via the social account) so a log row is clickable
     # through to the player detail view; null when the account was deleted.
     user_id: int | None = None
-    battle_tag: str
+    handle: str
     status: str
     source: str
     error: str | None

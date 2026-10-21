@@ -1,4 +1,4 @@
-"""Node math for ``rank_peak`` / ``rank_climb`` over ``overwatch_rank.rank_snapshot``.
+"""Node math for ``rank_peak`` / ``rank_climb`` over ``rank.rank_snapshot``.
 
 Rank snapshots carry no workspace of their own, so the interesting cases are the
 division ordering, the per-``(season, role, platform)`` series boundary, and the
@@ -60,9 +60,10 @@ class _RankFixture(_scrim._Fixture):
         self.insert(
             models.UserRankSnapshot.__table__,
             id=self._id(),
+            discipline="overwatch",
             user_id=user_id,
             social_account_id=user_id,
-            battle_tag=f"Player{user_id}#1234",
+            handle=f"Player{user_id}#1234",
             platform=platform,
             role=role,
             division=division,

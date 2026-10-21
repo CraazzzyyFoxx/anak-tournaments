@@ -193,5 +193,13 @@ async def metadata(
         ],
         event_types=[EventTypeRead(id=row.id, code=row.code, name=row.name, active=row.active) for row in event_types],
         team_format_presets=presets,
-        native_ladder=[NativeTierRead(**dataclasses.asdict(tier)) for tier in spec.native_ladder],
+        native_ladder=[
+            NativeTierRead(
+                **{
+                    **dataclasses.asdict(tier),
+                    "icon_url": public_asset_url(tier.icon_url, public_origin=public_origin) or tier.icon_url,
+                }
+            )
+            for tier in spec.native_ladder
+        ],
     )

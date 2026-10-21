@@ -13,7 +13,9 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { useFormatter } from "@/lib/datetime/client";
 import type { RankCollectionConfig } from "@/types/admin.types";
 
-const RANK_COLLECTION_KEY = "parser.rank_collection";
+/** The `Settings` key of a game's collector config; Overwatch's predates per-game keys and keeps its stored name. */
+export const rankCollectionKey = (discipline: string) =>
+  discipline === "overwatch" ? "parser.rank_collection" : `${discipline}.rank_collection`;
 
 const DEFAULTS: RankCollectionConfig = {
   enabled: false,
@@ -32,18 +34,18 @@ const DEFAULTS: RankCollectionConfig = {
 const read = (stored: Partial<RankCollectionConfig> | undefined) => ({ ...DEFAULTS, ...stored });
 
 /**
- * `parser.rank_collection`, grouped by the question each knob answers: whose
- * ranks, how often, how hard OverFast is hit, and when a tag is given up on.
- * min/max are the backend's own bounds (`RankCollectionConfig` in
- * `shared/schemas/settings.py`): past them it answers 422 with nothing this
- * form can show. The OW rank mapping is its own slot (`rank-mapping.tsx`).
+ * A game's `*.rank_collection` (see {@link rankCollectionKey}), grouped by the
+ * question each knob answers: whose ranks, how often, how hard the upstream is
+ * hit, and when an account is given up on. min/max are the backend's own bounds
+ * (`RankCollectionConfig` in `shared/schemas/settings.py`): past them it answers
+ * 422 with nothing this form can show. The rank mapping is its own slot.
  */
-export function RankSettingsPanel() {
+export function RankSettingsPanel({ discipline }: Readonly<{ discipline: string }>) {
   const t = useTranslations("collectors.settings.rank");
   const format = useFormatter();
   const ids = useId();
   const settings = useCollectionSettings<RankCollectionConfig>({
-    settingKey: RANK_COLLECTION_KEY,
+    settingKey: rankCollectionKey(discipline),
     read,
     invalidateKeys: [adminQueryKeys.rankStatsAll()]
   });
@@ -52,7 +54,7 @@ export function RankSettingsPanel() {
     <CollectionSettingsPanel settings={settings}>
       {(form, patch) => (
         <>
-          <SettingGroup title={t("collection.title")}>
+          <SettingGroup id="collection" title={t("collection.title")}>
             <SettingRow label={t("collection.scope")} hint={t("collection.scopeHint")}>
               <ToggleGroup
                 type="single"
@@ -87,7 +89,7 @@ export function RankSettingsPanel() {
             </SettingRow>
           </SettingGroup>
 
-          <SettingGroup title={t("pace.title")}>
+          <SettingGroup id="pace" title={t("pace.title")}>
             <SettingRow
               htmlFor={`${ids}-interval`}
               label={t("pace.interval")}
@@ -154,7 +156,7 @@ export function RankSettingsPanel() {
             </SettingRow>
           </SettingGroup>
 
-          <SettingGroup title={t("limits.title")}>
+          <SettingGroup id="limits" title={t("limits.title")}>
             <SettingRow
               htmlFor={`${ids}-rate`}
               label={t("limits.rate")}
@@ -191,7 +193,7 @@ export function RankSettingsPanel() {
             </SettingRow>
           </SettingGroup>
 
-          <SettingGroup title={t("failures.title")}>
+          <SettingGroup id="failures" title={t("failures.title")}>
             <SettingRow
               htmlFor={`${ids}-max-failures`}
               label={t("failures.maxFailures")}

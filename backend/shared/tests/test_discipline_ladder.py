@@ -31,7 +31,7 @@ def test_overwatch_native_rank_boundaries(rank: int, slug: str) -> None:
     assert tier is not None and tier.slug == slug
 
 
-@pytest.mark.parametrize("code", ["lol", "unregistered-game"])
+@pytest.mark.parametrize("code", ["unregistered-game"])
 def test_a_discipline_without_a_ladder_does_not_inherit_overwatch(code: str) -> None:
     assert ladder_grid(code) is None
 

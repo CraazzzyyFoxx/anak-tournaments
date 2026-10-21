@@ -108,7 +108,7 @@ TABLE_NAMES = (
     "stats.stat_def",
     "stats.event_type",
     "catalog.entity",
-    "overwatch_rank.rank_snapshot",
+    "rank.rank_snapshot",
     "registration.registration",
     "registration.role",
     "draft.session",

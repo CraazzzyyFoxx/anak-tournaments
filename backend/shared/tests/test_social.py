@@ -40,6 +40,7 @@ def test_oauth_capability_drives_every_oauth_derived_set() -> None:
     assert OAUTH_PROVIDERS == {
         SocialProvider.BATTLENET,
         SocialProvider.DISCORD,
+        SocialProvider.RIOT,
         SocialProvider.TWITCH,
     }
     assert is_oauth_provider(SocialProvider.DISCORD)
@@ -55,6 +56,7 @@ def test_verifiable_providers_are_the_ones_whose_ownership_can_be_proven() -> No
     assert VERIFIABLE_PROVIDERS == {
         SocialProvider.BATTLENET,
         SocialProvider.DISCORD,
+        SocialProvider.RIOT,
         SocialProvider.TWITCH,
     }
     assert VERIFIABLE_PROVIDERS == {spec.id for spec in PROVIDERS.values() if spec.can_be_verified}
@@ -212,3 +214,12 @@ def test_candidates_survive_a_provider_response_carrying_nothing_extra() -> None
     assert oauth_handle_candidates(SocialProvider.DISCORD, username="Solo", display_name=None, provider_data=None) == {
         "solo"
     }
+
+
+def test_a_riot_sign_on_stores_and_matches_the_riot_id() -> None:
+    raw = {"account": {"puuid": "p-1", "gameName": "Hide on bush", "tagLine": "KR1"}, "cpid": "kr"}
+    assert social_provider_for_oauth(SocialProvider.RIOT) == SocialProvider.RIOT
+    assert oauth_handle(SocialProvider.RIOT, "Hide on bush#KR1", raw) == "Hide on bush#KR1"
+    assert oauth_handle_candidates(
+        SocialProvider.RIOT, username="Hide on bush#KR1", display_name="Hide on bush#KR1", provider_data=raw
+    ) == {normalize_social_handle(SocialProvider.RIOT, "Hide on bush # kr1")}

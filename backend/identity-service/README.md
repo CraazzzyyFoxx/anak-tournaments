@@ -28,10 +28,12 @@ ORM/kernel this service builds on.
 - **Sessions** — list, revoke a single session, logout, and logout-all (revoke every session
   for the user). Refresh tokens are persisted in Postgres and revocable; revoking a session
   also blacklists its `sid` in Redis for the remaining access-token lifetime.
-- **OAuth** — Discord, Twitch and Battle.net (a provider is advertised only when its enable
-  flag is on and all credentials are present): authorization URL, callback exchange, account
-  link/unlink, and listing connected providers. State is signed, and the OAuth handoff to
-  custom domains is completed via single-use, browser-bound Redis tickets.
+- **OAuth** — Discord, Twitch, Battle.net and Riot (Riot Sign-On; a provider is advertised only
+  when its enable flag is on and all credentials are present): authorization URL, callback
+  exchange, account link/unlink, and listing connected providers. A Riot sign-in stores the PUUID
+  as the verified `riot` social account's `provider_user_id` and the Riot ID as its handle. State
+  is signed, and the OAuth handoff to custom domains is completed via single-use, browser-bound
+  Redis tickets.
 - **SSO exchange** — redeems a one-time SSO ticket so a custom-domain OAuth callback can hand
   the session back to the tenant origin without exposing tokens in the redirect.
 - **RBAC** — permissions, roles, role↔permission grants, user↔role assignments, and a
@@ -102,7 +104,8 @@ diagram.
   SSO / pending-link tickets.
 - **RabbitMQ** — the RPC transport (`rpc.identity.*`) and the shared broker topology.
 - **S3** — avatar object storage.
-- **External APIs** — Discord, Twitch and Battle.net OAuth token/userinfo endpoints, reached
+- **External APIs** — Discord, Twitch, Battle.net and Riot (`auth.riotgames.com`, account-v1 on
+  `https://{RIOT_ACCOUNT_CLUSTER}.api.riotgames.com`) OAuth token/userinfo endpoints, reached
   through the outbound `proxy` container when the shared `PROXY_TYPE` / `PROXY_*` settings are
   configured; the production compose block `depends_on` it.
 
@@ -120,9 +123,10 @@ only the service-specific overrides:
   token of a live session may be replayed once more instead of counting as a reuse attack; `0`
   restores hard single-use.
 
-Settings that change behaviour elsewhere: `DISCORD_/TWITCH_/BATTLENET_OAUTH_ENABLED` gate which
-providers are advertised, `SERVICE_CLIENTS` defines which machine callers may mint service
-tokens, and `RPC_PREFETCH_COUNT` bounds in-flight requests per process.
+Settings that change behaviour elsewhere: `DISCORD_/TWITCH_/BATTLENET_/RIOT_OAUTH_ENABLED` gate which
+providers are advertised; Riot also needs `RIOT_CLIENT_ID` / `RIOT_CLIENT_SECRET` and reads the
+Riot ID from account-v1 on `RIOT_ACCOUNT_CLUSTER` (default `europe`). `SERVICE_CLIENTS` defines which
+machine callers may mint service tokens, and `RPC_PREFETCH_COUNT` bounds in-flight requests per process.
 
 ## Running
 

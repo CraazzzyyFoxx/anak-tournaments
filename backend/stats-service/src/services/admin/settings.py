@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import errors
 from shared.repository import SettingsRepository
-from shared.schemas.settings import SETTINGS_SCHEMAS
+from shared.schemas.settings import settings_schema
 from shared.services.settings_provider import settings_provider
 
 __all__ = ("SettingsService", "settings_service")
@@ -35,7 +35,7 @@ class SettingsService:
 
     @staticmethod
     def _validate_value(key: str, value: dict) -> None:
-        model = SETTINGS_SCHEMAS.get(key)
+        model = settings_schema(key)
         if model is None:
             raise errors.ApiHTTPException(
                 status_code=400,

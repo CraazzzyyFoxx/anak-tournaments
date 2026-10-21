@@ -26,7 +26,7 @@ __all__ = (
 )
 
 #: Layers that describe a member's rank *now* -- the default filter.
-CurrentRankLayer = Literal["canon", "author", "ow", "hidden", "effective_tournament", "effective_mix"]
+CurrentRankLayer = Literal["canon", "author", "native", "hidden", "effective_tournament", "effective_mix"]
 
 #: Layers that describe a rank somebody held at some past moment.
 HistoryRankLayer = Literal["registration", "tournament", "casual"]
@@ -59,7 +59,7 @@ class RankContext(BaseModel):
     kind: Literal["tournament", "mix", "native_account"]
     id: int | None = Field(default=None, description="Tournament or custom-game id; null for a native account.")
     label: str
-    team: str | None = Field(default=None, description="Roster team name, or the platform on an ow row.")
+    team: str | None = Field(default=None, description="Roster team name, or the platform/region on a native row.")
     lobby_index: int | None = Field(default=None, description="Which lobby of the mix played the match.")
 
 
@@ -86,7 +86,11 @@ class RankOverviewRow(BaseModel):
     sigma: float | None = Field(default=None, description="hidden only.")
     delta: int | None = Field(default=None, description="casual only: how far the match moved this seat.")
     canon_diff: int | None = Field(default=None, description="author only: rank_value minus the canon, null if none.")
-    ow_division: str | None = Field(default=None, description="ow only: the native OverFast division, e.g. 'gold'.")
-    ow_tier: int | None = Field(default=None, description="ow only: the native tier inside that division.")
+    native_division: str | None = Field(
+        default=None, description="native only: the game's own division, e.g. 'gold' or 'DIAMOND'."
+    )
+    native_tier: int | None = Field(
+        default=None, description="native only: the tier inside that division (null for an unsplit tier)."
+    )
     context: RankContext | None = None
     at: datetime | None = Field(default=None, description="Null on the computed effective layers.")

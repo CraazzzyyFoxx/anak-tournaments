@@ -108,7 +108,7 @@ const AuthModal = ({ tenantWorkspace }: AuthModalProps) => {
         {/* Provider buttons */}
         <div className="grid gap-2 px-8 py-5">
           {isLoading
-            ? ["discord", "twitch", "battlenet"].map((provider) => (
+            ? ["discord", "twitch", "battlenet", "riot"].map((provider) => (
                 <Skeleton key={provider} className="h-10 rounded-lg" />
               ))
             : providers.map((provider) => {

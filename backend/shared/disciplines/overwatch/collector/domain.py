@@ -1,13 +1,12 @@
 """Pure logic for the OverFast rank-collection domain: fetch DTOs, native
-division/tier -> rank_value mapping, collection-rate pacing math, history-read
-date-range resolution and gap filling, and the battle-tag -> OverFast-slug helper. Zero
+division/tier -> rank_value mapping, history-read date-range resolution and
+gap filling, and the battle-tag -> OverFast-slug helper. Zero
 ``AsyncSession``, zero ``await`` — see ``backend/ARCHITECTURE.md``'s ``domain/``
 boundary.
 """
 
 from __future__ import annotations
 
-import math
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -25,7 +24,6 @@ __all__ = (
     "RankLookup",
     "build_default_lookup",
     "map_division_tier_to_rank_value",
-    "compute_per_tick",
     "Granularity",
     "resolve_date_range",
     "fill_rank_series",
@@ -118,29 +116,6 @@ def map_division_tier_to_rank_value(
     if not division or tier is None:
         return None
     return lookup.get((division.lower(), int(tier)))
-
-
-def compute_per_tick(
-    total_in_scope: int,
-    *,
-    interval_seconds: int,
-    tick_seconds: int,
-    rate_limit_per_minute: int,
-    batch_size: int,
-    max_per_tick: int | None,
-) -> int:
-    """How many tags to claim this tick to cover the population once per interval.
-
-    ``needed`` is the steady rate that spreads the whole in-scope population
-    evenly across ``interval_seconds``. It is capped by the per-tick share of the
-    OverFast rate budget (and ``batch_size`` / ``max_per_tick``); when ``needed``
-    exceeds that cap the effective interval gracefully stretches.
-    """
-    needed = math.ceil(total_in_scope * tick_seconds / interval_seconds)
-    rate_budget = max(1, math.floor(rate_limit_per_minute * tick_seconds / 60))
-    cap = batch_size if max_per_tick is None else min(batch_size, max_per_tick)
-    cap = min(cap, rate_budget)
-    return max(1, min(needed, cap))
 
 
 Granularity = Literal["raw", "daily", "hourly"]

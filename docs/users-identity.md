@@ -88,7 +88,7 @@ flowchart TB
     TP["tournament.player"]
     ACH["achievements.*"]
     DRAFT["draft.*"]
-    OW["overwatch_rank.rank_snapshot"]
+    OW["rank.rank_snapshot"]
   end
 
   AU -.->|"1:0..1 auth_user_id"| PU
@@ -268,7 +268,7 @@ The fourth layer is **not** in this table:
 | `author` | `member_rank.author_user_id = this account` | Only this host's mixes |
 | `workspace` | `member_rank.author_user_id IS NULL` | Everyone in the workspace |
 | `registration` | `registration_role.rank_value` | This tournament |
-| `ow` | `overwatch_rank.rank_snapshot` on `players.user` | Fallback, normalized into the DivisionGrid |
+| `ow` | `rank.rank_snapshot` (the game's `discipline`) on `players.user`, read through the module's `native_ranks` | Fallback, normalized into the DivisionGrid |
 
 Resolver: `pick_rank(layers)` (`backend/shared/domain/member_rank.py`). The first layer holding a **number** wins. `None` or a missing row falls through to the next layer. That is why "follow the canon" is the **absence** of a row, not a copy of the value. `clear` on a record **deletes** the role, it does not write 0.
 
@@ -334,10 +334,10 @@ OW is pulled in only where the cheaper layers left a hole. Snapshots collapse in
 
 ```
 user_id                 FK players.user CASCADE
-provider                battlenet | discord | twitch | boosty | vk | youtube | …
+provider                battlenet | riot | discord | twitch | boosty | vk | youtube | …
 username / username_normalized
 url
-provider_user_id        NULL until proven by an OAuth subject
+provider_user_id        NULL until proven by an OAuth subject (Riot Sign-On: the PUUID)
 is_verified             true after a completed OAuth flow
 is_primary
 ```
@@ -403,7 +403,7 @@ These stay on `auth.user.id` because they belong to a session or an operator, no
 - `favorite_player` — `(auth_user_id, player_id)`: an account bookmarks someone else's game profile
 - `encounter_saved_view`
 
-`overwatch_rank.rank_snapshot` stays on `players.user.id` (it is a fact about a battletag, not about membership). It is the resolver's `ow` layer, not the workspace canon.
+`rank.rank_snapshot` stays on `players.user.id` (it is a fact about a game account — a BattleTag or a Riot ID — not about membership). It is the resolver's `ow` layer, not the workspace canon.
 
 ---
 
@@ -444,8 +444,8 @@ RPC: the user is already signed in and picks an existing `players.user`.
 
 Preconditions:
 
-1. The account has an OAuth Discord **or** Battle.net connection. Otherwise 400: *"Link Discord or Battle.net OAuth account before linking a player"*.
-2. Ownership: a normalized intersection between the OAuth connection's handles and the player's `social_account` handles (discord username/global_name/email **or** battletag). Otherwise 403.
+1. The account has an OAuth Discord, Battle.net **or** Riot connection. Otherwise 400: *"Link Discord, Battle.net or Riot OAuth account before linking a player"*.
+2. Ownership: a normalized intersection between the OAuth connection's handles and the player's `social_account` handles (discord username/global_name/email, battletag **or** Riot ID). Otherwise 403.
 3. The player is free or already belongs to this account. Another owner → 409.
 
 After a successful `UPDATE players.user SET auth_user_id = …`:
@@ -757,7 +757,7 @@ request body selects a workspace or key.
 |---|---|
 | Taking over an account through the same email on OAuth | Email is not used for reuse. Only `provider_user_id` or an explicit authenticated link. |
 | Taking over someone's auth-player through a matching discord/battletag | Auto-link on login only for `auth_user_id IS NULL`. Another account's link is never overwritten. |
-| Self-service link to someone else's profile | Requires OAuth Discord/BN **and** an intersection of handles. Otherwise 403. |
+| Self-service link to someone else's profile | Requires OAuth Discord/BN/Riot **and** an intersection of handles. Otherwise 403. |
 | Two accounts, one Battle.net subject | Unique `(provider, provider_user_id)` on `oauth_connections` and on the verified social subject. |
 | A custom-domain OAuth link binding the apex session | The ticket carries only the provider identity; it is redeemed on the domain from that domain's cookie. |
 | A registration ban | `user_permission_deny` + `can_capability`; a deny beats a grant. |

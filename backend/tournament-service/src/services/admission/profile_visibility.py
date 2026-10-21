@@ -1,13 +1,13 @@
 """Resolve whether registrants' Overwatch profiles are public, and why not.
 
-Reads the collected `overwatch_rank.battle_tag_state` in one batch and produces a
+Reads the collected ``rank.account_state`` in one batch and produces a
 per-registration :class:`ProfileSignal` for the "All Profiles Open" requirement:
 the tri-state (`True` public / `False` confirmed closed / `None` unknown) plus the
 reasons behind anything that is not `True`.
 
 Reasons are produced here because only this loop still knows which tag and which
 `RankCollectionStatus` produced a `None` or `False`; a caller would need a second
-per-registration `battle_tag_state` read to reconstruct them.
+per-registration `account_state` read to reconstruct them.
 
 `private` and `not_found` are the only BLOCKING statuses. Everything else is an
 unfinished or failed collection and stays `None`, which fails open: a stalled
@@ -98,12 +98,16 @@ async def resolve_profiles_open(
     if not all_tags:
         return dict.fromkeys(tags_by_reg, _NO_BATTLE_TAG)
 
+    state = models.RankAccountState
     rows = await session.execute(
-        sa.select(models.BattleTagRankState.battle_tag, models.BattleTagRankState.status).where(
-            sa.func.lower(models.BattleTagRankState.battle_tag).in_(all_tags)
+        sa.select(state.handle, state.status)
+        .join(models.SocialAccount, models.SocialAccount.id == state.social_account_id)
+        .where(
+            models.SocialAccount.provider == SocialProvider.BATTLENET,
+            sa.func.lower(state.handle).in_(all_tags),
         )
     )
-    status_by_tag: dict[str, str] = {battle_tag.lower(): status for battle_tag, status in rows.all()}
+    status_by_tag: dict[str, str] = {handle.lower(): status for handle, status in rows.all()}
 
     ok = enums.RankCollectionStatus.ok.value
     signals: dict[int, ProfileSignal] = {}

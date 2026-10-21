@@ -21,7 +21,7 @@ delays an RPC reply and exactly one process family owns the schedules.
 | Compose service | `stats-svc` | `stats-worker` |
 | Entry point | `serve_rpc.py` | `serve_worker.py` |
 | Run command | `faststream run serve_rpc:app` | `faststream run serve_worker:app` |
-| Registers | typed `rpc.stats.*` handlers only | `stats.ingest.<discipline>` (selected) + upload/tournament fanout, achievements, `tournament_encounter_completed`, `discord_member_changed`, the selected disciplines' own jobs (OverFast rank fetch + both registration rank checks) |
+| Registers | typed `rpc.stats.*` handlers only | `stats.ingest.<discipline>` (selected) + upload/tournament fanout, achievements, `tournament_encounter_completed`, `discord_member_changed`, the selected disciplines' own jobs (rank fetch + both registration rank checks: OverFast for Overwatch, Riot API for LoL) |
 | Schedules | outbox drain | rank collection, stall reaper (selected disciplines), failed-log retention, subscription collection, outbox drain |
 | Health | `GET :9100/health` | `GET :9100/health` |
 
@@ -52,8 +52,10 @@ System overview: [`../../docs/architecture.md`](../../docs/architecture.md). Cod
 - **Player resolution from logs** — resolves real workspace members and historical game
   participations, including substitutes and event-only players. Roster snapshot repairs and
   battlenet renames share the observation transaction; ingestion does not grant workspace access.
-- **Overwatch rank collection** — selects due battle tags, fetches career summaries from OverFast
-  and keeps the per-tag collection state, snapshot series and fetch log.
+- **Native rank collection** — each game's module collector selects due accounts in `rank.account_state`
+  (its `discipline`), fetches them upstream (Overwatch: OverFast career summaries per BattleTag; LoL:
+  Riot API Solo/Duo and Flex per Riot ID) and keeps the per-account collection state, snapshot series
+  and fetch log.
 - **Achievement evaluation** — owns the condition-tree engine, the rules admin surface, the
   evaluation runs and the manual grant/revoke overlay.
 - **MVP impact scoring** — derived stats (`PerformancePoints`, `Performance`, `ImpactPoints`,
@@ -73,7 +75,7 @@ RPC namespace: `rpc.stats.*` (single namespace, registered in `src/rpc/`).
 | --- | --- |
 | `rpc.stats.logs.*` | Match-log admin: queue depths, processing history and stats (with each job's structured error, observation revision, current-provenance flag and, while awaiting link, its document teams), upload, retry (`reparse` + `expected_revision` for a done log), whole-tournament reprocess |
 | `rpc.stats.ingest.*` | Canonical ingest: `submit`/`get` (workspace API key with `stats.ingest`) and the admin `bind` of an awaiting-link job to a game with the operator's team map |
-| `rpc.stats.rank.*` | Public rank reads (user/battle-tag history, current ranks) plus collection admin: health stats, fetch log, trigger collection, re-enable auto-disabled tags |
+| `rpc.stats.rank.*` | Public rank reads (user and game-account history, current ranks) plus collection admin: health stats, fetch log, trigger collection, re-enable auto-disabled accounts. `?discipline=` (default `overwatch`) picks the game's collector; a game without one answers 404 `rank_collection_unsupported` |
 | `rpc.stats.ach.*` | Achievement rules CRUD, condition-type catalog and tree validation, seed/reset, export/import and cross-workspace library import, evaluation trigger and runs, rule test/dry-run, qualifying-user list, manual overrides |
 | `rpc.stats.subscription.*` | Subscription collection admin: health stats, check log, per-user entitlement, trigger a re-check or a sweep |
 | `rpc.stats.impact.*` | Superuser recompute of the impact-scoring baselines |
@@ -97,6 +99,8 @@ The full method list with request/response schemas is published at `/api/docs`, 
 | `tournament_registration_approved` | — | Bound to the same exchange; prioritises and enqueues a rank check for the approved player |
 | `tournament_registration_rank_check` | `RegistrationRankCheckRequestedEvent` | Same rank check, asked for by the registrant from their own card |
 | `rank_fetch`, `rank_fetch_priority` | `FetchRankEvent` | One OverFast call per battle tag; shared channel with prefetch `RANK_FETCH_WORKER_PREFETCH` |
+| `lol_rank_fetch`, `lol_rank_fetch_priority` | LoL fetch request | One Riot API fetch per Riot account; shared channel with prefetch `LOL_RANK_FETCH_WORKER_PREFETCH` (3) |
+| `lol_rank_registration_approved`, `lol_rank_registration_rank_check` | — | Bound to the same exchange (routing keys `tournament.registration.approved` / `.rank_check_requested`); priority-fetch the Riot accounts of an approved LoL registrant, or of one asking for a re-check |
 | `discord_member_changed` | `DiscordMemberChangedEvent` | Re-resolves the member's Boosty entitlement in every workspace bound to the guild (`subscription_collection/member_events.py`); own channel, prefetch 2; the scheduled sweep stays the slow reconciliation |
 
 Every one of those queues carries `x-dead-letter-exchange=dlx` and an `x-message-ttl`; the worker
@@ -287,7 +291,7 @@ at `8588e360e`; recipe in the P5 release note, section 15.1.
 ### Rank synchronisation
 
 Collection is bound to a linked `social_account` (a battlenet account owned by a player), never to a
-bare BattleTag string: `overwatch_rank.battle_tag_state` is keyed on `social_account_id`, and the
+bare BattleTag string: `rank.account_state` is keyed on `social_account_id`, and the
 snapshots it produces are attributed to that account's user. An unlinked tag is not collected.
 
 Per-tag state carries `next_eligible_at`, `consecutive_failures` and `status`. On success the tag is
@@ -304,6 +308,12 @@ per-minute window (over it a tag is deferred past the window rather than fetched
 control the priority queue has, since registration approvals bypass the scheduler's pacing) and a
 global cooldown key set on a 429.
 
+League's collector (`shared/disciplines/lol/collector.py`) follows the same rules for `riot`
+accounts, keyed `lol_rank:*`. It has no `private` status, and a Riot 401/403 (missing or expired key)
+is transient. A 400 on a stored PUUID means it was minted under another Riot project's key: the fetch
+re-resolves the PUUID once by Riot ID, and if that also fails it clears `external_id` and `region`.
+Only a verified Riot account's RSO subject is trusted as its PUUID.
+
 ### Events published
 
 - `match_log_result` (work queue) — `MatchLogProcessedEvent` with the upload's `channel_id`/`message_id`, consumed by discord-service.
@@ -314,8 +324,8 @@ global cooldown key set on a 429.
   `verification_status` is `unverified`: the run row is created `queued` and the message carries its
   id, so the consumer finishes that row instead of opening a second one. `parse_complete` is never
   deferred.
-- `rank_fetch` / `rank_fetch_priority` — from the collection tick, the admin collect RPC and
-  registration approval.
+- `rank_fetch` / `rank_fetch_priority` (Overwatch) and `lol_rank_fetch` / `lol_rank_fetch_priority`
+  (LoL) — from the collection tick, the admin collect RPC and registration approval.
 - Through the transactional outbox (`public.event_outbox`): achievement evaluation and tournament
   score/cache invalidations; `EncounterCompletedEvent` is emitted when the encounter is already
   completed, without accepting a live-game result on the log's authority.
@@ -329,12 +339,14 @@ on subscribe, so a missed signal self-heals, and the actual log data stays gated
 
 ### Scheduled work
 
-All four are APScheduler interval jobs guarded by a Redis leader lock, so only one replica acts per
-tick.
+The jobs below are APScheduler interval jobs guarded by a Redis leader lock, so only one replica acts
+per tick. Each rank collector also runs a fetch-log purge without a lock, because its delete is
+idempotent (`ow_rank_fetch_log_purge`; `lol_rank_fetch_log_purge`, daily, 7-day retention).
 
 | Job | Cadence | What it does |
 | --- | --- | --- |
 | OverFast rank collection | 60s tick | Selects and *claims* due battle tags and publishes one `FetchRankEvent` each — it never calls OverFast itself. Per-tag cadence comes from `next_eligible_at`, so changing the admin interval needs no restart. No-ops while collection is disabled in settings. |
+| LoL rank collection | 60s tick | The same for League (`lol_rank:*` keys, `lol.rank_collection` settings): claims due Riot accounts and publishes one fetch each. Off by default. |
 | Match-log stall reaper | `LOG_REAPER_TICK_SECONDS` (300s) | Requeues native jobs dropped by the queue: `pending` older than `LOG_REAPER_PENDING_AFTER_SECONDS` and `processing` older than `LOG_REAPER_PROCESSING_AFTER_SECONDS`. Exhausted attempts become `failed`; awaiting-link is never claimed. Keep the pending threshold above the queue TTL. |
 | Failed match-log retention | 1h tick | Deletes only expired failed jobs whose raw reference is unused by another job or match. A linked match keeps both its job row and raw object, not an orphaned object with no usable reference. Storage deletion failure keeps the row; an upload's raw-key lock prevents concurrent deletion. Alias breadcrumb SET NULL and deleted-owner evidence share the deletion transaction. Invalid/uncompleted uploads are rejected before persistence; processing never deletes raw bytes as validation cleanup. |
 | Subscription collection | 60s heartbeat | Decides inside the tick whether the admin-configured `interval_seconds` has elapsed (read from the append-only check log), then re-checks entitlements for active tournament participants. |
@@ -345,7 +357,7 @@ Writes:
 
 - `stats` — `ingest_job`, `match`, `match_team`, `match_player`, `segment`, `fact`, `event` and
   `stat_baseline`. `stats.discord_channel` sits in this schema but discord-service writes it.
-- `overwatch_rank` — `battle_tag_state`, `rank_snapshot`, `fetch_log`.
+- `rank` — `account_state`, `rank_snapshot`, `fetch_log` (every game; `discipline` names it).
 - `achievements` — `rule`, `evaluation_result`, `evaluation_run`, `override`.
 - `catalog` — `alias_miss` for unresolved Overwatch log names, plus `entity` aliases and rows
   written by each discipline module's sync; app-service owns the public reads and generic admin CRUD.
@@ -380,6 +392,9 @@ No service ships its own migrations — there is one Alembic project at
   summaries for rank collection and the Overwatch module's hero/map/gamemode catalog; the
   hero sync pulls all 13 Blizzard locales and only ever adds aliases. OverFast exposes no
   `locale` parameter for `/maps` or `/gamemodes`, so their aliases are admin-supplied.
+- **Riot API** (called directly, `X-Riot-Token`) — the LoL rank collector: account-v1 on
+  `RIOT_ACCOUNT_CLUSTER` (Riot ID ↔ PUUID, region) and league-v4 on the account's platform host.
+  PUUIDs are encrypted per Riot project, so a key change re-resolves every account once.
 - **Data Dragon** — the League of Legends module's champion and map catalog, using the
   latest published version. Both sources mirror images through `shared.catalog_sync`.
 - **discord-service** (RabbitMQ RPC `discord_member_roles`) — Boosty entitlement verification; this
@@ -415,6 +430,10 @@ to a matching discipline and kind and closes the miss in one request.
   the service's config. The operational collection parameters — interval, scope, per-minute limit,
   backoff base, max consecutive failures, rank mapping — live in `public.settings`, editable at
   runtime, not in the env file.
+- **Riot API** — `RIOT_API_KEY` (a development key expires every 24 h), `RIOT_ACCOUNT_CLUSTER`
+  (`europe`), `RIOT_TIMEOUT`, `RIOT_MAX_RETRIES`, `LOL_RANK_FETCH_WORKER_PREFETCH`. They belong to the
+  LoL module's collector (`shared/disciplines/lol/riot.py`); its runtime parameters live in
+  `public.settings` under `lol.rank_collection`.
 - **Outbound proxy** — `PROXY_TYPE`, `PROXY_IP`, `PROXY_PORT`, `PROXY_USERNAME`, `PROXY_PASSWORD`.
 - **Subscription verification** — `TWITCH_CLIENT_ID`. Unset means every live Twitch check resolves
   `unknown` and fails open: the sweep runs and proves nothing.
@@ -463,7 +482,9 @@ deployment slice: its schedules are Redis leader-locked, so extra replicas are s
   `stats.ingest.<discipline>.replay.dlq` (selected disciplines), `process_tournament_logs.dlq`, `achievement_evaluate.dlq`,
   `achievement_evaluate.deferred.dlq`, `tournament_encounter_completed.dlq` and `discord_member_changed.dlq`; the Overwatch module
   declares its own (`rank_fetch.dlq`, `rank_fetch_priority.dlq`, `tournament_registration_approved.dlq`,
-  `tournament_registration_rank_check.dlq`) from its `start_jobs` hook. An achievement
+  `tournament_registration_rank_check.dlq`) from its `start_jobs` hook, and so does the LoL module
+  (`lol_rank_fetch.dlq`, `lol_rank_fetch_priority.dlq`, `lol_rank_registration_approved.dlq`,
+  `lol_rank_registration_rank_check.dlq`). An achievement
   evaluation that raises is rejected without requeue straight into its DLQ.
 - **A stuck "Queued" record is a reaper question, not a queue question.** The row, not the message,
   is the source of truth; check `attempts` and the reaper settings before republishing by hand.

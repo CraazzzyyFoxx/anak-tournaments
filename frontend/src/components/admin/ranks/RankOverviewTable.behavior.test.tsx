@@ -108,8 +108,8 @@ function row(overrides: Partial<RankOverviewRow> = {}): RankOverviewRow {
     sigma: null,
     delta: null,
     canon_diff: null,
-    ow_division: null,
-    ow_tier: null,
+    native_division: null,
+    native_tier: null,
     context: null,
     at: "2026-01-02T03:04:05Z",
     ...overrides
@@ -203,10 +203,10 @@ describe("rank overview table", () => {
   });
 
   it("passes the layer, author and canon-diff filters the URL carries", async () => {
-    await render("?layer=author,ow&author=5,8&role=tank&differs=1&date_from=2026-01-01");
+    await render("?layer=author,native&author=5,8&role=tank&differs=1&date_from=2026-01-01");
 
     expect(lastParams()).toMatchObject({
-      layer: ["author", "ow"],
+      layer: ["author", "native"],
       authorUserId: [5, 8],
       role: ["tank"],
       differsFromCanon: true,

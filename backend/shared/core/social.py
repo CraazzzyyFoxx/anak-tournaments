@@ -196,11 +196,13 @@ PROVIDERS: Final[dict[str, ProviderSpec]] = {
             id=SocialProvider.RIOT,
             label="Riot ID",
             order=6,
-            # Game name 3-16 characters, spaces allowed, then a 3-5 character alphanumeric tag.
-            # PUUID and OAuth belong to the later Riot API integration.
+            # Game name 3-16 characters, spaces allowed, then a 3-5 character alphanumeric tag. Riot Sign-On proves it:
+            # the OAuth subject is the PUUID, the stored handle the Riot ID the provider reports as ``username``.
             handle_pattern=r"[^#]{3,16}#[0-9a-z]{3,5}",
             handle_error_key="identity.riot.format",
             normalize="riot_id",
+            supports_oauth=True,
+            can_be_verified=True,
             is_game_provider=True,
         ),
     )

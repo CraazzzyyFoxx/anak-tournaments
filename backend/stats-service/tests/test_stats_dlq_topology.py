@@ -26,6 +26,7 @@ sys.path.insert(0, str(backend_root / "stats-service"))
 rpc = importlib.import_module("serve_rpc")
 worker = importlib.import_module("serve_worker")
 collector_jobs = importlib.import_module("shared.disciplines.overwatch.collector.jobs")
+lol_collector = importlib.import_module("shared.disciplines.lol.collector")
 
 
 def _dead_letter_routing_keys(process) -> set[str]:
@@ -44,7 +45,7 @@ def test_the_rpc_process_consumes_no_dead_lettering_queue() -> None:
 
 
 def test_every_dead_lettering_worker_subscriber_has_a_declared_dlq() -> None:
-    declared = {dlq.name for dlq in worker._OWNED_DLQS} | {dlq.name for dlq in collector_jobs.OWNED_DLQS}
+    declared = {dlq.name for dlq in (*worker._OWNED_DLQS, *collector_jobs.OWNED_DLQS, *lol_collector.OWNED_DLQS)}
 
     assert _dead_letter_routing_keys(worker) <= declared
 
@@ -52,7 +53,7 @@ def test_every_dead_lettering_worker_subscriber_has_a_declared_dlq() -> None:
 def test_owned_dlqs_are_durable_and_not_orphaned() -> None:
     routing_keys = _dead_letter_routing_keys(worker)
 
-    for dlq in (*worker._OWNED_DLQS, *collector_jobs.OWNED_DLQS):
+    for dlq in (*worker._OWNED_DLQS, *collector_jobs.OWNED_DLQS, *lol_collector.OWNED_DLQS):
         assert dlq.durable, f"{dlq.name} must survive a broker restart"
         assert dlq.name in routing_keys, f"{dlq.name} is declared but no subscriber dead-letters to it"
 

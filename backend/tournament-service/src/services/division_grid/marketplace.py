@@ -217,7 +217,7 @@ def build_source_fingerprint(
     *,
     source_version_id: int | None = None,
     include_icons: bool = True,
-    include_ow_rank_mappings: bool = True,
+    include_native_rank_mappings: bool = True,
 ) -> str:
     version_key_by_id: dict[int, tuple[str, int]] = {}
     tier_key_by_id: dict[int, tuple[str, int, str]] = {}
@@ -293,7 +293,8 @@ def build_source_fingerprint(
             "grids": grids_payload,
             "mappings": mappings_payload,
             "include_icons": include_icons,
-            "include_ow_rank_mappings": include_ow_rank_mappings,
+            # Hash input of the stored ``source_fingerprint``: the historical key keeps unchanged grids unchanged.
+            "include_ow_rank_mappings": include_native_rank_mappings,
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -518,7 +519,7 @@ class MarketplaceService:
         source_grids: Sequence[models.DivisionGrid],
         source_version_id: int | None = None,
         include_icons: bool = True,
-        include_ow_rank_mappings: bool = True,
+        include_native_rank_mappings: bool = True,
     ) -> schemas.DivisionGridMarketplacePreflightResult:
         selected_versions = _selected_source_versions(source_grids, source_version_id)
         selected_version_ids = {version.id for version in selected_versions}
@@ -583,7 +584,7 @@ class MarketplaceService:
                 mappings,
                 source_version_id=source_version_id,
                 include_icons=include_icons,
-                include_ow_rank_mappings=include_ow_rank_mappings,
+                include_native_rank_mappings=include_native_rank_mappings,
             ),
         )
 
@@ -624,7 +625,7 @@ class MarketplaceService:
         expected_source_fingerprint: str | None = None,
         source_version_id: int | None = None,
         include_icons: bool = True,
-        include_ow_rank_mappings: bool = True,
+        include_native_rank_mappings: bool = True,
     ) -> schemas.DivisionGridMarketplaceImportResult:
         # Validate the whole batch before copying or archiving any grid.
         for source_grid in source_grids:
@@ -648,7 +649,7 @@ class MarketplaceService:
             mappings,
             source_version_id=source_version_id,
             include_icons=include_icons,
-            include_ow_rank_mappings=include_ow_rank_mappings,
+            include_native_rank_mappings=include_native_rank_mappings,
         )
         source_fingerprints: dict[int, str] = {}
         for source_grid in source_grids:
@@ -667,7 +668,7 @@ class MarketplaceService:
                 grid_mappings,
                 source_version_id=source_version_id,
                 include_icons=include_icons,
-                include_ow_rank_mappings=include_ow_rank_mappings,
+                include_native_rank_mappings=include_native_rank_mappings,
             )
         if expected_source_fingerprint is not None and source_fingerprint != expected_source_fingerprint:
             raise HTTPException(
@@ -861,8 +862,12 @@ class MarketplaceService:
                                     rank_min=source_tier.rank_min,
                                     rank_max=source_tier.rank_max,
                                     icon_url=copied.public_url,
-                                    native_rank_min=source_tier.native_rank_min if include_ow_rank_mappings else None,
-                                    native_rank_max=source_tier.native_rank_max if include_ow_rank_mappings else None,
+                                    native_rank_min=source_tier.native_rank_min
+                                    if include_native_rank_mappings
+                                    else None,
+                                    native_rank_max=source_tier.native_rank_max
+                                    if include_native_rank_mappings
+                                    else None,
                                 ),
                                 source_tier.id,
                             )

@@ -33,7 +33,7 @@ from shared.disciplines import discipline as discipline_spec
 from shared.disciplines import rated_role_codes
 from shared.division_grid import DivisionGrid, division_case_expr
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
-from shared.models.ranks.overwatch_rank import BattleTagRankState, UserRankSnapshot
+from shared.models.ranks.rank import RankAccountState, UserRankSnapshot
 from shared.repository import CatalogRoleRepository, CustomGameRoundRepository
 from shared.schemas.identity import PlayerIdentityRead
 from shared.services.division_grid.access import get_effective_division_grid
@@ -150,8 +150,8 @@ def _row(
     sigma: Any = None,
     delta: Any = None,
     canon_diff: Any = None,
-    ow_division: Any = None,
-    ow_tier: Any = None,
+    native_division: Any = None,
+    native_tier: Any = None,
     context_kind: Any = None,
     context_id: Any = None,
     context_label: Any = None,
@@ -173,8 +173,8 @@ def _row(
         (sigma if sigma is not None else _null(sa.Float)).label("sigma"),
         (delta if delta is not None else _null(sa.Integer)).label("delta"),
         (canon_diff if canon_diff is not None else _null(sa.Integer)).label("canon_diff"),
-        (ow_division if ow_division is not None else _null(sa.String)).label("ow_division"),
-        (ow_tier if ow_tier is not None else _null(sa.Integer)).label("ow_tier"),
+        (native_division if native_division is not None else _null(sa.String)).label("native_division"),
+        (native_tier if native_tier is not None else _null(sa.Integer)).label("native_tier"),
         (context_kind if context_kind is not None else _null(sa.String)).label("context_kind"),
         (context_id if context_id is not None else _null(sa.Integer)).label("context_id"),
         (context_label if context_label is not None else _null(sa.String)).label("context_label"),
@@ -213,7 +213,7 @@ def _ow_latest_cte(members: Any, game: str) -> Any:
     latest = (
         sa.select(
             models.SocialAccount.user_id.label("user_id"),
-            snapshot.battle_tag,
+            snapshot.handle,
             snapshot.platform,
             snapshot.role,
             snapshot.rank_value,
@@ -224,12 +224,13 @@ def _ow_latest_cte(members: Any, game: str) -> Any:
             snapshot.id.label("snapshot_id"),
         )
         .select_from(models.SocialAccount)
-        .join(BattleTagRankState, BattleTagRankState.social_account_id == models.SocialAccount.id)
+        .join(RankAccountState, RankAccountState.social_account_id == models.SocialAccount.id)
         .join(snapshot, snapshot.social_account_id == models.SocialAccount.id)
         .where(
+            snapshot.discipline == game,
             models.SocialAccount.provider == SocialProvider.BATTLENET,
             models.SocialAccount.user_id.in_(sa.select(members.c.player_id)),
-            BattleTagRankState.last_success_at >= sa.func.now() - OW_RANK_MAX_AGE,
+            RankAccountState.last_success_at >= sa.func.now() - OW_RANK_MAX_AGE,
             snapshot.role.in_(REGISTRATION_ROLE_CODES),
         )
         .distinct(models.SocialAccount.id, snapshot.role, snapshot.platform)
@@ -292,19 +293,21 @@ def _branches(
         [(r,) for r in rated_role_codes(discipline)]
     )
 
-    # The OverFast snapshot SQL twin of OW's native layer; another native module needs its own twin.
-    native = discipline_spec(discipline).native_ranks is not None
-    needs_ow = native and bool(wanted & {"ow", "effective_tournament", "effective_mix"})
-    ow_latest = _ow_latest_cte(members, discipline) if needs_ow else None
-    ow_best = (
+    # The native layer's SQL twin: OverFast snapshots for a Battle.net game, else the module's own (``native_rank_rows``).
+    spec = discipline_spec(discipline)
+    twin = _ow_latest_cte if spec.identity_provider == SocialProvider.BATTLENET else spec.native_rank_rows
+    native = spec.native_ranks is not None and twin is not None
+    needs_native = native and bool(wanted & {"native", "effective_tournament", "effective_mix"})
+    native_latest = twin(members, discipline) if needs_native else None
+    native_best = (
         sa.select(
-            ow_latest.c.user_id,
-            ow_latest.c.role,
-            sa.func.max(ow_latest.c.rank_value).label("rank_value"),
+            native_latest.c.user_id,
+            native_latest.c.role,
+            sa.func.max(native_latest.c.rank_value).label("rank_value"),
         )
-        .group_by(ow_latest.c.user_id, ow_latest.c.role)
-        .cte(f"rank_ow_best_{discipline}")
-        if ow_latest is not None
+        .group_by(native_latest.c.user_id, native_latest.c.role)
+        .cte(f"rank_native_best_{discipline}")
+        if native_latest is not None
         else None
     )
 
@@ -342,23 +345,23 @@ def _branches(
             .outerjoin(canon, sa.and_(canon.c.member_id == members.c.member_id, canon.c.role == book.c.role))
         )
 
-    if native and "ow" in wanted and ow_latest is not None:
+    if native and "native" in wanted and native_latest is not None:
         out.append(
             sa.select(
                 *_row(
-                    "ow",
+                    "native",
                     members,
-                    role=ow_latest.c.role,
-                    rank_value=ow_latest.c.rank_value,
-                    ow_division=ow_latest.c.division,
-                    ow_tier=ow_latest.c.tier,
+                    role=native_latest.c.role,
+                    rank_value=native_latest.c.rank_value,
+                    native_division=native_latest.c.division,
+                    native_tier=native_latest.c.tier,
                     context_kind=sa.literal("native_account"),
-                    context_label=ow_latest.c.battle_tag,
-                    context_team=ow_latest.c.platform,
-                    at=ow_latest.c.captured_at,
-                    row_id=ow_latest.c.snapshot_id,
+                    context_label=native_latest.c.handle,
+                    context_team=native_latest.c.platform,
+                    at=native_latest.c.captured_at,
+                    row_id=native_latest.c.snapshot_id,
                 )
-            ).join_from(members, ow_latest, ow_latest.c.user_id == members.c.player_id)
+            ).join_from(members, native_latest, native_latest.c.user_id == members.c.player_id)
         )
 
     if "hidden" in wanted:
@@ -383,8 +386,8 @@ def _branches(
         )
 
     if "effective_tournament" in wanted:
-        ow_ws = _grid_rank_case(ow_best.c.rank_value, ws_grid) if ow_best is not None else _null(sa.Integer)
-        value = sa.func.coalesce(canon.c.rank_value, ow_ws)
+        native_ws = _grid_rank_case(native_best.c.rank_value, ws_grid) if native_best is not None else _null(sa.Integer)
+        value = sa.func.coalesce(canon.c.rank_value, native_ws)
         select = (
             sa.select(
                 *_row(
@@ -394,24 +397,27 @@ def _branches(
                     rank_value=value,
                     source=sa.case(
                         (canon.c.rank_value.is_not(None), sa.literal("workspace")),
-                        (ow_ws.is_not(None), sa.literal("native")),
+                        (native_ws.is_not(None), sa.literal("native")),
                     ),
                 )
             )
             .join_from(members, roles, sa.true())
             .outerjoin(canon, sa.and_(canon.c.member_id == members.c.member_id, canon.c.role == roles.c.role))
         )
-        if ow_best is not None:
+        if native_best is not None:
             select = select.outerjoin(
-                ow_best, sa.and_(ow_best.c.user_id == members.c.player_id, ow_best.c.role == roles.c.role)
+                native_best,
+                sa.and_(native_best.c.user_id == members.c.player_id, native_best.c.role == roles.c.role),
             )
         out.append(select.where(value.is_not(None)))
 
     if "effective_mix" in wanted:
         authors = sa.select(book.c.member_id, book.c.author_user_id).distinct().cte(f"rank_mix_authors_{discipline}")
         mix_book = book.alias(f"rank_mix_book_{discipline}")
-        ow_mix = _grid_rank_case(ow_best.c.rank_value, ws_grid) if ow_best is not None else _null(sa.Integer)
-        value = sa.func.coalesce(mix_book.c.rank_value, canon.c.rank_value, ow_mix)
+        native_mix = (
+            _grid_rank_case(native_best.c.rank_value, ws_grid) if native_best is not None else _null(sa.Integer)
+        )
+        value = sa.func.coalesce(mix_book.c.rank_value, canon.c.rank_value, native_mix)
         select = (
             sa.select(
                 *_row(
@@ -423,7 +429,7 @@ def _branches(
                     source=sa.case(
                         (mix_book.c.rank_value.is_not(None), sa.literal("author")),
                         (canon.c.rank_value.is_not(None), sa.literal("workspace")),
-                        (ow_mix.is_not(None), sa.literal("native")),
+                        (native_mix.is_not(None), sa.literal("native")),
                     ),
                 )
             )
@@ -439,9 +445,10 @@ def _branches(
             )
             .outerjoin(canon, sa.and_(canon.c.member_id == members.c.member_id, canon.c.role == roles.c.role))
         )
-        if ow_best is not None:
+        if native_best is not None:
             select = select.outerjoin(
-                ow_best, sa.and_(ow_best.c.user_id == members.c.player_id, ow_best.c.role == roles.c.role)
+                native_best,
+                sa.and_(native_best.c.user_id == members.c.player_id, native_best.c.role == roles.c.role),
             )
         out.append(select.where(value.is_not(None)))
 
@@ -605,8 +612,8 @@ def _dump(row: Any, providers: dict[str, str | None], author_names: dict[int, st
         "sigma": row.sigma,
         "delta": row.delta,
         "canon_diff": row.canon_diff,
-        "ow_division": row.ow_division,
-        "ow_tier": row.ow_tier,
+        "native_division": row.native_division,
+        "native_tier": row.native_tier,
         "context": _context(row),
         "at": row.at.isoformat() if row.at is not None else None,
     }

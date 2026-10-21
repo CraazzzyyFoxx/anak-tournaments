@@ -3,7 +3,7 @@
 Verdicts are persisted, not Redis-only, for three reasons: admin list views must
 render hundreds of verdicts without a live provider call each (Discord rate-limits
 per guild, so a fan-out serializes behind one bucket); admission decisions need an
-audit trail; and this mirrors how ``overwatch_rank.battle_tag_state`` backs
+audit trail; and this mirrors how ``rank.account_state`` backs
 ``resolve_profiles_open``.
 """
 
@@ -152,7 +152,7 @@ class SubscriptionCheckLog(db.TimeStampIntegerMixin):
     provider): every check overwrites the previous verdict in place, so it can
     answer "are they subscribed now?" but never "since when?" or "did this ever
     flap?". This table is the missing time series, and it is deliberately the
-    mirror of ``overwatch_rank.fetch_log``: one row per *live* provider
+    mirror of ``rank.fetch_log``: one row per *live* provider
     resolution (cache hits and code-only refusals are not attempts, exactly as
     the rank log skips dedup/cooldown hits), ``created_at`` from the mixin is the
     completion time, and nothing is ever updated.

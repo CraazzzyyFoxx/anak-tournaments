@@ -149,6 +149,8 @@ class GridOwnerServiceTests(IsolatedAsyncioTestCase):
             schemas.DivisionGridCreate(slug=uuid.uuid4().hex, name=discipline, discipline=discipline),
         )
         if discipline == "lol" and tiered:
+            # The organiser's own tier replaces the seeded League ladder: a grid apart from both games' ladders.
+            seeded = grid.versions[0].id
             version = await self.grids.create_version(
                 self.session,
                 self.workspace.id,
@@ -159,6 +161,7 @@ class GridOwnerServiceTests(IsolatedAsyncioTestCase):
                 ),
             )
             version.status = "published"
+            await self.grids.delete_version(self.session, seeded)
             await self.session.flush()
             await self.session.refresh(grid)
         return grid
@@ -173,9 +176,9 @@ class GridOwnerServiceTests(IsolatedAsyncioTestCase):
             **kwargs,
         )
 
-    async def test_create_starts_lol_empty_and_disabled_creation_writes_nothing(self):
+    async def test_create_seeds_lols_ladder_and_disabled_creation_writes_nothing(self):
         grid = await self.grid("lol", tiered=False)
-        self.assertEqual((grid.discipline, grid.versions), ("lol", []))
+        self.assertEqual((grid.discipline, grid.versions[0].tiers[0].slug), ("lol", "challenger"))
         self.workspace.disciplines_enabled = ["overwatch"]
         await self.session.flush()
         with self.assertRaises(BaseAPIException) as caught:
@@ -193,27 +196,20 @@ class GridOwnerServiceTests(IsolatedAsyncioTestCase):
     async def test_tournament_refusal_leaves_no_owner_and_accepts_only_tiered_own_grid(self):
         ow = await self.grid("overwatch")
         await self.grids.activate_version(self.session, workspace=self.workspace, version_id=ow.versions[0].id)
-        empty = await self.grid("lol", tiered=False)
-        empty_version = models.DivisionGridVersion(grid_id=empty.id, version=1, label="Empty", status="published")
-        self.session.add(empty_version)
-        await self.session.flush()
-        for pin, code in (
-            (None, "division_grid_required"),
-            (ow.versions[0].id, "division_grid_discipline_mismatch"),
-            (empty_version.id, "division_grid_required"),
-        ):
-            with self.assertRaises(BaseAPIException) as caught:
-                await self.admin.create_tournament(self.session, self.tournament_data(division_grid_version_id=pin))
-            self.assertEqual(caught.exception.status_code, 422)
-            self.assertIn(code, str(caught.exception.detail))
-            self.assertEqual(
-                await self.session.scalar(
-                    sa.select(sa.func.count())
-                    .select_from(models.Tournament)
-                    .where(models.Tournament.workspace_id == self.workspace.id)
-                ),
-                0,
+        with self.assertRaises(BaseAPIException) as caught:
+            await self.admin.create_tournament(
+                self.session, self.tournament_data(division_grid_version_id=ow.versions[0].id)
             )
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertIn("division_grid_discipline_mismatch", str(caught.exception.detail))
+        self.assertEqual(
+            await self.session.scalar(
+                sa.select(sa.func.count())
+                .select_from(models.Tournament)
+                .where(models.Tournament.workspace_id == self.workspace.id)
+            ),
+            0,
+        )
         lol = await self.grid("lol")
         tournament = await self.admin.create_tournament(
             self.session, self.tournament_data(division_grid_version_id=lol.versions[0].id)
@@ -238,9 +234,8 @@ class GridOwnerServiceTests(IsolatedAsyncioTestCase):
         self.session.add(tournament)
         await self.session.flush()
         await get_effective_division_grid(self.session, self.workspace.id, discipline="overwatch")
-        with self.assertRaises(BaseAPIException) as caught:
-            await RegistrationCommonService().get_tournament_grid(self.session, tournament.id)
-        self.assertIn("division_grid_required", str(caught.exception.detail))
+        runtime = await RegistrationCommonService().get_tournament_grid(self.session, tournament.id)
+        self.assertEqual(runtime.tiers[0].slug, "challenger")
         await self.grids.activate_version(self.session, workspace=self.workspace, version_id=lol.versions[0].id)
         runtime = await RegistrationCommonService().get_tournament_grid(self.session, tournament.id)
         self.assertEqual(runtime.resolve_division_from_native_rank(456).number, 9)
@@ -405,17 +400,11 @@ class GridOwnerServiceTests(IsolatedAsyncioTestCase):
             self.assertEqual(
                 self.workspace.default_division_grid_versions, {"overwatch": expected_ow.id, "lol": lol_version.id}
             )
-        self.assertIsNone(
-            await self.session.scalar(
-                sa.text("SELECT default_division_grid_version_id FROM workspace WHERE id = :id"),
-                {"id": self.workspace.id},
-            )
-        )
         payload = schemas.WorkspaceRead.model_validate(self.workspace, from_attributes=True).model_dump()
         self.assertEqual(payload["default_division_grid_versions"], {"overwatch": new_ow.id, "lol": lol_version.id})
         self.assertEqual(set(payload["effective_division_grid_versions"]), {"overwatch", "lol"})
         print(
-            "PostgreSQL defaults smoke: custom OW→LoL→new OW; warm SQL/batch/full-model/runtime/registration agree; pin retained; legacy column untouched"
+            "PostgreSQL defaults smoke: custom OW→LoL→new OW; warm SQL/batch/full-model/runtime/registration agree; pin retained"
         )
 
     async def test_activation_refusal_rollback_and_delete_guards_preserve_the_other_game(self):

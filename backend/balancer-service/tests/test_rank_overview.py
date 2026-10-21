@@ -302,10 +302,11 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             s.add(account)
             await s.flush()
             s.add(
-                models.BattleTagRankState(
+                models.RankAccountState(
+                    discipline="overwatch",
                     social_account_id=account.id,
-                    battle_tag=account.username,
-                    player_id_slug=account.username.replace("#", "-"),
+                    handle=account.username,
+                    external_id=account.username.replace("#", "-"),
                     last_success_at=datetime.now(UTC),
                 )
             )
@@ -313,9 +314,10 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             s.add_all(
                 [
                     models.UserRankSnapshot(
+                        discipline="overwatch",
                         user_id=player.id,
                         social_account_id=account.id,
-                        battle_tag=account.username,
+                        handle=account.username,
                         platform="pc",
                         role="tank",
                         division="grandmaster",
@@ -325,9 +327,10 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
                         captured_at=captured,
                     ),
                     models.UserRankSnapshot(
+                        discipline="overwatch",
                         user_id=player.id,
                         social_account_id=account.id,
-                        battle_tag=account.username,
+                        handle=account.username,
                         platform="pc",
                         role="damage",
                         division="platinum",
@@ -339,9 +342,10 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
                     # Newest support row is unranked: the role has no rank now,
                     # however high the older one was.
                     models.UserRankSnapshot(
+                        discipline="overwatch",
                         user_id=player.id,
                         social_account_id=account.id,
-                        battle_tag=account.username,
+                        handle=account.username,
                         platform="pc",
                         role="support",
                         rank_value=2600,
@@ -349,9 +353,10 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
                         captured_at=captured - timedelta(days=2),
                     ),
                     models.UserRankSnapshot(
+                        discipline="overwatch",
                         user_id=player.id,
                         social_account_id=account.id,
-                        battle_tag=account.username,
+                        handle=account.username,
                         platform="pc",
                         role="support",
                         rank_value=None,
@@ -487,12 +492,12 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         assert author["tank"]["author_user_id"] == self.auth_user_id
         assert author["tank"]["author_name"]
 
-        ow = {r["role"]: r for r in by_layer["ow"]}
-        assert set(ow) == {"tank", "damage"}, "an unranked newest row means the role has no rank"
-        assert ow["tank"]["rank_value"] == 3000
-        assert ow["tank"]["ow_division"] == "grandmaster"
-        assert ow["tank"]["ow_tier"] == 3
-        assert ow["tank"]["context"] == {
+        native = {r["role"]: r for r in by_layer["native"]}
+        assert set(native) == {"tank", "damage"}, "an unranked newest row means the role has no rank"
+        assert native["tank"]["rank_value"] == 3000
+        assert native["tank"]["native_division"] == "grandmaster"
+        assert native["tank"]["native_tier"] == 3
+        assert native["tank"]["context"] == {
             "kind": "native_account",
             "id": None,
             "label": self.battle_tag,
@@ -726,7 +731,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         assert {row["role"] for row in rows} == {"support"}
 
     async def test_filters_and_paging(self) -> None:
-        rows, total = await self._page(layers=("ow",), roles=("tank",))
+        rows, total = await self._page(layers=("native",), roles=("tank",))
         assert total == 1 and rows[0]["rank_value"] == 3000
 
         _rows, total = await self._page(rank_min=2600)

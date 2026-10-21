@@ -91,8 +91,8 @@ async def start_worker() -> None:
         await declare_dead_letter_queue(broker, dlq)
     start_observability(SERVICE_NAME, readiness)
     await start_clients()
-    # The selected disciplines' jobs: their dead-letter queues, the OverFast client and rank schedule for Overwatch,
-    # nothing for LoL.
+    # The selected disciplines' jobs: each selected game's collector (its dead-letter queues, upstream client and rank
+    # schedule).
     await discipline_jobs.start_jobs(
         SELECTED, session_factory=db.async_session_maker, redis=realtime_redis, logger=logger
     )

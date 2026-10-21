@@ -5,11 +5,12 @@ import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 
-import { rankHealthDot } from "@/components/admin/collectors/rank-shared";
+import { collectsRanks, rankHealthDot } from "@/components/admin/collectors/rank-shared";
 import { diagnoseStreamHealth } from "@/components/admin/collectors/stream-shared";
 import { subscriptionHealthDot } from "@/components/admin/collectors/subscription-shared";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
+import { useGameScope } from "@/hooks/useGameScope";
 import { usePermissions } from "@/hooks/usePermissions";
 import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -44,11 +45,14 @@ export default function CollectorsLayout({ children }: Readonly<{ children: Reac
   // GLOBAL, not workspace-scoped: one poller, one Redis key, and
   // `adminRoutePermissions` gates `/admin/collectors/streams` the same way.
   const canReadStreams = canAccessPermission("stream.read", null);
+  // The game the rank page is showing (`?discipline=`), so its dot and the
+  // page's dashboard share one query.
+  const rankScope = useGameScope({ pageClass: "platform", axis: "all", filter: collectsRanks });
 
   const rankQuery = useQuery({
-    queryKey: adminQueryKeys.rankStats(workspaceId),
-    queryFn: () => adminService.getRankCollectionStats(),
-    enabled: canReadRank
+    queryKey: adminQueryKeys.rankStats(workspaceId, rankScope.game),
+    queryFn: () => adminService.getRankCollectionStats(rankScope.game!),
+    enabled: canReadRank && rankScope.game !== null
   });
   const subscriptionQuery = useQuery({
     queryKey: adminQueryKeys.subscriptionsStats(workspaceId),

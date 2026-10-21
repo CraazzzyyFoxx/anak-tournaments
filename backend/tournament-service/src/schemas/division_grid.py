@@ -189,7 +189,7 @@ class DivisionGridMarketplaceImportRequest(BaseModel):
     source_grid_id: int
     source_version_id: int
     include_icons: bool = True
-    include_ow_rank_mappings: bool = True
+    include_native_rank_mappings: bool = True
 
 
 class DivisionGridMarketplacePreflightResult(BaseModel):

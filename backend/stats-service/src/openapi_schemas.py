@@ -52,9 +52,10 @@ OPERATIONS: dict[str, Op] = {
             QueryParam("social_account_id", "integer"),
             QueryParam("platform"),
             QueryParam("role"),
+            QueryParam("discipline"),
         ),
     ),
-    "rpc.stats.rank.battle_tag_history": Op(
+    "rpc.stats.rank.game_account_history": Op(
         response=schemas.RankHistoryResponse,
         query_params=(
             QueryParam("granularity"),
@@ -62,17 +63,42 @@ OPERATIONS: dict[str, Op] = {
             QueryParam("date_to"),
             QueryParam("platform"),
             QueryParam("role"),
+            QueryParam("discipline"),
         ),
     ),
     "rpc.stats.rank.user_current": Op(
-        response=schemas.CurrentRanksResponse, query_params=(QueryParam("platform", required=True),)
+        response=schemas.CurrentRanksResponse, query_params=(QueryParam("platform"), QueryParam("discipline"))
     ),
-    "rpc.stats.rank.stats": Op(response=schemas.RankCollectionStats),
-    "rpc.stats.rank.fetch_log": Op(response=schemas.FetchLogRead, response_array=True),
-    "rpc.stats.rank.user_collection": Op(response=schemas.CollectionStatusRead, response_array=True),
-    "rpc.stats.rank.collect": Op(request=schemas.CollectTriggerRequest, response=schemas.CollectTriggerResponse),
+    "rpc.stats.rank.stats": Op(
+        response=schemas.RankCollectionStats,
+        query_params=(QueryParam("workspace_id", "integer"), QueryParam("discipline")),
+    ),
+    "rpc.stats.rank.fetch_log": Op(
+        response=schemas.FetchLogRead,
+        response_array=True,
+        query_params=(
+            QueryParam("workspace_id", "integer"),
+            QueryParam("status"),
+            QueryParam("source"),
+            QueryParam("before_id", "integer"),
+            QueryParam("limit", "integer"),
+            QueryParam("discipline"),
+        ),
+    ),
+    "rpc.stats.rank.user_collection": Op(
+        response=schemas.CollectionStatusRead,
+        response_array=True,
+        query_params=(QueryParam("workspace_id", "integer"), QueryParam("discipline")),
+    ),
+    "rpc.stats.rank.collect": Op(
+        request=schemas.CollectTriggerRequest,
+        response=schemas.CollectTriggerResponse,
+        query_params=(QueryParam("workspace_id", "integer"), QueryParam("discipline")),
+    ),
     "rpc.stats.rank.reenable_disabled": Op(
-        request=schemas.ReenableDisabledRequest, response=schemas.ReenableDisabledResponse
+        request=schemas.ReenableDisabledRequest,
+        response=schemas.ReenableDisabledResponse,
+        query_params=(QueryParam("workspace_id", "integer"), QueryParam("discipline")),
     ),
     # ── subscription collection admin ──────────────────────────────────────
     "rpc.stats.subscription.stats": Op(response=schemas.SubscriptionCollectionStats),

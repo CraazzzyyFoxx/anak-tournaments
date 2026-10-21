@@ -124,8 +124,11 @@ _BLOCKER_STATUS = {
 
 def _blocker(code: str) -> HTTPException:
     """The refusal for one admission code; ``detail`` IS the code, so a client
-    (site or bot) translates it instead of parsing English."""
-    return HTTPException(status_code=_BLOCKER_STATUS[code], detail=code)
+    (site or bot) translates it instead of parsing English. Any ``<provider>_not_linked`` is "fix your account"."""
+    status_code = _BLOCKER_STATUS.get(code) or (status.HTTP_403_FORBIDDEN if code.endswith("_not_linked") else None)
+    if status_code is None:
+        raise KeyError(code)
+    return HTTPException(status_code=status_code, detail=code)
 
 
 def _reject_unknown(patch: Mapping[str, Any], allowed: frozenset[str]) -> None:
@@ -1049,7 +1052,7 @@ class CustomGameService:
             self_signup=game.self_signup,
             self_role_edit=game.self_role_edit,
             on_roster=row is not None,
-            missing_links=await self.load_missing_links(session, auth_user.id),
+            missing_links=await self.load_missing_links(session, auth_user.id, game.discipline),
             has_player=player is not None,
             self_join_denied=not auth_user.can_capability("custom_game", "self_join", workspace_id=game.workspace_id),
             roster_size=len(roster),

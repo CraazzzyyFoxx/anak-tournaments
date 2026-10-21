@@ -28,7 +28,10 @@ import { useFormatter } from "@/lib/datetime/client";
 import type { Granularity } from "@/hooks/useRankHistory";
 import { cn } from "@/lib/utils";
 
-type GroupBy = "role" | "battle_tag";
+type GroupBy = "role" | "handle";
+
+/** The wire types `role`/`platform` nullable (League has neither); an Overwatch series always carries both. */
+type OwSeries = RankSeries & { role: string; platform: string };
 
 /** Only `dateTime` is needed here; `useFormatter()` and `await getFormatter()` both satisfy it. */
 type DateFormatter = Pick<ReturnType<typeof useFormatter>, "dateTime">;
@@ -123,17 +126,18 @@ export default function RankHistoryChart({
   granularity,
   onGranularityChange
 }: Readonly<RankHistoryChartProps>) {
-  const platforms = useMemo(() => uniqueBy(series.map((s) => s.platform), (p) => p), [series]);
+  const owSeries = useMemo(() => series.filter((s): s is OwSeries => s.role != null && s.platform != null), [series]);
+  const platforms = useMemo(() => uniqueBy(owSeries.map((s) => s.platform), (p) => p), [owSeries]);
   const [platform, setPlatform] = useState<string>(platforms.includes("pc") ? "pc" : platforms[0] ?? "pc");
   const [groupBy, setGroupBy] = useState<GroupBy>(defaultGroupBy);
 
   const platformSeries = useMemo(
-    () => series.filter((s) => s.platform === platform),
-    [series, platform]
+    () => owSeries.filter((s) => s.platform === platform),
+    [owSeries, platform]
   );
 
   const battleTags = useMemo(
-    () => uniqueBy(platformSeries, (s) => s.social_account_id).map((s) => ({ id: s.social_account_id, label: s.battle_tag })),
+    () => uniqueBy(platformSeries, (s) => s.social_account_id).map((s) => ({ id: s.social_account_id, label: s.handle })),
     [platformSeries]
   );
   const roles = useMemo(() => uniqueBy(platformSeries.map((s) => s.role), (r) => r), [platformSeries]);
@@ -154,7 +158,7 @@ export default function RankHistoryChart({
     const lineDefs: LineDef[] = activeSeries.map((s, i) =>
       groupBy === "role"
         ? { key: s.role, label: s.role, color: ROLE_COLORS[s.role] ?? PALETTE[i % PALETTE.length] }
-        : { key: `bt${s.social_account_id}`, label: s.battle_tag, color: PALETTE[i % PALETTE.length] }
+        : { key: `bt${s.social_account_id}`, label: s.handle, color: PALETTE[i % PALETTE.length] }
     );
 
     const rows = new Map<string, Record<string, number | string>>();
@@ -237,7 +241,7 @@ export default function RankHistoryChart({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="role" className="text-xs">{t("rankHistory.byRole")}</SelectItem>
-            <SelectItem value="battle_tag" className="text-xs">{t("rankHistory.byBattleNet")}</SelectItem>
+            <SelectItem value="handle" className="text-xs">{t("rankHistory.byBattleNet")}</SelectItem>
           </SelectContent>
         </Select>
 

@@ -61,7 +61,7 @@ export default function DivisionGridImportPage() {
   const sourceVersionId = numberParam(searchParams, "version");
   const jobId = numberParam(searchParams, "job");
   const includeIcons = searchParams?.get("icons") !== "0";
-  const includeOwRanks = searchParams?.get("ow") !== "0";
+  const includeNativeRanks = searchParams?.get("ow") !== "0";
 
   const workspacesQuery = useQuery({
     queryKey: divisionGridQueryKeys.importWorkspaces(workspaceId),
@@ -85,7 +85,7 @@ export default function DivisionGridImportPage() {
           source_grid_id: sourceGridId,
           source_version_id: sourceVersionId,
           include_icons: includeIcons,
-          include_ow_rank_mappings: includeOwRanks
+          include_native_rank_mappings: includeNativeRanks
         };
 
   const preflightQuery = useQuery({
@@ -301,7 +301,7 @@ export default function DivisionGridImportPage() {
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="import-ow"
-                  checked={includeOwRanks}
+                  checked={includeNativeRanks}
                   onCheckedChange={(checked) => setParams({ ow: checked ? null : "0" })}
                 />
                 <Label htmlFor="import-ow" className="font-normal">

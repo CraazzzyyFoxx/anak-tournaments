@@ -133,9 +133,9 @@ The domain packages are exactly the sections of
 `.github/workflows/lint-backend.yml`:
 
 `identity` (`auth`, `players`), `tenancy` (`public`), `member_rank` (`balancer`), `catalog`
-(`overwatch`), `division_grid` (`public`), `ranks` (`overwatch_rank`), `tournament` (`tournament`),
+(`overwatch`), `division_grid` (`public`), `ranks` (`rank`), `tournament` (`tournament`),
 `registration` (`balancer`), `balancer` (`balancer`), `custom_game` (`balancer`),
-`matches` (`matches`), `ingestion` (`log_processing`), `achievements`
+`achievements`
 (`achievements`), `analytics` (`analytics`), `subscriptions` (`subscriptions`), `preferences`
 (`players`, `tournament`), `platform` (`public`, `realtime`).
 

@@ -62,6 +62,7 @@ const KNOWN_PROVIDERS: ReadonlySet<OAuthProviderName> = new Set<OAuthProviderNam
   "discord",
   "twitch",
   "battlenet",
+  "riot",
 ]);
 
 // Only redirect back to the platform apex or a valid tenant subdomain. The

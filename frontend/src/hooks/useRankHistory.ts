@@ -40,7 +40,7 @@ export function useRankHistoryGranularity() {
   return useLocalStorageState<Granularity>("rank-history-granularity", "date");
 }
 
-export function useUserRankHistory(userId: number, params: RankHistoryQuery = {}) {
+export function useUserRankHistory(userId: number, params: RankHistoryQuery) {
   return useQuery({
     queryKey: userQueryKeys.rankHistory(userId, params),
     queryFn: () => rankService.getUserRankHistory(userId, params),

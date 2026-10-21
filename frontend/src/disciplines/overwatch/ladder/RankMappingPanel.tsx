@@ -109,7 +109,7 @@ export default function RankMappingPanel() {
             </div>
 
             {OW_DIVISIONS_DESC.map((division) => (
-              <SettingGroup key={division} title={capitalize(division)}>
+              <SettingGroup key={division} id={`division-${division}`} title={capitalize(division)}>
                 {form.cells
                   .filter((cell) => cell.division === division)
                   .map((cell) => {

@@ -121,8 +121,8 @@ const row = (overrides: Partial<RankOverviewRow>): RankOverviewRow => ({
   sigma: null,
   delta: null,
   canon_diff: null,
-  ow_division: null,
-  ow_tier: null,
+  native_division: null,
+  native_tier: null,
   context: null,
   at: "2026-01-02T03:04:05Z",
   ...overrides

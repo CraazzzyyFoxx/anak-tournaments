@@ -1,8 +1,8 @@
-"""Typed-RPC subjects of the OverFast rank domain: ``rpc.stats.rank.*``.
+"""Typed-RPC subjects of the rank domain: ``rpc.stats.rank.*``, for every game that collects ranks.
 
-The handlers (payload validation, ``rank.read`` / ``rank.update`` authorization, workspace scoping) belong to the
-discipline module that collects the ranks: each subject dispatches to the matching ``DisciplineSpec.collection_handlers``
-entry. Reads are public (AuthNone); the admin operations need the caller's identity.
+``?discipline=`` names the game (default Overwatch, the first collector); each subject dispatches to that module's
+``DisciplineSpec.collection_handlers`` entry, which validates its payload and authorizes the caller. Reads are public
+(AuthNone); the admin operations need the caller's identity. A game whose module serves no such handler is a 404.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
+from shared.core.errors import BaseAPIException
 from shared.disciplines import DISCIPLINES
 from shared.disciplines.spec import CollectionHandler
 from src.core import db
@@ -19,13 +20,13 @@ from . import _common as c
 
 _SF = db.async_session_maker
 
-# The discipline whose module serves these subjects.
-_DISCIPLINE = "overwatch"
+#: The game a request without ``?discipline=`` means: the collector these routes served before they took a game.
+_DEFAULT_DISCIPLINE = "overwatch"
 
 # Subject -> collection handler key. Literal on purpose: the gateway route parity guard reads subjects from source.
 _SUBJECTS = {
     "rpc.stats.rank.user_history": "rank.user_history",
-    "rpc.stats.rank.battle_tag_history": "rank.battle_tag_history",
+    "rpc.stats.rank.game_account_history": "rank.game_account_history",
     "rpc.stats.rank.user_current": "rank.user_current",
     "rpc.stats.rank.fetch_log": "rank.fetch_log",
     "rpc.stats.rank.stats": "rank.stats",
@@ -35,13 +36,22 @@ _SUBJECTS = {
 }
 
 # Public (AuthNone) reads never look at the caller; everything else needs a valid identity.
-_PUBLIC = frozenset({"rank.user_history", "rank.battle_tag_history", "rank.user_current"})
+_PUBLIC = frozenset({"rank.user_history", "rank.game_account_history", "rank.user_current"})
+
+
+def _handler(data: dict, name: str) -> CollectionHandler:
+    spec = DISCIPLINES.get(c.q1(data, "discipline") or _DEFAULT_DISCIPLINE)
+    handler = spec.collection_handlers.get(name) if spec is not None else None
+    if handler is None:
+        raise BaseAPIException(status_code=404, detail="rank_collection_unsupported")
+    return handler
 
 
 def register(broker: Any, logger: Any) -> None:
-    def bind(subject: str, name: str, handler: CollectionHandler) -> None:
+    def bind(subject: str, name: str) -> None:
         async def _handle(data: dict, msg: RabbitMessage) -> dict:
             async def op(session: Any) -> Any:
+                handler = _handler(data, name)
                 user = None if name in _PUBLIC else c.actor(data)
                 return await handler(session, user, data)
 
@@ -51,6 +61,5 @@ def register(broker: Any, logger: Any) -> None:
         _handle.__name__ = f"_{name.replace('.', '_')}"
         broker.subscriber(subject)(_handle)
 
-    handlers = DISCIPLINES[_DISCIPLINE].collection_handlers
     for subject, name in _SUBJECTS.items():
-        bind(subject, name, handlers[name])
+        bind(subject, name)

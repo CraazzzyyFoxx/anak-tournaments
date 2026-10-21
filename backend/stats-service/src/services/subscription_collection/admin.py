@@ -1,8 +1,8 @@
 """Admin operations for subscription collection: health read, history, trigger.
 
 "Current state" is ``subscriptions.entitlement`` itself — one row per (workspace, user, provider) with
-``state``/``checked_at`` — read directly rather than duplicated into a bookkeeping table like the rank collector's
-``battle_tag_state`` (``shared/disciplines/overwatch/collector/admin.py``).
+``state``/``checked_at`` — read directly rather than duplicated into a bookkeeping table like the rank collectors'
+``rank.account_state`` (``shared/repository/ranks.py``).
 
 Reads never commit; the trigger does.
 """

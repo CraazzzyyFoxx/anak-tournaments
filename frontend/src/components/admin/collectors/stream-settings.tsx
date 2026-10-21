@@ -36,7 +36,7 @@ export function StreamSettingsPanel() {
   return (
     <CollectionSettingsPanel settings={settings}>
       {(form, patch) => (
-        <SettingGroup title={t("title")}>
+        <SettingGroup id="collection" title={t("title")}>
           <SettingRow
             htmlFor={`${ids}-interval`}
             label={t("interval")}

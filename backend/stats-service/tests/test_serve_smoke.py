@@ -135,7 +135,8 @@ def test_only_the_selected_disciplines_get_an_ingest_consumer_and_module_jobs() 
     names, dlqs = done.stdout.strip().splitlines()[-2:]
     assert "'stats.ingest.lol'" in names and "'stats.ingest.lol.replay'" in names
     assert "stats.ingest.overwatch" not in names
-    assert "rank_fetch" not in names, "LoL has no rank collector"
+    assert "'rank_fetch'" not in names, "a LoL-only worker runs no Overwatch collector"
+    assert "'lol_rank_fetch'" in names
     assert dlqs == "['stats.ingest.lol.dlq', 'stats.ingest.lol.replay.dlq']"
 
 

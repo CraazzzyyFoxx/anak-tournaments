@@ -181,8 +181,8 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
         self.assertEqual(
             {
                 "catalog_sync": True,
-                "native_rank_collection": False,
-                "native_ladder": False,
+                "native_rank_collection": True,
+                "native_ladder": True,
                 "achievement_conditions": False,
                 "analytics": False,
             },
@@ -337,7 +337,7 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
         self.assertEqual([t.number for t in ladder], [t["number"] for t in meta["native_ladder"]])
         self.assertEqual([t.slug for t in ladder], [t["slug"] for t in meta["native_ladder"]])
 
-    async def test_lol_describes_its_rated_position_dimension_and_has_no_ladder(self) -> None:
+    async def test_lol_describes_its_rated_position_dimension_and_its_ladder(self) -> None:
         meta = (await self.metadata("lol", "all"))["data"]
         rated = [d for d in meta["dimensions"] if d["active"] and d["rated"]]
         self.assertEqual(["position"], [d["code"] for d in rated])
@@ -345,7 +345,7 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
             ["top", "jungle", "mid", "bot", "support"],
             [r["code"] for r in meta["roles"] if r["dimension"] == "position"],
         )
-        self.assertEqual([], meta["native_ladder"])
+        self.assertEqual([t.slug for t in DISCIPLINES["lol"].native_ladder], [t["slug"] for t in meta["native_ladder"]])
         declared = DISCIPLINES["lol"].stat_defs
         self.assertEqual(["kills", "dragons"], [s.code for s in declared])
         self.assertEqual([s.code for s in declared], [s["code"] for s in meta["stat_defs"] if s["active"]])
@@ -357,7 +357,8 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
                 (row["name"], row["value_format"], row["aggregation"]),
             )
         self.assertEqual({"positions_5v5", "open_5v5"}, {p["preset_code"] for p in meta["team_format_presets"]})
-        self.assertFalse(any(meta["discipline"]["capabilities"][k] for k in ("native_ladder", "analytics")))
+        capabilities = meta["discipline"]["capabilities"]
+        self.assertEqual((True, False), (capabilities["native_ladder"], capabilities["analytics"]))
 
     async def test_an_uninstalled_or_malformed_code_is_404_discipline_not_installed_never_overwatch(self) -> None:
         for code in ("chess", "OVERWATCH", "../etc", "overwatch ", "ow", "%00"):

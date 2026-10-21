@@ -1,6 +1,14 @@
 "use client";
 
-import { createElement, Suspense, useEffect, useState, type ComponentType, type ReactNode } from "react";
+import {
+  createElement,
+  Suspense,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ComponentType,
+  type ReactNode
+} from "react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
@@ -28,6 +36,9 @@ interface DisciplineWidgetProps<F extends DisciplineSlot, K extends F> {
 /** `failed`: the game has a module for this family but its chunk did not load — retryable, not "no module". */
 type Loaded = { code: string; ui: DisciplineUI | null; failed: boolean };
 
+// Nothing to subscribe to: a load settles through the widget's own effect.
+const subscribeNone = () => () => {};
+
 /**
  * Renders one optional module slot (P7 contracts §7). Backend capability and local renderer are separate
  * facts: a capability without its renderer is an explicit configuration error, an unsupported capability is
@@ -48,8 +59,9 @@ export function DisciplineWidget<F extends DisciplineSlot, K extends F>({
   const t = useTranslations("common");
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   // An already-settled module renders on the first commit: a host mounted on demand (a hover card) would otherwise
-  // paint empty, then resize once the effect's promise answered — on every open.
-  const settled = load.peek(discipline);
+  // paint empty, then resize once the effect's promise answered — on every open. Hydration still starts from the
+  // server's view (never settled): another widget on the page may settle the module before this boundary hydrates.
+  const settled = useSyncExternalStore(subscribeNone, () => load.peek(discipline), () => undefined);
   const current: Loaded | null = settled === undefined ? loaded : { code: discipline, ui: settled, failed: false };
   const [attempt, setAttempt] = useState(0);
   const blocked = (requires !== undefined && !capabilities[requires]) || !applicable;

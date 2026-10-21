@@ -20,7 +20,7 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("next/navigation", async () => (await import("@/test/url-navigation")).nextNavigationMock);
-// Overwatch collects native ranks, League does not (the shared fixture's capabilities).
+// Both installed games collect native ranks (the shared fixture's capabilities).
 vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 vi.mock("@/disciplines/DisciplineWidget", () => ({
   DisciplineWidget: ({ discipline }: { discipline: string }) => <div data-widget={discipline} />
@@ -62,17 +62,17 @@ afterEach(async () => {
 });
 
 describe("rank mapping tab", () => {
-  it("opens the one game that collects ranks, with no game tabs", async () => {
+  it("opens the first game that collects ranks, with a tab for each", async () => {
     await mount("/admin/collectors/rank?tab=mapping");
 
     expect(container.querySelector("[data-widget]")?.getAttribute("data-widget")).toBe("overwatch");
-    expect(container.querySelector('[role="tab"]')).toBeNull();
+    expect(container.querySelectorAll('[role="tab"]')).toHaveLength(2);
   });
 
   it("names a game that does not collect ranks and draws no mapping for it", async () => {
-    await mount("/admin/collectors/rank?tab=mapping&discipline=lol");
+    await mount("/admin/collectors/rank?tab=mapping&discipline=chess");
 
     expect(container.querySelector("[data-widget]")).toBeNull();
-    expect(container.textContent).toContain('"lol"');
+    expect(container.textContent).toContain('"chess"');
   });
 });

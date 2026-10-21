@@ -379,6 +379,78 @@ class BattleNetOAuthProvider(OAuthProviderBase):
             )
 
 
+class RiotOAuthProvider(OAuthProviderBase):
+    """Riot Sign-On: the PUUID is the subject, the Riot ID ``gameName#tagLine`` the handle."""
+
+    provider_name = "riot"
+    AUTH_URL = "https://auth.riotgames.com"
+
+    @staticmethod
+    def _account_url() -> str:
+        cluster = settings.RIOT_ACCOUNT_CLUSTER.strip().lower() or "europe"
+        return f"https://{cluster}.api.riotgames.com/riot/account/v1/accounts/me"
+
+    def get_authorization_url(self, state: str) -> str:
+        params = {
+            "client_id": settings.RIOT_CLIENT_ID,
+            "redirect_uri": settings.OAUTH_REDIRECT,
+            "response_type": "code",
+            "scope": "openid cpid",
+            "state": state,
+        }
+        return f"{self.AUTH_URL}/authorize?{urlencode(params)}"
+
+    async def exchange_code(self, code: str) -> dict[str, Any]:
+        data = {"grant_type": "authorization_code", "code": code, "redirect_uri": settings.OAUTH_REDIRECT}
+        try:
+            response = await self.http.client().post(
+                f"{self.AUTH_URL}/token", data=data, auth=(settings.RIOT_CLIENT_ID, settings.RIOT_CLIENT_SECRET)
+            )
+            if response.status_code != 200:
+                logger.warning("Riot token exchange failed", status_code=response.status_code)
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to exchange Riot code")
+            return response.json()
+        except Exception as exc:
+            _raise_provider_call_error(exc, provider_label="Riot", error_detail="Riot authentication failed")
+
+    async def get_user_info(self, access_token: str) -> schemas.OAuthUserInfo:
+        headers = {"Authorization": f"Bearer {access_token}"}
+        try:
+            response = await self.http.client().get(self._account_url(), headers=headers)
+            if response.status_code != 200:
+                logger.warning("Riot account request failed", status_code=response.status_code)
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to get Riot account")
+            account = response.json()
+            puuid = str(account.get("puuid") or "")
+            if not puuid:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Riot PUUID is missing")
+            name, tag = account.get("gameName"), account.get("tagLine")
+            riot_id = f"{name}#{tag}" if name and tag else puuid
+            return schemas.OAuthUserInfo(
+                provider=schemas.OAuthProvider.RIOT,
+                provider_user_id=puuid,
+                email=None,
+                username=riot_id,
+                display_name=riot_id,
+                avatar_url=None,
+                raw_data={"account": account, "cpid": await self._cpid(headers)},
+            )
+        except Exception as exc:
+            _raise_provider_call_error(exc, provider_label="Riot", error_detail="Failed to get Riot user info")
+
+    async def _cpid(self, headers: dict[str, str]) -> str | None:
+        """The ``cpid`` scope's platform, best effort: any failure leaves it unknown."""
+        try:
+            response = await self.http.client().get(f"{self.AUTH_URL}/userinfo", headers=headers)
+            if response.status_code != 200:
+                return None
+            payload = response.json()
+        except (httpx.HTTPError, ValueError):
+            return None
+        cpid = payload.get("cpid") if isinstance(payload, dict) else None
+        return cpid if isinstance(cpid, str) else None
+
+
 class OAuthProviderRegistry:
     """Which providers this deployment offers, and their client instances."""
 
@@ -404,6 +476,12 @@ class OAuthProviderRegistry:
             "client_secret": "BATTLENET_CLIENT_SECRET",
             "redirect_uri": "OAUTH_REDIRECT",
         },
+        "riot": {
+            "enabled": "RIOT_OAUTH_ENABLED",
+            "client_id": "RIOT_CLIENT_ID",
+            "client_secret": "RIOT_CLIENT_SECRET",
+            "redirect_uri": "OAUTH_REDIRECT",
+        },
     }
 
     def __init__(self, *, http: OAuthHttpClient | None = None, config: Settings = settings) -> None:
@@ -413,6 +491,7 @@ class OAuthProviderRegistry:
             "discord": DiscordOAuthProvider(self.http),
             "twitch": TwitchOAuthProvider(self.http),
             "battlenet": BattleNetOAuthProvider(self.http),
+            "riot": RiotOAuthProvider(self.http),
         }
 
     def _provider_config(self, provider_name: str) -> dict[str, str]:

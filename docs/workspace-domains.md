@@ -59,7 +59,7 @@ echo | openssl s_client -connect owt.craazzzyyfoxx.me:443 -servername owt.craazz
 
 ## 3. OAuth Provider Registration
 
-Each OAuth provider (Discord, Twitch, Battle.net) requires the **single redirect URI** to be registered in their developer console.
+Each OAuth provider (Discord, Twitch, Battle.net, Riot) requires the **single redirect URI** to be registered in their developer console.
 
 ### Redirect URI
 ```
@@ -101,6 +101,20 @@ https://owt.craazzzyyfoxx.me/auth/callback
    ```
 5. Save and note **Client ID** and **Client Secret** → environment variables (`BATTLENET_CLIENT_ID`, `BATTLENET_CLIENT_SECRET`)
 
+### Riot Developer Portal (RSO)
+
+1. Go to https://developer.riotgames.com and open your application
+2. Open its **RSO client** (Riot Sign-On)
+3. Register the redirect URI, the same value as `OAUTH_REDIRECT`:
+   ```
+   https://owt.craazzzyyfoxx.me/auth/callback
+   ```
+4. Request the scopes `openid cpid`
+5. Note the RSO **Client ID** and **Client Secret** → environment variables (`RIOT_CLIENT_ID`, `RIOT_CLIENT_SECRET`), and set `RIOT_OAUTH_ENABLED=true`
+
+`RIOT_ACCOUNT_CLUSTER` (`americas`, `asia` or `europe`; default `europe`) is the account-v1 host the sign-in reads the
+Riot ID from. The LoL rank collector's API key is separate: `RIOT_API_KEY` in `stats.env`.
+
 ### Environment Variables
 
 Update `backend/env/auth.env` (or `.env.production` for Docker) with:
@@ -115,6 +129,11 @@ TWITCH_CLIENT_SECRET=<your-twitch-client-secret>
 BATTLENET_CLIENT_ID=<your-battlenet-client-id>
 BATTLENET_CLIENT_SECRET=<your-battlenet-client-secret>
 BATTLENET_REGION=eu
+
+RIOT_OAUTH_ENABLED=true
+RIOT_CLIENT_ID=<your-riot-rso-client-id>
+RIOT_CLIENT_SECRET=<your-riot-rso-client-secret>
+RIOT_ACCOUNT_CLUSTER=europe
 
 OAUTH_REDIRECT=https://owt.craazzzyyfoxx.me/auth/callback
 ```
@@ -152,7 +171,7 @@ curl -vI https://test-tenant.owt.craazzzyyfoxx.me/api/health
 ### [ ] OAuth Login Round-Trip
 
 1. Navigate to `https://owt.craazzzyyfoxx.me` in a browser
-2. Click **Login** → select **Discord** (or Twitch/Battle.net)
+2. Click **Login** → select **Discord** (or Twitch/Battle.net/Riot)
 3. Approve scopes in the OAuth provider's consent screen
 4. Verify you are redirected back to `https://owt.craazzzyyfoxx.me/auth/callback`
 5. Check that you are authenticated and can see your profile

@@ -37,7 +37,7 @@ def _idempotency_key(
     source_grid_id: int,
     source_version_id: int,
     include_icons: bool,
-    include_ow_rank_mappings: bool,
+    include_native_rank_mappings: bool,
     source_fingerprint: str,
 ) -> str:
     raw = ":".join(
@@ -47,7 +47,7 @@ def _idempotency_key(
             str(source_grid_id),
             str(source_version_id),
             str(include_icons),
-            str(include_ow_rank_mappings),
+            str(include_native_rank_mappings),
             source_fingerprint,
         )
     )
@@ -113,7 +113,7 @@ class ImportJobsService:
         source_grid_id: int,
         source_version_id: int,
         include_icons: bool,
-        include_ow_rank_mappings: bool,
+        include_native_rank_mappings: bool,
         source_fingerprint: str,
     ) -> models.DivisionGridImportJob:
         idempotency_key = _idempotency_key(
@@ -122,7 +122,7 @@ class ImportJobsService:
             source_grid_id=source_grid_id,
             source_version_id=source_version_id,
             include_icons=include_icons,
-            include_ow_rank_mappings=include_ow_rank_mappings,
+            include_native_rank_mappings=include_native_rank_mappings,
             source_fingerprint=source_fingerprint,
         )
         existing = await self.job_repo.get_by_idempotency_key(session, idempotency_key)
@@ -155,7 +155,7 @@ class ImportJobsService:
                     "source_grid_id": source_grid_id,
                     "source_version_id": source_version_id,
                     "include_icons": include_icons,
-                    "include_ow_rank_mappings": include_ow_rank_mappings,
+                    "include_native_rank_mappings": include_native_rank_mappings,
                     "source_fingerprint": source_fingerprint,
                 },
                 idempotency_key=idempotency_key,
@@ -254,7 +254,7 @@ class ImportJobsService:
                 expected_source_fingerprint=payload["source_fingerprint"],
                 source_version_id=payload["source_version_id"],
                 include_icons=payload["include_icons"],
-                include_ow_rank_mappings=payload["include_ow_rank_mappings"],
+                include_native_rank_mappings=payload["include_native_rank_mappings"],
             )
             await self.job_repo.update_fields(
                 session,

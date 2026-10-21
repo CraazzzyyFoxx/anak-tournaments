@@ -52,38 +52,38 @@ DOCS: dict[str, dict] = {
         "summary": "Recompute impact baselines",
         "description": "Permission: superuser. Rebuilds the native Overwatch baselines used for MVP-impact scoring (`stats.stat_baseline`) for the active formula version, aggregating a mean/standard deviation per (role id, rank bucket, stat code) from whole-match player facts across workspaces. Returns the row count and formula version. Each run atomically replaces that discipline/version's rows and aborts rather than wiping them when aggregation yields nothing. Repeated runs are safe but scan the historical facts and clear the 10-minute baseline cache.",
     },
-    # ── OverFast rank ────────────────────────────────────────────────────────
+    # ── native rank collection ───────────────────────────────────────────────
     "rpc.stats.rank.user_history": {
         "summary": "User rank history",
-        "description": "Permission: public; no authentication required. Returns a user's OverFast rank time series with configurable granularity, date range, platform and role filters.",
+        "description": "Permission: public; no authentication required. Returns a user's collected native rank time series with configurable granularity, date range, platform and role filters. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
     },
-    "rpc.stats.rank.battle_tag_history": {
-        "summary": "Battle tag rank history",
-        "description": "Permission: public; no authentication required. Returns a single battle tag's OverFast rank time series with granularity, date range, platform and role filters.",
+    "rpc.stats.rank.game_account_history": {
+        "summary": "Game account rank history",
+        "description": "Permission: public; no authentication required. Returns one game account's rank time series (`discipline` names the game, default `overwatch`) with granularity, date range, platform and role filters; League series are per queue. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
     },
     "rpc.stats.rank.user_current": {
         "summary": "Current user ranks",
-        "description": "Permission: public; no authentication required. Returns a user's current OverFast ranks for the requested platform.",
+        "description": "Permission: public; no authentication required. Returns a user's current collected native ranks for the requested platform. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
     },
     "rpc.stats.rank.stats": {
         "summary": "Rank collection health stats",
-        "description": "Permission: workspace `rank.read` when `workspace_id` is given (aggregates are then scoped to the battle tags of that workspace's players), otherwise global `rank.read`. Aggregated OverFast rank-collection health: battle-tag state counts by status and priority tier, snapshot coverage over 24h/7d, last successful capture, last-24h fetch-outcome mix with error rate, and the active config.",
+        "description": "Permission: workspace `rank.read` when `workspace_id` is given (aggregates are then scoped to the game accounts of that workspace's players), otherwise global `rank.read`. Aggregated native rank-collection health: account state counts by status and priority tier, snapshot coverage over 24h/7d, last successful capture, last-24h fetch-outcome mix with error rate, upstream circuit state, and the active config. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
     },
     "rpc.stats.rank.fetch_log": {
         "summary": "Rank fetch log",
-        "description": "Permission: workspace `rank.read` when `workspace_id` is given (rows are then scoped to the battle tags of that workspace's players), otherwise global `rank.read`. Lists OverFast rank-collection fetch-log entries filtered by status, source and cursor.",
+        "description": "Permission: workspace `rank.read` when `workspace_id` is given (rows are then scoped to the game accounts of that workspace's players), otherwise global `rank.read`. Lists native rank-collection fetch-log entries filtered by status, source and cursor. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
     },
     "rpc.stats.rank.user_collection": {
         "summary": "User rank collection status",
-        "description": "Permission: workspace `rank.read` when `workspace_id` is given (empty unless the player is a member of that workspace), otherwise global `rank.read`. Returns the OverFast rank-collection status for each of a user's battle tags.",
+        "description": "Permission: workspace `rank.read` when `workspace_id` is given (empty unless the player is a member of that workspace), otherwise global `rank.read`. Returns the native rank-collection status for each of a user's game accounts. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
     },
     "rpc.stats.rank.collect": {
         "summary": "Trigger rank collection",
-        "description": "Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' tags are touched), otherwise global `rank.update`. Enqueues an OverFast rank-collection run for a user or specific battle tags and returns the enqueued count.",
+        "description": "Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' accounts are touched), otherwise global `rank.update`. Enqueues a native rank-collection run for a user or specific linked game accounts and returns the enqueued count. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
     },
     "rpc.stats.rank.reenable_disabled": {
         "summary": "Re-enable disabled rank collection",
-        "description": "Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' tags are requeued), otherwise global `rank.update`. Requeues battle tags that were auto-disabled by a transient OverFast outage (status disabled -> pending, failure counter reset), spreading them across the collection interval; optionally limited to tags that previously succeeded. Returns the re-enabled count.",
+        "description": "Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' accounts are requeued), otherwise global `rank.update`. Requeues game accounts that were auto-disabled by a transient upstream outage (status disabled -> pending, failure counter reset), spreading them across the collection interval; optionally limited to accounts that previously succeeded. Returns the re-enabled count. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
     },
     # ── subscription collection admin ─────────────────────────────────────────
     "rpc.stats.subscription.stats": {

@@ -23,6 +23,7 @@ export const userQueryKeys = {
   favoritePlayers: () => ["me", "favorite-players"] as const,
   rankHistory: (userId: KeyPart, params: unknown) =>
     ["rank-history", "user", userId, params] as const,
+  rankCurrent: (userId: KeyPart, discipline: KeyPart) => ["rank-current", userId, discipline] as const,
   rankResolve: (battleTag: KeyPart) => ["rank-user-resolve", battleTag] as const,
   characterMaps: (userId: KeyPart, axis: UserAxis, discipline: string, tournamentId: KeyPart) =>
     ["user-stats", userId, axis, discipline, "character-maps", tournamentId] as const,

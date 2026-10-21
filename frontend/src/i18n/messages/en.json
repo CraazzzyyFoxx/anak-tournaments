@@ -32,13 +32,6 @@
       "rated": "Rated",
       "openSlot": "Open slot",
       "clear": "Clear selection",
-      "icon": "Icon URL",
-      "color": "Color (#RRGGBB)",
-      "inherits": "Inherits from parent",
-      "override": "Own presentation",
-      "cleared": "Explicitly cleared",
-      "clearPresentation": "Clear {field} for {role}",
-      "clearOverride": "Clear",
       "ownerScopeError": "Owner workspace or discipline is missing. Editing is unavailable.",
       "roleLoadError": "Could not load the owner's child roles.",
       "locked": "The draft has locked this team format.",
@@ -246,6 +239,9 @@
       "showAll": "Show all games",
       "notPlayed": "{player} hasn't played {game}",
       "field": "Game",
+      "fieldPlaceholder": "Select a game",
+      "fieldSearch": "Search game…",
+      "fieldEmpty": "No game matches that search.",
       "column": "Game"
     },
     "divisionWithId": "Division {id}",
@@ -378,10 +374,10 @@
     },
     "heroStats": {
       "winrate": "Winrate",
-      "games": "Games",
       "record": "Record",
-      "playtimeOnMap": "Playtime on this map",
-      "countedNote": "Games are counted when hero time played is over 60s."
+      "vsMap": "vs map",
+      "playtimeOnMap": "Time on map",
+      "countedNote": "Counted from 60s on the hero"
     },
     "sortDirection": "Sort direction: {current}. Switch to {next}.",
     "favorite": {
@@ -474,7 +470,7 @@
       "youtubePlaceholder": "@handle",
       "verified": "Verified",
       "noAccountsHint": "You don't have any linked accounts yet.",
-      "noAccountsHintDesc": "Link your Battle.net, Discord or Twitch in profile settings to autofill and verify them.",
+      "noAccountsHintDesc": "Link your Battle.net, Riot, Discord or Twitch in profile settings to autofill and verify them.",
       "noAccountsHintCta": "Link accounts in profile settings"
     },
     "roles": {
@@ -703,9 +699,6 @@
       "rejectConfirm": "Reject {team}?",
       "rejectWithdraw": "Also withdraw the members' registrations",
       "rejectSuccess": "Team rejected.",
-      "exportSuccess": "{count, plural, =1 {# team} other {# teams}} added.",
-      "exportSkipped": "Skipped: {names}",
-      "exportNothing": "No complete teams to add.",
       "unassigned": "{count, plural, =1 {# player is} other {# players are}} on no team. The export cannot place them: invite them to a team or withdraw them first.",
       "revokeInvite": "Withdraw invite",
       "revokeInviteSuccess": "Invite withdrawn.",
@@ -743,6 +736,8 @@
       "exportSelected": "Add selected teams",
       "reExport": "Export again",
       "exportConfirmHint": "Once added the roster is frozen: further changes go through the organizer.",
+      "exportResult": "Teams added: {imported}. Replaced: {removed}. Players created: {players}. Skipped: {skipped}.",
+      "exportResultDismiss": "Dismiss the export result",
       "exportSelectionChanged": "The team list changed. Check the selection and try again.",
       "skipReason": {
         "team_incomplete": "roster incomplete",
@@ -1116,6 +1111,7 @@
       "disconnect": "Disconnect this OAuth account",
       "disconnectAria": "Disconnect {name}",
       "disconnectConfirm": "Disconnect your {provider} account? You can reconnect it later via OAuth.",
+      "riotNotice": "Linking your Riot account makes your League of Legends rank public on {siteName}.",
       "footnote": "Accounts can only be added through OAuth, which also verifies them. Disconnect removes the OAuth link (the account stays, unverified, until you reconnect); hiding removes it from your public profile. Only an administrator can erase a linked account from your profile entirely.",
       "hidden": "Hidden",
       "linkAria": "Link {provider}"
@@ -1316,7 +1312,8 @@
       "discardConfirm": "Discard changes",
       "changedFields": "{count, plural, one {# changed field} other {# changed fields}}",
       "saved": "Settings saved",
-      "saveFailed": "Could not save these settings"
+      "saveFailed": "Could not save these settings",
+      "fixFields": "{count, plural, one {Fix # field to save} other {Fix # fields to save}}"
     },
     "rankOverview": {
       "title": "Ranks",
@@ -1347,7 +1344,7 @@
       "layers": {
         "canon": "Canon",
         "author": "Author",
-        "ow": "{game}",
+        "native": "{game}",
         "hidden": "Hidden",
         "effective_tournament": "Effective (tournament)",
         "effective_mix": "Effective (mix)",
@@ -3230,7 +3227,7 @@
         "title": "Player profile",
         "text": "Tournaments, win rate, form over the last ten, roles and favourite heroes - in one profile.",
         "more": "Find a player",
-        "alt": "CraazzzyyFox's player profile: 26 tournaments, 50% win rate, form over the last 10 tournaments, role split and last tournament's stats"
+        "alt": "CraazzzyyFox's player profile: 38 tournaments, 50.9% win rate, form over the last 10 tournaments, role split and stats from «Турнир Сабов Anakq #42»"
       },
       "tournament": {
         "title": "Tournament page",
@@ -3240,9 +3237,9 @@
       },
       "match": {
         "title": "Match",
-        "text": "The series score, the maps, time played and the logs of every map.",
+        "text": "The series score, the maps with time played, series stats and match leaders.",
         "more": "All matches",
-        "alt": "Tref against vac3x: 3:1 on the series, four maps played with their logs"
+        "alt": "67-41=наше место against Омский газмяс: 3:1 on the series, four maps played, series stats"
       }
     },
     "organizer": {
@@ -3306,13 +3303,13 @@
       "shots": {
         "form": {
           "title": "Registration form",
-          "text": "A questionnaire of sections and questions with required fields and a preview. Save it as a template - every tournament of the community starts from it.",
-          "alt": "The “Form with ranks” registration form builder in the admin panel: the Accounts, Roles, Ranks, Scrims and Extra info sections and the Accounts questions - BattleTag, Smurf accounts, Discord, Twitch, Boosty"
+          "text": "A questionnaire of steps and questions with required fields and a preview. Save it as a template - every tournament of the community starts from it.",
+          "alt": "The “Form with ranks” registration form builder in the admin panel: the Accounts, Roles, Ranks, Scrims and Extra info steps and the Accounts questions - BattleTag, Discord, Twitch, Boosty"
         },
         "registration": {
           "title": "Registration",
-          "text": "The phase schedule - registration, check-in, start - with a countdown, the entry count and the tournament format.",
-          "alt": "The SEITA: Last Duel tournament page during registration: the phase schedule, 19 entries, solo format"
+          "text": "The public entry list: roles, top heroes, entry history, status, balancer readiness and check-in. Status filters and search.",
+          "alt": "The participants of “Турнир Тхао #5”: 148 entries - 142 approved, 3 pending, 3 withdrawn; roles, top heroes, statuses and check-in"
         },
         "entries": {
           "title": "Entries",
@@ -3332,7 +3329,7 @@
         "mapStats": {
           "title": "Match stats",
           "text": "Every map's log is parsed on its own: rating, eliminations, damage, healing and blocking for every player on both teams.",
-          "alt": "Statistics for the Ilios map in the Tref versus vac3x match: the numbers of all ten players on both teams"
+          "alt": "Statistics for the Samoa map in the 67-41=наше место versus Омский газмяс match: the numbers of all ten players on both teams"
         }
       },
       "grid": {
@@ -3606,20 +3603,29 @@
     "noDataTitle": "No data for selection",
     "noDataBody": "The selected account or role combination does not contain competitive records.",
     "noProfileTitle": "No linked player profile",
-    "noProfileBody": "Rank history is unavailable because this BattleTag is not linked to a registered site account.",
+    "noProfileBody": "Rank history is unavailable because this account is not linked to a registered site account.",
     "errorTitle": "Failed to load",
     "errorBody": "Failed to load rank history. Please try again later.",
     "unsupportedTitle": "Rank history is not available for this game",
     "unsupportedBody": "This game does not collect ranks, so there is no rank history to show.",
     "groupByPlaceholder": "Group by...",
     "byRole": "By role",
-    "byBattleNet": "By battle.net",
+    "byBattleNet": "By account",
     "granularityPlaceholder": "Granularity",
     "daily": "Daily",
     "hourly": "Hourly",
     "allPoints": "All points",
     "groupByLabel": "Group by",
-    "accountLabel": "Battle.net account",
+    "accountLabel": "Account",
+    "lol": {
+      "solo": "Solo/Duo",
+      "flex": "Flex",
+      "unranked": "Unranked",
+      "lp": "{lp} LP",
+      "record": "{wins} W / {losses} L",
+      "chartTitle": "Rank over time",
+      "empty": "No ranked games this season."
+    },
     "roleLabel": "Role",
     "platformLabel": "Platform"
   },
@@ -4664,6 +4670,9 @@
         "generatedHint": "The server builds this phase's steps from the pool and the series length.",
         "noSteps": "No steps yet. Add one below.",
         "reorder": "Reorder phase {n}",
+        "moveUp": "Move phase {n} up",
+        "moveDown": "Move phase {n} down",
+        "duplicate": "Duplicate phase {n}",
         "actions": "Actions for phase {n}"
       },
       "step": {
@@ -4695,6 +4704,9 @@
         "noConstraints": "No constraints.",
         "removeConstraint": "Remove the {constraint} constraint",
         "reorder": "Reorder step {n}",
+        "moveUp": "Move step {n} up",
+        "moveDown": "Move step {n} down",
+        "duplicate": "Duplicate step {n}",
         "actions": "Actions for step {n}"
       },
       "constraint": {
@@ -4839,7 +4851,7 @@
         "exitFullscreenLabel": "Exit fullscreen, or press Escape"
       },
       "rowMenu": {
-        "duplicate": "Duplicate",
+        "lastPhase": "A ruleset needs at least one phase.",
         "remove": "Delete"
       }
     }
@@ -5149,7 +5161,16 @@
         "winrate": "Winrate",
         "kda": "KDA",
         "dmg10": "Dmg/10",
-        "elims10": "Elims/10"
+        "elims10": "Elims/10",
+        "heal10": "Heal/10",
+        "blocked10": "Blocked/10",
+        "finalBlows10": "Final blows/10"
+      },
+      "card": {
+        "vsAvg": "{value} vs avg",
+        "avg": "Average on this hero: {value}",
+        "bestGame": "Best game",
+        "recordValue": "{stat, select, damage_blocked {{value} blocked} hero_damage_dealt {{value} damage} healing_dealt {{value} healing} other {{value}}}"
       },
       "played": "{time} played",
       "poolShare": "{pct}% pool share",
@@ -5722,6 +5743,7 @@
     "teamCount": "Number of teams",
     "teamCountMax": "Max",
     "teamCountMaxHint": "The pool supports up to {count, plural, one {# team} other {# teams}}.",
+    "teamCountLocked": "The session has already been created, so the team count is locked. Cancel it to change the count.",
     "changeFormatInSettings": "Change in tournament settings",
     "formatLockedByDraft": "A draft of this tournament is in progress, so its format is locked. Finish or cancel the draft to change it.",
     "rounds": "Rounds",
@@ -5729,6 +5751,11 @@
     "pickTime": "Time per pick",
     "customPickTime": "Custom time per pick in seconds",
     "format": "Draft format",
+    "groups": {
+      "format": {
+        "title": "Pick order"
+      }
+    },
     "formats": {
       "snake": {
         "title": "Snake",
@@ -5850,6 +5877,7 @@
     "notReadyToStart": "The draft still has blockers",
     "readyToStartHint": "Open the board for captains, then start when everyone is connected.",
     "notReadyToStartHint": "Return to setup and resolve the reported role or pool deficits.",
+    "checkingFeasibility": "Checking whether the draft can start…",
     "startDraft": "Start draft",
     "startConfirmTitle": "Start the draft",
     "startConfirmDescription": "Every captain's board goes live and the clock on the first pick starts at once. You can pause the draft afterwards, but it cannot be returned to the ready state.",
@@ -5884,6 +5912,7 @@
       "loadFailed": "The draft history could not be loaded.",
       "delete": "Delete draft session #{id}",
       "deleteConfirm": "Delete permanently",
+      "cancelFirst": "Cancel the draft before deleting it.",
       "confirmTitle": "Delete draft session #{id}?",
       "confirmDescription": "Teams, the player pool, every pick and the audit trail of this session are erased for good. Teams already exported to the tournament are kept.",
       "deleted": "Draft session #{id} deleted",
@@ -5903,6 +5932,7 @@
         "order_recalculated": "This round's pick order was recalculated from the live team averages. Review the new order on the board, then resume. Captains cannot pick until you do."
       },
       "resolveRoles": "Resolve role shortage",
+      "resumeBlocked": "Resolve the role shortage before resuming.",
       "onTheClock": "On the clock · round {round} · pick {pick}/{total}",
       "noCurrentPick": "No current pick",
       "currentPickEmpty": "The session has no active pick.",
@@ -6530,7 +6560,7 @@
         },
         "accounts": {
           "title": "Accounts and sign-in",
-          "body": "There is no separate password: you sign in through Discord, Twitch, or Battle.net OAuth, and {siteName} stores the profile information that provider returns (username, avatar, and a stable identifier) together with any tournament data tied to your account. You're responsible for keeping that OAuth account secure — anyone who can sign in to it can sign in as you here."
+          "body": "There is no separate password: you sign in through Discord, Twitch, Battle.net, or Riot Games OAuth, and {siteName} stores the profile information that provider returns (username, avatar, and a stable identifier) together with any tournament data tied to your account. You're responsible for keeping that OAuth account secure — anyone who can sign in to it can sign in as you here."
         },
         "workspaces": {
           "title": "Workspaces",
@@ -6554,7 +6584,11 @@
         },
         "thirdParty": {
           "title": "Third-party services",
-          "body": "Sign-in and some profile data depend on Discord, Twitch, and Battle.net; your use of those providers is governed by their own terms, separately from ours. {siteName} isn't responsible for their availability or behavior."
+          "body": "Sign-in and some profile data depend on Discord, Twitch, Battle.net, and Riot Games; your use of those providers is governed by their own terms, separately from ours. {siteName} isn't responsible for their availability or behavior."
+        },
+        "riotGames": {
+          "title": "Riot Games",
+          "body": "{siteName} isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc."
         },
         "liability": {
           "title": "No warranty, limited liability",
@@ -6578,7 +6612,11 @@
       "sections": {
         "collection": {
           "title": "Information we collect",
-          "body": "When you sign in, your OAuth provider (Discord, Twitch, or Battle.net) gives us a stable account identifier, your username or display name, and your avatar; some providers also share an email address. As you use the site we also store what you generate directly: tournament registrations, match and map reports, draft picks, and any roles assigned to you. Standard web infrastructure logs (IP address, user agent) are kept briefly for security and abuse prevention."
+          "body": "When you sign in, your OAuth provider (Discord, Twitch, Battle.net, or Riot Games) gives us a stable account identifier, your username or display name, and your avatar; some providers also share an email address. As you use the site we also store what you generate directly: tournament registrations, match and map reports, draft picks, and any roles assigned to you. Standard web infrastructure logs (IP address, user agent) are kept briefly for security and abuse prevention."
+        },
+        "riotGames": {
+          "title": "Riot Games",
+          "body": "{siteName} isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc."
         },
         "use": {
           "title": "How we use it",
@@ -7471,6 +7509,7 @@
       "retire": {
         "action": "Retire",
         "kindAction": "Retire every one of this kind",
+        "pickKind": "Pick a kind first",
         "title": "Retire these notifications?",
         "description": "Removes them from inboxes. The records and read marks are kept."
       }
@@ -7482,40 +7521,59 @@
   },
   "mixes": {
     "title": "Mixes",
-    "description": "Open lineups and follow your community's results.",
+    "description": "Lineups, results and the leaderboard of your communities.",
     "createAction": "Create mix",
     "chooseWorkspace": "Choose a community",
     "workspaceHint": "Select a community to see its mixes.",
     "browseCommunities": "Browse communities",
     "loading": "Loading mixes...",
     "retry": "Retry",
+    "hero": {
+      "mixes": "Mixes",
+      "matches": "Matches",
+      "players": "Players"
+    },
+    "views": {
+      "label": "Mix sections",
+      "mixes": "Mixes",
+      "rating": "Leaderboard"
+    },
+    "now": {
+      "title": "Now",
+      "loading": "Loading open mixes...",
+      "errorTitle": "Unable to load open mixes",
+      "signupOpen": "Signup open",
+      "teamsReady": "Teams ready",
+      "game": "Game",
+      "signedUp": "Signed up",
+      "started": "started {time}",
+      "open": "Open"
+    },
     "list": {
-      "filters": "Mix status",
-      "open": "Open",
-      "history": "History",
-      "label": "Mixes",
-      "host": "Hosted by {name}",
-      "matches": "{count, plural, one {# match} other {# matches}}",
-      "lastMatch": "Last match: {date}",
-      "created": "Created {date}",
-      "noMatches": "No matches yet",
-      "status": {
-        "draft": "Preparing",
-        "balanced": "Teams ready",
-        "completed": "Completed",
-        "cancelled": "Cancelled"
-      },
       "errorTitle": "Unable to load mixes",
-      "errorDescription": "Check your connection and try again.",
+      "errorDescription": "Check your connection and try again."
+    },
+    "history": {
+      "title": "History",
+      "search": "Search past mixes",
+      "searchPlaceholder": "Mix or host",
+      "host": "Hosted by {name}",
+      "matches": "{count, plural, one {match} other {matches}}",
+      "players": "{count, plural, one {player} other {players}}",
+      "cancelled": "Cancelled",
+      "maps": "Maps: {names}",
+      "lastMatch": "Last match {date}",
+      "created": "Created {date}",
+      "showMore": "Show more",
+      "moreError": "Unable to load more mixes.",
+      "noResultsTitle": "Nothing found",
+      "noResultsDescription": "No past mix matches “{q}”.",
+      "clearSearch": "Clear search",
       "emptyTitle": "No mixes yet",
       "emptyHost": "Create a mix, then add players from the community pool.",
       "emptyViewer": "A host has not created a mix in this community yet.",
-      "noOpenTitle": "No open mixes",
-      "noOpenDescription": "All previous mixes have ended. Open the history to see their results.",
-      "showHistory": "Show history",
-      "noHistoryTitle": "No past mixes yet",
-      "noHistoryDescription": "Completed and cancelled mixes will appear here.",
-      "showOpen": "Show open mixes"
+      "noneFinishedTitle": "No finished mixes yet",
+      "noneFinishedDescription": "Completed and cancelled mixes will appear here."
     },
     "create": {
       "title": "Create mix",
@@ -7545,18 +7603,33 @@
       "gameUnavailable": "This community has not enabled this game."
     },
     "leaderboard": {
-      "title": "Leaders by wins",
+      "title": "Leaderboard",
       "period": "Results period",
       "periods": {
         "all": "All time",
-        "30d": "Last 30 days",
-        "7d": "Last 7 days"
+        "30d": "30 days",
+        "7d": "7 days"
       },
-      "rules": "Top {limit} · at least {minGames} matches in this period",
+      "rules": "At least {minGames} matches",
+      "rulesAll": "All communities · at least {minGames} matches",
       "ranking": "Ranked by wins, then win rate, then matches played.",
+      "rank": "Rank",
       "player": "Player",
+      "form": "Form",
       "wins": "Wins",
+      "winsOf": "{wins, plural, one {# win} other {# wins}} in {games, plural, one {# match} other {# matches}}",
       "winRate": "Win rate",
+      "lowSample": "Fewer than {games} matches: too few to judge",
+      "streak": "Streak",
+      "lastPlayed": "Last match",
+      "you": "You",
+      "unranked": "You have {games} of the {minGames} matches needed to be ranked.",
+      "full": "Full leaderboard",
+      "search": "Search players",
+      "searchPlaceholder": "Player name",
+      "noResultsTitle": "No players found",
+      "noResultsDescription": "Nobody on the leaderboard matches “{q}”.",
+      "clearSearch": "Clear search",
       "winStreak": "{count, plural, one {# consecutive win} other {# consecutive wins}}",
       "lossStreak": "{count, plural, one {# consecutive loss} other {# consecutive losses}}",
       "errorTitle": "Unable to load the leaderboard",
@@ -7636,6 +7709,7 @@
         "mix_closed": "This mix is over.",
         "discord_not_linked": "Link your Discord account to join.",
         "battlenet_not_linked": "Link your Battle.net account to join.",
+        "riot_not_linked": "Link your Riot account to join.",
         "player_not_linked": "Your account is not linked to a player profile yet.",
         "self_join_denied": "An admin has closed self-signup for your account.",
         "already_joined": "You are already in this mix.",
@@ -8075,32 +8149,32 @@
         "open": "Open",
         "half_open": "Half-open"
       },
-      "reenabled": "{count, plural, one {Re-enabled # disabled battle tag} other {Re-enabled # disabled battle tags}}",
-      "reenableError": "Could not re-enable the disabled tags. Try again.",
+      "reenabled": "{count, plural, one {Re-enabled # disabled account} other {Re-enabled # disabled accounts}}",
+      "reenableError": "Could not re-enable the disabled accounts. Try again.",
       "outage": {
-        "title": "Battle-tag rank parsing is down",
-        "hostFallback": "OverFast",
+        "title": "Rank collection is down",
+        "hostFallback": "the upstream API",
         "circuitOpen": "The circuit breaker to {host} is open, so the worker refuses every fetch and the counters below have stopped.",
-        "stale": "No battle tag has been collected successfully since {since}, although collection is switched on.",
+        "stale": "No account has been collected successfully since {since}, although collection is switched on.",
         "action": "Check that {host} resolves and answers, then watch this banner clear on the next tick."
       },
       "tiles": {
-        "battleTags": "Battle tags",
+        "battleTags": "Accounts",
         "coverage": "Coverage (snapshots)",
-        "coverageDetail": "{percent}% of all tags in 24h · {week} distinct accounts in 7d",
+        "coverageDetail": "{percent}% of all accounts in 24h · {week} distinct accounts in 7d",
         "fetches": "Fetches (24h)",
         "fetchesDetail": "{rate}% errors · ok {ok} · not found {notFound} · errors {errors} · last success {last}",
-        "upstream": "Upstream (OverFast)",
+        "upstream": "Upstream",
         "upstreamUnreachable": "Unreachable",
         "upstreamNotConfigured": "not configured",
-        "upstreamDetail": "{host} · {count, plural, one {# malformed battle tag} other {# malformed battle tags}} rejected in 24h",
-        "autoDisabled": "Auto-disabled tags",
-        "reenableAll": "Re-enable all tags"
+        "upstreamDetail": "{host} · {count, plural, one {# malformed account} other {# malformed accounts}} rejected in 24h",
+        "autoDisabled": "Auto-disabled accounts",
+        "reenableAll": "Re-enable all accounts"
       },
       "history": {
-        "battleTag": "Battle tag",
+        "battleTag": "Account",
         "snapshots": "Snapshots",
-        "searchPlaceholder": "Search battle tags…",
+        "searchPlaceholder": "Search accounts…",
         "emptyFiltered": "No fetch task matches these filters.",
         "empty": "No fetch tasks recorded yet."
       }
@@ -8137,7 +8211,7 @@
         "broadcaster_not_eligible": "broadcaster not eligible",
         "guild_not_configured": "guild not configured",
         "guild_not_accessible": "bot cannot read the guild",
-        "bot_not_configured": "our Discord bot token is not configured",
+        "bot_not_configured": "this service cannot reach our Discord bot",
         "twitch_client_not_configured": "our Twitch client id is not configured",
         "no_role_tiers_configured": "no role tiers configured",
         "role_mapping_drift": "role mapping drifted",
@@ -8311,10 +8385,10 @@
       "pickTeam": "Pick team",
       "saveTeam": "Save team assignment",
       "cancelTeam": "Cancel team assignment edit",
-      "removeSlot": "Remove",
+      "removeSlot": "Remove slot {seed} of {name}",
       "teamForSlot": "Team for slot {seed} of {name}",
-      "overrideTeam": "Override team",
-      "changeTeam": "Change team",
+      "overrideTeam": "Override team in slot {seed} of {name}",
+      "changeTeam": "Change team in slot {seed} of {name}",
       "teamToAdd": "Team to add to {name}",
       "empty": "No teams assigned yet. Pick a team below to fill the first slot.",
       "addTeam": "Add team",
@@ -8328,8 +8402,7 @@
       "group": "Group {number}",
       "bracket": "Bracket",
       "slotCount": "{count, plural, one {# slot} other {# slots}}",
-      "tentative": "Tentative",
-      "slotActions": "Actions for slot {seed} of {name}"
+      "tentative": "Tentative"
     },
     "ffa": {
       "preset": "Scoring preset",
@@ -8703,7 +8776,9 @@
     "overview": {
       "nextAction": "Next action",
       "open": "Open",
-      "nextActionTitle": "{label} · {detail}"
+      "nextActionTitle": "{label} · {detail}",
+      "teamDraft": "{status, select, paused {The team draft is paused.} other {The team draft is live.}} Manage it from the draft board.",
+      "openDraftBoard": "Open draft board"
     },
     "lifecycle": {
       "phases": {
@@ -8724,10 +8799,14 @@
       "offTrack": "Off track: {status}"
     },
     "hubActions": {
-      "reopened": "Tournament reopened",
+      "unfinished": "Tournament marked as not finished",
       "finished": "Tournament marked as finished",
-      "reopen": "Reopen",
-      "markFinished": "Mark finished"
+      "markNotFinished": "Mark not finished",
+      "markFinished": "Mark finished",
+      "finishTitle": "Mark the tournament finished?",
+      "unfinishTitle": "Mark the tournament not finished?",
+      "finishDescription": "Sets the status to {status} and counts its results in player profiles and statistics.",
+      "unfinishDescription": "Sets the status back to {status} and removes its results from player profiles and statistics."
     },
     "preview": {
       "added": "Added to preview allowlist",
@@ -8798,7 +8877,6 @@
     },
     "challonge": {
       "syncSoon": "Sync log will update shortly.",
-      "title": "Challonge",
       "openBracket": "Open bracket",
       "urlOrSlug": "Challonge URL or slug",
       "placeholder": "e.g. my-tournament or https://challonge.com/my-tournament",
@@ -8820,7 +8898,12 @@
         "participant": "Participant",
         "match": "Match"
       },
-      "challongeId": "Challonge #{id}"
+      "challongeId": "Challonge #{id}",
+      "groups": {
+        "sync": {
+          "title": "Bracket sync"
+        }
+      }
     },
     "links": {
       "kinds": {
@@ -8900,6 +8983,8 @@
       "uploaded": "Uploaded",
       "duration": "Duration",
       "search": "Search file, error, uploader, encounter",
+      "failedToProcess": "{count, plural, one {# log failed to process.} other {# logs failed to process.}}",
+      "showFailed": "Show failed",
       "retry": "Retry",
       "upload": "Upload logs",
       "processS3": "Process S3 logs",
@@ -8926,6 +9011,7 @@
       "unmapped": "Unmapped",
       "sync": "Sync teams",
       "openBalancer": "Open balancer",
+      "manage": "Manage teams",
       "searchTeamsPlayers": "Search teams or players…",
       "empty": "No teams yet.",
       "syncChallonge": "Sync Challonge teams",
@@ -8956,7 +9042,10 @@
       "manual": "Automatic phase transitions will be turned off.",
       "set": "Set {status}",
       "setStatus": "Set status",
-      "menu": "Change status"
+      "menu": "Change status",
+      "advance": "Move to {status}",
+      "allowedGroup": "Allowed",
+      "forcedGroup": "Forced"
     },
     "matches": {
       "unauthorized": "Unauthorized",
@@ -8977,8 +9066,7 @@
         "feed": "Sheets feed",
         "rankAutofill": "Rank autofill"
       },
-      "ariaLabel": "Registration sections",
-      "tools": "Tools"
+      "ariaLabel": "Registration sections"
     },
     "roster": {
       "totalOutOfRange": "The roster total above is out of range"
@@ -9007,15 +9095,24 @@
       "uploadError": "Could not upload this image",
       "removeImageError": "Could not remove this image",
       "branding": "Branding",
-      "brandingHint": "Shown on the public tournament page. Uploads apply immediately and are not part of the save bar below.",
+      "brandingHint": "Shown on the public tournament page.",
       "cover": "Cover banner",
       "coverHint": "16:9. Shown in full: large on the tournaments list, and as a 284×160 poster in the tournament page's header, whose background also takes its colours. Another ratio is not cropped; it fits inside that box with margins.",
       "logo": "Logo",
       "logoHint": "Square image, shown beside the name.",
       "gridVersionOption": "{label} (v{version}{status, select, draft {, draft} archived {, archived} other {}})",
-      "auditTarget": "tournament “{name}”"
+      "auditTarget": "tournament “{name}”",
+      "groups": {
+        "details": {
+          "title": "Name and description"
+        },
+        "format": {
+          "title": "Teams and divisions"
+        }
+      }
     },
     "schedule": {
+      "dates": "Dates",
       "duration": "Tournament duration range",
       "title": "Phase schedule",
       "hint": "Each phase starts automatically at its start time when automatic transitions are enabled. An end time only closes that phase's action window early. It never changes the tournament status.",
@@ -9024,6 +9121,7 @@
       "aria": "Phase schedule",
       "starts": "Starts at",
       "ends": "Ends at (optional)",
+      "automation": "Automation",
       "automatic": "Automatic phase transitions",
       "automaticHint": "Re-enabling immediately catches up any overdue phases. Manual status changes switch this off.",
       "late": "Allow late registration",
@@ -9035,10 +9133,11 @@
       "phaseEndTime": "{phase} end time"
     },
     "scoring": {
-      "points": "Scoring points",
+      "points": "Points per result",
       "win": "Win",
       "draw": "Draw",
       "loss": "Loss",
+      "results": "Results",
       "league": "Treat as league season",
       "finished": "Mark tournament as finished",
       "logsOfficial": "Accept match logs as official results",
@@ -9047,7 +9146,11 @@
     "rules": {
       "hint": "Markdown, shown to everyone on the tournament's Rules tab. The tab appears only once this is not empty. Clearing it unpublishes the document. Write sections as <code>##</code> headings (<code>###</code> for subsections): two or more of them give the public page a table of contents. Bold text on its own line does not.",
       "label": "Tournament rules, Markdown",
-      "characterCount": "{count} / {max} {count, plural, one {character} other {characters}}"
+      "groups": {
+        "document": {
+          "title": "Document"
+        }
+      }
     },
     "discordExtra": {
       "saved": "Discord channel saved",
@@ -9077,7 +9180,12 @@
       "announcements": "Post announcements to Discord",
       "announcementsDescription": "Registration and check-in opening and match times go to the workspace's notification channel.",
       "messages": "Message players on Discord",
-      "messagesDescription": "Invites, registration decisions, check-in and match times for this tournament reach players as Discord direct messages. Switched off, they only appear in players' in-app notifications."
+      "messagesDescription": "Invites, registration decisions, check-in and match times for this tournament reach players as Discord direct messages. Switched off, they only appear in players' in-app notifications.",
+      "groups": {
+        "notifications": {
+          "title": "Notifications"
+        }
+      }
     },
     "screenDescriptions": {
       "preGame": "Map veto and hero pick/ban per scope. Child scopes inherit until overridden.",
@@ -9144,7 +9252,12 @@
     "previewExtra": {
       "hidden": "Hidden from the public (preview)",
       "title": "Preview allowlist",
-      "hint": "Hide the tournament above to choose who may preview it."
+      "hint": "Hide the tournament above to choose who may preview it.",
+      "groups": {
+        "visibility": {
+          "title": "Visibility"
+        }
+      }
     },
     "draft": {
       "teamNameFor": "{label} · {teamName}",
@@ -9185,7 +9298,6 @@
       "searchPlaceholder": "Search tournaments…",
       "empty": "No tournaments yet. Create one to start adding stages, teams and encounters.",
       "openHub": "Open tournament hub",
-      "resumeWizard": "Resume in wizard",
       "deleteTitle": "Delete tournament",
       "deleteDescription": "Delete \"{name}\"? This cannot be undone.",
       "delete": "Delete",
@@ -9197,147 +9309,39 @@
         "standings": "All standings data"
       }
     },
-    "new": {
-      "steps": {
-        "basics": {
-          "label": "Basics"
-        },
-        "schedule": {
-          "label": "Schedule"
-        },
-        "rules": {
-          "label": "Rules"
-        },
-        "registration": {
-          "label": "Registration"
-        },
-        "review": {
-          "label": "Review & create"
-        }
+    "create": {
+      "title": "New tournament",
+      "description": "It is created Unpublished and opens on its Overview, whose checklist walks you through the rest of the setup.",
+      "source": "Source",
+      "sourceManual": "Manual",
+      "sourceManualHint": "Enter the name yourself; set up stages and the bracket later in the tournament.",
+      "sourceChallonge": "Import from Challonge",
+      "sourceChallongeHint": "Stages and groups are created from an existing Challonge bracket.",
+      "name": "Name",
+      "challongeSlug": "Challonge URL or slug",
+      "challongePlaceholder": "e.g. my-tournament or https://challonge.com/my-tournament",
+      "challongeHelp": "The Challonge bracket must have group stages enabled (two-stage).",
+      "dateRange": "Date range",
+      "teamFormation": "Team formation",
+      "formation": {
+        "balancer": "Auto-balance (Balancer)",
+        "draft": "Captain draft",
+        "registration": "Team registration",
+        "solo": "Solo registration"
       },
+      "teamFormationHelp": "How teams are formed. It decides which phases the tournament has.",
+      "submit": "Create tournament",
+      "submitting": "Creating…",
       "validation": {
         "nameRequired": "Enter a tournament name.",
         "challongeRequired": "Enter a Challonge URL or slug.",
         "datesRequired": "Pick a start and an end date."
       },
-      "selectWorkspace": "Select a workspace first",
-      "importHideWarning": "Imported from Challonge, but hiding it failed",
-      "importHideDescription": "The tournament is temporarily public. Hide it in Settings › Visibility if needed.",
       "created": "Tournament created",
-      "draftCreated": "Draft created",
-      "draftDescription": "It stays Unpublished until you publish it from Review or Settings.",
+      "createdDescription": "It stays Unpublished until you publish it in Settings › Preview allowlist.",
       "createError": "Could not create the tournament",
-      "draftError": "Could not create the draft",
-      "unauthorized": "Unauthorized",
-      "unauthorizedDescription": "You do not have permission to create tournaments in this workspace.",
-      "title": "New tournament",
-      "resumeTitle": "Resume draft?",
-      "resumeDescription": "“{name}” is an Unpublished draft you started earlier. Resume it where you left off, or start a new tournament from scratch.",
-      "resume": "Resume draft",
-      "manualInstead": "Enter the details manually instead",
-      "importInstead": "Import from Challonge instead",
-      "saving": "Saving…",
-      "saveDraft": "Save as draft",
-      "creating": "Creating…",
-      "create": "Create tournament",
-      "continue": "Continue"
-    },
-    "registration": {
-      "autoApprove": "Auto-approve registrations",
-      "autoApproveDescription": "New registrations skip the manual review queue.",
-      "openProfile": "Require open profile",
-      "openProfileDescription": "Players must keep their game profile public to register.",
-      "subscription": "Require an active subscription",
-      "subscriptionDescription": "Enforces the workspace rule from Subscription collection › Providers. Checked at check-in; a player whose subscription cannot be checked is let in.",
-      "formHelp": "Custom fields and built-in field configuration live in the form builder.",
-      "openFormBuilder": "Open form builder",
-      "formDraftHelp": "The form builder opens once the draft is saved."
-    },
-    "rules": {
-      "scoringPoints": "Scoring points",
-      "win": "Win",
-      "draw": "Draw",
-      "loss": "Loss"
-    },
-    "schedule": {
-      "title": "Phase schedule",
-      "description": "Each phase starts automatically at its start time when automatic transitions are enabled. Leave a phase empty to skip scheduling it.",
-      "startsAt": "Starts at",
-      "endsAt": "Ends at (optional)",
-      "time": "Time",
-      "automaticTransitions": "Automatic phase transitions",
-      "automaticDescription": "Phases advance on their own following the schedule above.",
-      "phases": {
-        "registration": "Registration",
-        "check_in": "Check-in",
-        "draft": "Draft",
-        "live": "Live"
-      }
-    },
-    "form": {
-      "challongeUrlOrSlugRequired": "Challonge URL or slug{required}",
-      "challongePlaceholder": "e.g. my-tournament or https://challonge.com/my-tournament",
-      "challongeHelp": "The Challonge bracket must have group stages enabled (two-stage). All stages will be created automatically.",
-      "nameRequired": "Name{required}",
-      "publicSlug": "Public URL slug",
-      "slugPlaceholder": "auto-generated from name if left blank",
-      "slugCreateHelp": "Used in the public tournament URL. Leave blank to generate one from the name.",
-      "description": "Description",
-      "teamFormation": "Team formation",
-      "selectMethod": "Select method",
-      "formation": {
-        "balancer": "Auto-balance (Balancer)",
-        "draft": "Captain draft",
-        "registration": "Team registration",
-        "solo": "Solo registration"
-      },
-      "teamFormationHelp": "How teams are formed for this tournament.",
-      "divisionGridVersion": "Division grid version",
-      "loadingDivisionGrids": "Loading division grids…",
-      "selectVersion": "Select version",
-      "workspaceDefault": "Workspace default",
-      "leagueSeason": "Treat as league season",
-      "dateRangeRequired": "Date range{required}",
-      "gridVersionOption": "{label} (v{version}{status, select, draft {, draft} archived {, archived} other {}})"
-    },
-    "review": {
-      "workspaceDefault": "Workspace default",
-      "basics": "Basics",
-      "source": "Source",
-      "fromChallonge": "From Challonge",
-      "manual": "Manual",
-      "challongeUrlOrSlug": "Challonge URL or slug",
-      "name": "Name",
-      "dateRange": "Date range",
-      "leagueSeason": "Treat as league season",
-      "schedule": "Schedule",
-      "phases": {
-        "registration": "Registration",
-        "check_in": "Check-in",
-        "draft": "Draft",
-        "live": "Live",
-        "completed": "Completed",
-        "archived": "Archived"
-      },
-      "automaticTransitions": "Automatic phase transitions",
-      "rules": "Rules",
-      "teamFormation": "Team formation",
-      "formation": {
-        "balancer": "Auto-balance (Balancer)",
-        "draft": "Captain draft",
-        "registration": "Team registration",
-        "solo": "Solo registration"
-      },
-      "divisionGridVersion": "Division grid version",
-      "scoringPoints": "Scoring points (win / draw / loss)",
-      "registration": "Registration",
-      "registrationHelp": "These choices are not applied automatically. Finish them in the form builder (Registration tab of the hub) after creation.",
-      "autoApprove": "Auto-approve registrations",
-      "openProfile": "Require open profile",
-      "subscription": "Require subscription",
-      "subscriptionMissingRule": "Required, but the workspace has no rule",
-      "enabled": "Enabled",
-      "range": "{start} to {end}"
+      "importHideWarning": "Imported from Challonge, but hiding it failed",
+      "importHideDescription": "The tournament is temporarily public. Hide it in Settings › Preview allowlist if needed."
     },
     "combobox": {
       "all": "All tournaments",
@@ -9349,6 +9353,7 @@
       "empty": "No standings to arrange yet. Recalculate to build them first.",
       "description": "Drag a team to a place to pin it there. Pinned places hold through any later result or recalculation; the other teams keep following results.",
       "clearPins": "Clear pins",
+      "noPins": "No pinned places yet",
       "placePinned": "Place pinned. Standings recalculated",
       "placeUnpinned": "Place unpinned. Standings recalculated",
       "clearPinsTitle": "Clear pins?",
@@ -9524,15 +9529,17 @@
       "permissionsLoadError": "Could not load the permissions"
     },
     "permissionsUi": {
-      "loadError": "Could not load the permission inventory",
-      "noMatches": "No permission matches. Clear the filters to see the full inventory.",
-      "platformNotice": "The inventory is defined by the platform. Grant a permission by adding it to a role on the Roles tab.",
-      "added": "Added"
+      "loadError": "Could not load the access map",
+      "noMatches": "No permission matches this search.",
+      "noRoleAccess": "The access map needs the role.read permission.",
+      "granted": "Granted",
+      "notGranted": "Not granted",
+      "noHolders": "No role grants it"
     },
     "pickerUi": {
       "toggle": "Toggle {key}",
-      "toggleAction": "Toggle every {action} permission",
-      "toggleResource": "Toggle every {resource} permission",
+      "toggleResource": "All {resource} permissions",
+      "fullAccess": "Full access",
       "all": "All"
     },
     "restrictionsUi": {
@@ -9634,6 +9641,7 @@
       "providerDiscord": "Discord",
       "providerTwitch": "Twitch",
       "providerBattleNet": "Battle.net",
+      "providerRiot": "Riot Games",
       "providerGoogle": "Google",
       "providerGitHub": "GitHub",
       "token": "Token",
@@ -9668,7 +9676,6 @@
       "searchAccounts": "Search accounts…",
       "searchWorkspaces": "Search workspaces…",
       "noRole": "No role",
-      "noCustomRoles": "No custom roles match that search.",
       "noUser": "No user matches that search.",
       "searchUser": "Search user…",
       "addMember": "Add member",
@@ -9830,11 +9837,10 @@
       "noSectionDescription": "Reading accounts, roles or permissions needs a global RBAC grant; API keys need workspace admin."
     },
     "member": {
-      "userRole": "Workspace role for {member}",
-      "customRoles": "Custom roles for {member}",
-      "custom": "+ custom",
+      "userRoles": "Workspace roles for {member}",
+      "customRole": "{name} · custom",
       "excludeRole": "Exclude role",
-      "searchCustomRoles": "Search custom roles…",
+      "noRolesMatch": "No role matches that search.",
       "remove": "Remove from workspace",
       "removeDescription": "{member} loses access to {workspace} and all roles granted here. Their tournament results are kept, and you can add them back later.",
       "role": "Role",
@@ -9857,7 +9863,10 @@
       "transferError": "Could not transfer ownership",
       "recipientDescription": "{target} becomes the owner of “{workspace}” and is granted the “owner” role. {details}",
       "ownerKeeps": "You keep your membership but lose the owner role, and only the new owner or a superuser can hand it back.",
-      "outgoingKeeps": "The outgoing owner keeps their membership but loses the owner role."
+      "outgoingKeeps": "The outgoing owner keeps their membership but loses the owner role.",
+      "reassignHint": "Changes which account the workspace counts against, without touching anyone's roles.",
+      "removeOwner": "Remove owner",
+      "transferHint": "Hands the owner role to another account. You confirm before it applies."
     },
     "verification": {
       "unverified": "Unverified",
@@ -9909,6 +9918,7 @@
       "saving": "Saving…",
       "deleting": "Deleting…",
       "evaluating": "Evaluating…",
+      "testing": "Testing…",
       "importing": "Importing…",
       "categoryValues": {
         "overall": "Overall",
@@ -10297,33 +10307,45 @@
     },
     "subRoles": {
       "toast": {
-        "added": "Sub-role added",
-        "renamed": "Sub-role renamed",
-        "restored": "Sub-role restored",
-        "deactivated": "Sub-role deactivated"
+        "restored": "{name} is back in the pickers",
+        "deactivated": "{name} switched off. Players who have it keep it.",
+        "saved": "Sub-role saved"
       },
       "errors": {
         "add": "Could not add the sub-role",
-        "rename": "Could not rename the sub-role",
         "update": "Could not update the sub-role",
-        "load": "Could not load the sub-roles"
+        "load": "Could not load the sub-roles",
+        "labelRequired": "The sub-role needs a name.",
+        "color": "Use a #RRGGBB colour, like #14B8A6.",
+        "icon": "Use an https URL or a /disciplines/{game}/… path to an SVG, PNG or WebP."
       },
       "noWorkspace": {
         "title": "No workspace selected",
         "description": "Pick a workspace in the sidebar to manage its sub-role catalog."
       },
       "empty": "No sub-roles yet.",
-      "deactivate": "Deactivate {name}",
       "restore": "Restore {name}",
-      "nameLabel": "{role} sub-role name",
-      "deactivationNote": "Deactivating a sub-role hides it from every picker but keeps it on the players already assigned to it. Which of these a specific tournament offers is chosen in that tournament's registration form.",
-      "presentation": "Icon and color of {name}",
-      "inactive": "Inactive",
-      "rolesLabel": "Roles",
-      "create": "New sub-role",
-      "parentRole": "Parent role",
+      "deactivationNote": "Switching a sub-role off hides it from every picker but keeps it on the players it is already assigned to. Which sub-roles a tournament offers is chosen in its registration form.",
       "labelField": "Name",
-      "backToAll": "Every game's sub-roles"
+      "loading": "Loading sub-roles…",
+      "activeCount": "{count, plural, one {# active sub-role} other {# active sub-roles}}",
+      "inactiveToggle": "{count, plural, one {# switched off} other {# switched off}}",
+      "addPlaceholder": "Add a sub-role…",
+      "addLabel": "New sub-role for {role}",
+      "add": "Add",
+      "edit": "Edit {name}",
+      "editTitle": "Edit “{name}”",
+      "editDescription": "A sub-role of {role}.",
+      "descriptionField": "Description",
+      "colorField": "Colour",
+      "iconField": "Icon",
+      "presentationInherits": "Same as {role}",
+      "presentationNone": "None",
+      "remove": "Remove",
+      "removePresentation": "Remove {field} of {name}",
+      "iconHint": "An https URL, or a /disciplines/{game}/… path to an SVG, PNG or WebP.",
+      "switchOff": "Switch off",
+      "restoreAction": "Restore"
     },
     "registrationForms": {
       "toast": {
@@ -10538,6 +10560,8 @@
         "createdFrom": "Created from {base}",
         "followRanges": "Rank ranges follow the OW ladder",
         "customScale": "Custom rank scale",
+        "publishBlocked": "Resolve everything under “Ready to publish?” first: unsaved edits and open mapping decisions block a publish.",
+        "mappingBlocked": "Every older version a tournament still reads needs a complete mapping first.",
         "readOnlyDraft": "You cannot edit this draft.",
         "readOnlyPublished": "Published versions are immutable, because tournaments are pinned to them. Clone this version to change anything."
       },
@@ -10828,6 +10852,7 @@
         "dismissOnly": "Declared by the game module. Dismiss only.",
         "resolved": "Resolved",
         "pickEntity": "Pick a {entity}…",
+        "pickFirst": "Pick the {entity} this name means first",
         "search": "Search…",
         "firstSeen": "First seen {date}",
         "attached": "“{name}” attached as a {entity} alias",
@@ -11072,19 +11097,17 @@
         "about": "About",
         "aboutHelp": "Markdown. Rendered as the “About” block of the public page.",
         "timezone": "Timezone",
-        "selectTimezone": "Select timezone",
-        "timezoneHelp": "Tournament schedule times are entered and shown in this zone, and the community page shows it as the time matches are played in.",
-        "icon": "Icon",
-        "iconHelp": "PNG, JPEG, WebP or GIF, max 2 MB.",
+        "timezoneHelp": "Schedule times are entered and shown in this zone.",
+        "iconHelp": "The icon is saved as soon as you pick a file: PNG, JPEG, WebP or GIF, up to 2 MB.",
         "owner": "Owner",
-        "ownerHelp": "The account accountable for this workspace, counted against that account's workspace limit.",
         "disciplines": {
-          "label": "Enabled games",
-          "help": "Drag to set priority: the first game is the default for new tournaments, division grids and mixes. Turning a game off keeps its tournaments and mixes; only creating new ones is refused until it is turned back on. A newly enabled game needs its own division grid before tournaments can be created in it.",
-          "default": "Default",
+          "help": "A game turned off keeps its tournaments and mixes; new ones wait until it is back on.",
           "reorder": "Reorder {name}",
           "toggle": "Enable {name}",
-          "lastEnabled": "At least one game stays enabled"
+          "lastEnabled": "the only game, so it stays on",
+          "defaultHint": "Default",
+          "noGrid": "No division grid yet, so tournaments cannot be created in it",
+          "available": "Not enabled"
         },
         "linkLabels": {
           "discord": "Discord",
@@ -11093,13 +11116,12 @@
         },
         "groups": {
           "identity": {
-            "title": "Name and timezone",
-            "description": "The name stands for the workspace in the site header, the workspace switcher, home page cards and notifications."
+            "title": "Identity",
+            "description": "The name and icon stand for the workspace in the site header, the workspace switcher, home page cards and notifications."
           },
           "publicPage": {
             "title": "Community page",
-            "description": "The tagline, description and About text fill the public community page, and the description also appears on the workspace's home page card.",
-            "preview": "Community page header"
+            "description": "What visitors read on the workspace's public page."
           },
           "links": {
             "title": "Links",
@@ -11107,14 +11129,25 @@
           },
           "disciplines": {
             "title": "Games",
-            "description": "Which games this workspace runs, and which one is the default."
+            "description": "Drag to set the order: the first game is the default for new tournaments, division grids and mixes."
           },
-          "iconOwnership": {
-            "title": "Icon and ownership",
-            "description": "The icon appears beside the workspace name wherever the name is shown."
+          "ownership": {
+            "title": "Ownership",
+            "description": "The owner is accountable for the workspace, and it counts against their account's workspace limit."
+          },
+          "platform": {
+            "title": "Platform administration",
+            "description": "Only platform superusers see this group."
           }
         },
-        "auditTarget": "workspace “{name}”"
+        "auditTarget": "workspace “{name}”",
+        "openPage": "Open it",
+        "opensInNewTab": "(opens in a new tab)",
+        "changeIcon": "Change workspace icon",
+        "removeIcon": "Remove icon",
+        "searchTimezone": "Search by city or offset…",
+        "noTimezone": "No timezone matches.",
+        "descriptionHelp": "Also the text of the workspace's card on the home page."
       },
       "branding": {
         "siteBranding": "Site branding",
@@ -11125,8 +11158,8 @@
         "secondaryAccent": "Secondary accent",
         "background": "Background",
         "surface": "Surface",
-        "corePalette": "Core palette · optional overrides",
-        "corePaletteHelp": "Leave blank to derive from the seed colours above.",
+        "corePalette": "Core palette overrides",
+        "corePaletteHelp": "Blank colours derive from the seed colours; set one only to correct it.",
         "accent": "Accent",
         "foreground": "Foreground (text)",
         "mutedSurface": "Muted surface",
@@ -11135,15 +11168,24 @@
         "destructive": "Destructive",
         "preview": "Preview",
         "primary": "Primary",
-        "secondary": "Secondary"
+        "secondary": "Secondary",
+        "useCustomPaletteHelp": "While off, the colours below are kept but the site uses the platform palette.",
+        "seedColoursHelp": "A primary accent and a background are enough; the rest derive from them.",
+        "previewNeedsSeeds": "Set a primary accent and a background to preview the palette.",
+        "showOverrides": "Show overrides",
+        "hideOverrides": "Hide overrides",
+        "platformDefault": "Platform default",
+        "sameAsPrimary": "Same as primary",
+        "fromBackground": "From background",
+        "derived": "Derived"
       },
       "visibility": {
         "hidden": "Hidden",
-        "hiddenHelp": "Removed from the home page and from other members' workspace picker. Members of this workspace still see it; direct links (slug page, subdomain, custom domain) keep working.",
+        "hiddenHelp": "Off the home page and other members' workspace picker. Members still see it, and direct links keep working.",
         "newcomerScope": "Newcomer scope",
         "platformWide": "Platform-wide",
         "workspaceOnly": "This workspace only",
-        "scopeHelp": "Decides who counts as a “newcomer” (rating confidence, achievements) when a roster is created: platform-wide counts a player's history in any workspace, this-workspace-only ignores it. A veteran of another workspace shows as a newcomer the first time they join this one.",
+        "scopeHelp": "Who counts as a newcomer when a roster is created. It sets rating confidence and newcomer achievements.",
         "groups": {
           "discovery": {
             "title": "Listing"
@@ -11151,7 +11193,9 @@
           "newcomers": {
             "title": "Newcomers"
           }
-        }
+        },
+        "platformWideHelp": "History in any workspace counts: only players new to the platform are newcomers.",
+        "workspaceOnlyHelp": "Only history here counts: a veteran of another workspace is a newcomer on first joining this one."
       },
       "domain": {
         "saved": "Custom domain saved. Add the DNS records below, then verify.",
@@ -11172,13 +11216,11 @@
         "domainLabel": "Domain",
         "removeDomain": "Remove domain",
         "domainPlaceholder": "tourney.example.com",
-        "enterDomain": "Enter a domain such as tourney.example.com first.",
         "saveDomain": "Save domain",
         "saving": "Saving…",
         "dnsRecords": "DNS records",
         "addRecords": "Add these two records at your DNS provider. We re-check every {seconds}s; Verify now checks at once.",
         "verifyNow": "Verify now",
-        "copyTxt": "Copy TXT value",
         "removeTitle": "Remove custom domain",
         "removeDescription": "{domain} stops serving {workspace} the moment you confirm. Visitors land on the platform URL instead. You can add it back later, but the DNS records have to be verified again.",
         "copied": "Copied to clipboard",
@@ -11195,7 +11237,12 @@
             "title": "Search engines",
             "description": "On the subdomain and the custom domain, these replace the workspace name and description in browser tabs, search results and link previews."
           }
-        }
+        },
+        "dnsType": "Type",
+        "dnsHost": "Host",
+        "dnsValue": "Value",
+        "copyHost": "Copy {type} host",
+        "copyValue": "Copy {type} value"
       },
       "discord": {
         "owner": "Owner",
@@ -11218,6 +11265,7 @@
         "english": "English",
         "saveAnnouncementError": "Could not save the announcement settings",
         "bindForbidden": "Discord says you no longer administer that server. Ask its owner for Manage Server (or ownership), then try again.",
+        "bindRelinkRequired": "Your Discord link needs refreshing before we can check which servers you manage. Re-link Discord in your account settings, then try again.",
         "bindClaimed": "Another workspace has already claimed that server. A Discord server belongs to one workspace, so ask the platform admins to release it first.",
         "bindUnreachable": "Discord could not be reached, so nothing was linked. Try again in a moment.",
         "announcementUnlinked": "This workspace no longer has a linked Discord server, so there is no channel to post in. Reload the page and link one.",
@@ -11261,7 +11309,8 @@
         "moveMembers": "Move Members",
         "ownerName": "Owner · {name}",
         "mixLoadError": "Could not load the mix settings",
-        "noVoices": "This category has no voice channels."
+        "noVoices": "This category has no voice channels.",
+        "unnamedServer": "Unnamed server"
       },
       "pages": {
         "profile": "Profile",
@@ -11277,6 +11326,17 @@
         "roles": "Sub-roles within each role, and the statuses shown on players.",
         "registrationForms": "Question sets tournaments start their registration form from.",
         "access": "Subscriptions a player needs to enter, and this workspace's rate limits."
+      },
+      "errors": {
+        "nameRequired": "The workspace needs a name.",
+        "tooLong": "At most {max} characters.",
+        "link": "Enter an https:// link to {hosts}.",
+        "hex": "Use a #RRGGBB colour, like #14B8A6.",
+        "subdomainLength": "Use 1 to 63 characters.",
+        "subdomainHyphen": "Can't start or end with a hyphen.",
+        "subdomainReserved": "“{label}” is reserved by the platform.",
+        "domain": "Enter a domain such as tourney.example.com.",
+        "domainPlatform": "Use a domain of your own, not one under {zone}."
       }
     }
   },
@@ -11376,6 +11436,7 @@
       "open": "Open page",
       "noTournamentShort": "No tournament",
       "mobileSummary": "<num>{count}</num> {count, plural, one {player} other {players}} · avg SR <num>{avgSr}</num>",
+      "pickTournament": "Pick a tournament first. A roster belongs to one tournament.",
       "emptyFiltered": "No teams in this tournament yet. Use “Create team” to add the first roster.",
       "empty": "No teams yet. Pick a tournament to see or create its rosters.",
       "deleteDescription": "Deleting “{name}” removes the roster from its tournament along with every player and match statistic below. This cannot be undone.",
@@ -11516,8 +11577,8 @@
       "collection": "Collection status",
       "collectSelected": "Collect selected ({count})",
       "collectAll": "Collect all",
-      "noTags": "No battle tag linked.",
-      "battleTag": "Battle tag",
+      "noTags": "No account linked.",
+      "battleTag": "Account",
       "status": "Status",
       "lastChecked": "Last checked",
       "lastSuccess": "Last success",
@@ -12178,13 +12239,6 @@
     "dashboardExtra": {
       "workspaceAdminHome": "{workspace} admin home",
       "statusCountTitle": "{label}: {count}",
-      "league": "League",
-      "noSession": "No session",
-      "failureBoth": "Counts, the issue list and the tournament cards are unavailable.",
-      "failureStats": "Counts and the issue list are unavailable.",
-      "failureTournaments": "The tournament cards are unavailable.",
-      "draft": "Draft",
-      "balancer": "Balancer",
       "profile": "Profile",
       "user": "User"
     },
@@ -12192,56 +12246,128 @@
       "dashboardTitle": "Dashboard",
       "defaultAdmin": "Admin",
       "createTournament": "Create tournament",
-      "loadFailed": "Dashboard data failed to load",
-      "retry": "Retry",
-      "resultsAwaitingConfirmation": "Results awaiting confirmation",
-      "overdueMatchResults": "Overdue match results",
-      "missingEncounterLogs": "Missing encounter logs",
-      "emptyBracketSlots": "Empty bracket slots",
-      "teamsWithoutRosters": "Teams without rosters",
-      "tournamentsMissingStages": "Tournaments missing stages",
-      "unlinkedPlayerIdentities": "Unlinked player identities",
-      "activeTournaments": "Active tournaments",
-      "registrationOpen": "Registration open",
-      "matchesPlayed": "Matches played",
-      "logCoverage": "Log coverage",
-      "inTotal": "{count} in total",
-      "stillToPlay": "{count} still to play",
-      "withoutLogs": "{count} without logs",
-      "tournamentDataHidden": "Tournament data is hidden",
-      "tournamentReadinessHidden": "Tournament readiness is hidden",
-      "noActiveTournaments": "No active tournaments.",
-      "viewAllTournaments": "View all tournaments",
-      "openTournament": "Open tournament",
-      "fullChecklist": "Full checklist",
-      "stepsDone": "{done} of {total} steps done",
-      "readinessLoadFailed": "Readiness could not be loaded. Open the tournament to see its checklist.",
-      "moreInChecklist": "{count} more in the full checklist",
+      "greeting": "{period, select, morning {Good morning, {username}} afternoon {Good afternoon, {username}} other {Good evening, {username}}}",
+      "pickWorkspace": "Pick a workspace in the profile menu at the bottom of the sidebar to see its tournaments.",
+      "noAccess": "Your role cannot read any dashboard data. Ask a workspace administrator for access to tournaments, teams or matches.",
+      "loadFailed": "{block}: could not load",
+      "cardsTitle": "Tournaments in progress",
+      "moreCards": "{count, plural, one {# more tournament} other {# more tournaments}}",
+      "fewerCards": "Show fewer",
+      "hidden": "Hidden",
+      "nextDeadline": "Next deadline {when}",
+      "phase": {
+        "preparation": "Preparation",
+        "registration": "Registration",
+        "formation": "Team formation",
+        "live": "In play",
+        "wrap_up": "Wrap-up"
+      },
+      "action": {
+        "preparation": "Set up",
+        "registration": "Registrations",
+        "formation": "Teams",
+        "live": "Matches",
+        "wrap_up": "Checklist"
+      },
+      "betweenTitle": "No tournaments in progress",
+      "betweenBody": "Create the next tournament: its setup, registration and matches will show up here.",
+      "noCardsForGame": "No tournaments in progress for this game.",
       "everyStepDone": "Every applicable step is done.",
+      "moreInChecklist": "{count} more in the full checklist",
       "pending": "Pending",
       "approved": "Approved",
-      "checkedIn": "Checked in",
       "ranked": "Ranked",
-      "poolReady": "Pool: {ready} ready{needFix, plural, =0 {} other { · <warn># need fixing</warn>}}",
-      "balanceSaved": "Balance saved",
-      "balanceNotSaved": "Balance not saved",
-      "exported": "Exported",
-      "issues": "Issues",
-      "issueCount": "{count, plural, one {# item needs attention} other {# items need attention}}",
-      "nothingNeedsAttention": "Nothing needs attention.",
+      "checkedIn": "Checked in",
+      "registrationsLast24h": "+{count} in the last 24 hours",
+      "registrationCloses": "Registration closes {when}",
+      "registrationOverdue": "Registration was due to close {when}",
+      "play": {
+        "completed": "Played",
+        "live": "In progress",
+        "overdue": "Overdue",
+        "pendingConfirmation": "Awaiting confirmation",
+        "disputed": "Disputed"
+      },
+      "playProgress": "{completed} of {total}",
+      "wrapUp": {
+        "results": "Results",
+        "resultsDone": "Every result is confirmed",
+        "resultsOpen": "{count, plural, one {# result is not confirmed} other {# results are not confirmed}}",
+        "logs": "Logs",
+        "logsDone": "Every duel has its logs",
+        "logsOpen": "Logs: {withLogs} of {total} duels",
+        "logsNotUsed": "This tournament does not use logs",
+        "achievements": "Achievements",
+        "achievementsDone": "Achievements are evaluated",
+        "achievementsNotConfigured": "No achievement rules are active",
+        "achievementsOpen": "Achievements are not evaluated yet",
+        "standings": "Standings",
+        "standingsDone": "Standings are recalculated",
+        "standingsOpen": "Standings are waiting for a recalculation",
+        "restricted": "{label}: no access"
+      },
+      "timeline": "Next 7 days",
+      "timelineEmpty": "No deadlines in the next 7 days.",
+      "edgeStart": "{phase} starts",
+      "edgeEnd": "{phase} ends",
+      "edgeOverdue": "{phase} start is overdue",
+      "trends": "Trends",
+      "trendsDescription": "{count, plural, =1 {The latest finished tournament} other {The latest # finished tournaments}}",
+      "trendsEmpty": "No finished tournaments to compare yet.",
+      "trendParticipants": "Participants",
+      "trendNewcomers": "Newcomer share",
+      "trendLogCoverage": "Duel log coverage",
+      "trendConfirmTime": "Time to confirm a result",
+      "trendNoData": "No data",
+      "trendAverage": "Average: {value}",
+      "workQueue": "To do",
+      "queueEmpty": "Nothing needs attention right now.",
       "needsImmediateAction": "Needs immediate action",
       "needsAttentionSoon": "Needs attention soon",
       "reviewWhenConvenient": "Review when convenient",
-      "recentTournaments": "Recent tournaments",
-      "tournamentQueueHidden": "Tournament queue is hidden",
-      "noTournamentsYet": "No tournaments yet.",
-      "finished": "Finished",
-      "active": "Active",
-      "greeting": "{period, select, morning {Good morning, {username}} afternoon {Good afternoon, {username}} other {Good evening, {username}}}",
-      "nextAction": "Next action",
-      "readiness": "Readiness",
-      "permissionNoticeTournaments": "Ask a workspace administrator to let your role view tournaments.",
-      "permissionNoticeReadiness": "Ask a workspace administrator to let your role view tournaments or teams."
+      "issue": {
+        "results_disputed": "Disputed results",
+        "results_overdue": "Overdue match results",
+        "results_pending_confirmation": "Results awaiting confirmation",
+        "phase_overdue": "Phase did not start on schedule",
+        "registrations_pending": "Registrations awaiting a decision",
+        "pool_need_fix": "Pool players need fixing",
+        "ranks_missing": "Approved players without a rank",
+        "balance_not_exported": "Balance is not exported",
+        "stage_slots_empty": "Empty bracket slots",
+        "logs_missing": "Matches without logs",
+        "achievements_pending": "Achievements are not evaluated",
+        "standings_recalc_pending": "Standings are waiting for a recalculation"
+      },
+      "activity": "Activity",
+      "activityDescription": "Staff actions over the last 7 days",
+      "includeMine": "Include mine",
+      "activityEmpty": "No staff actions this week.",
+      "activityCount": "{count, plural, one {# entry} other {# entries}}",
+      "backlog": "Backlog",
+      "backlogSummary": "{count, plural, one {# tournament with loose ends} other {# tournaments with loose ends}}",
+      "backlogMissingLogs": "Without logs: {count}",
+      "backlogTeamsWithoutPlayers": "Teams without players: {count}",
+      "backlogTournamentsWithoutStages": "Tournaments without stages: {count}",
+      "backlogEmptySlots": "Empty slots: {count}",
+      "backlogNoStages": "No stages",
+      "backlogUnlinkedIdentities": "Players without a linked account: {count}",
+      "backlogTruncated": "Showing {shown} of {total}",
+      "health": "Platform health",
+      "healthAllGood": "All systems normal",
+      "healthFailed": "Could not load",
+      "healthStreams": "Streams",
+      "healthRanks": "Rank collection",
+      "healthUnresolved": "Unresolved names",
+      "healthUnresolvedCount": "{count} waiting",
+      "healthNone": "None",
+      "healthMl": "ML models",
+      "healthMlNone": "No active models",
+      "healthMlFresh": "Up to date",
+      "healthMlStale": "Finished tournaments since training: {count}",
+      "healthAchievements": "Achievement evaluation",
+      "healthAchievementsOk": "No failures in the last 7 days",
+      "healthAchievementsFailed": "Failed runs in the last 7 days: {count}"
     }
   },
   "kit": {
@@ -12324,7 +12450,12 @@
       "clear": "Clear"
     },
     "settings": {
-      "appliesImmediately": "Applies immediately"
+      "appliesImmediately": "Applies immediately",
+      "outline": "On this page",
+      "next": "Next",
+      "nextHint": "Keep scrolling or click to open",
+      "nextHintClick": "Click to open",
+      "nextBlocked": "Save or discard your changes to move on"
     }
   },
   "kitAudit": {

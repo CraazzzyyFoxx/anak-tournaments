@@ -1,7 +1,7 @@
 """Raw, already-resolved inputs for one registration.
 
 The boundary between I/O and decision. Everything expensive -- the
-``battle_tag_state`` read, the entitlement read, any provider call -- happens once
+``rank.account_state`` read, the entitlement read, any provider call -- happens once
 per LIST in ``resolve.py`` and lands here as plain data.
 
 The evaluators and :func:`~src.services.admission.evaluate.evaluate` therefore

@@ -14,6 +14,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 __all__ = (
+    "RANK_COLLECTION_KEY_SUFFIX",
     "SETTINGS_KEY_RANK_COLLECTION",
     "SETTINGS_KEY_RANK_MAPPING",
     "SETTINGS_KEY_SCRIM",
@@ -29,6 +30,7 @@ __all__ = (
     "StreamCollectionConfig",
     "SubscriptionCollectionConfig",
     "WorkspaceCreationConfig",
+    "settings_schema",
 )
 
 SETTINGS_KEY_RANK_COLLECTION = "parser.rank_collection"
@@ -177,3 +179,22 @@ SETTINGS_SCHEMAS: dict[str, type[BaseModel]] = {
     SETTINGS_KEY_SUBSCRIPTION_COLLECTION: SubscriptionCollectionConfig,
     SETTINGS_KEY_WORKSPACE_CREATION: WorkspaceCreationConfig,
 }
+
+#: A per-game rank collector's key (``<game>.rank_collection``): stored with ``RankCollectionConfig``'s shape; each
+#: collector applies its own defaults when it reads, and may narrow the bounds (``DisciplineSpec.settings_schema``).
+RANK_COLLECTION_KEY_SUFFIX = ".rank_collection"
+
+
+def settings_schema(key: str) -> type[BaseModel] | None:
+    """The model a write to ``key`` is validated against, or ``None`` for an unknown key: a core key's own model, else
+    the model of the game module that owns the key, else ``RankCollectionConfig`` for any ``*.rank_collection``."""
+    if key in SETTINGS_SCHEMAS:
+        return SETTINGS_SCHEMAS[key]
+    # Imported on call: the registry loads the game modules, and they read these models.
+    from shared.disciplines import DISCIPLINES
+
+    for spec in DISCIPLINES.values():
+        model = spec.settings_schema(key) if spec.settings_schema is not None else None
+        if model is not None:
+            return model
+    return RankCollectionConfig if key.endswith(RANK_COLLECTION_KEY_SUFFIX) else None

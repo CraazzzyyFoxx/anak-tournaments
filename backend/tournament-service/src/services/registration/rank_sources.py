@@ -49,16 +49,24 @@ async def native_ranks_by_registration(
     discipline_code: str,
     grid: DivisionGrid,
 ) -> dict[int, dict[str, int]]:
-    """Each registration's OverFast ranks -- main accounts preferred, the best per role -- placed on ``grid``.
+    """Each registration's native ranks placed on ``grid``: OverFast main accounts for a Battle.net game, the module's
+    ``native_ranks`` otherwise.
 
-    The OverFast twin of Overwatch's native layer: a discipline whose module declares no native layer gets nothing, so
-    a LoL registrant's linked BattleTag never reads as a LoL rank.
+    A discipline whose module declares no native layer gets nothing, and a game whose identity provider is not
+    Battle.net never reads the OverFast tables, so a LoL registrant's linked BattleTag never reads as a LoL rank.
     """
-    if discipline(discipline_code).native_ranks is None:
+    spec = discipline(discipline_code)
+    if spec.native_ranks is None:
         return {}
     members = [registration for registration in registrations if registration.workspace_member is not None]
+    if spec.identity_provider != SocialProvider.BATTLENET:
+        # A module's own native layer (not the OverFast tables): the best rank across the player's accounts.
+        by_user = await spec.native_ranks(session, [r.workspace_member.player_id for r in members])
+        return normalize_native_ranks_to_grid(
+            {r.id: by_user.get(r.workspace_member.player_id, {}) for r in members}, grid
+        )
     accounts_by_user = await rank_snapshots.fetch_latest_ow_ranks_by_account(
-        session, [registration.workspace_member.player_id for registration in members]
+        session, [registration.workspace_member.player_id for registration in members], discipline=discipline_code
     )
     return normalize_native_ranks_to_grid(
         {
@@ -138,6 +146,13 @@ class _OwRankSignals:
     composite_rank_value: int | None = None
     peak_rank_value: int | None = None
     latest_snapshot: models.UserRankSnapshot | Any | None = None
+
+
+@dataclass(frozen=True)
+class _NativeSnapshot:
+    """A module's native rank standing in for the ``ow`` stage's "current" reading (no OverFast row behind it)."""
+
+    rank_value: int
 
 
 # Window for the OW rank source: the rank a player held over one week.
@@ -721,13 +736,26 @@ class RankSourcesService:
         if not rows:
             return {}
 
-        state = models.BattleTagRankState
+        state = models.RankAccountState
         polled = await session.execute(
             sa.select(state.social_account_id, state.last_success_at).where(
                 state.social_account_id.in_({row.social_account_id for row in rows})
             )
         )
         return _group_ow_rank_signals(rows, now, dict(polled.all()), week_window)
+
+    async def _load_native_rank_signals_by_user_id(
+        self, session: AsyncSession, discipline_code: str, user_ids: Iterable[int]
+    ) -> dict[int, dict[str, _OwRankSignals]]:
+        """The ``ow`` stage for a game whose native layer is its module's: one value per role, keyed by player (the
+        registration's member, whatever handle it was submitted with), standing for composite, current and peak
+        alike."""
+        ids = sorted(set(user_ids))
+        by_user = await discipline(discipline_code).native_ranks(session, ids) if ids else {}
+        return {
+            user_id: {role: _OwRankSignals(value, value, _NativeSnapshot(value)) for role, value in by_role.items()}
+            for user_id, by_role in by_user.items()
+        }
 
 
 rank_sources_service = RankSourcesService()

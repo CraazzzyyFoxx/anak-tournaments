@@ -157,8 +157,12 @@ class MemberRankResolveTests(IsolatedAsyncioTestCase):
         self.assertEqual(result[(1, "tank")], ResolvedRank(2000, "workspace"))
         self.assertEqual(result[(1, "damage")], ResolvedRank(2600, "registration"))
 
-    async def test_a_discipline_without_a_native_layer_never_reads_one(self) -> None:
-        with patch(_FETCH, new=AsyncMock(return_value={10: {"Ana#1": {"support": 1800}}})) as fetch:
+    async def test_a_game_reads_its_own_native_layer_never_overwatchs(self) -> None:
+        lol_native = AsyncMock(return_value={10: {"support": 2775}})
+        with (
+            patch(_FETCH, new=AsyncMock(return_value={10: {"Ana#1": {"support": 1800}}})) as fetch,
+            patch("shared.disciplines.lol.ranks.native_ranks", new=lol_native),
+        ):
             result = await self.service.resolve(
                 self.session,
                 workspace_id=1,
@@ -168,5 +172,6 @@ class MemberRankResolveTests(IsolatedAsyncioTestCase):
                 order=MIX_ORDER,
                 author_user_id=_HOST,
             )
-        self.assertEqual(result[(1, "support")], ResolvedRank(None, "none"))
+        self.assertEqual(result[(1, "support")], ResolvedRank(2775, "native"))
+        lol_native.assert_awaited_once_with(self.session, [10])
         fetch.assert_not_awaited()

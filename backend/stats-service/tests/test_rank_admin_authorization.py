@@ -23,6 +23,7 @@ sys.path.insert(0, str(backend_root / "stats-service"))
 
 
 from shared.core.errors import BaseAPIException  # noqa: E402
+from shared.core.social import SocialProvider  # noqa: E402
 from shared.rbac.catalog import PERMISSION_CATALOG, permission_names_for_workspace_role  # noqa: E402
 from shared.services.settings_provider import settings_provider  # noqa: E402
 
@@ -212,7 +213,9 @@ class ScopingTests(IsolatedAsyncioTestCase):
         self.assertIn("UPDATE", sql)
         self.assertIn(self.MEMBER_JOIN, sql)
         # The helper is the single definition of the membership hop.
-        self.assertIn(self.MEMBER_JOIN, str(service.workspace_account_ids(WORKSPACE)))
+        self.assertIn(
+            self.MEMBER_JOIN, str(service.workspace_account_ids(WORKSPACE, provider=SocialProvider.BATTLENET))
+        )
 
     async def test_collection_stats_scopes_every_aggregate(self) -> None:
         from shared.disciplines.overwatch.collector import service
@@ -240,7 +243,7 @@ class RpcDispatchTests(IsolatedAsyncioTestCase):
         f"rpc.stats.rank.{name}"
         for name in (
             "user_history",
-            "battle_tag_history",
+            "game_account_history",
             "user_current",
             "fetch_log",
             "stats",
@@ -314,3 +317,25 @@ class RpcDispatchTests(IsolatedAsyncioTestCase):
         envelope = await self.broker.handlers["rpc.stats.rank.stats"]({"identity": {"roles": []}}, msg=None)
         self.assertFalse(envelope["ok"], envelope)
         self.assertEqual(envelope["error"]["code"], "unauthorized")
+
+    async def test_a_subject_routes_to_the_named_games_handler(self) -> None:
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+
+        from src.rpc import rank
+
+        handler = AsyncMock(return_value={"user_id": 5, "ranks": [], "generated_at": "2026-10-21T00:00:00Z"})
+        fake = SimpleNamespace(collection_handlers={"rank.user_current": handler})
+        with patch.dict(rank.DISCIPLINES, {"lol": fake}):
+            envelope = await self.broker.handlers["rpc.stats.rank.user_current"](
+                {"id": 5, "query": {"discipline": ["lol"]}}, msg=None
+            )
+        self.assertTrue(envelope["ok"], envelope)
+        handler.assert_awaited_once()
+
+    async def test_a_game_without_rank_collection_is_not_found(self) -> None:
+        envelope = await self.broker.handlers["rpc.stats.rank.user_current"](
+            {"id": 5, "query": {"discipline": ["chess"]}}, msg=None
+        )
+        self.assertFalse(envelope["ok"], envelope)
+        self.assertEqual(envelope["error"]["code"], "not_found")

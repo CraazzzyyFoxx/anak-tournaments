@@ -1,5 +1,5 @@
 """Overwatch's native rank layer: the newest OverFast snapshot of every Battle.net account a player owns, the best
-per role. ``overwatch_rank.*`` and the collector that fills it are the module's data and task."""
+per role. ``rank.*`` (``discipline='overwatch'``) and the collector that fills it are the module's data and task."""
 
 from __future__ import annotations
 
@@ -29,4 +29,6 @@ def best_rank_per_role(accounts: Mapping[int, Mapping[str, Mapping[str, int]]]) 
 
 async def native_ranks(session: AsyncSession, user_ids: Sequence[int]) -> dict[int, dict[str, int]]:
     # Looked up on the module at call time, so a test patches ``rank_snapshots`` itself.
-    return best_rank_per_role(await rank_snapshots.fetch_latest_ow_ranks_by_account(session, list(user_ids)))
+    return best_rank_per_role(
+        await rank_snapshots.fetch_latest_ow_ranks_by_account(session, list(user_ids), discipline="overwatch")
+    )

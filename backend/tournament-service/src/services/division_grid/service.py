@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import discipline
+from shared.domain.roles import public_asset_url
 from shared.repository import (
     DivisionGridMappingRepository,
     DivisionGridMappingRuleRepository,
@@ -24,6 +25,7 @@ from shared.services.division_grid import cache as division_grid_cache
 from shared.services.division_grid.access import get_workspace_source_version_ids
 from shared.services.ontology import assert_discipline_enabled
 from src import schemas
+from src.core import config
 from src.domain.division_grid import automap
 
 __all__ = (
@@ -92,7 +94,8 @@ def _classify_tier_change(
 
 
 def ladder_tiers_write(discipline_code: str) -> list[schemas.DivisionGridTierWrite]:
-    """Project this discipline's native ladder; a ladder-less game starts empty."""
+    """Project this discipline's native ladder; a ladder-less game starts empty. A stored ``assets/`` icon key is seeded
+    as its public URL."""
     return [
         schemas.DivisionGridTierWrite(
             slug=tier.slug,
@@ -101,7 +104,7 @@ def ladder_tiers_write(discipline_code: str) -> list[schemas.DivisionGridTierWri
             sort_order=index,
             rank_min=tier.rank_min,
             rank_max=tier.rank_max,
-            icon_url=tier.icon_url,
+            icon_url=public_asset_url(tier.icon_url, public_origin=config.settings.s3_public_url) or tier.icon_url,
         )
         for index, tier in enumerate(discipline(discipline_code).native_ladder)
     ]

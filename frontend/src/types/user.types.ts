@@ -18,14 +18,24 @@ export type CharacterStatBest = Schema<"app.CharacterStatBest">;
 /** One stat of one character for a player: career total, best match and per-10 averages (player and everyone). */
 export type CharacterStat = Schema<"app.CharacterStat">;
 
+/** A character's career-best game in its class's headline stat (tank: blocked, damage: hero damage, support: healing). */
+export type CharacterRecord = Schema<"app.CharacterRecord">;
+
 export interface CharacterWithUserStats {
   character: CatalogEntityRead;
   stats: CharacterStat[];
+  /** Scored games on the character in the read's scope (hero time over 60 s); draws are games, not wins. */
+  games: number;
+  win: number;
+  loss: number;
+  draw: number;
+  /** Every player's winrate (0..1) on the character across the game, the `avg_10_all` population; `null` without games. */
+  win_rate_all: number | null;
+  record: CharacterRecord | null;
 }
 
-/** A character's stats without their per-stat best-match records: what an overview card reads (smaller RSC props). */
-export interface CharacterSummary {
-  character: CatalogEntityRead;
+/** A character without its per-stat best-match records: what an overview card reads (smaller RSC props). */
+export interface CharacterSummary extends Omit<CharacterWithUserStats, "stats"> {
   stats: Omit<CharacterStat, "best" | "best_all">[];
 }
 

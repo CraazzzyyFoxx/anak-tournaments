@@ -1,4 +1,5 @@
-"""OverFast ranks reach a registration only in a discipline whose module declares a native layer (D87; scan F4)."""
+"""OverFast ranks reach a registration only in a Battle.net game; another game reads its module's native layer (D87;
+scan F4)."""
 
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 rank_sources = importlib.import_module("src.services.registration.rank_sources")
 rank_autofill = importlib.import_module("src.services.registration.rank_autofill")
 
+from shared.core.social import SocialProvider  # noqa: E402
 from shared.division_grid import DEFAULT_GRID  # noqa: E402
 
 _FETCH = "shared.services.rank_snapshots.fetch_latest_ow_ranks_by_account"
@@ -41,10 +43,14 @@ def _ranks(discipline_code: str, fetch: AsyncMock) -> dict[int, dict[str, int]]:
         )
 
 
-def test_a_lol_registration_never_reads_overfast_ranks() -> None:
+def test_a_lol_registration_never_reads_overfast_ranks_it_reads_its_module() -> None:
     fetch = AsyncMock(return_value={7: {"Main#1234": {"support": 3550}}})
-    assert _ranks("lol", fetch) == {}
+    native = AsyncMock(return_value={})
+    spec = SimpleNamespace(native_ranks=native, identity_provider=SocialProvider.RIOT)
+    with patch.object(rank_sources, "discipline", lambda code: spec):
+        assert _ranks("lol", fetch) == {}
     fetch.assert_not_awaited()
+    assert native.await_args.args[1] == [7]
 
 
 def test_an_overwatch_registration_reads_its_main_accounts_on_the_grid() -> None:
@@ -52,10 +58,11 @@ def test_an_overwatch_registration_reads_its_main_accounts_on_the_grid() -> None
     # DEFAULT_GRID carries no native ranges, so 3550 lands by containment on Master 5 (3500..3599).
     assert _ranks("overwatch", fetch) == {42: {"support": 3500}}
     assert fetch.await_args.args[1] == [7]
+    assert fetch.await_args.kwargs["discipline"] == "overwatch"
 
 
-def test_autofill_drops_the_ow_stage_for_a_game_without_a_native_layer() -> None:
+def test_autofill_offers_the_native_stage_only_to_a_game_with_a_native_layer() -> None:
     sources = {"ow", "division_history", "analytics"}
-    assert rank_autofill.autofill_sources(sources, "lol") == {"division_history", "analytics"}
+    assert rank_autofill.autofill_sources(sources, "lol") == sources
     assert rank_autofill.autofill_sources(sources, "overwatch") == sources
     assert rank_autofill.autofill_sources(sources, None) == {"division_history", "analytics"}

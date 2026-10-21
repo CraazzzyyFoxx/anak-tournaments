@@ -23,7 +23,7 @@ OWT is a multi-tenant platform for running Overwatch tournaments from registrati
 - Browse tournaments, divisions, teams, matches, maps, heroes, and player performance.
 - Register teams, complete check-in, and follow tournament progress.
 - Watch bracket, standings, map-veto, draft, analytics-job, and stream updates in real time.
-- Link Discord, Twitch, and Battle.net identities to one OWT account.
+- Link Discord, Twitch, Battle.net, and Riot identities to one OWT account.
 - Follow live Twitch channels attached to a tournament.
 
 ### For organizers

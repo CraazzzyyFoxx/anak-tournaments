@@ -38,6 +38,7 @@ class OAuthProvider(str, Enum):
     DISCORD = "discord"
     TWITCH = "twitch"
     BATTLENET = "battlenet"
+    RIOT = "riot"
     GOOGLE = "google"
     GITHUB = "github"
 

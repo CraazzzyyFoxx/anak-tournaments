@@ -17,6 +17,7 @@ const SECTION_KEYS = [
   "prohibited",
   "suspension",
   "thirdParty",
+  "riotGames",
   "liability",
   "changes",
   "contact"

@@ -104,7 +104,7 @@ class NativeTierRead(BaseModel):
     rank_max: int | None
     icon_url: str
     native_division: str
-    native_tier: int
+    native_tier: int | None
 
 
 class DisciplineMetadata(BaseModel):

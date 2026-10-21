@@ -12,7 +12,9 @@ import { useLinkedAccount } from "@/components/admin/people/PersonAccountTab";
 import { SubscriptionStateIcon } from "@/components/admin/people/PersonSubscriptionPanel";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useDisciplines } from "@/hooks/useDisciplineMetadata";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
+import { userQueryKeys } from "@/lib/users/query-keys";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import rankService from "@/services/rank.service";
@@ -68,9 +70,13 @@ export function PersonGlance({
   const tRank = useTranslations("adminPeople.rank");
   const tAccount = useTranslations("adminAccess.common");
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
+  const gamesQuery = useDisciplines("all");
+  // ponytail: the glance names the first game that collects ranks; the Ranks tab has every game.
+  const rankGame = gamesQuery.data?.find((game) => game.capabilities.native_rank_collection)?.code ?? null;
   const ranksQuery = useQuery({
-    queryKey: adminQueryKeys.rankCurrent(personId),
-    queryFn: () => rankService.getUserCurrentRanks(personId)
+    queryKey: userQueryKeys.rankCurrent(personId, rankGame),
+    queryFn: () => rankService.getUserCurrentRanks(personId, rankGame!),
+    enabled: rankGame !== null
   });
   const ranks = (ranksQuery.data?.ranks ?? []).filter((rank) => rank.is_ranked);
   const subscriptionsQuery = useQuery({
@@ -84,7 +90,7 @@ export function PersonGlance({
   return (
     <dl className="divide-y divide-border/60">
       <GlanceRow label={t("ranks")} href={tabHref("ranks")} linkLabel={t("rankCollection")}>
-        {ranksQuery.isLoading ? (
+        {gamesQuery.isLoading || ranksQuery.isLoading ? (
           <Skeleton className="h-5 w-48" />
         ) : ranks.length === 0 ? (
           <p className={MUTED}>{t("noRank")}</p>
@@ -92,10 +98,10 @@ export function PersonGlance({
           <p className="text-sm tabular-nums">
             {ranks
               .map((rank) => {
-                const role = (ROLE_KEYS as readonly string[]).includes(rank.role)
+                const role = rank.role && (ROLE_KEYS as readonly string[]).includes(rank.role)
                   ? tRole(rank.role as (typeof ROLE_KEYS)[number])
                   : rank.role;
-                return `${role} ${divisionLabel(rank, tRank("unranked"))}`;
+                return [role, divisionLabel(rank, tRank("unranked"))].filter(Boolean).join(" ");
               })
               .join(" · ")}
           </p>

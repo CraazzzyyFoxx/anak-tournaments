@@ -26,9 +26,8 @@ import {
   rankParsingOutage,
   useRankStatusLabels
 } from "./rank-shared";
+import { rankCollectionKey } from "./rank-settings";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
-
-const RANK_SETTING_KEY = "parser.rank_collection";
 
 /** Settings keys naming each collection scope; an unknown scope prints its raw token. */
 const SCOPE_KEYS = {
@@ -36,7 +35,7 @@ const SCOPE_KEYS = {
   all: "collection.scopeAll"
 } as const;
 
-export function RankHealthDashboard() {
+export function RankHealthDashboard({ discipline }: Readonly<{ discipline: string }>) {
   const t = useTranslations("collectors.rank");
   const tCommon = useTranslations("collectors.common");
   const tSettings = useTranslations("collectors.settings.rank");
@@ -52,14 +51,14 @@ export function RankHealthDashboard() {
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
 
   const statsQuery = useQuery({
-    queryKey: adminQueryKeys.rankStats(workspaceId),
-    queryFn: () => adminService.getRankCollectionStats(),
+    queryKey: adminQueryKeys.rankStats(workspaceId, discipline),
+    queryFn: () => adminService.getRankCollectionStats(discipline),
     refetchInterval: 10000
   });
   const stats = statsQuery.data;
 
   const reenableMutation = useMutation({
-    mutationFn: () => adminService.reenableDisabledRankCollection(false),
+    mutationFn: () => adminService.reenableDisabledRankCollection(discipline, false),
     onSuccess: (result) => {
       notify.success(t("reenabled", { count: result.reenabled }));
       queryClient.invalidateQueries({ queryKey: adminQueryKeys.rank() });
@@ -70,9 +69,10 @@ export function RankHealthDashboard() {
 
   const toggleMutation = useMutation({
     mutationFn: async () => {
-      const setting = await adminService.getSetting(RANK_SETTING_KEY);
+      const settingKey = rankCollectionKey(discipline);
+      const setting = await adminService.getSetting(settingKey);
       const value = { ...(setting.value ?? {}), enabled: !(stats?.enabled ?? false) };
-      return adminService.updateSetting(RANK_SETTING_KEY, { value });
+      return adminService.updateSetting(settingKey, { value });
     },
     onSuccess: () => {
       notify.success(
@@ -100,11 +100,11 @@ export function RankHealthDashboard() {
   const okCount = stats.fetch_24h?.ok ?? 0;
   const notFoundCount = stats.fetch_24h?.not_found ?? 0;
   const errCount = (stats.fetch_24h?.error ?? 0) + (stats.fetch_24h?.rate_limited ?? 0);
-  const invalidTags = stats.invalid_battle_tags_24h ?? 0;
+  const invalidTags = stats.invalid_handles_24h ?? 0;
   const outage = rankParsingOutage(stats);
   // A breaker state the backend grows later still renders, as its raw token.
-  const circuitKey = `circuit.${stats.overfast_circuit_state ?? "closed"}` as "circuit.closed";
-  const circuitState = t.has(circuitKey) ? t(circuitKey) : (stats.overfast_circuit_state ?? "");
+  const circuitKey = `circuit.${stats.upstream_circuit_state ?? "closed"}` as "circuit.closed";
+  const circuitState = t.has(circuitKey) ? t(circuitKey) : (stats.upstream_circuit_state ?? "");
   const scope =
     stats.scope in SCOPE_KEYS
       ? tSettings(SCOPE_KEYS[stats.scope as keyof typeof SCOPE_KEYS])
@@ -147,10 +147,10 @@ export function RankHealthDashboard() {
           <AlertDescription>
             {outage.reason === "circuit_open"
               ? t("outage.circuitOpen", {
-                  host: stats.overfast_base_url || t("outage.hostFallback")
+                  host: stats.upstream_base_url || t("outage.hostFallback")
                 })
               : t("outage.stale", { since: formatRelative(format, stats.last_success_at) })}{" "}
-            {t("outage.action", { host: stats.overfast_base_url || t("outage.hostFallback") })}
+            {t("outage.action", { host: stats.upstream_base_url || t("outage.hostFallback") })}
           </AlertDescription>
         </Alert>
       )}
@@ -185,7 +185,7 @@ export function RankHealthDashboard() {
           label={t("tiles.upstream")}
           value={outage?.reason === "circuit_open" ? t("tiles.upstreamUnreachable") : circuitState}
           detail={t("tiles.upstreamDetail", {
-            host: stats.overfast_base_url || t("tiles.upstreamNotConfigured"),
+            host: stats.upstream_base_url || t("tiles.upstreamNotConfigured"),
             count: invalidTags
           })}
           tone={outage || invalidTags > 0 ? "danger" : "neutral"}

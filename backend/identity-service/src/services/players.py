@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.core.social import SocialProvider
+from shared.core.social import SocialProvider, normalize_social_handle, oauth_handle_candidates
 from shared.models.identity.oauth import OAuthConnection
 from shared.rbac import assign_default_member_role_if_roleless, workspace_names_blocking_player_unlink
 from shared.repository import (
@@ -66,22 +66,23 @@ class PlayerLinkService:
         self,
         session: AsyncSession,
         auth_user_id: int,
-    ) -> tuple[OAuthConnection | None, OAuthConnection | None]:
+    ) -> tuple[OAuthConnection | None, OAuthConnection | None, OAuthConnection | None]:
         connections = await self.connections.list_by_user_providers(
             session,
             auth_user_id=auth_user_id,
-            providers=["discord", "battlenet"],
+            providers=["discord", "battlenet", SocialProvider.RIOT],
         )
         discord_conn = next((conn for conn in connections if conn.provider == "discord"), None)
         battlenet_conn = next((conn for conn in connections if conn.provider == "battlenet"), None)
+        riot_conn = next((conn for conn in connections if conn.provider == SocialProvider.RIOT), None)
 
-        if discord_conn is None and battlenet_conn is None:
+        if discord_conn is None and battlenet_conn is None and riot_conn is None:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Link Discord or Battle.net OAuth account before linking a player",
+                detail="Link Discord, Battle.net or Riot OAuth account before linking a player",
             )
 
-        return discord_conn, battlenet_conn
+        return discord_conn, battlenet_conn, riot_conn
 
     async def _get_player(self, session: AsyncSession, player_id: int) -> models.User:
         player = await self.players.get(session, player_id)
@@ -95,7 +96,7 @@ class PlayerLinkService:
     # -- ownership ---------------------------------------------------------
 
     async def _verify_ownership(self, session: AsyncSession, auth_user_id: int, player_id: int) -> None:
-        discord_conn, battlenet_conn = await self._get_oauth_connections(session, auth_user_id)
+        discord_conn, battlenet_conn, riot_conn = await self._get_oauth_connections(session, auth_user_id)
 
         discord_match = False
         battlenet_match = False
@@ -132,10 +133,21 @@ class PlayerLinkService:
             if oauth_battletags and player_battletags and not oauth_battletags.isdisjoint(player_battletags):
                 battlenet_match = True
 
-        if not discord_match and not battlenet_match:
+        riot_match = False
+        if riot_conn is not None:
+            riot_ids = oauth_handle_candidates(
+                SocialProvider.RIOT, username=riot_conn.username, display_name=riot_conn.display_name
+            )
+            player_riot_ids = {
+                normalize_social_handle(SocialProvider.RIOT, handle)
+                for handle in await self.socials.list_handles(session, user_id=player_id, provider=SocialProvider.RIOT)
+            }
+            riot_match = bool(riot_ids & player_riot_ids)
+
+        if not discord_match and not battlenet_match and not riot_match:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Discord or Battle.net account does not match selected player",
+                detail="Discord, Battle.net or Riot account does not match selected player",
             )
 
     # -- storage -----------------------------------------------------------

@@ -10,6 +10,13 @@ export type RoleOntology = Pick<DisciplineMetadata, "workspace_id" | "roles"> & 
   dimensions: readonly OntologyDimension[];
 };
 
+/**
+ * The dictionary plus the owner game's native rank ladder (empty for a game that has none): what
+ * reading a rank typed on that game's own scale needs, a `role_ranks` answer being the one case.
+ * Every caller holds the full `DisciplineMetadata` already; this names the part it may rely on.
+ */
+export type LadderedOntology = RoleOntology & Pick<DisciplineMetadata, "native_ladder">;
+
 export function ratedDimension(ontology: RoleOntology): OntologyDimension | null {
   const rated = ontology.dimensions.filter(dimension => dimension.active && dimension.rated);
   return rated.length === 1 ? rated[0] : null;

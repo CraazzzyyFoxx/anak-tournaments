@@ -285,18 +285,18 @@ See the [P2 release guide](../../docs/multi-game-p2-roles-release.md) for errors
 
 Every grid has `discipline`; its tiers use `native_rank_min/max` for optional native-ladder
 bounds and `rank_min/max` for organizer ranks. Grid creation takes an enabled discipline
-(omission selects the workspace's first enabled one). Overwatch can seed its module's 45 tiers;
-LoL starts empty and needs organizer-entered tiers. Creating a LoL tournament without a usable
-LoL version fails with 422 `division_grid_required` before persistence. A same-discipline event
-pin is sufficient without activating a workspace default.
+(omission selects the workspace's first enabled one). A game with a module ladder seeds a new grid
+with it (Overwatch 45 tiers, LoL 31) and an event without a usable grid of its own falls back to that
+ladder; a ladder-less game needs organizer-entered tiers, and creating its tournament without a usable
+version fails with 422 `division_grid_required` before persistence. A same-discipline event pin is
+sufficient without activating a workspace default.
 
 `workspace_division_grid_default` assigns versions independently by `(workspace_id, discipline)`.
 Activation/deletion affects only the matching assignment, never another game or a valid event pin.
 Workspace reads distinguish `default_division_grid_versions` (explicit IDs) from
 `effective_division_grid_versions` (persisted version/tier payloads, including same-game system
 fallback). Missing versions are omitted. Old scalar fields and writable-map workspace payloads
-are rejected; use grid activation. The old physical pointer is retained only for migration proof
-until P9, not read or dual-written by the service.
+are rejected; use grid activation. The old physical workspace pointer is gone (`legacy01`).
 
 Portable imports read `division-grid/v1` as Overwatch, translating `ow_rank_min/max` to native
 bounds; a v1 document declaring a discipline is invalid. Exports write `division-grid/v2` with
@@ -310,8 +310,10 @@ normalize spacing around `#`, and match case-insensitively. Names are 3–16 non
 tags 3–5 alphanumeric characters. A known-owner form cannot generate/save a Battle.net default
 while owner metadata is pending or failed; a loaded existing form remains intact.
 
-OverFast registration enrichment columns and autofill's `ow` stage run only for disciplines
-declaring a native layer; profile visibility remains OW-specific. Optional manual registration
+Native registration enrichment and autofill's `ow` stage (persisted key unchanged) run only for disciplines
+declaring a native layer: a Battle.net game reads OverFast snapshots (week composite, peak, smurf
+selection), any other game its module's `native_ranks` (LoL: Solo/Duo, one value for every source).
+Profile visibility remains OW-specific and reads only Battle.net accounts. Optional manual registration
 identities remain optional. Fresh writers initialize identity collections before flush; persisted
 readers retain eager loading. P7 owns primary-identity reconciliation, provider-explicit workspace
 upsert and generic identity wire/UI renaming (including retained `battle_tag`/`smurf_tags`);

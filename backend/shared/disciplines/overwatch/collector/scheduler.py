@@ -17,6 +17,7 @@ from typing import Any
 from loguru import logger
 
 from shared.observability import observe_scheduled_job
+from shared.repository.ranks import compute_per_tick
 from shared.schemas.events import FetchRankEvent
 from shared.services.distributed_lock import (
     DistributedLockUnavailable,
@@ -27,7 +28,6 @@ from shared.services.scheduler import IntervalScheduler
 from shared.services.settings_provider import settings_provider
 
 from . import metrics, runtime, service, tasks
-from .domain import compute_per_tick
 
 SCHEDULER_TICK_SECONDS = 60
 LEADER_LOCK_KEY = "ow_rank:scheduler:leader"
@@ -110,7 +110,7 @@ async def run_collection_tick(
                     interval_seconds=cfg.interval_seconds,
                     jitter_fraction=cfg.jitter_fraction,
                 )
-                items = [(s.social_account_id, s.battle_tag) for s in due]
+                items = [(s.social_account_id, s.handle) for s in due]
                 await session.commit()
 
             # Coverage stretches past the configured interval when the population is

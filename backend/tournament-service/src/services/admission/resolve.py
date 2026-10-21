@@ -131,7 +131,7 @@ async def _profiles(
     registrations: Sequence[Any],
     config: AdmissionConfig,
 ) -> dict[int, ProfileSignal]:
-    """One batched ``battle_tag_state`` read, or nothing at all.
+    """One batched ``rank.account_state`` read, or nothing at all.
 
     A tournament that does not require open profiles pays zero queries -- the
     guard is the flag, not an empty result.

@@ -91,10 +91,18 @@ export interface AnalyticsHeroParts {
 
 export type SlotProps = {
   /**
-   * A character's hover card on a profile (8b amendment: the host passes the figures it already read — the maps
-   * tab's per-map record — and the module draws its game's presentation of them).
+   * A character's hover card on the Maps tab (8b amendment: the host passes the figures it already read — the map's
+   * per-character records and the player's winrate on the whole map — and the module draws its game's presentation).
    */
-  characterPopover: { entity: CatalogEntityRead; mapStats: UserMapCharacterStats; metadata: DisciplineMetadata };
+  characterPopover: {
+    entity: CatalogEntityRead;
+    mapStats: UserMapCharacterStats;
+    /** Every character the player played on this map, `mapStats`' own included. */
+    mapCharacters: UserMapCharacterStats[];
+    /** The player's winrate (0..1) on the whole map. */
+    mapWinRate: number;
+    metadata: DisciplineMetadata;
+  };
   /**
    * The profile's characters tab (8b amendment: the host reads the player's characters and maps once, in the
    * profile's game, and owns the tournament filter it passes as `filterSlot`).
@@ -106,19 +114,17 @@ export type SlotProps = {
     metadata: DisciplineMetadata;
   };
   /**
-   * The overview's most-played characters (8b addition). `games` is the per-character game count summed over the
-   * player's maps (`null` when the maps read failed); `characters` carry no per-stat best records.
+   * The overview's most-played characters (8b addition). `characters` carry their game record and one career-best
+   * `record`, but no per-stat best records.
    */
   topCharacters: {
     characters: CharacterSummary[];
-    games: Record<number, number> | null;
     userSlug: string;
     metadata: DisciplineMetadata;
   };
   /** Under the overview's role split: one signature character per listed rated-dimension role code (8b addition). */
   roleSignatures: {
     characters: CharacterSummary[];
-    games: Record<number, number> | null;
     roles: string[];
     metadata: DisciplineMetadata;
   };

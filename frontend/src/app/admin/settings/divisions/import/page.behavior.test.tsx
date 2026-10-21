@@ -274,7 +274,7 @@ describe("Divisions › import from workspace", () => {
       source_grid_id: 5,
       source_version_id: 51,
       include_icons: true,
-      include_ow_rank_mappings: true
+      include_native_rank_mappings: true
     });
     expect(container.textContent).toContain("18 divisions");
     expect(container.textContent).toContain("1 to resolve after import");

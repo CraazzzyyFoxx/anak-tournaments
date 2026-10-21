@@ -68,11 +68,16 @@ print(json.dumps({"collector": sorted(m for m in sys.modules if ".collector" in 
     assert out["collector"] == []
 
 
-def test_a_lol_only_worker_never_loads_the_overwatch_collector() -> None:
+def test_a_lol_only_worker_runs_its_own_collector_and_never_loads_overwatchs() -> None:
     out = _run(
         """
 import asyncio, json, sys
 from shared.disciplines import DISCIPLINES, jobs
+
+
+class Declared:
+    async def bind(self, exchange, routing_key):
+        return None
 
 
 class Broker:
@@ -80,25 +85,41 @@ class Broker:
         self.queues = []
 
     def subscriber(self, queue, **_):
-        self.queues.append(str(queue))
+        self.queues.append(queue.name)
         return lambda fn: fn
+
+    async def declare_exchange(self, exchange):
+        return exchange
+
+    async def declare_queue(self, queue):
+        return Declared()
 
 
 async def main():
     selected = [DISCIPLINES["lol"]]
     broker = Broker()
-    jobs.register_jobs(selected, broker, session_factory=object(), redis=object(), logger=object())
-    await jobs.start_jobs(selected, session_factory=object(), redis=object(), logger=object())
+    jobs.register_jobs(selected, broker, session_factory=object(), redis=object(), logger=type("L", (), {"info": lambda *a: None})())
+    await jobs.start_jobs(selected, session_factory=object(), redis=object(), logger=type("L", (), {"info": lambda *a: None})())
     for closing in jobs.stop_jobs(selected):
         await closing
     return broker.queues
 
 
 queues = asyncio.run(main())
-print(json.dumps({"queues": queues, "collector": sorted(m for m in sys.modules if ".collector" in m)}))
+print(json.dumps({"queues": sorted(queues), "overwatch": sorted(m for m in sys.modules if "overwatch.collector" in m)}))
 """
     )
-    assert out == {"queues": [], "collector": []}
+    assert out == {
+        "queues": sorted(
+            [
+                "lol_rank_fetch",
+                "lol_rank_fetch_priority",
+                "lol_rank_registration_approved",
+                "lol_rank_registration_rank_check",
+            ]
+        ),
+        "overwatch": [],
+    }
 
 
 class _Broker:
@@ -202,4 +223,6 @@ class OverwatchJobsTests(IsolatedAsyncioTestCase):
         self.assertEqual(
             set(DISCIPLINES["overwatch"].collection_handlers), {*handlers.HANDLERS, "impact.recompute_baselines"}
         )
-        self.assertEqual(DISCIPLINES["lol"].collection_handlers, {})
+        from shared.disciplines.lol import handlers as lol_handlers
+
+        self.assertEqual(set(DISCIPLINES["lol"].collection_handlers), set(lol_handlers.HANDLERS))

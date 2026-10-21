@@ -11,6 +11,7 @@ const SECTION_KEYS = [
   "use",
   "cookies",
   "sharing",
+  "riotGames",
   "retention",
   "rights",
   "children",

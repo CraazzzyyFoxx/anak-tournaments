@@ -8,14 +8,14 @@ Authority is the server. The frontend duplicates a few gates for UX and cites th
 
 ## 0. Where logic lives
 
-One PostgreSQL database, one SQLAlchemy metadata (`backend/shared`). Domain boundaries are Postgres schemas: `auth`, `players`, `public`, `tournament`, `matches`, `overwatch`, `overwatch_rank`, `balancer`, `achievements`, `analytics`, `log_processing`, `realtime`, `subscriptions`.
+One PostgreSQL database, one SQLAlchemy metadata (`backend/shared`). Domain boundaries are Postgres schemas: `auth`, `players`, `public`, `tournament`, `matches`, `overwatch`, `rank`, `balancer`, `achievements`, `analytics`, `log_processing`, `realtime`, `subscriptions`.
 
 | Owner | Decides |
 | --- | --- |
 | `tournament-svc` | Tournament lifecycle, registration, brackets, results, pick-ban, scrims, outbox sweeper |
 | `balancer-svc` | NSGA-II / mix balance, live draft, custom games |
 | `identity-svc` | JWT, OAuth, RBAC, hostnames, API keys, player linking |
-| `stats-svc` | Match logs, impact/MVP, achievements, OverFast ranks |
+| `stats-svc` | Match logs, impact/MVP, achievements, native ranks (OverFast, Riot API) |
 | `analytics-svc` | OpenSkill / linear / ML shifts |
 | `app-svc` | Public reads: players, stats, catalogs, assets |
 | `stream-svc` | Twitch live status (Redis only, no Postgres schema) |
@@ -255,14 +255,14 @@ equally strong parts with `domain/mix_lobby_split.py` (422 `not_enough_players` 
 solves each lobby. `set_variant_index` refuses a variant that would seat somebody another lobby
 already seated: 409 `seat_conflict`.
 
-`record_outcome` stamps `casual.match.lobby_index` and writes one `casual.match_busy_player` row per
+`record_outcome` stamps the round's `mix.round.lobby_index` and writes one busy `mix.round_member` row per
 member seated in another lobby's selected variant. `undo_match` rolls back the newest match **of
 that match's lobby** (`newest_id_for_lobby`), not of the mix.
 
 Rank movement on `record_outcome` follows the **host's** `user_config.rating_mode`: `points` moves
 both teams by `points_per_win` (decided matches only, frozen in `points_per_win_applied`); `ranker`
 moves each seat by the mix ranker (draws included, never against the result, frozen per seat in
-`casual.player.rank_delta_applied`) and the host's mixes balance on the effective rating. Either way
+`mix.round_member.rank_delta_applied`) and the host's mixes balance on the effective rating. Either way
 the workspace's hidden ratings (`member_hidden_rating`) advance. `undo_match` gives back what was
 frozen, then rebuilds the hidden ratings from the remaining history. The hidden book is derived data:
 saving a new `rating_min`/`rating_max`/`rating_avg`/`sigma_init` or the admin's rebuild replays it.
@@ -329,7 +329,7 @@ Parsed-match reads use `stats.match` bound to an encounter game. Overwatch match
 
 Admin match duration, display filename and source-team pointers can be null. `log_record: null` / `unlinked_only` mean no raw log is available; an internal object key is not reconstructed from the display filename. Player-stat counts exclude team-score facts, and kill/timeline arrays retain event multiplicity and chronological order. Score/duration edits and tournament/encounter/stage cascades stage narrow native-state evidence before their existing commit and retain the existing cache/outbox behavior.
 
-A **scrim** uses per-map reports to run the series engine but **does not write** `matches.match`; standings are not recalculated.
+A **scrim** uses per-map reports to run the series engine; standings are not recalculated.
 
 ### Pick-ban
 
@@ -373,13 +373,13 @@ The API returns the room as `teams[]` with slot numbers and `team_names`; the vi
 - `author_user_id IS NULL` = workspace canon (everyone sees it).
 - Non-null = that account's private book, used only for **their** mixes. The two dictionaries are never merged.
 
-Overwatch snapshots (OverFast) are normalised onto an Overwatch grid. Every grid belongs to a discipline; existing grids are Overwatch grids.
+Native snapshots (`rank.rank_snapshot`: Overwatch from OverFast, LoL Solo/Duo from the Riot API) are normalised onto the owner's grid of the same discipline. Every grid belongs to a discipline; existing grids are Overwatch grids.
 
 Grids are versioned. Cosmetic tier edits apply in place; structural edits spawn a version and auto-map from used sources of the same discipline. Activation requires complete mappings and an enabled discipline. A tournament may pin `division_grid_version_id` only from its own discipline and workspace (or a system grid). Otherwise the owner resolves its discipline's workspace default, then its discipline's system default.
 
-Workspace defaults are independently persisted per `(workspace_id, discipline)`: activating Overwatch cannot replace the LoL default. Public workspace reads expose `default_division_grid_versions` (explicit selections only) and `effective_division_grid_versions` (resolved public version/tier payloads, including same-discipline persisted system fallback). Missing persisted versions are omitted; native ladders remain module-owned. These replace the former singular ID/payload wire fields; grid activation, not workspace create/update, changes assignments. The old unmapped database column remains only for initial migration reconciliation and P9 removal.
+Workspace defaults are independently persisted per `(workspace_id, discipline)`: activating Overwatch cannot replace the LoL default. Public workspace reads expose `default_division_grid_versions` (explicit selections only) and `effective_division_grid_versions` (resolved public version/tier payloads, including same-discipline persisted system fallback). Missing persisted versions are omitted; native ladders remain module-owned. These replace the former singular ID/payload wire fields; grid activation, not workspace create/update, changes assignments.
 
-LoL has no native ladder: new LoL grids start empty, and a LoL tournament or mix (including a clone) requires a tiered LoL grid before creation. Missing or empty LoL runtime grids return 422 `division_grid_required`, never an Overwatch fallback. Overwatch retains its native-ladder fallback.
+Overwatch (45 tiers) and LoL (31 league-v4 tiers) declare native ladders: a new grid of either game is seeded with its ladder, and a tournament or mix (including a clone) without a grid of its own falls back to its own game's ladder, never another game's. A game without a native ladder needs a tiered grid of its own; missing or empty runtime grids return 422 `division_grid_required`.
 
 Legacy public player/hero statistics and workspace-wide achievements still query Overwatch data, so their grid and normalization target remain explicitly Overwatch even in a LoL-first workspace. Generic workspace rank entrypoints continue to use the first enabled discipline. Tournament player sheets, autofill previews, and pick/ban crests carry the owner's resolved grid through nested controls; the player sheet exposes no rank controls until that owner scope is available. Grid administration renders native ladder bars, native-rank columns, and native crest fallbacks only for Overwatch, never for a LoL grid with or without an activated version. Activation and version-mapping explanations apply to the selected game.
 
@@ -430,7 +430,7 @@ Shift (`actual div − predicted`) feeds achievement `div_change` / `div_level`.
 
 Match quality scores an encounter (competitiveness, predictability, skill balance) from series scores + pre-encounter team µ.
 
-Feature extraction joins `matches.statistics` (round 0, `hero_id IS NULL`) to `tournament.player` on `(team_id, tournament_id)` — a tournament-scoped roster, not `workspace_member`.
+Feature extraction reads native `stats.fact` rows (segment 0, `entity_id IS NULL`) joined to `tournament.player` — a tournament-scoped roster, not `workspace_member`.
 
 ---
 

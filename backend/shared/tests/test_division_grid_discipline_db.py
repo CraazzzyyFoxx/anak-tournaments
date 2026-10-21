@@ -127,28 +127,24 @@ class GridDisciplineTests(IsolatedAsyncioTestCase):
                     (expected[event.id], 123, 456),
                 )
 
-    async def test_missing_or_empty_lol_grid_never_becomes_an_overwatch_grid(self):
+    async def test_a_missing_lol_grid_resolves_lols_own_ladder_never_overwatchs(self):
         self.workspace.disciplines_enabled = ["lol", "overwatch"]
         await self.session.flush()
-        with self.assertRaises(BaseAPIException):
-            await get_effective_division_grid(self.session, self.workspace.id)
+        grid = await get_effective_division_grid(self.session, self.workspace.id)
+        self.assertEqual(grid.tiers[0].slug, "challenger")
         for _ in range(2):
             for scope in ({"discipline": "lol"}, {"tournament_id": self.lol_event.id}):
-                with self.assertRaises(BaseAPIException) as caught:
-                    await get_effective_division_grid(self.session, self.workspace.id, **scope)
-                self.assertEqual(caught.exception.status_code, 422)
-                self.assertIn("division_grid_required", str(caught.exception.detail))
+                grid = await get_effective_division_grid(self.session, self.workspace.id, **scope)
+                self.assertEqual(grid.tiers[0].slug, "challenger")
         empty = await self.grid("lol")
         await WorkspaceRepository().set_default_grid_version(
             self.session, self.workspace, discipline="lol", version_id=empty.id
         )
         await cache.invalidate_workspace(self.workspace.id)
-        with self.assertRaises(BaseAPIException):
-            await get_effective_division_grid(self.session, self.workspace.id, discipline="lol")
+        grid = await get_effective_division_grid(self.session, self.workspace.id, discipline="lol")
+        self.assertEqual(grid.tiers[0].slug, "challenger")
         for version_id in (None, empty.id):
-            with self.assertRaises(BaseAPIException) as caught:
-                await require_event_grid(self.session, version_id=version_id, discipline="lol")
-            self.assertIn("division_grid_required", str(caught.exception.detail))
+            await require_event_grid(self.session, version_id=version_id, discipline="lol")
         tiered = await self.grid("lol", number=9)
         await require_event_grid(self.session, version_id=tiered.id, discipline="lol")
         await require_event_grid(self.session, version_id=None, discipline="overwatch")

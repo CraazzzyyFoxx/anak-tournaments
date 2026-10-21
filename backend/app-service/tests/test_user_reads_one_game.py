@@ -338,18 +338,16 @@ class UserReadsOneGameTest(IsolatedAsyncioTestCase):
         profile = await UserService.of(None).get_profile(
             self.session, self.users["a"].id, workspace_id=ctx.id, grid=ctx.grid
         )
-        # a: T1, T2 (Overwatch) and L1 (League); League's card has no roles without its grid.
+        # a: T1, T2 (Overwatch) and L1 (League); League's card reads its roles on League's own in-code ladder.
         self.assertEqual(profile.tournaments_count, 3)
         self.assertEqual([(game.discipline, game.tournaments_count) for game in profile.games], [(OW, 2), (LOL, 1)])
-        self.assertEqual(profile.games[1].roles, [])
+        self.assertEqual([(r.division, r.division_grid_version) for r in profile.games[1].roles], [(21, None)])
 
     async def test_profile_across_communities_reads_a_games_roles_on_their_own_grid_without_a_system_grid(self) -> None:
-        from shared.core.errors import BaseAPIException
         from src.core.workspace import get_division_grid
 
-        # League has no system-wide grid and no native ladder: there is no fallback grid across communities ...
-        with self.assertRaises(BaseAPIException):
-            await get_division_grid(self.session, None, discipline=LOL)
+        # Across communities League falls back to its own ladder, never Overwatch's ...
+        self.assertEqual((await get_division_grid(self.session, None, discipline=LOL)).tiers[0].slug, "challenger")
         # ... but L1 pinned a League grid of this community, which a's League role is read on.
         version = models.DivisionGridVersion(
             grid=models.DivisionGrid(workspace_id=self.ws.id, discipline=LOL, slug=f"lol-{self.tag}", name="lol"),

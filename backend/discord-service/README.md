@@ -209,8 +209,9 @@ ranked role») and a flex checkbox, prefilled from the button's own target
 state. The submit (`owt:mix.seat_set:<game>`, fields `role1`..`role3`, `flex`) becomes one
 `self_update`; a value the bot never minted is refused before any platform call, and the panel is
 replaced in place. Refusals are worded from the mix's own blocker codes (`signup_closed`,
-`roster_full`, `role_edit_off`, …); the three link blockers (`discord_not_linked`,
-`battlenet_not_linked`, `player_not_linked`) add a profile link.
+`roster_full`, `role_edit_off`, …); the link blockers add a profile link: `discord_not_linked`,
+the mix game's provider (`battlenet_not_linked` for Overwatch, `riot_not_linked` for League of
+Legends) and the provider-neutral `player_not_linked`.
 
 **`/mix`** (guild-only) shows the same seat panel for the newest open mix of the workspace bound to
 that guild (`workspace.discord_guild_id` → `rpc.balancer.custom.self_current`), so a player never

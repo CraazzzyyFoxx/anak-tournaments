@@ -11,7 +11,7 @@ from shared.disciplines.overwatch.collector import queries as read_service
 def _snap(**kw):
     base = {
         "social_account_id": 1,
-        "battle_tag": "A#1",
+        "handle": "A#1",
         "role": "tank",
         "platform": "pc",
         "rank_value": 2000,
@@ -34,7 +34,7 @@ class FakeResult:
 
 class FakeSession:
     """``scalars`` answers the window query, then the opening-row query;
-    ``execute`` answers the ``battle_tag_state`` poll lookup."""
+    ``execute`` answers the ``account_state`` poll lookup."""
 
     def __init__(self, rows, opening=(), polled=()):
         self._scalars = [list(rows), list(opening)]
@@ -143,4 +143,4 @@ class CurrentRanksTests(IsolatedAsyncioTestCase):
         ranks = await read_service.get_current_ranks(FakeSession(rows), user_id=1)
         self.assertEqual(len(ranks), 2)
         self.assertEqual({r.role for r in ranks}, {"tank", "support"})
-        self.assertTrue(all(r.battle_tag == "A#1" for r in ranks))
+        self.assertTrue(all(r.handle == "A#1" for r in ranks))

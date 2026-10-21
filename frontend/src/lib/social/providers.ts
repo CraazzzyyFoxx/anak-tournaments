@@ -104,9 +104,10 @@ const SOCIAL_PROVIDER_CONFIG: Record<SocialProvider, SocialProviderConfig> = {
   riot: {
     value: "riot",
     label: "Riot ID",
-    icon: null,
+    icon: "/riot.png",
     color: "var(--aqt-fg-dim)",
     placeholder: "Name#TAG",
+    canBeVerified: true,
     isGameProvider: true,
     normalizeRule: "riot_id"
   }

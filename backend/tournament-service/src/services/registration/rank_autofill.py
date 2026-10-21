@@ -17,6 +17,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
+from shared.core.social import SocialProvider
 from shared.disciplines import discipline
 from shared.domain.roster import PlayerRoster
 from shared.registration_statuses import is_balancer_status_excluded
@@ -56,8 +57,9 @@ class _ResolvedAutofillStage:
 
 
 def autofill_sources(enabled: set[str], discipline_code: str | None) -> set[str]:
-    """The enabled stages a tournament of ``discipline_code`` can draw on: the OverFast ``ow`` stage reads Overwatch's
-    native layer, so a game whose module declares none never gets an OW candidate."""
+    """The enabled stages a tournament of ``discipline_code`` can draw on: the ``ow`` stage is the game's native layer
+    — OverFast for a Battle.net game, the module's ``native_ranks`` otherwise — so a game whose module declares none
+    never gets it."""
     if discipline_code is None or discipline(discipline_code).native_ranks is None:
         return enabled - {"ow"}
     return enabled
@@ -380,6 +382,16 @@ class RankAutofillService:
         accounts_by_key = await self.rank_sources._load_primary_accounts_by_key(
             session, registrations, provider=provider
         )
+        # A Battle.net game reads OverFast through the registration's primary account. Any other game's player is the
+        # registration's member, its stable identity: the handle the registration was submitted with may no longer
+        # name the account (the LoL collector follows a Riot ID rename onto it).
+        member_player_ids: dict[int, int] = (
+            {}
+            if provider == SocialProvider.BATTLENET
+            else {r.id: r.workspace_member.player_id for r in registrations if r.workspace_member is not None}
+        )
+        user_ids = [battle_tag.user_id for battle_tag in accounts_by_key.values() if battle_tag.user_id is not None]
+        user_ids += member_player_ids.values()
         # One resolve for the whole run: the role SET the plan fills, and the
         # "would this be complete" verdict, both come from these rosters.
         rosters = await roster_engine.resolve(
@@ -389,21 +401,26 @@ class RankAutofillService:
         # Only load a source when its stage is enabled (skips its DB query otherwise). A disabled
         # source contributes no candidate, so it can never win the priority chain.
         ow_signals_by_tag_id: dict[int, dict[str, _OwRankSignals]] = {}
+        native_signals_by_user_id: dict[int, dict[str, _OwRankSignals]] = {}
         if "ow" in enabled_sources:
-            ow_week_window = timedelta(days=ow_lookback_days) if ow_lookback_days else OW_RANK_WEEK_WINDOW
-            ow_signals_by_tag_id = await self.rank_sources._load_ow_rank_signals_by_social_account_id(
-                session,
-                [account.id for account in accounts_by_key.values()],
-                now,
-                ow_week_window,
-            )
+            if provider == SocialProvider.BATTLENET:
+                ow_week_window = timedelta(days=ow_lookback_days) if ow_lookback_days else OW_RANK_WEEK_WINDOW
+                ow_signals_by_tag_id = await self.rank_sources._load_ow_rank_signals_by_social_account_id(
+                    session,
+                    [account.id for account in accounts_by_key.values()],
+                    now,
+                    ow_week_window,
+                )
+            else:
+                native_signals_by_user_id = await self.rank_sources._load_native_rank_signals_by_user_id(
+                    session, tournament.discipline, user_ids
+                )
 
         # Balancer history (division_history) and tournament-participation history (analytics) are
         # both candidates in the priority chain, keyed by user_id then registration role code.
         balancer_history_by_user_id: dict[int, dict[str, int]] = {}
         analytics_history_by_user_id: dict[int, dict[str, int]] = {}
         if tournament is not None and ({"division_history", "analytics"} & enabled_sources):
-            user_ids = [battle_tag.user_id for battle_tag in accounts_by_key.values() if battle_tag.user_id is not None]
             # Normalize historical ranks from each source tournament's grid version into this
             # tournament's grid. Best-effort: skip when the target version is unknown or the
             # normalizer cannot be built (loaders then fall back to raw ranks).
@@ -437,8 +454,12 @@ class RankAutofillService:
         for registration in registrations:
             tag_key = primary_identity_key(registration, provider=provider)
             primary_account = accounts_by_key.get(tag_key or "")
-            ow_signals_by_role = ow_signals_by_tag_id.get(primary_account.id, {}) if primary_account else {}
             user_id = getattr(primary_account, "user_id", None) if primary_account else None
+            if provider == SocialProvider.BATTLENET:
+                ow_signals_by_role = ow_signals_by_tag_id.get(primary_account.id, {}) if primary_account else {}
+            else:
+                user_id = member_player_ids.get(registration.id, user_id)
+                ow_signals_by_role = native_signals_by_user_id.get(user_id or -1, {})
             balancer_by_role = balancer_history_by_user_id.get(user_id or -1, {})
             analytics_by_role = analytics_history_by_user_id.get(user_id or -1, {})
 
@@ -465,7 +486,7 @@ class RankAutofillService:
                 rank_data_by_role,
                 roster=roster,
                 provider=provider,
-                identity_linked=primary_account is not None,
+                identity_linked=primary_account is not None or user_id is not None,
                 overwrite_existing=overwrite_existing,
                 allow_partial=allow_partial,
                 applied=apply,

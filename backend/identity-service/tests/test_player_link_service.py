@@ -43,8 +43,8 @@ from tests._fakes import FakeSocialAccounts as _StubSocials  # noqa: E402
 # DB-free unit tests: stub repositories, real service logic.
 # ---------------------------------------------------------------------------
 
-NO_CONNECTION_DETAIL = "Link Discord or Battle.net OAuth account before linking a player"
-NO_MATCH_DETAIL = "Discord or Battle.net account does not match selected player"
+NO_CONNECTION_DETAIL = "Link Discord, Battle.net or Riot OAuth account before linking a player"
+NO_MATCH_DETAIL = "Discord, Battle.net or Riot account does not match selected player"
 
 
 class _StubPlayers:
@@ -162,6 +162,11 @@ def test_link_player_requires_oauth_ownership_gate() -> None:
             {SocialProvider.BATTLENET: ["Hero#2100"]},
             id="battlenet-provider-data-battletag",
         ),
+        pytest.param(
+            _conn("riot", username="Hide on bush#KR1"),
+            {SocialProvider.RIOT: ["Hide on bush # kr1"]},
+            id="riot-riot-id",
+        ),
     ],
 )
 def test_link_accepts_matching_oauth_identity(connection, handles) -> None:
@@ -196,6 +201,19 @@ def test_link_rejects_when_no_identity_matches() -> None:
     assert exc_info.value.detail == NO_MATCH_DETAIL
     assert player.auth_user_id is None
     assert session.committed is False
+
+
+def test_link_rejects_a_riot_id_that_names_another_player() -> None:
+    player = _player()
+    service = _service(
+        connections=[_conn("riot", username="Faker#KR1")],
+        handles={SocialProvider.RIOT: ["Hide on bush#KR1"]},
+        player=player,
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(service.link(_FakeSession(), CURRENT_USER, player_id=99))
+    assert (exc_info.value.status_code, exc_info.value.detail) == (403, NO_MATCH_DETAIL)
+    assert player.auth_user_id is None
 
 
 def test_link_conflicts_when_player_owned_by_another_account() -> None:

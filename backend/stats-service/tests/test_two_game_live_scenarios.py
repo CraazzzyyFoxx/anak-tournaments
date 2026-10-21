@@ -1440,15 +1440,6 @@ def tournament_registration(live: Live, ids: dict[str, Any]) -> None:
     assert LOL in invariant(
         live, "B_enabled", live.s("SELECT disciplines_enabled FROM public.workspace WHERE id=%s", b)
     )
-    # No tiered LoL grid of its own: refused, never borrowing the Overwatch grid.
-    if "B:lol" not in ids["grids"]:
-        refused(
-            call(
-                live, ids, "org", "POST", "/api/v1/admin/tournaments", _tournament_body(ids, "B", LOL, "lol in B early")
-            ),
-            422,
-            contains="division_grid_required",
-        )
     assert live.s("SELECT count(*) FROM tournament.tournament") == tournaments
     version = _b_lol_grid(live, ids)
     created = call(
@@ -2912,8 +2903,8 @@ def unsupported_and_diagnostics(live: Live, ids: dict[str, Any]) -> None:
     capabilities = meta["discipline"]["capabilities"]
     assert capabilities == {
         "catalog_sync": True,
-        "native_rank_collection": False,
-        "native_ladder": False,
+        "native_rank_collection": True,
+        "native_ladder": True,
         "achievement_conditions": False,
         "analytics": False,
     }, capabilities

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// The native-ladder layer is named by its game through an ICU variable (`layers.ow` = "{game}"). The behavior
+// The native-ladder layer is named by its game through an ICU variable (`layers.native` = "{game}"). The behavior
 // suite mocks translations as key echoes, which cannot see a consumer that forgets the variable — so this one runs
 // the table against the REAL bundles and reads the text a person would.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -59,7 +59,7 @@ vi.mock("@/services/workspace-player.service", async (importOriginal) => {
         total: 1,
         results: [
           {
-            layer: "ow",
+            layer: "native",
             discipline: "overwatch",
             player_id: 42,
             member_id: 9,
@@ -74,8 +74,8 @@ vi.mock("@/services/workspace-player.service", async (importOriginal) => {
             sigma: null,
             delta: null,
             canon_diff: null,
-            ow_division: null,
-            ow_tier: null,
+            native_division: null,
+            native_tier: null,
             context: null,
             at: "2026-01-02T03:04:05Z"
           } satisfies RankOverviewRow
@@ -131,7 +131,7 @@ describe("rank overview table with the real bundles", () => {
     // The game's own name, never the bundle key or an unresolved placeholder.
     expect(text).toContain("Overwatch");
     expect(text).not.toContain("{game}");
-    expect(text).not.toContain("layers.ow");
+    expect(text).not.toContain("layers.native");
     expect(text).not.toContain("sources.native");
   });
 });

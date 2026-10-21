@@ -75,7 +75,7 @@ from .pick_ban import (
 )
 from .preferences import FavoritePlayerRepository
 from .ranks import (
-    BattleTagRankStateRepository,
+    RankAccountStateRepository,
     RankFetchLogRepository,
     RankSnapshotRepository,
 )
@@ -197,7 +197,6 @@ __all__ = (
     "BalancerTeamSlotRepository",
     "BalancerTournamentConfigRepository",
     "BaseRepository",
-    "BattleTagRankStateRepository",
     "BracketEncounterRepository",
     "CatalogAliasMissRepository",
     "CatalogEntityRepository",
@@ -261,6 +260,7 @@ __all__ = (
     "QuotaPlanLimitRepository",
     "QuotaPlanRepository",
     "QuotaWorkspaceLimitRepository",
+    "RankAccountStateRepository",
     "RankFetchLogRepository",
     "RankSnapshotRepository",
     "RefreshTokenRepository",

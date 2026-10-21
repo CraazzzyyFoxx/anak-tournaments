@@ -24,7 +24,7 @@ __all__ = (
     "reason",
 )
 
-#: Profile-visibility codes, derived from ``overwatch_rank.battle_tag_state.status``
+#: Profile-visibility codes, derived from ``rank.account_state.status``
 #: plus the two cases that have no row at all. ``profile_private`` /
 #: ``profile_not_found`` are the only BLOCKING ones -- everything else is an
 #: unfinished or failed collection, which must fail open.

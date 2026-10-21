@@ -1,6 +1,6 @@
 """Run the runtime hooks of the disciplines a worker selected (``DisciplineSpec.register_jobs``/``start_jobs``/``stop_jobs``).
 
-A discipline without hooks (LoL: no native collection) contributes nothing, so selecting only it starts no job.
+A discipline without hooks contributes nothing, so selecting only it starts no job.
 """
 
 from __future__ import annotations

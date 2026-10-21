@@ -26,6 +26,9 @@ forward-fix only; rollback after commit means restoring that backup and matching
    no usable LoL grid fail with **422 `division_grid_required`**, before owner/scoring writes.
    Another game's default never satisfies the requirement. An explicit tiered event pin is valid
    without activating a workspace default.
+   *(2026-10-21: superseded. LoL now declares its 31-tier league-v4 ladder: a new LoL grid is seeded with it, and a
+   LoL event without a grid of its own falls back to it instead of answering 422 — see
+   [the Riot/LoL release note](./releases/2026-10-21-riot-lol.md).)*
 3. **Workspace defaults are independent maps, not a scalar.** Both WorkspaceRead surfaces expose:
    - `default_division_grid_versions: {discipline: version_id}` — explicit assignments only;
    - `effective_division_grid_versions: {discipline: DivisionGridVersionRead}` — public persisted
@@ -58,6 +61,8 @@ forward-fix only; rollback after commit means restoring that backup and matching
    nonempty values reach form validation instead of disappearing. Generated Riot record keys
    preserve space-distinct names; explicit record-key normalization stays unchanged. Organizer
    attach with a known tournament selects its provider before matching or creating an identity.
+   *(2026-10-21: Riot Sign-On shipped; a verified `riot` social account stores the PUUID as `provider_user_id` —
+   [the Riot/LoL release note](./releases/2026-10-21-riot-lol.md).)*
 6. **Open slots no longer have rank rows.** `flex` is no role: migrated open-slot rank/hidden-rating
    rows are removed from live tables and listed in the migration audit. Such seats still affect
    match results but store no hidden rating and move no host book. Unknown/flex rank writes and
@@ -67,6 +72,9 @@ forward-fix only; rollback after commit means restoring that backup and matching
    layer/`ow_division`/`ow_tier`, profile-visibility path and `include_ow_rank_mappings` vocabulary
    remain OverFast-specific; `native` is the effective-source wire name, not a promise of another
    native provider implementation.
+   *(2026-10-21: superseded. The overview layer is `native` with `native_division`/`native_tier`, the import flag is
+   `include_native_rank_mappings`, and LoL has its own native implementation (Solo/Duo from the Riot API); profile
+   visibility stays Battle.net-only — [the Riot/LoL release note](./releases/2026-10-21-riot-lol.md).)*
 8. **Receiving UI honors ownership.** Legacy OW statistics explicitly select OW even when LoL is
    first enabled. Known tournament pins/discipline reach edit controls, nested crests, autofill and
    pick/ban displays. Unresolved/pending/failed owner or pin metadata exposes no different game's
@@ -103,6 +111,8 @@ ORM-derived ERD, SQL/DBML and frontend schema snapshots describe mapped runtime 
 physical legacy migration storage**. They intentionally omit the retained old pointer/role columns
 and audit-only tables. `overwatch_rank.*` remains the OW module's data, with the collector process
 still in parser-service until P5.
+*(2026-10-21: `rank01` renamed `overwatch_rank` to the shared `rank` schema with a `discipline` per row; Overwatch and
+LoL collectors both run as module jobs in `stats-worker` — [the Riot/LoL release note](./releases/2026-10-21-riot-lol.md).)*
 
 ## Before the window and cutover
 
@@ -180,6 +190,8 @@ docker compose -f docker-compose.test.yml up -d --wait
 - **P8** implements LoL end-to-end scenarios consuming P7's contracts. A second native-ladder module
   needs its own overview SQL and registration-enrichment implementation; P3 does not generalize
   OverFast profile visibility. LoL's current lack of native ranks is intentional.
+  *(2026-10-21: LoL native ranks, its overview SQL twin and its registration enrichment shipped —
+  [the Riot/LoL release note](./releases/2026-10-21-riot-lol.md).)*
 - **P9** owns the combined release note and separately gated `discipline02`: drop retained rank role
   columns, workspace pointer/FK and flex audit, plus P1/P2 legacy storage. Reconcile before cleanup;
   adjudicate legitimate post-cutover edits rather than removing proof or bypassing a non-empty gate.
