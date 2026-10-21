@@ -57,7 +57,6 @@ from shared.schemas.role import RoleRef
 from shared.services import discord_messages
 from shared.services.discord_client import DiscordClient
 from shared.services.discord_messages import mix_subject
-from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.member_rank import MIX_ORDER
 from shared.services.ontology import workspace_discipline
 from src.core import db
@@ -486,7 +485,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         roles=list(rated_role_codes(game.discipline)),
         order=MIX_ORDER,
         author_user_id=game.host_user_id,
-        grid=await get_effective_division_grid(session, game.workspace_id, discipline=game.discipline),
+        grid=await custom_game_service.grid(session, game),
         layers=layer_rows,
     )
     author_ranks = (

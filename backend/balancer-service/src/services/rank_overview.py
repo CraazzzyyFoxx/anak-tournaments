@@ -10,8 +10,8 @@ The two *effective* layers are computed here in SQL rather than read from a
 table, and they must agree with :meth:`MemberRankService.resolve` -- the resolver
 the balancer actually runs on. ``effective_tournament`` is
 ``TOURNAMENT_ORDER`` without the registration layer (workspace canon, then the native layer
-normalised to the **workspace** grid); ``effective_mix`` is ``MIX_ORDER`` (the
-author's book, then the canon, then the native layer normalised to the same workspace grid).
+normalised to the **workspace** grid); ``effective_mix`` is ``MIX_ORDER`` (the author's book, then the canon, then the
+native layer normalised to the game's own ladder, as ``CustomGameService.grid`` -- the workspace grid only without one).
 ``tests/test_rank_overview.py`` pins that parity.
 """
 
@@ -31,7 +31,7 @@ from shared.core.errors import BaseAPIException
 from shared.core.social import SocialProvider
 from shared.disciplines import discipline as discipline_spec
 from shared.disciplines import rated_role_codes
-from shared.division_grid import DivisionGrid, division_case_expr
+from shared.division_grid import DivisionGrid, division_case_expr, ladder_grid
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.models.ranks.rank import RankAccountState, UserRankSnapshot
 from shared.repository import CatalogRoleRepository, CustomGameRoundRepository
@@ -415,7 +415,9 @@ def _branches(
         authors = sa.select(book.c.member_id, book.c.author_user_id).distinct().cte(f"rank_mix_authors_{discipline}")
         mix_book = book.alias(f"rank_mix_book_{discipline}")
         native_mix = (
-            _grid_rank_case(native_best.c.rank_value, ws_grid) if native_best is not None else _null(sa.Integer)
+            _grid_rank_case(native_best.c.rank_value, ladder_grid(discipline) or ws_grid)
+            if native_best is not None
+            else _null(sa.Integer)
         )
         value = sa.func.coalesce(mix_book.c.rank_value, canon.c.rank_value, native_mix)
         select = (

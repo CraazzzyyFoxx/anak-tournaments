@@ -96,7 +96,6 @@ class WithRosterIdentityTests(IsolatedAsyncioTestCase):
                     patch.object(custom, "custom_game_service", _service(seen)),
                     patch.object(custom, "_discord_posts", AsyncMock(return_value=[])),
                     patch.object(custom, "_game_settings", AsyncMock(return_value={})),
-                    patch.object(custom, "get_effective_division_grid", AsyncMock(return_value=None)),
                 ):
                     body = await custom._with_roster(object(), game)
 

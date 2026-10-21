@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
 from shared import models  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
-from shared.division_grid import DivisionGrid  # noqa: E402
+from shared.division_grid import DivisionGrid, ladder_grid  # noqa: E402
 from shared.models.tournament.player_role import assignment_of  # noqa: E402
 from shared.repository import CatalogRoleRepository, MemberHiddenRatingRepository  # noqa: E402
 from shared.services.division_grid.access import get_effective_division_grid  # noqa: E402
@@ -696,7 +696,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         rows, _ = await self._page(layers=("effective_mix",))
         assert {row["author_user_id"] for row in rows} == {self.auth_user_id}
         async with self.Session() as session:
-            grid = await get_effective_division_grid(session, self.workspace_id)
+            grid = ladder_grid("overwatch")
             resolved = await member_rank_service.resolve(
                 session,
                 workspace_id=self.workspace_id,

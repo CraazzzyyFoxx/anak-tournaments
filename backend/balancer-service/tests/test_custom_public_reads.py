@@ -337,11 +337,9 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
         service.player_roles.roles_for_players = AsyncMock(return_value={1: ["support", "tank"]})
         service.ranks.list_layer_rows = AsyncMock(return_value=[])
         service.ranks.resolve = AsyncMock(return_value={})
+        service.grid = AsyncMock(return_value=object())
 
-        with (
-            patch.object(custom, "custom_game_service", service),
-            patch.object(custom, "get_effective_division_grid", AsyncMock(return_value=object())),
-        ):
+        with patch.object(custom, "custom_game_service", service):
             read = await self._call("rpc.balancer.custom.get", {"workspace_id": 7, "custom_game_id": 3})
 
         self.assertTrue(read["ok"], read)

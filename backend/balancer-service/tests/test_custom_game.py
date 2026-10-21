@@ -29,6 +29,7 @@ from shared.core.enums import (  # noqa: E402
 )
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
+from shared.division_grid import ladder_grid  # noqa: E402
 from shared.domain.member_rank import ResolvedRank  # noqa: E402
 from shared.domain.roles import UnknownRole  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
@@ -410,9 +411,8 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.load_member_user_ids = AsyncMock(return_value=set())
         self.ranks.resolve = AsyncMock(return_value={})
         self.ranks.set_ranks = AsyncMock(return_value={})
-        # The workspace grid only feeds the rank resolution, which is mocked
-        # above; its tiers are bare numbers, which is why the seat badge does
-        # not come from it (see test_self_state_badges_...).
+        # The workspace grid feeds only a ladderless game's rank resolution (mocked above); its tiers are bare
+        # numbers, which is why the seat badge does not come from it (see test_self_state_badges_...).
         self.grid = SimpleNamespace(resolve_division=lambda _rank: _row(name="Division 1", slug="division-1"))
         self._grid_patch = patch(
             "src.services.custom_game.get_effective_division_grid",
@@ -773,7 +773,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(kwargs["workspace_id"], 1)
         self.assertEqual(kwargs["order"], MIX_ORDER)
         self.assertEqual(kwargs["author_user_id"], 9)
-        self.assertIs(kwargs["grid"], self.grid)
+        self.assertIs(kwargs["grid"], ladder_grid("overwatch"))
         # The resolver keys off member ids and needs the player behind each one
         # to reach an Overwatch snapshot.
         self.assertEqual(kwargs["members"], {7: 70})
@@ -1981,10 +1981,10 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         kwargs = self.ranks.resolve.await_args.kwargs
         self.assertEqual(kwargs["order"], MIX_ORDER)
         self.assertEqual(kwargs["author_user_id"], 9)
-        self.assertIs(kwargs["grid"], self.grid)
-        # The mix's own workspace grid: the system default once read every OW
-        # rank >= 2000 as its top tier and seeded 2000 into the host's book.
-        self.grid_lookup.assert_awaited_with(self.session, 1, discipline="overwatch")
+        # The game's own ladder, never the workspace grid: the 1-20 system default read every OW rank >= 2000 as its
+        # top tier and seeded 2000 into the host's book.
+        self.assertIs(kwargs["grid"], ladder_grid("overwatch"))
+        self.grid_lookup.assert_not_awaited()
 
     async def test_seeding_leaves_a_rank_the_host_already_owns_alone(self) -> None:
         """Re-adding somebody must not undo a correction the host already made."""
