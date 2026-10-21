@@ -247,4 +247,35 @@ describe("MyTeamPanel in a one-role game", () => {
       container.remove();
     });
   }
+
+  it("lists a pending invite with no slot glyph", async () => {
+    const { container, root } = await renderPanel("en", true, "deadlock", {
+      ...ONE_ROLE_TEAM,
+      invites: [{ ...TEAM.invites[0], slot_code: "agent" }],
+    });
+    const invite = [...container.querySelectorAll("li")].find((li) =>
+      li.textContent?.includes(en.registrationTeams.invite.linkLabel),
+    );
+
+    expect(invite).toBeDefined();
+    // The glyph of a role this list cannot name drew as a "?" captioned "Unknown role: agent".
+    expect(invite?.querySelector('[role="img"]')).toBeNull();
+    expect(invite?.textContent).not.toContain("?");
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  it("names a multi-role invite's slot by its role, not as an unknown one", async () => {
+    const { container, root } = await renderPanel("en", true);
+
+    expect(container.querySelector('[aria-label^="Unknown role"]')).toBeNull();
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
 });

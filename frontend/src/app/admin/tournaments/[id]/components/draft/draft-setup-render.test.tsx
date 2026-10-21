@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import type { RosterShape } from "@/lib/roster/shape";
-import { OW_METADATA } from "@/test/discipline-metadata";
+import { DEADLOCK_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { DraftFeasibility, DraftFormatSettings, DraftSession } from "@/types/draft.types";
 import type { DivisionGrid } from "@/types/workspace.types";
@@ -12,6 +12,7 @@ import { DraftConfigStep } from "./DraftConfigStep";
 import { DraftHistoryPanel } from "./DraftHistoryPanel";
 import { DraftFormatFields } from "./DraftFormatFields";
 import { DraftOrderStep } from "./DraftOrderStep";
+import { DraftPoolStep } from "./DraftPoolStep";
 import { DraftReadyStep } from "./DraftReadyStep";
 import type { DraftSetupConfig } from "./setup-types";
 
@@ -354,5 +355,47 @@ describe("draft ready step", () => {
     const reasonAt = html.indexOf(`id="${describedBy}"`);
     expect(reasonAt).toBeGreaterThan(-1);
     expect(html.slice(reasonAt, html.indexOf("</p>", reasonAt))).toContain("loadFailed");
+  });
+});
+
+describe("draft pool step", () => {
+  /** One role short, with the server's deficit for it: the strip and both lines say who is missing. */
+  const render = (ontology: typeof OW_METADATA, role: string) =>
+    renderToStaticMarkup(
+      <DraftPoolStep
+        readiness={{
+          requiredPlayers: 12,
+          actualPlayers: 10,
+          missingRanks: 0,
+          missingAccounts: 0,
+          excludedPlayers: 0,
+          roleCoverage: { [role]: 10 },
+          blockers: [`role_shortage:${role}`]
+        }}
+        feasibility={{ is_feasible: false, slot_deficits: [{ slot_code: role, unmatched_slots: 2 }] } as unknown as DraftFeasibility}
+        loading={false}
+        failed={false}
+        onRetry={() => {}}
+        teamCount={2}
+        maxTeamCount={1}
+        pinned
+        onTeamCountChange={() => {}}
+        ontology={ontology}
+      />
+    );
+
+  test("names the role short of players in a game with roles", () => {
+    const html = render(OW_METADATA, "tank");
+    expect(html).toContain("roleCoverage");
+    expect(html).toContain('blockers.role_shortage:{&quot;role&quot;:&quot;Tank&quot;}');
+    expect(html).toContain('roleDeficit:{&quot;role&quot;:&quot;Tank&quot;,&quot;count&quot;:2}');
+  });
+
+  test("counts seats, never the role, in a one-role game", () => {
+    const html = render(DEADLOCK_METADATA, "agent");
+    expect(html).not.toMatch(/agent/i);
+    expect(html).not.toContain("roleCoverage");
+    expect(html).toContain("blockers.seat_shortage");
+    expect(html).toContain('seatDeficit:{&quot;count&quot;:2}');
   });
 });

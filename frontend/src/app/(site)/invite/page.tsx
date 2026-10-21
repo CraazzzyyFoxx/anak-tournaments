@@ -13,6 +13,7 @@ import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { readInviteTokenFromHash } from "@/lib/registration/invite-link";
 import { translateRegistrationTeamError } from "@/lib/registration/team-errors";
+import { showsRoles } from "@/lib/roster/ontology";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
 import registrationService from "@/services/registration.service";
@@ -104,19 +105,19 @@ export default function InviteLandingPage() {
   }
 
   // A role this game's metadata does not name renders as its code rather than as a
-  // missing-key error: the label is decoration, the slot is the offer.
+  // missing-key error: the label is decoration, the slot is the offer. A one-role
+  // game's every slot is that role, so its offer is a seat on the roster or the bench.
   const slotLabel = slotLabelOf(preview.slot_code);
+  const seatLine = showsRoles(metadata.data)
+    ? t(preview.is_substitute ? "landing.slotSubstitute" : "landing.slot", { slot: slotLabel })
+    : t(preview.is_substitute ? "landing.seatSubstitute" : "landing.seat");
 
   const offer = (
     <div className="flex flex-col gap-1">
       <p className="text-base text-[color:var(--aqt-fg)]">
         {t("landing.invitedTo", { team: preview.team_name, tournament: preview.tournament_name })}
       </p>
-      <p className="text-sm text-[color:var(--aqt-fg-muted)]">
-        {preview.is_substitute
-          ? t("landing.slotSubstitute", { slot: slotLabel })
-          : t("landing.slot", { slot: slotLabel })}
-      </p>
+      <p className="text-sm text-[color:var(--aqt-fg-muted)]">{seatLine}</p>
     </div>
   );
 

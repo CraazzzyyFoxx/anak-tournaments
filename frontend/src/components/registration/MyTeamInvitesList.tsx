@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Button } from "@/components/ui/button";
 import { useFormatter } from "@/lib/datetime/client";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type { RegistrationTeam } from "@/types/registration-team.types";
 
 interface MyTeamInvitesListProps {
@@ -12,6 +13,10 @@ interface MyTeamInvitesListProps {
   pendingInvites: RegistrationTeam["invites"];
   canEditRoster: boolean;
   busy: boolean;
+  /** The owner game's role dictionary: a slot glyph is drawn in its scope. */
+  ontology: RoleOntology | null;
+  /** `false` in a one-role game: every offer is for that role, so no slot glyph is drawn. */
+  showsSlots: boolean;
   onExtend: (input: { inviteId: number; rotate: boolean }) => void;
   onRevoke: (inviteId: number) => void;
 }
@@ -22,6 +27,8 @@ export default function MyTeamInvitesList({
   pendingInvites,
   canEditRoster,
   busy,
+  ontology,
+  showsSlots,
   onExtend,
   onRevoke,
 }: Readonly<MyTeamInvitesListProps>) {
@@ -42,7 +49,7 @@ export default function MyTeamInvitesList({
               key={invite.id}
               className="flex flex-wrap items-center gap-2 border-l-2 border-[color:var(--aqt-amber)]/50 py-2.5 pl-3 text-sm first:pt-0 last:pb-0"
             >
-              <RosterSlotGlyph code={invite.slot_code} />
+              {showsSlots && <RosterSlotGlyph code={invite.slot_code} ontology={ontology} />}
               <span className="text-xs text-[color:var(--aqt-fg-muted)]">
                 {invite.target_handle
                   ? t("invite.targetLabel", { name: invite.target_handle })

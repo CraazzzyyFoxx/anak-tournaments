@@ -13,7 +13,7 @@ import { PageStateCard } from "@/components/ui/page-state-card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
-import type { RoleOntology } from "@/lib/roster/ontology";
+import { showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import type { DraftFeasibility } from "@/types/draft.types";
 
 import { MAX_DRAFT_TEAM_COUNT, MIN_DRAFT_TEAM_COUNT, type DraftPoolReadiness } from "./setup-model";
@@ -52,6 +52,8 @@ export function DraftPoolStep({
 }: Readonly<DraftPoolStepProps>) {
   const t = useTranslations("draftAdmin");
   const slotLabel = useSlotLabel(ontology);
+  // A one-role game's every seat is that role: its shortage is a count of seats, named by no role.
+  const named = showsRoles(ontology);
   // Max is disabled while locked or already following the maximum; these lines say why.
   const maxHintId = useId();
   const lockedHintId = useId();
@@ -131,38 +133,40 @@ export function DraftPoolStep({
         <StatTile icon={XCircle} label={t("excludedPlayers")} value={readiness.excludedPlayers} />
       </StatTileGrid>
 
-      <div className="space-y-3">
-        <h3 className="text-sm font-semibold">{t("roleCoverage")}</h3>
-        <div className="grid gap-3 sm:grid-cols-3">
-          {Object.keys(readiness.roleCoverage).map((role) => {
-            const blocked = readiness.blockers.includes(`role_shortage:${role}`);
-            return (
-              <div
-                key={role}
-                className="flex items-center justify-between rounded-xl border border-border px-4 py-3"
-              >
-                <span className="text-sm font-medium">{slotLabel(role)}</span>
-                <span className="flex items-center gap-2">
-                  <strong className="tabular-nums">{readiness.roleCoverage[role]}</strong>
-                  {blocked ? (
-                    <ShieldAlert
-                      className="h-4 w-4 text-danger"
-                      role="img"
-                      aria-label={t("blocker")}
-                    />
-                  ) : (
-                    <CheckCircle2
-                      className="h-4 w-4 text-success"
-                      role="img"
-                      aria-label={t("ready")}
-                    />
-                  )}
-                </span>
-              </div>
-            );
-          })}
+      {named && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold">{t("roleCoverage")}</h3>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {Object.keys(readiness.roleCoverage).map((role) => {
+              const blocked = readiness.blockers.includes(`role_shortage:${role}`);
+              return (
+                <div
+                  key={role}
+                  className="flex items-center justify-between rounded-xl border border-border px-4 py-3"
+                >
+                  <span className="text-sm font-medium">{slotLabel(role)}</span>
+                  <span className="flex items-center gap-2">
+                    <strong className="tabular-nums">{readiness.roleCoverage[role]}</strong>
+                    {blocked ? (
+                      <ShieldAlert
+                        className="h-4 w-4 text-danger"
+                        role="img"
+                        aria-label={t("blocker")}
+                      />
+                    ) : (
+                      <CheckCircle2
+                        className="h-4 w-4 text-success"
+                        role="img"
+                        aria-label={t("ready")}
+                      />
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       {(readiness.blockers.length > 0 || (feasibility && !feasibility.is_feasible)) && (
         <Alert variant="destructive" className="rounded-xl">
@@ -173,7 +177,9 @@ export function DraftPoolStep({
               {readiness.blockers.map((blocker) => (
                 <li key={blocker}>
                   {blocker.startsWith("role_shortage:")
-                    ? t("blockers.role_shortage", { role: slotLabel(blocker.slice("role_shortage:".length)) })
+                    ? named
+                      ? t("blockers.role_shortage", { role: slotLabel(blocker.slice("role_shortage:".length)) })
+                      : t("blockers.seat_shortage")
                     : blocker === "pool_unranked"
                       ? t("blockers.pool_unranked", { count: readiness.missingRanks })
                       : t("blockers.not_enough_players")}
@@ -181,10 +187,9 @@ export function DraftPoolStep({
               ))}
               {feasibility?.slot_deficits.map((deficit) => (
                 <li key={deficit.slot_code}>
-                  {t("roleDeficit", {
-                    role: slotLabel(deficit.slot_code),
-                    count: deficit.unmatched_slots
-                  })}
+                  {named
+                    ? t("roleDeficit", { role: slotLabel(deficit.slot_code), count: deficit.unmatched_slots })
+                    : t("seatDeficit", { count: deficit.unmatched_slots })}
                 </li>
               ))}
             </ul>

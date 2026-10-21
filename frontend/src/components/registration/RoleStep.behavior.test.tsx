@@ -447,7 +447,7 @@ describe("RoleStep in a one-role game", () => {
   /** The trigger's role-free name: the one row is the game's one role, so "for Agent" says nothing. */
   const NO_ROLE_TRIGGER = 'button[aria-label="registration.roles.matrix.heroesLabelNoRole"]';
 
-  function mountOneRole() {
+  function mountOneRole(subroleCatalog: SubroleCatalog = {}) {
     container = testWindow.document.createElement("div");
     testWindow.document.body.appendChild(container);
     root = createRoot(container as unknown as Element);
@@ -456,7 +456,7 @@ describe("RoleStep in a one-role game", () => {
         <RoleStep
           ontology={DEADLOCK_METADATA}
           params={paramsFor("optional")}
-          subroleCatalog={{}}
+          subroleCatalog={subroleCatalog}
           value={[{ role: "agent", is_primary: true }]}
           onChange={() => {}}
           allHeroes={HEROES}
@@ -484,5 +484,12 @@ describe("RoleStep in a one-role game", () => {
     expect(picker?.textContent).toContain("registration.roles.topHeroes.title");
     expect(picker?.textContent).toContain("registration.roles.topHeroes.descNoRole");
     expect(picker?.textContent).not.toContain("Agent");
+  });
+
+  it("names the specialization select without the role it belongs to", () => {
+    mountOneRole({ agent: [{ slug: "frontline", label: "Frontline" }] });
+
+    expect(container.querySelectorAll('button[aria-label="registration.roles.specialization"]')).toHaveLength(1);
+    expect(container.querySelector('[aria-label="registration.roles.roleSpecialization"]')).toBeNull();
   });
 });

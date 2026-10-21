@@ -274,6 +274,8 @@ export default function MyTeamPanel({
           pendingInvites={pendingInvites}
           canEditRoster={canEditRoster}
           busy={busy}
+          ontology={ontology}
+          showsSlots={showsSlots}
           onExtend={mutations.extendMutation.mutate}
           onRevoke={mutations.revokeMutation.mutate}
         />

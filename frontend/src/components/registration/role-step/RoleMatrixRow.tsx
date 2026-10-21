@@ -136,7 +136,11 @@ export function RoleMatrixRow({
           >
             <SelectTrigger
               id={subroleId}
-              aria-label={t("registration.roles.roleSpecialization", { role: roleLabel })}
+              aria-label={
+                showRole
+                  ? t("registration.roles.roleSpecialization", { role: roleLabel })
+                  : t("registration.roles.specialization")
+              }
               className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <SelectValue />

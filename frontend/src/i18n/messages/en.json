@@ -686,6 +686,7 @@
       "logoSaved": "Team logo updated.",
       "logoRemoved": "Team logo removed.",
       "incomplete": "Your team {team} is still incomplete: {shortfall}. Until the roster is full it cannot enter the tournament.",
+      "shortfallCount": "{count, plural, one {# player} other {# players}} missing",
       "complete": "Your team {team} has a full roster and is waiting for the organizer.",
       "exported": "Your team {team} is in the tournament.",
       "rejected": "Your team {team} was rejected by an organizer.",
@@ -827,6 +828,8 @@
       "invitedTo": "You have been invited to join {team} in {tournament}.",
       "slot": "Slot offered: {slot}",
       "slotSubstitute": "Slot offered: {slot} (substitute)",
+      "seat": "Seat offered: starter",
+      "seatSubstitute": "Seat offered: substitute",
       "signInHint": "Sign in to accept the invite. This link is not reserved for an account: the first person to join takes the slot.",
       "signInAction": "Sign in",
       "retry": "Retry loading",
@@ -5934,9 +5937,11 @@
     "blockers": {
       "not_enough_players": "There are fewer eligible players than roster slots.",
       "pool_unranked": "{count, plural, one {# pool player has no rank} other {# pool players have no rank}}. Add their ranks in the balancer.",
-      "role_shortage": "There are not enough eligible {role} players."
+      "role_shortage": "There are not enough eligible {role} players.",
+      "seat_shortage": "There are not enough eligible players to fill every seat."
     },
     "roleDeficit": "{role}: {count, plural, one {# unmatched slot} other {# unmatched slots}} after server validation.",
+    "seatDeficit": "{count, plural, one {# unmatched seat} other {# unmatched seats}} after server validation.",
     "captainsSelected": "Captains selected",
     "searchCaptains": "Search captains",
     "captainSort": "Sort captains",
