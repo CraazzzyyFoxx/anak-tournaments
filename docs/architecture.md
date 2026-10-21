@@ -253,8 +253,10 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   `encounter_map_report`, `encounter_captain_report` and the rest) are gone (`legacy01`).
   Vocabulary: [`glossary.md`](./glossary.md).
 - **Discipline catalog (`catalog`).** `catalog.entity` holds each discipline's `character`, `map`
-  and `mode` rows, with names, aliases, images and JSONB `attrs`; a map's mode is its `parent_id`,
-  and a character's class is `attrs.class`. Names and slugs are unique per discipline and kind.
+  and `mode` rows, with names, aliases, images and JSONB `attrs`; a map's `parent_id` is the mode it
+  belongs to, if any, and a character's class is `attrs.class`. A played match's mode is not read from
+  its map (Deadlock's Midtown hosts several): `stats.match.mode_entity_id` and `encounter.game.mode_id`
+  store it. Names and slugs are unique per discipline and kind.
   Behaviour lives under `backend/shared/disciplines/<slug>/`, reached only through the
   `shared.disciplines` registry: supported kinds and labels ("Hero", "Champion"), character classes,
   sides, catalog sync, `native_ranks`, `native_ladder`, `native_rank_rows`, `identity_provider` and `match_fetchers`.
@@ -318,6 +320,8 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   and `event_type` projection never reuses a same-code definition from another game.
   `stats.ingest_job` owns actual hash/raw-reference provenance and upload lifecycle, including
   `awaiting_link`. Baselines and the entity global-statistics MV also live in `stats`.
+  A match stores its own mode (the document's `mode`, else the map's catalog parent); statistics,
+  map filters, achievements and Push/Clash detection read that column, never the map's parent.
   Complete cutover receipts and narrow transaction-bound audit chains distinguish unchanged,
   review-required and unexplained data. Membership creation is absent→present only; identity
   changes require the original merge mapping. See the [cutover/operator notes](../backend/README.md#p4-statistics-cutover-stats01).

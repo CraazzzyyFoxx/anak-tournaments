@@ -564,8 +564,10 @@ role support do not by themselves enable LoL gameplay.
 
 `catalog.entity` holds `character`, `map` and `mode` rows. A module labels those core kinds
 ("Hero" or "Champion" for `character`) without inventing kinds. Names and slugs are unique per
-discipline and kind; a map's mode is its `parent_id`, constrained to the same discipline, and a
-character's class is `attrs.class`. Admin CRUD is generic by discipline and kind through
+discipline and kind; a map's `parent_id` is the mode it belongs to, if any, constrained to the same
+discipline, and a character's class is `attrs.class`. A played match's mode is stored on the match
+and the game (`stats.match.mode_entity_id`, `encounter.game.mode_id`), not read from the map: one map
+can host several modes. Admin CRUD is generic by discipline and kind through
 app-service; public hero/map/gamemode reads still project Overwatch-shaped responses.
 
 App-service startup projects each module's declarations into `catalog.role_dimension` and
@@ -1505,7 +1507,7 @@ source team, and `uq_team_member_active_member` one active seat per workspace me
 `team_member` rows carry an `active` copy of their participation's, kept in step by an
 `ON UPDATE CASCADE` composite key.
 
-`game` is one position, with the map and the accepted result; a cancelled game keeps its
+`game` is one position, with the map, the mode played (`mode_id`) and the accepted result; a cancelled game keeps its
 position as history and a repeated position is a new row. `game_team` is one row per
 participation per game: raw score, placement, the organizer's column values, the side it
 started on and the replay code. Claims mirror that shape: `game_claim` is one participation's
@@ -2503,7 +2505,8 @@ Composite unique keys:
 ## stats — `stats`
 
 Native observations and ingestion provenance share this package. `match` belongs to one
-`encounter.game`, workspace and discipline; the game's position is authoritative.
+`encounter.game`, workspace and discipline; the game's position is authoritative. `mode_entity_id` is the
+match's own mode (the document's `mode`, else its map's catalog parent): reads use it, never the map's parent.
 `match_team.source_position` preserves the log's team order, independently of the encounter
 slots used by public home/away responses. Observed scores are team facts, not substitutions
 for official `encounter.game_team.score` results.
@@ -3565,3 +3568,6 @@ the top of this document is the only revision claim here.
   `balancer.discipline01c_dropped_ranks`, `tournament.player_sub_role`, every legacy role/slot/score
   column, `registration.registration`'s Battle.net columns and the enum types only they used. It
   replaced the planned `discipline02`, `mixround02` and P9 drops.
+- **Match mode stored.** A match's mode used to be read from its map's catalog parent; Deadlock
+  plays two modes on one parentless map, so `stats.match.mode_entity_id` and `encounter.game.mode_id`
+  now store it. The migration backfilled both from the map's parent where that parent is a mode.
