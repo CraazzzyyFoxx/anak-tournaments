@@ -1,8 +1,11 @@
 """``owt.match/1``: the canonical match document a producer submits to the ingest trust boundary.
 
 Structure only. Everything here is decidable from the document alone: shapes, bounds, local uniqueness and references
-between its own parts. Whether a map/stat/event/role/provider/hint exists *for this workspace and discipline* is the
-semantic validator's job (``stats-service`` ``services/ingest/validation.py``); nothing here touches a database.
+between its own parts. Whether a map/mode/stat/event/role/provider/hint exists *for this workspace and discipline* is
+the semantic validator's job (``stats-service`` ``services/ingest/validation.py``); nothing here touches a database.
+
+``map`` is the catalog ``map`` code; ``mode`` the optional catalog ``mode`` code. Without ``mode`` the match is played
+in the map's catalog parent mode (none when the map has no parent); a given ``mode`` must agree with that parent.
 
 Every object forbids unknown fields. ``segments[].attrs``, ``events[].data`` and ``facts`` values are the deliberate
 extension points: JSON objects / finite numbers, checked recursively. Identifiers are preserved exactly (no strip, no
@@ -268,6 +271,7 @@ class MatchDoc(_Strict):
     played_at: Annotated[AwareDatetime, BeforeValidator(_aware_timestamp)]
     duration_s: NonNegative
     map: Code64
+    mode: Code64 | None = None
     teams: Annotated[list[MatchTeamDoc], Field(min_length=1)]
     participants: list[MatchParticipantDoc]
     segments: list[MatchSegmentDoc] = Field(default_factory=list)

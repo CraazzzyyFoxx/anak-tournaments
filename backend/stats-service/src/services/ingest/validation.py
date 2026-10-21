@@ -6,8 +6,10 @@ observation transaction rolled back -- a validation failure must not roll back t
 
 Scoping rules, each enforced in the query rather than after it:
 
-* entities: this discipline, kind ``map`` for the map and ``character`` for fact/event entities, ``active``; codes are
-  catalog slugs, never aliases (aliases decode a module's raw names; canonical codes are not synonym-normalised);
+* entities: this discipline, kind ``map`` for the map, ``mode`` for the mode and ``character`` for fact/event
+  entities, ``active``; codes are catalog slugs, never aliases (aliases decode a module's raw names; canonical codes are
+  not synonym-normalised). A document without ``mode`` is played in the map's catalog parent mode (if any); a given
+  ``mode`` must equal that parent when the map has one (``mode_map_mismatch``);
 * stat/event definitions: this discipline and ``active`` (``StatDefRepository.ids`` serves historical reads and does
   not filter ``active``);
 * roles: the discipline's rated dimension, module roles plus this workspace's own leaves, ancestry validated;
@@ -24,6 +26,7 @@ from typing import Literal
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from shared import models
 from shared.core.social import matches_handle_pattern
@@ -56,7 +59,7 @@ class DocumentRejected(Exception):
         super().__init__(f"{code}: {first.message}" if first else code)
 
     def misses(self) -> dict[str, tuple[str, ...]]:
-        """Distinct vocabulary misses by diagnostic kind (``character|map|stat|event|role``), ready for ``record_miss``."""
+        """Distinct vocabulary misses by kind (``character|map|mode|stat|event|role``), ready for ``record_miss``."""
         grouped: dict[str, set[str]] = {}
         for issue in self.issues:
             if issue.kind is not None and issue.raw_name is not None:
@@ -72,6 +75,8 @@ class ValidatedDocument:
     workspace_id: int
     discipline: str
     map_id: int
+    #: catalog ``mode`` entity: the document's ``mode``, else the map's parent mode; ``None`` when neither exists
+    mode_id: int | None
     #: character slug -> catalog.entity id (facts' and events' ``entity``/``related_entity``)
     entity_ids: Mapping[str, int]
     stat_ids: Mapping[str, int]
@@ -107,6 +112,8 @@ class _Collector:
 def _references(doc: MatchDoc) -> list[tuple[str, str, list[str | int]]]:
     """Every vocabulary code the document uses, as ``(kind, code, path)`` in document order."""
     refs: list[tuple[str, str, list[str | int]]] = [("map", doc.map, ["map"])]
+    if doc.mode is not None:
+        refs.append(("mode", doc.mode, ["mode"]))
     for index, fact in enumerate(doc.facts):
         refs.append(("stat", fact.stat, ["facts", index, "stat"]))
         if fact.entity is not None:
@@ -124,19 +131,31 @@ def _any(codes: set[str]):
     return sa.any_(sa.literal(sorted(codes), type_=postgresql.ARRAY(sa.String)))
 
 
-async def _entities(session: AsyncSession, discipline: str, codes: Mapping[str, set[str]]) -> dict[str, dict[str, int]]:
-    entity = models.CatalogEntity
+async def _entities(
+    session: AsyncSession, discipline: str, codes: Mapping[str, set[str]]
+) -> tuple[dict[str, dict[str, int]], dict[str, int | None]]:
+    """Active ids by kind and slug, plus each found map's parent ``mode`` id (``None`` without one)."""
+    entity, parent = models.CatalogEntity, aliased(models.CatalogEntity)
+    kinds = ("map", "mode", "character")
     rows = await session.execute(
-        sa.select(entity.kind, entity.slug, entity.id).where(
+        sa.select(entity.kind, entity.slug, entity.id, parent.id)
+        .outerjoin(
+            parent,
+            sa.and_(parent.id == entity.parent_id, parent.kind == "mode", parent.discipline == entity.discipline),
+        )
+        .where(
             entity.discipline == discipline,
             entity.active.is_(True),
-            sa.or_(*(sa.and_(entity.kind == kind, entity.slug == _any(codes[kind])) for kind in ("map", "character"))),
+            sa.or_(*(sa.and_(entity.kind == kind, entity.slug == _any(codes[kind])) for kind in kinds)),
         )
     )
-    found: dict[str, dict[str, int]] = {"map": {}, "character": {}}
-    for kind, slug, row_id in rows:
+    found: dict[str, dict[str, int]] = {kind: {} for kind in kinds}
+    map_modes: dict[str, int | None] = {}
+    for kind, slug, row_id, parent_id in rows:
         found[kind][slug] = row_id
-    return found
+        if kind == "map":
+            map_modes[slug] = parent_id
+    return found, map_modes
 
 
 async def _definitions(session: AsyncSession, model: type, discipline: str, codes: set[str]) -> dict[str, int]:
@@ -307,23 +326,31 @@ async def _validate(session: AsyncSession, workspace_id: int, doc: MatchDoc, pro
                 found.add(["events", index, "t"], "event_after_end", "t exceeds duration_s")
 
     refs = _references(doc)
-    wanted: dict[str, set[str]] = {kind: set() for kind in ("map", "character", "stat", "event")}
+    wanted: dict[str, set[str]] = {kind: set() for kind in ("map", "mode", "character", "stat", "event")}
     for kind, code, _ in refs:
         wanted[kind].add(code)
-    entities = await _entities(session, doc.discipline, wanted)
+    entities, map_modes = await _entities(session, doc.discipline, wanted)
     stat_ids = await _definitions(session, models.StatDef, doc.discipline, wanted["stat"])
     event_ids = await _definitions(session, models.EventType, doc.discipline, wanted["event"])
     resolved = {**entities, "stat": stat_ids, "event": event_ids}
     for kind, code, path in refs:
         if code not in resolved[kind]:
             found.miss(path, kind, code, f"unknown_{kind}", f"{kind} code is not available for this discipline")
+    map_mode = map_modes.get(doc.map)
+    mode_id = entities["mode"].get(doc.mode) if doc.mode is not None else map_mode
+    if doc.mode is not None and mode_id is not None and map_mode not in (None, mode_id):
+        found.miss(["mode"], "mode", doc.mode, "mode_map_mismatch", "mode is not the map's catalog mode")
     role_ids = await _roles_of(session, doc, workspace_id, found)
     await _hints(session, doc, workspace_id, found)
 
     if found.issues:
         codes = {issue.code for issue in found.issues}
         code = next(
-            (c for c in ("unknown_identity_provider", "invalid_identity", "event_after_end") if c in codes),
+            (
+                c
+                for c in ("unknown_identity_provider", "invalid_identity", "event_after_end", "mode_map_mismatch")
+                if c in codes
+            ),
             "unresolved_references",
         )
         raise DocumentRejected(code, found.issues)
@@ -332,6 +359,7 @@ async def _validate(session: AsyncSession, workspace_id: int, doc: MatchDoc, pro
         workspace_id=workspace_id,
         discipline=doc.discipline,
         map_id=entities["map"][doc.map],
+        mode_id=mode_id,
         entity_ids=entities["character"],
         stat_ids=stat_ids,
         event_type_ids=event_ids,

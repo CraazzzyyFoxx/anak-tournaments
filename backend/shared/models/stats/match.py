@@ -45,6 +45,13 @@ class StatsMatch(db.TimeStampIntegerMixin):
             name="fk_match_map",
             ondelete="RESTRICT",
         ),
+        sa.CheckConstraint("mode_kind = 'mode'", name="ck_stats_match_mode_kind"),
+        sa.ForeignKeyConstraint(
+            ["mode_entity_id", "discipline", "mode_kind"],
+            ["catalog.entity.id", "catalog.entity.discipline", "catalog.entity.kind"],
+            name="fk_match_mode",
+            ondelete="RESTRICT",
+        ),
         sa.Index("ix_stats_match_ingest_job", "ingest_job_id"),
         sa.Index("ix_stats_match_workspace", "workspace_id"),
         sa.Index("ix_stats_match_encounter", "encounter_id"),
@@ -88,6 +95,9 @@ class StatsMatch(db.TimeStampIntegerMixin):
     duration_s: Mapped[float | None] = mapped_column(sa.Double(), nullable=True)
     map_entity_id: Mapped[int] = mapped_column(sa.BigInteger())
     map_kind: Mapped[str] = mapped_column(sa.String(16), default="map", server_default="map")
+    #: The game mode played; the map's catalog parent when the document named none. ``None``: the catalog has no mode.
+    mode_entity_id: Mapped[int | None] = mapped_column(sa.BigInteger(), nullable=True)
+    mode_kind: Mapped[str] = mapped_column(sa.String(16), default="mode", server_default="mode")
 
 
 # Observation ownership survives an unknown or removed official game binding.

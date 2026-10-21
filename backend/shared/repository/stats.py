@@ -187,7 +187,9 @@ async def _validate_match(session: AsyncSession, match: models.StatsMatch) -> No
                     m.c.source_map_index,
                     m.c.encounter_game_id,
                     m.c.map_entity_id,
+                    m.c.mode_entity_id,
                     game.c.map_id,
+                    game.c.mode_id,
                     game.c.encounter_id.label("game_encounter_id"),
                     encounter.c.workspace_id.label("owner_workspace"),
                     encounter.c.discipline.label("owner_discipline"),
@@ -209,6 +211,7 @@ async def _validate_match(session: AsyncSession, match: models.StatsMatch) -> No
             "encounter_id",
             "encounter_game_id",
             "map_entity_id",
+            "mode_entity_id",
             "source_map_index",
         )
     ):
@@ -219,10 +222,14 @@ async def _validate_match(session: AsyncSession, match: models.StatsMatch) -> No
         or match.map_kind != "map"
     ):
         raise ValueError("match workspace and discipline must agree with its encounter")
+    # A game without a map yet (filled when the result applies) admits the observation's; modes differ only when both
+    # are known.
     if match.encounter_game_id is not None and (
-        row["game_encounter_id"] != match.encounter_id or row["map_id"] != match.map_entity_id
+        row["game_encounter_id"] != match.encounter_id
+        or row["map_id"] not in (None, match.map_entity_id)
+        or (None not in (row["mode_id"], match.mode_entity_id) and row["mode_id"] != match.mode_entity_id)
     ):
-        raise ValueError("match encounter and map must agree with its game")
+        raise ValueError("match encounter, map and mode must agree with its game")
     entity = models.CatalogEntity.__table__
     if not await session.scalar(
         sa.select(entity.c.id).where(
@@ -453,7 +460,7 @@ class StatsMatchRepository:
                 match.discipline == discipline,
                 encounter.workspace_id == workspace_id,
                 encounter.discipline == discipline,
-                game.map_id == match.map_entity_id,
+                sa.or_(game.map_id.is_(None), game.map_id == match.map_entity_id),
             )
         )
         if for_update:

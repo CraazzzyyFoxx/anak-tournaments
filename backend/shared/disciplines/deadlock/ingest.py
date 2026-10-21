@@ -1,7 +1,8 @@
 """deadlock-api ``/v1/matches/{id}/metadata`` -> ``owt.match/1``. Pure: the bytes and the catalog context only.
 
-Teams ``team0`` (Hidden King) and ``team1`` (Archmother), placed by ``winning_team``; the map is always ``midtown`` and
-the document carries no mode (``MatchDoc`` has none). A participant is keyed ``p<player_slot>`` (1..12, what
+Teams ``team0`` (Hidden King) and ``team1`` (Archmother), placed by ``winning_team``; the map is always ``midtown``, the
+mode is ``match_info.game_mode`` (1 ``normal``, 4 ``street_brawl``; any other ``n`` is handed on as ``mode-<n>`` so the
+semantic validator rejects it; Street Brawl rounds are not kept). A participant is keyed ``p<player_slot>`` (1..12, what
 ``killer_player_slot`` names) and identified by its Steam account id. Per-player facts on the played hero: the
 top-level counters plus the damage/healing totals of the last ``stats[]`` snapshot; one ``kill`` event per
 ``death_details`` entry, the dead player as target. A player with ``account_id == 0`` (anonymous) is dropped with its
@@ -24,6 +25,8 @@ from shared.schemas.match_doc import PROTOCOL, IngestIssue, MatchDoc, MatchDocEr
 __all__ = ("decode",)
 
 MAP = "midtown"
+#: deadlock ``ECitadelGameMode``; proto3 omits the default (0, invalid).
+MODES = {1: "normal", 4: "street_brawl"}
 TEAMS = ("team0", "team1")
 _TOP_LEVEL = ("kills", "deaths", "assists", "net_worth", "last_hits", "denies", "level")
 _LAST_SNAPSHOT = ("player_damage", "boss_damage", "player_healing", "player_damage_taken")
@@ -65,6 +68,7 @@ def _document(info: dict[str, Any], ctx: DecodeContext) -> dict[str, Any]:
                 }
             )
     winner = info.get("winning_team")
+    mode = int(info.get("game_mode", 0))
     return {
         "protocol": PROTOCOL,
         "discipline": ctx.discipline,
@@ -73,6 +77,7 @@ def _document(info: dict[str, Any], ctx: DecodeContext) -> dict[str, Any]:
         "played_at": datetime.fromtimestamp(int(info["start_time"]), UTC),
         "duration_s": float(info["duration_s"]),
         "map": MAP,
+        "mode": MODES.get(mode, f"mode-{mode}"),
         "teams": [
             {"key": team, "placement": None if winner not in (0, 1) else (1 if index == winner else 2)}
             for index, team in enumerate(TEAMS)

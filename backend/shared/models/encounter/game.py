@@ -71,6 +71,7 @@ class EncounterGame(db.TimeStampIntegerMixin):
         #: Full, not partial: the cancelled history is read too.
         Index("ix_game_encounter_id", "encounter_id"),
         Index("ix_game_map_id", "map_id"),
+        Index("ix_game_mode_id", "mode_id"),
         UniqueConstraint("id", "encounter_id", name="uq_game_id_encounter"),
         CheckConstraint("position >= 1", name="ck_game_position"),
         CheckConstraint("map_kind = 'map'", name="ck_game_map_kind"),
@@ -79,6 +80,13 @@ class EncounterGame(db.TimeStampIntegerMixin):
             ["catalog.entity.id", "catalog.entity.kind"],
             ondelete="RESTRICT",
             name="fk_game_map",
+        ),
+        CheckConstraint("mode_kind = 'mode'", name="ck_game_mode_kind"),
+        ForeignKeyConstraint(
+            ["mode_id", "mode_kind"],
+            ["catalog.entity.id", "catalog.entity.kind"],
+            ondelete="RESTRICT",
+            name="fk_game_mode",
         ),
         # confirmed => the whole accepted shape is present. Cancelled rows keep
         # whatever they had, which is why this is one-directional.
@@ -95,6 +103,9 @@ class EncounterGame(db.TimeStampIntegerMixin):
     map_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     #: Kind constant of the composite FK: the database guarantees a game is played on a map.
     map_kind: Mapped[str] = mapped_column(String(16), default="map", server_default="map")
+    #: The game mode played (Deadlock plays several on one map); empty until decided or observed.
+    mode_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    mode_kind: Mapped[str] = mapped_column(String(16), default="mode", server_default="mode")
     state: Mapped[enums.EncounterGameState] = mapped_column(
         ENCOUNTER_GAME_STATE_ENUM,
         default=enums.EncounterGameState.PLANNED,
@@ -111,6 +122,9 @@ class EncounterGame(db.TimeStampIntegerMixin):
     encounter: Mapped[Encounter] = relationship(back_populates="games")
     map: Mapped[CatalogEntity | None] = relationship(
         primaryjoin="foreign(EncounterGame.map_id) == CatalogEntity.id", viewonly=True
+    )
+    mode: Mapped[CatalogEntity | None] = relationship(
+        primaryjoin="foreign(EncounterGame.mode_id) == CatalogEntity.id", viewonly=True
     )
 
 

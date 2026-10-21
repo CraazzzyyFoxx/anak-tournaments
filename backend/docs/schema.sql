@@ -1108,6 +1108,8 @@ CREATE TABLE encounter.game (
 	position INTEGER NOT NULL,
 	map_id BIGINT,
 	map_kind VARCHAR(16) DEFAULT 'map' NOT NULL,
+	mode_id BIGINT,
+	mode_kind VARCHAR(16) DEFAULT 'mode' NOT NULL,
 	state encounter.encountergamestate DEFAULT 'planned' NOT NULL,
 	result_source encounter.encountergameresultsource,
 	result_version INTEGER DEFAULT '0' NOT NULL,
@@ -1117,6 +1119,8 @@ CREATE TABLE encounter.game (
 	CONSTRAINT ck_game_position CHECK (position >= 1),
 	CONSTRAINT ck_game_map_kind CHECK (map_kind = 'map'),
 	CONSTRAINT fk_game_map FOREIGN KEY(map_id, map_kind) REFERENCES catalog.entity (id, kind) ON DELETE RESTRICT,
+	CONSTRAINT ck_game_mode_kind CHECK (mode_kind = 'mode'),
+	CONSTRAINT fk_game_mode FOREIGN KEY(mode_id, mode_kind) REFERENCES catalog.entity (id, kind) ON DELETE RESTRICT,
 	CONSTRAINT ck_game_confirmed_shape CHECK (state != 'confirmed' OR (result_source IS NOT NULL AND confirmed_at IS NOT NULL)),
 	FOREIGN KEY(encounter_id) REFERENCES encounter.encounter (id) ON DELETE CASCADE
 );
@@ -1124,6 +1128,8 @@ CREATE TABLE encounter.game (
 CREATE INDEX ix_game_encounter_id ON encounter.game (encounter_id);
 
 CREATE INDEX ix_game_map_id ON encounter.game (map_id);
+
+CREATE INDEX ix_game_mode_id ON encounter.game (mode_id);
 
 CREATE UNIQUE INDEX uq_game_encounter_position ON encounter.game (encounter_id, position) WHERE state != 'cancelled';
 
@@ -2802,11 +2808,15 @@ CREATE TABLE stats.match (
 	duration_s DOUBLE PRECISION,
 	map_entity_id BIGINT NOT NULL,
 	map_kind VARCHAR(16) DEFAULT 'map' NOT NULL,
+	mode_entity_id BIGINT,
+	mode_kind VARCHAR(16) DEFAULT 'mode' NOT NULL,
 	PRIMARY KEY (id),
 	CONSTRAINT uq_stats_match_game UNIQUE (encounter_game_id),
 	CONSTRAINT uq_stats_match_owner UNIQUE (id, encounter_id),
 	CONSTRAINT ck_stats_match_map_kind CHECK (map_kind = 'map'),
 	CONSTRAINT fk_match_map FOREIGN KEY(map_entity_id, discipline, map_kind) REFERENCES catalog.entity (id, discipline, kind) ON DELETE RESTRICT,
+	CONSTRAINT ck_stats_match_mode_kind CHECK (mode_kind = 'mode'),
+	CONSTRAINT fk_match_mode FOREIGN KEY(mode_entity_id, discipline, mode_kind) REFERENCES catalog.entity (id, discipline, kind) ON DELETE RESTRICT,
 	CONSTRAINT fk_stats_match_workspace FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
 	CONSTRAINT fk_stats_match_encounter FOREIGN KEY(encounter_id) REFERENCES encounter.encounter (id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
 	CONSTRAINT fk_stats_match_game FOREIGN KEY(encounter_game_id) REFERENCES encounter.game (id) ON DELETE SET NULL DEFERRABLE INITIALLY DEFERRED,

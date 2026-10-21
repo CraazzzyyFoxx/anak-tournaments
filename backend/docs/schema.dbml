@@ -1079,6 +1079,8 @@ Table encounter.game {
   position int [not null]
   map_id bigint
   map_kind VARCHAR(16) [not null, default: `map`]
+  mode_id bigint
+  mode_kind VARCHAR(16) [not null, default: `mode`]
   state encountergamestate [not null, default: `planned`]
   result_source encountergameresultsource
   result_version int [not null, default: 0]
@@ -1087,6 +1089,7 @@ Table encounter.game {
     (id, encounter_id) [unique, name: "uq_game_id_encounter"]
     (encounter_id) [name: "ix_game_encounter_id"]
     (map_id) [name: "ix_game_map_id"]
+    (mode_id) [name: "ix_game_mode_id"]
     (encounter_id, position) [unique, name: "uq_game_encounter_position"]
   }
 }
@@ -2567,6 +2570,8 @@ Table stats.match {
   duration_s float8
   map_entity_id bigint [not null]
   map_kind VARCHAR(16) [not null, default: `map`]
+  mode_entity_id bigint
+  mode_kind VARCHAR(16) [not null, default: `mode`]
   indexes {
     (encounter_game_id) [unique, name: "uq_stats_match_game"]
     (id, encounter_id) [unique, name: "uq_stats_match_owner"]
@@ -3456,6 +3461,8 @@ Ref: encounter.encounter.scoring_rule_id > encounter.scoring_rule.id
 Ref: encounter.game.encounter_id > encounter.encounter.id [delete: cascade]
 Ref: encounter.game.map_id > catalog.entity.id [delete: restrict]
 Ref: encounter.game.map_kind > catalog.entity.kind [delete: restrict]
+Ref: encounter.game.mode_id > catalog.entity.id [delete: restrict]
+Ref: encounter.game.mode_kind > catalog.entity.kind [delete: restrict]
 Ref: encounter.game_claim.encounter_id > encounter.encounter.id [delete: cascade]
 Ref: encounter.game_claim.encounter_id > encounter.game.encounter_id
 Ref: encounter.game_claim.game_id > encounter.game_team.game_id
@@ -3680,6 +3687,8 @@ Ref: stats.match.ingest_job_id > stats.ingest_job.id [delete: set null]
 Ref: stats.match.map_entity_id > catalog.entity.id [delete: restrict]
 Ref: stats.match.map_kind > catalog.entity.kind [delete: restrict]
 Ref: stats.match_fetch.workspace_id > workspace.id [delete: cascade]
+Ref: stats.match.mode_entity_id > catalog.entity.id [delete: restrict]
+Ref: stats.match.mode_kind > catalog.entity.kind [delete: restrict]
 Ref: stats.match_fetch.discipline > catalog.discipline.code
 Ref: stats.match_fetch.hint_tournament_id > tournament.tournament.id [delete: cascade]
 Ref: stats.match_fetch.hint_encounter_id > encounter.encounter.id [delete: cascade]

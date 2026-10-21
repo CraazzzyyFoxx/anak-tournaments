@@ -13,7 +13,7 @@ baselines and Discord channels live in `stats/`. `catalog/` writes only to `cata
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`deadlock01`** (130 revisions in `backend/migrations/versions/`).
+Alembic head: **`owmapdrop01`** (133 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -1555,6 +1555,8 @@ erDiagram
         int position
         bigint map_id FK "nullable"
         varchar(16) map_kind FK
+        bigint mode_id FK "nullable"
+        varchar(16) mode_kind FK
         encountergamestate state
         encountergameresultsource result_source "nullable"
         int result_version
@@ -1746,7 +1748,9 @@ erDiagram
 
     AUTH_USER |o--o{ ENCOUNTER_ROOM_EVENT : "actor_auth_user_id"
     CATALOG_ENTITY |o--o{ ENCOUNTER_GAME : "map_id"
+    CATALOG_ENTITY |o--o{ ENCOUNTER_GAME : "mode_id"
     CATALOG_ENTITY ||--o{ ENCOUNTER_GAME : "map_kind"
+    CATALOG_ENTITY ||--o{ ENCOUNTER_GAME : "mode_kind"
     CATALOG_ROLE ||--o{ ENCOUNTER_TEAM_MEMBER_ROLE : "dimension_id"
     CATALOG_ROLE ||--o| ENCOUNTER_TEAM_MEMBER_ROLE : "role_id"
     ENCOUNTER_ENCOUNTER |o--o{ ENCOUNTER_TEAM : "tournament_id"
@@ -2617,6 +2621,8 @@ erDiagram
         float8 duration_s "nullable"
         bigint map_entity_id FK
         varchar(16) map_kind FK
+        bigint mode_entity_id FK "nullable"
+        varchar(16) mode_kind FK
     }
     STATS_MATCH_FETCH {
         bigint id PK
@@ -2687,11 +2693,13 @@ erDiagram
     CATALOG_ENTITY |o--o{ STATS_EVENT : "entity_id"
     CATALOG_ENTITY |o--o{ STATS_EVENT : "related_entity_id"
     CATALOG_ENTITY |o--o{ STATS_FACT : "entity_id"
+    CATALOG_ENTITY |o--o{ STATS_MATCH : "mode_entity_id"
     CATALOG_ENTITY ||--o{ STATS_EVENT : "entity_kind"
     CATALOG_ENTITY ||--o{ STATS_FACT : "entity_kind"
     CATALOG_ENTITY ||--o{ STATS_MATCH : "discipline"
     CATALOG_ENTITY ||--o{ STATS_MATCH : "map_entity_id"
     CATALOG_ENTITY ||--o{ STATS_MATCH : "map_kind"
+    CATALOG_ENTITY ||--o{ STATS_MATCH : "mode_kind"
     CATALOG_ROLE |o--o{ STATS_MATCH_PLAYER : "observed_role_id"
     CATALOG_ROLE ||--o{ STATS_STAT_BASELINE : "role_id"
     ENCOUNTER_ENCOUNTER |o--o{ STATS_INGEST_JOB : "hint_encounter_id"
