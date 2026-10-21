@@ -309,8 +309,8 @@ def projection(scope: Scope, identity_map: Sequence[dict] = ()) -> tuple[Project
         headers = {
             "header": _cols(
                 "m.id m.created_at m.workspace_id m.discipline m.encounter_game_id m.map_entity_id m.map_kind "
-                "m.encounter_id m.source_map_index m.mode_entity_id m.mode_kind",
-                text=("m.discipline", "m.map_kind", "m.mode_kind"),
+                "m.encounter_id m.source_map_index",
+                text=("m.discipline", "m.map_kind"),
             ),
             "lifecycle": _cols("m.revision m.ingest_job_id"),
             "updated_at": _cols("m.updated_at"),
