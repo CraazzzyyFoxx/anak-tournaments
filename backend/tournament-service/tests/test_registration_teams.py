@@ -951,15 +951,6 @@ class InviteHistoryTests(TestCase):
 class CaptainReadGateTests(TestCase):
     """Reading is not editing."""
 
-    def test_the_read_gate_does_not_require_a_mutable_team(self) -> None:
-        """A captain must be able to read the history of a team that was rejected or
-        already exported — those are exactly the cases someone opens it to
-        understand."""
-        read_gate = _code_of(teams.teams_service.assert_captain_of_team)
-
-        self.assertIn("_assert_captain", read_gate)
-        self.assertNotIn("_assert_mutable", read_gate)
-
     def test_the_edit_gate_still_requires_one(self) -> None:
         """The mutability rule did not disappear; it stayed where it belongs."""
         edit_gate = _code_of(teams.teams_service.assert_may_edit_team)

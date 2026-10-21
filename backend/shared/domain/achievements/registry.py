@@ -137,12 +137,6 @@ def get_specs(*, discipline: str) -> dict[str, LeafSpec]:
     return {name: spec for (code, name), spec in _SPECS.items() if code == discipline}
 
 
-def get_registered_types(*, discipline: str) -> list[str]:
-    """Return the condition type names ``discipline`` can execute."""
-    _load(discipline)
-    return sorted(name for code, name in _REGISTRY if code == discipline)
-
-
 def get_executor(condition_type: str, *, discipline: str) -> LeafExecutor:
     """The executor ``discipline`` registered for ``condition_type``; ``ValueError`` when there is none."""
     _load(discipline)

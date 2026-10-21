@@ -11,7 +11,6 @@ from shared import models
 from shared.core import enums, pagination
 from shared.core.social import GAME_PROVIDERS, SocialProvider, normalize_social_handle
 from shared.disciplines import discipline
-from shared.division_grid import DivisionGrid, division_case_expr
 from shared.models.stats.match import mv_entity_global_stats
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import tournament_effective_version_id_expr
@@ -342,31 +341,6 @@ class UserProfileQueries(DisciplineQueries):
             (RoleRef.of(discipline(code).rated_dimension.code, role, sub_role), won, lost, entries)
             for role, code, sub_role, won, lost, entries in result.all()
         ]
-
-    async def get_tournament_role(
-        self, session: AsyncSession, tournament: models.Tournament, user_id: int, *, grid: DivisionGrid
-    ) -> tuple[RoleRef | None, int]:
-        """A user's ``(role, division)`` in one tournament — the division already resolved
-        against ``grid``, not the raw rank.
-        """
-        query = (
-            sa.select(
-                models.Player.role, models.Player.sub_role, division_case_expr(models.Player.rank, grid).label("div")
-            )
-            .select_from(models.Player)
-            .join(models.Team, models.Team.id == models.Player.team_id)
-            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-            .where(
-                sa.and_(
-                    models.Team.tournament_id == tournament.id,
-                    models.WorkspaceMember.player_id == user_id,
-                    models.Player.is_substitution.is_(False),
-                )
-            )
-        )
-        result_role = await session.execute(query)
-        role, sub_role, division = result_role.one()
-        return RoleRef.of(discipline(tournament.discipline).rated_dimension.code, role, sub_role), division
 
     async def get_tournaments_with_stats(
         self,

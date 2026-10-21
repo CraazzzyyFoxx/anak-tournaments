@@ -1,11 +1,9 @@
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
 __all__ = (
     "ApiExc",
     "BaseAPIException",
     "ApiHTTPException",
-    "ValidationErrorDetail",
-    "APIValidationError",
 )
 
 
@@ -51,27 +49,4 @@ class ApiHTTPException(BaseAPIException):
             status_code=status_code,
             detail=[e.model_dump(mode="json") for e in detail],
             headers=headers,
-        )
-
-
-class ValidationErrorDetail(BaseModel):
-    location: str
-    message: str
-    error_type: str
-
-
-class APIValidationError(BaseModel):
-    errors: list[ValidationErrorDetail]
-
-    @classmethod
-    def from_pydantic(cls, exc: ValidationError) -> APIValidationError:
-        return cls(
-            errors=[
-                ValidationErrorDetail(
-                    location=" -> ".join(map(str, err["loc"])),
-                    message=str(err["msg"]),
-                    error_type=str(err["type"]),
-                )
-                for err in exc.errors()
-            ],
         )

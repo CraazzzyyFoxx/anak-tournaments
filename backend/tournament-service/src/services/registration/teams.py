@@ -509,26 +509,6 @@ class RegistrationTeamService:
         # by ``describe_team`` without a refresh round-trip.
         return team
 
-    async def assert_captain_of_team(
-        self,
-        session: AsyncSession,
-        *,
-        team_id: int,
-        auth_user: models.AuthUser,
-    ) -> models.RegistrationTeam:
-        """Captaincy alone, with no mutability rule and no row lock.
-
-        Separate from :meth:`assert_may_edit_team` because reading is not editing: a
-        captain must still be able to read the history of a team that was rejected or
-        already exported, and folding ``_assert_mutable`` in would refuse exactly the
-        cases someone opens the history to understand.
-        """
-        team = await self.team_repo.get_by(session, id=team_id, deleted_at=None)
-        if team is None:
-            raise _fail(404, "team_not_found", "Team not found")
-        await self._assert_captain(session, team, auth_user)
-        return team
-
     async def assert_may_edit_team(
         self,
         session: AsyncSession,

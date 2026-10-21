@@ -28,15 +28,13 @@ class DivisionRankDomainTests(TestCase):
         self.assertEqual(2, division_rank.resolve_division_for_rank(grid, 250))
         self.assertEqual(2, division_rank.resolve_division_for_rank(grid, 50))
 
-    def test_resolves_rank_from_division_and_clamps_to_grid_bounds(self) -> None:
+    def test_resolves_rank_from_division(self) -> None:
         grid = make_grid()
 
         self.assertEqual(500, division_rank.resolve_rank_for_division(grid, 1))
         # Tier floor, not the band midpoint: a division->rank round trip has to land on
         # the same rank_value every other grid path uses (the 4449-for-Grandmaster-1 bug).
         self.assertEqual(100, division_rank.resolve_rank_for_division(grid, 2))
-        self.assertEqual(1, division_rank.clamp_division_to_grid(grid, -4))
-        self.assertEqual(2, division_rank.clamp_division_to_grid(grid, 99))
 
 
 class DivisionGridCachedAccessTests(IsolatedAsyncioTestCase):

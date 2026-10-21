@@ -85,17 +85,6 @@ class UserRepository(BaseRepository[models.User]):
             return [join_entity(child, models.User.social_accounts)]
         return []
 
-    @staticmethod
-    def visible_social_accounts(user: models.User, in_entities: Sequence[str]) -> list[models.SocialAccount]:
-        """Social accounts to expose for the requested entity tokens, sorted
-        (primary account per provider first, then insertion order) — the
-        shared filter+sort core every service's ``UserRead`` wire-mapping
-        builds on; only the final pydantic shape stays per-service.
-        """
-        if not any(name in in_entities for name in UserRepository.IDENTITY_ENTITY_TOKENS):
-            return []
-        return sorted(user.social_accounts, key=lambda a: (a.provider, not a.is_primary, a.id))
-
 
 class SocialAccountRepository(BaseRepository[models.SocialAccount]):
     """Unified player social identities (battlenet/discord/twitch/boosty/…)."""
@@ -332,20 +321,6 @@ class SocialAccountVisibilityRepository(BaseRepository[models.SocialAccountVisib
     def __init__(self) -> None:
         super().__init__(models.SocialAccountVisibility)
 
-    async def list_for_accounts(
-        self,
-        session: AsyncSession,
-        account_ids: Sequence[int],
-    ) -> Sequence[models.SocialAccountVisibility]:
-        if not account_ids:
-            return []
-        result = await session.execute(
-            sa.select(models.SocialAccountVisibility).where(
-                models.SocialAccountVisibility.account_id.in_(list(account_ids))
-            )
-        )
-        return result.scalars().all()
-
     async def get_for_scope(
         self,
         session: AsyncSession,
@@ -416,14 +391,8 @@ class AuthUserRepository(BaseRepository[models.AuthUser]):
     ) -> models.AuthUser | None:
         return await self.get(session, user_id, options=self.identity_options(include_player=include_player))
 
-    async def get_by_email(self, session: AsyncSession, email: str) -> models.AuthUser | None:
-        return await self.get_by(session, email=email)
-
     async def get_by_email_with_rbac(self, session: AsyncSession, email: str) -> models.AuthUser | None:
         return await self.get_by(session, options=self.rbac_options(), email=email)
-
-    async def get_by_username(self, session: AsyncSession, username: str) -> models.AuthUser | None:
-        return await self.get_by(session, username=username)
 
     async def get_with_roles(self, session: AsyncSession, user_id: int) -> models.AuthUser | None:
         return await self.get(session, user_id, options=[selectinload(models.AuthUser.roles)])

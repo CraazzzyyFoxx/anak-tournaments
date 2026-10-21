@@ -76,11 +76,6 @@ class RosterOccupancy:
     # ── starters ──────────────────────────────────────────────────────────────
 
     @property
-    def filled_slots(self) -> dict[str, int]:
-        """Accepted starters per slot, in canonical order."""
-        return {code: self._accepted_starters.get(code, 0) for code in self.shape.slots}
-
-    @property
     def open_slots(self) -> dict[str, int]:
         """Slots with nobody accepted yet — what the roster still *needs*."""
         return {code: count - self._accepted_starters.get(code, 0) for code, count in self.shape.slots.items()}

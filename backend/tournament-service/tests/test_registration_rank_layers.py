@@ -142,7 +142,7 @@ class TestResolveRegistrationRanks(IsolatedAsyncioTestCase):
         with mock.patch.object(roster_engine.ranks, "resolve", resolve):
             roster = await _resolve(_Session([(9, 77)]), registration, workspace_id=1)
         self.assertEqual(roster.rank_on("tank"), 2500)
-        self.assertEqual(roster.source_on("tank"), "registration")
+        self.assertEqual(roster.role_sources["tank"], "registration")
         # The registration's own number is handed to the resolver as its layer
         # rather than compared against the others here.
         self.assertEqual(resolve.await_args.kwargs["registration_ranks"], {(9, "tank"): 2500})
@@ -156,7 +156,7 @@ class TestResolveRegistrationRanks(IsolatedAsyncioTestCase):
         with mock.patch.object(roster_engine.ranks, "resolve", resolve):
             roster = await _resolve(_Session([(9, 77)]), registration, workspace_id=1)
         self.assertEqual(roster.rank_on("tank"), 3200)
-        self.assertEqual(roster.source_on("tank"), "workspace")
+        self.assertEqual(roster.role_sources["tank"], "workspace")
         # A blank role contributes no registration layer, so it cannot pin itself.
         self.assertEqual(resolve.await_args.kwargs["registration_ranks"], {})
 

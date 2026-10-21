@@ -78,20 +78,6 @@ class ChallongeParticipantMappingRepository(BaseRepository[models.ChallongeParti
     def __init__(self) -> None:
         super().__init__(models.ChallongeParticipantMapping)
 
-    async def list_by_source(
-        self,
-        session: AsyncSession,
-        source_id: int,
-        *,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> Sequence[models.ChallongeParticipantMapping]:
-        query = self._apply_options(
-            self.select().where(models.ChallongeParticipantMapping.source_id == source_id),
-            options,
-        )
-        result = await session.execute(query)
-        return result.unique().scalars().all()
-
     async def list_by_source_ids(
         self,
         session: AsyncSession,
@@ -113,20 +99,6 @@ class ChallongeMatchMappingRepository(BaseRepository[models.ChallongeMatchMappin
     def __init__(self) -> None:
         super().__init__(models.ChallongeMatchMapping)
 
-    async def list_by_source(
-        self,
-        session: AsyncSession,
-        source_id: int,
-        *,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> Sequence[models.ChallongeMatchMapping]:
-        query = self._apply_options(
-            self.select().where(models.ChallongeMatchMapping.source_id == source_id),
-            options,
-        )
-        result = await session.execute(query)
-        return result.unique().scalars().all()
-
     async def list_by_source_ids(
         self,
         session: AsyncSession,
@@ -136,8 +108,8 @@ class ChallongeMatchMappingRepository(BaseRepository[models.ChallongeMatchMappin
     ) -> Sequence[models.ChallongeMatchMapping]:
         """Match mappings for every source of a tournament, in ONE query.
 
-        Mirrors ``ChallongeParticipantMappingRepository.list_by_source_ids``; looping
-        ``list_by_source`` per source is an N+1 on the sync hot path.
+        Mirrors ``ChallongeParticipantMappingRepository.list_by_source_ids``; one
+        query per source would be an N+1 on the sync hot path.
         """
         if not source_ids:
             return []

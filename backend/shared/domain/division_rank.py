@@ -43,12 +43,3 @@ def resolve_rank_for_division(grid: DivisionGridLike, division_number: int) -> i
         if tier.number == division_number:
             return tier.rank_min
     return None
-
-
-def clamp_division_to_grid(grid: DivisionGridLike, division_number: int) -> int:
-    if not grid.tiers:
-        raise ValueError("Division grid must contain at least one tier")
-
-    min_division = min(tier.number for tier in grid.tiers)
-    max_division = max(tier.number for tier in grid.tiers)
-    return min(max(division_number, min_division), max_division)

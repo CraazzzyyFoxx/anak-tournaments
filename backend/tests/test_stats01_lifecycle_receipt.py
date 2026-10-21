@@ -755,7 +755,7 @@ def _at_current_schema(native):
 
 def test_member_creation_reuse_races_and_rollback_keep_complete_receipt(native, tmp_path):
     from shared import models
-    from shared.repository.workspace import WorkspaceMemberRepository, get_or_create_workspace_member
+    from shared.repository.workspace import get_or_create_workspace_member
 
     _at_current_schema(native)
     receipt = _capture(native, tmp_path / "receipt")
@@ -788,17 +788,9 @@ def test_member_creation_reuse_races_and_rollback_keep_complete_receipt(native, 
         with pytest.raises(EvidenceError):
             _mutate(native, [("member", (member_id,))], "stats.member_create", [sql])
 
-    async def exercise_bulk_and_race():
+    async def exercise_race():
         engine = create_async_engine(sa.make_url(url).set(drivername="postgresql+asyncpg"), poolclass=sa.pool.NullPool)
         try:
-            async with AsyncSession(engine, expire_on_commit=False) as session, session.begin():
-                members = await WorkspaceMemberRepository().bulk_get_or_create(
-                    session,
-                    workspace_id=ids["workspace_other"],
-                    player_ids={ids["player"], ids["player_no_member"], ids["player_event_only"]},
-                )
-                assert members[ids["player"]] == ids["member_other"]
-                assert len(set(members.values())) == 3
 
             async def competing_create():
                 async with AsyncSession(engine, expire_on_commit=False) as session, session.begin():
@@ -819,12 +811,6 @@ def test_member_creation_reuse_races_and_rollback_keep_complete_receipt(native, 
                     player_id=ids["player_no_member"],
                 )
                 assert original.id == member_id
-                repeated = await WorkspaceMemberRepository().bulk_get_or_create(
-                    session,
-                    workspace_id=ids["workspace_other"],
-                    player_ids=set(members),
-                )
-                assert repeated == members
                 revived = await get_or_create_workspace_member(
                     session,
                     workspace_id=ids["workspace"],
@@ -836,12 +822,12 @@ def test_member_creation_reuse_races_and_rollback_keep_complete_receipt(native, 
                         sa.select(models.AuditLog.entity_id).where(models.AuditLog.action == "stats.member_create")
                     )
                 )
-                expected = {member_id, first, members[ids["player_no_member"]], members[ids["player_event_only"]]}
+                expected = {member_id, first}
                 assert set(audit_ids) == expected and len(audit_ids) == len(expected)
         finally:
             await engine.dispose()
 
-    asyncio.run(exercise_bulk_and_race())
+    asyncio.run(exercise_race())
     result = _check(native, receipt)
     assert result["exit_code"] == 2, result
 

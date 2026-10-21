@@ -102,7 +102,6 @@ def test_unknown_discipline_and_lol_have_no_conditions() -> None:
     assert DISCIPLINES["lol"].achievement_conditions is None
     for code in ("lol", "no-such-game"):
         assert get_specs(discipline=code) == {}
-        assert registry.get_registered_types(discipline=code) == []
         assert validate_condition_tree({"type": "match_win"}, discipline=code) == [
             "root: unknown condition type 'match_win'"
         ]
@@ -126,13 +125,11 @@ def test_returned_metadata_is_a_copy() -> None:
 
 def test_overwatch_loads_lazily_and_repeated_loading_is_stable() -> None:
     first = get_specs(discipline="overwatch")
-    executors = {
-        name: registry._REGISTRY[("overwatch", name)] for name in registry.get_registered_types(discipline="overwatch")
-    }
+    executors = {key: fn for key, fn in registry._REGISTRY.items() if key[0] == "overwatch"}
     DISCIPLINES["overwatch"].achievement_conditions()
     DISCIPLINES["overwatch"].achievement_conditions()
     assert set(get_specs(discipline="overwatch")) == set(first)
-    assert executors == {name: registry._REGISTRY[("overwatch", name)] for name in executors}
+    assert executors == {key: registry._REGISTRY[key] for key in executors}
     # Overwatch's own names stay out of the test disciplines and out of LoL.
     assert "match_win" in first and "match_win" not in get_specs(discipline=A)
     assert get_spec("match_win", discipline="lol") is None

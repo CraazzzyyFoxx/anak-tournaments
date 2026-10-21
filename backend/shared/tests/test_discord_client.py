@@ -50,8 +50,6 @@ class TestMembers(IsolatedAsyncioTestCase):
         assert await client.member_roles("g", "a") == ["2"]
         with self.assertRaises(MemberNotFound):
             await client.member_roles("g", "b")
-        assert await client.is_member("g", "a") is True
-        assert await client.is_member("g", "b") is False
         # The role-id set rode along in the batch: no second RPC for it.
         assert await client.guild_role_ids("g") == {"1", "2"}
 
@@ -130,16 +128,10 @@ class TestGuildReads(IsolatedAsyncioTestCase):
     async def test_guild_reads_hand_back_the_bots_own_shapes(self):
         roles = [{"id": "2", "name": "high", "color": "#0000ff", "position": 5, "managed": True}]
         channels = [{"id": "11", "name": "b", "type": "text", "missing_permissions": ["send_messages"]}]
-        info = {"guild_id": "g", "connected": True, "name": "S"}
-        client = DiscordClient(
-            broker=_broker(
-                _reply(rpc_ok({"roles": roles})), _reply(rpc_ok({"channels": channels})), _reply(rpc_ok(info))
-            )
-        )
+        client = DiscordClient(broker=_broker(_reply(rpc_ok({"roles": roles})), _reply(rpc_ok({"channels": channels}))))
 
         assert await client.guild_roles("g") == roles
         assert await client.guild_channels("g") == channels
-        assert await client.guild_info("g") == info
 
 
 class TestVoiceMove(IsolatedAsyncioTestCase):

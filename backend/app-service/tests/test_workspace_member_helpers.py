@@ -144,7 +144,7 @@ def test_get_or_create_workspace_member_distinct_players_distinct_rows(db_sessio
     assert member_a.player_id != member_b.player_id
 
 
-def test_get_members_excludes_players_without_auth_link(db_session) -> None:
+def test_members_list_excludes_players_without_auth_link(db_session) -> None:
     """Regression: workspace_member rows anchored on tournament-only players
     (``players.user.auth_user_id IS NULL`` — created by registration / team /
     draft flows via ``get_or_create_workspace_member``) must NOT appear in the
@@ -166,8 +166,10 @@ def test_get_members_excludes_players_without_auth_link(db_session) -> None:
         await get_or_create_workspace_member(db_session, workspace_id=workspace.id, player_id=linked.id)
         await get_or_create_workspace_member(db_session, workspace_id=workspace.id, player_id=player_only.id)
 
-        members = await workspace_service.get_members(db_session, workspace.id)
-        return {m.player_id for m in members}, linked.id, player_only.id
+        _total, rows = await workspace_service.list_members_page(
+            db_session, workspace.id, page=1, per_page=50, search=None
+        )
+        return {m.player_id for m, _auth, _roles in rows}, linked.id, player_only.id
 
     player_ids, linked_id, player_only_id = run(_run())
 

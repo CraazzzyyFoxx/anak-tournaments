@@ -50,13 +50,11 @@ class RegistrationAndTeamCacheNamespaceTests(IsolatedAsyncioTestCase):
         cache.setup("mem://", prefix="backend:")
         await cache.delete_match("fastapi:*")
         self.build = AsyncMock(side_effect=lambda _session, *, tournament_id: {"fresh": tournament_id})
-        self.by_tournament = AsyncMock(return_value=[])
         self.page = AsyncMock(return_value=([], 0))
         service = team_flows.flows_service
         for patcher in (
             patch.object(public_list.registration_service, "build_public_registration_list", self.build),
             patch.object(team_flows.tournament_flows_service, "get", AsyncMock()),
-            patch.object(service.teams, "get_by_tournament", self.by_tournament),
             patch.object(service.teams, "get_all", self.page),
         ):
             patcher.start()
@@ -70,10 +68,6 @@ class RegistrationAndTeamCacheNamespaceTests(IsolatedAsyncioTestCase):
         return await public_list.build_registration_list(_no_session, tournament_id)
 
     @staticmethod
-    async def _teams_by_tournament(tournament_id: int):
-        return await team_flows.flows_service.get_by_tournament_read(object(), tournament_id, [])
-
-    @staticmethod
     async def _teams_page(tournament_id: int):
         params = schemas.TeamFilterParams(tournament_id=tournament_id)
         return await team_flows.flows_service.get_all(object(), params, workspace_id=5)
@@ -81,7 +75,6 @@ class RegistrationAndTeamCacheNamespaceTests(IsolatedAsyncioTestCase):
     async def test_each_family_writes_its_v2_key_and_never_reads_the_pre_bump_one(self) -> None:
         for read, upstream, prefix in (
             (self._registration_list, self.build, "fastapi::registration_list:v2:7:"),
-            (self._teams_by_tournament, self.by_tournament, "fastapi::teams_by_tournament:v2:7:"),
             (self._teams_page, self.page, "fastapi::teams:v2:5:7:"),
         ):
             fresh = await read(7)
@@ -102,7 +95,7 @@ class RegistrationAndTeamCacheNamespaceTests(IsolatedAsyncioTestCase):
             ((Resource.TOURNAMENT_REGISTRATIONS, Resource.TOURNAMENT_REGISTRATION_FORM), (self._registration_list,)),
             (
                 (Resource.TOURNAMENT_TEAMS, Resource.TOURNAMENT_STRUCTURE),
-                (self._teams_by_tournament, self._teams_page),
+                (self._teams_page,),
             ),
         ):
             for resource in resources:

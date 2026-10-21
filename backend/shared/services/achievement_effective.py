@@ -15,29 +15,14 @@ from shared.models.achievements.achievement import (
 from shared.models.tenancy.workspace import WorkspaceMember
 
 
-def override_applies_to_scope(
-    override_tournament_id: int | None,
-    override_match_id: int | None,
-    candidate_tournament_id: int | None,
-    candidate_match_id: int | None,
-) -> bool:
-    """Return True when an override applies to a candidate result scope."""
-    if override_match_id is not None:
-        return override_match_id == candidate_match_id
-
-    if override_tournament_id is not None:
-        return override_tournament_id == candidate_tournament_id
-
-    return True
-
-
 def override_applies_to_scope_sql(
     override_tournament_id: sa.ColumnElement,
     override_match_id: sa.ColumnElement,
     candidate_tournament_id: sa.ColumnElement,
     candidate_match_id: sa.ColumnElement,
 ) -> sa.ColumnElement[bool]:
-    """SQL expression equivalent of :func:`override_applies_to_scope`."""
+    """Whether an override reaches a candidate result: a match override that match only, a tournament override
+    that tournament (its match rows included), a global override everything."""
     return sa.or_(
         sa.and_(
             override_match_id.is_not(None),

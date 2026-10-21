@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 from typing import Any
 
 import sqlalchemy as sa
@@ -15,23 +14,6 @@ from shared.domain.achievements.context import EvalContext
 from shared.models.achievements.achievement import AchievementGrain
 
 from . import ResultSet, register
-
-
-def matches_tournament_format(stage_types: Iterable[StageType], fmt: str) -> bool:
-    stage_type_set = set(stage_types)
-    has_double = StageType.DOUBLE_ELIMINATION in stage_type_set
-    has_single = StageType.SINGLE_ELIMINATION in stage_type_set
-    has_bracket = has_double or has_single
-
-    if fmt == "double_elim":
-        return has_double
-    if fmt == "single_elim":
-        return has_single and not has_double
-    if fmt == "round_robin":
-        return StageType.ROUND_ROBIN in stage_type_set
-    if fmt == "has_bracket":
-        return has_bracket
-    return False
 
 
 @register(

@@ -2,13 +2,13 @@
 
 tournament-service and stats-service each carried their own byte-for-byte
 copy of this ~150-line wrapper (client construction, ``_check_response``, and
-the six read/write methods) — and only tournament-service's copy had been
+the read/write methods) — and only tournament-service's copy had been
 patched with slug validation (``_validate_slug``/``_SLUG_RE``) on
 ``fetch_tournament``: without it, a caller-supplied ``tournament_id`` there is
 a Challonge *slug* (not always numeric) interpolated straight into the
 request path, so a crafted value like ``../`` could build an arbitrary
 ``api.challonge.com`` path executed with the service's stored Basic-Auth
-credentials. The other five methods take a numeric Challonge id and already
+credentials. The other methods take a numeric Challonge id and already
 coerce it with ``int(...)``, which is sufficient (raises on anything that
 isn't a plain integer). Single source of truth here, with the fix applied
 once.
@@ -134,45 +134,4 @@ class ChallongeClient:
             },
         )
         _check_response(resp, "Match", match_id)
-        return resp.json()
-
-    async def create_participant(
-        self,
-        tournament_id: int,
-        *,
-        name: str,
-        seed: int | None = None,
-    ) -> dict:
-        """Create a participant in a Challonge tournament."""
-        tournament_id = int(tournament_id)
-        logger.info(f"Challonge: creating participant '{name}' on tournament {tournament_id}")
-        payload: dict = {"participant": {"name": name}}
-        if seed is not None:
-            payload["participant"]["seed"] = seed
-        resp = await self._http.post(
-            f"tournaments/{tournament_id}/participants.json",
-            json=payload,
-        )
-        _check_response(resp, "Tournament", tournament_id)
-        return resp.json()
-
-    async def update_tournament_state(
-        self,
-        tournament_id: int,
-        *,
-        state: str,
-    ) -> dict:
-        """Update Challonge tournament state (start, finalize, reset).
-
-        Challonge states: 'start', 'finalize', 'reset'.
-        """
-        tournament_id = int(tournament_id)
-        if state not in ("start", "finalize", "reset"):
-            raise ApiHTTPException(
-                status_code=422,
-                detail=[ApiExc(code="invalid_state", msg=f"Invalid Challonge state '{state}'.")],
-            )
-        logger.info(f"Challonge: {state} tournament {tournament_id}")
-        resp = await self._http.post(f"tournaments/{tournament_id}/{state}.json")
-        _check_response(resp, "Tournament", tournament_id)
         return resp.json()

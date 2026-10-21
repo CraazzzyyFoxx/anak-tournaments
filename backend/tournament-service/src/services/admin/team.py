@@ -287,64 +287,6 @@ class AdminTeamService:
         )
         await session.commit()
 
-    # ─── Player Management ───────────────────────────────────────────────────
-
-    async def add_player_to_team(
-        self, session: AsyncSession, team_id: int, data: schemas.PlayerCreate
-    ) -> models.Player:
-        team = await self.team_repo.get(session, team_id)
-
-        if not team:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
-
-        user = await self.user_repo.get(session, data.user_id)
-
-        if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-        # The addressed team wins over any ``team_id`` in the payload.
-        player_data = _prepare_player_create_data(data)
-        player_data["team_id"] = team_id
-        player_data["tournament_id"] = team.tournament_id
-        related_player = await self._get_related_player(
-            session,
-            related_player_id=player_data.get("related_player_id"),
-        )
-        _validate_related_player_scope(
-            related_player=related_player,
-            related_player_id=player_data.get("related_player_id"),
-            team_id=team_id,
-            tournament_id=team.tournament_id,
-        )
-
-        player_data["workspace_member_id"] = await self._resolve_workspace_member_id(
-            session,
-            tournament_id=team.tournament_id,
-            player_id=player_data.pop("user_id"),
-        )
-        tournament = await self.tournament_repo.get(session, team.tournament_id)
-        leaf = await resolve_role_ref(
-            session, discipline=tournament.discipline, workspace_id=tournament.workspace_id, ref=data.role
-        )
-        player_data["assignments"] = [] if leaf is None else [assignment_of(leaf)]
-
-        player = await self.player_repo.create(session, models.Player(**player_data))
-
-        await self._publish_structure_changed(session, team.tournament_id)
-        await session.commit()
-        return await self.get_player(session, player.id)
-
-    async def remove_player_from_team(self, session: AsyncSession, team_id: int, player_id: int) -> None:
-        player = await self.player_repo.get_by(session, id=player_id, team_id=team_id)
-
-        if not player:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Player not found in this team")
-
-        tournament_id = player.tournament_id
-        await self.player_repo.delete(session, player)
-        await self._publish_structure_changed(session, tournament_id)
-        await session.commit()
-
     # ─── Player CRUD ─────────────────────────────────────────────────────────
 
     async def create_player(self, session: AsyncSession, data: schemas.PlayerCreate) -> models.Player:

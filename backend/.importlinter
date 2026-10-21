@@ -10,7 +10,6 @@ type = forbidden
 # The registry itself imports the modules; core importing the registry is the allowed indirect path.
 allow_indirect_imports = True
 source_modules =
-    shared.balancer
     shared.balancer_subrole_catalog
     shared.catalog_aliases
     shared.catalog_sync

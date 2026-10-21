@@ -19,9 +19,6 @@ from shared.core.errors import BaseAPIException as HTTPException
 GOOGLE_SHEET_FETCH_TIMEOUT = 20.0
 """Timeout (in seconds) for fetching data from Google Sheets."""
 
-UNKNOWN_PRIORITY_SENTINEL = 99
-"""Sentinel value used when a role's priority is unknown or unset."""
-
 DEFAULT_SORT_PRIORITY_SENTINEL = 999
 """Sentinel value for sorting roles with unset priority to the end."""
 

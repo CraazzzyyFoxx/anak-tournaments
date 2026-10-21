@@ -17,8 +17,6 @@ __all__ = (
     "TeamGroupRead",
     "TeamFilterQueryParams",
     "TeamFilterParams",
-    "PlayerFilterQueryParams",
-    "PlayerFilterParams",
 )
 
 
@@ -89,17 +87,6 @@ class TeamFilterParams(pagination.PaginationSortParams):
     tournament_id: int | None = None
     search: str | None = None
     discipline: str | None = None
-
-
-class PlayerFilterQueryParams(pagination.PaginationSortQueryParams):
-    tournament_id: int | None = None
-    team_id: int | None = None
-
-
-@dataclass
-class PlayerFilterParams(pagination.PaginationSortParams):
-    tournament_id: int | None = None
-    team_id: int | None = None
 
 
 # PlayerRead.team forward-references TeamRead, defined below it. Pydantic leaves

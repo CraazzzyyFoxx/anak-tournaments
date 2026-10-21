@@ -25,7 +25,6 @@ class DivisionGridResolutionTests(TestCase):
             target_grid=target_grid,
             source_grids_by_version_id={10: target_grid},
             primary_target_by_source_tier_id={},
-            weighted_targets_by_source_tier_id={},
         )
 
         result = division_grid_resolution.resolve_workspace_division(
@@ -63,7 +62,6 @@ class DivisionGridResolutionTests(TestCase):
                 302: target_grid.tiers[1],
                 303: target_grid.tiers[2],
             },
-            weighted_targets_by_source_tier_id={},
         )
 
         result = division_grid_resolution.resolve_workspace_division(
@@ -97,7 +95,6 @@ class DivisionGridResolutionTests(TestCase):
             target_grid=target_grid,
             source_grids_by_version_id={10: target_grid, 20: source_grid},
             primary_target_by_source_tier_id={},
-            weighted_targets_by_source_tier_id={},
         )
 
         result = division_grid_resolution.resolve_workspace_division(
@@ -149,7 +146,6 @@ class DivisionGridResolutionTests(TestCase):
             target_grid=target_grid,
             source_grids_by_version_id={10: target_grid},
             primary_target_by_source_tier_id={},
-            weighted_targets_by_source_tier_id={},
         )
 
         result = division_grid_resolution.resolve_workspace_division(

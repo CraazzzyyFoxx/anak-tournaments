@@ -5,7 +5,6 @@ from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
@@ -15,47 +14,6 @@ from shared.repository.base import BaseRepository
 class RegistrationRepository(BaseRepository[models.Registration]):
     def __init__(self) -> None:
         super().__init__(models.Registration)
-
-    async def get_active_for_user(
-        self,
-        session: AsyncSession,
-        *,
-        tournament_id: int,
-        auth_user_id: int,
-    ) -> models.Registration | None:
-        result = await session.execute(
-            sa.select(models.Registration)
-            .options(selectinload(models.Registration.roles))
-            .where(
-                models.Registration.tournament_id == tournament_id,
-                models.Registration.workspace_member.has(
-                    models.WorkspaceMember.player.has(models.User.auth_user_id == auth_user_id)
-                ),
-                models.Registration.deleted_at.is_(None),
-            )
-        )
-        return result.scalar_one_or_none()
-
-    async def list_active_by_tournament(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-        *,
-        with_workspace_member: bool = False,
-    ) -> Sequence[models.Registration]:
-        options = [selectinload(models.Registration.roles)]
-        if with_workspace_member:
-            options.append(selectinload(models.Registration.workspace_member))
-        result = await session.execute(
-            sa.select(models.Registration)
-            .options(*options)
-            .where(
-                models.Registration.tournament_id == tournament_id,
-                models.Registration.deleted_at.is_(None),
-            )
-            .order_by(models.Registration.id.asc())
-        )
-        return result.scalars().all()
 
 
 class RegistrationFormRepository(BaseRepository[models.RegistrationForm]):

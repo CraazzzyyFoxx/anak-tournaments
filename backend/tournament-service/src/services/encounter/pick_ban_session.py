@@ -359,17 +359,9 @@ class PickBanSessionService:
         every resolved step is written in."""
         return await active_teams(session, encounter_id)
 
-    async def current_round_of(self, session: AsyncSession, pick_ban: PickBanSession) -> int | None:
-        """The round `pick_ban` is currently resolving (see
-        ``pick_ban_engine.current_round``), or ``None`` in flat mode / once
-        complete. Public wrapper so callers outside this module never need to load
-        a session's entries themselves just to ask this."""
-        entries = await self.entry_repo.list_by_session(session, pick_ban.id)
-        return engine.current_round(list(entries))
-
     async def highest_round_of(self, session: AsyncSession, pick_ban: PickBanSession) -> int | None:
         """The highest round `pick_ban` has ever appended, or ``None`` in flat
-        mode. Unlike `current_round_of` (which reports the round with
+        mode. Unlike ``pick_ban_engine.current_round`` (which reports the round with
         something still `AVAILABLE`, and so goes ``None`` the instant a round
         finishes), this stays truthful right through the `awaiting_choice` gap —
         exactly the round `elect_opener` needs `advance_to_next_round` to resume
@@ -418,16 +410,6 @@ class PickBanSessionService:
         that was handed the object rather than fetching it. Returns ``None`` when
         the row is gone (a concurrent reset dropped it)."""
         return await self.session_repo.lock_by_id(session, pick_ban.id)
-
-    async def load_config(self, session: AsyncSession, config_id: int) -> PickBanConfig | None:
-        """One config by id, pool eagerly loaded.
-
-        A `select` rather than `session.get`: loader options are ignored when the
-        row is already in the identity map (which it can be, e.g. after
-        `pick_ban_action` fetched it for a scalar flag), and the pool would still
-        come back unloaded. ``BaseRepository.get`` is that select.
-        """
-        return await self.config_repo.get(session, config_id, options=CONFIG_POOL_LOAD)
 
     async def resolve_config_at_level(
         self,
@@ -760,7 +742,7 @@ class PickBanSessionService:
             return None
 
         # Heroes are banned FOR a map, so a hero session cannot open before the map
-        # pick-ban has settled round 1's map. `sync_rounds` keeps every later hero
+        # pick-ban has settled round 1's map. `_sync_rounds` keeps every later hero
         # round behind the same gate.
         if kind == PickBanKind.HERO and not await self.map_round_settled(session, encounter, 1):
             return None
@@ -770,12 +752,6 @@ class PickBanSessionService:
             pool=pool_snapshot(config, kind, best_of=encounter.best_of),
             slot_reserves=slot_reserves,
         )
-
-    async def session_creation_owed(self, session: AsyncSession, encounter: Encounter, kind: PickBanKind) -> bool:
-        """Unlocked "does this room owe a session": no row yet, every gate open."""
-        if await self.get_pick_ban_session(session, encounter.id, kind) is not None:
-            return False
-        return await self.creation_plan(session, encounter, kind) is not None
 
     async def _ensure_pick_ban_session(
         self,
@@ -1551,8 +1527,14 @@ class PickBanSessionService:
             return False  # owed until the previous position is confirmed
         return True
 
-    async def sync_rounds(
-        self, session: AsyncSession, encounter: Encounter, kind: PickBanKind, *, commit: bool = True
+    async def _sync_rounds(
+        self,
+        session: AsyncSession,
+        encounter: Encounter,
+        kind: PickBanKind,
+        *,
+        commit: bool,
+        encounter_locked: bool = False,
     ) -> bool:
         """Keep one kind's rounds in lockstep with the series. Returns whether
         anything was appended.
@@ -1576,17 +1558,6 @@ class PickBanSessionService:
         simultaneous callers would both see the round missing and both insert
         its candidates -- the round would then offer every item twice.
         """
-        return await self._sync_rounds(session, encounter, kind, commit=commit)
-
-    async def _sync_rounds(
-        self,
-        session: AsyncSession,
-        encounter: Encounter,
-        kind: PickBanKind,
-        *,
-        commit: bool,
-        encounter_locked: bool = False,
-    ) -> bool:
         pick_ban = await self.get_pick_ban_session(session, encounter.id, kind)
         if pick_ban is None or pick_ban.status == MapVetoSessionStatus.CANCELLED:
             return False

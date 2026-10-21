@@ -102,20 +102,10 @@ class PickBanConfigItemRepository(BaseRepository[models.PickBanConfigItem]):
     def __init__(self) -> None:
         super().__init__(models.PickBanConfigItem)
 
-    async def delete_for_config(self, session: AsyncSession, config_id: int) -> None:
-        await session.execute(
-            sa.delete(models.PickBanConfigItem).where(models.PickBanConfigItem.pick_ban_config_id == config_id)
-        )
-
 
 class PickBanConfigSlotRepository(BaseRepository[models.PickBanConfigSlot]):
     def __init__(self) -> None:
         super().__init__(models.PickBanConfigSlot)
-
-    async def delete_for_config(self, session: AsyncSession, config_id: int) -> None:
-        await session.execute(
-            sa.delete(models.PickBanConfigSlot).where(models.PickBanConfigSlot.pick_ban_config_id == config_id)
-        )
 
 
 class PickBanConfigSlotItemRepository(BaseRepository[models.PickBanConfigSlotItem]):
@@ -213,41 +203,11 @@ class PickBanEntryRepository(BaseRepository[models.PickBanEntry]):
         result = await session.execute(query)
         return result.unique().scalars().all()
 
-    async def list_by_status(
-        self,
-        session: AsyncSession,
-        session_id: int,
-        statuses: Sequence[Any],
-        *,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> Sequence[models.PickBanEntry]:
-        query = self._apply_options(
-            self.select().where(
-                models.PickBanEntry.session_id == session_id,
-                models.PickBanEntry.status.in_(tuple(statuses)),
-            ),
-            options,
-        )
-        result = await session.execute(query)
-        return result.unique().scalars().all()
-
     async def list_rounds(self, session: AsyncSession, session_id: int) -> Sequence[int | None]:
         result = await session.execute(
             sa.select(models.PickBanEntry.round).where(models.PickBanEntry.session_id == session_id)
         )
         return result.scalars().all()
-
-    async def list_order_tuples(
-        self, session: AsyncSession, session_id: int
-    ) -> Sequence[sa.Row[tuple[int, int | None, int]]]:
-        result = await session.execute(
-            sa.select(
-                models.PickBanEntry.order,
-                models.PickBanEntry.action_index,
-                models.PickBanEntry.item_id,
-            ).where(models.PickBanEntry.session_id == session_id)
-        )
-        return result.all()
 
     async def delete_round_by_status(
         self,

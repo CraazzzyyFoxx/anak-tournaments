@@ -31,11 +31,6 @@ class HeroClass(StrEnum):
         return self.name
 
     @classmethod
-    def from_slot_code(cls, code: str) -> HeroClass:
-        """Inverse of :attr:`slot_code`. Raises ``ValueError`` for an unknown code."""
-        return cls(code.capitalize())
-
-    @classmethod
     def parse(cls, value: object) -> HeroClass | None:
         """Lenient parse: case-insensitive, accepts ``Enum`` members and the
         canonical name/value (which is also :attr:`slot_code`). No other aliases

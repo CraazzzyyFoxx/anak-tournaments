@@ -664,20 +664,6 @@ class EncounterService:
             },
         }
 
-    async def get_by_stage_id(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-        stage_id: int,
-        entities: list[str],
-    ) -> typing.Sequence[models.Encounter]:
-        return await self.encounter_repo.list_by_stage(
-            session,
-            tournament_id=tournament_id,
-            stage_id=stage_id,
-            options=encounter_entities(entities),
-        )
-
     async def get_all_matches(
         self,
         session: AsyncSession,

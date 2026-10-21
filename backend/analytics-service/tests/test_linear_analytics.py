@@ -139,24 +139,3 @@ class LinearAnalyticsTests(TestCase):
         doubled = linear.score_history(signals, shift_scale=2.0)
 
         self.assertAlmostEqual(2.0 * base.stable_shift, doubled.stable_shift, places=6)
-
-
-class FitRawSignalWeightsTests(TestCase):
-    def test_recovers_known_weights_on_clean_data(self) -> None:
-        import numpy as np
-
-        rng = np.random.default_rng(0)
-        components = rng.uniform(-1.0, 1.0, size=(400, 2))
-        # realised = 0.7*a + 0.3*b (sums to 1) over an arbitrary component set.
-        realised = components @ np.array([0.7, 0.3])
-
-        weights = linear.fit_raw_signal_weights(components, realised, component_names=("a", "b"))
-
-        self.assertAlmostEqual(0.7, weights["a"], places=2)
-        self.assertAlmostEqual(0.3, weights["b"], places=2)
-        self.assertAlmostEqual(1.0, sum(weights.values()), places=6)
-
-    def test_falls_back_to_defaults_on_too_few_samples(self) -> None:
-        weights = linear.fit_raw_signal_weights([[1.0]], [0.5])
-
-        self.assertEqual(dict(linear.RAW_SIGNAL_WEIGHTS), weights)

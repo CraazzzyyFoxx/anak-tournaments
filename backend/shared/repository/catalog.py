@@ -8,7 +8,6 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
 from shared.core import enums
@@ -54,17 +53,6 @@ class CatalogEntityRepository(BaseRepository[models.CatalogEntity]):
         **filter_by: typing.Any,
     ) -> bool:
         return await super().exists(session, filters=[*self._scope(), *(filters or ())], **filter_by)
-
-    @staticmethod
-    def load_options(entities: Sequence[str]) -> list[_AbstractLoad]:
-        """A map's mode is its only expandable relation; ``gamemode`` stays the wire token for it."""
-        return [selectinload(models.CatalogEntity.parent)] if "gamemode" in entities else []
-
-    async def list_lookup(self, session: AsyncSession) -> Sequence[sa.Row[tuple[int, str]]]:
-        """``(id, name)`` name-ordered, for admin/filter pickers."""
-        entity = models.CatalogEntity
-        result = await session.execute(sa.select(entity.id, entity.name).where(*self._scope()).order_by(entity.name))
-        return result.all()
 
     async def get_map_with_mode(
         self, session: AsyncSession, map_id: int, *, discipline: str

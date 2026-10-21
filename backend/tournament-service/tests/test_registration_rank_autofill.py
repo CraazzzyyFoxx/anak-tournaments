@@ -661,7 +661,6 @@ def _make_normalizer() -> tuple[DivisionGridNormalizer, DivisionGrid]:
         target_grid=target_grid,
         source_grids_by_version_id={2: source_grid},
         primary_target_by_source_tier_id={20: target_t1, 21: target_t2},
-        weighted_targets_by_source_tier_id={},
     )
     return normalizer, target_grid
 

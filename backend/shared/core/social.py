@@ -95,8 +95,6 @@ class ProviderSpec:
     handle_error_key: str
     normalize: NormalizeRule = "casefold"
 
-    #: Whether a handle may be typed in by hand.
-    supports_text: bool = True
     #: Whether ownership can be proven by OAuth login/linking.
     supports_oauth: bool = False
     #: Whether ownership of a handle can be proven (``social_account.is_verified``),
@@ -105,8 +103,6 @@ class ProviderSpec:
     #: provider and proving a nickname are different facts, and a future proof
     #: path (challenge code) needs no OAuth at all.
     can_be_verified: bool = False
-    #: Whether a paid subscription on this provider can be resolved.
-    supports_subscription: bool = False
     #: Whether this is a GAME account (Battle.net, Riot). A
     #: game handle identifies the player: registration finds or creates the
     #: domain player by it. Every other provider only ever attaches to a player
@@ -117,10 +113,6 @@ class ProviderSpec:
     #: carry. Five for BattleNet — smurfs are a normal Overwatch fact — one
     #: everywhere else. A form field's ``max_count`` param overrides it.
     default_max_count: int = 1
-
-    #: ``str.format`` template for a public profile URL, or None when the
-    #: provider has no addressable profile.
-    profile_url: str | None = None
 
     #: Keys of the OAuth provider's raw response that may CARRY the canonical
     #: handle, in preference order. Consulted before falling back to the
@@ -163,7 +155,6 @@ PROVIDERS: Final[dict[str, ProviderSpec]] = {
             handle_error_key="identity.discord.format",
             supports_oauth=True,
             can_be_verified=True,
-            supports_subscription=True,
             oauth_alias_fields=("username", "global_name"),
         ),
         ProviderSpec(
@@ -174,8 +165,6 @@ PROVIDERS: Final[dict[str, ProviderSpec]] = {
             handle_error_key="identity.twitch.format",
             supports_oauth=True,
             can_be_verified=True,
-            supports_subscription=True,
-            profile_url="https://twitch.tv/{handle}",
             oauth_alias_fields=("login",),
         ),
         ProviderSpec(
@@ -188,8 +177,6 @@ PROVIDERS: Final[dict[str, ProviderSpec]] = {
             # OAuth, and neither viable proof path (Discord roles, challenge
             # code) reveals the handle. What gets verified is the SUBSCRIPTION,
             # never the nickname.
-            supports_subscription=True,
-            profile_url="https://boosty.to/{handle}",
         ),
         ProviderSpec(
             id=SocialProvider.VK,
@@ -197,7 +184,6 @@ PROVIDERS: Final[dict[str, ProviderSpec]] = {
             order=4,
             handle_pattern=r"[a-z0-9_.]{3,32}",
             handle_error_key="identity.vk.format",
-            profile_url="https://vk.com/{handle}",
         ),
         ProviderSpec(
             id=SocialProvider.YOUTUBE,
@@ -205,7 +191,6 @@ PROVIDERS: Final[dict[str, ProviderSpec]] = {
             order=5,
             handle_pattern=r"@?[a-z0-9_.\-]{3,30}",
             handle_error_key="identity.youtube.format",
-            profile_url="https://youtube.com/{handle}",
         ),
         ProviderSpec(
             id=SocialProvider.RIOT,

@@ -112,36 +112,6 @@ class CatalogEntityTests(IsolatedAsyncioTestCase):
             assert not await repo.exists(s, id=ow_map.id)
             assert not await repo.exists(s, filters=[CatalogEntity.id == champion.id])
 
-    async def test_lookup_is_scoped_and_name_ordered(self) -> None:
-        async with self.Session() as s:
-            ana = self._entity("ana")
-            rein = self._entity("rein")
-            ow_map = self._entity("ana", kind="map")
-            champion = self._entity("ana", discipline="lol")
-            s.add_all([rein, ana, ow_map, champion])
-            await s.commit()
-            rows = await CatalogEntityRepository("character", discipline="overwatch").list_lookup(s)
-            assert [name for _, name in rows] == sorted(name for _, name in rows)
-            assert [(id, name) for id, name in rows if name.startswith(self.tag)] == [
-                (ana.id, ana.name),
-                (rein.id, rein.name),
-            ]
-
-    async def test_gamemode_expansion_loads_the_map_parent(self) -> None:
-        async with self.Session() as s:
-            mode = self._entity("mode", kind="mode")
-            s.add(mode)
-            await s.flush()
-            map_entity = self._entity("map", kind="map", parent_id=mode.id)
-            s.add(map_entity)
-            await s.commit()
-            map_id, mode_id = map_entity.id, mode.id
-        async with self.Session() as s:
-            repo = CatalogEntityRepository("map", discipline="overwatch")
-            assert repo.load_options(()) == []
-            loaded = await repo.get(s, map_id, options=repo.load_options(("gamemode",)))
-            assert loaded.parent.id == mode_id
-
     async def test_an_old_id_resolves_to_the_entity_it_became(self) -> None:
         legacy_id = 2_000_000_000 + os.getpid() % 1_000_000
         async with self.Session() as s:

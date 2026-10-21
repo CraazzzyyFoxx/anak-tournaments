@@ -120,10 +120,6 @@ class CustomGamePlayerRepository(BaseRepository[models.CustomGamePlayer]):
         )
         return dict(result.all())
 
-    async def delete_for_game(self, session: AsyncSession, custom_game_id: int) -> None:
-        for row in await self.list_for_game(session, custom_game_id):
-            await self.delete(session, row)
-
 
 class CustomGameCoHostRepository:
     async def user_ids_for_game(self, session: AsyncSession, custom_game_id: int) -> list[int]:

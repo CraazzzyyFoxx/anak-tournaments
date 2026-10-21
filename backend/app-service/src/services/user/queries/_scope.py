@@ -302,32 +302,6 @@ def _compare_tournament_scope_exists(
     return sa.exists(sa.select(1).select_from(scoped_player).select_from(scoped_tournament).where(*filters))
 
 
-def _compare_team_scope_exists(
-    user_id_column: sa.ColumnElement[typing.Any] | int,
-    team_id_column: sa.ColumnElement[typing.Any],
-    *,
-    discipline: str,
-    role: RoleRef | None,
-    div_min: int | None,
-    div_max: int | None,
-    tournament_id: int | None = None,
-    grid: DivisionGrid,
-) -> sa.ColumnElement[bool]:
-    scoped_player = aliased(models.Player)
-    filters = _compare_player_scope_filters(
-        scoped_player,
-        user_id_column,
-        discipline=discipline,
-        role=role,
-        div_min=div_min,
-        div_max=div_max,
-        tournament_id=tournament_id,
-        grid=grid,
-    )
-    filters.append(scoped_player.team_id == team_id_column)
-    return sa.exists(sa.select(1).select_from(scoped_player).where(*filters))
-
-
 def _compare_user_scope_exists(
     user_id_column: sa.ColumnElement[typing.Any] | int,
     *,

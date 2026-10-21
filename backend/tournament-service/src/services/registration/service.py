@@ -210,9 +210,8 @@ class RegistrationService:
         tournament_id: int,
         auth_user_id: int,
     ) -> models.Registration | None:
-        # Not ``get_active_for_user``: that repository method eager-loads only
-        # ``roles``, and this read feeds ``_reg_to_read``, which needs the nested
-        # hero catalog plus every loader in ``registration_read_loaders()``.
+        # Feeds ``_reg_to_read``, which needs the nested hero catalog plus every
+        # loader in ``registration_read_loaders()``.
         result = await session.execute(
             self.registration_repo.select()
             .where(

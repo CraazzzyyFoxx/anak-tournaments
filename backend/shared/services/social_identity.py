@@ -15,8 +15,6 @@ Transaction-neutral: mutates the session and flushes; the caller commits.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
@@ -63,15 +61,6 @@ class SocialIdentityService:
 
     # -- lookups -----------------------------------------------------------
 
-    async def list_for_player(
-        self,
-        session: AsyncSession,
-        user_id: int,
-        *,
-        providers: Sequence[str] | None = None,
-    ) -> Sequence[models.SocialAccount]:
-        return await self.accounts.list_by_user(session, user_id, providers=providers)
-
     async def find_by_handle(
         self,
         session: AsyncSession,
@@ -92,11 +81,6 @@ class SocialIdentityService:
             username_normalized=normalize_social_handle(provider, username),
             user_id=user_id,
         )
-
-    async def find_player_id_by_handle(self, session: AsyncSession, *, provider: str, username: str) -> int | None:
-        """Resolve the owning player id from a provider handle."""
-        account = await self.find_by_handle(session, provider=provider, username=username)
-        return account.user_id if account is not None else None
 
     # -- writes ------------------------------------------------------------
 

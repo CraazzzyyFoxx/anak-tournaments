@@ -64,41 +64,6 @@ class AdminTeamWorkspaceMemberTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(404, ctx.exception.status_code)
 
-    async def test_add_player_to_team_sets_workspace_member_id(self) -> None:
-        team_result = _result(SimpleNamespace(id=3, tournament_id=88))
-        user_result = _result(SimpleNamespace(id=7))
-        session = SimpleNamespace(
-            execute=AsyncMock(
-                side_effect=[team_result, user_result, _result(SimpleNamespace(discipline="overwatch", workspace_id=1))]
-            ),
-            add=Mock(side_effect=lambda player: setattr(player, "id", 501)),
-            flush=AsyncMock(),
-            commit=AsyncMock(),
-        )
-        data = schemas.PlayerCreate(
-            name="Roster Player",
-            user_id=7,
-            team_id=3,
-            tournament_id=999,  # overridden by team.tournament_id in the service
-        )
-
-        with (
-            patch.object(
-                admin_team_service.team_service,
-                "_resolve_workspace_member_id",
-                AsyncMock(return_value=4242),
-            ) as resolve_member,
-            patch.object(admin_team_service.team_service, "_publish_structure_changed", AsyncMock()),
-            patch.object(admin_team_service.team_service, "get_player", AsyncMock(return_value="created")),
-        ):
-            result = await admin_team_service.team_service.add_player_to_team(session, 3, data)
-
-        self.assertEqual("created", result)
-        resolve_member.assert_awaited_once_with(session, tournament_id=88, player_id=7)
-        created_player = session.add.call_args.args[0]
-        self.assertFalse(hasattr(created_player, "user_id"))
-        self.assertEqual(4242, created_player.workspace_member_id)
-
     async def test_create_player_sets_workspace_member_id(self) -> None:
         user_result = _result(SimpleNamespace(id=9))
         team_result = _result(SimpleNamespace(id=4, tournament_id=101))

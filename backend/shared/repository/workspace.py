@@ -331,42 +331,6 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
         )
         return found is True
 
-    async def list_by_workspace(
-        self,
-        session: AsyncSession,
-        workspace_id: int,
-    ) -> Sequence[models.WorkspaceMember]:
-        """List the workspace's RBAC members — auth-linked players only.
-
-        ``workspace_member`` is anchored on ``player_id`` and now holds two
-        distinct populations: real RBAC members (auth users who joined via
-        ``add_member``) and tournament participants anchored by
-        registration / team / draft / achievement flows via
-        ``get_or_create_workspace_member``. The latter frequently have no auth
-        account (``players.user.auth_user_id IS NULL``) — they are pure
-        tournament players, not workspace members.
-
-        The RBAC members screen (``rpc.app.workspaces.members_list``) only
-        deals with the former, and every downstream step resolves the row's
-        auth identity (``get_member_auth_user_id``); an auth-less row would
-        make the whole listing 500. The INNER JOIN on ``players.user`` plus the
-        ``auth_user_id IS NOT NULL`` filter scope this to auth-linked members
-        (mirrors ``get_member``'s bridge join).
-        """
-        result = await session.execute(
-            sa.select(models.WorkspaceMember)
-            .join(models.User, models.User.id == models.WorkspaceMember.player_id)
-            .options(selectinload(models.WorkspaceMember.player))
-            .where(
-                models.WorkspaceMember.workspace_id == workspace_id,
-                models.WorkspaceMember.removed_at.is_(None),
-                models.WorkspaceMember.observed_only.is_(False),
-                models.User.auth_user_id.isnot(None),
-            )
-            .order_by(models.WorkspaceMember.id.asc())
-        )
-        return result.scalars().all()
-
     async def workspace_ids_for_player(self, session: AsyncSession, player_id: int) -> Sequence[int]:
         """Workspaces this player is anchored to, ids only.
 
@@ -470,9 +434,8 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
     ) -> sa.Select[typing.Any]:
         """The auth-linked join + workspace scope shared by the count and the page.
 
-        Auth-linked only (INNER JOIN ``players.user`` + ``auth.user``), the same
-        scoping ``list_by_workspace`` applies and for the same reason: a row with
-        no auth identity is a tournament participant, not an RBAC member.
+        Auth-linked only (INNER JOIN ``players.user`` + ``auth.user``): a row
+        with no auth identity is a tournament participant, not an RBAC member.
         """
         base = (
             base.join(models.User, models.User.id == models.WorkspaceMember.player_id)
@@ -538,62 +501,6 @@ class WorkspaceMemberRepository(BaseRepository[models.WorkspaceMember]):
             .order_by(rank.asc(), models.User.name.asc())
         )
         return [(STAFF_ROLE_NAMES[rank_value], name) for rank_value, name in result.all()]
-
-    async def bulk_get_or_create(
-        self,
-        session: AsyncSession,
-        *,
-        workspace_id: int,
-        player_ids: set[int],
-    ) -> dict[int, int]:
-        """Batch counterpart of ``get_or_create_workspace_member``: resolve or
-        create roster anchors, reviving removed members like the single-row helper.
-
-        Mirrors ``get_or_create_workspace_member``'s insert-or-select
-        idempotency (``INSERT ... ON CONFLICT DO NOTHING`` on
-        ``uq_workspace_member_workspace_player``, then one ``SELECT``), so
-        concurrent imports never raise duplicate-key errors. Returns
-        ``player_id -> member.id``.
-        """
-        if not player_ids:
-            return {}
-
-        await insert_missing_workspace_members(session, [(workspace_id, player_id) for player_id in player_ids])
-
-        # Re-adding a removed member (or admitting an observation-only anchor) reuses the row, exactly as
-        # ``get_or_create_workspace_member`` does, baseline-role autofill included.
-        revived = (
-            await session.scalars(
-                sa.update(models.WorkspaceMember)
-                .where(
-                    models.WorkspaceMember.workspace_id == workspace_id,
-                    models.WorkspaceMember.player_id.in_(list(player_ids)),
-                    sa.or_(
-                        models.WorkspaceMember.removed_at.is_not(None),
-                        models.WorkspaceMember.observed_only.is_(True),
-                    ),
-                )
-                .values(removed_at=None, observed_only=False)
-                .returning(models.WorkspaceMember.player_id)
-            )
-        ).all()
-        if revived:
-            from shared.rbac import assign_default_member_role_if_roleless  # see get_or_create_workspace_member
-
-            auth_user_ids = await session.scalars(
-                sa.select(models.User.auth_user_id).where(
-                    models.User.id.in_(revived), models.User.auth_user_id.is_not(None)
-                )
-            )
-            for auth_user_id in auth_user_ids.all():
-                await assign_default_member_role_if_roleless(session, user_id=auth_user_id, workspace_id=workspace_id)
-        result = await session.execute(
-            sa.select(models.WorkspaceMember.player_id, models.WorkspaceMember.id).where(
-                models.WorkspaceMember.workspace_id == workspace_id,
-                models.WorkspaceMember.player_id.in_(list(player_ids)),
-            )
-        )
-        return dict(result.all())
 
     async def member_ids_by_player(
         self, session: AsyncSession, *, workspace_id: int, player_ids: set[int]

@@ -364,7 +364,6 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.maps.exists = AsyncMock(return_value=True)
         self.maps.get_map_with_mode = AsyncMock(return_value=None)
         self.roster.list_for_game = AsyncMock(return_value=[])
-        self.roster.delete_for_game = AsyncMock()
         self.roster.get_by = AsyncMock(return_value=None)
         self.roster.delete = AsyncMock()
         # A single-row insert: `self_join` seats one player, unlike the host's

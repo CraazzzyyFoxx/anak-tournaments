@@ -158,21 +158,6 @@ class TeamService:
             options=PlayerRepository.player_entities(entities),
         )
 
-    async def get_player_all(
-        self, session: AsyncSession, params: schemas.PlayerFilterParams
-    ) -> tuple[typing.Sequence[models.Player], int]:
-        """Return one page of players and the total matching count."""
-        query = self.player_repo.select().options(*PlayerRepository.player_entities(params.entities))
-        total_query = sa.select(sa.func.count(models.Player.id))
-        if params.tournament_id:
-            query = query.where(sa.and_(models.Player.tournament_id == params.tournament_id))
-            total_query = total_query.where(sa.and_(models.Player.tournament_id == params.tournament_id))
-
-        query = params.apply_pagination_sort(query, models.Player)
-        result = await session.execute(query)
-        total_result = await session.execute(total_query)
-        return result.unique().scalars().all(), total_result.scalar_one()
-
     async def get_player_count_by_tournament(self, session: AsyncSession, tournament_id: int) -> int:
         """Return the number of players in one tournament."""
         return await self.player_repo.count(session, filters=[models.Player.tournament_id == tournament_id])

@@ -125,10 +125,6 @@ def leaf(
     return decorator
 
 
-def get_leaf(type: str) -> LeafSpec | None:
-    return LEAVES.get(type)
-
-
 # ── evaluation contexts ─────────────────────────────────────────────────────
 
 

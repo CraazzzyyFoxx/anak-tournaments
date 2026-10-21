@@ -290,21 +290,12 @@ async def set_workspace_default_version_id(
     await _set(_workspace_default_key(workspace_id, discipline), version_id)
 
 
-async def get_tournament_effective_version_id(tournament_id: int) -> int | None:
-    value = await _get(_tournament_effective_key(tournament_id))
-    return int(value) if value is not None else None
-
-
-async def set_tournament_effective_version_id(tournament_id: int, version_id: int | None) -> None:
-    await _set(_tournament_effective_key(tournament_id), version_id)
-
-
 async def get_tournament_effective_version_ids(tournament_ids: Sequence[int]) -> dict[int, int | None]:
-    """Batch counterpart of ``get_tournament_effective_version_id``: one round trip for many ids.
+    """``tournament_id -> version_id`` for the cached ids, one round trip.
 
     A cached "no grid at all" (``None``) is indistinguishable from a plain
-    cache miss -- same ambiguity as the single-item getter -- so both are
-    simply absent from the result and left for the caller to resolve.
+    cache miss, so both are simply absent from the result and left for the
+    caller to resolve.
     """
     ids = list(dict.fromkeys(tournament_ids))
     if not cache.is_setup() or not ids:

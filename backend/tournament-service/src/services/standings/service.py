@@ -15,9 +15,6 @@ from shared.core import enums, utils
 from shared.core.enums import StageType
 from shared.domain.encounter_scoring import GameLine, ScoringRules, TeamTotals, compile_rules, team_totals
 from shared.domain.tournament_utils import (
-    completed_encounters as _shared_completed_encounters,
-)
-from shared.domain.tournament_utils import (
     completed_encounters_in_finished_rounds as _shared_completed_encounters_in_finished_rounds,
 )
 from shared.domain.tournament_utils import is_completed_encounter, sort_bracket_matches
@@ -216,13 +213,6 @@ def _rounds(encounters: typing.Sequence[StageEncounter]) -> dict[int, int]:
         for encounter in encounters
         if all(seat.team_id is not None for seat in encounter.seats) and encounter.seats
     }
-
-
-def _completed_encounters(
-    encounters: typing.Sequence[StageEncounter],
-) -> list[StageEncounter]:
-    """The shared "counts toward standings" predicate, so every service agrees."""
-    return _shared_completed_encounters(encounters)
 
 
 def _completed_encounters_in_finished_rounds(

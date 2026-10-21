@@ -10,18 +10,11 @@ class DivisionGridNormalizationError(RuntimeError):
 
 
 @dataclass(frozen=True)
-class WeightedDivisionTarget:
-    tier: DivisionTier
-    weight: float
-
-
-@dataclass(frozen=True)
 class DivisionGridNormalizer:
     target_version_id: int
     target_grid: DivisionGrid
     source_grids_by_version_id: dict[int, DivisionGrid]
     primary_target_by_source_tier_id: dict[int, DivisionTier]
-    weighted_targets_by_source_tier_id: dict[int, tuple[WeightedDivisionTarget, ...]]
 
     def normalize_division(
         self,
@@ -50,24 +43,3 @@ class DivisionGridNormalizer:
         rank: int,
     ) -> int:
         return self.normalize_division(source_version_id, rank).number
-
-    def normalize_weighted_divisions(
-        self,
-        source_version_id: int,
-        rank: int,
-    ) -> tuple[WeightedDivisionTarget, ...]:
-        if source_version_id == self.target_version_id:
-            return (WeightedDivisionTarget(tier=self.target_grid.resolve_division(rank), weight=1.0),)
-
-        source_grid = self.source_grids_by_version_id.get(source_version_id)
-        if source_grid is None:
-            raise DivisionGridNormalizationError(f"Normalization source version {source_version_id} is not loaded")
-
-        source_tier = source_grid.resolve_division(rank)
-        if source_tier.id is None:
-            raise DivisionGridNormalizationError(f"Source tier id is missing for version {source_version_id}")
-
-        weighted_targets = self.weighted_targets_by_source_tier_id.get(source_tier.id)
-        if not weighted_targets:
-            raise DivisionGridNormalizationError(f"Weighted mapping is missing for source tier {source_tier.id}")
-        return weighted_targets

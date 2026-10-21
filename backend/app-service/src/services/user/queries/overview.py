@@ -26,7 +26,6 @@ from ._scope import (
     _apply_overview_role_filters,
     _apply_workspace_member_filter,
     _compare_player_scope_filters,
-    _compare_team_scope_exists,
     _compare_tournament_scope_exists,
     apply_has_logs_filter,
     overview_division_number_expr,
@@ -280,129 +279,6 @@ class UserOverviewQueries(DisciplineQueries):
             .scalar_subquery()
         )
 
-    def _overview_avg_playoff_placement_expr(
-        self,
-        user_id_column: sa.ColumnElement[typing.Any],
-        *,
-        role: RoleRef | None = None,
-        div_min: int | None = None,
-        div_max: int | None = None,
-        tournament_id: int | None = None,
-        grid: DivisionGrid,
-    ) -> sa.ScalarSelect:
-        where_conditions = self._overview_scope_where(
-            user_id_column,
-            role=role,
-            div_min=div_min,
-            div_max=div_max,
-            tournament_id=tournament_id,
-            grid=grid,
-            extra=(models.Standing.buchholz.is_(None),),
-        )
-        return (
-            self._overview_standing_select(sa.func.avg(models.Standing.position))
-            .where(*where_conditions)
-            .scalar_subquery()
-        )
-
-    def _overview_avg_group_placement_expr(
-        self,
-        user_id_column: sa.ColumnElement[typing.Any],
-        *,
-        role: RoleRef | None = None,
-        div_min: int | None = None,
-        div_max: int | None = None,
-        tournament_id: int | None = None,
-        grid: DivisionGrid,
-    ) -> sa.ScalarSelect:
-        where_conditions = self._overview_scope_where(
-            user_id_column,
-            role=role,
-            div_min=div_min,
-            div_max=div_max,
-            tournament_id=tournament_id,
-            grid=grid,
-            extra=(models.Standing.buchholz.isnot(None),),
-        )
-        return (
-            self._overview_standing_select(sa.func.avg(models.Standing.position))
-            .where(*where_conditions)
-            .scalar_subquery()
-        )
-
-    def _overview_avg_closeness_expr(
-        self,
-        user_id_column: sa.ColumnElement[typing.Any],
-        *,
-        role: RoleRef | None = None,
-        div_min: int | None = None,
-        div_max: int | None = None,
-        tournament_id: int | None = None,
-        grid: DivisionGrid,
-    ) -> sa.ScalarSelect:
-        where_conditions = self._overview_scope_where(
-            user_id_column,
-            role=role,
-            div_min=div_min,
-            div_max=div_max,
-            tournament_id=tournament_id,
-            grid=grid,
-            extra=(models.Encounter.closeness.isnot(None),),
-        )
-        sides = self._overview_encounter_select(
-            lambda _seat: (models.Encounter.closeness.label("value"),),
-            *where_conditions,
-        ).subquery("overview_avg_closeness_sides")
-        return sa.select(sa.func.avg(sides.c.value)).select_from(sides).scalar_subquery()
-
-    def _overview_maps_won_expr(
-        self,
-        user_id_column: sa.ColumnElement[typing.Any],
-        *,
-        role: RoleRef | None = None,
-        div_min: int | None = None,
-        div_max: int | None = None,
-        tournament_id: int | None = None,
-        grid: DivisionGrid,
-    ) -> sa.ScalarSelect:
-        where_conditions = self._overview_scope_where(
-            user_id_column,
-            role=role,
-            div_min=div_min,
-            div_max=div_max,
-            tournament_id=tournament_id,
-            grid=grid,
-        )
-        sides = self._overview_encounter_select(
-            lambda seat: (seat.maps_won.label("value"),),
-            *where_conditions,
-        ).subquery("overview_maps_won_sides")
-        return sa.select(sa.func.coalesce(sa.func.sum(sides.c.value), 0)).select_from(sides).scalar_subquery()
-
-    def _overview_maps_lost_expr(
-        self,
-        user_id_column: sa.ColumnElement[typing.Any],
-        *,
-        role: RoleRef | None = None,
-        div_min: int | None = None,
-        div_max: int | None = None,
-        tournament_id: int | None = None,
-        grid: DivisionGrid,
-    ) -> sa.ScalarSelect:
-        where_conditions = self._overview_scope_where(
-            user_id_column,
-            role=role,
-            div_min=div_min,
-            div_max=div_max,
-            tournament_id=tournament_id,
-            grid=grid,
-        )
-        sides = self._overview_encounter_select(
-            lambda seat: (seat.maps_lost.label("value"),),
-            *where_conditions,
-        ).subquery("overview_maps_lost_sides")
-        return sa.select(sa.func.coalesce(sa.func.sum(sides.c.value), 0)).select_from(sides).scalar_subquery()
-
     def _overview_winrate_expr(
         self,
         user_id_column: sa.ColumnElement[typing.Any],
@@ -464,68 +340,6 @@ class UserOverviewQueries(DisciplineQueries):
             .where(sides.c.maps > 0)
             .scalar_subquery()
         )
-
-    def _overview_match_stat_avg_10_expr(
-        self,
-        user_id_column: sa.ColumnElement[typing.Any],
-        stat: enums.LogStatsName,
-        *,
-        role: RoleRef | None = None,
-        div_min: int | None = None,
-        div_max: int | None = None,
-        tournament_id: int | None = None,
-        grid: DivisionGrid,
-    ) -> sa.ScalarSelect:
-        hero_time_alias = self._facts.alias()
-        where_conditions: list[typing.Any] = [
-            self._facts.c.player_id == user_id_column,
-            self._facts.c.segment == 0,
-            self._facts.c.entity_id.isnot(None),
-            self._facts.c.stat_code == stat,
-            sa.exists(
-                sa.select(1)
-                .select_from(hero_time_alias)
-                .where(
-                    hero_time_alias.c.match_id == self._facts.c.match_id,
-                    hero_time_alias.c.workspace_member_id == self._facts.c.workspace_member_id,
-                    hero_time_alias.c.entity_id == self._facts.c.entity_id,
-                    hero_time_alias.c.stat_code == enums.LogStatsName.HeroTimePlayed.value,
-                    hero_time_alias.c.segment == 0,
-                    hero_time_alias.c.value > 60,
-                )
-            ),
-        ]
-
-        if role is not None or div_min is not None or div_max is not None:
-            where_conditions.append(
-                _compare_team_scope_exists(
-                    user_id_column,
-                    self._facts.c.tournament_team_id,
-                    role=role,
-                    div_min=div_min,
-                    div_max=div_max,
-                    tournament_id=tournament_id,
-                    grid=grid,
-                    discipline=self.discipline,
-                )
-            )
-        reduction_order = (self._facts.c.match_id, self._facts.c.workspace_member_id, self._facts.c.entity_id)
-
-        query = (
-            sa.select(
-                sa.func.sum(aggregate_order_by(self._facts.c.value, *reduction_order))
-                / sa.func.nullif(sa.func.sum(aggregate_order_by(self._matches.c.duration_s, *reduction_order)), 0)
-                * 600
-            )
-            .select_from(self._facts)
-            .join(self._matches, self._matches.c.id == self._facts.c.match_id)
-        )
-
-        if tournament_id is not None:
-            query = query.join(models.Encounter, models.Encounter.id == self._matches.c.encounter_id)
-            where_conditions.append(models.Encounter.tournament_id == tournament_id)
-
-        return query.where(*where_conditions).scalar_subquery()
 
     def _overview_order_by(
         self,

@@ -24,7 +24,6 @@ from typing import Any
 
 from shared.messaging.config import (
     DISCORD_GUILD_CHANNELS_QUEUE,
-    DISCORD_GUILD_INFO_QUEUE,
     DISCORD_GUILD_ROLES_QUEUE,
     DISCORD_MEMBER_ROLES_QUEUE,
     DISCORD_VOICE_MOVE_QUEUE,
@@ -83,13 +82,6 @@ class DiscordClient:
             raise MemberNotFound("member not found")
         return roles
 
-    async def is_member(self, guild_id: str, user_id: str) -> bool:
-        try:
-            await self.member_roles(guild_id, user_id)
-        except MemberNotFound:
-            return False
-        return True
-
     # --- guild --------------------------------------------------------------
 
     async def guild_role_ids(self, guild_id: str) -> set[str]:
@@ -111,10 +103,6 @@ class DiscordClient:
         """Text, voice and category channels by position, with the bot's missing permissions."""
         data = await self._rpc(DISCORD_GUILD_CHANNELS_QUEUE, {"guild_id": guild_id})
         return list(data.get("channels") or [])
-
-    async def guild_info(self, guild_id: str) -> dict[str, Any]:
-        """``{guild_id, connected, name, icon_url, member_count, owner_id, owner_name, owner_avatar_url}``."""
-        return await self._rpc(DISCORD_GUILD_INFO_QUEUE, {"guild_id": guild_id})
 
     # --- voice --------------------------------------------------------------
 

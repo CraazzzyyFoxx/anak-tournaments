@@ -247,7 +247,7 @@ async def workspace_names_blocking_player_unlink(
     ``players.user.id`` while RBAC (``user_roles``) is keyed on
     ``auth_user_id``; clearing ``players.user.auth_user_id`` (unlink) would
     leave any such member row auth-less — hidden from the members list
-    (``list_by_workspace`` filters on ``auth_user_id IS NOT NULL``) and
+    (``list_page`` joins ``auth.user``) and
     unmanageable via the auth-keyed ``get_member`` join. The caller refuses the
     unlink and names these workspaces so the user knows which to leave first.
 

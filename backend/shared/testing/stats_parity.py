@@ -8,7 +8,6 @@ explicit, separate operation against the frozen old service source.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import subprocess
 import sys
@@ -1258,24 +1257,6 @@ def _json_default(value: Any) -> Any:
     if hasattr(value, "item"):
         return value.item()
     raise TypeError(f"unsupported golden value: {type(value).__name__}")
-
-
-def assert_golden(path: str | Path, actual: Any) -> None:
-    """Compare with captured old-reader output; never regenerate it in tests."""
-    expected = json.loads(Path(path).read_text(encoding="utf-8"))
-    normalized = json.loads(json.dumps(actual, default=_json_default, allow_nan=False))
-    if normalized != expected:
-        from difflib import unified_diff
-        from itertools import islice
-
-        difference = unified_diff(
-            json.dumps(expected, indent=2, sort_keys=True).splitlines(),
-            json.dumps(normalized, indent=2, sort_keys=True).splitlines(),
-            fromfile="frozen",
-            tofile="native",
-            lineterm="",
-        )
-        raise AssertionError("\n".join(islice(difference, 200)))
 
 
 @pytest.fixture(scope="module")

@@ -79,7 +79,7 @@ class AuthUser(db.TimeStampIntegerMixin):
     ) -> None:
         """Attach RBAC data from auth-service /validate response.
 
-        When set, has_role() and has_permission() use these cached
+        When set, has_permission() and the role checks use these cached
         values instead of traversing ORM relationships, avoiding an
         extra DB query and ensuring instant propagation of changes.
 
@@ -301,15 +301,6 @@ class AuthUser(db.TimeStampIntegerMixin):
                     return True
 
         return False
-
-    def has_role(self, role_name: str) -> bool:
-        """Check if user has a specific role"""
-        if self.is_superuser:
-            return True
-        cached_roles = getattr(self, "_cached_role_names", None)
-        if cached_roles is not None:
-            return role_name in cached_roles
-        return any(role.name == role_name and role.workspace_id is None for role in self.roles)
 
 
 class RefreshToken(db.TimeStampIntegerMixin):

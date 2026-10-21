@@ -151,12 +151,12 @@ class WorkspaceMemberRemovalTests(IsolatedAsyncioTestCase):
         async with self.Session() as s:
             workspace, auth_user, player = await self._seed(s)
             member = await self._add_admin(s, workspace, auth_user)
-            self.assertEqual([member.id], [m.id for m in await workspace_service.get_members(s, workspace.id)])
+            total, rows = await workspace_service.list_members_page(s, workspace.id, page=1, per_page=50, search=None)
+            self.assertEqual((1, [member.id]), (total, [m.id for m, _auth, _roles in rows]))
 
             await workspace_service.remove_member(s, member)
             await s.flush()
 
-            self.assertEqual([], list(await workspace_service.get_members(s, workspace.id)))
             total, rows = await workspace_service.list_members_page(s, workspace.id, page=1, per_page=50, search=None)
             self.assertEqual((0, []), (total, rows))
             self.assertIsNone(await workspace_service.get_member(s, workspace.id, auth_user.id))
@@ -180,7 +180,8 @@ class WorkspaceMemberRemovalTests(IsolatedAsyncioTestCase):
 
             self.assertEqual(member.id, invited.id)
             self.assertIsNone(invited.removed_at)
-            self.assertEqual([member.id], [m.id for m in await workspace_service.get_members(s, workspace.id)])
+            _total, rows = await workspace_service.list_members_page(s, workspace.id, page=1, per_page=50, search=None)
+            self.assertEqual([member.id], [m.id for m, _auth, _roles in rows])
             self.assertTrue(await user_has_any_workspace_role(s, user_id=auth_user.id, workspace_id=workspace.id))
 
     async def test_anchoring_a_removed_player_again_clears_removed_at(self) -> None:
@@ -193,11 +194,3 @@ class WorkspaceMemberRemovalTests(IsolatedAsyncioTestCase):
             again = await get_or_create_workspace_member(s, workspace_id=workspace.id, player_id=player.id)
             self.assertEqual(member.id, again.id)
             self.assertIsNone(again.removed_at)
-
-            await workspace_service.remove_member(s, again)
-            await s.flush()
-            by_player = await self.members.bulk_get_or_create(s, workspace_id=workspace.id, player_ids=[player.id])
-            self.assertEqual({player.id: member.id}, by_player)
-            await s.refresh(member)
-            self.assertIsNone(member.removed_at)
-            self.assertTrue(await user_has_any_workspace_role(s, user_id=auth_user.id, workspace_id=workspace.id))

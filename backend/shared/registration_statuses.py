@@ -259,10 +259,6 @@ def get_builtin_status_values(scope: StatusScope) -> set[str]:
     return set(BUILTIN_STATUS_META[scope].keys())
 
 
-def get_builtin_status_meta(scope: StatusScope, value: str) -> StatusMeta | None:
-    return BUILTIN_STATUS_META[scope].get(value)
-
-
 def is_balancer_status_excluded(value: str) -> bool:
     """Pure Python check for a *builtin* balancer status slug (no DB access).
 
@@ -393,42 +389,6 @@ async def list_custom_statuses(
     )
     result = await session.execute(query)
     return list(result.scalars().all())
-
-
-async def get_status_meta(
-    session: AsyncSession,
-    *,
-    workspace_id: int,
-    scope: StatusScope,
-    value: str,
-) -> StatusMeta:
-    workspace_result = await session.execute(
-        sa.select(models.RegistrationStatus).where(
-            models.RegistrationStatus.workspace_id == workspace_id,
-            models.RegistrationStatus.scope == scope,
-            models.RegistrationStatus.slug == value,
-        )
-    )
-    workspace_status = workspace_result.scalar_one_or_none()
-    if workspace_status is not None:
-        return build_status_meta_from_model(workspace_status)
-
-    builtin_result = await session.execute(
-        sa.select(models.RegistrationStatus).where(
-            models.RegistrationStatus.workspace_id.is_(None),
-            models.RegistrationStatus.kind == "builtin",
-            models.RegistrationStatus.scope == scope,
-            models.RegistrationStatus.slug == value,
-        )
-    )
-    builtin_status = builtin_result.scalar_one_or_none()
-    if builtin_status is not None:
-        return build_status_meta_from_model(builtin_status)
-
-    builtin_fallback = get_builtin_status_meta(scope, value)
-    if builtin_fallback is not None:
-        return builtin_fallback
-    return build_unknown_status_meta(scope, value)
 
 
 def _status_metas_cache_key(workspace_id: int) -> str:

@@ -15,7 +15,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(STATS_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
-from shared.core.enums import StageType  # noqa: E402
 from shared.disciplines.overwatch.achievements.catalog import (  # noqa: E402
     RULES,
     _hero_kd_rules,
@@ -23,12 +22,8 @@ from shared.disciplines.overwatch.achievements.catalog import (  # noqa: E402
     get_default_rule_slugs,
 )
 from shared.disciplines.overwatch.achievements.conditions import resolve_stat_name  # noqa: E402
-from shared.disciplines.overwatch.achievements.conditions.tournament_format import (  # noqa: E402
-    matches_tournament_format,
-)
 from shared.domain.achievements import registry, validation  # noqa: E402
 from shared.models.achievements.achievement import AchievementGrain, AchievementRule  # noqa: E402
-from shared.services.achievement_effective import override_applies_to_scope  # noqa: E402
 from src.services.achievement.engine.differ import (  # noqa: E402
     EvaluationSlice,
     diff_and_apply,
@@ -139,7 +134,6 @@ class ValidationTests(TestCase):
         self.assertEqual({}, errors)
 
     def test_new_leaf_types_registered_with_grain(self) -> None:
-        registered = set(registry.get_registered_types(discipline="overwatch"))
         for ctype in (
             "log_stat_rank",
             "standing_count",
@@ -150,7 +144,7 @@ class ValidationTests(TestCase):
             "team_otp_count",
             "reached_playoffs",
         ):
-            self.assertIn(ctype, registered)
+            registry.get_executor(ctype, discipline="overwatch")
             self.assertIn(ctype, OW_SPECS)
 
     def test_reached_playoffs_scope_drives_grain(self) -> None:
@@ -216,27 +210,6 @@ class ValidationTests(TestCase):
             self.assertNotIn(retired, slugs)
 
 
-class TournamentFormatTests(TestCase):
-    def test_round_robin_detected_from_stage_type(self) -> None:
-        self.assertTrue(matches_tournament_format({StageType.ROUND_ROBIN}, "round_robin"))
-        self.assertFalse(matches_tournament_format({StageType.ROUND_ROBIN}, "has_bracket"))
-
-    def test_single_elimination_detected_from_stage_type(self) -> None:
-        self.assertTrue(matches_tournament_format({StageType.SINGLE_ELIMINATION}, "single_elim"))
-        self.assertTrue(matches_tournament_format({StageType.SINGLE_ELIMINATION}, "has_bracket"))
-        self.assertFalse(matches_tournament_format({StageType.SINGLE_ELIMINATION}, "double_elim"))
-
-    def test_double_elimination_detected_from_stage_type(self) -> None:
-        self.assertTrue(matches_tournament_format({StageType.DOUBLE_ELIMINATION}, "double_elim"))
-        self.assertTrue(matches_tournament_format({StageType.DOUBLE_ELIMINATION}, "has_bracket"))
-        self.assertFalse(matches_tournament_format({StageType.DOUBLE_ELIMINATION}, "single_elim"))
-
-    def test_swiss_only_is_not_round_robin(self) -> None:
-        self.assertFalse(matches_tournament_format({StageType.SWISS}, "round_robin"))
-        self.assertFalse(matches_tournament_format({StageType.SWISS}, "has_bracket"))
-        self.assertTrue(matches_tournament_format({StageType.ROUND_ROBIN, StageType.SINGLE_ELIMINATION}, "round_robin"))
-
-
 class DynamicHeroRuleTests(TestCase):
     @staticmethod
     def _hero(hero_id: int, slug: str, name: str, image_path: str = "/img.png") -> SimpleNamespace:
@@ -279,20 +252,3 @@ class DynamicHeroRuleTests(TestCase):
         rules = {rule.slug: rule for rule in _hero_kd_rules(1, None)}
         self.assertIn("tracer", rules)
         self.assertIsNone(rules["tracer"].entity_id)
-
-
-class OverrideScopeTests(TestCase):
-    def test_global_revoke_matches_any_scope(self) -> None:
-        self.assertTrue(override_applies_to_scope(None, None, None, None))
-        self.assertTrue(override_applies_to_scope(None, None, 10, None))
-        self.assertTrue(override_applies_to_scope(None, None, 10, 501))
-
-    def test_tournament_revoke_matches_tournament_and_match_rows_in_same_tournament(self) -> None:
-        self.assertTrue(override_applies_to_scope(10, None, 10, None))
-        self.assertTrue(override_applies_to_scope(10, None, 10, 501))
-        self.assertFalse(override_applies_to_scope(10, None, 11, None))
-
-    def test_match_revoke_matches_only_exact_match(self) -> None:
-        self.assertTrue(override_applies_to_scope(10, 501, 10, 501))
-        self.assertFalse(override_applies_to_scope(10, 501, 10, 502))
-        self.assertFalse(override_applies_to_scope(10, 501, 10, None))

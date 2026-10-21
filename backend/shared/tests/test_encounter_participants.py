@@ -291,43 +291,12 @@ class EncounterReaderTests(ParticipationWriterCase):
             return {"stage": stage.id, "item": item.id}
 
     async def test_the_bracket_readers_find_the_positioned_encounter(self) -> None:
-        where = await self._position()
+        await self._position()
         async with self.Session() as s:
             self.assertEqual(
                 [self.ids["e"]],
                 [e.id for e in await self.encounters.list_by_tournament(s, self.ids["t"])],
             )
-            self.assertEqual(
-                [self.ids["e"]],
-                [
-                    e.id
-                    for e in await self.encounters.list_by_stage(
-                        s, tournament_id=self.ids["t"], stage_id=where["stage"]
-                    )
-                ],
-            )
-            self.assertEqual(
-                [self.ids["e"]],
-                [
-                    e.id
-                    for e in await self.encounters.list_for_stage_scope(
-                        s, stage_id=where["stage"], stage_item_id=where["item"]
-                    )
-                ],
-            )
-            # The unassigned bucket is a different question, not the same one.
-            self.assertEqual(
-                [],
-                list(await self.encounters.list_for_stage_scope(s, stage_id=where["stage"], stage_item_id=None)),
-            )
-
-    async def test_the_challonge_id_is_read_through_the_match_mapping(self) -> None:
-        await self._position()
-        async with self.Session() as s:
-            found = await self.encounters.get_by_challonge_id(s, 4242)
-            self.assertIsNotNone(found)
-            self.assertEqual(self.ids["e"], found.id)
-            self.assertIsNone(await self.encounters.get_by_challonge_id(s, 4243))
 
     async def test_deleting_a_stage_items_encounters_leaves_the_rest(self) -> None:
         where = await self._position()
@@ -353,34 +322,3 @@ class EncounterReaderTests(ParticipationWriterCase):
             await s.commit()
         async with self.Session() as s:
             self.assertEqual([loose.id], [e.id for e in await self.encounters.list_by_tournament(s, self.ids["t"])])
-
-    async def test_list_by_teams_wants_every_team_seated_at_once(self) -> None:
-        async with self.Session() as s:
-            await self.place(s, 1, "team0", "m0")
-            await self.place(s, 2, "team1", "m1")
-            await s.commit()
-        async with self.Session() as s:
-            both = [self.ids["team0"], self.ids["team1"]]
-            self.assertEqual([self.ids["e"]], [e.id for e in await self.encounters.list_by_teams(s, both)])
-            self.assertEqual([], list(await self.encounters.list_by_teams(s, [self.ids["team0"], self.ids["team2"]])))
-            self.assertEqual([], list(await self.encounters.list_by_teams(s, [])))
-
-    async def test_a_replaced_team_no_longer_plays_the_encounter(self) -> None:
-        async with self.Session() as s:
-            await self.place(s, 1, "team0", "m0")
-            await self.place(s, 2, "team1", "m1")
-            await s.commit()
-        async with self.Session() as s:
-            encounter = await self.encounter(s)
-            await participants.vacate_slot(s, encounter, slot=1)
-            await self.place(s, 1, "team2", "m2")
-            await s.commit()
-        async with self.Session() as s:
-            self.assertEqual(
-                [],
-                list(await self.encounters.list_by_teams(s, [self.ids["team0"], self.ids["team1"]])),
-            )
-            self.assertEqual(
-                [self.ids["e"]],
-                [e.id for e in await self.encounters.list_by_teams(s, [self.ids["team2"], self.ids["team1"]])],
-            )

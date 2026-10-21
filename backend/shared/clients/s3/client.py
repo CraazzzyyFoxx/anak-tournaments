@@ -210,9 +210,6 @@ class S3Client:
             logger.exception(f"Error heading object '{key}'")
             raise
 
-    async def object_exists(self, key: str) -> bool:
-        return await self.head_object(key) is not None
-
     # ── URL generation ───────────────────────────────────────────────────
 
     def get_public_url(self, key: str) -> str:

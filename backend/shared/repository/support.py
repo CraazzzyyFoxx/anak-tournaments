@@ -6,7 +6,6 @@ from datetime import datetime
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from shared import models
 from shared.repository.base import BaseRepository
@@ -21,19 +20,6 @@ from shared.services.stats_evidence import capture_stats_evidence, owner_scopes,
 class DivisionGridRepository(BaseRepository[models.DivisionGrid]):
     def __init__(self) -> None:
         super().__init__(models.DivisionGrid)
-
-    async def list_workspace_grids(
-        self,
-        session: AsyncSession,
-        workspace_id: int,
-    ) -> Sequence[models.DivisionGrid]:
-        result = await session.execute(
-            sa.select(models.DivisionGrid)
-            .options(selectinload(models.DivisionGrid.versions))
-            .where(models.DivisionGrid.workspace_id == workspace_id)
-            .order_by(models.DivisionGrid.id.asc())
-        )
-        return result.unique().scalars().all()
 
 
 class AchievementRuleRepository(BaseRepository[models.AchievementRule]):

@@ -110,5 +110,5 @@ class RosterRoleCodeTests(TestCase):
         role = RosterRole(role="striker", rank=1200, source="registration", is_primary=True, priority=0, subrole=None)
         roster = PlayerRoster(1, None, None, None, None, None, (role,), False)
         assert roster.rank_on("striker") == 1200
-        assert roster.source_on("striker") == "registration"
+        assert roster.role_sources["striker"] == "registration"
         assert roster.covers("striker") and not roster.covers("tank")

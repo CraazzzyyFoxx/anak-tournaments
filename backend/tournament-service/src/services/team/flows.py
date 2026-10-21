@@ -145,22 +145,6 @@ class TeamFlowsService:
         team = await self.get(session, id, entities)
         return await self.to_pydantic(session, team, entities)
 
-    # `v2` key version (both team families): Redis keeps values across a deploy and cashews returns
-    # them unvalidated, so a `TeamRead` shape change must bump it; `cache_resources._teams` evicts all.
-    @cache(
-        ttl=config.settings.teams_cache_ttl, key="teams_by_tournament:v2:{tournament_id}:{entities}", prefix="fastapi:"
-    )
-    async def get_by_tournament_read(
-        self, session: AsyncSession, tournament_id: int, entities: list[str]
-    ) -> list[schemas.TeamRead]:
-        """Return every team of the tournament as ``TeamRead``."""
-        tournament = await tournament_flows_service.get(session, tournament_id, [])
-        teams = await self.teams.get_by_tournament(session, tournament=tournament, entities=entities)
-        grid = None
-        if "players" in entities:
-            grid = await get_division_grid(session, None, tournament_id=tournament_id)
-        return [await self.to_pydantic(session, team, entities=entities, grid=grid) for team in teams]
-
     async def get_by_name_and_tournament(
         self, session: AsyncSession, tournament_id: int, name: str, entities: list[str]
     ) -> models.Team:
@@ -217,6 +201,8 @@ class TeamFlowsService:
         """Return the player by id, or None."""
         return await self.teams.get_player(session, player_id, entities)
 
+    # `v2` key version: Redis keeps values across a deploy and cashews returns them unvalidated, so a
+    # `TeamRead` shape change must bump it; `cache_resources._teams` evicts all.
     @cache(
         ttl=config.settings.teams_cache_ttl,
         key="teams:v2:{workspace_id}:{params.tournament_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}:{params.entities}:{params.search}:{params.discipline}",

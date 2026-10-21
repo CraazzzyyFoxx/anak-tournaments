@@ -36,7 +36,6 @@ class OpenSlotTests(TestCase):
     def test_accepted_members_consume_their_slots(self) -> None:
         occupancy = RosterOccupancy(shape=FIVE_STACK, accepted=_starters("tank", "damage"))
         self.assertEqual({"tank": 0, "damage": 1, "support": 2}, occupancy.open_slots)
-        self.assertEqual({"tank": 1, "damage": 1, "support": 0}, occupancy.filled_slots)
 
     def test_a_full_roster_is_complete(self) -> None:
         occupancy = RosterOccupancy(

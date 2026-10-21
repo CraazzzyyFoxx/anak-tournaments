@@ -9,7 +9,7 @@ from sqlalchemy.orm import aliased, selectinload
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import discipline as discipline_spec
-from shared.division_grid import DEFAULT_GRID, DivisionGrid, ladder_grid
+from shared.division_grid import DEFAULT_GRID, DivisionGrid, DivisionTier, ladder_grid
 from shared.models.division_grid import DivisionGrid as DivisionGridModel
 from shared.models.division_grid import (
     DivisionGridMapping,
@@ -25,11 +25,7 @@ from shared.services.division_grid.cache import (
     DivisionGridMappingSnapshot,
     DivisionGridVersionSnapshot,
 )
-from shared.services.division_grid.normalization import (
-    DivisionGridNormalizationError,
-    DivisionGridNormalizer,
-    WeightedDivisionTarget,
-)
+from shared.services.division_grid.normalization import DivisionGridNormalizationError, DivisionGridNormalizer
 
 
 def _system_default_version_id_expr(discipline: sa.ColumnElement[str] | None = None) -> sa.ScalarSelect[int]:
@@ -119,29 +115,6 @@ def effective_division_number_expr(
     )
 
 
-def effective_division_filter_predicates(
-    rank_column: sa.ColumnElement[int],
-    tournament_id_column: sa.ColumnElement[int],
-    div_min: int | None,
-    div_max: int | None,
-) -> list[sa.ColumnElement[bool]]:
-    """``div_min <= division(rank) <= div_max`` resolved on each row's own grid.
-
-    All-workspaces counterpart of
-    :func:`shared.division_grid.division_filter_predicates`, which can only
-    translate a division range against one grid.
-    """
-    if div_min is None and div_max is None:
-        return []
-
-    division = effective_division_number_expr(rank_column, tournament_id_column)
-    if div_min is not None and div_max is not None:
-        return [division.between(div_min, div_max)]
-    if div_min is not None:
-        return [division >= div_min]
-    return [division <= div_max]
-
-
 def require_grid_version_read_access(user: AuthUser, workspace_id: int | None) -> None:
     """System grids (workspace_id IS NULL) are readable by any authenticated user.
 
@@ -196,23 +169,6 @@ async def require_event_grid(session: AsyncSession, *, version_id: int | None, d
             status_code=422,
             detail=f"division_grid_required: a {discipline!r} event needs a division grid of its own with tiers",
         )
-
-
-async def get_workspace_division_grid_version(
-    session: AsyncSession,
-    workspace_id: int | None,
-    discipline: str | None = None,
-) -> DivisionGridVersion | None:
-    version_id = await get_workspace_division_grid_version_id(session, workspace_id, discipline=discipline)
-    return await load_division_grid_version(session, version_id)
-
-
-async def get_tournament_division_grid_version(
-    session: AsyncSession,
-    tournament_id: int | None,
-) -> DivisionGridVersion | None:
-    version_id = await get_tournament_division_grid_version_id(session, tournament_id)
-    return await load_division_grid_version(session, version_id)
 
 
 async def get_effective_division_grid_version(
@@ -546,13 +502,6 @@ async def load_division_grid_version(
     return await _load_division_grid_version_from_db(session, version_id)
 
 
-async def get_default_division_grid_version(
-    session: AsyncSession, discipline: str | None = None
-) -> DivisionGridVersion | None:
-    version_id = await get_default_division_grid_version_id(session, discipline)
-    return await load_division_grid_version(session, version_id)
-
-
 async def get_default_division_grid_version_id(session: AsyncSession, discipline: str | None = None) -> int | None:
     query = (
         sa.select(DivisionGridVersion.id)
@@ -672,7 +621,6 @@ async def build_workspace_division_grid_normalizer(
     ]
 
     primary_target_by_source_tier_id = {}
-    weighted_targets_by_source_tier_id = {}
 
     for source_version_id in foreign_source_version_ids:
         mapping = await load_mapping_snapshot(
@@ -694,7 +642,7 @@ async def build_workspace_division_grid_normalizer(
                 f"to {resolved_target_version_id} is incomplete"
             )
 
-        rules_by_source_tier_id: dict[int, list[WeightedDivisionTarget]] = {}
+        targets_by_source_tier_id: dict[int, list[DivisionTier]] = {}
         primary_rule_target_by_source_tier_id = {}
 
         for rule in mapping.rules:
@@ -703,9 +651,7 @@ async def build_workspace_division_grid_normalizer(
                 raise DivisionGridNormalizationError(
                     f"Target tier {rule.target_tier_id} is outside normalized version {resolved_target_version_id}"
                 )
-            rules_by_source_tier_id.setdefault(rule.source_tier_id, []).append(
-                WeightedDivisionTarget(tier=target_tier, weight=float(rule.weight))
-            )
+            targets_by_source_tier_id.setdefault(rule.source_tier_id, []).append(target_tier)
             if rule.is_primary:
                 primary_rule_target_by_source_tier_id[rule.source_tier_id] = target_tier
 
@@ -713,18 +659,17 @@ async def build_workspace_division_grid_normalizer(
         for source_tier in source_grid.tiers:
             if source_tier.id is None:
                 raise DivisionGridNormalizationError(f"Source tier id is missing for version {source_version_id}")
-            weighted_targets = tuple(rules_by_source_tier_id.get(source_tier.id, []))
-            if require_complete and not weighted_targets:
+            targets = targets_by_source_tier_id.get(source_tier.id, [])
+            if require_complete and not targets:
                 raise DivisionGridNormalizationError(
                     f"Source tier {source_tier.id} in version {source_version_id} "
                     f"is not covered by mapping to {resolved_target_version_id}"
                 )
-            if not weighted_targets:
+            if not targets:
                 continue
 
-            weighted_targets_by_source_tier_id[source_tier.id] = weighted_targets
-            if len(weighted_targets) == 1:
-                primary_target_by_source_tier_id[source_tier.id] = weighted_targets[0].tier
+            if len(targets) == 1:
+                primary_target_by_source_tier_id[source_tier.id] = targets[0]
                 continue
 
             primary_target = primary_rule_target_by_source_tier_id.get(source_tier.id)
@@ -740,5 +685,4 @@ async def build_workspace_division_grid_normalizer(
         target_grid=target_grid,
         source_grids_by_version_id=source_grids_by_version_id,
         primary_target_by_source_tier_id=primary_target_by_source_tier_id,
-        weighted_targets_by_source_tier_id=weighted_targets_by_source_tier_id,
     )

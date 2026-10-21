@@ -161,7 +161,6 @@ class OverviewRoleDivisionTests(IsolatedAsyncioTestCase):
             target_grid=self.GRID_A,
             source_grids_by_version_id={101: self.GRID_A},
             primary_target_by_source_tier_id={},
-            weighted_targets_by_source_tier_id={},
         )
         roles_by_user, division_grids = await self._resolve(
             {

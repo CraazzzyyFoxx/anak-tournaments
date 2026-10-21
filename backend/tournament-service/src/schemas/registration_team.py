@@ -153,12 +153,6 @@ class RegistrationTeamNotesRequest(BaseModel):
     notes: str | None = None
 
 
-class RegistrationTeamPlaceAdminRequest(BaseModel):
-    registration_id: int
-    slot_code: str
-    is_substitute: bool = False
-
-
 class RegistrationTeamAttachAdminRequest(BaseModel):
     #: Matched against the primary game handle of the tournament's registrations.
     handle: str = Field(min_length=1, max_length=255)

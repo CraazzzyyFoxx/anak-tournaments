@@ -218,7 +218,7 @@ def test_every_receiver_names_the_owning_games_handle(db_session, discipline: st
             player = registration.workspace_member.player
             accounts = {
                 (account.provider, account.username)
-                for account in await social_identity_service.list_for_player(db_session, player.id)
+                for account in await social_identity_service.accounts.list_by_user(db_session, player.id)
             }
             return {
                 "captain": captain_handles,
@@ -276,7 +276,7 @@ def test_a_typed_handle_cannot_take_another_players_account(db_session) -> None:
                 )
             await db_session.rollback()
 
-            owners = await social_identity_service.find_player_id_by_handle(db_session, provider=RIOT, username=riot_id)
+            owner = await social_identity_service.find_by_handle(db_session, provider=RIOT, username=riot_id)
             registrations = await db_session.scalar(
                 sa.select(sa.func.count())
                 .select_from(models.Registration)
@@ -285,7 +285,7 @@ def test_a_typed_handle_cannot_take_another_players_account(db_session) -> None:
             return {
                 "status": refused.value.status_code,
                 "code": refused.value.detail[0]["code"],
-                "owner": owners,
+                "owner": owner.user_id,
                 "shadow": shadow_id,
                 "registrations": registrations,
                 "normalized": normalize_social_handle(RIOT, riot_id),

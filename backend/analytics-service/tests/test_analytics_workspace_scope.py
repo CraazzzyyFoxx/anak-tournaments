@@ -74,11 +74,6 @@ class AnalyticsWorkspaceScopeTests(IsolatedAsyncioTestCase):
                 AsyncMock(return_value=[team]),
             ),
             patch.object(
-                analytics_flows.analytics_service,
-                "get_grid_versions",
-                AsyncMock(return_value={}),
-            ),
-            patch.object(
                 analytics_flows,
                 "prepare_openskill_data",
                 return_value=(set(), {}, []),

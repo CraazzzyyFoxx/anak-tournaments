@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from shared import models
 from shared.core.errors import BaseAPIException
 from shared.models.tournament.player_role import assignment_of
-from shared.repository import CatalogRoleRepository, PlayerRepository
+from shared.repository import CatalogRoleRepository
 from shared.schemas.role import RoleRef
 from shared.services.ontology import project_disciplines, rated_leaf, resolve_role_ref
 from shared.testing import create_test_async_engine
@@ -166,38 +166,3 @@ class PlayerRoleTests(IsolatedAsyncioTestCase):
                 )
             assert raised.exception.status_code == 422
             assert "unknown_role" in str(raised.exception.detail)
-
-    async def test_role_history_is_scoped_to_the_requested_discipline(self) -> None:
-        async with self.Session() as s:
-            await project_disciplines(s)
-            member = await s.scalar(
-                sa.select(models.WorkspaceMember).where(models.WorkspaceMember.workspace_id == self.workspace_id)
-            )
-            expected = {}
-            for code in ("overwatch", "lol"):
-                tournament = models.Tournament(workspace_id=self.workspace_id, discipline=code, name=code, slug=code)
-                s.add(tournament)
-                await s.flush()
-                team = models.Team(tournament_id=tournament.id, name=code, balancer_name=code)
-                s.add(team)
-                await s.flush()
-                leaf = await rated_leaf(
-                    s, discipline=code, workspace_id=self.workspace_id, role="support", sub_role=None
-                )
-                player = models.Player(
-                    tournament_id=tournament.id,
-                    team_id=team.id,
-                    workspace_member_id=member.id,
-                    name=code,
-                    rank=2000,
-                    assignments=[assignment_of(leaf)],
-                )
-                s.add(player)
-                await s.flush()
-                expected[code] = player.id
-            for code, player_id in expected.items():
-                rows = await PlayerRepository().list_by_user_and_role(
-                    s, user_id=member.player_id, role="support", discipline=code
-                )
-                assert [row.id for row in rows] == [player_id]
-            await s.rollback()

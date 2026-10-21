@@ -131,15 +131,6 @@ class BaseRepository[ModelType: Base]:
         result = await session.execute(query)
         return result.unique().scalars().all()
 
-    async def get_bulk(
-        self,
-        session: AsyncSession,
-        ids: Sequence[int | str],
-        *,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> Sequence[ModelType]:
-        return await self.bulk_get(session, ids, options=options)
-
     async def get_many_by(
         self,
         session: AsyncSession,

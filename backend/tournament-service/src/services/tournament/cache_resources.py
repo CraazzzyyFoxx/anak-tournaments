@@ -48,7 +48,7 @@ def _standings(tournament_id: int) -> tuple[str, ...]:
 
 
 def _teams(tournament_id: int) -> tuple[str, ...]:
-    # `teams:v2:` and `teams_by_tournament:v2:` (``services.team.flows``); the glob
+    # `teams:v2:` (``services.team.flows``); the glob
     # spans every key version, so a version bump never strands an entry.
     return _with_prefixes(f"*teams*:{tournament_id}:*")
 

@@ -310,18 +310,5 @@ class AnalyticsFlowsService:
 
         return selected_algorithms
 
-    async def get_analytics(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-        workspace_id: int | None = None,
-    ):
-        await self.recalculate_analytics(
-            session,
-            tournament_id,
-            [POINTS],
-            workspace_id=workspace_id,
-        )
-
 
 flows_service = AnalyticsFlowsService()

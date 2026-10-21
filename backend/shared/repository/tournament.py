@@ -345,36 +345,6 @@ class TeamRepository(BaseRepository[models.Team]):
         result = await session.execute(query)
         return result.unique().scalars().all()
 
-    async def get_by_player_ids(
-        self,
-        session: AsyncSession,
-        player_ids: Sequence[int],
-        tournament_id: int,
-        *,
-        min_players: int = 3,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> models.Team | None:
-        """The team a roster (``player_ids`` = ``workspace_member.player_id`` values)
-        belongs to in ``tournament_id`` -- matched by majority membership (at least
-        ``min_players`` of them on one non-substitute roster), not exact set
-        equality, since a sub might sit on a different team than the roster
-        being resolved.
-        """
-        query = (
-            self._apply_options(sa.select(models.Team), options)
-            .join(models.Player, models.Team.id == models.Player.team_id)
-            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-            .where(
-                models.WorkspaceMember.player_id.in_(player_ids),
-                models.Team.tournament_id == tournament_id,
-                models.Player.is_substitution.is_(False),
-            )
-            .group_by(models.Team.id)
-            .having(sa.func.count(models.Player.id) >= min_players)
-        )
-        result = await session.execute(query)
-        return result.unique().scalars().first()
-
     async def claim_captain(self, session: AsyncSession, team_id: int, captain_id: int) -> bool:
         """Set ``captain_id`` only while the team has none; whether this call won it."""
         result = await session.execute(
@@ -465,12 +435,6 @@ class PlayerRepository(BaseRepository[models.Player]):
         )
         return result.tuples().all()
 
-    async def list_by_team(self, session: AsyncSession, team_id: int) -> Sequence[models.Player]:
-        result = await session.execute(
-            sa.select(models.Player).where(models.Player.team_id == team_id).order_by(models.Player.id.asc())
-        )
-        return result.scalars().all()
-
     async def list_by_related_player(self, session: AsyncSession, player_id: int) -> Sequence[models.Player]:
         """Roster rows that name ``player_id`` as the player they substitute for.
 
@@ -480,44 +444,6 @@ class PlayerRepository(BaseRepository[models.Player]):
             self.select().where(models.Player.related_player_id == player_id).order_by(models.Player.id.asc())
         )
         return result.scalars().all()
-
-    async def get_by_team_and_user(
-        self,
-        session: AsyncSession,
-        *,
-        team_id: int,
-        user_id: int,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> models.Player | None:
-        query = self._apply_options(
-            sa.select(models.Player).where(
-                models.Player.workspace_member.has(models.WorkspaceMember.player_id == user_id),
-                models.Player.team_id == team_id,
-            ),
-            options,
-        )
-        result = await session.execute(query)
-        return result.unique().scalars().first()
-
-    async def list_by_user_and_role(
-        self,
-        session: AsyncSession,
-        *,
-        user_id: int,
-        role: str | None,
-        discipline: str,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> Sequence[models.Player]:
-        query = self._apply_options(
-            sa.select(models.Player).where(
-                models.Player.workspace_member.has(models.WorkspaceMember.player_id == user_id),
-                models.Player.role == role,
-                models.Player.tournament.has(models.Tournament.discipline == discipline),
-            ),
-            options,
-        )
-        result = await session.execute(query)
-        return result.unique().scalars().all()
 
 
 class EncounterRepository(BaseRepository[models.Encounter]):
@@ -569,49 +495,6 @@ class EncounterRepository(BaseRepository[models.Encounter]):
         )
         return result.unique().scalars().first()
 
-    async def get_by_challonge_id(
-        self,
-        session: AsyncSession,
-        challonge_id: int,
-    ) -> models.Encounter | None:
-        """The encounter a remote Challonge match maps to.
-
-        The id belongs to the import, so it lives on ``tournament.challonge_match_mapping``
-        and is read through it. One remote match maps to at most one encounter per source.
-        """
-        result = await session.execute(
-            self.select()
-            .join(
-                models.ChallongeMatchMapping,
-                models.ChallongeMatchMapping.encounter_id == models.Encounter.id,
-            )
-            .where(models.ChallongeMatchMapping.challonge_match_id == challonge_id)
-        )
-        return result.unique().scalars().first()
-
-    async def list_by_teams(self, session: AsyncSession, team_ids: Sequence[int]) -> Sequence[models.Encounter]:
-        """Every encounter that seats ALL of ``team_ids`` at once.
-
-        Replaces the home/away pair lookup: one EXISTS over the ACTIVE
-        participations per team, so there is no orientation to ask about and a
-        lobby of N is queried exactly like a duel. A team whose seat was taken
-        over no longer matches -- the encounter it was replaced in is not one
-        it is playing.
-        """
-        if not team_ids:
-            return []
-        query = self.select()
-        for team_id in dict.fromkeys(team_ids):
-            query = query.where(
-                sa.exists().where(
-                    models.EncounterTeam.encounter_id == models.Encounter.id,
-                    models.EncounterTeam.team_id == team_id,
-                    models.EncounterTeam.active.is_(True),
-                )
-            )
-        result = await session.execute(query.order_by(models.Encounter.id.asc()))
-        return result.unique().scalars().all()
-
     async def list_by_tournament(
         self,
         session: AsyncSession,
@@ -629,62 +512,6 @@ class EncounterRepository(BaseRepository[models.Encounter]):
             .order_by(models.BracketEncounter.round.asc().nulls_last(), models.Encounter.id.asc())
         )
         return result.scalars().all()
-
-    async def list_for_stage_scope(
-        self,
-        session: AsyncSession,
-        *,
-        stage_id: int,
-        stage_item_id: int | None,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> Sequence[models.Encounter]:
-        """Encounters in one stage, narrowed to one stage item (or the unassigned ones).
-
-        ``stage_item_id=None`` renders ``IS NULL`` explicitly rather than relying on
-        ``col == None``: same SQL, but the intent survives a reader who does not know
-        SQLAlchemy overloads ``==``. No ``ORDER BY`` — neither caller orders, and
-        inventing one would be a behaviour change.
-        """
-        item_clause = (
-            models.BracketEncounter.stage_item_id.is_(None)
-            if stage_item_id is None
-            else models.BracketEncounter.stage_item_id == stage_item_id
-        )
-        query = self._apply_options(
-            self.select()
-            .join(
-                models.BracketEncounter,
-                models.BracketEncounter.encounter_id == models.Encounter.id,
-            )
-            .where(models.BracketEncounter.stage_id == stage_id, item_clause),
-            options,
-        )
-        result = await session.execute(query)
-        return result.unique().scalars().all()
-
-    async def list_by_stage(
-        self,
-        session: AsyncSession,
-        *,
-        tournament_id: int,
-        stage_id: int,
-        options: Sequence[_AbstractLoad] | None = None,
-    ) -> Sequence[models.Encounter]:
-        query = self._apply_options(
-            self.select()
-            .join(
-                models.BracketEncounter,
-                models.BracketEncounter.encounter_id == models.Encounter.id,
-            )
-            .where(
-                models.Encounter.tournament_id == tournament_id,
-                models.BracketEncounter.stage_id == stage_id,
-            )
-            .order_by(models.BracketEncounter.round.asc(), models.Encounter.id.asc()),
-            options,
-        )
-        result = await session.execute(query)
-        return result.unique().scalars().all()
 
     async def delete_for_stage(self, session: AsyncSession, stage_id: int) -> None:
         """Statement delete of a stage's encounters.

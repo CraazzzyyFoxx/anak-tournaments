@@ -211,12 +211,6 @@ class PlayerRoster:
             return self.best_rank
         return next((entry.rank for entry in self.roles if entry.role == role and entry.is_playable), None)
 
-    def source_on(self, role: str | None) -> RankSource:
-        if role is None:
-            best = max(self.playable, key=lambda entry: entry.rank or 0, default=None)
-            return best.source if best is not None else "none"
-        return next((entry.source for entry in self.roles if entry.role == role and entry.is_playable), "none")
-
     @property
     def best_rank(self) -> int | None:
         """The player's strongest playable role -- what a role-less roster is worth."""

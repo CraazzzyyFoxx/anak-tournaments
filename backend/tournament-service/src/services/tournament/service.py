@@ -341,11 +341,5 @@ class TournamentService:
             hours=int((total_seconds or 0) // 3600),
         )
 
-    async def get_bulk_tournament(
-        self, session: AsyncSession, tournaments_ids: list[int], entities: list[str]
-    ) -> typing.Sequence[models.Tournament]:
-        """Return the tournaments with the given ids, ``entities`` loaded."""
-        return await self.tournament_repo.bulk_get(session, tournaments_ids, options=tournament_entities(entities))
-
 
 tournament_service = TournamentService()
