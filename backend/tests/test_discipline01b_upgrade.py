@@ -37,6 +37,12 @@ _spec = importlib.util.spec_from_file_location(
 assert _spec is not None and _spec.loader is not None
 revision = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(revision)
+_kept_spec = importlib.util.spec_from_file_location(
+    "subrole01_revision", BACKEND / "migrations" / "versions" / "subrole01_kept_sub_roles_restorable.py"
+)
+assert _kept_spec is not None and _kept_spec.loader is not None
+kept_revision = importlib.util.module_from_spec(_kept_spec)
+_kept_spec.loader.exec_module(kept_revision)
 RECONCILE_SQL = (BACKEND / "scripts" / "discipline01_reconcile.sql").read_text(encoding="utf-8")
 
 
@@ -257,6 +263,19 @@ def test_catalog_sub_roles_become_workspace_roles_under_their_role(migrated) -> 
         (ids["ws_a"], "support", "support_main_heal", "Main Heal", "Primary healer", 2, True, True),
         (ids["ws_a"], "tank", "tank_off_tank", "Off Tank", None, 0, False, True),
     ]
+
+
+def test_subrole01_makes_kept_sub_roles_plain_and_restorable(migrated) -> None:
+    """The provenance note leaves the description, and ``selectable`` stops being a second, hidden off-switch."""
+    conn, ids = migrated["conn"], migrated["ids"]
+    with conn.transaction(force_rollback=True):
+        conn.execute(kept_revision.UPGRADE)
+        assert _rows(conn, _SUB_ROLES, (ids["ws_a"],)) == [
+            (ids["ws_a"], "damage", "damage_hitscan", "Hitscan", None, 1, True, True),
+            (ids["ws_a"], "support", "support_light_heal", "light heal", None, 1000, False, True),
+            (ids["ws_a"], "support", "support_main_heal", "Main Heal", "Primary healer", 2, True, True),
+            (ids["ws_a"], "tank", "tank_off_tank", "Off Tank", None, 0, False, True),
+        ]
 
 
 def test_legacy_whitespace_matches_the_existing_catalog_leaf(migrated) -> None:

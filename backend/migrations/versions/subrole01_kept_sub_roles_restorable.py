@@ -31,18 +31,18 @@ depends_on: str | Sequence[str] | None = None
 
 KEPT_NOTE = "Kept by discipline01b: used by players or registrations, absent from the workspace sub-role catalog."
 
+#: Every workspace row of ``catalog.role`` is a sub-role (``ck_role_workspace_is_child``).
+UPGRADE = f"""
+    UPDATE catalog.role
+       SET selectable = true,
+           description = CASE WHEN description = '{KEPT_NOTE}' THEN NULL ELSE description END
+     WHERE workspace_id IS NOT NULL
+       AND (NOT selectable OR description = '{KEPT_NOTE}')
+"""
+
 
 def upgrade() -> None:
-    op.execute(
-        f"""
-        UPDATE catalog.role
-           SET selectable = true,
-               description = CASE WHEN description = '{KEPT_NOTE}' THEN NULL ELSE description END
-         WHERE workspace_id IS NOT NULL
-           AND parent_id IS NOT NULL
-           AND (NOT selectable OR description = '{KEPT_NOTE}')
-        """
-    )
+    op.execute(UPGRADE)
 
 
 def downgrade() -> None:
