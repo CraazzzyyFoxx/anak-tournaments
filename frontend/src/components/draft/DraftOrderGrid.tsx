@@ -8,7 +8,7 @@ import { splitHandle } from "@/components/balancer/balancer-page-helpers";
 import { useDraftLayerPad } from "@/hooks/useDraftLayerPad";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { currentRound, orderGrid, pickState, picksAway, type RoundDirection } from "@/lib/draft/room-model";
-import type { RoleOntology } from "@/lib/roster/ontology";
+import { showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { roleOf } from "@/lib/roster/role-ref";
 import { cn } from "@/lib/utils";
 import type { DraftBoard } from "@/types/draft.types";
@@ -163,7 +163,7 @@ export function DraftOrderGrid({
                   title={[
                     t("teams.order.cellTitle", { round: pick.round_no, n: pick.overall_no }),
                     tag,
-                    done && pick.target_role ? slotLabel(roleOf(pick.target_role)) : null
+                    done && pick.target_role && showsRoles(ontology) ? slotLabel(roleOf(pick.target_role)) : null
                   ]
                     .filter(Boolean)
                     .join(" · ")}

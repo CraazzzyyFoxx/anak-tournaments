@@ -18,7 +18,7 @@ import {
 } from "@/lib/draft/room-model";
 import type { DraftViewParams } from "@/lib/draft/workspace-model";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
-import type { RoleOntology } from "@/lib/roster/ontology";
+import { showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { roleOf } from "@/lib/roster/role-ref";
 import type { DraftBoard, DraftPick, DraftTeam } from "@/types/draft.types";
 
@@ -278,7 +278,7 @@ export function RoomClockStrip({
               <span className="truncate font-semibold text-[color:var(--aqt-fg)]">
                 {lastPlayer.identity?.handle ?? `#${lastPlayer.id}`}
               </span>
-              {last.target_role && (
+              {last.target_role && showsRoles(ontology) && (
                 <span title={slotLabel(roleOf(last.target_role))} className="inline-flex shrink-0">
                   <PlayerRoleIcon role={roleOf(last.target_role)} ontology={ontology} size={20} decorative />
                   <span className="sr-only">{slotLabel(roleOf(last.target_role))}</span>

@@ -6332,6 +6332,12 @@
           "cancelled": "Драфт отменён",
           "player_role_added": "{player}: добавлена роль {role}",
           "unknown": "{action}"
+        },
+        "actionNoRole": {
+          "pick_made": "П{pick} · {team} · {player}",
+          "pick_autopicked": "П{pick} · {team} · {player} · автопик",
+          "pick_overridden": "П{pick} · {team} · {player} · замена: «{reason}»",
+          "player_role_added": "{player}: роль добавлена"
         }
       },
       "banner": {
@@ -6501,6 +6507,7 @@
       "cell": {
         "open": "Свободно: {role}",
         "openFilter": "Свободно: {role} — показать игроков этой роли",
+        "openSeat": "Свободное место",
         "offRole": "не своя роль"
       },
       "anyRole": "любая роль",

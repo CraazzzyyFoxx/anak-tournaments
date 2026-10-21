@@ -6332,6 +6332,12 @@
           "cancelled": "Draft cancelled",
           "player_role_added": "{player}: role {role} added",
           "unknown": "{action}"
+        },
+        "actionNoRole": {
+          "pick_made": "P{pick} · {team} · {player}",
+          "pick_autopicked": "P{pick} · {team} · {player} · autopick",
+          "pick_overridden": "P{pick} · {team} · {player} · override: “{reason}”",
+          "player_role_added": "{player}: role added"
         }
       },
       "banner": {
@@ -6501,6 +6507,7 @@
       "cell": {
         "open": "Open: {role}",
         "openFilter": "Open: {role} — show players for this role",
+        "openSeat": "Open seat",
         "offRole": "off-role"
       },
       "anyRole": "any role",

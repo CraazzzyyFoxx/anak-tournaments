@@ -10,7 +10,7 @@ import { useDraftLayerPad } from "@/hooks/useDraftLayerPad";
 import { usePickCountdown } from "@/hooks/usePickCountdown";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { pickHistory, type TeamView } from "@/lib/draft/room-model";
-import type { RoleOntology } from "@/lib/roster/ontology";
+import { showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { roleOf } from "@/lib/roster/role-ref";
 import type { DraftBoard, DraftPick } from "@/types/draft.types";
 
@@ -34,6 +34,7 @@ const headingClass =
 export function DraftQueue({ board, teamViews, remaining, myTeamId, clockColor, ontology }: Readonly<DraftQueueProps>) {
   const t = useTranslations("draftRedesign");
   const slotLabel = useSlotLabel(ontology);
+  const named = showsRoles(ontology);
   const [showAll, setShowAll] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   useDraftLayerPad(scrollRef);
@@ -59,7 +60,7 @@ export function DraftQueue({ board, teamViews, remaining, myTeamId, clockColor, 
           // A flex slot seats any role, so it reads as "any role" rather than a list of three.
           const needs = view
             ? [
-                ...[...view.openRoles.keys()].map((role) => slotLabel(role)),
+                ...(named ? [...view.openRoles.keys()].map((role) => slotLabel(role)) : []),
                 ...(view.openFlex > 0 ? [t("teams.anyRole")] : [])
               ]
             : [];
@@ -129,7 +130,7 @@ export function DraftQueue({ board, teamViews, remaining, myTeamId, clockColor, 
                 <span className="truncate font-semibold" title={tag}>
                   {splitHandle(tag).name}
                 </span>
-                {pick.target_role && (
+                {pick.target_role && named && (
                   <span className="flex-none" title={slotLabel(roleOf(pick.target_role))}>
                     <PlayerRoleIcon role={roleOf(pick.target_role)} ontology={ontology} size={18} />
                   </span>
