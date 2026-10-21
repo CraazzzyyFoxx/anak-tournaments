@@ -75,6 +75,7 @@ Procedures for an operator. Commands are meant to be run verbatim.
 | [`multi-game-p3-ranks-release.md`](./multi-game-p3-ranks-release.md) | Shipping P3 ranks and identity: native modules, role-ID storage, independent grid defaults, Riot/provider wire contracts, retained migration evidence and phase verification limits |
 | [`releases/2026-10-15-multi-game-p5-ingest.md`](./releases/2026-10-15-multi-game-p5-ingest.md) | Shipping P5 canonical ingest: the `owt.match/1` protocol and API keys, idempotency and status/error contracts, observed vs official results, `stats-svc`/`stats-worker` and `STATS_DISCIPLINES`, the cutover matrix, P9 queue drain and rollback, P4 data blockers, the local live-smoke recipe |
 | [`releases/2026-10-18-multi-game-p6-achievements-analytics.md`](./releases/2026-10-18-multi-game-p6-achievements-analytics.md) | Shipping P6: portable achievement format v2 (v1/`hero_id` rejected), `achievement06` forward-only, discipline on every achievement API, analytics scoping with no LoL ML fallback, the P9 artifact-conversion runbook (exact allowlist, two-image procedure, rollback), verification run and deferred items |
+| [`releases/2026-10-21-backend-cleanup.md`](./releases/2026-10-21-backend-cleanup.md) | Shipping the backend cleanup: the `balancer` → `registration` / `mix` / `draft` schema split (`schemasplit01`, one-SHA deploy), removed analytics/identity endpoints and queues (`quota0003`), settings no longer read |
 
 ## Designs, plans and reviews
 
