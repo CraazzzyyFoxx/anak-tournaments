@@ -237,6 +237,12 @@ async def write_observations(
         None not in (game.mode_id, doc.mode_id) and game.mode_id != doc.mode_id
     ):
         raise StaleTarget("the game is played on another map or mode than the document's")
+    # The match header is immutable (evidence refuses a reparse that changes it); a mode it never knew stays unknown.
+    if match is not None and (
+        match.map_entity_id != doc.map_id
+        or (None not in (match.mode_entity_id, doc.mode_id) and match.mode_entity_id != doc.mode_id)
+    ):
+        raise StaleTarget("the game is already observed on another map or mode than the document's")
     roster = await load_game_seats(
         session, workspace_id=binding.workspace_id, discipline=binding.discipline, game_ids=[game.id]
     )
@@ -273,12 +279,12 @@ async def write_observations(
             discipline=binding.discipline,
             encounter_id=encounter.id,
             encounter_game_id=game.id,
+            map_entity_id=doc.map_id,
             map_kind="map",
+            mode_entity_id=doc.mode_id,
             revision=1,
         )
         await _matches.add(session, match)
-    # The header follows the document: a game without a map/mode admits any, so a re-observation may change it.
-    match.map_entity_id, match.mode_entity_id = doc.map_id, doc.mode_id
     match.ingest_job_id = job.id
     match.duration_s = doc.doc.duration_s
     match.played_at = doc.doc.played_at
