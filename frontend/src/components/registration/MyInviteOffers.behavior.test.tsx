@@ -69,7 +69,7 @@ const OFFER = {
   expires_at: null
 };
 
-async function mount(locale: "en" | "ru" = "en"): Promise<HTMLElement> {
+async function mount(locale: "en" | "ru" = "en", tournament: Tournament = TOURNAMENT): Promise<HTMLElement> {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -78,7 +78,7 @@ async function mount(locale: "en" | "ru" = "en"): Promise<HTMLElement> {
     createRoot(container).render(
       <NextIntlClientProvider locale={locale} messages={MESSAGES[locale]}>
         <QueryClientProvider client={client}>
-          <MyInviteOffers tournament={TOURNAMENT} />
+          <MyInviteOffers tournament={tournament} />
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
@@ -201,4 +201,26 @@ describe("my invite offers", () => {
     expect(container.textContent).toContain("Вступить");
     expect(container.textContent).not.toMatch(/registrationTeams\.|rosterShape\./);
   });
+});
+
+describe("my invite offers in a one-role game", () => {
+  for (const [locale, starting, bench] of [
+    ["en", "Alpha invited you to join the team.", "Alpha invited you as a substitute."],
+    ["ru", "Alpha приглашает вас в команду.", "Alpha приглашает вас запасным."],
+  ] as const) {
+    it(`invites to the team without naming its one role in ${locale}`, async () => {
+      listMyInvites.mockResolvedValue({
+        items: [
+          { ...OFFER, slot_code: "agent" },
+          { ...OFFER, invite_id: 43, slot_code: "agent", is_substitute: true }
+        ]
+      });
+
+      const container = await mount(locale, { ...TOURNAMENT, discipline: "deadlock" } as Tournament);
+
+      expect(container.textContent).toContain(starting);
+      expect(container.textContent).toContain(bench);
+      expect(container.textContent).not.toContain("Agent");
+    });
+  }
 });

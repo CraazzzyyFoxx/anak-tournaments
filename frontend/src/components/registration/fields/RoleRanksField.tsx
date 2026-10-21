@@ -7,7 +7,7 @@ import type { FieldRendererProps } from "@/components/forms/types";
 import { NumberInput } from "@/components/ui/number-input";
 import { useRoleName } from "@/hooks/useRoleName";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
-import { registrationRoles } from "@/lib/roster/ontology";
+import { registrationRoles, showsRoles } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DivisionGrid } from "@/types/workspace.types";
 
@@ -66,6 +66,8 @@ export default function RoleRanksField({
   const errorId = `${id}-error`;
   const ranks = ranksOf(value);
   const roles = registrationRoles(context.metadata);
+  // One role: the block's own label names its one field, and the block is that role's whatever was declared.
+  const named = showsRoles(context.metadata);
   const nativeLadder = useMemo<DivisionGrid>(
     () => ({ tiers: [...(context.metadata?.native_ladder ?? [])] }),
     [context.metadata],
@@ -102,17 +104,20 @@ export default function RoleRanksField({
           const atFault =
             error !== null &&
             rank === null &&
-            (declared.length === 0 || declared.includes(role.code));
+            (!named || declared.length === 0 || declared.includes(role.code));
           return (
             <div key={role.code} className="space-y-2">
-              <FieldLabel
-                label={nameOf(role)}
-                htmlFor={controlId}
-                required={field.required && declared.includes(role.code)}
-              />
+              {named ? (
+                <FieldLabel
+                  label={nameOf(role)}
+                  htmlFor={controlId}
+                  required={field.required && declared.includes(role.code)}
+                />
+              ) : null}
               <div className="relative">
                 <NumberInput
                   id={controlId}
+                  aria-label={named ? undefined : field.label || field.key}
                   integer
                   min={0}
                   placeholder={field.placeholder || "—"}

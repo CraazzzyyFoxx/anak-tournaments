@@ -10,6 +10,7 @@ import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { notify } from "@/lib/notify";
+import { showsRoles } from "@/lib/roster/ontology";
 import { translateRegistrationTeamError } from "@/lib/registration/team-errors";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import registrationTeamService from "@/services/registration-team.service";
@@ -32,6 +33,8 @@ export default function MyInviteOffers({ tournament }: Readonly<{ tournament: To
   const metadata = useDisciplineMetadata(tournament.workspace_id, tournament.discipline);
   const ontology = metadata.data ?? null;
   const slotLabel = useSlotLabel(ontology);
+  // A one-role game's every slot is that role: an offer is to the team, not to a slot worth naming.
+  const showsSlots = showsRoles(ontology);
   const queryClient = useQueryClient();
 
   const { status: authStatus, user } = useAuthProfile();
@@ -111,14 +114,13 @@ export default function MyInviteOffers({ tournament }: Readonly<{ tournament: To
           >
             <RosterSlotGlyph code={offer.slot_code} ontology={ontology} size={18} decorative />
             <span>
-              {offer.is_substitute
-                ? t("offers.sentenceSubstitute", {
+              {showsSlots
+                ? t(offer.is_substitute ? "offers.sentenceSubstitute" : "offers.sentence", {
                     team: offer.team_name,
                     slot: slotLabel(offer.slot_code),
                   })
-                : t("offers.sentence", {
+                : t(offer.is_substitute ? "offers.sentenceSubstituteNoSlot" : "offers.sentenceNoSlot", {
                     team: offer.team_name,
-                    slot: slotLabel(offer.slot_code),
                   })}
             </span>
             {offer.expires_at && (

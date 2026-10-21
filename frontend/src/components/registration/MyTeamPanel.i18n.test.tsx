@@ -101,7 +101,12 @@ const TEAM: RegistrationTeam = {
   max_substitutes: 2,
 };
 
-async function renderPanel(locale: "en" | "ru", isCaptain: boolean) {
+async function renderPanel(
+  locale: "en" | "ru",
+  isCaptain: boolean,
+  discipline = "overwatch",
+  team: RegistrationTeam = TEAM,
+) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -112,10 +117,10 @@ async function renderPanel(locale: "en" | "ru", isCaptain: boolean) {
       <NextIntlClientProvider locale={locale} messages={MESSAGES[locale]}>
         <QueryClientProvider client={client}>
           <MyTeamPanel
-            discipline="overwatch"
+            discipline={discipline}
             workspaceId={1}
             tournamentId={1}
-            team={TEAM}
+            team={team}
             isCaptain={isCaptain}
             registrationOpen
             checkInAvailable={false}
@@ -206,4 +211,40 @@ describe("MyTeamPanel i18n", () => {
     });
     container.remove();
   });
+});
+
+describe("MyTeamPanel in a one-role game", () => {
+  /** Deadlock's `{agent: 6}` roster: every member holds the one role, two places are open and none offered. */
+  const ONE_ROLE_TEAM: RegistrationTeam = {
+    ...TEAM,
+    members: TEAM.members.map((member) => ({ ...member, slot_code: "agent" })),
+    invites: [],
+    open_slots: { agent: 2 },
+    shortfall: "2x agent",
+  };
+
+  for (const [locale, shortfall] of [
+    ["en", "Still needed: 2 players"],
+    ["ru", "Нужно ещё: 2 игрока"],
+  ] as const) {
+    it(`counts the open places and names no role in ${locale}`, async () => {
+      const { container, root } = await renderPanel(locale, true, "deadlock", ONE_ROLE_TEAM);
+      const text = container.textContent ?? "";
+      const invite = MESSAGES[locale].registrationTeams.invite.action;
+
+      expect(text).not.toMatch(/registrationTeams\./);
+      expect(text).toContain(shortfall);
+      expect(text).not.toContain("Agent");
+      // Every place is the one role: no slot to move a member to...
+      expect(container.querySelector("select")).toBeNull();
+      // ...and each open place invites a player, as the footer does, not "to the Agent slot".
+      const invites = [...container.querySelectorAll("button")].filter((button) => button.textContent === invite);
+      expect(invites).toHaveLength(3);
+
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    });
+  }
 });

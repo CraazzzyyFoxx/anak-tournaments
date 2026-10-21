@@ -21,6 +21,8 @@ interface MyTeamRosterListProps {
   /** The owner game's scoped ontology, for slot glyphs; `null` while it loads. */
   ontology: RoleOntology | null;
   slotLabel: (code: string) => string;
+  /** `false` in a one-role game: every place is that role, so no slot is named, picked or invited to by name. */
+  showsSlots: boolean;
   onPlace: (input: {
     registrationId: number;
     slot_code: string;
@@ -43,6 +45,7 @@ export default function MyTeamRosterList({
   busy,
   ontology,
   slotLabel,
+  showsSlots,
   onPlace,
   onSetManager,
   onTransferCaptaincy,
@@ -76,7 +79,7 @@ export default function MyTeamRosterList({
           )}
           {canEditRoster && !member.is_captain && (
             <span className="ml-auto flex flex-wrap gap-1">
-              {canEditRoster && member.slot_code && (
+              {canEditRoster && member.slot_code && showsSlots && (
                 <select
                   className="h-8 rounded-md border border-[color:var(--aqt-border)] bg-transparent px-2 text-xs"
                   aria-label={t("invite.slotLabel")}
@@ -168,7 +171,9 @@ export default function MyTeamRosterList({
         >
           <RosterSlotGlyph code={code} ontology={ontology} />
           <span className="text-[color:var(--aqt-fg-muted)]">{t("list.openSlot")}</span>
-          <span className="text-xs text-[color:var(--aqt-fg-muted)]">{slotLabel(code)}</span>
+          {showsSlots && (
+            <span className="text-xs text-[color:var(--aqt-fg-muted)]">{slotLabel(code)}</span>
+          )}
           {canEditRoster && (
             <Button
               type="button"
@@ -179,7 +184,7 @@ export default function MyTeamRosterList({
               onClick={() => onInvite(code)}
             >
               <UserPlus className="size-3.5" aria-hidden />
-              {t("invite.actionSlot", { slot: slotLabel(code) })}
+              {showsSlots ? t("invite.actionSlot", { slot: slotLabel(code) }) : t("invite.action")}
             </Button>
           )}
         </li>

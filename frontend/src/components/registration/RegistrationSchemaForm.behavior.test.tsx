@@ -43,6 +43,8 @@ vi.mock("@/stores/account-settings-modal.store", () => ({
     select({ open: () => {} }),
 }));
 vi.mock("@/lib/notify", () => ({ notify: { error: () => {} } }));
+// The top-heroes picker lists the game's characters; a one-role form that keeps its heroes step reads them.
+vi.mock("@/services/catalog.service", () => ({ default: { list: async () => ({ results: [] }) } }));
 
 for (const [key, value] of Object.entries({
   window: testWindow,
@@ -510,4 +512,73 @@ afterAll(() => {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor);
     else Reflect.deleteProperty(globalThis, key);
   }
+});
+
+describe("RegistrationSchemaForm in a one-role game", () => {
+  it("asks no role question, sends no roles answer and takes one unlabelled rank", async () => {
+    testWindow.localStorage.clear();
+    let submitted: { answers: Record<string, unknown> } | null = null;
+    await mountForm({
+      form: {
+        ...FORM,
+        discipline: "deadlock",
+        form_schema: {
+          schema_version: 1,
+          sections: [
+            { key: "roles", title: "Roles", fields: [field({ key: "roles", kind: "builtin" })] },
+            {
+              key: "details",
+              title: "Details",
+              fields: [
+                field({ key: "peak", kind: "role_ranks", label: "Peak rank" }),
+                field({ key: "public_notes", kind: "builtin" }),
+              ],
+            },
+          ],
+        },
+      },
+      onSubmit: async (input: { answers: Record<string, unknown> }) => {
+        submitted = input;
+      },
+    });
+
+    expect(container.textContent).not.toContain("registration.roles.matrix");
+    expect(container.textContent).not.toContain("agent");
+    expect(container.querySelector('input[aria-label="Peak rank"]')).not.toBeNull();
+
+    const buttons = container.querySelectorAll("button");
+    await act(async () => {
+      buttons[buttons.length - 1].dispatchEvent(
+        new testWindow.MouseEvent("click", { bubbles: true }) as unknown as Event,
+      );
+    });
+    // The server stores the only role (Task 6); the form asks and sends nothing about it.
+    expect(Object.keys(submitted!.answers).sort()).toEqual(["peak", "public_notes"]);
+  });
+
+  it("titles a step kept for the top heroes after the heroes, not the roles", async () => {
+    testWindow.localStorage.clear();
+    await mountForm({
+      form: {
+        ...FORM,
+        discipline: "deadlock",
+        form_schema: {
+          schema_version: 1,
+          sections: [
+            {
+              key: "roles",
+              title: "Roles",
+              fields: [field({ key: "roles", kind: "builtin", params: { top_heroes: { enabled: true } } })],
+            },
+            { key: "details", title: "Details", fields: [field({ key: "public_notes", kind: "builtin" })] },
+          ],
+        },
+      },
+    });
+
+    // The organizer's "Roles" would name a question this game never asks: the step asks for heroes alone.
+    const current = container.querySelector('[aria-current="step"]');
+    expect(current?.textContent).toContain("registration.roles.topHeroes.title");
+    expect(current?.textContent).not.toContain("Roles");
+  });
 });

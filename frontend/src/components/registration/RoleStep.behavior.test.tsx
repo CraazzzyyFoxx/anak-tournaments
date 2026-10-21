@@ -11,7 +11,7 @@ import {
 } from "react";
 
 import { catalogEntity } from "@/test/catalog";
-import { OW_METADATA } from "@/test/discipline-metadata";
+import { DEADLOCK_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { RolesParams } from "@/types/forms.types";
 import type { SubroleCatalog } from "@/types/registration.types";
@@ -440,4 +440,30 @@ afterAll(() => {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor);
     else Reflect.deleteProperty(globalThis, key);
   }
+});
+
+describe("RoleStep in a one-role game", () => {
+  it("asks for the top heroes alone: no role name, column head, hint or flex preset", () => {
+    container = testWindow.document.createElement("div");
+    testWindow.document.body.appendChild(container);
+    root = createRoot(container as unknown as Element);
+    act(() =>
+      root.render(
+        <RoleStep
+          ontology={DEADLOCK_METADATA}
+          params={paramsFor("optional")}
+          subroleCatalog={{}}
+          value={[{ role: "agent", is_primary: true }]}
+          onChange={() => {}}
+          allHeroes={HEROES}
+          lockedRole="agent"
+        />,
+      ),
+    );
+
+    expect(container.querySelectorAll(HERO_TRIGGER)).toHaveLength(1);
+    expect(container.textContent).not.toContain("Agent");
+    expect(container.textContent).not.toContain("registration.roles.matrix.hint");
+    expect(container.textContent).not.toContain("registration.roles.matrix.columnRole");
+  });
 });
