@@ -237,7 +237,8 @@ async def write_observations(
         None not in (game.mode_id, doc.mode_id) and game.mode_id != doc.mode_id
     ):
         raise StaleTarget("the game is played on another map or mode than the document's")
-    # The match header is immutable (evidence refuses a reparse that changes it); a mode it never knew stays unknown.
+    # The match header is immutable. Evidence refuses a reparse that changes the map; the frozen evidence projection
+    # has no mode, so this check is the only guard on it. A mode the match never knew stays unknown.
     if match is not None and (
         match.map_entity_id != doc.map_id
         or (None not in (match.mode_entity_id, doc.mode_id) and match.mode_entity_id != doc.mode_id)
