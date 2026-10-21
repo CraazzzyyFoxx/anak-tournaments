@@ -1,6 +1,5 @@
-// Pure model for the workspace creation wizard (/admin/workspaces/new).
-// Mirrors tournaments/new/wizard-model.ts: a const step list, URL-driven
-// navigation and per-step payloads kept free of React.
+// Pure model for the workspace creation wizard (/admin/workspaces/new): a const
+// step list, URL-driven navigation and per-step payloads kept free of React.
 
 import type { WizardStepState } from "@/components/kit/WizardShell";
 import { ApiError } from "@/lib/api/error";

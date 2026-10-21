@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { DataTable } from "@/components/data-table";
 import { gameFilterDefs } from "@/components/admin/game-filter";
+import { CreateTournamentDialog } from "@/components/admin/tournaments/CreateTournamentDialog";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters, type FilterDef } from "@/components/kit/useFilters";
@@ -14,7 +15,8 @@ import { PageStateCard } from "@/components/ui/page-state-card";
 import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 import { useGameDescriptors } from "@/hooks/useGameDescriptors";
 import { useGameScope } from "@/hooks/useGameScope";
-import { ALL_DISCIPLINES, showsGameMarks } from "@/lib/site/discipline-scope";
+import { useQueryParams } from "@/hooks/useQueryParams";
+import { ALL_DISCIPLINES, defaultCreationGame, showsGameMarks } from "@/lib/site/discipline-scope";
 import { notify } from "@/lib/notify";
 import tournamentService from "@/services/tournament.service";
 import adminService from "@/services/admin.service";
@@ -44,8 +46,8 @@ function isLifecycle(value: string): value is Lifecycle {
 /**
  * Every tournament in the workspace (T2). A row opens the hub; there is no
  * Inspector because the hub is one click away and says everything a panel
- * would. A stage-less unpublished draft also offers "Resume in wizard" in its
- * menu, which hands the id to the wizard's own resume prompt.
+ * would. `?create=1` is the "Create tournament" dialog, so the page header,
+ * the dashboard and other pages can open it with a link.
  */
 export function TournamentsBrowser() {
   const t = useTranslations("adminTournaments.list");
@@ -56,6 +58,10 @@ export function TournamentsBrowser() {
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const canCreate = canAccessPermission("tournament.create", currentWorkspaceId);
   const canDelete = canAccessPermission("tournament.delete", currentWorkspaceId);
+  // Shallow: opening adds no history entry, and the param is gone before a new tournament's page is pushed, so Back
+  // from it lands on the plain list rather than a reopened dialog.
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
+  const closeCreate = () => setParams({ create: null });
 
   const [pendingDelete, setPendingDelete] = useState<Tournament | null>(null);
 
@@ -70,6 +76,9 @@ export function TournamentsBrowser() {
     gameScope.resolution !== null && showsGameMarks(gameScope.resolution, gameScope.games ?? [])
       ? descriptors
       : undefined;
+  // A new tournament starts in the filtered game, else the area's first enabled one (spec §7.2).
+  const creationGames = (gameScope.games ?? []).filter((game) => game.enabled);
+  const creationGame = defaultCreationGame(discipline, creationGames);
 
   const tournamentsQuery = useQuery({
     queryKey: tournamentQueryKeys.adminList(currentWorkspaceId, discipline ?? ALL_DISCIPLINES),
@@ -108,7 +117,6 @@ export function TournamentsBrowser() {
   });
 
   const columns = useTournamentColumns({
-    canCreate,
     canDelete,
     onDelete: useCallback((tournament: Tournament) => setPendingDelete(tournament), []),
     games
@@ -166,6 +174,19 @@ export function TournamentsBrowser() {
               t("cascade.encounters"),
               t("cascade.standings")
             ]
+          }}
+        />
+      ) : null}
+
+      {canCreate && currentWorkspaceId !== null && creationGame !== null && searchParams?.get("create") === "1" ? (
+        <CreateTournamentDialog
+          workspaceId={currentWorkspaceId}
+          games={creationGames}
+          defaultGame={creationGame}
+          onClose={closeCreate}
+          onCreated={(tournament) => {
+            closeCreate();
+            router.push(`/admin/tournaments/${tournament.id}/overview`);
           }}
         />
       ) : null}

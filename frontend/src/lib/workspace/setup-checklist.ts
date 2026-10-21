@@ -33,6 +33,8 @@ export interface SetupItem {
   key: SetupItemKey;
   done: boolean;
   section: SetupSection;
+  /** The `SettingGroup` id inside `section` that holds the fix, for a `#` link. */
+  group: string | null;
 }
 
 const SECTION_OF: Record<SetupItemKey, SetupSection> = {
@@ -43,6 +45,17 @@ const SECTION_OF: Record<SetupItemKey, SetupSection> = {
   branding: "branding",
   subdomain: "domain",
   customDomain: "domain",
+  verification: null
+};
+
+const GROUP_OF: Record<SetupItemKey, string | null> = {
+  icon: "identity",
+  profile: "community",
+  links: "links",
+  discord: "server",
+  branding: "palette",
+  subdomain: "address",
+  customDomain: "custom-domain",
   verification: null
 };
 
@@ -68,5 +81,10 @@ function isDone(key: SetupItemKey, ws: Workspace): boolean {
 }
 
 export function workspaceSetupChecklist(ws: Workspace): SetupItem[] {
-  return SETUP_ITEM_KEYS.map((key) => ({ key, done: isDone(key, ws), section: SECTION_OF[key] }));
+  return SETUP_ITEM_KEYS.map((key) => ({
+    key,
+    done: isDone(key, ws),
+    section: SECTION_OF[key],
+    group: GROUP_OF[key]
+  }));
 }

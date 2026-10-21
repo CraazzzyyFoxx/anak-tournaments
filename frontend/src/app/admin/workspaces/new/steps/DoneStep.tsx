@@ -23,7 +23,7 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { Workspace } from "@/types/workspace.types";
 
 const NEXT_LINKS = [
-  { key: "tournament", href: "/admin/tournaments/new" },
+  { key: "tournament", href: "/admin/tournaments?create=1" },
   { key: "members", href: "/admin/members" },
   { key: "access", href: "/admin/access" }
 ] as const;
