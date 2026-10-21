@@ -14,8 +14,8 @@ import {
 } from "@/app/admin/settings/divisions/editor/draftReducer";
 import { cn } from "@/lib/utils";
 
-/** The divisions of the version in force; the native-rank column only for a game with a ladder. */
-export function useDivisionColumns(ladder: Ladder | null): ColumnDef<Band>[] {
+/** The divisions of the version in force; the native-rank column (named for `game`) only for a game with a ladder. */
+export function useDivisionColumns(ladder: Ladder | null, game: string): ColumnDef<Band>[] {
   const t = useTranslations("adminSettings.divisions");
   return useMemo<ColumnDef<Band>[]>(
     () => [
@@ -59,7 +59,7 @@ export function useDivisionColumns(ladder: Ladder | null): ColumnDef<Band>[] {
         ? [
             {
               id: "native",
-              header: t("table.owRanks"),
+              header: t("table.owRanks", { game }),
               cell: ({ row }) => (
                 <span className={cn("text-sm", !row.original.native && "text-warning")}>
                   {nativeRangeLabel(ladder, row.original) ?? t("ladder.notLinked")}
@@ -69,6 +69,6 @@ export function useDivisionColumns(ladder: Ladder | null): ColumnDef<Band>[] {
           ]
         : [])
     ],
-    [t, ladder]
+    [t, ladder, game]
   );
 }

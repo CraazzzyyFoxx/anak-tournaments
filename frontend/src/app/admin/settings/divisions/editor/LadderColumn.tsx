@@ -21,19 +21,21 @@ import {
 export interface LadderColumnProps {
   /** The discipline's native ladder this column draws, one row per rank. */
   ladder: Ladder;
+  /** The game's short name ("OW") the column heading names its ladder by. */
+  game: string;
   bands: Band[];
   scale: Scale;
   /** Slug of the band in `?band=`, drawn highlighted. */
   selectedSlug: string | null;
   editable: boolean;
-  /** The saved version stores no OW link, so what is drawn is the rank-range fallback. */
+  /** The saved version stores no native link, so what is drawn is the rank-range fallback. */
   implicitLinks: boolean;
   onSelect: (slug: string) => void;
   dispatch: (action: Action) => void;
 }
 
 /**
- * The OW ladder, one row per rank, each labelled with the division it lands in
+ * The native ladder, one row per rank, each labelled with the division it lands in
  * (F12 ·2).
  *
  * One row per rank rather than one block per division, so the column costs the
@@ -51,6 +53,7 @@ export interface LadderColumnProps {
  */
 export function LadderColumn({
   ladder,
+  game,
   bands,
   scale,
   selectedSlug,
@@ -75,12 +78,12 @@ export function LadderColumn({
     ? t("ladder.hintImmutable")
     : onLadder
       ? t("ladder.hintLadder")
-      : t("ladder.hintCustom");
+      : t("ladder.hintCustom", { game });
 
   return (
     <div className="flex max-h-[calc(100vh-13rem)] flex-col rounded-xl border border-border bg-card xl:sticky xl:top-4">
       <h2 className="border-b border-border px-3 py-2 font-display text-sm font-semibold">
-        {t("ladder.title")}
+        {t("ladder.title", { game })}
       </h2>
 
       <p className="px-3 pt-2 text-xs text-muted-foreground">{hint}</p>

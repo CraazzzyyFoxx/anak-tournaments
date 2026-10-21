@@ -37,8 +37,10 @@ const GRIP_CLASS = "border-transparent bg-transparent hover:bg-[color:var(--aqt-
  *
  * What each row cannot say with its switch it says in words under the name:
  * which game is the default, why the last one cannot be turned off (state
- * disables with a visible reason, DESIGN §14), and that a game without a
- * division grid cannot host a tournament yet.
+ * disables with a visible reason, DESIGN §14), and that a game with neither a
+ * built-in ladder nor a division grid cannot host a tournament yet. A game with
+ * a ladder never warns: saving provisions its own grid, and until then its
+ * ranks resolve through the ladder.
  */
 export function DisciplinesField({
   workspace,
@@ -71,7 +73,7 @@ export function DisciplinesField({
             position={index + 1}
             // The only way to have zero would be to turn this one off.
             last={enabled.length === 1}
-            gridless={resolveOwnerGrid(workspace, item.code) === null}
+            gridless={!item.capabilities.native_ladder && resolveOwnerGrid(workspace, item.code) === null}
             onDisable={() => onChange(value.filter((code) => code !== item.code))}
           />
         )}

@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 //
-// Settings › Divisions — the overview that replaced the 1045-line
-// /admin/divisions screen and its four always-mounted cards. What is pinned:
+// Settings › Divisions — the overview of a workspace's division grids. What is pinned:
 //
 //  1. the `division_grid.read` gate is the PAGE's. Hiding a rail link is not
 //     access control: the URL typed into the address bar has to be refused,
@@ -10,18 +9,23 @@
 //     stored status and the workspace's default version pointer — so a
 //     published version the workspace points at reads "In force", which is not
 //     a status the backend has; published and archived rows carry no pill;
-//  3. the grid selector only appears when the workspace really has more than
-//     one grid, and it writes `?grid=`;
-//  4. "Load standard OW ladder" — the scenario carried over from
-//     standardOwGrid.behavior.test.tsx, now asserted where the button actually
-//     lives. A tier with a `null` OW endpoint is skipped by
-//     `resolve_division_from_native_rank`, and an `id` on any tier would make the
-//     save rewrite a version in place instead of creating one.
+//  3. the grid selector only appears when the game really has more than one
+//     grid, and it writes `?grid=`;
+//  4. a draft from the built-in ladder: a tier with a `null` native endpoint is
+//     skipped by `resolve_division_from_native_rank`, and an `id` on any tier
+//     would make the save rewrite a version in place instead of creating one;
+//  5. a game without a grid of its own gets one from the in-force card, and
+//     "New grid" copies the version in force (unless it is the plain ladder)
+//     and never activates anything;
+//  6. deleting a grid tournaments are pinned to detaches them only through the
+//     typed confirmation that names the count; the grid in force cannot be deleted;
+//  7. "All games" is a summary row per game that opens that game.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, useEffect, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { WorkspaceSettingsShell } from "@/components/admin/workspace-settings/WorkspaceSettingsShell";
 import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { DivisionGridEntity, DivisionGridVersion } from "@/types/workspace.types";
 import { TEST_LADDER_TIERS } from "./editor/__fixtures__/test-ladder";
@@ -39,6 +43,8 @@ const createDivisionGridVersion = vi.fn();
 const cloneDivisionGridVersion = vi.fn();
 const activateDivisionGridVersion = vi.fn();
 const importDivisionGridPortable = vi.fn();
+const createDivisionGrid = vi.fn();
+const deleteDivisionGrid = vi.fn();
 const fetchWorkspaces = vi.fn();
 
 let permitted = true;
@@ -83,7 +89,10 @@ vi.mock("@/services/workspace.service", () => ({
     cloneDivisionGridVersion: (...args: unknown[]) => cloneDivisionGridVersion(...args),
     activateDivisionGridVersion: (...args: unknown[]) => activateDivisionGridVersion(...args),
     exportDivisionGridPortable: vi.fn(),
-    importDivisionGridPortable: (...args: unknown[]) => importDivisionGridPortable(...args)
+    importDivisionGridPortable: (...args: unknown[]) => importDivisionGridPortable(...args),
+    createDivisionGrid: (...args: unknown[]) => createDivisionGrid(...args),
+    deleteDivisionGrid: (...args: unknown[]) => deleteDivisionGrid(...args),
+    updateDivisionGrid: vi.fn()
   }
 }));
 
@@ -104,16 +113,32 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: ReactNode }) => (
-    <a href={href}>{children}</a>
+  default: ({ href, children, className }: { href: string; children: ReactNode; className?: string }) => (
+    <a href={href} className={className}>
+      {children}
+    </a>
   )
 }));
 
 // The page reads its game from the shared resolver (the real one) and that game's native metadata. In the admin no
 // saved scope reaches it: the game is the game filter's `?discipline=`, else every game.
 const INSTALLED = [
-  { code: "overwatch", name: "Overwatch", short_name: "OW", icon: null, enabled: true },
-  { code: "lol", name: "League of Legends", short_name: "LoL", icon: null, enabled: true }
+  {
+    code: "overwatch",
+    name: "Overwatch",
+    short_name: "OW",
+    icon: null,
+    enabled: true,
+    capabilities: { native_ladder: true }
+  },
+  {
+    code: "lol",
+    name: "League of Legends",
+    short_name: "LoL",
+    icon: null,
+    enabled: true,
+    capabilities: { native_ladder: false }
+  }
 ];
 
 vi.mock("@/hooks/useGameScope", async () => {
@@ -234,7 +259,8 @@ function grid(id: number, name: string): DivisionGridEntity {
     source_key: null,
     source_fingerprint: null,
     imported_at: null,
-    archived_at: null
+    archived_at: null,
+    tournament_count: 0
   };
 }
 
@@ -260,6 +286,7 @@ function Harness({ render }: Readonly<{ render: () => ReactNode }>) {
   return <>{render()}</>;
 }
 
+/** The page inside the settings shell, as the app mounts it: the header actions portal into the shell's header. */
 async function mount() {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -269,7 +296,9 @@ async function mount() {
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <Harness render={() => <DivisionsSettingsPage />} />
+        <WorkspaceSettingsShell basePath="/admin/settings">
+          <Harness render={() => <DivisionsSettingsPage />} />
+        </WorkspaceSettingsShell>
       </QueryClientProvider>
     );
   });
@@ -280,7 +309,7 @@ async function mount() {
 async function click(element: Element | null | undefined) {
   expect(element).toBeTruthy();
   await act(async () => {
-    (element as HTMLElement).dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    element!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
     element!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
   await settle(3);
@@ -290,6 +319,22 @@ function button(text: string) {
   return Array.from(document.querySelectorAll("button")).find(
     (element) => element.textContent?.trim() === text
   );
+}
+
+function menuItem(text: string) {
+  return Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find(
+    (element) => element.textContent?.trim() === text
+  );
+}
+
+async function type(input: HTMLInputElement | null, value: string) {
+  expect(input).toBeTruthy();
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    setter.call(input, value);
+    input!.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await settle(2);
 }
 
 /** Picks a game in the page's inline game select (an option reads as its mark, then its name). */
@@ -302,13 +347,15 @@ async function pickGame(name: string) {
   );
 }
 
+const inForceTitle = (container: HTMLElement) => container.querySelector("#divisions-in-force")?.textContent;
+
 beforeEach(() => {
   permitted = true;
   currentWorkspace = {
     id: 1,
     disciplines_enabled: ["overwatch", "lol"],
     default_division_grid_versions: { overwatch: 22 },
-    effective_division_grid_versions: {}
+    effective_division_grid_versions: { overwatch: VERSIONS[2] }
   };
   activateDivisionGridVersion.mockReset();
   fetchWorkspaces.mockReset().mockResolvedValue(undefined);
@@ -335,7 +382,9 @@ beforeEach(() => {
   });
   createDivisionGridVersion.mockReset().mockResolvedValue(version(24, 5, "draft"));
   cloneDivisionGridVersion.mockReset().mockResolvedValue(version(24, 5, "draft"));
-  window.history.replaceState(null, "", "/admin/settings/divisions");
+  createDivisionGrid.mockReset();
+  deleteDivisionGrid.mockReset().mockResolvedValue(undefined);
+  window.history.replaceState(null, "", "/admin/settings/divisions?discipline=overwatch");
 });
 
 afterEach(async () => {
@@ -406,9 +455,9 @@ describe("Settings › Divisions", () => {
     expect(container.textContent).toContain("+5 more");
   });
 
-  it("shows the active version as the grid in force, even when it belongs to a shared grid", async () => {
+  it("names the grid in force with its version, and a shared grid by its label", async () => {
     const own = await mount();
-    expect(own.textContent).toContain("In force · v3");
+    expect(inForceTitle(own)).toBe("Anak Division Grid · v3");
     expect(own.textContent).not.toContain("shared grid");
 
     // The workspace points at a version of a grid it does not own: it is not in
@@ -425,10 +474,9 @@ describe("Settings › Divisions", () => {
       effective_division_grid_versions: { overwatch: shared }
     };
     const container = await mount();
-    expect(container.textContent).toContain("In force · v2");
-    expect(container.textContent).toContain("Overwatch 2 Default Grid");
+    expect(inForceTitle(container)).toBe("Overwatch 2 Default Grid");
     expect(container.textContent).toContain("shared grid");
-    expect(container.textContent).not.toContain("Nothing activated");
+    expect(container.textContent).not.toContain("nothing activated");
   });
 
   it("offers to activate a published version only once its readiness says so, then confirms", async () => {
@@ -450,8 +498,8 @@ describe("Settings › Divisions", () => {
     expect(activateDivisionGridVersion).not.toHaveBeenCalled();
 
     await click(activate);
-    const confirm = Array.from(document.querySelectorAll("button")).find(
-      (element) => element.textContent?.trim() === "Activate v2" && element !== activate
+    const confirm = Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(
+      (element) => element.textContent?.trim() === "Activate v2"
     );
     await click(confirm);
 
@@ -483,28 +531,33 @@ describe("Settings › Divisions", () => {
       rerender?.();
     });
     const container = await mount();
-    expect(container.querySelector("#divisions-in-force")?.textContent).not.toContain("LoL");
+    expect(inForceTitle(container)).toBe("OW · v3");
     await act(async () => {
       replace("/admin/settings/divisions?grid=8");
     });
     await settle();
-    expect(container.querySelector("#divisions-in-force")?.textContent).toBe("LoL organizer scale");
-    expect(button("Load standard OW ladder")).toBeUndefined();
+    expect(inForceTitle(container)).toBe("LoL · v8");
+    // LoL has no ladder in this workspace's metadata: nothing offers to draft from one.
+    await click(document.querySelector('button[aria-label="Actions for LoL"]'));
+    expect(menuItem("New draft from the LoL ladder")).toBeUndefined();
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
     const activate = button("Activate v9");
     await click(activate);
     const confirm = Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(
       (element) => element.textContent?.trim() === "Activate v9"
     );
     await click(confirm);
-    expect(container.querySelector("#divisions-in-force")?.textContent).toBe("New LoL scale");
+    expect(inForceTitle(container)).toBe("LoL · v9");
     await act(async () => {
       replace("/admin/settings/divisions?grid=7");
     });
     await settle();
-    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(VERSIONS[2].label);
+    expect(inForceTitle(container)).toBe("OW · v3");
   });
 
-  it("labels a resolved system grid as fallback without calling it an explicit active selection", async () => {
+  it("labels a resolved system grid as such without calling it an explicit active selection", async () => {
     currentWorkspace = {
       id: 1,
       disciplines_enabled: ["overwatch"],
@@ -514,8 +567,8 @@ describe("Settings › Divisions", () => {
       }
     };
     const container = await mount();
-    expect(container.querySelector("#divisions-in-force")?.textContent).toBe("System OW");
-    expect(container.textContent).toContain("system fallback · nothing activated");
+    expect(inForceTitle(container)).toBe("System OW");
+    expect(container.textContent).toContain("system grid · nothing activated");
   });
 
   it.each([false, true])(
@@ -587,19 +640,31 @@ describe("Settings › Divisions", () => {
     }
   );
 
-  it("offers the grid selector only when there is more than one grid, and writes ?grid=", async () => {
+  it("offers the grid selector only when the game has more than one grid, and writes ?grid=", async () => {
     const single = await mount();
     expect(single.querySelector("#division-grid-select")).toBeNull();
+    expect(single.textContent).toContain("Anak Division Grid");
 
-    getDivisionGrids.mockResolvedValue([grid(7, "Anak Division Grid"), grid(8, "Legacy grid")]);
+    getDivisionGrids.mockResolvedValue([
+      grid(7, "Anak Division Grid"),
+      grid(8, "Legacy grid"),
+      { ...grid(9, "LoL grid"), discipline: "lol", versions: [] }
+    ]);
     const many = await mount();
-    expect(many.querySelector("#division-grid-select")).toBeTruthy();
+    await click(many.querySelector("#division-grid-select"));
+    // Only this game's grids: the LoL grid is another game's.
+    const options = [...document.querySelectorAll('[role="option"]')].map((option) => option.textContent);
+    expect(options).toEqual(["Anak Division Grid", "Legacy grid"]);
+    await click([...document.querySelectorAll('[role="option"]')][1]);
+    expect(window.location.search).toContain("grid=8");
   });
 
-  it("loads the standard OW ladder as a new version with a complete OW mapping", async () => {
+  it("drafts the built-in ladder as a new version with a complete native mapping", async () => {
     await mount();
 
-    await click(button("Load standard OW ladder"));
+    // A draft is open, so the ladder draft lives in the grid's menu rather than the card.
+    await click(document.querySelector('button[aria-label="Actions for Anak Division Grid"]'));
+    await click(menuItem("New draft from the OW ladder"));
 
     expect(createDivisionGridVersion).toHaveBeenCalledTimes(1);
     const [workspaceId, gridId, payload] = createDivisionGridVersion.mock.calls[0] as [
@@ -609,6 +674,7 @@ describe("Settings › Divisions", () => {
     ];
     expect(workspaceId).toBe(1);
     expect(gridId).toBe(7);
+    expect(payload.label).toBe("OW ladder");
     expect(payload.tiers).toHaveLength(45);
 
     // No ids -> the save creates a version instead of rewriting one in place.
@@ -617,8 +683,8 @@ describe("Settings › Divisions", () => {
       payload.tiers.map((_entry, index) => index)
     );
 
-    // Both OW endpoints filled on every tier, top tier included: either being
-    // null drops that division out of OW rank resolution entirely.
+    // Both native endpoints filled on every tier, top tier included: either being
+    // null drops that division out of native rank resolution entirely.
     expect(
       payload.tiers.every(
         (entry) => entry.native_rank_min !== null && entry.native_rank_max !== null
@@ -633,13 +699,132 @@ describe("Settings › Divisions", () => {
     expect(replace).toHaveBeenCalledWith("/admin/settings/divisions/v/24");
   });
 
-  it("clones the newest version into a fresh draft", async () => {
+  it("clones the newest version into a fresh draft when nothing else is pending", async () => {
+    const published = VERSIONS.slice(0, 3);
+    getDivisionGridVersions.mockResolvedValue(published);
+    getDivisionGrids.mockResolvedValue([{ ...grid(7, "Anak Division Grid"), versions: published }]);
+    getDivisionGridVersionReadiness.mockImplementation(async (_ws: number, versionId: number) => ({
+      target_version_id: versionId,
+      is_ready: versionId === 22,
+      used_source_version_ids: [],
+      missing_mapping_version_ids: versionId === 22 ? [] : [22],
+      incomplete_mapping_version_ids: [],
+      sources: []
+    }));
     await mount();
 
-    await click(button("New draft from v4"));
+    // One "do next" on the screen: the card's.
+    expect(Array.from(document.querySelectorAll("button")).filter((node) => node.textContent?.trim() === "New draft from v3")).toHaveLength(1);
+    await click(button("New draft from v3"));
 
-    expect(cloneDivisionGridVersion).toHaveBeenCalledWith(23);
+    expect(cloneDivisionGridVersion).toHaveBeenCalledWith(22);
     expect(replace).toHaveBeenCalledWith("/admin/settings/divisions/v/24");
+  });
+});
+
+describe("Settings › Divisions · grids", () => {
+  it("gives a game without a grid of its own one from the in-force card, opened as its owner", async () => {
+    createDivisionGrid.mockResolvedValue({ ...grid(30, "Spring"), discipline: "lol", versions: [] });
+    window.history.replaceState(null, "", "/admin/settings/divisions?discipline=lol");
+    const container = await mount();
+
+    expect(inForceTitle(container)).toBe("Create a division grid for this game");
+    await click(button("Create LoL grid"));
+
+    const dialog = document.querySelector('[role="dialog"]');
+    expect(dialog?.textContent).toContain("New division grid");
+    // The page fixed the game: it is named, not asked.
+    expect(dialog?.textContent).toContain("League of Legends");
+    expect(dialog?.querySelector("#division-grid-game")).toBeNull();
+
+    // An empty name is refused in the dialog (the field is required), and nothing is sent.
+    await click(button("Create grid"));
+    expect(createDivisionGrid).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="dialog"]')).toBeTruthy();
+
+    await type(document.querySelector<HTMLInputElement>("#division-grid-name"), "Spring");
+    await click(button("Create grid"));
+
+    expect(createDivisionGrid).toHaveBeenCalledWith(1, {
+      name: "Spring",
+      discipline: "lol",
+      from_version_id: undefined
+    });
+    expect(activateDivisionGridVersion).not.toHaveBeenCalled();
+    expect(window.location.search).toContain("grid=30");
+    expect(window.location.search).toContain("discipline=lol");
+  });
+
+  it("starts a new grid as a copy of the version in force unless the ladder is picked", async () => {
+    createDivisionGrid.mockResolvedValue({ ...grid(31, "Cup grid"), versions: [] });
+    await mount();
+
+    await click(button("New grid"));
+    // The version in force (3 custom divisions) is not the plain 45-rank ladder: both starts are offered.
+    const copy = document.querySelector<HTMLElement>("#division-grid-base-active");
+    const ladder = document.querySelector<HTMLElement>("#division-grid-base-ladder");
+    expect(copy?.getAttribute("aria-checked")).toBe("true");
+    expect(document.querySelector("#division-grid-base-active-title")?.textContent).toBe(
+      "A copy of Anak Division Grid · v3"
+    );
+
+    await type(document.querySelector<HTMLInputElement>("#division-grid-name"), "Cup grid");
+    await click(button("Create grid"));
+    expect(createDivisionGrid).toHaveBeenLastCalledWith(1, {
+      name: "Cup grid",
+      discipline: "overwatch",
+      from_version_id: 22
+    });
+
+    await click(button("New grid"));
+    await click(document.querySelector("#division-grid-base-ladder"));
+    expect(ladder).toBeTruthy();
+    await type(document.querySelector<HTMLInputElement>("#division-grid-name"), "Ladder grid");
+    await click(button("Create grid"));
+    expect(createDivisionGrid).toHaveBeenLastCalledWith(1, {
+      name: "Ladder grid",
+      discipline: "overwatch",
+      from_version_id: undefined
+    });
+    expect(activateDivisionGridVersion).not.toHaveBeenCalled();
+  });
+
+  it("detaches pinned tournaments only through the typed confirmation, and never deletes the grid in force", async () => {
+    getDivisionGrids.mockResolvedValue([
+      grid(7, "Anak Division Grid"),
+      { ...grid(8, "Legacy grid"), versions: [VERSIONS[0], VERSIONS[1]], tournament_count: 3 }
+    ]);
+    getDivisionGridVersions.mockImplementation(async (_ws: number, id: number) =>
+      id === 8 ? [VERSIONS[0], VERSIONS[1]] : VERSIONS
+    );
+    const container = await mount();
+
+    // The grid in force: delete is shown but disabled, with the reason in the menu.
+    await click(container.querySelector('button[aria-label="Actions for Anak Division Grid"]'));
+    expect(menuItem("Delete…")?.getAttribute("aria-disabled")).toBe("true");
+    expect(document.body.textContent).toContain("This grid is in force: activate another one first.");
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+
+    await act(async () => {
+      replace("/admin/settings/divisions?discipline=overwatch&grid=8");
+    });
+    await settle();
+    await click(container.querySelector('button[aria-label="Actions for Legacy grid"]'));
+    await click(menuItem("Delete…"));
+
+    const confirm = document.querySelector('[role="alertdialog"]');
+    expect(confirm?.textContent).toContain("Detach tournaments and delete “Legacy grid”?");
+    expect(confirm?.textContent).toContain("3 tournaments are pinned to its versions");
+    const detach = button("Detach and delete");
+    expect(detach?.hasAttribute("disabled")).toBe(true);
+
+    await type(confirm!.querySelector<HTMLInputElement>("input"), "Legacy grid");
+    await click(button("Detach and delete"));
+    expect(deleteDivisionGrid).toHaveBeenCalledWith(8, true);
+    // The deleted grid is no longer pinned.
+    expect(window.location.search).not.toContain("grid=8");
   });
 });
 
@@ -654,25 +839,18 @@ describe("Settings › Divisions · browsing game", () => {
     expect(getDivisionGridVersionReadiness).not.toHaveBeenCalled();
   });
 
-  it("scopes the page to the browsed game: a game with no grid of its own is asked for one, never given another's", async () => {
-    currentWorkspace = {
-      id: 1,
-      disciplines_enabled: ["overwatch", "lol"],
-      default_division_grid_versions: { overwatch: 22 },
-      effective_division_grid_versions: { overwatch: VERSIONS[2] }
-    };
+  it("scopes the page to the browsed game: a game with no grid of its own is offered one, never given another's", async () => {
     window.history.replaceState(null, "", "/admin/settings/divisions?discipline=lol");
     const container = await mount();
 
-    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(
-      "Create a division grid for this game"
-    );
+    expect(inForceTitle(container)).toBe("Create a division grid for this game");
     expect(container.textContent).not.toContain(VERSIONS[2].label);
-    expect(button("Load standard OW ladder")).toBeUndefined();
+    expect(container.textContent).toContain("LoL has no grid of its own");
+    expect(button("Create LoL grid")).toBeTruthy();
     expect(getDivisionGridVersions).not.toHaveBeenCalled();
   });
 
-  it("offers the native game's own standard ladder, built from its metadata", async () => {
+  it("offers the native game's own ladder as the first draft, built from its metadata", async () => {
     getDivisionGrids.mockResolvedValue([{ ...grid(7, "Anak Division Grid"), versions: [] }]);
     getDivisionGridVersions.mockResolvedValue([]);
     currentWorkspace = {
@@ -681,8 +859,11 @@ describe("Settings › Divisions · browsing game", () => {
       default_division_grid_versions: {},
       effective_division_grid_versions: {}
     };
-    await mount();
-    await click(button("Load standard OW ladder"));
+    const container = await mount();
+    // Nothing in force: the built-in ladder is what resolves, and the table shows it.
+    expect(inForceTitle(container)).toBe("Built-in OW ladder");
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(TEST_LADDER_TIERS.length);
+    await click(button("New draft from the OW ladder"));
 
     expect(createDivisionGridVersion).toHaveBeenCalledTimes(1);
     const [, gridId, body] = createDivisionGridVersion.mock.calls[0] as [
@@ -711,18 +892,16 @@ describe("Settings › Divisions · game switch and captured scope", () => {
     // LoL grid, Overwatch in the URL: the grid wins.
     window.history.replaceState(null, "", "/admin/settings/divisions?grid=8&discipline=overwatch");
     const lol = await mount();
-    expect(lol.querySelector("#divisions-in-force")?.textContent).toBe(
-      "Create a division grid for this game"
-    );
+    expect(inForceTitle(lol)).toBe("Create a division grid for this game");
     expect(getDivisionGridVersions).toHaveBeenCalledWith(1, 8);
-    expect(button("Load standard OW ladder")).toBeUndefined();
+    expect(button("New draft from the OW ladder")).toBeUndefined();
   });
 
   it("opens an Overwatch grid under ?discipline=lol as Overwatch", async () => {
     window.history.replaceState(null, "", "/admin/settings/divisions?discipline=lol&grid=7");
     const container = await mount();
 
-    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(VERSIONS[2].label);
+    expect(inForceTitle(container)).toBe("Anak Division Grid · v3");
     expect(getDivisionGridVersions).toHaveBeenCalledWith(1, 7);
   });
 
@@ -736,34 +915,34 @@ describe("Settings › Divisions · game switch and captured scope", () => {
     const container = await mount();
 
     // The grid is LoL: the page is LoL, with no OW-only action and no URL rewrite.
-    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(
-      "Create a division grid for this game"
-    );
-    expect(button("Load standard OW ladder")).toBeUndefined();
+    expect(inForceTitle(container)).toBe("Create a division grid for this game");
+    expect(button("New draft from the OW ladder")).toBeUndefined();
     expect(getDivisionGridVersions).toHaveBeenCalledWith(1, 8);
     expect(window.location.search).toBe("?grid=8");
   });
 
-  it("lists every game's grids, marked, with no game filtered and opens the one in force", async () => {
+  it("summarises every game under all games and opens one from its row", async () => {
     getDivisionGrids.mockResolvedValue([
       grid(7, "OW grid"),
       { ...grid(8, "LoL grid"), discipline: "lol", versions: [] }
     ]);
+    window.history.replaceState(null, "", "/admin/settings/divisions");
     const container = await mount();
 
-    // No game narrows the index: Overwatch's grid is the one in force, and opened with its own game's ladder.
-    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(VERSIONS[2].label);
-    expect(getDivisionGridVersions).toHaveBeenCalledWith(1, 7);
-
-    await click(document.querySelector("#division-grid-select"));
-    const options = [...document.querySelectorAll('[role="option"]')].map((option) => option.textContent ?? "");
-    expect(options).toHaveLength(2);
-    expect(options[0]).toContain("Overwatch");
-    expect(options[1]).toContain("League of Legends");
+    expect(container.querySelector("#divisions-in-force")).toBeNull();
+    expect(getDivisionGridVersions).not.toHaveBeenCalled();
+    const rows = [...container.querySelectorAll('[aria-labelledby="divisions-games"] > ul > li')];
+    expect(rows.map((row) => row.querySelector("a")?.textContent)).toEqual(["Overwatch", "League of Legends"]);
+    expect(rows[0].textContent).toContain("OW grid · v3");
+    expect(rows[0].textContent).toContain("3 divisions");
+    // LoL has neither a ladder nor a grid in force here: the row says what it needs.
+    expect(rows[1].textContent).toContain("Needs a division grid");
+    expect(rows[1].querySelector("a")?.getAttribute("href")).toBe("/admin/settings/divisions?discipline=lol");
   });
 
   it("opens a portable import on the returned grid AND its game", async () => {
     importDivisionGridPortable.mockResolvedValue({ ...grid(8, "LoL"), discipline: "lol" });
+    window.history.replaceState(null, "", "/admin/settings/divisions");
     await mount();
 
     const input = document.querySelector<HTMLInputElement>('input[type="file"]');
@@ -801,7 +980,7 @@ describe("Settings › Divisions · game switch and captured scope", () => {
     await act(async () => pending.resolve(VERSIONS[1]));
     await settle();
 
-    const keys = invalidate.mock.calls.map(([filters]) => (filters as { queryKey: unknown[] }).queryKey);
+    const keys = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
     expect(keys).toContainEqual(["division-grid-versions", 1, "overwatch"]);
     expect(keys).toContainEqual(["division-grid-readiness", 1, "overwatch"]);
     expect(keys).not.toContainEqual(["division-grid-versions", 1, "lol"]);
@@ -816,18 +995,17 @@ describe("Settings › Divisions · game filter", () => {
       { ...grid(8, "LoL"), discipline: "lol", versions: [] }
     ]);
     getDivisionGridVersions.mockImplementation(async (_ws: number, id: number) => (id === 8 ? [] : VERSIONS));
+    window.history.replaceState(null, "", "/admin/settings/divisions");
   });
 
   it("offers the Game select, and a picked game opens that game's grid", async () => {
     const container = await mount();
-    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(VERSIONS[2].label);
+    expect(container.querySelector('[aria-labelledby="divisions-games"]')).toBeTruthy();
 
     await pickGame("League of Legends");
 
     expect(window.location.search).toBe("?discipline=lol");
-    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(
-      "Create a division grid for this game"
-    );
+    expect(inForceTitle(container)).toBe("Create a division grid for this game");
     expect(getDivisionGridVersions).toHaveBeenLastCalledWith(1, 8);
   });
 
@@ -843,8 +1021,6 @@ describe("Settings › Divisions · game filter", () => {
 
     await pickGame("League of Legends");
     expect(window.location.search).toBe("?discipline=lol");
-    expect(container.querySelector("#divisions-in-force")?.textContent).toBe(
-      "Create a division grid for this game"
-    );
+    expect(inForceTitle(container)).toBe("Create a division grid for this game");
   });
 });

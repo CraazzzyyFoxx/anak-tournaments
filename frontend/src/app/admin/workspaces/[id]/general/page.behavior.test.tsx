@@ -37,8 +37,8 @@ vi.mock("@/services/workspace.service", () => ({
 }));
 
 const GAMES = [
-  { code: "overwatch", name: "Overwatch", enabled: true },
-  { code: "lol", name: "League of Legends", enabled: false }
+  { code: "overwatch", name: "Overwatch", enabled: true, capabilities: { native_ladder: true } },
+  { code: "lol", name: "League of Legends", enabled: false, capabilities: { native_ladder: true } }
 ] as DisciplineDescriptor[];
 
 const listGames = vi.fn();

@@ -59,7 +59,9 @@ export function VersionHistory({
   const ordered = [...versions].sort((left, right) => right.version - left.version);
 
   return (
-    <ol className="divide-y divide-border rounded-xl border border-border bg-card">
+    // A container: the list sits in a half-width column beside the divisions table, and the row only has room for a
+    // third column of actions when the LIST is wide, not the viewport.
+    <ol className="@container divide-y divide-border rounded-xl border border-border bg-card">
       {ordered.map((version) => {
         const state = versionState(version, activeVersionId);
         const pill = VERSION_PILL[state];
@@ -83,7 +85,7 @@ export function VersionHistory({
           <li
             key={version.id}
             className={cn(
-              "grid grid-cols-[3.25rem_minmax(0,1fr)] items-start gap-x-4 gap-y-3 px-4 py-3 lg:grid-cols-[3.25rem_minmax(0,1fr)_auto]",
+              "grid grid-cols-[3.25rem_minmax(0,1fr)] items-start gap-x-4 gap-y-3 px-4 py-3 @2xl:grid-cols-[3.25rem_minmax(0,1fr)_auto]",
               state === "archived" && "opacity-60"
             )}
           >
@@ -113,9 +115,9 @@ export function VersionHistory({
               </p>
             </div>
 
-            <div className="col-start-2 flex flex-wrap items-center gap-2 lg:col-start-3 lg:justify-end">
+            <div className="col-start-2 flex flex-wrap items-center gap-2 @2xl:col-start-3 @2xl:max-w-xs @2xl:justify-end">
               {ready === false && onActivate ? (
-                <p id={reasonId} className="max-w-xs text-caption text-muted-foreground">
+                <p id={reasonId} className="basis-full text-caption text-muted-foreground @2xl:text-right">
                   {t("editorDetails.mappingBlocked")}
                 </p>
               ) : null}

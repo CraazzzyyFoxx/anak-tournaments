@@ -3,7 +3,7 @@
 // The generic division editor is the same screen for every game; what differs is the game's own
 // declaration. These pin the scope behaviour of its table:
 //  - a native-ladder game gets the native-rank column and edits it through ITS module's slot;
-//  - a game without a ladder gets plain custom editing: no OW column, no ladder scale, a crest
+//  - a game without a ladder gets plain custom editing: no native column, no ladder scale, a crest
 //    demand instead of a borrowed crest, and no module is asked to render anything;
 //  - a promised native editor whose module is absent is an explicit error, never another game's picker.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -61,6 +61,7 @@ async function settle(turns = 6) {
 
 async function mount(props: {
   discipline: string;
+  game: string;
   capabilities: DisciplineCapabilities;
   ladder: Ladder | null;
   dispatch?: (action: Action) => void;
@@ -77,6 +78,7 @@ async function mount(props: {
           base={[]}
           scale="custom"
           discipline={props.discipline}
+          game={props.game}
           capabilities={props.capabilities}
           ladder={props.ladder}
           editable
@@ -110,13 +112,14 @@ describe("DivisionsTable · per-game scope", () => {
     const dispatch = vi.fn();
     const container = await mount({
       discipline: "overwatch",
+      game: "OW",
       capabilities: NATIVE,
       ladder: TEST_LADDER,
       dispatch
     });
 
     expect(headers(container)).toContain("OW ranks");
-    const trigger = container.querySelector<HTMLElement>('button[aria-label^="OW ranks of Gold"]');
+    const trigger = container.querySelector<HTMLElement>('button[aria-label^="Ladder ranks of Gold"]');
     expect(trigger).not.toBeNull();
 
     await act(async () => {
@@ -136,11 +139,11 @@ describe("DivisionsTable · per-game scope", () => {
   });
 
   it("gives a game without a ladder plain custom editing: no native column, no ladder scale, a crest demand", async () => {
-    const container = await mount({ discipline: "lol", capabilities: NO_CAPABILITIES, ladder: null });
+    const container = await mount({ discipline: "lol", game: "LoL", capabilities: NO_CAPABILITIES, ladder: null });
 
-    expect(headers(container)).not.toContain("OW ranks");
-    expect(container.textContent).not.toContain("Follow OW ladder");
-    expect(container.querySelector('button[aria-label^="OW ranks of"]')).toBeNull();
+    expect(headers(container)).not.toContain("LoL ranks");
+    expect(container.textContent).not.toContain("Follow LoL ladder");
+    expect(container.querySelector('button[aria-label^="Ladder ranks of"]')).toBeNull();
     // Iron has no crest and there is no ladder to borrow one from: it is asked for, not faked.
     expect(container.textContent).toContain("1 division has no crest");
     expect(container.querySelector('[role="img"][title="Crest required"]')).not.toBeNull();
@@ -153,11 +156,12 @@ describe("DivisionsTable · per-game scope", () => {
   it("shows a configuration error — never another game's picker — when a declared native editor has no module", async () => {
     const container = await mount({
       discipline: "mystery-game",
+      game: "mystery-game",
       capabilities: NATIVE,
       ladder: TEST_LADDER
     });
 
-    expect(container.querySelector('button[aria-label^="OW ranks of"]')).toBeNull();
+    expect(container.querySelector('button[aria-label^="Ladder ranks of"]')).toBeNull();
     const alerts = [...container.querySelectorAll('[role="alert"]')].map((node) => node.textContent);
     expect(alerts.some((text) => text?.includes("interface is not installed"))).toBe(true);
   });

@@ -323,9 +323,10 @@ export default class workspaceService {
     return apiFetch(`/api/v1/division-grids/by-workspace/${workspaceId}`).then((r) => r.json());
   }
 
+  /** A new grid with a published v1: a copy of `from_version_id`, else the game's built-in ladder. Never activates. */
   static async createDivisionGrid(
     workspaceId: number,
-    data: { slug: string; name: string; description?: string | null; discipline?: string }
+    data: { name: string; discipline: string; from_version_id?: number }
   ): Promise<DivisionGridEntity> {
     return apiFetch(`/api/v1/division-grids/by-workspace/${workspaceId}`, {
       method: "POST",

@@ -14,7 +14,7 @@ import {
 } from "@/app/admin/settings/divisions/editor/draftReducer";
 import { gameFilterDefs } from "@/components/admin/game-filter";
 import { DataTable } from "@/components/data-table";
-import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialog";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters } from "@/components/kit/useFilters";
@@ -22,39 +22,46 @@ import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GameScopeControl } from "@/components/workspace/GameScopeControl";
-import { useGameDescriptors } from "@/hooks/useGameDescriptors";
 import { useGameScope } from "@/hooks/useGameScope";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { usePermissions } from "@/hooks/usePermissions";
 import { activeGridVersionId, resolveOwnerGrid } from "@/lib/divisions/grid";
-import { showsGameMarks } from "@/lib/site/discipline-scope";
 import { divisionGridQueryKeys } from "@/lib/divisions/query-keys";
+import { getApiErrorMessage } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type {
-  DivisionGridPortableImportDocument,
-  DivisionGridVersion
-} from "@/types/workspace.types";
+import type { DivisionGridEntity, DivisionGridVersion } from "@/types/workspace.types";
 
+import { DivisionsHeaderActions } from "./DivisionsHeaderActions";
+import { GamesSummary, GamesSummarySkeleton } from "./GamesSummary";
+import { GridFormDialog, type GridForm } from "./GridFormDialog";
 import { GridInForceSection } from "./GridInForceSection";
+import { GridMenu } from "./GridMenu";
+import { GridSection } from "./GridSection";
 import { editorHref } from "./model";
 import { ReadersSection } from "./ReadersSection";
+import { reportFailure, useGridActions, type SubmitScope } from "./useGridActions";
 import { useDivisionColumns } from "./useDivisionColumns";
-import { GridTransferMenu, VersionHistorySection } from "./VersionHistorySection";
+
+/** The one confirmation surface of the page, with a swapped intent (DESIGN §14). */
+type Confirming =
+  | { kind: "activate"; version: DivisionGridVersion }
+  | { kind: "delete"; grid: DivisionGridEntity };
+
+/** What the in-force card offers next, ranked; the grid menu leaves out whichever it is. */
+type NextStep = "openDraft" | "activate" | "newDraft" | "ladderDraft" | "createGrid";
 
 /**
- * Settings › Divisions: what grid is in force, the version history behind it,
- * and the one thing worth doing next.
+ * Settings › Divisions. Under "all games" a summary row per game; for one game, the grid in force, the open grid with
+ * its version history and menu, and the divisions in force.
  *
- * The editor is a full-screen route of its own and the importer is a wizard,
- * because a version is either immutable or a draft and only one of those is
- * worth 1000 lines of editor.
+ * The editor is a full-screen route of its own and the importer is a wizard, because a version is either immutable or
+ * a draft and only one of those is worth 1000 lines of editor.
  *
- * The active version is read from the workspace, not from the grid list: a
- * workspace may point at a version of a shared grid it does not own, and that
- * version is still the one every rank resolves through.
+ * The active version is read from the workspace, not from the grid list: a workspace may point at a version of a
+ * shared grid it does not own, and that version is still the one every rank resolves through.
  */
 export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number }>) {
   const t = useTranslations("adminSettings.divisions");
@@ -67,11 +74,14 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
   const fetchWorkspaces = useWorkspaceStore((state) => state.fetchWorkspaces);
   const workspace = getCurrentWorkspace();
   const portableInputRef = useRef<HTMLInputElement>(null);
-  const [pendingAction, setPendingAction] = useState<string | null>(null);
-  const [activating, setActivating] = useState<DivisionGridVersion | null>(null);
+  const [confirming, setConfirming] = useState<Confirming | null>(null);
+  const [gridForm, setGridForm] = useState<GridForm | null>(null);
 
-  const canCreate = isSuperuser || canAccessPermission("division_grid.create", workspaceId);
-  const canActivate = isSuperuser || canAccessPermission("division_grid.update", workspaceId);
+  const can = (action: "create" | "update" | "delete") =>
+    isSuperuser || canAccessPermission(`division_grid.${action}`, workspaceId);
+  const canCreate = can("create");
+  const canUpdate = can("update");
+  const canDelete = can("delete");
 
   const gridsQuery = useQuery({
     queryKey: divisionGridQueryKeys.grids(workspaceId),
@@ -80,7 +90,7 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
   const grids = useMemo(() => gridsQuery.data ?? [], [gridsQuery.data]);
 
   // An explicitly opened `?grid=` is an OWNER (spec §5, §6.12): its own game is the page's, whatever `?discipline=`
-  // says. Without a pin the index is a multi page: every game's grids unfiltered, one game's under the game filter.
+  // says. Without a pin the index is a multi page: a summary of every game, or one game under the game filter.
   const gridParam = Number(searchParams?.get("grid"));
   const hasGridPin = searchParams?.has("grid") === true;
   const ownerGrid = hasGridPin ? (grids.find((grid) => grid.id === gridParam) ?? null) : null;
@@ -97,73 +107,67 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
     gameT("all")
   );
   const filters = useFilters(gameDefs);
-  const browsedDiscipline = gameScope.game;
-  // Only "all games" lists every game's grids: an invalid or empty game opens none.
-  const scopedGrids =
-    gameScope.resolution?.game.kind === "all"
-      ? grids
-      : grids.filter((grid) => grid.discipline === browsedDiscipline);
-  const pinnedGrid = scopedGrids.find((grid) => grid.id === gridParam) ?? null;
-  const selectedGrid =
-    pinnedGrid ??
-    scopedGrids.find((grid) =>
-      grid.versions.some((version) => version.id === activeGridVersionId(workspace, grid.discipline))
-    ) ??
-    scopedGrids.find((grid) => grid.archived_at === null) ??
-    scopedGrids[0] ??
-    null;
-  // Under "all games" the open grid's own game drives its ladder, versions and readiness.
-  const selectedDiscipline = browsedDiscipline ?? selectedGrid?.discipline ?? null;
-  const descriptors = useGameDescriptors();
-  const gridMarks =
-    gameScope.resolution !== null && showsGameMarks(gameScope.resolution, gameScope.games ?? [])
-      ? descriptors
-      : undefined;
-  const activeVersionId = activeGridVersionId(workspace, selectedDiscipline);
+  const enabledGames = useMemo(() => (gameScope.games ?? []).filter((game) => game.enabled), [gameScope.games]);
+  const discipline = gameScope.game;
+  const descriptor = gameScope.games?.find((game) => game.code === discipline);
+  const game = descriptor?.short_name || discipline || "";
 
-  const metadataQuery = useDisciplineMetadata(workspaceId, selectedDiscipline);
+  const gameGrids = useMemo(
+    () => (discipline === null ? [] : grids.filter((grid) => grid.discipline === discipline)),
+    [discipline, grids]
+  );
+  const activeVersionId = activeGridVersionId(workspace, discipline);
+  const selectedGrid =
+    gameGrids.find((grid) => grid.id === gridParam) ??
+    gameGrids.find((grid) => grid.versions.some((version) => version.id === activeVersionId)) ??
+    gameGrids.find((grid) => grid.archived_at === null) ??
+    gameGrids[0] ??
+    null;
+
+  const metadataQuery = useDisciplineMetadata(workspaceId, discipline);
   const metadata = metadataQuery.data;
   const ladder = useMemo(
-    () =>
-      metadata?.discipline.capabilities.native_ladder ? createLadder(metadata.native_ladder) : null,
+    () => (metadata?.discipline.capabilities.native_ladder ? createLadder(metadata.native_ladder) : null),
     [metadata]
   );
   // A declared native ladder with no ranks is invalid metadata, never "no ladder".
   const metadataInvalid =
     metadata !== undefined && metadata.discipline.capabilities.native_ladder && ladder === null;
-  const hasNativeLadder = ladder !== null;
-  // The game's own standard ladder as a saveable version, and what an unactivated workspace resolves through.
-  const standardLadderTiers = useMemo(() => (ladder ? standardTiers(ladder) : null), [ladder]);
+  // The game's own ladder as saveable tiers, and what resolves while nothing is in force.
+  const ladderTiers = useMemo(() => (ladder ? standardTiers(ladder) : null), [ladder]);
   const builtInBands = useMemo(
-    () => (ladder && standardLadderTiers ? bandsFromTiers(ladder, standardLadderTiers) : []),
-    [ladder, standardLadderTiers]
+    () => (ladder && ladderTiers ? bandsFromTiers(ladder, ladderTiers) : []),
+    [ladder, ladderTiers]
   );
 
   const versionsQuery = useQuery({
-    queryKey: divisionGridQueryKeys.versions(workspaceId, selectedDiscipline, selectedGrid?.id ?? null),
+    queryKey: divisionGridQueryKeys.versions(workspaceId, discipline, selectedGrid?.id ?? null),
     queryFn: () => workspaceService.getDivisionGridVersions(workspaceId, selectedGrid!.id),
     enabled: selectedGrid !== null
   });
-  const versions = versionsQuery.data ?? selectedGrid?.versions ?? [];
-  const latestVersion =
-    [...versions].sort((left, right) => right.version - left.version)[0] ?? null;
+  const versions = useMemo(
+    () => versionsQuery.data ?? selectedGrid?.versions ?? [],
+    [selectedGrid, versionsQuery.data]
+  );
+  const latestVersion = [...versions].sort((left, right) => right.version - left.version)[0] ?? null;
   const draft =
     [...versions]
       .filter((version) => version.status === "draft")
       .sort((left, right) => right.version - left.version)[0] ?? null;
-  const activeVersion =
-    versions.find((version) => version.id === activeVersionId) ??
-    resolveOwnerGrid(workspace, selectedDiscipline) ??
-    null;
-  const activeIsShared =
-    activeVersion !== null && !grids.some((grid) => grid.id === activeVersion.grid_id);
+  const activeVersion = useMemo(
+    () =>
+      versions.find((version) => version.id === activeVersionId) ?? resolveOwnerGrid(workspace, discipline) ?? null,
+    [activeVersionId, discipline, versions, workspace]
+  );
+  const activeGrid = activeVersion ? (grids.find((grid) => grid.id === activeVersion.grid_id) ?? null) : null;
+  const selectedInForce = versions.some((version) => version.id === activeVersionId);
 
   const readinessQuery = useQuery({
-    queryKey: divisionGridQueryKeys.readiness(workspaceId, selectedDiscipline, activeVersionId),
+    queryKey: divisionGridQueryKeys.readiness(workspaceId, discipline, activeVersionId),
     queryFn: () => workspaceService.getDivisionGridVersionReadiness(workspaceId, activeVersionId!),
     enabled: activeVersionId !== null
   });
-  const sources = readinessQuery.data?.sources ?? [];
+  const sources = useMemo(() => readinessQuery.data?.sources ?? [], [readinessQuery.data]);
   const tournamentCounts = useMemo(
     () =>
       readinessQuery.data
@@ -176,16 +180,16 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
   // readiness to know whether "Activate" is honest right now.
   const candidates = useMemo(
     () =>
-      canActivate
+      canUpdate
         ? versions
             .filter((version) => version.status === "published" && version.id !== activeVersionId)
             .sort((left, right) => right.version - left.version)
         : [],
-    [activeVersionId, canActivate, versions]
+    [activeVersionId, canUpdate, versions]
   );
   const candidateReadiness = useQueries({
     queries: candidates.map((version) => ({
-      queryKey: divisionGridQueryKeys.readiness(workspaceId, selectedDiscipline, version.id),
+      queryKey: divisionGridQueryKeys.readiness(workspaceId, discipline, version.id),
       queryFn: () => workspaceService.getDivisionGridVersionReadiness(workspaceId, version.id)
     }))
   });
@@ -199,14 +203,11 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
   const readyCandidate = candidates.find((version) => activatable[version.id] === true) ?? null;
 
   const activeBands = useMemo(
-    () => (activeVersion ? bandsFromTiers(ladder, activeVersion.tiers) : []),
-    [activeVersion, ladder]
+    () => (activeVersion ? bandsFromTiers(ladder, activeVersion.tiers) : builtInBands),
+    [activeVersion, builtInBands, ladder]
   );
 
-  // Scope captured at submit: a game or workspace switch while a request is in flight must not
-  // redirect its invalidation (§2.6).
-  const submitScope = { workspaceId, discipline: selectedDiscipline ?? "" };
-  type SubmitScope = typeof submitScope;
+  const submitScope: SubmitScope = { workspaceId, discipline: discipline ?? "" };
   const refresh = async (scope: SubmitScope) => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: divisionGridQueryKeys.grids(scope.workspaceId) }),
@@ -220,6 +221,15 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
     ]);
   };
 
+  const actions = useGridActions({
+    workspaceId,
+    refresh,
+    onOpen: (grid) => setParams({ grid: String(grid.id), discipline: grid.discipline }),
+    onDeleted: (grid) => {
+      if (gridParam === grid.id) setParams({ grid: null });
+    }
+  });
+
   const cloneMutation = useMutation({
     mutationFn: (input: { scope: SubmitScope; versionId: number }) =>
       workspaceService.cloneDivisionGridVersion(input.versionId),
@@ -231,19 +241,17 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
     onError: reportFailure(t("errors.draftCreate"), t)
   });
 
-  const standardMutation = useMutation({
-    mutationFn: (input: { scope: SubmitScope; gridId: number | undefined; tiers: typeof standardLadderTiers }) => {
-      if (input.gridId === undefined || !input.tiers) {
-        throw new Error(t("errors.noStandardLadder"));
-      }
+  const ladderDraftMutation = useMutation({
+    mutationFn: (input: { scope: SubmitScope; gridId: number; tiers: typeof ladderTiers }) => {
+      if (!input.tiers) throw new Error(t("errors.noStandardLadder"));
       return workspaceService.createDivisionGridVersion(input.scope.workspaceId, input.gridId, {
-        label: t("standardLadder"),
+        label: t("standardLadder", { game }),
         tiers: input.tiers
       });
     },
     onSuccess: async (version, input) => {
       await refresh(input.scope);
-      notify.success(t("toast.standardLoaded", { version: version.version }));
+      notify.success(t("toast.standardLoaded", { version: version.version, game }));
       router.push(editorHref(version.id));
     },
     onError: reportFailure(t("errors.standardLoad"), t)
@@ -258,61 +266,25 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
       return workspaceService.activateDivisionGridVersion(input.scope.workspaceId, input.version.id);
     },
     onSuccess: async (version, input) => {
-      setActivating(null);
+      setConfirming(null);
       await refresh(input.scope);
       notify.success(t("toast.activated", { version: version.version }));
     },
     onError: reportFailure(t("errors.activate"), t)
   });
 
-  const portableImportMutation = useMutation({
-    mutationFn: (input: { scope: { workspaceId: number }; document: DivisionGridPortableImportDocument }) =>
-      workspaceService.importDivisionGridPortable(input.scope.workspaceId, input.document),
-    onSuccess: async (grid, input) => {
-      await refresh({ workspaceId: input.scope.workspaceId, discipline: grid.discipline });
-      // Open the imported grid as an owner of its game, whatever the browsing choice was.
-      setParams({ grid: String(grid.id), discipline: grid.discipline });
-      notify.success(t("toast.jsonImported"));
-    },
-    onError: reportFailure(t("errors.jsonImport"), t)
-  });
+  const columns = useDivisionColumns(ladder, game);
 
-  const exportPortable = async () => {
-    if (!selectedGrid) return;
-    setPendingAction("export");
-    try {
-      const document = await workspaceService.exportDivisionGridPortable(selectedGrid.id);
-      const blob = new Blob([JSON.stringify(document, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const anchor = window.document.createElement("a");
-      anchor.href = url;
-      anchor.download = `${selectedGrid.slug}.division-grid.json`;
-      anchor.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      reportFailure(t("errors.jsonExport"), t)(error);
-    } finally {
-      setPendingAction(null);
-    }
+  const newDraft = () => {
+    if (latestVersion) cloneMutation.mutate({ scope: submitScope, versionId: latestVersion.id });
   };
-
-  const importPortable = async (file: File) => {
-    try {
-      portableImportMutation.mutate(
-{ scope: { workspaceId: submitScope.workspaceId }, document: JSON.parse(await file.text()) as DivisionGridPortableImportDocument }
-      );
-    } catch (error) {
-      notify.error(t("errors.invalidJson"), {
-        description: t("errors.invalidJsonDescription", {
-          reason: error instanceof Error ? error.message : t("errors.invalidJsonReason")
-        })
-      });
-    } finally {
-      if (portableInputRef.current) portableInputRef.current.value = "";
-    }
+  const ladderDraft = () => {
+    if (selectedGrid) ladderDraftMutation.mutate({ scope: submitScope, gridId: selectedGrid.id, tiers: ladderTiers });
   };
+  const formError = (error: Error | null) => (error ? getApiErrorMessage(error, t("operationFailed")) : undefined);
 
-  const columns = useDivisionColumns(ladder);
+  const resolution = gameScope.resolution;
+  const summary = resolution?.game.kind === "all";
 
   if (gridsQuery.isError) {
     return (
@@ -326,23 +298,10 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
     );
   }
 
-  if (gridsQuery.isLoading) {
-    return (
-      <div aria-hidden className="flex flex-col gap-6">
-        <Skeleton className="h-40 w-full rounded-xl" />
-        <div className="grid gap-6 xl:grid-cols-2">
-          <Skeleton className="h-64 w-full rounded-xl" />
-          <Skeleton className="h-64 w-full rounded-xl" />
-        </div>
-      </div>
-    );
-  }
-
   // Nothing game-shaped is read or drawn until the games are known: an explicit invalid `?discipline=` is named,
   // never corrected.
-  const resolution = gameScope.resolution;
-  if (resolution === null) {
-    return gameScope.isError ? (
+  if (resolution === null && gameScope.isError) {
+    return (
       <PageStateCard
         state="error"
         title={t("loadError.title")}
@@ -350,14 +309,12 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
         actionLabel={t("retry")}
         onAction={gameScope.refetch}
       />
-    ) : (
-      <Skeleton className="h-40 w-full rounded-xl" />
     );
   }
-  if (resolution.game.kind === "invalid" || resolution.game.kind === "empty") {
+  if (resolution !== null && (resolution.game.kind === "invalid" || resolution.game.kind === "empty")) {
     return <GameScopeControl scope={gameScope} variant="multi" />;
   }
-  if (selectedDiscipline !== null && (metadataQuery.isError || metadataInvalid)) {
+  if (discipline !== null && (metadataQuery.isError || metadataInvalid)) {
     return (
       <PageStateCard
         state="error"
@@ -368,123 +325,224 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
       />
     );
   }
-  if (selectedDiscipline !== null && metadata === undefined) {
-    return <Skeleton className="h-40 w-full rounded-xl" />;
+  if (gridsQuery.isLoading || resolution === null || (discipline !== null && metadata === undefined)) {
+    return summary && !hasGridPin ? (
+      <GamesSummarySkeleton rows={Math.max(enabledGames.length, 2)} />
+    ) : (
+      <GameSkeleton />
+    );
   }
 
-  // The one thing worth doing next, ranked: finish the draft, put a finished
-  // version in force, start a draft, start from the standard ladder.
-  const nextAction = draft ? (
-    <Button size="sm" asChild>
-      <Link href={editorHref(draft.id)}>{t("openDraft", { version: draft.version })}</Link>
-    </Button>
-  ) : readyCandidate ? (
-    <Button size="sm" onClick={() => setActivating(readyCandidate)}>
-      {t("activateVersion", { version: readyCandidate.version })}
-    </Button>
-  ) : canCreate && latestVersion ? (
-    <Button size="sm" onClick={() => cloneMutation.mutate({ scope: submitScope, versionId: latestVersion.id })} disabled={cloneMutation.isPending}>
-      {t("newDraft", { version: latestVersion.version })}
-    </Button>
-  ) : canCreate && selectedGrid && ladder ? (
-    <Button
-      size="sm"
-      onClick={() => standardMutation.mutate({ scope: submitScope, gridId: selectedGrid?.id, tiers: standardLadderTiers })}
-      disabled={standardMutation.isPending}
-    >
-      {t("loadStandard")}
-    </Button>
+  // The one thing worth doing next, ranked: finish the draft, put a finished version in force, start a draft from
+  // the newest version, start one from the ladder; a game with no grid of its own gets one.
+  const nextStep: NextStep | null =
+    selectedGrid === null
+      ? canCreate && discipline !== null
+        ? "createGrid"
+        : null
+      : draft
+        ? "openDraft"
+        : readyCandidate
+          ? "activate"
+          : canCreate && latestVersion
+            ? "newDraft"
+            : canCreate && ladder
+              ? "ladderDraft"
+              : null;
+  const nextAction =
+    nextStep === "openDraft" && draft ? (
+      <Button size="sm" asChild>
+        <Link href={editorHref(draft.id)}>{t("openDraft", { version: draft.version })}</Link>
+      </Button>
+    ) : nextStep === "activate" && readyCandidate ? (
+      <Button size="sm" onClick={() => setConfirming({ kind: "activate", version: readyCandidate })}>
+        {t("activateVersion", { version: readyCandidate.version })}
+      </Button>
+    ) : nextStep === "newDraft" && latestVersion ? (
+      <Button size="sm" onClick={newDraft} disabled={cloneMutation.isPending}>
+        {t("newDraft", { version: latestVersion.version })}
+      </Button>
+    ) : nextStep === "ladderDraft" ? (
+      <Button size="sm" onClick={ladderDraft} disabled={ladderDraftMutation.isPending}>
+        {t("gridMenu.draftFromLadder", { game })}
+      </Button>
+    ) : nextStep === "createGrid" ? (
+      <Button size="sm" onClick={() => setGridForm({ mode: "create", game: discipline })}>
+        {t("createGameGrid", { game })}
+      </Button>
+    ) : null;
+
+  const menu = selectedGrid ? (
+    <GridMenu
+      grid={selectedGrid}
+      inForce={selectedInForce}
+      // A draft in hand is opened, not doubled.
+      newDraft={
+        canCreate && latestVersion && !draft && nextStep !== "newDraft"
+          ? { label: t("newDraft", { version: latestVersion.version }), onSelect: newDraft }
+          : null
+      }
+      ladderDraft={
+        canCreate && ladder && nextStep !== "ladderDraft"
+          ? { label: t("gridMenu.draftFromLadder", { game }), onSelect: ladderDraft }
+          : null
+      }
+      onRename={canUpdate ? () => setGridForm({ mode: "rename", grid: selectedGrid }) : null}
+      onExport={() => void actions.exportPortable(selectedGrid)}
+      onArchive={canDelete ? () => actions.archive.mutate({ grid: selectedGrid, archived: true }) : null}
+      onRestore={canUpdate ? () => actions.archive.mutate({ grid: selectedGrid, archived: false }) : null}
+      onDelete={canDelete ? () => setConfirming({ kind: "delete", grid: selectedGrid }) : null}
+      pending={actions.pending || cloneMutation.isPending || ladderDraftMutation.isPending}
+    />
   ) : null;
+
+  const confirmIntent = (): ConfirmIntent => {
+    if (confirming?.kind === "delete") {
+      const pinned = confirming.grid.tournament_count ?? 0;
+      return pinned > 0
+        ? {
+            title: t("confirm.detachTitle", { name: confirming.grid.name }),
+            description: t("confirm.detachDescription", { count: pinned, game }),
+            confirmLabel: t("confirm.detachLabel"),
+            tone: "danger",
+            requireTyped: confirming.grid.name
+          }
+        : {
+            title: t("confirm.deleteTitle", { name: confirming.grid.name }),
+            description: t("confirm.deleteDescription", { count: confirming.grid.versions.length }),
+            confirmLabel: t("confirm.deleteLabel"),
+            tone: "danger"
+          };
+    }
+    const version = confirming?.version.version ?? "";
+    return {
+      title: t("confirm.activateTitle", { version }),
+      description: t("confirm.activateDescription", { version }),
+      confirmLabel: t("activateVersion", { version }),
+      tone: "neutral"
+    };
+  };
 
   return (
     <div className="flex flex-col gap-6">
-      {gameDefs.length > 0 ? <FilterBar defs={gameDefs} filters={filters} /> : null}
-      <GridInForceSection
-        ladder={ladder}
-        activeVersion={activeVersion}
-        bands={activeVersion ? activeBands : builtInBands}
-        activeIsShared={activeIsShared}
-        systemFallback={activeVersionId === null}
-        nextAction={nextAction}
+      <DivisionsHeaderActions
+        canCreate={canCreate}
+        onNewGrid={() => setGridForm({ mode: "create", game: discipline })}
+        onImportJson={() => portableInputRef.current?.click()}
+        importPending={actions.importPortable.isPending}
       />
+      {gameDefs.length > 0 ? <FilterBar defs={gameDefs} filters={filters} /> : null}
 
-      <div className="grid items-start gap-6 xl:grid-cols-2">
-        <div className="flex min-w-0 flex-col gap-6">
-          <VersionHistorySection
-            canCreate={canCreate}
-            versions={versions}
-            latestVersion={latestVersion}
+      {summary ? (
+        <GamesSummary workspaceId={workspaceId} games={enabledGames} workspace={workspace} grids={grids} />
+      ) : (
+        <>
+          <GridInForceSection
+            game={game}
             ladder={ladder}
-            grids={scopedGrids}
-            games={gridMarks}
-            selectedGrid={selectedGrid}
-            onSelectGrid={(value) => setParams({ grid: value })}
-            activeVersionId={activeVersionId}
-            tournamentCounts={tournamentCounts}
-            activatable={activatable}
-            onActivate={setActivating}
-            onNewDraft={(versionId) => cloneMutation.mutate({ scope: submitScope, versionId })}
-            newDraftPending={cloneMutation.isPending}
-            onLoadStandard={() => standardMutation.mutate({ scope: submitScope, gridId: selectedGrid?.id, tiers: standardLadderTiers })}
-            loadStandardPending={standardMutation.isPending}
-          >
-            <GridTransferMenu
-              canCreate={canCreate}
-              inputRef={portableInputRef}
-              onImportFile={(file) => void importPortable(file)}
-              importPending={portableImportMutation.isPending}
-              onExport={() => void exportPortable()}
-              canExport={selectedGrid !== null}
-              exportPending={pendingAction === "export"}
-            />
-          </VersionHistorySection>
-
-          <ReadersSection
             activeVersion={activeVersion}
-            loading={readinessQuery.isLoading}
-            sources={sources}
+            activeGrid={activeGrid}
+            bands={activeBands}
+            systemFallback={activeVersionId === null}
+            nextAction={nextAction}
           />
-        </div>
 
-        <section className="flex min-w-0 flex-col gap-3" aria-labelledby="divisions-table">
-          <h2 id="divisions-table" className="text-ui font-semibold text-foreground">
-            {t("divisionsInForce")}
-          </h2>
-          {activeVersion ? (
-            <DataTable<Band>
-              rows={activeBands}
-              columns={columns}
-              getRowId={(row) => row.slug}
-              initialPageSize={50}
-              emptyMessage={t("table.empty")}
-            />
-          ) : (
-            <EmptyNote size="sm">
-              {t(hasNativeLadder ? "playersUntilActivated" : "organizerGridRequired")}
-            </EmptyNote>
-          )}
-        </section>
-      </div>
+          <div className="grid items-start gap-6 xl:grid-cols-2">
+            <div className="flex min-w-0 flex-col gap-6">
+              <GridSection
+                game={game}
+                grids={gameGrids}
+                selectedGrid={selectedGrid}
+                onSelectGrid={(value) => setParams({ grid: value })}
+                menu={menu}
+                versions={versions}
+                ladder={ladder}
+                activeVersionId={activeVersionId}
+                tournamentCounts={tournamentCounts}
+                activatable={activatable}
+                onActivate={(version) => setConfirming({ kind: "activate", version })}
+              />
+              <ReadersSection activeVersion={activeVersion} loading={readinessQuery.isLoading} sources={sources} />
+            </div>
+
+            <section className="flex min-w-0 flex-col gap-3" aria-labelledby="divisions-table">
+              <h2 id="divisions-table" className="text-ui font-semibold text-foreground">
+                {t("divisionsInForce")}
+              </h2>
+              {activeBands.length > 0 ? (
+                <DataTable<Band>
+                  rows={activeBands}
+                  columns={columns}
+                  getRowId={(row) => row.slug}
+                  initialPageSize={50}
+                  emptyMessage={t("table.empty")}
+                />
+              ) : (
+                <EmptyNote size="sm">{t("organizerGridRequired")}</EmptyNote>
+              )}
+            </section>
+          </div>
+        </>
+      )}
+
+      {canCreate ? (
+        <input
+          ref={portableInputRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          aria-hidden
+          tabIndex={-1}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            if (file) void actions.importFile(file);
+          }}
+        />
+      ) : null}
+
+      {gridForm ? (
+        <GridFormDialog
+          key={gridForm.mode === "rename" ? `rename-${gridForm.grid.id}` : `create-${gridForm.game ?? "all"}`}
+          form={gridForm}
+          workspaceId={workspaceId}
+          games={gameScope.games ?? []}
+          workspace={workspace}
+          grids={grids}
+          pending={gridForm.mode === "create" ? actions.create.isPending : actions.rename.isPending}
+          error={formError(gridForm.mode === "create" ? actions.create.error : actions.rename.error)}
+          onClose={() => {
+            actions.create.reset();
+            actions.rename.reset();
+            setGridForm(null);
+          }}
+          onSubmit={(values) => {
+            const close = { onSuccess: () => setGridForm(null) };
+            if (gridForm.mode === "create") actions.create.mutate({ workspaceId, values }, close);
+            else actions.rename.mutate({ grid: gridForm.grid, name: values.name }, close);
+          }}
+        />
+      ) : null}
 
       <ConfirmDialog
-        open={activating !== null}
+        open={confirming !== null}
         onOpenChange={(open) => {
-          if (!open) setActivating(null);
+          if (!open) setConfirming(null);
         }}
-        intent={{
-          title: t("confirm.activateTitle", { version: activating?.version ?? "" }),
-          description: t("confirm.activateDescription", { version: activating?.version ?? "" }),
-          confirmLabel: t("activateVersion", { version: activating?.version ?? "" }),
-          tone: "neutral"
-        }}
-        pending={activateMutation.isPending}
+        intent={confirmIntent()}
+        pending={activateMutation.isPending || actions.remove.isPending}
         onConfirm={() => {
-          if (activating) {
+          if (confirming?.kind === "activate") {
             activateMutation.mutate({
               scope: submitScope,
-              version: activating,
+              version: confirming.version,
               ownVersionIds: versions.map((entry) => entry.id)
             });
+          } else if (confirming?.kind === "delete") {
+            actions.remove.mutate(
+              { grid: confirming.grid, force: (confirming.grid.tournament_count ?? 0) > 0 },
+              { onSuccess: () => setConfirming(null) }
+            );
           }
         }}
       />
@@ -492,14 +550,21 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
   );
 }
 
-function reportFailure(
-  title: string,
-  t: ReturnType<typeof useTranslations<"adminSettings.divisions">>
-) {
-  return (error: unknown) =>
-    notify.error(title, {
-      description: t("failureDescription", {
-        reason: error instanceof Error ? error.message : t("operationFailed")
-      })
-    });
+/** One game's skeleton: the in-force card, then the two columns, so nothing reflows when the data lands. */
+function GameSkeleton() {
+  return (
+    <div aria-hidden className="flex flex-col gap-6">
+      <Skeleton className="h-36 w-full rounded-xl" />
+      <div className="grid gap-6 xl:grid-cols-2">
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-5 w-48" />
+          <Skeleton className="h-28 w-full rounded-xl" />
+        </div>
+        <div className="flex flex-col gap-3">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-64 w-full rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
 }

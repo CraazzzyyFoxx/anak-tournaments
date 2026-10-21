@@ -42,6 +42,8 @@ export interface DivisionGridEntity {
   source_fingerprint: string | null;
   imported_at: string | null;
   archived_at: string | null;
+  /** Tournaments pinned to any of its versions; served by the grid list, `null`/absent elsewhere. */
+  tournament_count?: number | null;
 }
 
 export interface DivisionGridMappingRule {

@@ -37,6 +37,8 @@ export interface DivisionsTableProps {
   capabilities: DisciplineCapabilities;
   /** The discipline's native ladder; `null` when it has none (no native column, no ladder scale). */
   ladder: Ladder | null;
+  /** The game's short name ("OW") the native column and the ladder scale are named by. */
+  game: string;
   editable: boolean;
   selectedSlug: string | null;
   onSelect: (slug: string) => void;
@@ -53,9 +55,9 @@ export interface DivisionsTableProps {
  * The draft's divisions as a table (F12 ·3, Divisions view).
  *
  * Two range columns because a division has two: its span on the workspace's
- * rank scale, and the OW ranks that land in it. On the ladder scale both come
+ * rank scale, and the native ranks that land in it. On the ladder scale both come
  * from the ladder and are read-only here; on a custom scale the floor is typed
- * and the OW run is picked per division.
+ * and the native run is picked per division.
  */
 export function DivisionsTable({
   bands,
@@ -63,6 +65,7 @@ export function DivisionsTable({
   discipline,
   capabilities,
   ladder,
+  game,
   editable,
   selectedSlug,
   onSelect,
@@ -143,7 +146,7 @@ export function DivisionsTable({
         ? [
             {
               id: "native",
-              header: t("table.owRanks"),
+              header: t("table.owRanks", { game }),
               cell: ({ row }) => {
                 const band = row.original;
                 if (custom && editable) {
@@ -233,7 +236,7 @@ export function DivisionsTable({
         { rowLabel: (band) => band.name }
       )
     ];
-  }, [bands, capabilities, custom, discipline, dispatch, editable, ladder, onPickIcon, t]);
+  }, [bands, capabilities, custom, discipline, dispatch, editable, game, ladder, onPickIcon, t]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -258,7 +261,7 @@ export function DivisionsTable({
             onValueChange={(next) => onScaleChange(next as Scale)}
             aria-label={t("table.rankScale")}
           >
-            <ToggleGroupItem value="ladder">{t("table.followLadder")}</ToggleGroupItem>
+            <ToggleGroupItem value="ladder">{t("table.followLadder", { game })}</ToggleGroupItem>
             <ToggleGroupItem value="custom">{t("table.custom")}</ToggleGroupItem>
           </ToggleGroup>
         ) : null}

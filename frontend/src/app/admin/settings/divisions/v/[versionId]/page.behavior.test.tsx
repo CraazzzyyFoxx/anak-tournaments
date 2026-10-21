@@ -130,6 +130,11 @@ vi.mock("@/hooks/useDisciplineMetadata", () => ({
   })
 }));
 
+vi.mock("@/hooks/useGameDescriptors", async () => {
+  const { GAME_DESCRIPTORS } = await import("@/test/game-scope");
+  return { useGameDescriptors: () => GAME_DESCRIPTORS };
+});
+
 const replace = vi.fn((url: string) => {
   window.history.replaceState(null, "", url);
   rerender?.();
@@ -393,6 +398,8 @@ describe("Divisions › draft editor", () => {
     expect(button("Publish v4")!.disabled).toBe(false);
     expect(container.textContent).toContain("Every older version maps onto this one");
     expect(container.textContent).toContain("belongs to exactly one division");
+    // The copy names the grid's own game by its short name.
+    expect(container.textContent).toContain("Rank ranges follow the OW ladder");
   });
 
   it("selects the centre view from ?tab=", async () => {
@@ -469,7 +476,7 @@ describe("Divisions › draft editor", () => {
     expect(byLabel("Gold 1, in Division 2")).toBeTruthy();
 
     await click(byLabel("Move Gold 1 into Division 1"));
-    expect(container.textContent).toContain("2 divisions have no OW ranks");
+    expect(container.textContent).toContain("2 divisions have no ladder ranks");
     await click(button("Save draft"));
 
     const [, payload] = updateDivisionGridVersion.mock.calls[0] as [

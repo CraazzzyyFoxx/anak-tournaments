@@ -7,6 +7,7 @@ import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
 import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialog";
 import { EntityHubHeader } from "@/components/kit/EntityHubHeader";
 import { SaveBar } from "@/components/kit/SaveBar";
+import { useGameDescriptors } from "@/hooks/useGameDescriptors";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import type { DisciplineCapabilities } from "@/types/discipline.types";
 import { notify } from "@/lib/notify";
@@ -106,6 +107,8 @@ export function DraftEditor({
   onReload
 }: Readonly<DraftEditorProps>) {
   const t = useTranslations("adminSettings.divisions");
+  // The game's short name ("OW", "LoL") for the copy that names its ladder; the code until descriptors load.
+  const game = useGameDescriptors().get(discipline)?.short_name || discipline;
   const { searchParams, setParams } = useQueryParams();
   const [state, dispatch] = useReducer(
     draftReducer,
@@ -250,7 +253,7 @@ export function DraftEditor({
         }
       : confirming === "scale"
         ? {
-            title: t("editor.followLadderTitle"),
+            title: t("editor.followLadderTitle", { game }),
             description: t("editorDetails.followDescription"),
             confirmLabel: t("editor.followLadder"),
             tone: "warning"
@@ -278,7 +281,7 @@ export function DraftEditor({
           `v${version.version}`,
           base.length > 0 ? t("editorDetails.createdFrom", { base: baseLabel }) : null,
           t("divisionCount", { count: state.bands.length }),
-          state.scale === "ladder" ? t("editorDetails.followRanges") : t("editorDetails.customScale")
+          state.scale === "ladder" ? t("editorDetails.followRanges", { game }) : t("editorDetails.customScale")
         ]}
         actions={
           <DraftEditorActions
@@ -332,6 +335,7 @@ export function DraftEditor({
         {ladder ? (
           <LadderColumn
             ladder={ladder}
+            game={game}
             bands={state.bands}
             scale={state.scale}
             selectedSlug={selectedSlug}
@@ -357,6 +361,7 @@ export function DraftEditor({
               discipline={discipline}
               capabilities={capabilities}
               ladder={ladder}
+              game={game}
               editable={editable}
               selectedSlug={selectedSlug}
               onSelect={(slug) => setParams({ band: slug })}
