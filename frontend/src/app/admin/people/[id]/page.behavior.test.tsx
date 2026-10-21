@@ -3,13 +3,14 @@
 // The person hub (People › one identity). What is pinned here:
 //  1. the `user.read` gate — the hub refuses instead of rendering empty tabs;
 //  2. `?tab=` is the whole tab state: a deep link opens that tab directly and
-//     an unknown value falls back to Profile;
+//     an unknown value falls back to Profile, whose summary reads the career
+//     through the Participations tab's own query;
 //  3. the detail query lands under the EXACT key `breadcrumb-registry.ts`
 //     declares for the `people` segment, which is the only reason the crumb
 //     reads a person's name instead of "Details";
 //  4. Participations is the old /admin/players table, scoped to one person —
-//     the column order, the pinned Name column and the one Div · Rank cell are
-//     carried over from `players/page.behavior.test.tsx`, together with the
+//     the tournament-first column order, the pinned Tournament column and the
+//     one Div · Rank cell, the person's name said once (in the header), and the
 //     rule that a participation joins a team inside one tournament;
 //  5. one action end to end: edit a participation through the shared form.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -336,12 +337,14 @@ describe("person hub", () => {
     );
   });
 
-  it("defaults to Profile and never fetches another tab's data", async () => {
+  it("defaults to Profile, whose summary names the latest tournament", async () => {
     const { container } = await mount();
-    await waitFor(() => container.textContent?.includes("Social identities"), "the profile tab");
+    await waitFor(() => container.textContent?.includes("latest: MoonRise Mix Vol.4"), "the summary");
 
     expect(activeTab()).toBe("Profile");
-    expect(getUserTournaments).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("Social identities");
+    // The summary shares the tab's per-game reads instead of a second shape.
+    expect(getUserTournaments).toHaveBeenCalledWith(42, "overwatch", 1);
   });
 
   it("opens ?tab=participations directly", async () => {
@@ -362,19 +365,16 @@ describe("person hub", () => {
     expect(activeTab()).toBe("Profile");
   });
 
-  it("orders the participation columns name-first and pins the name", async () => {
+  it("orders the participation columns tournament-first and pins the tournament", async () => {
     window.history.replaceState(null, "", "/admin/people/42?tab=participations");
     const { container } = await mount();
     await waitFor(() => container.textContent?.includes("MoonRise Mix Vol.4"), "the participation");
 
     expect(headerCells(container).map((cell) => cell.textContent?.trim())).toEqual([
-      "Name",
-      "Team",
       "Tournament",
+      "Team",
       "Role",
       "Div · Rank",
-      "Sub-role",
-      "Flags",
       // The kebab column: the pencil+trash pair is gone, the header is sr-only.
       "Actions"
     ]);
@@ -382,19 +382,25 @@ describe("person hub", () => {
     expect(container.querySelector("tbody tr")?.firstElementChild?.className).toContain(
       "admin-sticky-col"
     );
+    // The roster row carries the person's own name: the hub header already says it.
+    expect(container.querySelector("tbody")?.textContent).not.toContain("#2515");
   });
 
-  it("drops seven columns into a card on a narrow viewport", async () => {
+  it("drops the columns into a card on a narrow viewport", async () => {
     mockViewport(375);
     window.history.replaceState(null, "", "/admin/people/42?tab=participations");
     const { container } = await mount();
-    await waitFor(() => container.textContent?.includes("MoonRise Mix Vol.4"), "the participation");
 
-    // Seven columns do not fit 375px, so the table is not rendered at all and
-    // the card names the facts that identify the row.
+    // The table does not fit 375px, so it is not rendered at all and the card
+    // names the facts that identify the row: tournament, team, role · rank.
+    const card = await waitFor(
+      () => Array.from(container.querySelectorAll("li")).find((item) => item.textContent?.includes("Support · 1800")),
+      "the participation card"
+    );
     expect(container.querySelector("thead")).toBeNull();
-    expect(container.textContent).toContain("nnniik#2515");
-    expect(container.textContent).toContain("nnniik · MoonRise Mix Vol.4");
+    expect(card.textContent).toContain("MoonRise Mix Vol.4");
+    expect(card.textContent).toContain("nnniik");
+    expect(card.textContent).not.toContain("#2515");
   });
 
   it("shows the division icon and the rank in one cell", async () => {
@@ -402,9 +408,33 @@ describe("person hub", () => {
     const { container } = await mount();
     await waitFor(() => container.textContent?.includes("MoonRise Mix Vol.4"), "the participation");
 
-    const divisionCell = container.querySelectorAll("tbody tr td")[4];
+    const divisionCell = container.querySelectorAll("tbody tr td")[3];
     expect(divisionCell.querySelector("img")).not.toBeNull();
     expect(divisionCell.textContent).toContain("1800");
+  });
+
+  it("keeps the sub-role and flags in the role cell, and a roster name only when it differs", async () => {
+    const damageMain = { dimension: "player_role", role: "damage_main", parent: "damage" };
+    getUserTournaments.mockImplementation(async (_id: number, discipline: string) =>
+      discipline === "overwatch"
+        ? [
+            {
+              ...PARTICIPATIONS[0],
+              role: damageMain,
+              players: [{ ...PARTICIPATIONS[0].players[0], name: "Moon#1111", role: damageMain }]
+            }
+          ]
+        : []
+    );
+    window.history.replaceState(null, "", "/admin/people/42?tab=participations");
+    const { container } = await mount();
+    await waitFor(() => container.querySelector('tbody [title="Damage"]'), "the Damage glyph");
+
+    const [, teamCell, roleCell] = Array.from(container.querySelectorAll("tbody tr td"));
+    expect(teamCell.textContent).toContain("Moon#1111");
+    expect(roleCell.querySelector('[title="Damage"]')).not.toBeNull();
+    expect(roleCell.textContent).toContain("Damage Main");
+    expect(roleCell.querySelector('[aria-label="Newcomer"]')).not.toBeNull();
   });
 
   it("names a participation's role in the game of its own tournament", async () => {
@@ -428,7 +458,7 @@ describe("person hub", () => {
 
     await click(
       container.querySelector(
-        'button[aria-label="Actions for nnniik#2515 in MoonRise Mix Vol.4"]'
+        'button[aria-label="Actions for MoonRise Mix Vol.4"]'
       )
     );
     await click(await waitFor(() => menuItem("Edit participation"), "the edit action"));

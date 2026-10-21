@@ -1,11 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Eye, EyeOff, MoreHorizontal, Plus, Star, X } from "lucide-react";
+import { useId, useState, type FormEvent } from "react";
+import { AlertTriangle, Check, MoreHorizontal, Plus, Star } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import { StatusIcon } from "@/components/admin/StatusIcon";
+import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { EmptyNote } from "@/components/kit/EmptyNote";
+import { invalidProps, settingErrorId } from "@/components/kit/SettingRow";
+import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { SocialIcon } from "@/components/social/SocialIcon";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -14,22 +19,20 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select";
-import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
-import { SocialIcon } from "@/components/social/SocialIcon";
+import { Switch } from "@/components/ui/switch";
+import { adminQueryKeys } from "@/lib/admin/query-keys";
+import { getApiErrorMessage } from "@/lib/api/error";
+import { notify } from "@/lib/notify";
 import { getSocialProviderConfig, SOCIAL_PROVIDER_ORDER, socialAccountsForProvider } from "@/lib/social/providers";
 import adminService from "@/services/admin.service";
-import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
 import type { SocialAccount, SocialProvider, User } from "@/types/user.types";
-import { adminQueryKeys } from "@/lib/admin/query-keys";
 
 interface SocialAccountsEditorProps {
   userId: number;
@@ -43,20 +46,34 @@ interface SocialAccountsEditorProps {
   onUserUpdated: (user: User) => void;
 }
 
-// ─── Visibility toggles (global + current workspace) ─────────────────────────
-
-interface VisibilityControlsProps {
-  account: SocialAccount;
-  userId: number;
+/** Where an account may be shown: the public profile (`null`) or one workspace. */
+interface VisibilityScope {
   workspaceId: number | null;
-  onUserUpdated: (user: User) => void;
+  label: string;
 }
 
-function VisibilityControls({ account, userId, workspaceId, onUserUpdated }: Readonly<VisibilityControlsProps>) {
+// The switch columns line up under heads said once: every row and the head
+// share these widths from `@lg` (32rem) of the editor's own width. Narrower —
+// the 448px dialog, a phone — the heads go and each row labels its switches
+// under the handle.
+const SCOPE_CELL = "@lg:w-28 @lg:justify-center";
+const MENU_CELL = "w-7 shrink-0";
+
+// ─── Visibility switches (public profile + current workspace) ────────────────
+
+function VisibilitySwitches({
+  account,
+  userId,
+  scopes,
+  onUserUpdated
+}: Readonly<{
+  account: SocialAccount;
+  userId: number;
+  scopes: VisibilityScope[];
+  onUserUpdated: (user: User) => void;
+}>) {
   const t = useTranslations("adminPeople.social");
   const queryClient = useQueryClient();
-  const globalVisible = account.visible_global ?? true;
-  const workspaceVisible = workspaceId != null && (account.visible_workspace_ids ?? []).includes(workspaceId);
 
   const mutation = useMutation({
     mutationFn: (vars: { workspace_id: number | null; visible: boolean }) =>
@@ -64,72 +81,72 @@ function VisibilityControls({ account, userId, workspaceId, onUserUpdated }: Rea
     onSuccess: (user) => {
       queryClient.invalidateQueries({ queryKey: adminQueryKeys.users() });
       onUserUpdated(user);
-    },
+    }
   });
 
   return (
     <div
-      className="flex flex-wrap items-center gap-x-4 gap-y-1 pl-6 text-xs text-muted-foreground"
+      className="order-last flex basis-full flex-wrap items-center gap-x-4 gap-y-1 @lg:order-none @lg:basis-auto @lg:flex-nowrap @lg:gap-x-0"
       aria-busy={mutation.isPending}
     >
-      <label className="flex cursor-pointer select-none items-center gap-1.5">
-        <Switch
-          checked={globalVisible}
-          onCheckedChange={(v) => mutation.mutate({ workspace_id: null, visible: v })}
-          disabled={mutation.isPending}
-          className="scale-75"
-        />
-        <Eye className="h-3 w-3" /> {t("profile")}
-      </label>
-      {workspaceId != null && (
-        <label className="flex cursor-pointer select-none items-center gap-1.5">
-          <Switch
-            checked={workspaceVisible}
-            onCheckedChange={(v) => mutation.mutate({ workspace_id: workspaceId, visible: v })}
-            disabled={mutation.isPending}
-            className="scale-75"
-          />
-          <EyeOff className="h-3 w-3" /> {t("workspace")}
-        </label>
-      )}
+      {scopes.map((scope) => {
+        const visible =
+          scope.workspaceId === null
+            ? (account.visible_global ?? true)
+            : (account.visible_workspace_ids ?? []).includes(scope.workspaceId);
+        return (
+          <label
+            key={scope.workspaceId ?? "public"}
+            className={`flex cursor-pointer select-none items-center gap-2 ${SCOPE_CELL}`}
+          >
+            <Switch
+              checked={visible}
+              disabled={mutation.isPending}
+              aria-label={t("visibility", { account: account.username, scope: scope.label })}
+              onCheckedChange={(next) => mutation.mutate({ workspace_id: scope.workspaceId, visible: next })}
+            />
+            <span aria-hidden className="text-caption text-muted-foreground @lg:hidden">
+              {scope.label}
+            </span>
+          </label>
+        );
+      })}
     </div>
   );
 }
 
 // ─── Single account row (view / inline edit) ─────────────────────────────────
 
-interface AccountRowProps {
+function AccountRow({
+  account,
+  userId,
+  canManage,
+  scopes,
+  onUserUpdated
+}: Readonly<{
   account: SocialAccount;
   userId: number;
   canManage: boolean;
-  canSetVisibility: boolean;
-  workspaceId: number | null;
+  scopes: VisibilityScope[];
   onUserUpdated: (user: User) => void;
-}
-
-function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId, onUserUpdated }: Readonly<AccountRowProps>) {
+}>) {
   const t = useTranslations("adminPeople.social");
   const tTable = useTranslations("kitTable.dataTableExtra");
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(account.username);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
 
   const config = getSocialProviderConfig(account.provider);
   const invalidate = () => queryClient.invalidateQueries({ queryKey: adminQueryKeys.users() });
 
-  useEffect(() => {
-    if (editing) setTimeout(() => inputRef.current?.select(), 0);
-  }, [editing]);
-
   const updateMutation = useMutation({
-    mutationFn: () => adminService.updateSocialAccount(userId, account.id, { username: editValue.trim() }),
+    mutationFn: (username: string) => adminService.updateSocialAccount(userId, account.id, { username }),
     onSuccess: (user) => {
       invalidate();
       onUserUpdated(user);
       setEditing(false);
-    },
+    }
   });
   const deleteMutation = useMutation({
     mutationFn: () => adminService.deleteSocialAccount(userId, account.id),
@@ -137,14 +154,14 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
       invalidate();
       onUserUpdated(user);
       setDeleteOpen(false);
-    },
+    }
   });
   const primaryMutation = useMutation({
     mutationFn: () => adminService.setSocialAccountPrimary(userId, account.id),
     onSuccess: (user) => {
       invalidate();
       onUserUpdated(user);
-    },
+    }
   });
   const verifyMutation = useMutation({
     mutationFn: () => adminService.verifySocialAccount(userId, account.id),
@@ -153,57 +170,49 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
       onUserUpdated(user);
     },
     onError: (error) =>
-      notify.apiError(error, { title: t("verifyFailed", { username: account.username }) }),
+      notify.apiError(error, { title: t("verifyFailed", { username: account.username }) })
   });
 
-  const handleSave = () => {
-    const trimmed = editValue.trim();
-    if (!trimmed || trimmed === account.username) {
-      setEditing(false);
-      return;
-    }
-    updateMutation.mutate();
-  };
-
   if (editing) {
+    const trimmed = editValue.trim();
+    const save = (event: FormEvent) => {
+      event.preventDefault();
+      if (!trimmed || trimmed === account.username) {
+        setEditing(false);
+        return;
+      }
+      if (!updateMutation.isPending) updateMutation.mutate(trimmed);
+    };
     return (
-      <div className="flex items-center gap-2 px-1">
-        <Input
-          ref={inputRef}
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleSave();
-            if (e.key === "Escape") setEditing(false);
-          }}
-          disabled={updateMutation.isPending}
-          className="flex-1"
-          autoFocus
-        />
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-8 w-8 text-success hover:bg-success/10 hover:text-success"
-          onClick={handleSave}
-          disabled={updateMutation.isPending || !editValue.trim()}
-          aria-busy={updateMutation.isPending}
-          aria-label={t("save")}
-          title={t("save")}
-        >
-          <Check className="h-4 w-4" />
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-8 w-8 text-muted-foreground hover:text-foreground"
-          onClick={() => setEditing(false)}
-          disabled={updateMutation.isPending}
-          aria-label={t("cancel")}
-          title={t("cancel")}
-        >
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
+      <li className="py-2">
+        <form onSubmit={save} className="flex items-center gap-2">
+          <Input
+            autoFocus
+            size="sm"
+            value={editValue}
+            aria-label={t("handle", { provider: config.label })}
+            readOnly={updateMutation.isPending}
+            onFocus={(event) => event.currentTarget.select()}
+            onChange={(event) => setEditValue(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setEditing(false);
+            }}
+            className="min-w-0 flex-1"
+          />
+          <Button type="submit" size="sm" variant="outline" disabled={updateMutation.isPending || !trimmed}>
+            {t("save")}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={updateMutation.isPending}
+            onClick={() => setEditing(false)}
+          >
+            {t("cancel")}
+          </Button>
+        </form>
+      </li>
     );
   }
 
@@ -212,65 +221,53 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
   const canMakePrimary = canManage && !account.is_primary;
 
   return (
-    <>
-      <div className="rounded-lg px-2 py-1.5">
-        <div className="flex items-center gap-2">
-          <span className="inline-flex h-4 w-4 shrink-0 items-center justify-center">
-            <SocialIcon provider={account.provider} size={14} />
-          </span>
-          <span className="flex-1 truncate text-sm font-medium">{account.username}</span>
-          {account.is_verified ? (
-            <StatusIcon icon={Check} label={t("verified")} variant="success" className="size-3.5" />
-          ) : null}
-          {account.is_primary ? (
-            <StatusIcon icon={Star} label={t("primary")} variant="warning" className="size-3.5 fill-current" />
-          ) : null}
-          {canManage ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                disabled={busy}
-                aria-busy={busy}
-                aria-label={tTable("actionsFor", { label: account.username })}
-                title={tTable("actionsFor", { label: account.username })}
-                className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color] hover:bg-accent/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
-              >
-                <MoreHorizontal aria-hidden className="size-4" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                {canVerify ? (
-                  <DropdownMenuItem title={t("verifyTitle")} onSelect={() => verifyMutation.mutate()}>
-                    {t("verify")}
-                  </DropdownMenuItem>
-                ) : null}
-                {canMakePrimary ? (
-                  <DropdownMenuItem onSelect={() => primaryMutation.mutate()}>
-                    {t("makePrimary")}
-                  </DropdownMenuItem>
-                ) : null}
-                <DropdownMenuItem
-                  onSelect={() => {
-                    setEditValue(account.username);
-                    setEditing(true);
-                  }}
-                >
-                  {t("edit")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => setDeleteOpen(true)}
-                  className="text-danger focus:text-danger"
-                >
-                  {t("delete")}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
-        </div>
-        {(canManage || canSetVisibility) && (
-          <div className="mt-1">
-            <VisibilityControls account={account} userId={userId} workspaceId={workspaceId} onUserUpdated={onUserUpdated} />
-          </div>
-        )}
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-2.5 @lg:flex-nowrap">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="truncate text-body font-medium" title={account.username}>
+          {account.username}
+        </span>
+        {account.is_verified ? <StatusIcon icon={Check} label={t("verified")} variant="success" /> : null}
+        {account.is_primary ? (
+          <StatusIcon icon={Star} label={t("primary")} variant="warning" className="fill-current" />
+        ) : null}
       </div>
+      {scopes.length > 0 ? (
+        <VisibilitySwitches account={account} userId={userId} scopes={scopes} onUserUpdated={onUserUpdated} />
+      ) : null}
+      {canManage ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            disabled={busy}
+            aria-busy={busy}
+            aria-label={tTable("actionsFor", { label: account.username })}
+            title={tTable("actionsFor", { label: account.username })}
+            className={`${MENU_CELL} inline-flex h-7 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color] hover:bg-accent/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50`}
+          >
+            <MoreHorizontal aria-hidden className="size-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            {canVerify ? (
+              <DropdownMenuItem title={t("verifyTitle")} onSelect={() => verifyMutation.mutate()}>
+                {t("verify")}
+              </DropdownMenuItem>
+            ) : null}
+            {canMakePrimary ? (
+              <DropdownMenuItem onSelect={() => primaryMutation.mutate()}>{t("makePrimary")}</DropdownMenuItem>
+            ) : null}
+            <DropdownMenuItem
+              onSelect={() => {
+                setEditValue(account.username);
+                setEditing(true);
+              }}
+            >
+              {t("edit")}
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => setDeleteOpen(true)} className="text-danger focus:text-danger">
+              {t("delete")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : null}
       <ConfirmDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
@@ -283,135 +280,172 @@ function AccountRow({ account, userId, canManage, canSetVisibility, workspaceId,
           tone: "danger"
         }}
       />
-    </>
+    </li>
   );
 }
 
-// ─── Add row (per provider) ──────────────────────────────────────────────────
+// ─── Add at the list's foot ──────────────────────────────────────────────────
 
-function AddAccountRow({ provider, userId, onUserUpdated }: Readonly<{ provider: SocialProvider; userId: number; onUserUpdated: (user: User) => void }>) {
+/** Pick a provider, type a handle, Enter. The field stays focused for the next one. */
+function AddAccount({ userId, onUserUpdated }: Readonly<{ userId: number; onUserUpdated: (user: User) => void }>) {
   const t = useTranslations("adminPeople.social");
   const queryClient = useQueryClient();
-  const [value, setValue] = useState("");
+  const inputId = useId();
+  const [provider, setProvider] = useState<SocialProvider>(SOCIAL_PROVIDER_ORDER[0]);
+  const [handle, setHandle] = useState("");
+  const [refusal, setRefusal] = useState<string | null>(null);
   const config = getSocialProviderConfig(provider);
 
-  const addMutation = useMutation({
-    mutationFn: () => adminService.addSocialAccount(userId, { provider, username: value.trim() }),
+  const add = useMutation({
+    // The refusal is shown under the field; a toast would say it twice.
+    meta: { suppressErrorToast: true },
+    mutationFn: (username: string) => adminService.addSocialAccount(userId, { provider, username }),
     onSuccess: (user) => {
+      setHandle("");
       queryClient.invalidateQueries({ queryKey: adminQueryKeys.users() });
       onUserUpdated(user);
-      setValue("");
     },
+    onError: (error) => setRefusal(getApiErrorMessage(error, t("addError")))
   });
+  const value = handle.trim();
 
-  const handleAdd = () => {
-    if (!value.trim() || addMutation.isPending) return;
-    addMutation.mutate();
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (value && !add.isPending) add.mutate(value);
   };
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-2 px-1">
-        <Input
-          placeholder={t("add", { label: config.placeholder })}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleAdd();
+    <form onSubmit={submit} className="border-t border-border/60 pt-2.5">
+      <div className="flex items-center gap-2">
+        <Plus aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        <Select
+          value={provider}
+          onValueChange={(next) => {
+            setProvider(next as SocialProvider);
+            setRefusal(null);
           }}
-          disabled={addMutation.isPending}
-          className="flex-1"
-        />
-        <Button
-          size="icon"
-          variant="outline"
-          className="h-9 w-9 shrink-0"
-          onClick={handleAdd}
-          disabled={!value.trim() || addMutation.isPending}
-          aria-busy={addMutation.isPending}
-          aria-label={t("add", { label: config.label })}
-          title={t("add", { label: config.label })}
         >
-          <Plus className="h-4 w-4" />
+          <SelectTrigger size="sm" className="w-36 shrink-0" aria-label={t("provider")}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SOCIAL_PROVIDER_ORDER.map((option) => (
+              <SelectItem key={option} value={option}>
+                <span className="flex items-center gap-2">
+                  <SocialIcon provider={option} size={14} decorative />
+                  {getSocialProviderConfig(option).label}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          id={inputId}
+          size="sm"
+          value={handle}
+          placeholder={config.placeholder}
+          aria-label={t("handle", { provider: config.label })}
+          // Read-only, not disabled: a disabled field drops focus, and the next handle is typed right after.
+          readOnly={add.isPending}
+          onChange={(event) => {
+            setHandle(event.target.value);
+            setRefusal(null);
+          }}
+          className="min-w-0 flex-1 border-transparent bg-transparent shadow-none focus-visible:border-input"
+          {...invalidProps(inputId, refusal ?? undefined)}
+        />
+        <Button type="submit" size="sm" variant="outline" disabled={!value || add.isPending}>
+          {t("add")}
         </Button>
       </div>
-      {addMutation.isError && addMutation.error instanceof Error && (
-        <p className="px-1 text-xs text-destructive">{addMutation.error.message}</p>
-      )}
-    </div>
+      {refusal ? (
+        <p
+          id={settingErrorId(inputId)}
+          role="alert"
+          className="mt-1.5 flex items-start gap-1.5 text-caption text-danger"
+        >
+          <AlertTriangle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+          {refusal}
+        </p>
+      ) : null}
+    </form>
   );
 }
 
-// ─── Editor (unified provider combobox over social_accounts) ─────────────────
+// ─── Editor ──────────────────────────────────────────────────────────────────
 
-/** Provider-combobox editor for a player's social accounts: pick a provider to
- *  see its linked accounts. Superusers manage them; others may toggle display. */
+/**
+ * Every linked account at once, grouped by provider. A provider picker used to
+ * show one provider at a time, which hid the Steam account Deadlock collects
+ * from behind the Battle.net list. Superusers manage accounts; readers may
+ * toggle where each one is shown.
+ */
 export function SocialAccountsEditor({
   userId,
   accounts,
   canManage,
   canSetVisibility,
   workspaceId,
-  onUserUpdated,
+  onUserUpdated
 }: Readonly<SocialAccountsEditorProps>) {
   const t = useTranslations("adminPeople.social");
-  const countByProvider = useMemo(() => {
-    const map = {} as Record<SocialProvider, number>;
-    for (const provider of SOCIAL_PROVIDER_ORDER) map[provider] = socialAccountsForProvider(accounts, provider).length;
-    return map;
-  }, [accounts]);
-
-  const [provider, setProvider] = useState<SocialProvider>(() =>
-    SOCIAL_PROVIDER_ORDER.reduce((best, p) => (countByProvider[p] > countByProvider[best] ? p : best), SOCIAL_PROVIDER_ORDER[0])
-  );
-
-  const items = socialAccountsForProvider(accounts, provider);
-  const config = getSocialProviderConfig(provider);
+  const groups = SOCIAL_PROVIDER_ORDER.map((provider) => ({
+    provider,
+    items: socialAccountsForProvider(accounts, provider)
+  })).filter((group) => group.items.length > 0);
+  const scopes: VisibilityScope[] =
+    canManage || canSetVisibility
+      ? [
+          { workspaceId: null, label: t("profile") },
+          ...(workspaceId != null ? [{ workspaceId, label: t("workspace") }] : [])
+        ]
+      : [];
 
   return (
-    <div className="space-y-3">
-      <Select value={provider} onValueChange={(v) => setProvider(v as SocialProvider)}>
-        <SelectTrigger className="w-full">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {SOCIAL_PROVIDER_ORDER.map((p) => {
-            const pConfig = getSocialProviderConfig(p);
-            const count = countByProvider[p];
-            return (
-              <SelectItem key={p} value={p}>
-                <span className="flex items-center gap-2">
-                  <SocialIcon provider={p} size={14} />
-                  <span>{pConfig.label}</span>
-                  {count > 0 && (
-                    <span className="rounded bg-muted px-1.5 text-xs tabular-nums text-muted-foreground">{count}</span>
-                  )}
-                </span>
-              </SelectItem>
-            );
-          })}
-        </SelectContent>
-      </Select>
+    <div className="@container space-y-4">
+      {groups.length === 0 ? (
+        <EmptyNote size="sm">{t("noIdentities")}</EmptyNote>
+      ) : (
+        groups.map((group, index) => (
+          <div key={group.provider}>
+            <div className="flex items-end gap-x-3">
+              <h3 className={`${EYEBROW_CLASS} flex min-w-0 flex-1 items-center gap-1.5`}>
+                <SocialIcon provider={group.provider} size={14} decorative />
+                {getSocialProviderConfig(group.provider).label}
+              </h3>
+              {/* The switch heads, once, on the first group's line. Each switch
+                  names its own account and scope, so these stay visual. */}
+              {index === 0 && scopes.length > 0 ? (
+                <div aria-hidden className="hidden @lg:flex">
+                  {scopes.map((scope) => (
+                    <span
+                      key={scope.workspaceId ?? "public"}
+                      className={`${EYEBROW_CLASS} ${SCOPE_CELL} flex text-center`}
+                    >
+                      {scope.label}
+                    </span>
+                  ))}
+                  {canManage ? <span className={`${MENU_CELL} ml-3`} /> : null}
+                </div>
+              ) : null}
+            </div>
+            <ul className="divide-y divide-border/60">
+              {group.items.map((account) => (
+                <AccountRow
+                  key={account.id}
+                  account={account}
+                  userId={userId}
+                  canManage={canManage}
+                  scopes={scopes}
+                  onUserUpdated={onUserUpdated}
+                />
+              ))}
+            </ul>
+          </div>
+        ))
+      )}
 
-      <div className={cn("space-y-1", items.length === 0 && "py-0")}>
-        {items.length === 0 ? (
-          <p className="py-5 text-center text-sm text-muted-foreground">{t("noIdentities", { label: config.label })}</p>
-        ) : (
-          items.map((account) => (
-            <AccountRow
-              key={account.id}
-              account={account}
-              userId={userId}
-              canManage={canManage}
-              canSetVisibility={canSetVisibility}
-              workspaceId={workspaceId}
-              onUserUpdated={onUserUpdated}
-            />
-          ))
-        )}
-      </div>
-
-      {canManage && <AddAccountRow provider={provider} userId={userId} onUserUpdated={onUserUpdated} />}
+      {canManage ? <AddAccount userId={userId} onUserUpdated={onUserUpdated} /> : null}
     </div>
   );
 }

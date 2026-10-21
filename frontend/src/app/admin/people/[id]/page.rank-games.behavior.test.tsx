@@ -1,14 +1,16 @@
 // @vitest-environment happy-dom
 //
-// The person hub is game-neutral, so the Ranks tab's two one-game blocks — the rank table and the rank history —
-// keep their own game tabs (R23): they open on the page's `?discipline=`, else the first game — the site's saved scope
-// and last game never reach the admin — and a pick is the page's `?discipline=`, which both blocks read.
+// The person hub is game-neutral, so its Ranks tab carries ONE game switcher for all of its blocks — the current
+// ranks, the collection, the history chart and the past ratings (R23). It opens on the page's `?discipline=`, else the
+// first game — the site's saved scope and last game never reach the admin — and a pick is the page's `?discipline=`,
+// which every block reads.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
+import type { RankOverviewListParams } from "@/services/workspace-player.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { navigation } from "@/test/url-navigation";
 
@@ -20,6 +22,7 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const listRanks = vi.fn();
+const getRankCollectionStatus = vi.fn();
 
 vi.mock("next/navigation", async () => ({
   ...(await import("@/test/url-navigation")).nextNavigationMock,
@@ -30,7 +33,10 @@ vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({ canAccessPermission: () => true, hasPermission: () => true, isSuperuser: false, isLoaded: true })
 }));
 vi.mock("@/lib/datetime/client", () => ({
-  useFormatter: () => ({ dateTime: (value: Date) => value.toISOString() })
+  useFormatter: () => ({
+    dateTime: (value: Date) => value.toISOString(),
+    relativeTime: (value: Date) => value.toISOString()
+  })
 }));
 vi.mock("@/hooks/useCurrentWorkspace", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/hooks/useCurrentWorkspace")>()),
@@ -39,7 +45,7 @@ vi.mock("@/hooks/useCurrentWorkspace", async (importOriginal) => ({
 vi.mock("@/services/admin.service", () => ({
   default: {
     getUsers: async () => ({ results: [{ id: 42, name: "nnniik#2515", social_accounts: [] }], total: 1, page: 1, per_page: -1 }),
-    getRankCollectionStatus: async () => []
+    getRankCollectionStatus: (...args: unknown[]) => getRankCollectionStatus(...args)
   }
 }));
 vi.mock("@/services/workspace-player.service", async (importOriginal) => ({
@@ -59,9 +65,12 @@ let container: HTMLDivElement;
 
 const tablists = () => [...container.querySelectorAll('[role="tablist"]')];
 // A tab reads as its monogram then its name ("OWOverwatch").
-const selectedGames = () =>
-  tablists().map((list) => list.querySelector('[role="tab"][aria-selected="true"]')?.textContent);
-const both = (name: string) => [expect.stringContaining(name), expect.stringContaining(name)];
+const selectedGame = () => tablists()[0]?.querySelector('[role="tab"][aria-selected="true"]')?.textContent;
+/** The rank reads made for one game: the current layers (no `layer`) and the past ones. */
+const ranksRead = (game: string) =>
+  listRanks.mock.calls
+    .map(([, params]) => params as RankOverviewListParams)
+    .filter((params) => params.discipline === game && params.playerId === 42);
 
 async function settle() {
   for (let turn = 0; turn < 8; turn += 1) {
@@ -74,18 +83,8 @@ async function settle() {
 }
 
 beforeEach(() => {
-  // Node's own `localStorage` throws without `--localstorage-file` and happy-dom does not shadow it; the table keeps
-  // its density and column preferences there.
-  const stored = new Map<string, string>();
-  Object.defineProperty(window, "localStorage", {
-    configurable: true,
-    value: {
-      getItem: (key: string) => stored.get(key) ?? null,
-      setItem: (key: string, value: string) => void stored.set(key, value),
-      removeItem: (key: string) => void stored.delete(key)
-    }
-  });
-  listRanks.mockReset().mockResolvedValue({ page: 1, per_page: 30, total: 0, results: [] });
+  listRanks.mockReset().mockResolvedValue({ page: 1, per_page: 100, total: 0, results: [] });
+  getRankCollectionStatus.mockReset().mockResolvedValue([]);
   useWorkspaceStore.setState({
     workspaces: [{ id: 1, name: "OWT", disciplines_enabled: ["overwatch", "lol"] }] as never,
     currentWorkspaceId: 1,
@@ -107,7 +106,7 @@ afterEach(async () => {
 });
 
 describe("the person hub's Ranks tab", () => {
-  it("opens both rank blocks on the first game whatever the site's saved game, and a League pick switches both", async () => {
+  it("has one game switcher, opens on the first game whatever the site's saved game, and a League pick switches every block", async () => {
     await act(async () => {
       root.render(
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -119,7 +118,12 @@ describe("the person hub's Ranks tab", () => {
     });
     await settle();
 
-    expect(selectedGames()).toEqual(both("Overwatch"));
+    expect(tablists()).toHaveLength(1);
+    expect(selectedGame()).toContain("Overwatch");
+    expect(ranksRead("overwatch").map((params) => params.layer)).toEqual(
+      expect.arrayContaining([undefined, ["registration", "tournament", "casual"]])
+    );
+    expect(getRankCollectionStatus).toHaveBeenLastCalledWith(42, "overwatch");
     expect(container.querySelector("[data-rank-history=overwatch]")).not.toBeNull();
 
     const league = tablists()[0]?.querySelector<HTMLElement>('[role="tab"]:not([aria-selected="true"])');
@@ -127,9 +131,14 @@ describe("the person hub's Ranks tab", () => {
     await settle();
 
     expect(navigation.current()).toBe("/admin/people/42?tab=ranks&discipline=lol");
-    expect(selectedGames()).toEqual(both("League of Legends"));
-    expect(listRanks.mock.calls.at(-1)?.[1]).toMatchObject({ discipline: "lol" });
+    expect(tablists()).toHaveLength(1);
+    expect(selectedGame()).toContain("League of Legends");
+    expect(ranksRead("lol").map((params) => params.layer)).toEqual(
+      expect.arrayContaining([undefined, ["registration", "tournament", "casual"]])
+    );
+    expect(getRankCollectionStatus).toHaveBeenLastCalledWith(42, "lol");
     // League collects its own native ranks: its own history, never Overwatch's.
     expect(container.querySelector("[data-rank-history=lol]")).not.toBeNull();
+    expect(container.querySelector("[data-rank-history=overwatch]")).toBeNull();
   });
 });

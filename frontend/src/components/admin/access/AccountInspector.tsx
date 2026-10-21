@@ -34,7 +34,7 @@ export interface AccountInspectorProps {
  * seeing its grants and its restrictions at once. What is read every time —
  * roles, the player, how it signs in, notifications — is open; restrictions
  * and the effective-permission dump fold to one line each. People › Account
- * renders the same blocks in two columns.
+ * renders the same blocks in two columns, bar the player link (it is that page).
  */
 export function AccountInspector({
   userId,

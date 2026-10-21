@@ -1,12 +1,10 @@
 // @vitest-environment happy-dom
 //
-// The two pieces of this table that are not the shared `DataTable`:
-//  1. a fixed `playerId` drops the player column AND the search box — both only
-//     answer "which person", which the person page already settled;
-//  2. the division chips are the rank-range filter, mapped through the
+// The pieces of this table that are not the shared `DataTable`:
+//  1. the division chips are the rank-range filter, mapped through the
 //     workspace grid, and the top tier is open-ended (`rank_max: null`), which
 //     means "no ceiling" rather than "max 0";
-//  3. the game chip leads the bar, and a game change drops the old game's role,
+//  2. the game chip leads the bar, and a game change drops the old game's role,
 //     rank range and rank order.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
@@ -123,7 +121,7 @@ function lastParams(): RankOverviewListParams {
   return listRanks.mock.calls.at(-1)?.[1] as RankOverviewListParams;
 }
 
-async function render(search: string, playerId?: number) {
+async function render(search: string) {
   window.history.replaceState(null, "", `/admin/ranks${search}`);
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -132,7 +130,7 @@ async function render(search: string, playerId?: number) {
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <RankOverviewTable playerId={playerId} />
+        <RankOverviewTable />
       </QueryClientProvider>
     );
   });
@@ -169,23 +167,12 @@ async function click(element: Element | null | undefined) {
 }
 
 describe("rank overview table", () => {
-  it("drops the player column and the search box when pinned to one person", async () => {
-    await render("", 42);
-
-    const headers = [...container.querySelectorAll("th")].map((cell) => cell.textContent);
-    expect(headers).not.toContain("columns.player");
-    expect(headers).toContain("columns.layer");
-    expect(container.querySelector('input[name="admin-table-search"]')).toBeNull();
-    expect(lastParams().playerId).toBe(42);
-  });
-
-  it("links the player to their person page when not pinned", async () => {
+  it("links the player to their person page", async () => {
     await render("");
 
     const headers = [...container.querySelectorAll("th")].map((cell) => cell.textContent);
     expect(headers).toContain("columns.player");
     expect(container.querySelector('a[href="/admin/people/42"]')).not.toBeNull();
-    expect(lastParams().playerId).toBeUndefined();
   });
 
   it("turns the division chips into a rank range on the workspace grid", async () => {

@@ -16,8 +16,8 @@ import type { AuthAdminUser } from "@/types/rbac.types";
  * The parts every account block shares, so the Access inspector and the
  * People › Account tab are one surface laid out twice, not two surfaces.
  *
- * Blocks are frameless: the inspector stacks them on hairlines, the person hub
- * groups them into cards, so the frame belongs to the container.
+ * Blocks are frameless: the inspector stacks them on hairlines in one column,
+ * the person hub in two, so the frame (if any) belongs to the container.
  */
 
 /** Right of a block title: a count or a verdict, in body case. */

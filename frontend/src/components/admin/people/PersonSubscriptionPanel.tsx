@@ -2,29 +2,36 @@
 
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleAlert, CircleCheck, CircleSlash, HelpCircle, type LucideIcon } from "lucide-react";
-import { useFormatter } from "@/lib/datetime/client";
+import {
+  ChevronDown,
+  CircleAlert,
+  CircleCheck,
+  CircleSlash,
+  HelpCircle,
+  type LucideIcon
+} from "lucide-react";
 
 import { StatusIcon } from "@/components/admin/StatusIcon";
+import {
+  PROVIDER_LABELS,
+  StateBadge,
+  useSubscriptionLabels
+} from "@/components/admin/collectors/subscription-shared";
+import { collapseCheckRuns } from "@/components/admin/people/check-runs";
+import { PersonSection } from "@/components/admin/people/PersonSection";
+import { EmptyNote } from "@/components/kit/EmptyNote";
+import { formatDate, formatRelative } from "@/components/kit/format-time";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Spinner } from "@/components/ui/spinner";
+import { adminQueryKeys } from "@/lib/admin/query-keys";
+import { useFormatter } from "@/lib/datetime/client";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-
-import {
-  PROVIDER_LABELS,
-  StateBadge,
-  formatDate,
-  formatRelative,
-  useSubscriptionLabels
-} from "@/components/admin/collectors/subscription-shared";
-import { EmptyNote } from "@/components/kit/EmptyNote";
-import { Spinner } from "@/components/ui/spinner";
-import { adminQueryKeys } from "@/lib/admin/query-keys";
+import type { SubscriptionCheckLogRow } from "@/types/admin.types";
 
 const STATE_ICON: Record<string, { icon: LucideIcon; variant: "success" | "warning" | "info" | "destructive" }> = {
   active: { icon: CircleCheck, variant: "success" },
@@ -33,6 +40,8 @@ const STATE_ICON: Record<string, { icon: LucideIcon; variant: "success" | "warni
   error: { icon: CircleAlert, variant: "destructive" }
 };
 
+const ROW_CLASS = "flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5";
+
 /** One check state as a toned glyph, its word as the tooltip: for lines and logs, not tables. */
 export function SubscriptionStateIcon({ state }: Readonly<{ state: string }>) {
   const labels = useSubscriptionLabels();
@@ -40,10 +49,94 @@ export function SubscriptionStateIcon({ state }: Readonly<{ state: string }>) {
   return <StatusIcon icon={meta.icon} label={labels.state[state] ?? state} variant={meta.variant} />;
 }
 
+/** Skeleton rows on the list's own hairlines, so nothing reflows when data lands. */
+function RowsSkeleton({ rows }: Readonly<{ rows: number }>) {
+  return (
+    <ul aria-hidden className="divide-y divide-border/60">
+      {Array.from({ length: rows }, (_, index) => (
+        <li key={index} className="py-2.5">
+          <Skeleton className="h-6 w-full max-w-xl" />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // ─── Per-player check timeline ───────────────────────────────────────────────
 
 /**
- * That player's own slice of the check log, newest first.
+ * One run of identical checks: a plain row for a single check, an expanding
+ * row (DESIGN.md §8) listing every check's time for a run of several.
+ */
+function CheckRunRow({ run }: Readonly<{ run: SubscriptionCheckLogRow[] }>) {
+  const t = useTranslations("adminPeople.subscription");
+  const format = useFormatter();
+  const labels = useSubscriptionLabels();
+  const latest = run[0];
+  const oldest = run[run.length - 1];
+  const folded = run.length > 1;
+  const reason = latest.error ?? (latest.reason ? labels.reason(latest.reason) : null);
+  const meta = [
+    latest.tier_label ?? (latest.tier_rank != null ? t("tierValue", { rank: latest.tier_rank }) : null),
+    folded ? t("checks", { count: run.length }) : null,
+    labels.source[latest.source] ?? latest.source
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const when = (iso: string) => (
+    <time dateTime={iso} title={formatDate(format, iso)}>
+      {formatRelative(format, iso)}
+    </time>
+  );
+
+  const line = (
+    <>
+      <SubscriptionStateIcon state={latest.state} />
+      <span className="text-body font-medium">{PROVIDER_LABELS[latest.provider] ?? latest.provider}</span>
+      <span className="text-caption tabular-nums text-muted-foreground">{meta}</span>
+      {folded ? (
+        <ChevronDown
+          aria-hidden
+          className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180 motion-reduce:transition-none"
+        />
+      ) : null}
+      {reason ? (
+        <span className={cn("text-caption", latest.error ? "text-danger" : "text-muted-foreground")}>
+          {reason}
+        </span>
+      ) : null}
+      <span className="ml-auto text-caption tabular-nums text-muted-foreground">
+        {folded ? <>{when(oldest.created_at)} – </> : null}
+        {when(latest.created_at)}
+      </span>
+    </>
+  );
+
+  if (!folded) return <li className={ROW_CLASS}>{line}</li>;
+  return (
+    <li>
+      <details className="group">
+        <summary
+          className={cn(
+            ROW_CLASS,
+            "cursor-pointer list-none rounded-md transition-colors hover:bg-[color:var(--aqt-overlay-2)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring motion-reduce:transition-none [&::-webkit-details-marker]:hidden"
+          )}
+        >
+          {line}
+        </summary>
+        <ol className="flex flex-wrap gap-x-3 gap-y-1 pb-2.5 pl-7 text-caption tabular-nums text-muted-foreground">
+          {run.map((row) => (
+            <li key={row.id}>{when(row.created_at)}</li>
+          ))}
+        </ol>
+      </details>
+    </li>
+  );
+}
+
+/**
+ * That player's own slice of the check log, newest first, runs of identical
+ * results folded into one row.
  *
  * The counterpart of `RankHistory` on the rank tab: the entitlement table only
  * holds the latest verdict, so this is the only place a flap ("active on Monday,
@@ -51,65 +144,41 @@ export function SubscriptionStateIcon({ state }: Readonly<{ state: string }>) {
  */
 function PlayerCheckTimeline({ userId }: Readonly<{ userId: number }>) {
   const t = useTranslations("adminPeople.subscription");
-  const format = useFormatter();
-  const labels = useSubscriptionLabels();
   // Scoped server-side to the injected workspace; see `admin.service.ts`.
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const query = useQuery({
     queryKey: adminQueryKeys.subscriptionsUserHistory(workspaceId, userId),
     queryFn: () => adminService.getSubscriptionCheckLog({ user_id: userId, limit: 100 })
   });
-  const rows = query.data ?? [];
+  const runs = collapseCheckRuns(query.data ?? []);
 
   return (
-    <section className="space-y-2">
-      <h3 className="text-sm font-semibold">{t("history")}</h3>
+    <PersonSection title={t("history")}>
       {query.isLoading ? (
-        <Skeleton className="h-24 w-full" />
+        <RowsSkeleton rows={4} />
       ) : query.isError ? (
         <PageStateCard state="error" onAction={() => void query.refetch()} />
-      ) : rows.length === 0 ? (
+      ) : runs.length === 0 ? (
         <EmptyNote>{t("emptyHistory")}</EmptyNote>
       ) : (
-        <ol className="max-h-72 divide-y divide-border/60 overflow-y-auto pr-1">
-          {rows.map((row) => {
-            const reason = row.error ?? (row.reason ? labels.reason(row.reason) : null);
-            return (
-              <li key={row.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 py-1.5 text-sm">
-                <SubscriptionStateIcon state={row.state} />
-                <span className="tabular-nums text-muted-foreground">
-                  {formatDate(format, row.created_at)}
-                </span>
-                <span className="font-medium">{PROVIDER_LABELS[row.provider] ?? row.provider}</span>
-                <span className="text-caption text-muted-foreground">
-                  {[
-                    row.tier_label ?? (row.tier_rank != null ? t("tierValue", { rank: row.tier_rank }) : null),
-                    labels.source[row.source] ?? row.source
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
-                {reason ? (
-                  <span className={cn("truncate text-caption", row.error ? "text-danger" : "text-muted-foreground")}>
-                    {reason}
-                  </span>
-                ) : null}
-              </li>
-            );
-          })}
+        <ol className="divide-y divide-border/60">
+          {runs.map((run) => (
+            <CheckRunRow key={run[0].id} run={run} />
+          ))}
         </ol>
       )}
-    </section>
+    </PersonSection>
   );
 }
 
 // ─── Per-player entitlements ─────────────────────────────────────────────────
 
 /**
- * One player's subscription verdicts, with the re-check controls.
+ * One player's subscription verdicts, with the re-check controls, then the log
+ * that led to them.
  *
  * Moved out of the subscription collector screen: a person's entitlements
- * belong on their card (People › Identity).
+ * belong on their hub (People › Subscriptions).
  */
 export function SubscriptionPlayerPanel({
   userId,
@@ -143,80 +212,73 @@ export function SubscriptionPlayerPanel({
   });
 
   return (
-    <div className="space-y-5">
-      <section className="space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold">{t("entitlements")}</h3>
+    // One provider per workspace: a full-width row put «Проверить» a screen away from what it checks.
+    <div className="max-w-3xl space-y-8">
+      <PersonSection
+        title={t("entitlements")}
+        actions={
           <Button
             size="sm"
             disabled={triggerMutation.isPending}
             onClick={() => triggerMutation.mutate(null)}
           >
             {triggerMutation.isPending ? <Spinner className="mr-1.5 size-3.5" /> : null}
-            {t("recheck")}
+            {t("recheckAll")}
           </Button>
-        </div>
-
+        }
+      >
         {statusQuery.isLoading ? (
-          <Skeleton className="h-24 w-full" />
+          <RowsSkeleton rows={1} />
         ) : statusQuery.isError ? (
           <PageStateCard state="error" onAction={() => void statusQuery.refetch()} />
         ) : rows.length === 0 ? (
           <EmptyNote>{t("empty")}</EmptyNote>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{t("workspace")}</TableHead>
-                <TableHead>{t("provider")}</TableHead>
-                <TableHead>{t("state")}</TableHead>
-                <TableHead>{t("tier")}</TableHead>
-                <TableHead>{t("checkedLabel")}</TableHead>
-                <TableHead>{t("reason")}</TableHead>
-                <TableHead className="text-right">{t("action")}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={`${row.workspace_id}-${row.provider}`}>
-                  <TableCell className="text-sm">
-                    {row.workspace_name ?? row.workspace_id}
-                  </TableCell>
-                  <TableCell className="font-medium">
-                    {PROVIDER_LABELS[row.provider] ?? row.provider}
-                  </TableCell>
-                  <TableCell title={row.source ?? undefined}>
-                    <StateBadge state={row.state} />
-                  </TableCell>
-                  <TableCell className="text-sm tabular-nums text-muted-foreground">
-                    {row.tier_label ?? (row.tier_rank != null ? t("tierValue", { rank: row.tier_rank }) : null)}
-                  </TableCell>
-                  <TableCell
-                    className="text-sm tabular-nums text-muted-foreground"
-                    title={row.checked_at ? formatDate(format, row.checked_at) : undefined}
+          <ul className="divide-y divide-border/60">
+            {rows.map((row) => {
+              const provider = PROVIDER_LABELS[row.provider] ?? row.provider;
+              const tier =
+                row.tier_label ?? (row.tier_rank != null ? t("tierValue", { rank: row.tier_rank }) : null);
+              return (
+                <li key={`${row.workspace_id}-${row.provider}`} className={ROW_CLASS}>
+                  <span className="text-body font-medium">
+                    {provider}
+                    {row.workspace_name ? (
+                      <span className="font-normal text-muted-foreground"> · {row.workspace_name}</span>
+                    ) : null}
+                  </span>
+                  {/* Active is the norm: only a verdict that wants attention gets a pill. */}
+                  {row.state === "active" ? null : <StateBadge state={row.state} />}
+                  {tier || row.checked_at ? (
+                    <span className="text-caption tabular-nums text-muted-foreground">
+                      {tier}
+                      {tier && row.checked_at ? " · " : null}
+                      {row.checked_at ? (
+                        <time dateTime={row.checked_at} title={formatDate(format, row.checked_at)}>
+                          {t("checkedAgo", { time: formatRelative(format, row.checked_at) })}
+                        </time>
+                      ) : null}
+                    </span>
+                  ) : null}
+                  {row.reason ? (
+                    <span className="text-caption text-muted-foreground">{labels.reason(row.reason)}</span>
+                  ) : null}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto"
+                    disabled={triggerMutation.isPending}
+                    onClick={() => triggerMutation.mutate([row.provider])}
+                    aria-label={t("recheckFor", { provider, label })}
                   >
-                    {row.checked_at ? formatRelative(format, row.checked_at) : null}
-                  </TableCell>
-                  <TableCell className="max-w-40 truncate text-xs text-muted-foreground">
-                    {row.reason ? labels.reason(row.reason) : null}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={triggerMutation.isPending}
-                      onClick={() => triggerMutation.mutate([row.provider])}
-                      aria-label={t("recheckFor", { provider: PROVIDER_LABELS[row.provider] ?? row.provider, label })}
-                    >
-                      {t("recheck")}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    {t("recheck")}
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
         )}
-      </section>
+      </PersonSection>
 
       <PlayerCheckTimeline userId={userId} />
     </div>

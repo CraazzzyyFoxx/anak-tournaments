@@ -21,6 +21,7 @@ import {
   type PlayerFormMode,
   type PlayerFormState
 } from "@/components/admin/people/PlayerForm";
+import { PersonSection } from "@/components/admin/people/PersonSection";
 import DivisionIcon from "@/components/DivisionIcon";
 import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Button } from "@/components/ui/button";
@@ -89,6 +90,17 @@ function ParticipationRole({ row, named = false }: Readonly<{ row: Participation
     <div className="flex items-center" title={slotLabel(code)}>
       <RosterSlotGlyph code={code} ontology={ontology} size={18} />
     </div>
+  );
+}
+
+/** Newcomer and substitute are a roster row's exceptions, so each shows only when it holds. */
+function ParticipationFlags({ row }: Readonly<{ row: ParticipationRow }>) {
+  const t = useTranslations("adminPeople.participations");
+  return (
+    <>
+      {row.is_newcomer ? <StatusIcon icon={Sparkles} label={t("newcomer")} variant="warning" /> : null}
+      {row.is_substitution ? <StatusIcon icon={ArrowLeftRight} label={t("substitute")} variant="info" /> : null}
+    </>
   );
 }
 
@@ -262,40 +274,22 @@ export function PersonParticipationsTab({
     [personId, resetSaveMutation]
   );
 
+  // The roster row is usually the person's own name; it earns a line only when they played under another one.
+  const aliasOf = useCallback((row: ParticipationRow) => (row.name === personName ? null : row.name), [personName]);
+
   const columns = useMemo<ColumnDef<ParticipationRow>[]>(
     () => [
       {
-        accessorKey: "name",
-        header: t("name"),
-        size: 200,
-        meta: columnMeta<ParticipationRow>({
-          sticky: true,
-          searchValue: (row) => row.name
-        }),
-        cell: ({ row }) => <div className="font-medium">{row.original.name}</div>
-      },
-      {
-        accessorKey: "team_name",
-        header: t("team"),
-        enableSorting: false,
-        meta: columnMeta<ParticipationRow>({ searchValue: (row) => row.team_name }),
-        cell: ({ row }) => (
-          <Link
-            className="text-sm underline-offset-4 hover:underline"
-            href={`/admin/teams/${row.original.team_id}`}
-          >
-            {row.original.team_name}
-          </Link>
-        )
-      },
-      {
         accessorKey: "tournament_name",
         header: t("tournament"),
-        enableSorting: false,
-        meta: columnMeta<ParticipationRow>({ searchValue: (row) => row.tournament_name }),
+        size: 220,
+        meta: columnMeta<ParticipationRow>({
+          sticky: true,
+          searchValue: (row) => row.tournament_name
+        }),
         cell: ({ row }) => (
           <Link
-            className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+            className="font-medium underline-offset-4 hover:underline"
             href={`/admin/tournaments/${row.original.tournament_id}/overview`}
           >
             {row.original.tournament_name}
@@ -303,9 +297,39 @@ export function PersonParticipationsTab({
         )
       },
       {
+        accessorKey: "team_name",
+        header: t("team"),
+        enableSorting: false,
+        meta: columnMeta<ParticipationRow>({ searchValue: (row) => `${row.team_name} ${row.name}` }),
+        cell: ({ row }) => {
+          const alias = aliasOf(row.original);
+          return (
+            <div className="min-w-0">
+              <Link className="underline-offset-4 hover:underline" href={`/admin/teams/${row.original.team_id}`}>
+                {row.original.team_name}
+              </Link>
+              {alias ? (
+                <p className="truncate text-caption text-muted-foreground" title={alias}>
+                  {alias}
+                </p>
+              ) : null}
+            </div>
+          );
+        }
+      },
+      {
         accessorKey: "role",
         header: t("role"),
-        cell: ({ row }) => <ParticipationRole row={row.original} />
+        cell: ({ row }) => {
+          const subRole = formatSubRoleLabel(subRoleOf(row.original.role));
+          return (
+            <div className="flex items-center gap-2">
+              <ParticipationRole row={row.original} />
+              {subRole ? <span className="truncate text-caption text-muted-foreground">{subRole}</span> : null}
+              <ParticipationFlags row={row.original} />
+            </div>
+          );
+        }
       },
       {
         // Division is derived from rank, so the two ride in one column and sort
@@ -321,27 +345,6 @@ export function PersonParticipationsTab({
               height={28}
             />
             <span className="tabular-nums">{row.original.rank}</span>
-          </div>
-        )
-      },
-      {
-        id: "sub_role",
-        header: t("subRole"),
-        cell: ({ row }) => <div>{formatSubRoleLabel(subRoleOf(row.original.role))}</div>
-      },
-      {
-        id: "flags",
-        header: t("flags"),
-        enableSorting: false,
-        meta: columnMeta({ align: "center" }),
-        cell: ({ row }) => (
-          <div className="flex justify-center gap-1">
-            {row.original.is_newcomer && (
-              <StatusIcon icon={Sparkles} label={t("newcomer")} variant="warning" />
-            )}
-            {row.original.is_substitution && (
-              <StatusIcon icon={ArrowLeftRight} label={t("substitute")} variant="info" />
-            )}
           </div>
         )
       },
@@ -361,59 +364,72 @@ export function PersonParticipationsTab({
             onSelect: () => setPendingDelete(row)
           }
         ],
-        { rowLabel: (row) => `${row.name} in ${row.tournament_name}` }
+        // The hub already names the person; the tournament is what tells one row's menu from the next.
+        { rowLabel: (row) => row.tournament_name }
       )
     ],
     // `openEdit` was missing here: the kebab's "Edit participation" called
     // whichever closure the first render happened to build. It carries
     // `personId` itself, so the column list no longer needs it separately.
-    [t, canUpdate, canDelete, openEdit]
+    [t, canUpdate, canDelete, openEdit, aliasOf]
   );
 
-  if (participationsQuery.isError) {
-    return (
-      <PageStateCard
-        state="error"
-        title={t("loadError")}
-        onAction={() => void participationsQuery.refetch()}
-        actionLabel={t("retry")}
-      />
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <DataTable<ParticipationRow>
-        rows={rows}
-        isLoading={participationsQuery.isLoading}
-        columns={columns}
-        initialPageSize={20}
-        getRowId={(row) => String(row.id)}
-        searchPlaceholder={t("search")}
-        emptyMessage={t("empty")}
-        actions={
-          canCreate ? (
-            <Button size="sm" onClick={openCreate}>
-              <Plus aria-hidden className="size-4" />
-              {t("add")}
-            </Button>
-          ) : null
-        }
-        onRowDoubleClick={canUpdate ? (row) => openEdit(row.original) : undefined}
-        renderMobileCard={(row) => (
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{row.original.name}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {row.original.team_name} · {row.original.tournament_name}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              <ParticipationRole row={row.original} named /> ·{" "}
-              <span className="tabular-nums">{row.original.rank}</span>
-              {subRoleOf(row.original.role) ? ` · ${formatSubRoleLabel(subRoleOf(row.original.role))}` : ""}
-            </p>
-          </div>
-        )}
-      />
+    <PersonSection
+      title={t("title")}
+      actions={
+        canCreate ? (
+          <Button size="sm" onClick={openCreate}>
+            <Plus aria-hidden className="size-4" />
+            {t("add")}
+          </Button>
+        ) : null
+      }
+    >
+      {participationsQuery.isError ? (
+        <PageStateCard
+          state="error"
+          title={t("loadError")}
+          onAction={() => void participationsQuery.refetch()}
+          actionLabel={t("retry")}
+        />
+      ) : (
+        <DataTable<ParticipationRow>
+          rows={rows}
+          isLoading={participationsQuery.isLoading}
+          columns={columns}
+          initialPageSize={20}
+          getRowId={(row) => String(row.id)}
+          searchPlaceholder={t("search")}
+          emptyMessage={t("empty")}
+          onRowDoubleClick={canUpdate ? (row) => openEdit(row.original) : undefined}
+          renderMobileCard={(row) => {
+            const alias = aliasOf(row.original);
+            const subRole = formatSubRoleLabel(subRoleOf(row.original.role));
+            return (
+              <div className="min-w-0 flex-1">
+                <Link
+                  className="block truncate text-body font-medium underline-offset-4 hover:underline"
+                  href={`/admin/tournaments/${row.original.tournament_id}/overview`}
+                >
+                  {row.original.tournament_name}
+                </Link>
+                <p className="truncate text-caption text-muted-foreground">
+                  {row.original.team_name}
+                  {alias ? ` · ${alias}` : ""}
+                </p>
+                <div className="flex items-center gap-2 text-caption text-muted-foreground">
+                  <span>
+                    <ParticipationRole row={row.original} named />
+                    {subRole ? ` · ${subRole}` : ""} · <span className="tabular-nums">{row.original.rank}</span>
+                  </span>
+                  <ParticipationFlags row={row.original} />
+                </div>
+              </div>
+            );
+          }}
+        />
+      )}
 
       <EntityFormDialog
         open={formMode != null}
@@ -423,8 +439,8 @@ export function PersonParticipationsTab({
         title={formMode === "edit" ? t("edit") : t("add")}
         description={
           formMode === "edit"
-            ? t("editDescription", { name: personName })
-            : t("addDescription", { name: personName })
+            ? t("editDescription", { tournament: editing?.tournament_name ?? "" })
+            : t("addDescription")
         }
         isSubmitting={saveMutation.isPending}
         submittingLabel={formMode === "edit" ? t("updating") : t("adding")}
@@ -475,7 +491,7 @@ export function PersonParticipationsTab({
         pending={deleteMutation.isPending}
         intent={{
           title: t("remove"),
-          description: t("removeDescription", { name: pendingDelete?.name ?? t("player"), tournament: pendingDelete?.tournament_name ?? t("tournament") }),
+          description: t("removeDescription", { tournament: pendingDelete?.tournament_name ?? t("tournament") }),
           confirmLabel: t("remove"),
           tone: "danger"
         }}
@@ -483,6 +499,6 @@ export function PersonParticipationsTab({
           if (pendingDelete) deleteMutation.mutate(pendingDelete.id);
         }}
       />
-    </div>
+    </PersonSection>
   );
 }

@@ -11,18 +11,17 @@ import {
   accountEmail,
   invalidateAccount
 } from "@/components/admin/access/AccountCard";
-import {
-  AccountLinkedPlayer,
-  AccountSignInMethods
-} from "@/components/admin/access/AccountConnections";
+import { AccountSignInMethods } from "@/components/admin/access/AccountConnections";
 import { AccountNotifications } from "@/components/admin/access/AccountNotifications";
 import { AccountPermissions } from "@/components/admin/access/AccountPermissions";
 import { AccountRestrictions } from "@/components/admin/access/AccountRestrictions";
 import { AccountRoles } from "@/components/admin/access/AccountRoles";
+import { PersonSection } from "@/components/admin/people/PersonSection";
 import {
   AuthUserSearchCombobox,
   type AuthUserOption
 } from "@/components/kit/AuthUserSearchCombobox";
+import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -32,6 +31,7 @@ import { useFormatter } from "@/lib/datetime/client";
 import { accessQueryKeys } from "@/lib/access/query-keys";
 import { notify } from "@/lib/notify";
 import { rbacService } from "@/services/rbac.service";
+import type { AuthAdminUser } from "@/types/rbac.types";
 
 /**
  * The auth account linked to one player, if any.
@@ -52,14 +52,9 @@ export function useLinkedAccount(personId: number, canReadAuth: boolean) {
   return { accountsQuery, linked };
 }
 
-/** Frame for a group of account blocks; the blocks themselves are frameless. */
-function Panel({ children }: Readonly<{ children: React.ReactNode }>) {
-  return (
-    <div className="divide-y divide-border/60 rounded-xl border border-border/60 px-4 [&>*]:py-4">
-      {children}
-    </div>
-  );
-}
+/** An open column of account blocks, one hairline between neighbours. */
+const COLUMN_CLASS =
+  "min-w-0 divide-y divide-border/60 [&>*]:py-4 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0";
 
 function LinkAccount({ personId }: Readonly<{ personId: number }>) {
   const t = useTranslations("adminPeople.account");
@@ -99,9 +94,69 @@ function LinkAccount({ personId }: Readonly<{ personId: number }>) {
 }
 
 /**
+ * Cuts the account off this player, behind a confirmation: the account keeps
+ * its roles, but stops signing in as this person.
+ */
+function UnlinkAccount({
+  account,
+  personId
+}: Readonly<{ account: AuthAdminUser; personId: number }>) {
+  const t = useTranslations("adminPeople.account");
+  const queryClient = useQueryClient();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const unlink = useMutation({
+    mutationFn: () => rbacService.removeLinkedPlayer(account.id, personId),
+    onSuccess: async () => {
+      await invalidateAccount(queryClient);
+      setConfirmOpen(false);
+      notify.success(t("unlinked"));
+    },
+    onError: (error) => notify.apiError(error)
+  });
+
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={() => setConfirmOpen(true)}>
+        {t("unlink")}
+      </Button>
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        pending={unlink.isPending}
+        intent={{
+          title: t("unlinkTitle"),
+          description: t("unlinkDescription", { username: account.username }),
+          confirmLabel: t("unlink"),
+          tone: "danger"
+        }}
+        onConfirm={() => unlink.mutate()}
+      />
+    </>
+  );
+}
+
+/** First load: the header line, then the two columns. */
+function AccountTabSkeleton() {
+  return (
+    <div aria-hidden className="space-y-8">
+      <div className="space-y-3">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-5 w-72 max-w-full" />
+      </div>
+      <div className="grid items-start gap-8 lg:grid-cols-2">
+        <Skeleton className="h-48 w-full" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+    </div>
+  );
+}
+
+/**
  * The auth account that signs in as this person — the same blocks the Access
- * inspector stacks, in two columns: what the account may do on the left, how
- * it signs in and what reaches it on the right.
+ * inspector stacks, in two open columns: how it signs in and what it may do on
+ * the left, what reaches it on the right. The player link is not a block here:
+ * this page is that player.
  */
 export function PersonAccountTab({
   personId,
@@ -141,7 +196,7 @@ export function PersonAccountTab({
     );
   }
 
-  if (accountsQuery.isLoading) return <Skeleton className="h-40 w-full rounded-xl" />;
+  if (accountsQuery.isLoading) return <AccountTabSkeleton />;
 
   if (!linked) {
     return (
@@ -164,18 +219,26 @@ export function PersonAccountTab({
   }
 
   const detail = detailQuery.data;
+  const account = detail ?? linked;
   const email = accountEmail(linked);
   const accessHref = `/admin/access/accounts?search=${encodeURIComponent(linked.username)}&id=${linked.id}`;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="truncate font-display text-lg font-semibold">@{linked.username}</h2>
-            <AccountStatusPills account={detail ?? linked} />
-          </div>
-          <p className="text-sm text-muted-foreground">
+    <div className="space-y-8">
+      <PersonSection
+        title={`@${linked.username}`}
+        actions={
+          <>
+            <Button asChild variant="outline" size="sm">
+              <Link href={accessHref}>{t("openInAccess")}</Link>
+            </Button>
+            {canUpdateAccount ? <UnlinkAccount account={linked} personId={personId} /> : null}
+          </>
+        }
+      >
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <AccountStatusPills account={account} />
+          <p className="text-caption text-muted-foreground">
             <span className="font-mono tabular-nums">#{linked.id}</span>
             {" · "}
             {email ?? t("noEmail")}
@@ -185,31 +248,18 @@ export function PersonAccountTab({
             </span>
           </p>
         </div>
-        <Button asChild variant="outline" size="sm">
-          <Link href={accessHref}>{t("openInAccess")}</Link>
-        </Button>
-      </div>
+      </PersonSection>
 
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <Panel>
-          <AccountRoles
-            userId={linked.id}
-            roles={(detail ?? linked).roles}
-            canEdit={canAssignRoles}
-          />
+      <div className="grid items-start gap-8 lg:grid-cols-2">
+        <div className={COLUMN_CLASS}>
+          <AccountSignInMethods userId={linked.id} />
+          <AccountRoles userId={linked.id} roles={account.roles} canEdit={canAssignRoles} />
           <AccountRestrictions userId={linked.id} canEdit={canAssignRoles} />
           {detail ? <AccountPermissions permissions={detail.effective_permissions} /> : null}
-        </Panel>
-
-        <Panel>
-          <AccountLinkedPlayer
-            account={detail ?? linked}
-            canManage={canUpdateAccount}
-            canOpenPerson={false}
-          />
-          <AccountSignInMethods userId={linked.id} />
+        </div>
+        <div className={COLUMN_CLASS}>
           <AccountNotifications userId={linked.id} canEdit={canUpdateAccount} />
-        </Panel>
+        </div>
       </div>
     </div>
   );

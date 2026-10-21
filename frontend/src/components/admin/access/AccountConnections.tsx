@@ -30,7 +30,7 @@ export function AccountLinkedPlayer({
 }: Readonly<{
   account: AuthAdminUser;
   canManage: boolean;
-  /** Off on the person's own page, where the link would point at itself. */
+  /** Off when the reader may not open People: the player id is shown instead. */
   canOpenPerson: boolean;
 }>) {
   const t = useTranslations("adminAccess.connectionsUi");

@@ -5,18 +5,15 @@ import { useTranslations } from "next-intl";
 import { useParams, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
-import { PlayerProfileBody } from "@/components/admin/PlayerProfileDialog";
 import { UserMergeDialog } from "@/components/admin/UserMergeDialog";
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
-import { EntityHubHeader } from "@/components/kit/EntityHubHeader";
 import { PersonAccountTab } from "@/components/admin/people/PersonAccountTab";
 import { PersonAchievementsTab } from "@/components/admin/people/PersonAchievementsTab";
+import { PersonHubHeader } from "@/components/admin/people/PersonHubHeader";
 import { PersonParticipationsTab } from "@/components/admin/people/PersonParticipationsTab";
-import { PersonGlance } from "@/components/admin/people/PersonGlance";
-import { RankPlayerPanel } from "@/components/admin/people/PersonRankPanel";
+import { PersonProfileTab } from "@/components/admin/people/PersonProfileTab";
+import { PersonRanksTab } from "@/components/admin/people/PersonRanksTab";
 import { SubscriptionPlayerPanel } from "@/components/admin/people/PersonSubscriptionPanel";
-import { RankOverviewTable } from "@/components/admin/ranks/RankOverviewTable";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -36,19 +33,6 @@ const TABS = [
   "account"
 ] as const;
 type PersonTab = (typeof TABS)[number];
-
-/** A body block of a tab. Untitled when the tab name already says what it holds. */
-function Section({
-  title,
-  children
-}: Readonly<{ title?: string; children: React.ReactNode }>) {
-  return (
-    <section className="rounded-xl border border-border/60 p-4">
-      {title ? <h2 className={`${EYEBROW_CLASS} mb-3`}>{title}</h2> : null}
-      {children}
-    </section>
-  );
-}
 
 /**
  * One person: who they are, what they played, who signs in as them.
@@ -130,15 +114,11 @@ export default function PersonHubPage() {
   const name = person?.name ?? t("fallbackName", { id: personId });
 
   return (
-    <div className="space-y-4">
-      <EntityHubHeader
-        title={name}
-        backHref="/admin/people"
-        meta={[
-          <span key="id" className="tabular-nums">
-            #{personId}
-          </span>
-        ]}
+    <div className="space-y-6">
+      <PersonHubHeader
+        person={person}
+        personId={personId}
+        canEdit={canUpdate}
         actions={
           canMerge && person ? (
             <Button variant="outline" size="sm" onClick={() => setMergeOpen(true)}>
@@ -152,30 +132,14 @@ export default function PersonHubPage() {
 
       {tab === "profile" ? (
         person ? (
-          // The profile body was built for a max-w-md dialog — a centred avatar
-          // and a stacked identity list — so it keeps dialog width as the left
-          // rail. The rank and subscription tables used to fill the rest and
-          // made this the heaviest tab; they have their own tabs now, and the
-          // right column keeps one line of each.
-          <div className="grid items-start gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-            <Section>
-              <PlayerProfileBody
-                key={person.id}
-                user={person}
-                canEdit={canUpdate}
-                canManageIdentity={canManageIdentity}
-                canSetVisibility={canRead}
-                workspaceId={workspaceId}
-                // The header already carries Merge; a second button under the
-                // avatar said the same thing twice.
-                canMerge={false}
-              />
-            </Section>
-
-            <Section title={t("overview")}>
-              <PersonGlance personId={person.id} canReadAuth={canReadAuth} />
-            </Section>
-          </div>
+          <PersonProfileTab
+            key={person.id}
+            person={person}
+            workspaceId={workspaceId}
+            canManageIdentity={canManageIdentity}
+            canSetVisibility={canRead}
+            canReadAuth={canReadAuth}
+          />
         ) : (
           <Skeleton className="h-64 w-full rounded-xl" />
         )
@@ -191,27 +155,11 @@ export default function PersonHubPage() {
 
       {tab === "achievements" ? <PersonAchievementsTab personId={personId} /> : null}
 
-      {tab === "ranks" ? (
-        <div className="space-y-4">
-          {/* The workspace's own numbers for this person — every layer, flat.
-              `team.update` is the roster owner's grant, the same one the
-              endpoint checks; without it the tab is just the OverFast block. */}
-          {canReadRanks ? (
-            <Section>
-              <RankOverviewTable playerId={personId} />
-            </Section>
-          ) : null}
-          <Section>
-            <RankPlayerPanel userId={personId} />
-          </Section>
-        </div>
-      ) : null}
+      {/* `team.update` is the roster owner's grant, the one the ranks endpoint
+          checks; without it the tab keeps only collection and history. */}
+      {tab === "ranks" ? <PersonRanksTab personId={personId} canReadRanks={canReadRanks} /> : null}
 
-      {tab === "subscriptions" ? (
-        <Section>
-          <SubscriptionPlayerPanel userId={personId} label={name} />
-        </Section>
-      ) : null}
+      {tab === "subscriptions" ? <SubscriptionPlayerPanel userId={personId} label={name} /> : null}
 
       {tab === "account" ? (
         <PersonAccountTab personId={personId} canReadAuth={canReadAuth} />

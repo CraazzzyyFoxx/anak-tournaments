@@ -17,6 +17,12 @@ export interface EntityHubHeaderProps {
   actions?: ReactNode;
   backHref?: string;
   /**
+   * The entity's own mark (a person's avatar, a team's logo), between the back
+   * link and the title. Placed beside the whole header instead, the back
+   * chevron ends up between the mark and the name it belongs to.
+   */
+  leading?: ReactNode;
+  /**
    * Heading rank, and with it the title's size. `1` (default) is the header of
    * the screen; `2` is an entity nested in one that already owns the `<h1>` —
    * a stage inside the tournament hub. Without this a nested header either
@@ -39,6 +45,7 @@ export function EntityHubHeader({
   meta,
   actions,
   backHref,
+  leading,
   level = 1
 }: Readonly<EntityHubHeaderProps>) {
   const t = useTranslations("kit.actions");
@@ -58,6 +65,7 @@ export function EntityHubHeader({
           <ChevronLeft aria-hidden className="size-4" />
         </Link>
       ) : null}
+      {leading ? <div className="shrink-0">{leading}</div> : null}
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
