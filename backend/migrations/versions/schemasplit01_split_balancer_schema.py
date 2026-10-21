@@ -219,6 +219,25 @@ SEQUENCES = (
 )
 
 
+def _rename_constraint(schema: str, table: str, old: str, new: str) -> None:
+    # No ``IF EXISTS`` for constraints: a database stamped from an older chain may lack one.
+    op.execute(
+        f"""
+        DO $$ BEGIN
+            IF EXISTS (
+                SELECT 1 FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
+                JOIN pg_namespace n ON n.oid = t.relnamespace
+                WHERE n.nspname = '{schema}' AND t.relname = '{table}' AND c.conname = '{old}'
+            ) THEN
+                ALTER TABLE {schema}.{table} RENAME CONSTRAINT {old} TO {new};
+            END IF;
+        END $$
+        """
+    )
+
+
+# Sequences, indexes and constraints are renamed only where they exist: production-derived
+# databases (stamped ``initial_v6``) lack a few model indexes, which ``drift01`` creates.
 def upgrade() -> None:
     for schema in NEW_SCHEMAS:
         op.execute(f"CREATE SCHEMA {schema}")
@@ -227,20 +246,20 @@ def upgrade() -> None:
         if new != old:
             op.execute(f"ALTER TABLE {schema}.{old} RENAME TO {new}")
     for schema, old, new in SEQUENCES:
-        op.execute(f"ALTER SEQUENCE {schema}.{old} RENAME TO {new}")
+        op.execute(f"ALTER SEQUENCE IF EXISTS {schema}.{old} RENAME TO {new}")
     for schema, old, new in INDEXES:
-        op.execute(f"ALTER INDEX {schema}.{old} RENAME TO {new}")
+        op.execute(f"ALTER INDEX IF EXISTS {schema}.{old} RENAME TO {new}")
     for schema, table, old, new in CONSTRAINTS:
-        op.execute(f"ALTER TABLE {schema}.{table} RENAME CONSTRAINT {old} TO {new}")
+        _rename_constraint(schema, table, old, new)
 
 
 def downgrade() -> None:
     for schema, table, old, new in CONSTRAINTS:
-        op.execute(f"ALTER TABLE {schema}.{table} RENAME CONSTRAINT {new} TO {old}")
+        _rename_constraint(schema, table, new, old)
     for schema, old, new in INDEXES:
-        op.execute(f"ALTER INDEX {schema}.{new} RENAME TO {old}")
+        op.execute(f"ALTER INDEX IF EXISTS {schema}.{new} RENAME TO {old}")
     for schema, old, new in SEQUENCES:
-        op.execute(f"ALTER SEQUENCE {schema}.{new} RENAME TO {old}")
+        op.execute(f"ALTER SEQUENCE IF EXISTS {schema}.{new} RENAME TO {old}")
     for old, schema, new in TABLES:
         if new != old:
             op.execute(f"ALTER TABLE {schema}.{new} RENAME TO {old}")
