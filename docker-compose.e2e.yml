@@ -104,6 +104,9 @@ services:
     ports: !reset []
     environment:
       NEXT_PUBLIC_SITE_URL: http://localhost:${E2E_PORT:-8090}
+    # Every route of the app gets compiled in one run: 512M fills (ENOSPC, 500s).
+    tmpfs: !override
+      - /app/.next:size=4G
     # Cold `next dev` compiles of ~150 routes dominate a run.
     deploy:
       resources:
