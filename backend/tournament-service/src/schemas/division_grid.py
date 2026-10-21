@@ -79,13 +79,18 @@ class DivisionGridRead(BaseRead):
     imported_at: datetime | None = None
     archived_at: datetime | None = None
     versions: list[DivisionGridVersionRead] = Field(default_factory=list)
+    # Tournaments pinned to any of its versions; filled by the workspace grid list only.
+    tournament_count: int | None = None
 
 
 class DivisionGridCreate(BaseModel):
     discipline: str | None = Field(default=None, min_length=1, max_length=32)
-    slug: str = Field(..., min_length=1, max_length=128)
+    # Derived (``{discipline}-grid``, then ``-2``, ``-3``…) when omitted.
+    slug: str | None = Field(default=None, min_length=1, max_length=128)
     name: str = Field(..., min_length=1, max_length=255)
     description: str | None = None
+    # v1 becomes a published copy of this version instead of the game's native ladder.
+    from_version_id: int | None = None
 
 
 class DivisionGridUpdate(BaseModel):

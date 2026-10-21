@@ -14,10 +14,8 @@ os.environ["DEBUG"] = "true"
 
 rank_sources = importlib.import_module("src.services.registration.rank_sources")
 rank_autofill = importlib.import_module("src.services.registration.rank_autofill")
-grid_service = importlib.import_module("src.services.division_grid.service")
 
 from shared.core.social import SocialProvider  # noqa: E402
-from shared.disciplines.spec import NativeTier  # noqa: E402
 from shared.division_grid import DivisionGrid, DivisionTier  # noqa: E402
 
 POSITIONS = ("top", "jungle", "mid", "bot", "support")
@@ -59,10 +57,3 @@ def test_a_module_native_rank_fills_the_ow_stage_whatever_number_it_asks_for(mon
     for value in ("composite", "current", "peak"):
         data = rank_sources._build_priority_rank_data(("ow",), signals[7]["mid"], None, None, GRID, value)
         assert (data.rank_value, data.used_source) == (2700, "ow")
-
-
-def test_a_ladder_icon_key_is_seeded_as_its_public_url(monkeypatch) -> None:
-    tier = NativeTier(1, "x-1", "X 1", 100, None, "assets/x/rank/x-1.png", "x", 1)
-    monkeypatch.setattr(grid_service, "discipline", lambda code: SimpleNamespace(native_ladder=(tier,)))
-    monkeypatch.setattr(grid_service.config.settings, "s3_public_url", "https://cdn.example", raising=False)
-    assert grid_service.ladder_tiers_write("x")[0].icon_url == "https://cdn.example/assets/x/rank/x-1.png"

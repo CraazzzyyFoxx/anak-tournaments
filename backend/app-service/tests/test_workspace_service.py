@@ -13,6 +13,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
+from shared.disciplines import discipline
 from shared.repository.workspace import WorkspaceRepository
 from shared.testing import create_test_async_engine
 from src.schemas.workspace import WorkspaceCreate, WorkspaceRead, WorkspaceUpdate
@@ -323,12 +324,18 @@ class WorkspacePublicGridTests(IsolatedAsyncioTestCase):
                 workspace = await workspaces.create(
                     session, slug=tag, name=tag, disciplines_enabled=["overwatch", "lol"]
                 )
-                self.assertEqual(workspace.default_division_grid_versions, {})
+                # Each game gets its own native-ladder grid, in force: a new workspace has played nothing yet.
+                self.assertEqual(set(workspace.default_division_grid_versions), {"overwatch", "lol"})
                 initial = WorkspaceRead.model_validate(workspace, from_attributes=True).model_dump()
                 self.assertNotIn("default_division_grid_version_id", initial)
                 self.assertNotIn("default_division_grid_version", initial)
-                self.assertNotIn("lol", initial["effective_division_grid_versions"])
-                self.assertIn("overwatch", initial["effective_division_grid_versions"])
+                self.assertEqual(
+                    {
+                        code: data["tiers"][0]["slug"]
+                        for code, data in initial["effective_division_grid_versions"].items()
+                    },
+                    {"overwatch": "champion-1", "lol": "challenger"},
+                )
                 expected = {}
                 for code, number in (("overwatch", 4), ("lol", 9)):
                     grid = models.DivisionGrid(workspace_id=workspace.id, slug=code, name=code, discipline=code)
@@ -386,6 +393,43 @@ class WorkspacePublicGridTests(IsolatedAsyncioTestCase):
                 self.assertEqual(counts[0], counts[1])
                 print(
                     f"WorkspaceRead: explicit OW+LoL, scoped effective payloads, no legacy fields; list queries {counts}"
+                )
+            finally:
+                await session.rollback()
+        await engine.dispose()
+
+    async def test_enabling_a_game_provisions_and_activates_its_own_grid_once(self):
+        engine = create_test_async_engine()
+        async with AsyncSession(engine, expire_on_commit=False) as session:
+            tag = uuid.uuid4().hex
+            try:
+                workspace = await workspaces.create(session, slug=tag, name=tag, disciplines_enabled=["overwatch"])
+                self.assertEqual(set(workspace.default_division_grid_versions), {"overwatch"})
+                await workspaces.update(session, workspace, {"disciplines_enabled": ["overwatch", "lol"]})
+                lol = await session.scalar(
+                    sa.select(models.DivisionGrid).where(
+                        models.DivisionGrid.workspace_id == workspace.id, models.DivisionGrid.discipline == "lol"
+                    )
+                )
+                self.assertEqual(
+                    (lol.slug, lol.name, lol.versions[0].status), ("lol-default", "League of Legends", "published")
+                )
+                payload = WorkspaceRead.model_validate(workspace, from_attributes=True).model_dump()
+                self.assertEqual(payload["default_division_grid_versions"]["lol"], lol.versions[0].id)
+                self.assertEqual(
+                    len(payload["effective_division_grid_versions"]["lol"]["tiers"]),
+                    len(discipline("lol").native_ladder),
+                )
+                # Off and on again: the game already has its own grid, so nothing more is created.
+                await workspaces.update(session, workspace, {"disciplines_enabled": ["lol"]})
+                await workspaces.update(session, workspace, {"disciplines_enabled": ["lol", "overwatch"]})
+                self.assertEqual(
+                    await session.scalar(
+                        sa.select(sa.func.count())
+                        .select_from(models.DivisionGrid)
+                        .where(models.DivisionGrid.workspace_id == workspace.id)
+                    ),
+                    2,
                 )
             finally:
                 await session.rollback()

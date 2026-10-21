@@ -10,8 +10,6 @@ from sqlalchemy.orm import selectinload
 
 from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.disciplines import discipline
-from shared.domain.roles import public_asset_url
 from shared.repository import (
     DivisionGridMappingRepository,
     DivisionGridMappingRuleRepository,
@@ -23,16 +21,15 @@ from shared.repository import (
 )
 from shared.services.division_grid import cache as division_grid_cache
 from shared.services.division_grid.access import get_workspace_source_version_ids
+from shared.services.division_grid.provisioning import create_workspace_grid
 from shared.services.ontology import assert_discipline_enabled
 from src import schemas
-from src.core import config
 from src.domain.division_grid import automap
 
 __all__ = (
     "DivisionGridService",
     "SaveOutcome",
     "division_grid_service",
-    "ladder_tiers_write",
 )
 
 _GRID_OPTIONS = (selectinload(models.DivisionGrid.versions).selectinload(models.DivisionGridVersion.tiers),)
@@ -91,23 +88,6 @@ def _classify_tier_change(
         if any(getattr(active_tier, field) != getattr(payload_tier, field) for field in _STRUCTURAL_TIER_FIELDS):
             return "structural"
     return "cosmetic"
-
-
-def ladder_tiers_write(discipline_code: str) -> list[schemas.DivisionGridTierWrite]:
-    """Project this discipline's native ladder; a ladder-less game starts empty. A stored ``assets/`` icon key is seeded
-    as its public URL."""
-    return [
-        schemas.DivisionGridTierWrite(
-            slug=tier.slug,
-            number=tier.number,
-            name=tier.name,
-            sort_order=index,
-            rank_min=tier.rank_min,
-            rank_max=tier.rank_max,
-            icon_url=public_asset_url(tier.icon_url, public_origin=config.settings.s3_public_url) or tier.icon_url,
-        )
-        for index, tier in enumerate(discipline(discipline_code).native_ladder)
-    ]
 
 
 def _validate_mapping(
@@ -199,25 +179,16 @@ class DivisionGridService:
         )
         return list(result.scalars().unique().all())
 
-    async def seed_default_grid_version(
-        self,
-        session: AsyncSession,
-        workspace_id: int,
-        grid_id: int,
-        discipline_code: str,
-    ) -> models.DivisionGridVersion:
-        data = schemas.DivisionGridVersionCreate(
-            label=f"Default {discipline(discipline_code).name} grid",
-            tiers=ladder_tiers_write(discipline_code),
+    async def get_grid_tournament_counts(self, session: AsyncSession, workspace_id: int) -> dict[int, int]:
+        """Tournaments pinned to any version of each of the workspace's grids, in one grouped count."""
+        rows = await session.execute(
+            sa.select(models.DivisionGridVersion.grid_id, sa.func.count(models.Tournament.id))
+            .join(models.Tournament, models.Tournament.division_grid_version_id == models.DivisionGridVersion.id)
+            .join(models.DivisionGrid, models.DivisionGrid.id == models.DivisionGridVersion.grid_id)
+            .where(models.DivisionGrid.workspace_id == workspace_id)
+            .group_by(models.DivisionGridVersion.grid_id)
         )
-        version = await self.create_version(session, workspace_id, grid_id, data)
-        await self.version_repo.update_fields(
-            session,
-            version,
-            {"status": "published", "published_at": sa.func.now()},
-        )
-        await division_grid_cache.invalidate_grid_version(version.id)
-        return version
+        return dict(rows.tuples().all())
 
     async def create_grid(
         self,
@@ -225,31 +196,35 @@ class DivisionGridService:
         workspace_id: int,
         data: schemas.DivisionGridCreate,
     ) -> models.DivisionGrid:
+        """A new grid, its v1 a published copy of ``from_version_id`` (this workspace's or a system grid's, same
+        game, published) or the game's native ladder. Activates nothing."""
         workspace = await self.workspace_repo.get(session, workspace_id)
         if workspace is None:
             raise HTTPException(status_code=404, detail="Workspace not found")
         grid_discipline = data.discipline or workspace.disciplines_enabled[0]
         assert_discipline_enabled(workspace, grid_discipline)
-        if await self.grid_repo.exists(session, workspace_id=workspace_id, slug=data.slug):
-            raise HTTPException(status_code=400, detail="Division grid slug already exists in workspace")
-
-        grid = await self.grid_repo.create(
+        source = None
+        if data.from_version_id is not None:
+            source = await self.get_version(session, data.from_version_id)
+            if source.grid.workspace_id not in (None, workspace_id):
+                raise HTTPException(status_code=400, detail="Division grid version does not belong to the workspace")
+            if source.grid.discipline != grid_discipline:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"division_grid_discipline_mismatch: the source version is {source.grid.discipline!r}, "
+                    f"the grid {grid_discipline!r}",
+                )
+            if source.status != "published":
+                raise HTTPException(status_code=409, detail="Only published division grid versions can be copied")
+        return await create_workspace_grid(
             session,
-            models.DivisionGrid(
-                workspace_id=workspace_id,
-                discipline=grid_discipline,
-                slug=data.slug,
-                name=data.name,
-                description=data.description,
-            ),
+            workspace_id=workspace_id,
+            discipline=grid_discipline,
+            name=data.name,
+            slug=data.slug,
+            description=data.description,
+            source=source,
         )
-
-        # A game without a ladder starts empty: the organiser enters its tiers.
-        if discipline(grid_discipline).native_ladder:
-            await self.seed_default_grid_version(session, workspace_id, grid.id, grid_discipline)
-
-        await session.refresh(grid)
-        return grid
 
     async def get_grid(self, session: AsyncSession, workspace_id: int, grid_id: int) -> models.DivisionGrid:
         grid = await self.grid_repo.get_by(
@@ -796,10 +771,12 @@ class DivisionGridService:
             return max(live, key=lambda grid: grid.id)
         if grids:
             return max(grids, key=lambda grid: grid.id)
-        return await self.create_grid(
+        return await create_workspace_grid(
             session,
-            workspace.id,
-            schemas.DivisionGridCreate(slug=f"{discipline}-default", name="Division Grid", discipline=discipline),
+            workspace_id=workspace.id,
+            discipline=discipline,
+            name="Division Grid",
+            slug_base=f"{discipline}-default",
         )
 
     async def _apply_cosmetic(

@@ -7,7 +7,9 @@ import copy
 import sys
 import uuid
 from datetime import date
+from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
+from unittest.mock import patch
 
 import pytest
 import sqlalchemy as sa
@@ -30,11 +32,14 @@ from shared.testing import create_test_async_engine
 from shared.testing.cache import configure_test_cache
 from shared.testing.db import ensure_test_postgres
 from src import schemas
+from src.rpc import _helpers as rpc_helpers
+from src.rpc import integrations
 from src.services.admin.tournament import AdminTournamentService
 from src.services.division_grid.marketplace import MarketplaceService
 from src.services.division_grid.portable import PortableService
 from src.services.division_grid.service import DivisionGridService
 from src.services.registration._common import RegistrationCommonService
+from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity
 
 _TIER = {
     "slug": "one",
@@ -450,3 +455,93 @@ class GridOwnerServiceTests(IsolatedAsyncioTestCase):
         )
         await self.session.refresh(self.workspace, ["division_grid_defaults"])
         self.assertEqual(self.workspace.default_division_grid_versions, {"overwatch": expected["overwatch"]})
+
+    async def test_create_from_a_version_copies_its_published_tiers_and_activates_nothing(self):
+        source = (await self.grid("lol")).versions[0]
+        copy = await self.grids.create_grid(
+            self.session,
+            self.workspace.id,
+            schemas.DivisionGridCreate(name="Copy", discipline="lol", from_version_id=source.id),
+        )
+        ladder = await self.grids.create_grid(
+            self.session, self.workspace.id, schemas.DivisionGridCreate(name="Ladder", discipline="lol")
+        )
+        self.assertEqual((copy.slug, ladder.slug), ("lol-grid", "lol-grid-2"))
+        (v1,) = copy.versions
+        self.assertEqual((v1.version, v1.status, v1.label), (1, "published", "LoL"))
+        self.assertIsNotNone(v1.published_at)
+        fields = ("slug", "number", "name", "sort_order", "rank_min", "rank_max", "icon_url")
+        fields += ("native_rank_min", "native_rank_max")
+        self.assertEqual(
+            [[getattr(tier, field) for field in fields] for tier in v1.tiers],
+            [[getattr(tier, field) for field in fields] for tier in source.tiers],
+        )
+        self.assertEqual((v1.tiers[0].native_rank_min, v1.tiers[0].native_rank_max), (123, 456))
+        self.assertEqual(
+            (ladder.versions[0].label, ladder.versions[0].tiers[0].slug),
+            ("Default League of Legends grid", "challenger"),
+        )
+        await self.session.refresh(self.workspace, ["division_grid_defaults"])
+        self.assertEqual(self.workspace.default_division_grid_versions, {})
+
+    async def test_create_from_a_version_refuses_another_game_a_draft_and_another_workspace(self):
+        ow = await self.grid("overwatch")
+        draft = await self.grids.clone_version(self.session, ow.versions[0].id)
+        other = models.Workspace(slug=self.tag + "-other", name="Other", disciplines_enabled=["overwatch"])
+        self.session.add(other)
+        await self.session.flush()
+        foreign = await self.grids.create_grid(self.session, other.id, schemas.DivisionGridCreate(name="Foreign"))
+        for version_id, discipline, status in (
+            (ow.versions[0].id, "lol", 422),
+            (draft.id, "overwatch", 409),
+            (foreign.versions[0].id, "overwatch", 400),
+        ):
+            with self.subTest(status=status), self.assertRaises(BaseAPIException) as caught:
+                await self.grids.create_grid(
+                    self.session,
+                    self.workspace.id,
+                    schemas.DivisionGridCreate(name="Copy", discipline=discipline, from_version_id=version_id),
+                )
+            self.assertEqual(caught.exception.status_code, status)
+            if status == 422:
+                self.assertIn("division_grid_discipline_mismatch", str(caught.exception.detail))
+        self.assertEqual(
+            await self.session.scalar(
+                sa.select(sa.func.count())
+                .select_from(models.DivisionGrid)
+                .where(models.DivisionGrid.workspace_id == self.workspace.id)
+            ),
+            1,
+        )
+
+    async def test_workspace_grid_list_counts_the_tournaments_pinned_to_each_grid(self):
+        ow, lol = await self.grid("overwatch"), await self.grid("lol")
+        clone = await self.grids.clone_version(self.session, ow.versions[0].id)
+        self.session.add_all(
+            [
+                models.Tournament(
+                    workspace_id=self.workspace.id, name=f"Pinned {index}", slug=f"{self.tag}-{index}", **pin
+                )
+                for index, pin in enumerate(
+                    [{"division_grid_version_id": ow.versions[0].id}, {"division_grid_version_id": clone.id}, {}]
+                )
+            ]
+        )
+        await self.session.flush()
+        broker = CapturingBroker()
+        integrations.register(broker, SimpleNamespace(exception=lambda *a, **k: None))
+        identity = make_identity(
+            workspaces=[
+                {
+                    "workspace_id": self.workspace.id,
+                    "rbac_roles": [],
+                    "rbac_permissions": [{"resource": "division_grid", "action": "read"}],
+                }
+            ]
+        )
+        with patch.object(rpc_helpers.db, "async_session_maker", FakeSessionMaker(self.session)):
+            envelope = await broker.handlers["rpc.tournament.grid_workspace_list"](
+                {"identity": identity, "workspace_id": self.workspace.id}, None
+            )
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertEqual({grid["id"]: grid["tournament_count"] for grid in envelope["data"]}, {ow.id: 2, lol.id: 0})

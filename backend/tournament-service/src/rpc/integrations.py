@@ -563,7 +563,15 @@ def register(broker: Any, logger: Any) -> None:
             workspace_id = _path_int(data, "workspace_id")
             await require_workspace_permission(workspace_id, session=session, user=user, action="read")
             grids = await division_grid_service.get_workspace_grids(session, workspace_id)
-            return [_dump(schemas.DivisionGridRead.model_validate(grid, from_attributes=True)) for grid in grids]
+            counts = await division_grid_service.get_grid_tournament_counts(session, workspace_id)
+            return [
+                _dump(
+                    schemas.DivisionGridRead.model_validate(grid, from_attributes=True).model_copy(
+                        update={"tournament_count": counts.get(grid.id, 0)}
+                    )
+                )
+                for grid in grids
+            ]
 
         return await _run(logger, op)
 

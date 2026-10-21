@@ -72,6 +72,7 @@ class ProvisionOwnerTests(IsolatedAsyncioTestCase):
             patch.object(workspaces, "get_by_slug", AsyncMock(return_value=None)),
             patch.object(workspaces.workspace_repo, "create", AsyncMock(side_effect=_capture)),
             patch.object(workspaces.workspace_repo, "load_effective_grid_versions", AsyncMock()),
+            patch.object(workspace_service, "provision_default_grids", AsyncMock()),
             patch.object(workspace_service, "ensure_workspace_system_roles", AsyncMock()),
             patch.object(workspaces, "add_member", AsyncMock()),
             patch.object(workspace_service, "assign_workspace_system_role", AsyncMock()) as grant,

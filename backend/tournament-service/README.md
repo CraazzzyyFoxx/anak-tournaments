@@ -285,11 +285,23 @@ See the [P2 release guide](../../docs/multi-game-p2-roles-release.md) for errors
 
 Every grid has `discipline`; its tiers use `native_rank_min/max` for optional native-ladder
 bounds and `rank_min/max` for organizer ranks. Grid creation takes an enabled discipline
-(omission selects the workspace's first enabled one). A game with a module ladder seeds a new grid
-with it (Overwatch 45 tiers, LoL 31) and an event without a usable grid of its own falls back to that
-ladder; a ladder-less game needs organizer-entered tiers, and creating its tournament without a usable
-version fails with 422 `division_grid_required` before persistence. A same-discipline event pin is
-sufficient without activating a workspace default.
+(omission selects the workspace's first enabled one) and an optional `slug` (derived
+`{discipline}-grid`, `-2`, `-3`… when omitted). A game with a module ladder seeds a new grid's
+published v1 with it (Overwatch 45 tiers, LoL 31, Deadlock 66); `from_version_id` seeds it instead
+with a published copy of a version of this workspace or a system grid of the same game (422
+`division_grid_discipline_mismatch` otherwise, 409 for a draft). Creation never activates. An event
+without a usable grid of its own falls back to that ladder; a ladder-less game needs organizer-entered
+tiers, and creating its tournament without a usable version fails with 422 `division_grid_required`
+before persistence. A same-discipline event pin is sufficient without activating a workspace default.
+
+Every workspace has its own grid of each enabled game with a ladder (`{discipline}-default`, named
+after the game, v1 = the ladder): `shared.services.division_grid.provisioning` creates it when a
+workspace is created or enables the game, and `defgrid01` backfilled existing workspaces. A game the
+workspace already has a grid of (archived included) is skipped. v1 becomes the game's default unless
+one is set already or a system grid of the game is in force; off a system grid moves only a game new
+to the workspace (its creation, the game just enabled) with no tournaments of it, so nothing already
+read is renumbered. The workspace grid list carries each grid's
+`tournament_count` (tournaments pinned to any of its versions).
 
 `workspace_division_grid_default` assigns versions independently by `(workspace_id, discipline)`.
 Activation/deletion affects only the matching assignment, never another game or a valid event pin.

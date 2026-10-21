@@ -703,11 +703,11 @@ DOCS: dict[str, dict] = {
     # ── integrations: division grids ───────────────────────────────────────
     "rpc.tournament.grid_workspace_list": {
         "summary": "List workspace grids",
-        "description": "Permission: workspace `division_grid.read`. Lists a workspace's division grids.",
+        "description": "Permission: workspace `division_grid.read`. Lists a workspace's division grids, each with `tournament_count`: the tournaments pinned to any of its versions.",
     },
     "rpc.tournament.grid_workspace_create": {
         "summary": "Create division grid",
-        "description": "Permission: workspace `division_grid.create`. Creates a division grid in a workspace.",
+        "description": "Permission: workspace `division_grid.create`. Creates a division grid in a workspace. `slug` is optional: when omitted it is derived as `{discipline}-grid`, then `-2`, `-3`… With `from_version_id` (a published version of this workspace's or a system grid of the same game; 422 `division_grid_discipline_mismatch` for another game, 409 for an unpublished one) v1 is a published copy of that version's tiers and label; otherwise v1 is the game's native ladder, and a game without one starts with no version. Never activates anything.",
     },
     "rpc.tournament.grid_update": {
         "summary": "Update division grid metadata",

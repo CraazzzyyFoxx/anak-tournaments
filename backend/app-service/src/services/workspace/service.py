@@ -33,6 +33,7 @@ from shared.repository import (
 )
 from shared.schemas.events import WorkspaceMemberChangedEvent
 from shared.services.audit import record_audit
+from shared.services.division_grid.provisioning import provision_default_grids
 from shared.services.settings_provider import settings_provider
 from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 from shared.tenancy.hostnames import RESERVED_SUBDOMAINS, normalize_custom_domain
@@ -277,12 +278,17 @@ class WorkspaceService:
     async def create(self, session: AsyncSession, **kwargs) -> models.Workspace:
         workspace = models.Workspace(division_grid_defaults=[], **kwargs)
         await self.workspace_repo.create(session, workspace)
+        await provision_default_grids(session, workspace)
         await self.workspace_repo.load_effective_grid_versions(session, [workspace])
         return workspace
 
     async def update(self, session: AsyncSession, workspace: models.Workspace, data: dict) -> models.Workspace:
+        enabled_before = set(workspace.disciplines_enabled)
         await self.workspace_repo.update_fields(session, workspace, dict(data))
         if "disciplines_enabled" in data:
+            await provision_default_grids(
+                session, workspace, disciplines=set(workspace.disciplines_enabled) - enabled_before
+            )
             await self.workspace_repo.load_effective_grid_versions(session, [workspace])
         return workspace
 

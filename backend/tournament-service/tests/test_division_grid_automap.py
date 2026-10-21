@@ -6,6 +6,8 @@ from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 
+from shared.domain.division_grid_defaults import native_ladder_tiers
+
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
@@ -145,7 +147,7 @@ def test_automap_fully_resolves_realistic_ow2_grid_rename() -> None:
     # Smoke: the default 40-tier OW2 grid, re-slugged but keeping the same rank
     # ranges (a structural save that reorganizes labels), must auto-map with zero
     # conflicts via rank overlap and pass runtime validation.
-    writes = division_service.ladder_tiers_write("overwatch")
+    writes = [SimpleNamespace(**tier) for tier in native_ladder_tiers("overwatch")]
     source = [
         SimpleNamespace(id=index + 1, slug=w.slug, name=w.name, rank_min=w.rank_min, rank_max=w.rank_max)
         for index, w in enumerate(writes)
