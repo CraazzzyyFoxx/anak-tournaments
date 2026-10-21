@@ -1,0 +1,113 @@
+# Isolated stack for the Playwright suite (frontend/e2e). Layered over
+# docker-compose.yml under its own project so it never touches the dev stack's
+# volumes or the database the dev env files point at:
+#
+#   docker compose -p owt-e2e -f docker-compose.yml -f docker-compose.e2e.yml up -d --build --wait
+#
+# `make e2e-up` / `make e2e` wrap it. The database lives on tmpfs: every `up`
+# after a `down` starts empty and is migrated by `make e2e-up`.
+# Entry point: http://localhost:${E2E_PORT:-8090} (nginx). No other host ports.
+
+x-e2e-env: &e2e-env
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: anak_e2e
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+  TRACING_ENABLED: "false"
+  # Uploads must never reach the real bucket the dev env names.
+  S3_ENDPOINT_URL: http://s3.invalid
+  OWT_APPLY_LEGACY_DROP: "1"
+  # One login lasts the whole run: the suite holds plain bearer tokens.
+  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "720"
+
+x-e2e-db: &e2e-db
+  depends_on:
+    postgres:
+      condition: service_healthy
+  # The images' HTTP probe does not fit headless workers, and `up --wait`
+  # rejects a service with none: report healthy once running.
+  healthcheck:
+    test: ["CMD", "true"]
+    interval: 5s
+
+services:
+  postgres:
+    profiles: !reset []
+    environment:
+      POSTGRES_DB: anak_e2e
+    volumes: !reset []
+    tmpfs:
+      - /var/lib/postgresql/data
+    deploy: !reset {}
+
+  redis:
+    ports: !reset []
+    volumes: !reset []
+
+  rabbitmq:
+    ports: !reset []
+    volumes: !reset
+      - ./monitoring/rabbitmq/dev-loopback.conf:/etc/rabbitmq/conf.d/10-dev-monitoring.conf:ro
+    # Nine workers' RPC queues push the dev limits past the memory alarm, and
+    # at 0.25 CPU `rabbitmq-diagnostics ping` outlives its 5 s probe.
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+    healthcheck:
+      timeout: 20s
+
+  app-svc:
+    <<: *e2e-db
+    environment: *e2e-env
+  identity-svc:
+    <<: *e2e-db
+    environment: *e2e-env
+    healthcheck: !override
+      test: ["CMD", "true"]
+      interval: 5s
+  tournament-svc:
+    <<: *e2e-db
+    environment: *e2e-env
+  balancer-svc:
+    <<: *e2e-db
+    environment: *e2e-env
+  stats-svc:
+    <<: *e2e-db
+    environment: *e2e-env
+  stats-worker:
+    <<: *e2e-db
+    environment: *e2e-env
+  analytics-svc:
+    <<: *e2e-db
+    environment: *e2e-env
+  stream-svc:
+    <<: *e2e-db
+    environment: *e2e-env
+
+  gateway:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports: !reset []
+    environment:
+      <<: *e2e-env
+      GATEWAY_DOCS_ADMIN: "true"
+      GATEWAY_WS_ALLOWED_ORIGINS: http://localhost:${E2E_PORT:-8090}
+      UPSTREAM_FRONTEND: http://frontend:3000
+      # Every test registers and signs in its own users from one IP.
+      GATEWAY_AUTH_RATE_LIMIT: "100000"
+
+  frontend:
+    ports: !reset []
+    environment:
+      NEXT_PUBLIC_SITE_URL: http://localhost:${E2E_PORT:-8090}
+
+  nginx:
+    # IPv4 loopback only: Docker Desktop's ::1 forward resets responses slower
+    # than 30 s (a first `next dev` compile); a refused ::1 makes clients fall
+    # back to 127.0.0.1 at once.
+    ports: !override
+      - "127.0.0.1:${E2E_PORT:-8090}:80"

@@ -44,3 +44,7 @@ next-env.d.ts
 .ruff_cache
 .claude
 *.egg-info
+# playwright e2e
+/e2e/.auth/
+/e2e/.results/
+/e2e/.report/

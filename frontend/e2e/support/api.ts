@@ -1,0 +1,86 @@
+import { type APIRequestContext, type APIResponse, expect, request as pwRequest } from "@playwright/test";
+import { setTimeout as sleep } from "node:timers/promises";
+import { BASE_URL } from "./env";
+
+type Body = Record<string, unknown> | unknown[] | undefined;
+type Query = Record<string, string | number | boolean | undefined>;
+
+/**
+ * Thin bearer-token client over the gateway. Every call asserts a 2xx unless
+ * `expectStatus` names another code, and failures print the response body:
+ * a regression shows up as "POST /x -> 422 {detail…}", not as a bare timeout.
+ */
+export class Api {
+  constructor(
+    readonly ctx: APIRequestContext,
+    readonly token?: string
+  ) {}
+
+  static async create(token?: string): Promise<Api> {
+    return new Api(await pwRequest.newContext({ baseURL: BASE_URL }), token);
+  }
+
+  async raw(method: string, url: string, opts: { body?: Body; query?: Query; headers?: Record<string, string> } = {}) {
+    const headers: Record<string, string> = { accept: "application/json", ...opts.headers };
+    if (this.token) headers.authorization = `Bearer ${this.token}`;
+    const params = opts.query
+      ? Object.fromEntries(Object.entries(opts.query).filter(([, v]) => v !== undefined)) as Record<string, string | number | boolean>
+      : undefined;
+    return this.ctx.fetch(url, { method, headers, data: opts.body, params });
+  }
+
+  async call<T = any>(
+    method: string,
+    url: string,
+    opts: { body?: Body; query?: Query; expectStatus?: number } = {}
+  ): Promise<T> {
+    const res = await this.raw(method, url, opts);
+    await assertStatus(res, method, url, opts.expectStatus);
+    const text = await res.text();
+    return (text ? JSON.parse(text) : undefined) as T;
+  }
+
+  get<T = any>(url: string, query?: Query) {
+    return this.call<T>("GET", url, { query });
+  }
+  post<T = any>(url: string, body?: Body, expectStatus?: number) {
+    return this.call<T>("POST", url, { body, expectStatus });
+  }
+  put<T = any>(url: string, body?: Body) {
+    return this.call<T>("PUT", url, { body });
+  }
+  patch<T = any>(url: string, body?: Body) {
+    return this.call<T>("PATCH", url, { body });
+  }
+  delete<T = any>(url: string, expectStatus?: number) {
+    return this.call<T>("DELETE", url, { expectStatus });
+  }
+
+  async dispose() {
+    await this.ctx.dispose();
+  }
+}
+
+export async function assertStatus(res: APIResponse, method: string, url: string, expected?: number) {
+  const ok = expected === undefined ? res.ok() : res.status() === expected;
+  if (!ok) {
+    const body = (await res.text()).slice(0, 2000);
+    expect(ok, `${method} ${url} -> ${res.status()} ${body}`).toBe(true);
+  }
+}
+
+/** Polls `fn` until it returns a truthy value (async jobs: balance, generate, recalculation). */
+export async function poll<T>(fn: () => Promise<T | undefined | null | false>, what: string, timeoutMs = 30_000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  let last: unknown;
+  while (Date.now() < deadline) {
+    try {
+      const value = await fn();
+      if (value) return value;
+    } catch (error) {
+      last = error;
+    }
+    await sleep(500);
+  }
+  throw new Error(`Timed out waiting for ${what}${last ? `: ${String(last)}` : ""}`);
+}

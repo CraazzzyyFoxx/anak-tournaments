@@ -6,10 +6,13 @@
 	monitoring-up monitoring-down monitoring-logs monitoring-ps \
 	backup-up backup-down backup-logs backup-run backup-ls cleanup-run \
 	app-rebuild identity-rebuild stats-rebuild frontend-rebuild \
-	loadtest loadtest-ui
+	loadtest loadtest-ui e2e-up e2e-down e2e
 
 COMPOSE = docker compose
 PROD_COMPOSE = docker compose -f docker-compose.production.yml
+# Isolated stack for the Playwright suite (docker-compose.e2e.yml): own project,
+# tmpfs database, nginx on :8090 only.
+E2E_COMPOSE = docker compose -p owt-e2e -f docker-compose.yml -f docker-compose.e2e.yml
 # nginx.conf is bind-mounted as a single file, so a new checkout swaps the inode
 # under the running container and nothing restarts it: the old config keeps
 # serving. Its hash is stamped on the nginx service as a label
@@ -86,6 +89,9 @@ help:
 	@echo ""
 	@echo "  make migrate        - Run backend migrations"
 	@echo "  make test           - Run backend tests"
+	@echo "  make e2e-up         - Start the isolated e2e stack and migrate its empty DB"
+	@echo "  make e2e            - Run the Playwright suite against it (E2E_ARGS='--project=api')"
+	@echo "  make e2e-down       - Stop it (the DB is tmpfs: gone)"
 	@echo "  make clean          - Remove compose resources"
 
 dev-build:
@@ -111,6 +117,17 @@ dev-ps:
 
 dev-health:
 	$(COMPOSE) ps --format "table {{.Service}}\t{{.State}}\t{{.Health}}"
+
+e2e-up:
+	$(E2E_COMPOSE) up -d --wait postgres
+	$(E2E_COMPOSE) run --rm --no-deps app-svc alembic upgrade head
+	$(E2E_COMPOSE) up -d --wait
+
+e2e-down:
+	$(E2E_COMPOSE) down --remove-orphans
+
+e2e:
+	cd frontend && bunx playwright test $(E2E_ARGS)
 
 dev-rebuild:
 	$(COMPOSE) up -d --build --wait
