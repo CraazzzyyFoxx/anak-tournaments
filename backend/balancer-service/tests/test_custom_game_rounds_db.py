@@ -129,6 +129,8 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
             await catalog.project_module(s, DISCIPLINES["lol"])
             mix = await s.get_one(models.CustomGame, self.cg.id)
             mix.discipline = "lol"
+            # Persist the setup first: unit-of-work order between unrelated mappers is not a contract.
+            await s.flush()
             draft = replace(
                 self._draft(),
                 discipline="lol",
