@@ -892,6 +892,10 @@ class CustomGameService:
         so it leaves the default alone.
         """
         _reject_unknown(patch, allowed)
+        if patch.get("is_flex") is True and not DISCIPLINES[game.discipline].flex:
+            # A game without open slots has no Full flex player (``DisciplineSpec.flex``). Refused before any field is
+            # written; ``False`` still goes through, so a flag stored before the game lost it can be cleared.
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="full_flex_unsupported")
         if "participation" in patch:
             try:
                 row.participation = MixParticipation(patch["participation"])

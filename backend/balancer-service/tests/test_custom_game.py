@@ -943,6 +943,35 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         # A patch, not a replace: the bench switch is untouched.
         self.assertNotEqual(row.participation, MixParticipation.BENCHED)
 
+    async def test_update_player_refuses_full_flex_in_a_game_without_it_but_clears_a_stored_one(self) -> None:
+        row = _roster_row(1, 7, 0, is_flex=True)
+        self.games.get.return_value = _game(discipline="deadlock")
+        self.roster.list_for_game.return_value = [row]
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.update_player(
+                self.session,
+                workspace_id=1,
+                custom_game_id=11,
+                workspace_member_id=7,
+                patch={"roles": [{"dimension": "agent", "role": "agent"}], "is_flex": True},
+                actor_user_id=9,
+            )
+        self.assertEqual(ctx.exception.status_code, 422)
+        self.assertEqual(ctx.exception.detail, "full_flex_unsupported")
+        # Refused before anything is written: the role order is untouched too.
+        self.player_roles.replace_for_player.assert_not_awaited()
+
+        await self.service.update_player(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            workspace_member_id=7,
+            patch={"is_flex": False},
+            actor_user_id=9,
+        )
+        self.assertFalse(row.is_flex)
+
     async def test_update_player_pins_a_player_to_a_lobby(self) -> None:
         game = _game(lobby_count=2)
         row = _roster_row(1, 7, 0)
@@ -1295,6 +1324,22 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(ctx.exception.status_code, 409)
         self.assertEqual(ctx.exception.detail, "role_edit_off")
         self.assertFalse(row.is_flex)
+
+    async def test_self_update_refuses_full_flex_in_a_game_without_it_422(self) -> None:
+        row = _roster_row(1, 7, 0)
+        self.games.get.return_value = _game(discipline="deadlock", self_signup="pool", self_role_edit=True)
+        self.roster.list_for_game.return_value = [row]
+        self.workspace_members.get_by_player.return_value = _row(id=7, player_id=70)
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.self_update(
+                self.session, custom_game_id=11, auth_user=_auth(), patch={"is_flex": True}, workspace_id=1
+            )
+
+        self.assertEqual(ctx.exception.status_code, 422)
+        self.assertEqual(ctx.exception.detail, "full_flex_unsupported")
+        self.assertFalse(row.is_flex)
+        self.emit.assert_not_awaited()
 
     async def test_self_state_reports_every_role_rank_and_the_unranked_ones(self) -> None:
         """The bot labels all 16 select options, so all three roles carry a

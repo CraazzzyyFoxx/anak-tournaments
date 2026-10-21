@@ -286,6 +286,8 @@ idempotent and a host's bench decision survives a second press. `can_leave` igno
 ordinary `custom_game_player` row — no separate application table. A player writes `roles` and `is_flex` only;
 ranks stay the host's book, participation the host's decision, and an edit applies from the next balance
 (`balance_result_json` is a snapshot).
+`is_flex = true` in a game without Full flex (`DisciplineSpec.flex = False`: Deadlock) is a 422 `full_flex_unsupported`
+from the host and the player alike; `false` is accepted.
 
 Caps: 2 lobbies, 8 teams, 16 co-hosts, 100 roster rows for a self-signup (`roster_full`). Host role required (`custom_game.*`).
 
