@@ -67,8 +67,9 @@ vi.mock("@/components/ui/popover", () => ({
     const { open, setOpen } = useContext(PopoverCtx);
     return cloneElement(children, { onClick: () => setOpen(!open) });
   },
-  PopoverContent: ({ children }: { children: ReactNode }) =>
-    useContext(PopoverCtx).open ? <div>{children}</div> : null,
+  // The picker's own name is forwarded: it is what a screen reader announces for the opened roster.
+  PopoverContent: ({ children, "aria-label": label }: { children: ReactNode; "aria-label"?: string }) =>
+    useContext(PopoverCtx).open ? <div aria-label={label}>{children}</div> : null,
 }));
 // Radix passes the root's `disabled` down to the trigger through context; the
 // stand-in has to do the same or a disabled specialization cell looks enabled.
@@ -443,7 +444,10 @@ afterAll(() => {
 });
 
 describe("RoleStep in a one-role game", () => {
-  it("asks for the top heroes alone: no role name, column head, hint or flex preset", () => {
+  /** The trigger's role-free name: the one row is the game's one role, so "for Agent" says nothing. */
+  const NO_ROLE_TRIGGER = 'button[aria-label="registration.roles.matrix.heroesLabelNoRole"]';
+
+  function mountOneRole() {
     container = testWindow.document.createElement("div");
     testWindow.document.body.appendChild(container);
     root = createRoot(container as unknown as Element);
@@ -460,10 +464,25 @@ describe("RoleStep in a one-role game", () => {
         />,
       ),
     );
+  }
 
-    expect(container.querySelectorAll(HERO_TRIGGER)).toHaveLength(1);
+  it("asks for the top heroes alone: no role name, column head, hint or flex preset", () => {
+    mountOneRole();
+
+    expect(container.querySelectorAll(NO_ROLE_TRIGGER)).toHaveLength(1);
     expect(container.textContent).not.toContain("Agent");
     expect(container.textContent).not.toContain("registration.roles.matrix.hint");
     expect(container.textContent).not.toContain("registration.roles.matrix.columnRole");
+  });
+
+  it("names no role in the opened hero picker either", () => {
+    mountOneRole();
+    click(NO_ROLE_TRIGGER);
+
+    const picker = container.querySelector('[aria-label="registration.roles.matrix.heroesPickerLabelNoRole"]');
+    expect(picker).not.toBeNull();
+    expect(picker?.textContent).toContain("registration.roles.topHeroes.title");
+    expect(picker?.textContent).toContain("registration.roles.topHeroes.descNoRole");
+    expect(picker?.textContent).not.toContain("Agent");
   });
 });

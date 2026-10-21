@@ -495,6 +495,8 @@
         "flexPreset": "Играю на любой роли",
         "heroesLabel": "Топ-герои для роли {role}: выбрано {count} из {max}",
         "heroesPickerLabel": "Выбор топ-героев для роли {role}",
+        "heroesLabelNoRole": "Топ-герои: выбрано {count} из {max}",
+        "heroesPickerLabelNoRole": "Выбор топ-героев",
         "heroesAtMax": "Выбран максимум — {max}. Снимите одного, чтобы заменить."
       },
       "specialization": "Специализация",
@@ -503,6 +505,7 @@
       "topHeroes": {
         "title": "Топ-герои",
         "desc": "Выберите до {max} героев, на которых играете лучше всего в этой роли.",
+        "descNoRole": "Выберите до {max} героев, на которых играете лучше всего.",
         "count": "{count}/{max}",
         "search": "Поиск персонажей"
       }

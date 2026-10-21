@@ -232,15 +232,21 @@ function draftKeyFor(
   return mode === "public" && !isEditing ? `aqt:registration-draft:${tournamentId}` : null;
 }
 
-function readDraft(key: string, lockedRole: RoleCode | null): Answers | null {
+function readDraft(key: string, roleCodes: readonly RoleCode[], lockedRole: RoleCode | null): Answers | null {
   if (typeof window === "undefined") return null;
   try {
     const parsed: unknown = JSON.parse(window.localStorage.getItem(key) ?? "null");
     if (!parsed || typeof parsed !== "object") return null;
     const draft = parsed as Answers;
     // The host dictates the slot (an invite names it, a captain picks it above
-    // the form), so a draft saved under a different one must not reinstate it.
-    if (lockedRole) delete draft.roles;
+    // the form, a one-role game has only it), so a draft saved under a different
+    // one must not reinstate it. What was picked ON the locked role (its heroes,
+    // its specialization) is still the registrant's: it comes back, that role, primary.
+    if (lockedRole && Array.isArray(draft.roles)) {
+      draft.roles = fromRoleSelections(roleCodes, toRoleSelections(roleCodes, draft.roles as RoleInput[]), lockedRole);
+    } else if (lockedRole) {
+      delete draft.roles;
+    }
     return draft;
   } catch {
     // Unparseable or unreadable storage is just an absent draft.
@@ -371,7 +377,7 @@ function RegistrationSchemaFormBody({
   // dialogs for a click), so there is no server render to diverge from.
   const [answers, setAnswers] = useState<Answers>(() => ({
     ...initialAnswers(schema, mode, initial, userProfile, roleCodes, seededRole),
-    ...(draftKey ? readDraft(draftKey, seededRole) : null)
+    ...(draftKey ? readDraft(draftKey, roleCodes, seededRole) : null)
   }));
   const [step, setStep] = useState(0);
   // Objections stay hidden until the registrant tries to advance: the form used

@@ -495,6 +495,8 @@
         "flexPreset": "Play any role",
         "heroesLabel": "Top heroes for {role}: {count} of {max} selected",
         "heroesPickerLabel": "Choose top heroes for {role}",
+        "heroesLabelNoRole": "Top heroes: {count} of {max} selected",
+        "heroesPickerLabelNoRole": "Choose top heroes",
         "heroesAtMax": "Maximum of {max} heroes selected. Remove one to swap."
       },
       "specialization": "Specialization",
@@ -503,6 +505,7 @@
       "topHeroes": {
         "title": "Top Heroes",
         "desc": "Pick up to {max} heroes you play best in this role.",
+        "descNoRole": "Pick up to {max} heroes you play best.",
         "count": "{count}/{max}",
         "search": "Search characters"
       }

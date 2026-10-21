@@ -163,6 +163,7 @@ export function RoleMatrixRow({
           <HeroPickerCell
             accent={accent}
             roleLabel={roleLabel}
+            showRole={showRole}
             heroes={heroes}
             selected={selection.topHeroes}
             max={maxHeroes}
