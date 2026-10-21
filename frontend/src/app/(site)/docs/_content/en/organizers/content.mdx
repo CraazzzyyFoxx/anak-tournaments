@@ -42,13 +42,13 @@ Collector health is one word: **Healthy**, **Degraded**, **Failing** or **Paused
 
 ### Rank
 
-Collects ranks from Overwatch profiles through linked BattleTags. These are the ranks used when a player has none on their entry and none in the workspace book — see [Ranks and divisions](/docs/organizers/divisions).
+Collects each game's own ranks through its linked accounts: Overwatch profiles through BattleTags (from OverFast), League of Legends Solo/Duo and Flex through Riot IDs (from the Riot API). The game switch at the top of the page picks which game's collector you are looking at. These are the ranks used when a player has none on their entry and none in the workspace book — see [Ranks and divisions](/docs/organizers/divisions).
 
-The page shows **Coverage (snapshots)**, **Fetches (24h)**, **Upstream (OverFast)**, **Battle tags** and **Auto-disabled tags** — tags whose collection switched itself off after repeated failures. **Re-enable all tags** turns them back on; afterwards it is worth confirming the player's profile really is public.
+The page shows **Coverage (snapshots)**, **Fetches (24h)**, **Upstream**, **Accounts** and **Auto-disabled accounts** — accounts whose collection switched itself off after repeated failures. **Re-enable all accounts** turns them back on; for Overwatch it is worth confirming afterwards that the player's profile really is public. When the upstream refuses every fetch, or nothing has been collected for a while although collection is on, a **Rank collection is down** banner appears.
 
-Below that is **Task history**: time, battle tag, status, what triggered the run, the number of snapshots and the error text.
+Below that is **Task history**: time, account, status, what triggered the run, the number of snapshots and the error text.
 
-To recheck one player, open their card in **Admin → People**. It shows their current ranks per role, a table of battle tags with status, last check, last success and consecutive failures, plus **Collect all**, **Collect selected** and a per-row **Collect**. If a player has no battle tag at all there is nothing to collect — ask them to connect a Battle.net account.
+To recheck one player, open their card in **Admin → People**. It shows their current ranks, a table of accounts with status, last check, last success and consecutive failures, plus **Collect all**, **Collect selected** and a per-row **Collect**. If a player has no account for that game there is nothing to collect — ask them to connect Battle.net (Overwatch) or Riot (League of Legends).
 
 ### Subscriptions
 
@@ -71,7 +71,7 @@ It shows **Last tick**, **Tournaments**, **Channels polled**, **Live now** and *
 | Problem | Fix |
 | --- | --- |
 | Hero or map numbers in statistics do not add up | Check **Unresolved names** — some log lines most likely did not resolve. |
-| A player's rank never arrives | Open their card in **Admin → People** and look at the battle tag status; if collection is switched off, re-enable the tags in **Collectors → Rank**. |
+| A player's rank never arrives | Open their card in **Admin → People** and look at the account status; if collection is switched off, re-enable the accounts in **Collectors → Rank**. |
 | The subscription check blocks nobody | The provider is most likely half-configured — see [Subscriptions and admission](/docs/organizers/subscriptions). |
 | Streams do not show on a tournament page | Look at **Collectors → Streams**: if the poll is paused or failing, the tournament is not the problem. |
 
