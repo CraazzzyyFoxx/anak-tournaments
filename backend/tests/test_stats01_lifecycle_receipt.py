@@ -29,6 +29,7 @@ from shared.services.stats_evidence import (
     stage_stats_evidence,
     validate_transition,
 )
+from shared.testing.db import BEFORE_LEGACY_DROP
 from shared.testing.stats_parity import upgrade_database
 
 
@@ -748,8 +749,9 @@ def test_job_creation_requires_explicit_absent_owner_and_identity_is_not_mutable
 
 def _at_current_schema(native):
     """Cases that run the live ORM (member creation) need the columns later revisions added (ingest01's
-    ``workspace_member.observed_only``); the fixture itself stays frozen at stats01 for every other case."""
-    result = upgrade_database(native[2], "head")
+    ``workspace_member.observed_only``); the fixture itself stays frozen at stats01 for every other case. Stops
+    short of ``legacy01``: the receipt reads the legacy storage it drops."""
+    result = upgrade_database(native[2], BEFORE_LEGACY_DROP)
     assert result.returncode == 0, result.stdout + result.stderr
 
 

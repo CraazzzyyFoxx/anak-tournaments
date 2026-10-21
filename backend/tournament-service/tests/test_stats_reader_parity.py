@@ -1532,16 +1532,12 @@ def test_unbound_history_preserves_complete_reader_outputs_and_visibility(stats_
                     workspace_id=ids["workspace"],
                     params=schemas.AdminMatchesSearchParams(unlinked_only=True),
                 )
-                expected_recordless = set(
-                    (
-                        await session.execute(
-                            sa.text("""SELECT m.id FROM matches.match m
-                                JOIN encounter.encounter e ON e.id=m.encounter_id
-                                WHERE e.workspace_id=:workspace AND m.log_record_id IS NULL"""),
-                            {"workspace": ids["workspace"]},
-                        )
-                    ).scalars()
-                )
+                # The seed's matches without a log record: their job-less native rows.
+                expected_recordless = {
+                    ids["match_no_raw"],
+                    *(ids[f"match_otp_{i}"] for i in range(1, 5)),
+                    *(ids[f"match_career_{i}"] for i in range(1, 4)),
+                }
                 assert {row.id for row in unlinked.results} == expected_recordless
                 await session.execute(
                     sa.update(Workspace).where(Workspace.id == ids["workspace"]).values(is_hidden=True)

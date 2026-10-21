@@ -6,8 +6,8 @@ The whole chain runs for real, once, over the T6 conversion fixtures (the T4 pre
    ``apply`` on a scratch PostgreSQL clone at head (``tool.apply``: only ``storage_uri`` changes, one transaction);
 2. the runtime then loads the converted artifacts the way production does -- the registry (``load_active_artifact(s)``
    by discipline, declared algorithm and native role id), ``run_for_tournament`` (performance, shift, standings,
-   anomalies, match quality incl. its standings loader) -- as an ordinary non-owner role that cannot use the retained
-   legacy schemas (``shared.testing.stats_access.native_role``; no legacy grant is added to make anything pass);
+   anomalies, match quality incl. its standings loader) -- as an ordinary non-owner role
+   (``shared.testing.stats_access.native_role``);
 3. every frozen D96 prediction receipt is reproduced bit-for-bit by the models the registry returned, and every table
    the runtime wrote equals the one written by a second clone whose artifacts were assembled independently from the
    fixture *state* (``load_fixture_models``) -- the converted files change nothing a consumer can observe;
@@ -76,7 +76,6 @@ from tests.test_ml_prediction_parity import (
 OW = "overwatch"
 NEW_MODULE = "shared.disciplines.overwatch.analytics.models."
 NAMES = {row[0]: row[1] for row in ROWS}
-LEGACY_SCHEMAS = ("matches", "log_processing")
 _REAL_DEFAULT_RNG = np.random.default_rng
 #: The registry itself is not a runtime output; everything else under ``analytics`` is.
 NOT_OUTPUT = ("ml_model_artifact", "algorithms", "alembic_version")
@@ -102,11 +101,7 @@ async def _session(url: str, role: str | None = None) -> typing.AsyncIterator[As
         await engine.dispose()
 
 
-async def _assert_no_legacy_access(session: AsyncSession) -> None:
-    for schema in LEGACY_SCHEMAS:
-        assert not await session.scalar(
-            sa.text("SELECT has_schema_privilege(current_user, :s, 'USAGE')"), {"s": schema}
-        )
+async def _assert_not_superuser(session: AsyncSession) -> None:
     assert not await session.scalar(sa.text("SELECT rolsuper FROM pg_roles WHERE rolname = current_user"))
 
 
@@ -139,7 +134,7 @@ async def _run_runtime(url: str, ids: dict[str, int], role: str) -> tuple[dict[s
     # distribution it persists is a pure function of the (bit-identical) model.
     with patch("numpy.random.default_rng", lambda *_a, **_k: _REAL_DEFAULT_RNG(20261018)):
         async with _session(url, role) as session:
-            await _assert_no_legacy_access(session)
+            await _assert_not_superuser(session)
             summary = await run_for_tournament(session, ids["tournament"], workspace_id=ids["workspace"])
             await session.rollback()  # the runners commit their own work; nothing is left open under the role
             return summary, await _outputs(session)
@@ -241,7 +236,7 @@ async def _other_game_is_untouched(url: str, ids: dict[str, int], role: str) -> 
         await owner.commit()
     exports = analytics_exports(OW)
     async with _session(url, role) as session:
-        await _assert_no_legacy_access(session)
+        await _assert_not_superuser(session)
         before = await _outputs(session)
         # Scoped selection: a LoL role never resolves to an Overwatch artifact, and neither does a foreign algorithm.
         lol_support = (await CatalogRoleRepository().rated_rows(session, discipline="lol", workspace_id=None))[
@@ -315,7 +310,7 @@ def test_converted_artifacts_serve_the_runtime_with_unchanged_outputs_and_roll_b
     expected = json.loads(GOLDEN.read_text(encoding="utf-8"))["synthetic"]
     _assert_equal(actual, {k: expected[k] for k in actual}, ("synthetic",))
 
-    # 2. the runtime paths, as a non-owner role without legacy schema USAGE, on converted artifacts ...
+    # 2. the runtime paths, as a non-owner role, on converted artifacts ...
     with native_role(url, write=True) as role:
         summary, converted_rows = asyncio.run(_run_runtime(url, ids, role))
         asyncio.run(_other_game_is_untouched(url, ids, role))

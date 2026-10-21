@@ -80,7 +80,8 @@ incident came from exactly that. Ship it in two deploys:
    (`OWT_APPLY_<THING>_DROP=1`), and it removes the ORM field in the same deploy. Verify the
    deployed image, not the checkout, and check data parity before applying. Never run
    `upgrade head` without the flag first: that stamps the revision as applied and the real
-   drop then needs a fresh migration.
+   drop then needs a fresh migration. Safer, as `legacy01` does: without the flag, raise when the
+   storage still holds rows (nothing dropped, nothing stamped) and drop when it is empty.
 
 ## Generated artifacts
 

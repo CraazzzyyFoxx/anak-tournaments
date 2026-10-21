@@ -430,7 +430,7 @@ def test_overwatch_conditions_ignore_same_code_native_lol_rows(stats_parity_data
     asyncio.run(compare())
 
 
-def test_native_reference_mutations_are_atomic_bounded_and_idempotent(stats_parity_database, tmp_path):
+def test_native_reference_mutations_are_atomic_bounded_and_idempotent(stats_parity_receipt_database, tmp_path):
     """A real runner/import/seed/reset lifecycle records every reference change."""
     from dataclasses import replace
     from unittest.mock import AsyncMock, patch
@@ -442,7 +442,7 @@ def test_native_reference_mutations_are_atomic_bounded_and_idempotent(stats_pari
     from src.services.achievement.engine.seeder import AchievementSeederService
     from src.services.achievement.import_export import PortableAchievementRule, import_portable_rules
 
-    url, ids = stats_parity_database
+    url, ids = stats_parity_receipt_database
 
     async def exercise() -> None:
         engine = create_async_engine(make_url(url).set(drivername="postgresql+asyncpg"))
@@ -741,13 +741,13 @@ def test_native_reference_mutations_are_atomic_bounded_and_idempotent(stats_pari
         sync_engine.dispose()
 
 
-def test_native_diff_resolves_global_identity_to_one_scoped_member(stats_parity_database, tmp_path):
+def test_native_diff_resolves_global_identity_to_one_scoped_member(stats_parity_receipt_database, tmp_path):
     """Real PostgreSQL replaces the former compiled-SQL/fake-session tests."""
     from scripts import stats01_reconcile as reconcile
     from shared.models.platform.audit import AuditLog
     from src.services.achievement.engine.differ import diff_and_apply
 
-    url, ids = stats_parity_database
+    url, ids = stats_parity_receipt_database
 
     async def exercise() -> None:
         engine = create_async_engine(make_url(url).set(drivername="postgresql+asyncpg"))

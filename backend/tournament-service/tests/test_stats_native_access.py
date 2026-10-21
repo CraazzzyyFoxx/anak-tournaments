@@ -18,7 +18,7 @@ from tests.test_stats_reader_parity import assert_tournament_golden, collect_out
 
 def test_tournament_full_golden_without_legacy_access(stats_parity_database):
     async def exercise():
-        """Legacy storage access, visibility leaks or any golden regression fail here."""
+        """Visibility leaks or any golden regression fail here, under a non-owner role."""
         url, ids = stats_parity_database
         with native_role(url) as role:
             engine = create_async_engine(make_url(url).set(drivername="postgresql+asyncpg"))
@@ -36,19 +36,6 @@ def test_tournament_full_golden_without_legacy_access(stats_parity_database):
                         )
                     ).one()
                     assert tuple(facts) == (role, False, False, False, 0, 0)
-                    privileges = dict(
-                        (
-                            await session.execute(
-                                sa.text("""
-                        SELECT nspname, has_schema_privilege(current_user, oid, 'USAGE')
-                        FROM pg_namespace
-                        WHERE nspname IN ('matches', 'log_processing', 'overwatch', 'casual')
-                    """)
-                            )
-                        ).all()
-                    )
-                    assert {"matches", "log_processing"} <= privileges.keys()
-                    assert not any(privileges.values()), privileges
                     assert_tournament_golden(await collect_outputs(session, ids))
                     assert await session.scalar(sa.text("SELECT current_user")) == role
             finally:

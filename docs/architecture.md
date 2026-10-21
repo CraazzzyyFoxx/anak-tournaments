@@ -189,9 +189,9 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
 | --- | --- | --- |
 | [`gateway`](../gateway/README.md) | Go, HTTP/WS | Sole API ingress: JWT, RPC dispatch, realtime hub, response cache, rate limit, docs, metrics |
 | [`app-service`](../backend/app-service/README.md) | RPC worker | Core read/data API (tournaments, players, teams, heroes, maps, matches, stats), workspace/user/metadata admin, binary assets, cache |
-| [`identity-service`](../backend/identity-service/README.md) | RPC worker | JWT auth, Discord OAuth, RBAC, workspace membership, custom domains/subdomains, API keys, player linking, service tokens, SSO |
+| [`identity-service`](../backend/identity-service/README.md) | RPC worker | JWT auth, OAuth (Discord, Twitch, Battle.net, Riot), RBAC, workspace membership, custom domains/subdomains, API keys, player linking, service tokens, SSO |
 | [`tournament-service`](../backend/tournament-service/README.md) | RPC worker + scheduler | Tournament lifecycle, registration, brackets/standings, Challonge + Google Sheets sync, map veto, state machine, Challonge push consumer |
-| [`stats-service`](../backend/stats-service/README.md) | RPC process (`stats-svc`) + worker (`stats-worker`), one image | Canonical match ingest and match-log parsing (`stats.ingest.<discipline>`), OverFast rank fetch, achievement evaluation, MVP-impact backfill |
+| [`stats-service`](../backend/stats-service/README.md) | RPC process (`stats-svc`) + worker (`stats-worker`), one image | Canonical match ingest and match-log parsing (`stats.ingest.<discipline>`), native rank fetch (OverFast, Riot API), achievement evaluation, MVP-impact backfill |
 | [`balancer-service`](../backend/balancer-service/README.md) | RPC worker | Genetic team balancing (native Rust `tournament_balancer`) + live draft + draft clock |
 | [`analytics-service`](../backend/analytics-service/README.md) | 2 workers | `analytics-svc` (RPC reads/mutations/job-control) + `analytics-worker` (heavy ML: v1 OpenSkill shifts, v2 ML pipeline) |
 | [`stream-service`](../backend/stream-service/README.md) | RPC worker + scheduler | Tournament stream live-status: Twitch Helix poll tick (app token), public `rpc.stream.*` reads. Owns no Postgres schema — live state is Redis-only |
@@ -212,10 +212,10 @@ Details: [P6 release note](./releases/2026-10-18-multi-game-p6-achievements-anal
 
 All services share **one PostgreSQL database** with **one SQLAlchemy metadata** defined in
 `backend/shared/core/db.py`. Domain boundaries are **Postgres schemas**: `auth`, `players`,
-`public`, `tournament`, `encounter`, `catalog`, `roster`, `stats`, `overwatch_rank`,
-`balancer`, `registration`, `mix`, `draft`, `achievements`, `analytics`, `realtime`. Retained migration-only schemas include
-`matches` and `log_processing` (statistics cutover source), `overwatch` (old catalog, gated
-`discipline02`) and `casual` (old mix history, gated `mixround02`); services do not use them.
+`public`, `tournament`, `encounter`, `catalog`, `roster`, `stats`, `rank`,
+`balancer`, `registration`, `mix`, `draft`, `achievements`, `analytics`, `realtime`. The migration-only
+schemas the cutovers kept for their reconciles (`matches`, `log_processing`, `overwatch`, `casual`) and every other
+legacy table and column were dropped by `legacy01`.
 Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
 
 - **Multitenancy.** `public.workspace` is the tenant root. Nearly every business table
@@ -246,25 +246,23 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   `result_version` bumped, one `encounter.result_audit` row. Scoring is one engine,
   `backend/shared/domain/encounter_scoring.py`, driven by the `encounter.scoring_rule` formulas.
   The legacy columns and tables the old model used (home/away columns, `encounter_participant`,
-  `encounter_map_report`, `encounter_captain_report` and the rest) stay in the database, unmapped
-  by the ORM, until a gated second revision (`enclayer02`, run with
-  `OWT_APPLY_ENCOUNTER_LAYER_DROP=1` in the deploy after V1; see CONTRIBUTING) drops them.
+  `encounter_map_report`, `encounter_captain_report` and the rest) are gone (`legacy01`).
   Vocabulary: [`glossary.md`](./glossary.md).
 - **Discipline catalog (`catalog`).** `catalog.entity` holds each discipline's `character`, `map`
   and `mode` rows, with names, aliases, images and JSONB `attrs`; a map's mode is its `parent_id`,
   and a character's class is `attrs.class`. Names and slugs are unique per discipline and kind.
   Behaviour lives under `backend/shared/disciplines/<slug>/`, reached only through the
   `shared.disciplines` registry: supported kinds and labels ("Hero", "Champion"), character classes,
-  sides, catalog sync, `native_ranks`, `native_ladder` and `identity_provider`. Overwatch declares
-  its 45-tier ladder, OverFast native reader and `battlenet`; LoL declares no native layer/ladder
-  and uses `riot`. P1's catalog sources are OverFast and Data Dragon; the OverFast collector runs as
-  the Overwatch module's jobs inside `stats-worker`. These declarations are not the complete LoL gameplay vertical.
+  sides, catalog sync, `native_ranks`, `native_ladder`, `native_rank_rows` and `identity_provider`. Overwatch declares
+  its 45-tier ladder, OverFast native reader and `battlenet`; LoL declares its 31-tier league-v4 ladder, a Solo/Duo
+  native reader and `riot`. P1's catalog sources are OverFast and Data Dragon. Each game's rank collector (OverFast for
+  Overwatch, the Riot API for LoL) runs as that module's jobs inside `stats-worker` and writes the shared `rank` schema,
+  one `discipline` per row. These declarations are not the complete LoL gameplay vertical.
   Stats-service dispatches `rpc.stats.catalog.sync` to the module;
   app-service provides generic admin CRUD by discipline and kind on `rpc.app.catalog.admin_*`.
   `catalog.alias_miss` is the unresolved-name worklist, keyed by `(discipline, kind, raw_name)`.
-  `catalog.entity_legacy` maps old hero/map/gamemode ids to the new ids for migration reconciliation
-  and the old-link redirect (`rpc.app.catalog.legacy`) only; it goes with `overwatch.*` in
-  `discipline02`. Runtime catalog reads and writes use `catalog.entity`, never `overwatch.*`.
+  Old hero/map/gamemode ids no longer resolve: `legacy01` dropped their `catalog.entity_legacy` mapping and
+  the old-link redirect with it. Runtime catalog reads and writes use `catalog.entity`, never `overwatch.*`.
   App-service startup projects module-declared role dimensions and roles into
   `catalog.role_dimension` / `catalog.role`; a removed module role is deactivated, not deleted.
   Exactly one dimension per discipline is rated. Workspace sub-roles share that ontology, with
@@ -277,9 +275,8 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   hold starter/substitute bounds, dimension modes and hard/recommended role quotas.
   Tournaments own an editable copy of the workspace default or module preset; mixes freeze
   their copy at creation (explicit preset, else clone format, else workspace default, else preset).
-  There is no live inheritance and no runtime use of the three legacy slot-map columns.
-  `roster.team_format_legacy` is only a migration reconciliation snapshot, retained until P9's
-  `discipline02`, along with `encounter.team_member_role_legacy` and legacy role columns.
+  There is no live inheritance. The legacy slot-map and role columns and the reconciliation snapshots
+  (`roster.team_format_legacy`, `encounter.team_member_role_legacy`) are gone (`legacy01`).
   `encounter.team_member_role (team_member_id, dimension_id, role_id)` stores snapshot leaves.
   Composite assignment/quota FKs into `catalog.role` are `DEFERRABLE INITIALLY DEFERRED`.
   Hard validation checks every active dimension for each starter; benches are excluded.
@@ -292,8 +289,8 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   that discipline. Registration/author overrides precede workspace canon and then the registry's
   native reader; effective source values use `native`. Open slots hold no hidden rating or host-book
   rank. `division_grid.discipline` scopes grids, mappings and fallback; tier native bounds are
-  `native_rank_min/max`. Overwatch alone has the native-ladder fallback; LoL creation/clone/runtime
-  reads without a usable LoL grid fail with 422 `division_grid_required`.
+  `native_rank_min/max`. A game with a native ladder (Overwatch, LoL) falls back to it when it has no grid of its own;
+  a ladder-less game's creation/clone/runtime reads without a usable grid fail with 422 `division_grid_required`.
   `public.workspace_division_grid_default` selects one version per `(workspace_id, discipline)`.
   Activation and deletion affect only that game's assignment and preserve valid event pins.
   `WorkspaceRead.default_division_grid_versions` contains explicit IDs;
@@ -303,7 +300,7 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   no workspace activation. Known-owner UI consumers retain the pin and discipline; unresolved owners
   expose no wrong-game controls. Legacy OW data explicitly chooses OW, and LoL grids show no OW native
   ladder/crests. Open-ended tiers stay open-ended. The legacy physical workspace pointer and old rank
-  role columns remain unmapped until P9; ORM diagrams do not inventory that migration-only storage.
+  role columns are gone (`legacy01`).
   See the [P3 release and cutover guide](./multi-game-p3-ranks-release.md).
 - **Statistics and ingestion (P4).** `stats.match` binds parsed observations to one
   `encounter.game`, with direct workspace/discipline ownership. `match_team.source_position`
@@ -372,7 +369,7 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
 - **ML artifact roles (P2 wire break).** `analytics.ml_model_artifact` identifies
   role-specific models through `(role_id, dimension_id)` in `catalog.role`;
   all-role models keep both values `NULL`. Identity and activation are keyed by
-  role id, not the retained migration-only `role` column. The registry remains
+  role id. The registry remains
   Overwatch-only until P6 and resolves only its rated module roles (no workspace
   sub-roles). Artifact responses now expose `role` as `RoleRef | null`, for example
   `{"dimension":"player_role","role":"tank","parent":null}`, instead of a string.
@@ -402,7 +399,7 @@ Shared substrate: **PostgreSQL** (optionally behind pgBouncer), **Redis** (cache
 bus + active-user counters), **RabbitMQ** (all RPC/events/jobs), **S3/MinIO** (avatars,
 icons, match-log files). Workers that call external APIs (Discord, Twitch, Challonge, S3)
 egress through the outbound `proxy` container (xray); the self-hosted OverFast runs on the
-production host and is called directly.
+production host and is called directly, and so is the Riot API (the LoL rank collector).
 
 **Releases.** Pushing a `v*` tag is the whole ritual:
 

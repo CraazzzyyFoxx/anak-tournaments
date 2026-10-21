@@ -48,15 +48,6 @@ async def native_sessions(url):
             ).one()
             assert current == role
             assert not (superuser or owns_relation or owns_schema or owns_database)
-            legacy_access = connection.execute(
-                sa.text("""
-                SELECT nspname, has_schema_privilege(current_user, oid, 'USAGE')
-                FROM pg_namespace
-                WHERE nspname IN ('matches', 'log_processing', 'overwatch', 'casual')
-            """)
-            ).all()
-            assert {name for name, _ in legacy_access} >= {"matches", "log_processing"}
-            assert not any(allowed for _, allowed in legacy_access)
 
         try:
             yield async_sessionmaker(engine, expire_on_commit=False, sync_session_class=NativeSession)

@@ -1606,8 +1606,9 @@ def test_the_lobby_recompute_fills_standings_dry_then_for_real_then_does_nothing
             (ids["match"], ids["games"][0]),
         )
         conn.execute("UPDATE matches.match SET map_index = 1 WHERE id = %s", (ids["match"],))
-    # The script is a post-upgrade one-shot and the ORM it uses always reflects the head, so bring the database there first.
-    done = _alembic(RECOMPUTE_DB, "head")
+    # The script is a post-upgrade one-shot and the ORM it uses always reflects the head, so bring the database there
+    # first; this scratch copy's legacy rows are fixtures, so legacy01 may drop them.
+    done = _alembic(RECOMPUTE_DB, "head", OWT_APPLY_LEGACY_DROP="1")
     assert done.returncode == 0, done.stderr[-3000:]
     conn = _connect(RECOMPUTE_DB)
     standings = "SELECT t.slot, t.score, t.placement FROM encounter.team t WHERE t.encounter_id = %s ORDER BY t.slot"

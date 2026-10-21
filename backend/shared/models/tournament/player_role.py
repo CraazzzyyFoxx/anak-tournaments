@@ -1,7 +1,4 @@
-"""Tournament roster leaf assignments.
-
-Legacy player role columns remain unmapped until discipline02 drops them.
-"""
+"""Tournament roster leaf assignments."""
 
 from __future__ import annotations
 

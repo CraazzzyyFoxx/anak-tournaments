@@ -3,7 +3,7 @@
 A single PostgreSQL database shared by every Python service in the monorepo. The ORM models
 (SQLAlchemy) live in `backend/shared/models/<package>/`; the tables themselves are split across
 **Postgres schemas**, which double as domain boundaries. A package name does not always match a
-schema name — `ranks/` writes to `overwatch_rank`; native parsed observations, ingestion jobs,
+schema name — `ranks/` writes to `rank`; native parsed observations, ingestion jobs,
 baselines and Discord channels live in `stats/`. `catalog/` writes only to `catalog`, while
 `member_rank` writes into `balancer`.
 
@@ -13,7 +13,7 @@ baselines and Discord channels live in `stats/`. `catalog/` writes only to `cata
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`schemasplit01`** (125 revisions in `backend/migrations/versions/`).
+Alembic head: **`drift01`** (129 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -45,10 +45,8 @@ Alembic head: **`schemasplit01`** (125 revisions in `backend/migrations/versions
   view refreshed out of band and does not appear. Append-only journals carry their
   `workspace_id` / `tournament_id` / actor ids as plain `BigInteger` with no FK, so they appear
   unconnected — see [platform](#platform--public-realtime).
-  The SQL/DBML snapshots are also ORM-derived, not a complete physical migration inventory:
-  unmapped legacy role columns, the old workspace grid pointer, migration audit tables, and retained
-  `matches` / `log_processing` cutover sources are deliberately absent. Physical removal is gated,
-  not implied by their removal from ORM metadata.
+  The SQL/DBML snapshots are ORM-derived as well; the unmapped legacy storage they used to leave out is gone
+  (`legacy01`).
 
 ## Postgres schemas
 
@@ -59,11 +57,9 @@ Alembic head: **`schemasplit01`** (125 revisions in `backend/migrations/versions
 | `public` | Workspaces, membership, division grids, settings, outbox | app-service |
 | `tournament` | Tournament structure, bracket position, advancement edges, pick/ban templates, scrim rooms | tournament-service |
 | `encounter` | Match layer: encounters, participations, games, claims, series reports, scoring rules, result journal, pick/ban sessions | tournament-service |
-| `casual` | Legacy mix history (matches, teams, players). Read by nothing since V2 and mapped by no model; dropped by the gated `mixround02` | — (no service) |
-| `overwatch` | Legacy catalog, read and written by no service and mapped by no model; retained until the gated `discipline02` | — (no service) |
-| `catalog` | Disciplines (`overwatch`, `lol`), entities, role dimensions/module roles/workspace sub-roles, alias-miss worklist and temporary legacy-id mapping | app-service (reads/admin/ontology projection), stats-service (entity sync/misses); migration seeds the initial projection |
+| `catalog` | Disciplines (`overwatch`, `lol`), entities, role dimensions/module roles/workspace sub-roles and alias-miss worklist | app-service (reads/admin/ontology projection), stats-service (entity sync/misses); migration seeds the initial projection |
 | `roster` | Workspace team-format templates, tournament-owned copies and frozen mix formats with dimension modes and role quotas | tournament-service / balancer-service / app-service |
-| `overwatch_rank` | Overwatch rank telemetry from OverFast | stats-service |
+| `rank` | Native rank telemetry of every game (`discipline` per row): Overwatch from OverFast, League of Legends from the Riot API | stats-service |
 | `stats` | Native parsed matches, observed participants/facts/events, ingestion jobs, baselines and Discord channels | stats-service / analytics-service / app-service / discord-service |
 | `balancer` | Balancing runs and their teams, balancer configs, member ranks | balancer-service |
 | `registration` | Registration forms, statuses, applications, identities, roles, team registration, Google Sheets import | tournament-service |
@@ -71,7 +67,6 @@ Alembic head: **`schemasplit01`** (125 revisions in `backend/migrations/versions
 | `draft` | Live draft: sessions, captains' teams, the pool, picks, private audit trail | balancer-service |
 | `achievements` | Achievement rules, evaluations and overrides | stats-service / app-service |
 | `analytics` | Analytics signals and ML model registry | analytics-service |
-| `matches`, `log_processing` | Retained legacy statistics/ingestion transfer source; no runtime ORM or service access after P4 | — (release-gated removal) |
 | `realtime` | Realtime event journal used for WebSocket replay | gateway (Go) |
 | `subscriptions` | Subscription providers, requirements and entitlements | tournament-service / stats-service |
 | `quota` | Per-principal quota plans, operation costs and overrides | every service, via `shared.quota` |
@@ -118,9 +113,9 @@ flowchart TB
     subgraph COMPETITION["Competition"]
         TOUR["tournament<br/>(stages, teams, bracket, pick/ban templates)"]
         ENC["encounter<br/>(match layer: participations, games, results)"]
-        MATCHES["matches<br/>(match logs, statistics)"]
+        STATS["stats<br/>(parsed matches, facts, ingestion jobs)"]
         CAT["catalog<br/>(disciplines, entities, alias misses)"]
-        RANK["overwatch_rank<br/>(rank snapshots)"]
+        RANK["rank<br/>(native rank snapshots, every game)"]
     end
 
     subgraph TEAMBUILD["Team formation"]
@@ -136,7 +131,6 @@ flowchart TB
     end
 
     subgraph PLATFORM["Platform / infrastructure"]
-        LOG["log_processing<br/>(legacy record)"]
         RT["realtime.workspace_event<br/>(no FKs)"]
         OUTBOX["public.event_outbox<br/>(no FKs)"]
     end
@@ -157,11 +151,11 @@ flowchart TB
     ENC --> TOUR
     ENC --> WS
     ENC --> CAT
-    MATCHES --> TOUR
-    MATCHES --> ENC
-    MATCHES --> CAT
-    MATCHES --> PLAYERS
-    MATCHES --> LOG
+    STATS --> TOUR
+    STATS --> ENC
+    STATS --> CAT
+    STATS --> PLAYERS
+    STATS --> WS
     RANK --> PLAYERS
 
     REG --> TOUR
@@ -180,21 +174,17 @@ flowchart TB
     ACH --> WS
     ACH --> TOUR
     ACH --> ENC
-    ACH --> MATCHES
+    ACH --> STATS
     ACH --> CAT
     AN --> TOUR
     AN --> ENC
     AN --> WS
-
-    LOG --> TOUR
-    LOG --> ENC
-    LOG --> PLAYERS
 ```
 
 Two edges the map does not draw, because the schema no longer has them: `registration` does not
 reference `players` (registration identity goes through `workspace_member`), and `analytics`
 reads match data only through `tournament.player` and `encounter.encounter`, never through
-`matches` directly. `encounter` and `tournament` reference each other: an encounter points at
+`stats` directly. `encounter` and `tournament` reference each other: an encounter points at
 its owning tournament, and the bracket position and advancement edges point back at the
 encounter. The actor columns of `encounter` (`reporter_user_id`, `actor_user_id`) point at
 `auth` and are left out like the rest.
@@ -517,11 +507,10 @@ per-context rank stores, so the resolver reads both layers in a single query.
 
 Both `member_rank` and `member_hidden_rating` reference `(role_id, dimension_id)` in the discipline's
 rated module roles; hidden ratings are unique per `(workspace_member_id, role_id)`. Same-named roles
-in different games are independent. The `role` hybrid exposes the catalog code, not the retained
-physical legacy column. Composite role FKs are `DEFERRABLE INITIALLY DEFERRED`, with leading role-ID
+in different games are independent. The `role` hybrid exposes the catalog code. Composite role FKs are
+`DEFERRABLE INITIALLY DEFERRED`, with leading role-ID
 indexes. The resolver's final `native` layer is the module hook, not a core Overwatch reader.
-Open slots (`flex`) have no rank key: their old rows are retained only in the migration audit table
-`balancer.discipline01c_dropped_ranks`, listed by reconcile, and removed by P9 rather than runtime.
+Open slots (`flex`) have no rank key.
 
 <!-- ERD:auto member_rank -->
 ```mermaid
@@ -588,10 +577,9 @@ Assignments hold one leaf, with its parent derived; `flex` creates no assignment
 `RoleRef {dimension, role, parent}`, where `parent` is output-only and ignored on input.
 `tournament.player_role` and `encounter.team_member_role` use role/dimension ids, as do registration,
 mix, draft, balancer-slot and ML-artifact references. The encounter role table's primary key is
-`(team_member_id, role_id)`; `dimension_id` is a stored reference field. The old text table is retained as
-`encounter.team_member_role_legacy` for reconciliation until `discipline02`.
+`(team_member_id, role_id)`; `dimension_id` is a stored reference field.
 Composite assignment/quota FKs into `catalog.role` are `DEFERRABLE INITIALLY DEFERRED`, not
-immediate constraints. Legacy columns remain migration-only; rank tables stay code-keyed until P3.
+immediate constraints.
 
 Overwatch logs resolve canonical names or `aliases` (a JSONB array) within that discipline.
 The OverFast module sync adds hero aliases from all 13 Blizzard locales; map and mode aliases
@@ -610,11 +598,9 @@ the copied job id and refuses orphan references; it never clears one to make mig
 
 `discipline01` copies the old catalog into new entity ids above every id `overwatch.*` ever
 issued. It rewrites existing references, including `matches.*` in place and pick/ban ids in
-`encounter.room_event.data`. `catalog.entity_legacy (legacy_kind, legacy_id) → entity_id` is
-retained only for reconciliation and the old-link lookup/redirect. No service reads or writes
-`overwatch.*`; those legacy tables and the mapping go in the gated `discipline02` (P9), not P1.
-Retired `casual.match.map_id` and surviving `tournament.encounter_map_code.map_id` have plain
-FKs to `catalog.entity(id)`, as `matches.*` does, rather than the new kind-checked composite FKs.
+`encounter.room_event.data`, through a `catalog.entity_legacy (legacy_kind, legacy_id) → entity_id`
+mapping. No service reads or writes `overwatch.*`, and old hero/map/gamemode ids no longer resolve;
+the gated `legacy01` drops both.
 
 <!-- ERD:auto catalog -->
 ```mermaid
@@ -651,11 +637,6 @@ erDiagram
         jsonb aliases
         boolean active
     }
-    CATALOG_ENTITY_LEGACY {
-        varchar(16) legacy_kind PK
-        bigint legacy_id PK
-        bigint entity_id FK
-    }
     CATALOG_ROLE {
         bigint id PK
         timestamptz created_at
@@ -687,7 +668,6 @@ erDiagram
     CATALOG_DISCIPLINE ||--o{ CATALOG_ROLE_DIMENSION : "discipline"
     CATALOG_ENTITY |o--o{ CATALOG_ENTITY : "parent_id"
     CATALOG_ENTITY ||--o{ CATALOG_ENTITY : "discipline"
-    CATALOG_ENTITY ||--o{ CATALOG_ENTITY_LEGACY : "entity_id"
     CATALOG_ROLE |o--o{ CATALOG_ROLE : "parent_role_id"
     CATALOG_ROLE ||--o{ CATALOG_ROLE : "dimension_id"
     CATALOG_ROLE_DIMENSION ||--o{ CATALOG_ROLE : "dimension_id"
@@ -721,11 +701,6 @@ Migrated and preset formats set substitute bounds to zero; registration benches 
 Hard constraints cover every active dimension. Only the tournament/MOO solver has a sub-role
 collision term gated by `recommended_max <= 1`; other recommendations and all mix recommendations
 are post-solve advisories and equal-objective tie-breakers.
-
-`roster.team_format_legacy` is a migration-only snapshot of the owners and effective slot maps
-carried by `discipline01b`. Reconciliation checks exact format semantics against this independent
-snapshot, so deleting destination formats cannot hide missing transfers. It has no runtime model
-or service use; `discipline02` (P9) drops it with the other legacy mapping tables.
 
 <!-- ERD:auto roster -->
 ```mermaid
@@ -806,10 +781,11 @@ Activation and deletion change only the corresponding assignment; a valid pin ne
 default. `WorkspaceRead.default_division_grid_versions` exposes explicit IDs, while
 `effective_division_grid_versions` exposes persisted effective versions/tiers (including matching
 system fallback). Missing versions are omitted, not synthetic rows. Both maps are read-only on
-workspace create/update; old scalar payloads are rejected. LoL has no native ladder: creation,
-clone and runtime reads without a tiered LoL grid return 422 `division_grid_required`, never OW tiers.
-The legacy unmapped workspace column/FK is retained for initial migration reconciliation until P9,
-and is not dual-written. `division_grid_import_job` covers copying a grid from another workspace;
+workspace create/update; old scalar payloads are rejected. A game with a native ladder (Overwatch 45 tiers,
+LoL 31) seeds a new grid with it and falls back to it when it has no grid of its own; a ladder-less game's
+creation, clone and runtime reads without a tiered grid return 422 `division_grid_required`, never another
+game's tiers.
+`division_grid_import_job` covers copying a grid from another workspace;
 it is idempotent per `(workspace_id, idempotency_key)`. Portable v1 imports are Overwatch; exports
 write `division-grid/v2` with `discipline` and native-bound names.
 
@@ -929,37 +905,40 @@ Composite unique keys:
 - `PUBLIC_DIVISION_GRID_VERSION` unique on (`grid_id`, `version`)
 <!-- /ERD:auto -->
 
-## ranks — `overwatch_rank`
+## ranks — `rank`
 
-Rank telemetry polled from OverFast against a linked BattleTag: the snapshot time series, the
-per-BattleTag fetch state, and the fetch log.
+Native rank telemetry of every game, one `discipline` per row: Overwatch per role from OverFast
+against a linked BattleTag, League of Legends per queue (`solo`, `flex`) from the Riot API against a
+linked Riot ID. The snapshot time series, the per-account fetch state, and the fetch log.
 
-Collection is bound to the battlenet `social_account`, not to a bare BattleTag string, so a
-re-linked or renamed account keeps its history. `rank_snapshot` is append-only and stores one
-row per role per capture, together with `mapping_version` — which SR mapping produced
-`rank_value` — and the raw provider payload, so a mapping change can be replayed instead of
-re-fetched.
+Collection is bound to the game's `social_account` (battlenet, riot), not to a bare handle string,
+so a re-linked or renamed account keeps its history. `rank_snapshot` is append-only and stores one
+row per role (Overwatch) or queue (LoL, with `lp`/`wins`/`losses`) per capture. It keeps the native
+`division`/`tier` next to `rank_value` and `mapping_version` (which mapping produced `rank_value`), so a
+mapping change can be replayed instead of re-fetched. `handle` is the account's handle at capture time.
 
-`battle_tag_state` is the scheduler, one row per social account (UNIQUE): `next_eligible_at`,
-`consecutive_failures` and `priority_tier` are the backoff, and `last_snapshot_id` is the
-shortcut to the newest reading. `fetch_log` is the attempt history, with a nullable account FK
-so it survives unlinking.
+`account_state` is the scheduler, one row per social account (UNIQUE): `next_eligible_at`,
+`consecutive_failures` and `priority_tier` are the backoff, `external_id` is the upstream id
+(OverFast slug, Riot PUUID; NULL until resolved) and `region` the LoL platform. Its PK,
+unique-constraint and sequence names keep the pre-`rank01` `battle_tag_state_*` names. `fetch_log`
+is the attempt history, with a nullable account FK so it survives unlinking.
 
-These remain Overwatch module data. Core reads them only through the registry's `native_ranks`
-hook; the 45-tier ladder lives in `shared/disciplines/overwatch/ladder.py`. LoL declares neither
-native ranks nor a native ladder. Collector process re-homing remains P5; P3 does not move the
-OverFast client, scheduler or queues.
+Core reads these only through the registry's `native_ranks` and `native_rank_rows` hooks; each
+ladder lives in its module (`shared/disciplines/overwatch/ladder.py`,
+`shared/disciplines/lol/ladder.py`) and each collector is that module's jobs in `stats-worker`.
 
 <!-- ERD:auto ranks -->
 ```mermaid
 erDiagram
-    OVERWATCH_RANK_BATTLE_TAG_STATE {
+    RANK_ACCOUNT_STATE {
         bigint id PK
         timestamptz created_at
         timestamptz updated_at "nullable"
+        varchar(32) discipline
         bigint social_account_id FK,UK
-        varchar(255) battle_tag
-        varchar(255) player_id_slug
+        varchar(255) handle
+        varchar(255) external_id "nullable"
+        varchar(16) region "nullable"
         timestamptz last_checked_at "nullable"
         timestamptz last_success_at "nullable"
         varchar(32) status
@@ -968,27 +947,33 @@ erDiagram
         text last_error "nullable"
         smallint priority_tier
     }
-    OVERWATCH_RANK_FETCH_LOG {
+    RANK_FETCH_LOG {
         bigint id PK
         timestamptz created_at
         timestamptz updated_at "nullable"
+        varchar(32) discipline
         bigint social_account_id FK "nullable"
-        varchar(255) battle_tag
+        varchar(255) handle
         varchar(32) status
         varchar(32) source
         text error "nullable"
         int snapshots_written
     }
-    OVERWATCH_RANK_RANK_SNAPSHOT {
+    RANK_RANK_SNAPSHOT {
         bigint id PK
+        varchar(32) discipline
         bigint user_id FK
         bigint social_account_id FK
-        varchar(255) battle_tag
-        varchar(16) platform
-        varchar(16) role
+        varchar(255) handle
+        varchar(16) platform "nullable"
+        varchar(16) role "nullable"
+        varchar(16) queue "nullable"
         varchar(32) division "nullable"
         smallint tier "nullable"
         int season "nullable"
+        int lp "nullable"
+        int wins "nullable"
+        int losses "nullable"
         int rank_value "nullable"
         varchar(64) mapping_version "nullable"
         boolean is_ranked
@@ -996,10 +981,10 @@ erDiagram
         varchar(32) source
     }
 
-    PLAYERS_SOCIAL_ACCOUNT |o--o{ OVERWATCH_RANK_FETCH_LOG : "social_account_id"
-    PLAYERS_SOCIAL_ACCOUNT ||--o{ OVERWATCH_RANK_RANK_SNAPSHOT : "social_account_id"
-    PLAYERS_SOCIAL_ACCOUNT ||--o| OVERWATCH_RANK_BATTLE_TAG_STATE : "social_account_id"
-    PLAYERS_USER ||--o{ OVERWATCH_RANK_RANK_SNAPSHOT : "user_id"
+    PLAYERS_SOCIAL_ACCOUNT |o--o{ RANK_FETCH_LOG : "social_account_id"
+    PLAYERS_SOCIAL_ACCOUNT ||--o{ RANK_RANK_SNAPSHOT : "social_account_id"
+    PLAYERS_SOCIAL_ACCOUNT ||--o| RANK_ACCOUNT_STATE : "social_account_id"
+    PLAYERS_USER ||--o{ RANK_RANK_SNAPSHOT : "user_id"
 ```
 <!-- /ERD:auto -->
 
@@ -1864,8 +1849,7 @@ one row per handle: `position` 0 is a provider's primary, Battle.net smurfs foll
 Live entries are deduplicated per tournament on the primary handle of each game provider (checked
 in the application, since the handles sit in that child table), and deletion is soft
 (`deleted_at` / `deleted_by`), which both preserves the audit and frees the handle for reuse.
-`battle_tag`, `battle_tag_normalized` and `smurf_tags_json` are legacy columns with no reader or
-writer, kept only until their gated drop. Role preferences and top characters are normalized into
+Role preferences and top characters are normalized into
 `role` and `role_entity` — a character is unique both per priority and per
 role, so a top-three cannot contain the same hero twice or two heroes in one slot.
 
@@ -1972,9 +1956,6 @@ erDiagram
         bigint tournament_id FK
         bigint workspace_member_id FK "nullable"
         varchar(255) display_name "nullable"
-        varchar(255) battle_tag "nullable"
-        varchar(255) battle_tag_normalized "nullable"
-        json smurf_tags_json "nullable"
         boolean stream_pov
         boolean is_reserve
         bigint form_version_id FK "nullable"
@@ -2544,11 +2525,6 @@ owner effects in the same transaction. `discord_channel` lives in this schema (n
 newest message the bot has already walked past, so a reconnect rescans from there; `NULL` (or a
 manual backfill) walks the history.
 
-Legacy `matches.*`, `log_processing.record`, their enums and the legacy hero MV remain
-physical transfer sources without runtime mappings. Their removal is a separate P9 gate,
-requiring the original receipt, its `handles.jsonl`, complete owner chains and reviewed
-preparation/rehearsal evidence.
-
 <!-- ERD:auto stats -->
 ```mermaid
 erDiagram
@@ -2858,7 +2834,7 @@ about the same `(tournament, player)` at the same time, and neither overwrites t
 
 Everything here is anchored on `tournament.player` — the roster slot — rather than on a player
 or a member, so a number always belongs to one participation in one tournament and never leaks
-across tournaments. Nothing in `analytics` references `matches` directly; match data is reached
+across tournaments. Nothing in `analytics` references `stats` directly; match data is reached
 through the encounter.
 
 `standings_distribution` is the only source of placement predictions: a Monte Carlo distribution
@@ -3075,7 +3051,7 @@ purely additive change, while a column on `workspace` would have needed a data m
 values — `active`, `inactive`, `unknown` — and `unknown` is fail-open: a provider outage must
 never lock people out. Verdicts compose under three-valued logic, so a block only happens when
 the answer is certain. `check_log` is the append-only history of live provider calls, mirroring
-`overwatch_rank.fetch_log`; both its workspace and its user FK are nullable so the history
+`rank.fetch_log`; both its workspace and its user FK are nullable so the history
 outlives account deletion.
 
 <!-- ERD:auto subscriptions -->
@@ -3478,9 +3454,9 @@ the top of this document is the only revision claim here.
 - **Catalog aliases and discipline catalog.** JSONB aliases and the alias-miss worklist originally
   replaced three hardcoded parser translation dictionaries (103 entries across 7 gamemodes,
   32 maps and 50 heroes). `discipline01` now copies that data from `overwatch.*` into
-  `catalog.entity` and `catalog.alias_miss`, rewrites hard and pick/ban references to new ids, and
-  leaves `catalog.entity_legacy` for reconciliation and old-link redirects. Runtime code has cut
-  over completely; the old catalog is retained until the gated `discipline02` contract migration.
+  `catalog.entity` and `catalog.alias_miss` and rewrites hard and pick/ban references to new ids
+  through `catalog.entity_legacy`. Runtime code has cut over completely and old ids no longer
+  resolve; the gated `legacy01` drops the old catalog and the mapping.
 - **Workspace Discord guild.** `public.workspace.discord_guild_id` became the single source of
   the guild snowflake — UNIQUE, with a verification timestamp and verifier, mirroring the custom
   domain pattern. Rolling it out needed a mandatory order: add and backfill the column *before*
@@ -3541,3 +3517,9 @@ the top of this document is the only revision claim here.
   `mix.player`, `balancer.draft_session` → `draft.session`). `ALTER TABLE … SET SCHEMA` and
   renames only: ids, rows and foreign keys are untouched; index, constraint and sequence names
   follow the new names.
+- **Legacy storage dropped.** `legacy01` dropped what the cutovers kept unmapped for their
+  reconciles: the `matches`, `log_processing`, `overwatch` and `casual` schemas, the V1 encounter
+  tables, `catalog.entity_legacy`, `roster.team_format_legacy`, `encounter.team_member_role_legacy`,
+  `balancer.discipline01c_dropped_ranks`, `tournament.player_sub_role`, every legacy role/slot/score
+  column, `registration.registration`'s Battle.net columns and the enum types only they used. It
+  replaced the planned `discipline02`, `mixround02` and P9 drops.

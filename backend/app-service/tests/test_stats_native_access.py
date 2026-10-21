@@ -40,17 +40,6 @@ async def _native_session(url):
             """)
             ).one()
             assert tuple(facts) == (role, False, False, False, 0, 0)
-            privileges = dict(
-                connection.execute(
-                    sa.text("""
-                SELECT nspname, has_schema_privilege(current_user, oid, 'USAGE')
-                FROM pg_namespace
-                WHERE nspname IN ('matches', 'log_processing', 'overwatch', 'casual')
-            """)
-                ).all()
-            )
-            assert {"matches", "log_processing"} <= privileges.keys()
-            assert not any(privileges.values()), privileges
 
         try:
             async with AsyncSession(engine, expire_on_commit=False) as session:
@@ -60,7 +49,7 @@ async def _native_session(url):
 
 
 def test_app_full_golden_without_legacy_access(stats_parity_database):
-    """Any reader/enrichment fallback to old storage or changed output fails."""
+    """Any changed reader/enrichment output fails, under a non-owner role."""
     url, ids = stats_parity_database
 
     async def run():

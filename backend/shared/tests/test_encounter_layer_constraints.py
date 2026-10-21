@@ -345,65 +345,6 @@ class EncounterLayerConstraintTests(IsolatedAsyncioTestCase):
         self.assertIsNone(await self._scalar("SELECT team_id FROM encounter.team WHERE id = :p1"))
         self.assertEqual("T0", await self._scalar("SELECT name FROM encounter.team WHERE id = :p1"))
 
-    async def test_deleting_the_team_of_a_migrated_encounter_keeps_the_encounter_and_its_match(self) -> None:
-        # An encounter that existed at cutover still carries its pre-V1 side
-        # columns until enclayer02. Their old ``ON DELETE CASCADE`` to
-        # tournament.team would take the encounter -- games, claims, journal and
-        # the matches it produced -- with the team (D55).
-        tag = f"enc-{os.getpid()}-{next(_TAG)}"
-        async with self.Session() as s:
-            mode = (
-                await s.execute(
-                    sa.text(
-                        "INSERT INTO catalog.entity (discipline, kind, slug, name, image_path)"
-                        " VALUES ('overwatch', 'mode', :tag, :tag, 'x') RETURNING id"
-                    ),
-                    {"tag": tag},
-                )
-            ).scalar_one()
-            map_id = (
-                await s.execute(
-                    sa.text(
-                        "INSERT INTO catalog.entity (discipline, kind, slug, parent_id, name, image_path)"
-                        " VALUES ('overwatch', 'map', :tag, :mode, :tag, 'x') RETURNING id"
-                    ),
-                    {"mode": mode, "tag": tag},
-                )
-            ).scalar_one()
-            await s.commit()
-        try:
-            await self._execute(
-                "UPDATE encounter.encounter SET home_team_id = :team0, away_team_id = :team2 WHERE id = :e"
-            )
-            await self._execute(
-                "INSERT INTO stats.match (workspace_id, discipline, encounter_id, encounter_game_id, map_entity_id)"
-                " VALUES (:ws, 'overwatch', :e, :g, :map_id)",
-                map_id=map_id,
-            )
-            await self._execute(
-                "INSERT INTO stats.match_team (match_id, encounter_id, encounter_team_id, source_position)"
-                " SELECT id, :e, :p1, 1 FROM stats.match WHERE encounter_game_id = :g"
-                " UNION ALL SELECT id, :e, :p2, 2 FROM stats.match WHERE encounter_game_id = :g"
-            )
-
-            await self._execute("DELETE FROM tournament.team WHERE id = :team0")
-
-            for table, column, owner in (
-                ("encounter.encounter", "id", self.ids["e"]),
-                ("encounter.game", "encounter_id", self.ids["e"]),
-                ("stats.match", "encounter_game_id", self.ids["g"]),
-            ):
-                with self.subTest(table=table):
-                    self.assertEqual(
-                        1, await self._scalar(f"SELECT count(*) FROM {table} WHERE {column} = :owner", owner=owner)
-                    )
-            self.assertEqual(2, await self._scalar("SELECT count(*) FROM stats.match_team WHERE encounter_id = :e"))
-            self.assertIsNone(await self._scalar("SELECT team_id FROM encounter.team WHERE id = :p1"))
-        finally:
-            await self._execute("DELETE FROM stats.match WHERE encounter_game_id = :g")
-            await self._execute("DELETE FROM catalog.entity WHERE id = :map_id", map_id=map_id)
-            await self._execute("DELETE FROM catalog.entity WHERE id = :mode", mode=mode)
-
     # ── 14–16: cascades from each owner ──
 
     async def test_deleting_the_encounter_takes_its_whole_layer(self) -> None:

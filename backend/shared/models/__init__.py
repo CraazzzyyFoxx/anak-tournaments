@@ -2,7 +2,7 @@
 
 Importing this package loads every model module, so string-based relationship
 resolution and ``configure_mappers()`` keep working against the single shared
-``db.Base.metadata``. Migration-only legacy tables are intentionally unmapped.
+``db.Base.metadata``. ``legacy01`` dropped the migration-only legacy tables that used to sit unmapped beside them.
 """
 # ruff: noqa: F403
 

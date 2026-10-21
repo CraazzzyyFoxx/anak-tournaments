@@ -18,7 +18,7 @@ import sys
 import psycopg
 import pytest
 
-from shared.testing.db import ensure_test_postgres, is_ephemeral_test_dsn, postgres_env
+from shared.testing.db import BEFORE_LEGACY_DROP, ensure_test_postgres, is_ephemeral_test_dsn, postgres_env
 
 BACKEND = pathlib.Path(__file__).resolve().parents[1]
 PRE_REVISION = "enclayer02"
@@ -290,7 +290,7 @@ def test_a_member_on_two_seats_and_a_one_sided_round_stop_the_revision(legacy_te
 
 
 def test_a_rejected_preflight_rolls_back_enclayer02_too(legacy_template) -> None:
-    """``upgrade head`` is one transaction: the pre-flight runs before any ``autocommit_block`` commits the drop."""
+    """An upgrade run is one transaction: the pre-flight runs before any ``autocommit_block`` commits the drop."""
     _recreate(ORDERING_DB)
     done = _alembic(ORDERING_DB, "enclayer01b")
     assert done.returncode == 0, done.stderr[-3000:]
@@ -303,7 +303,7 @@ def test_a_rejected_preflight_rolls_back_enclayer02_too(legacy_template) -> None
         for side in ("home", "away"):
             team = _insert(conn, "casual.team", match_id=match, side=side, name=side, score=0)
             _insert(conn, "casual.player", team_id=team, workspace_member_id=member, display_name_snapshot="m", rank=1)
-    done = _alembic(ORDERING_DB, "head", OWT_APPLY_ENCOUNTER_LAYER_DROP="1")
+    done = _alembic(ORDERING_DB, BEFORE_LEGACY_DROP, OWT_APPLY_ENCOUNTER_LAYER_DROP="1")
     assert done.returncode != 0
     assert "one workspace member sits on two seats of one round" in done.stderr
     with _connect(ORDERING_DB) as conn:

@@ -28,7 +28,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import URL, Connection, make_url
 
 from shared.division_grid import DEFAULT_GRID
-from shared.testing.db import ensure_test_postgres, is_ephemeral_test_dsn, postgres_env
+from shared.testing.db import BEFORE_LEGACY_DROP, ensure_test_postgres, is_ephemeral_test_dsn, postgres_env
 
 BASE = 910_000
 STAMP = datetime(2026, 1, 2, 12, tzinfo=UTC)
@@ -1196,7 +1196,7 @@ def upgrade_database(url: str, target: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "-m", "alembic", "upgrade", target],
         cwd=_BACKEND,
-        env={**os.environ, "DATABASE_URL": url, "OWT_APPLY_ENCOUNTER_LAYER_DROP": "1"},
+        env={**os.environ, "DATABASE_URL": url, "OWT_APPLY_ENCOUNTER_LAYER_DROP": "1", "OWT_APPLY_LEGACY_DROP": "1"},
         capture_output=True,
         text=True,
         timeout=300,
@@ -1259,9 +1259,7 @@ def _json_default(value: Any) -> Any:
     raise TypeError(f"unsupported golden value: {type(value).__name__}")
 
 
-@pytest.fixture(scope="module")
-def stats_parity_template() -> Iterator[tuple[str, dict[str, int]]]:
-    """One populated native template shared by a service's parity cases."""
+def _populated_template(target: str) -> Iterator[tuple[str, dict[str, int]]]:
     with legacy_database() as url:
         engine = sa.create_engine(url)
         try:
@@ -1269,17 +1267,38 @@ def stats_parity_template() -> Iterator[tuple[str, dict[str, int]]]:
                 ids = seed_legacy(conn)
         finally:
             engine.dispose()
-        # Head, not ``stats01``: the ORM selects every current model column (``tournament.logs_official``
-        # arrives with ``ingest01``), so a template frozen at ``stats01`` cannot serve a later model.
-        result = upgrade_database(url, "head")
+        result = upgrade_database(url, target)
         if result.returncode:
             raise RuntimeError(f"stats parity upgrade failed:\n{result.stdout}\n{result.stderr}")
         yield url, ids
 
 
+@pytest.fixture(scope="module")
+def stats_parity_template() -> Iterator[tuple[str, dict[str, int]]]:
+    """One populated native template shared by a service's parity cases."""
+    # Head, not ``stats01``: the ORM selects every current model column (``tournament.logs_official``
+    # arrives with ``ingest01``), so a template frozen at ``stats01`` cannot serve a later model.
+    yield from _populated_template("head")
+
+
 @pytest.fixture
 def stats_parity_database(stats_parity_template: tuple[str, dict[str, int]]) -> Iterator[tuple[str, dict[str, int]]]:
     template, ids = stats_parity_template
+    with legacy_database(template_url=template) as url:
+        yield url, ids.copy()
+
+
+@pytest.fixture(scope="module")
+def stats_parity_receipt_template() -> Iterator[tuple[str, dict[str, int]]]:
+    """The same seed one revision short of ``legacy01``: stats01 receipts read the legacy storage it drops."""
+    yield from _populated_template(BEFORE_LEGACY_DROP)
+
+
+@pytest.fixture
+def stats_parity_receipt_database(
+    stats_parity_receipt_template: tuple[str, dict[str, int]],
+) -> Iterator[tuple[str, dict[str, int]]]:
+    template, ids = stats_parity_receipt_template
     with legacy_database(template_url=template) as url:
         yield url, ids.copy()
 

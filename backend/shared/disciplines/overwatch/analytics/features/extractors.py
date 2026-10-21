@@ -445,6 +445,8 @@ async def extract_encounter_features(
             models.Encounter.tournament_id.in_(tournament_ids),
             *workspace_scope_filter(workspace_id, workspace_ids),
         )
+        # Stated, not left to the plan: newest first, the order the frozen feature goldens hold.
+        .order_by(models.Encounter.id.desc())
     )
 
     result = await session.execute(query)

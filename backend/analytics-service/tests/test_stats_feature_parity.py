@@ -269,14 +269,13 @@ def _assert_equal(actual: Any, expected: Any, path: tuple = ()) -> None:
 
 @pytest.fixture
 def native_analytics_reader(stats_parity_database):
-    """A genuine reader role cannot use any retained legacy relation."""
+    """A genuine non-owner reader role, granted only the native schemas."""
     url, ids = stats_parity_database
     engine = sa.create_engine(url)
     role = f"p4_analytics_{uuid4().hex}"
     try:
         with engine.begin() as conn:
             conn.execute(sa.text(f'CREATE ROLE "{role}" NOLOGIN NOSUPERUSER NOINHERIT'))
-            conn.execute(sa.text("REVOKE ALL ON SCHEMA matches, log_processing FROM PUBLIC"))
             conn.execute(
                 sa.text(f'GRANT USAGE ON SCHEMA public, tournament, encounter, stats, catalog, analytics TO "{role}"')
             )
@@ -304,10 +303,6 @@ async def _stats_feature_parity(native_analytics_reader) -> None:
     try:
         async with AsyncSession(engine) as session:
             await session.execute(sa.text(f'SET LOCAL ROLE "{role}"'))
-            assert not await session.scalar(sa.text("SELECT has_schema_privilege(current_user,'matches','USAGE')"))
-            assert not await session.scalar(
-                sa.text("SELECT has_schema_privilege(current_user,'log_processing','USAGE')")
-            )
             actual = await collect_outputs(session, ids)
     finally:
         await engine.dispose()

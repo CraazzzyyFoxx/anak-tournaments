@@ -104,7 +104,7 @@ class Player(db.TimeStampIntegerMixin):
     team_id: Mapped[int] = mapped_column(ForeignKey(Team.id, ondelete="CASCADE"))
     team: Mapped[Team] = relationship(back_populates="players")
 
-    #: One leaf per dimension; the legacy columns are dropped by discipline02.
+    #: One leaf per dimension.
     assignments: Mapped[list[PlayerRole]] = relationship(
         lazy="selectin", cascade="all, delete-orphan", passive_deletes=True
     )

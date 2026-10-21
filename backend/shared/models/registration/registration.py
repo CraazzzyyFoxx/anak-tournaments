@@ -244,14 +244,6 @@ class Registration(db.TimeStampIntegerMixin):
             unique=True,
             postgresql_where="deleted_at IS NULL",
         ),
-        # Legacy -- see the battle_tag columns below; dropped with them.
-        Index(
-            "uq_registration_tournament_tag_active",
-            "tournament_id",
-            "battle_tag_normalized",
-            unique=True,
-            postgresql_where="battle_tag_normalized IS NOT NULL AND deleted_at IS NULL",
-        ),
         Index(
             "ix_registration_tournament_balancer_status",
             "tournament_id",
@@ -272,14 +264,6 @@ class Registration(db.TimeStampIntegerMixin):
         ForeignKey("workspace_member.id", ondelete="SET NULL"), nullable=True, index=True
     )
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    # LEGACY, no reader and no writer: Battle.net handles live in ``identities``
-    # (provider ``battlenet``, smurfs at position > 0) since regident01. Kept on
-    # the table and the model only until the gated contract-step drop
-    # (CONTRIBUTING.md, "Destructive migrations are gated"). Deferred so that an
-    # accidental read fails loudly in async code instead of returning stale data.
-    battle_tag: Mapped[str | None] = mapped_column(String(255), nullable=True, deferred=True)
-    battle_tag_normalized: Mapped[str | None] = mapped_column(String(255), nullable=True, deferred=True)
-    smurf_tags_json: Mapped[list[str] | None] = mapped_column(JSON, nullable=True, deferred=True)
     stream_pov: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     #: "Call me in if a replacement is needed." The registrant's OWN declaration,
     #: answered through the ``reserve`` builtin question. It is not a pool state:
@@ -425,7 +409,7 @@ class RegistrationIdentity(db.TimeStampIntegerMixin):
 
 
 class RegistrationRole(db.TimeStampIntegerMixin):
-    """One leaf catalog role per preference; legacy role/subrole columns remain unmapped until discipline02."""
+    """One leaf catalog role per preference."""
 
     __tablename__ = "role"
     __table_args__ = (

@@ -393,14 +393,10 @@ a composite FK that nulls only `entity_id` on deletion. Read schemas and the
 create/update adapter retain the wire names `hero_id` / `hero`; registration retains
 `top_heroes` and its `hero_id` references.
 
-`discipline01` rewrites hard map and hero references and both kinds' pick-ban ids
-(including snapshots and room events) through `catalog.entity_legacy`. Side-pick answers are side indexes
-and stay unchanged; preflight counts dangling soft ids, which stay unchanged too.
-Games and mix-lobby maps have kind-constant composite FKs. The retired matches,
-casual matches and surviving legacy map-code table retain their original delete
-behavior through plain catalog FKs, as do the hero columns of statistics, events
-and kill feeds. The interim hero-statistics view joins the
-catalog and starts unpopulated for the existing worker to refresh.
+`discipline01` rewrote hard map and hero references and both kinds' pick-ban ids
+(including snapshots and room events) through an old-id mapping that `legacy01` has since dropped. Side-pick
+answers are side indexes and stay unchanged; preflight counts dangling soft ids, which stay unchanged too.
+Games and mix-lobby maps have kind-constant composite FKs.
 
 ### Role ontology and team formats
 
@@ -417,9 +413,8 @@ The domain uses module codes and ontology nodes, not API role enums. `flex` rema
 open-slot key; it has no catalog row or assignment.
 
 `roster.team_format` owns relational sizes, dimension modes and quotas. A tournament gets an
-editable copy; a mix freezes its copy at creation. Legacy slot columns, role columns,
-`encounter.team_member_role_legacy` and the migration-only `roster.team_format_legacy` snapshot
-stay for reconciliation until `discipline02`, with no runtime reads or writes.
+editable copy; a mix freezes its copy at creation. The legacy slot and role columns and the
+migration-only reconciliation tables are gone (`legacy01`).
 The [P2 release guide](../docs/multi-game-p2-roles-release.md) lists wire changes and cutover gates.
 
 

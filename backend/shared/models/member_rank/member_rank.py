@@ -30,7 +30,6 @@ class MemberRank(db.TimeStampIntegerMixin):
     global user-merge instead of a parallel merge implementation.
 
     Held on a module role of the discipline's rated dimension: ``role_id``.
-    The legacy ``role`` column is read by nothing until discipline02 drops it.
     """
 
     __tablename__ = "member_rank"

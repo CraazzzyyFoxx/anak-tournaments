@@ -273,7 +273,7 @@ async def environment(database, monkeypatch, *, with_game=True, restricted=False
                         await connection.execute(
                             sa.text(
                                 "SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' "
-                                "AND nspname NOT IN ('information_schema','matches','log_processing')"
+                                "AND nspname <> 'information_schema'"
                             )
                         )
                     )
@@ -341,16 +341,9 @@ async def success_events(env):
         )
 
 
-def test_actual_workshop_native_ingest_denies_legacy_queries(stats_parity_database, monkeypatch):
+def test_actual_workshop_native_ingest_runs_as_a_non_owner_role(stats_parity_database, monkeypatch):
     async def run():
         async with environment(stats_parity_database, monkeypatch, restricted=True) as env:
-            # These are real permission failures, not a mocked executor or SQL
-            # spelling assertion. The very same role drives ingestion below.
-            for table in ("matches.match", "log_processing.record"):
-                async with env.sf() as session:
-                    with pytest.raises(sa.exc.DBAPIError):
-                        await session.execute(sa.text(f"SELECT 1 FROM {table} LIMIT 1"))
-                    await session.rollback()
             job = await upload(env, filename="x" * 496 + ".log")
             assert job.raw_ref == f"logs/{env.tournament}/{compute_content_hash(workshop())}"
             assert env.raw.objects[job.raw_ref] == workshop()

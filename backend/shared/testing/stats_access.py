@@ -14,23 +14,23 @@ def native_role(database_url, *, write: bool = False):
     engine = sa.create_engine(database_url, poolclass=sa.pool.NullPool)
     role = f"p4_native_{uuid4().hex}"
     created = False
-    legacy = {"matches", "log_processing", "overwatch", "casual"}
     try:
         with engine.begin() as conn:
             if not conn.scalar(sa.text("SELECT current_database()")).startswith("p4_stats01_"):
                 raise ValueError("native access proofs require an owned stats01 scratch database")
-            schemas = set(
+            schemas = (
                 conn.execute(
                     sa.text(
                         "SELECT nspname FROM pg_namespace WHERE nspname NOT LIKE 'pg_%' AND nspname <> 'information_schema'"
+                        " ORDER BY nspname"
                     )
-                ).scalars()
+                )
+                .scalars()
+                .all()
             )
             conn.execute(sa.text(f'CREATE ROLE "{role}" NOLOGIN NOSUPERUSER NOINHERIT'))
             quote = conn.dialect.identifier_preparer.quote
-            for schema in sorted(schemas & legacy):
-                conn.execute(sa.text(f"REVOKE ALL ON SCHEMA {quote(schema)} FROM PUBLIC"))
-            for schema in sorted(schemas - legacy):
+            for schema in schemas:
                 name = quote(schema)
                 conn.execute(sa.text(f'GRANT USAGE ON SCHEMA {name} TO "{role}"'))
                 privileges = "SELECT, INSERT, UPDATE, DELETE" if write else "SELECT"
