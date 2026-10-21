@@ -200,6 +200,10 @@ tournament; an empty rules template does not replace a parent's pool. Slot candi
 reserve maps are accepted. Maps outside the pool fail with `map_not_in_pool`, preserving
 existing data. Without a configured pool, any catalog-resolved map remains allowed.
 This checks the configured pool, not the current veto's chosen map or next series position.
+A game whose maps belong to no mode (Deadlock) may also name modes in a shared pool (the
+pre-game editor offers them; slots never hold one). Once a pool names a mode, a log of any
+other mode fails with `mode_not_in_pool`; maps are checked only against the pool's maps, and a
+room vetoes maps only.
 
 ## Notifications
 
