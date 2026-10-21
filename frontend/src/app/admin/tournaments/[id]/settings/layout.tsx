@@ -57,11 +57,12 @@ export default function TournamentSettingsLayout({
   const params = useParams<{ id: string }>();
   const t = useTranslations("adminTournament.settings");
   const tournamentId = Number(params.id);
-  // `/admin/tournaments/14/settings/pre-game` → section `pre-game`.
+  // `/admin/tournaments/14/settings/pre-game` → section `pre-game`; the bare
+  // `/settings` renders General in place (`page.tsx`), so it is General too.
   const sectionSegment = usePathname().split("/").filter(Boolean).at(-1) ?? "";
-  const activeKey = (SETTINGS_SECTIONS as readonly string[]).includes(sectionSegment)
-    ? sectionSegment
-    : "";
+  const activeKey: SettingsSection = (SETTINGS_SECTIONS as readonly string[]).includes(sectionSegment)
+    ? (sectionSegment as SettingsSection)
+    : "general";
 
   const { canAccessPermission } = usePermissions();
   const tournamentQuery = useHubTournamentQuery(tournamentId);
@@ -101,7 +102,7 @@ export default function TournamentSettingsLayout({
   const chain = SETTINGS_SECTIONS.filter(
     (section) => CONTINUED_SECTIONS[section] && allowedSettingsSection(section, access)
   );
-  const index = chain.indexOf(activeKey as SettingsSection);
+  const index = chain.indexOf(activeKey);
   const previousKey = index > 0 ? chain[index - 1] : undefined;
   const nextKey = index >= 0 ? chain[index + 1] : undefined;
   const NextPage = nextKey ? CONTINUED_SECTIONS[nextKey] : undefined;

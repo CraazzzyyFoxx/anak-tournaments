@@ -28,9 +28,10 @@ vi.mock("@/services/admin.service", () => ({
   default: { getTournament: (...args: unknown[]) => getTournament(...args) }
 }));
 
+let pathname = "/admin/tournaments/14/settings/rules";
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "14" }),
-  usePathname: () => "/admin/tournaments/14/settings/rules",
+  usePathname: () => pathname,
   useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() })
 }));
 
@@ -95,6 +96,7 @@ function railLabels() {
 }
 
 beforeEach(() => {
+  pathname = "/admin/tournaments/14/settings/rules";
   getTournament.mockReset().mockResolvedValue({
     id: 14,
     workspace_id: 3,
@@ -140,13 +142,24 @@ describe("Settings rail", () => {
     expect(labels).not.toContain("Draft format");
   });
 
+  function currentLabels() {
+    return [...container.querySelectorAll("nav a")]
+      .filter((link) => link.getAttribute("aria-current") === "page")
+      .map((link) => link.textContent);
+  }
+
   it("marks the section named by the path", async () => {
     granted = ["tournament.update"];
     await render();
 
-    const current = [...container.querySelectorAll("nav a")].filter(
-      (link) => link.getAttribute("aria-current") === "page"
-    );
-    expect(current.map((link) => link.textContent)).toEqual(["Rules"]);
+    expect(currentLabels()).toEqual(["Rules"]);
+  });
+
+  it("marks General on the bare settings path, which renders it in place", async () => {
+    granted = ["tournament.update"];
+    pathname = "/admin/tournaments/14/settings";
+    await render();
+
+    expect(currentLabels()).toEqual(["General"]);
   });
 });
