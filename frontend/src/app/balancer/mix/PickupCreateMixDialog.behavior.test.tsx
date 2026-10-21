@@ -131,6 +131,20 @@ async function submit(scope: HTMLElement) {
   });
 }
 
+/** Opens the combobox behind `triggerId` and picks the option labelled `label`. */
+async function pick(scope: HTMLElement, triggerId: string, label: string) {
+  await act(async () => {
+    (scope.querySelector(`#${triggerId}`) as HTMLButtonElement).click();
+  });
+  const option = [...scope.querySelectorAll<HTMLElement>("[cmdk-item]")].find(
+    (node) => node.textContent?.trim() === label
+  );
+  if (!option) throw new Error(`Expected option ${label}`);
+  await act(async () => {
+    option.click();
+  });
+}
+
 describe("PickupCreateMixDialog", () => {
   it("prevents submission when the name is blank and focuses the input", async () => {
     const { scope, onCreate } = await mount([]);
@@ -195,12 +209,10 @@ describe("PickupCreateMixDialog", () => {
     const { scope, onCreate } = await mount([alpha, beta], { scopedWorkspaceId: null });
     await submit(scope);
     expect(onCreate).not.toHaveBeenCalled();
-    const select = scope.querySelector("#pickup-workspace") as HTMLSelectElement;
-    expect(select.getAttribute("aria-invalid")).toBe("true");
-    await act(async () => {
-      select.value = "2";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    const trigger = scope.querySelector("#pickup-workspace") as HTMLButtonElement;
+    expect(trigger.getAttribute("aria-invalid")).toBe("true");
+    await pick(scope, "pickup-workspace", "Beta");
+    expect(trigger.getAttribute("aria-invalid")).toBeNull();
     await act(async () => {
       scope.querySelectorAll('input[type="radio"]')[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
@@ -209,10 +221,7 @@ describe("PickupCreateMixDialog", () => {
     });
     expect(scope.textContent).toContain("Beta mix");
     expect(scope.textContent).not.toContain("Alpha mix");
-    await act(async () => {
-      select.value = "1";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    await pick(scope, "pickup-workspace", "Alpha");
     expect(scope.querySelector("#pickup-clone-from")).toBeNull();
     await submit(scope);
     expect(onCreate).toHaveBeenCalledWith(expect.any(String), null, 1, "overwatch");
@@ -220,7 +229,7 @@ describe("PickupCreateMixDialog", () => {
 
   it("names the directory's game and offers no other", async () => {
     const { scope, onCreate } = await mount([], { fixedDiscipline: "lol" });
-    expect(scope.querySelector("select#pickup-discipline")).toBeNull();
+    expect(scope.querySelector('#pickup-discipline[role="combobox"]')).toBeNull();
     expect(scope.querySelector("#pickup-discipline")?.textContent).toBe("League of Legends");
     await submit(scope);
     expect(onCreate).toHaveBeenCalledWith(expect.any(String), null, 1, "lol");
@@ -237,22 +246,26 @@ describe("PickupCreateMixDialog", () => {
     const owMix = sampleGame(12, "OW mix");
     const lolMix = { ...sampleGame(14, "LoL mix"), discipline: "lol" };
     const { scope, onCreate } = await mount([owMix, lolMix], { fixedDiscipline: null });
-    const select = scope.querySelector("select#pickup-discipline") as HTMLSelectElement;
-    expect([...select.options].map((option) => option.textContent)).toEqual([
-      "Choose a game",
+    const trigger = scope.querySelector("#pickup-discipline") as HTMLButtonElement;
+    expect(trigger.textContent).toBe("Choose a game");
+    await act(async () => {
+      trigger.click();
+    });
+    expect([...scope.querySelectorAll("[cmdk-item]")].map((option) => option.textContent)).toEqual([
       "Overwatch",
       "League of Legends"
     ]);
+    await act(async () => {
+      trigger.click();
+    });
 
     await submit(scope);
     expect(onCreate).not.toHaveBeenCalled();
-    expect(select.getAttribute("aria-invalid")).toBe("true");
+    expect(trigger.getAttribute("aria-invalid")).toBe("true");
     expect(scope.textContent).toContain("Choose the game this mix is for.");
 
-    await act(async () => {
-      select.value = "lol";
-      select.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    await pick(scope, "pickup-discipline", "League of Legends");
+    expect(trigger.textContent).toBe("League of Legends");
     await act(async () => {
       scope.querySelectorAll('input[type="radio"]')[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });

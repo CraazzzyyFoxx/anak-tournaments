@@ -7717,9 +7717,13 @@
       "sourceRequired": "Choose a previous mix.",
       "workspace": "Community",
       "workspacePlaceholder": "Choose a community",
+      "searchWorkspace": "Search communities...",
+      "noWorkspaces": "No communities match your search.",
       "workspaceRequired": "Choose a community where you can host a mix.",
       "game": "Game",
       "gamePlaceholder": "Choose a game",
+      "searchGame": "Search games...",
+      "noGames": "No games match your search.",
       "gameRequired": "Choose the game this mix is for.",
       "gameUnavailable": "This community has not enabled this game."
     },

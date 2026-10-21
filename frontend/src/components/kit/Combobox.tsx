@@ -49,6 +49,8 @@ export interface ComboboxProps {
   /** `sm` is the 32px toolbar row (13px text); `default` the 40px form trigger (14px). */
   size?: "sm" | "default";
   disabled?: boolean;
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
   searchValue: string;
   onSearchValueChange: (value: string) => void;
   searchPlaceholder: string;
@@ -82,6 +84,8 @@ export function Combobox({
   triggerClassName,
   size = "default",
   disabled = false,
+  "aria-invalid": ariaInvalid,
+  "aria-describedby": ariaDescribedBy,
   searchValue,
   onSearchValueChange,
   searchPlaceholder,
@@ -107,6 +111,8 @@ export function Combobox({
           aria-haspopup="listbox"
           aria-expanded={open}
           disabled={disabled}
+          aria-invalid={ariaInvalid}
+          aria-describedby={ariaDescribedBy}
           className={cn(
             "w-full justify-between border-border/60 bg-background/80 hover:bg-background/90",
             size === "default" && "h-10",
