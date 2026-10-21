@@ -5,11 +5,11 @@ from typing import Literal
 import sqlalchemy as sa
 from pydantic import BaseModel, Field
 
+from shared.core import db, pagination
 from shared.schemas.catalog import CatalogEntityRead
 from shared.schemas.discipline_filter import InstalledDisciplineFilter
 from shared.schemas.match import MatchRead as NativeMatchRead
 from shared.schemas.match import NativeMatchStatistics
-from src.core import db, pagination
 from src.schemas import (
     BaseRead,
     StageItemSummaryRead,

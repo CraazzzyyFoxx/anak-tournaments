@@ -46,12 +46,13 @@ from urllib.parse import urlparse
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import social_provider_for_oauth
 from shared.repository import OAuthConnectionRepository, SocialAccountRepository, UserRepository
 from shared.tenancy.hostnames import is_platform_host, normalize_custom_domain
-from src import models, schemas
+from src import schemas
 from src.core.cache import RedisStore
 from src.core.config import Settings, settings
 from src.services.auth import AuthenticationService, auth

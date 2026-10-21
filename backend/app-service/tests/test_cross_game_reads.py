@@ -19,10 +19,10 @@ import sqlalchemy as sa
 from sqlalchemy.engine import Connection, make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from shared.core import pagination
 from shared.division_grid import DEFAULT_GRID
 from shared.testing import configure_test_cache
 from shared.testing.stats_parity import BASE, STAMP, seed_native_sentinel
-from src.core import pagination
 from src.services.statistics.service import statistics
 from src.services.user.service import UserService
 

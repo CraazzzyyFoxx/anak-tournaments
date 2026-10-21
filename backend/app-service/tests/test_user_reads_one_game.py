@@ -21,12 +21,11 @@ from unittest import IsolatedAsyncioTestCase
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
-from shared.core import enums
+from shared.core import enums, pagination
 from shared.division_grid import DEFAULT_GRID
 from shared.models.achievements.achievement import AchievementEvaluationResult, AchievementRule
 from shared.testing import create_test_async_engine, ensure_test_postgres
 from src import schemas
-from src.core import pagination
 from src.services.achievements.service import achievements as achievement_service
 from src.services.user.queries.overview import UserOverviewQueries
 from src.services.user.queries.profile import UserProfileQueries

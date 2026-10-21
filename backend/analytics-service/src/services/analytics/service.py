@@ -5,13 +5,13 @@ from sqlalchemy.exc import NoResultFound
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from shared import models
 from shared.core import enums
 from shared.division_grid import DivisionGrid, load_runtime_grid
 from shared.models.division_grid import DivisionGridMapping, DivisionGridMappingRule, DivisionGridVersion
 from shared.repository import AnalyticsAlgorithmRepository, AnalyticsPlayerRepository, TeamRepository
 from shared.repository.stats_queries import player_facts
 from shared.services.workspace_scope import workspace_scope_filter
-from src import models
 from src.services.analytics.encounter_maps import seat_maps
 
 

@@ -21,7 +21,7 @@ os.environ["DEBUG"] = "true"
 
 flows = importlib.import_module("src.services.user.service")
 schemas = importlib.import_module("src.schemas")
-enums = importlib.import_module("src.core.enums")
+enums = importlib.import_module("shared.core.enums")
 division_grid = importlib.import_module("shared.division_grid")
 user_merge = importlib.import_module("src.services.admin.user_merge")
 caching = importlib.import_module("src.core.caching")

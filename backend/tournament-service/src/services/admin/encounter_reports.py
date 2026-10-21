@@ -26,11 +26,12 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from shared import models
 from shared.core import pagination
 from shared.models.encounter.report import EncounterTeamReport, EncounterTeamReportResult
 from shared.models.encounter.team import EncounterTeam
 from shared.models.tournament.bracket_encounter import BracketEncounter
-from src import models, schemas
+from src import schemas
 from src.services.encounter.replay_codes import replay_codes_by_encounter
 
 __all__ = ("encounter_reports_service",)

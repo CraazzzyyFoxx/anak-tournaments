@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 
+from shared import models
 from shared.core import enums
 from shared.models.tournament.pick_ban import PickBanConfig
-from src import models
 from src.domain.stage.seeds import bracket_seeds, collect_item_team_ids
 
 __all__ = (

@@ -7,12 +7,12 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from shared import models
+from shared.core import enums
 from shared.disciplines import DISCIPLINES
 from shared.division_grid import DivisionGrid, division_filter_predicates
 from shared.schemas.role import RoleRef
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
-from src import models
-from src.core import enums
 from src.services.discipline_queries import DisciplineQueries
 from src.services.encounter_seats import Seat
 

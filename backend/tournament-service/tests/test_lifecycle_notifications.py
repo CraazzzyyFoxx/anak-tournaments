@@ -37,6 +37,7 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
+from shared import models  # noqa: E402
 from shared.core import enums  # noqa: E402
 from shared.core.enums import TournamentStatus  # noqa: E402
 from shared.models.platform.notification import Notification  # noqa: E402
@@ -47,7 +48,6 @@ from shared.testing import (
     create_sqlite_tables,  # noqa: E402
     install_postgres_type_shims,  # noqa: E402
 )
-from src import models  # noqa: E402
 from src.services.admin.stage import stage_service  # noqa: E402
 from src.services.encounter.pick_ban_session import pick_ban_session_service  # noqa: E402
 from src.services.notifications.lifecycle import advance_and_announce, lifecycle_notifier  # noqa: E402

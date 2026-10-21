@@ -24,8 +24,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from pydantic import ValidationError
 
+from shared import models
 from shared.core.errors import BaseAPIException
-from src import models, schemas
+from src import schemas
 from src.rpc import users_admin
 from src.services.user.service import UserService
 

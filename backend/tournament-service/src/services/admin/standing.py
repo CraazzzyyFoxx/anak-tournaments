@@ -4,10 +4,11 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import StandingPinRepository, StandingRepository, TournamentRepository
-from src import models, schemas
+from src import schemas
 from src.services.admin.stage import stage_service as admin_stage_service
 from src.services.computation.jobs import jobs_service
 from src.services.tournament.events import RESULT_RESOURCES, publish_tournament_invalidation

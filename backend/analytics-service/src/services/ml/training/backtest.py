@@ -20,9 +20,9 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.repository import MLModelArtifactRepository
 from shared.services.workspace_scope import workspace_filter, workspace_scope_filter
-from src import models
 from src.core.analytics_exports import analytics_exports, tournament_discipline
 from src.services.analytics.canonical_division import load_source_grids
 

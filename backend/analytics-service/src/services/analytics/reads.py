@@ -12,6 +12,7 @@ import typing
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from shared import models
 from shared.core import enums, errors, pagination
 from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid
@@ -29,7 +30,7 @@ from shared.repository import (
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.resolution import resolve_tournament_division
 from shared.services.workspace_scope import get_division_grid
-from src import models, schemas
+from src import schemas
 from src.core.analytics_exports import supports_analytics, tournament_discipline
 from src.domain.forecast import predict_player_division
 

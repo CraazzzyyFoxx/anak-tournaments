@@ -28,10 +28,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from shared import models
 from shared.core.social import GAME_PROVIDERS
 from shared.domain.forms import FormSchema, identity_key
 from shared.services.registration_window import is_registration_late
-from src import models
 from src.services.registration._common import is_included_in_balancer
 from src.services.registration.answers import answer_service
 from src.services.registration.windows import is_registration_open

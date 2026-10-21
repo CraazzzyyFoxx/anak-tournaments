@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
-from shared.core import enums
+from shared import models
+from shared.core import enums, utils
 from shared.core.enums import StageType
 from shared.domain.encounter_scoring import GameLine, ScoringRules, TeamTotals, compile_rules, team_totals
 from shared.domain.tournament_utils import (
@@ -21,8 +22,7 @@ from shared.domain.tournament_utils import (
 )
 from shared.domain.tournament_utils import is_completed_encounter, sort_bracket_matches
 from shared.repository import EncounterRepository, StandingRepository, TeamRepository, TournamentRepository
-from src import models, schemas
-from src.core import utils
+from src import schemas
 from src.services.bracket.swiss_state import bye_counts_by_scope, stopped_scopes
 from src.services.encounter.ffa import ffa_encounter_service
 

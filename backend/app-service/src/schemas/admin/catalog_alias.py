@@ -19,8 +19,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from shared.core import pagination
 from shared.models.catalog.alias_miss import ALIAS_MISS_KINDS
-from src.core import pagination
 from src.schemas import BaseRead
 
 __all__ = (

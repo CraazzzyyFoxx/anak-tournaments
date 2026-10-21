@@ -38,7 +38,7 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
 
 
-models = importlib.import_module("src.models")
+models = importlib.import_module("shared.models")
 analytics_service = importlib.import_module("src.services.analytics.service").analytics_service
 splits = importlib.import_module("src.services.ml.training.splits")
 backtest = importlib.import_module("src.services.ml.training.backtest")

@@ -17,6 +17,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.balancer_registration_statuses import get_builtin_status_values, is_balancer_status_excluded
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
@@ -32,7 +33,6 @@ from shared.services.division_grid.access import (
 from shared.services.ontology import resolve_form_role
 from shared.services.realtime import Resource, Scope, emit
 from shared.services.roster import roster_engine
-from src import models
 from src.domain.registration.utils import DEFAULT_SORT_PRIORITY_SENTINEL
 from src.services.registration.form_service import form_service
 from src.services.registration.roles_rules import role_value

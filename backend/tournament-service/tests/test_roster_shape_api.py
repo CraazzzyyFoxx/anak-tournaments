@@ -30,9 +30,10 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
 
+from shared import models
+from shared.core import enums  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
-from src import models, schemas  # noqa: E402
-from src.core import enums  # noqa: E402
+from src import schemas  # noqa: E402
 from src.services.admin import registry  # noqa: E402
 from src.services.tournament import flows as tournament_flows  # noqa: E402
 

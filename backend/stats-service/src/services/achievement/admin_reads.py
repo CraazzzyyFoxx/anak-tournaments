@@ -12,12 +12,12 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.achievements.achievement import AchievementRule
 from shared.repository import TournamentRepository, WorkspaceRepository
 from shared.repository.stats import StatsMatchRepository
 from shared.services.ontology import assert_discipline_enabled
-from src import models
 
 _workspace_repo = WorkspaceRepository()
 _tournament_repo = TournamentRepository()

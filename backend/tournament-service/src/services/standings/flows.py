@@ -5,9 +5,11 @@ import sqlalchemy as sa
 from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
+from shared.core import utils
 from shared.domain.tournament_utils import sort_bracket_matches
-from src import models, schemas
-from src.core import config, utils
+from src import schemas
+from src.core import config
 from src.services.encounter.flows import to_summary
 from src.services.team.flows import flows_service as team_flows_service
 from src.services.tournament.flows import flows_service as tournament_flows_service

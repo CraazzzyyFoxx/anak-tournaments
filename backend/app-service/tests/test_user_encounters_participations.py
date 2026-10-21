@@ -17,7 +17,7 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.orm import joinedload
 
-from shared.core import enums
+from shared.core import enums, pagination
 from shared.disciplines import DISCIPLINES
 from shared.models.catalog.role import CatalogRole, RoleDimension
 from shared.models.encounter import Encounter, EncounterTeamMember, EncounterTeamMemberRole
@@ -29,7 +29,6 @@ from shared.models.tournament.player_role import assignment_of
 from shared.repository import CatalogRoleRepository
 from shared.schemas.role import RoleRef
 from shared.services.ontology import rated_leaf
-from src.core import pagination
 from src.services.user import _mappers
 from src.services.user.queries.encounters import UserEncounterQueries
 from src.services.user.queries.overview import UserOverviewQueries

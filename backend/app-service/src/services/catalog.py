@@ -12,10 +12,11 @@ from dataclasses import replace
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.repository import CatalogEntityRepository
-from src import models, schemas
+from src import schemas
 from src.services.admin.catalog import catalog as admin_catalog
 from src.services.admin.catalog import kind_spec, to_read
 

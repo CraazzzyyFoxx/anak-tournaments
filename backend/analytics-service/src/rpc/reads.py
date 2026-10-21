@@ -15,8 +15,9 @@ from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
 
+from shared.core import pagination
 from shared.core.errors import BaseAPIException as HTTPException
-from src.core import db, pagination
+from src.core import db
 from src.core.jobs import job_runtime, reconcile_and_get_active_job
 from src.schemas.ml import (
     AnalyticsJobRow,

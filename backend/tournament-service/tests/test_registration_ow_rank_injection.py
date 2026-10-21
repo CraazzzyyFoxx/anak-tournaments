@@ -13,7 +13,7 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
 
-models = importlib.import_module("src.models")
+models = importlib.import_module("shared.models")
 serializers = importlib.import_module("src.services.registration.serializers")
 player_sub_roles = importlib.import_module("shared.domain.player_sub_roles")
 from shared.core.social import SocialProvider, normalize_social_handle  # noqa: E402

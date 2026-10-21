@@ -30,11 +30,12 @@ apply_test_env_defaults()
 
 import sqlalchemy as sa  # noqa: E402
 
+from shared import models
 from shared import models as shared_models  # noqa: E402
 from shared.core.social import SocialProvider, normalize_social_handle  # noqa: E402
 from shared.rbac import assign_workspace_system_role, ensure_workspace_system_roles  # noqa: E402
 from shared.repository import get_or_create_workspace_member  # noqa: E402
-from src import models, schemas  # noqa: E402
+from src import schemas  # noqa: E402
 from src.core import db  # noqa: E402
 from src.core.redis import close_redis, init_redis  # noqa: E402
 from src.services.auth import auth  # noqa: E402

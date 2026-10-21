@@ -28,6 +28,7 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core.social import VERIFIABLE_PROVIDERS, normalize_social_handle
 from shared.disciplines import DISCIPLINES
@@ -48,7 +49,6 @@ from shared.domain.forms import (
 )
 from shared.domain.roster import flex_role_mode_from_schema
 from shared.hero_catalog import HeroCatalog
-from src import models
 from src.services.registration._common import build_registration_roles
 from src.services.registration.roles_rules import validate_roles
 

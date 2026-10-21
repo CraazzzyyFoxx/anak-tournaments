@@ -22,8 +22,8 @@ from unittest import TestCase
 
 os.environ.setdefault("DEBUG", "true")
 
-from src import models  # noqa: E402
-from src.core import enums  # noqa: E402
+from shared import models  # noqa: E402
+from shared.core import enums  # noqa: E402
 from src.services.challonge import sync  # noqa: E402
 
 

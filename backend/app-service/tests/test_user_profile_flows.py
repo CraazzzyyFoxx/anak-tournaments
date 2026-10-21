@@ -10,7 +10,7 @@ from shared.models.tournament.player_role import assignment_of
 from shared.schemas.role import RoleRef
 
 user_flows = importlib.import_module("src.services.user.service")
-enums = importlib.import_module("src.core.enums")
+enums = importlib.import_module("shared.core.enums")
 division_grid = importlib.import_module("shared.division_grid")
 division_grid_schemas = importlib.import_module("src.schemas.division_grid")
 users = user_flows.UserService.of("overwatch")

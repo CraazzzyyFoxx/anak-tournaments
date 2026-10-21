@@ -20,7 +20,7 @@ from sqlalchemy.dialects import postgresql
 from shared.schemas.role import RoleRef
 
 user_flows = importlib.import_module("src.services.user.service")
-enums = importlib.import_module("src.core.enums")
+enums = importlib.import_module("shared.core.enums")
 users = user_flows.UserService.of("overwatch")
 
 

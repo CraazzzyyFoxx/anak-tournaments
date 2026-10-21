@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from shared import models
 from shared.repository.stats_reads import MatchReadContext
 from shared.services.match_reads import participant_reads
-from src import models, schemas
+from src import schemas
 
 
 def to_tournament_link(

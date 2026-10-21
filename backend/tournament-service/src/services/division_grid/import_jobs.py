@@ -7,12 +7,13 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.clients.s3 import S3Client
 from shared.messaging.config import TOURNAMENT_COMPUTE_EXCHANGE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.observability import observe_scheduled_job
 from shared.repository import DivisionGridImportJobRepository, WorkspaceRepository
-from src import models, schemas
+from src import schemas
 from src.core import config, db
 from src.services.division_grid.marketplace import MarketplaceService, marketplace_service
 

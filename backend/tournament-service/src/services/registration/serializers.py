@@ -5,6 +5,7 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.orm.attributes import NO_VALUE
 
+from shared import models
 from shared.balancer_registration_statuses import (
     StatusMeta,
     build_status_meta_from_model,
@@ -12,7 +13,7 @@ from shared.balancer_registration_statuses import (
 )
 from shared.domain.forms import FormSchema, schema_from_form
 from shared.domain.roster import PlayerRoster, RosterRole
-from src import models, schemas
+from src import schemas
 from src.schemas.admission import AdmissionRead
 from src.schemas.registration_form import RegistrationFormRead, RegistrationFormTemplateRead
 from src.services.registration.answers import answer_service

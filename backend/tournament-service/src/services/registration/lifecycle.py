@@ -19,6 +19,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.balancer_registration_statuses import (
     balancer_pool_excluded_clause,
     balancer_pool_included_clause,
@@ -37,7 +38,7 @@ from shared.repository import (
     TournamentRepository,
 )
 from shared.services.roster import registration_load_options, roster_engine
-from src import models, schemas
+from src import schemas
 from src.schemas.registration_build import AdmissionChips, _resolve_top_heroes_config, registration_read_loaders
 from src.services.registration._common import (
     AUTO_MANAGED_BALANCER_STATUSES,

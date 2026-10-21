@@ -28,6 +28,7 @@ from typing import Any
 from faststream.rabbit import Channel
 from faststream.rabbit.annotations import RabbitMessage
 
+from shared import models
 from shared.balancer_registration_statuses import get_status_metas_map
 from shared.core.enums import PickBanKind, SubscriptionCollectionSource
 from shared.core.errors import BaseAPIException as HTTPException
@@ -45,7 +46,7 @@ from shared.services.encounter.participants import active_teams
 from shared.services.subscriptions.realtime import emit_subscriptions_updated
 from shared.services.subscriptions.wiring import build_store
 from shared.services.tournament.visibility import ensure_tournament_viewable
-from src import models, schemas
+from src import schemas
 from src.core import db
 from src.core.clients import subscription_resolver
 from src.rpc._helpers import (

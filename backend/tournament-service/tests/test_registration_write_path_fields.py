@@ -31,6 +31,7 @@ from unittest import IsolatedAsyncioTestCase, mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from shared import models  # noqa: E402
 from shared.core.enums import TournamentStatus  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402
@@ -39,7 +40,6 @@ from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
 from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from shared.services.roster import roster_engine  # noqa: E402
 from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
-from src import models  # noqa: E402
 from src.services.registration import lifecycle as reg_lifecycle  # noqa: E402
 from src.services.registration import service as reg_service  # noqa: E402
 

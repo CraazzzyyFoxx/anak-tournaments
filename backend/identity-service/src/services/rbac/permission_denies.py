@@ -3,6 +3,7 @@ from __future__ import annotations
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.identity.rbac import Permission, UserPermissionDeny
@@ -12,7 +13,6 @@ from shared.repository import (
     UserPermissionDenyRepository,
     WorkspaceRepository,
 )
-from src import models
 from src.services.audit import record_operator_audit
 from src.services.rbac_policy import RbacPolicy, rbac_policy
 from src.services.session_cache import SessionCache, session_cache

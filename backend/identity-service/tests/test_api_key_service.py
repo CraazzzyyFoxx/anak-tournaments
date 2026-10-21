@@ -11,12 +11,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pytest  # noqa: E402
 
-from shared import quota  # noqa: E402
+from shared import (
+    models,
+    quota,  # noqa: E402
+)
 from shared.core.pagination import paginated_dump  # noqa: E402
 from shared.quota.policy import QuotaLimits, ResolvedQuota  # noqa: E402
 from shared.rbac import ALL_SCOPE_NAMES  # noqa: E402
 from shared.rpc.identity import credential_type, rehydrate_user  # noqa: E402
-from src import models, schemas  # noqa: E402
+from src import schemas  # noqa: E402
 from src.core import key_derivation  # noqa: E402
 from src.core.config import settings  # noqa: E402
 from src.services import api_keys as api_keys_module  # noqa: E402

@@ -14,6 +14,7 @@ import sqlalchemy as sa
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.errors import BaseAPIException
 from shared.repository.workspace import WorkspaceRepository
 from shared.services.division_grid import cache
@@ -28,7 +29,7 @@ from shared.services.ontology import project_disciplines
 from shared.testing import create_test_async_engine
 from shared.testing.cache import configure_test_cache
 from shared.testing.db import ensure_test_postgres
-from src import models, schemas
+from src import schemas
 from src.services.admin.tournament import AdminTournamentService
 from src.services.division_grid.marketplace import MarketplaceService
 from src.services.division_grid.portable import PortableService

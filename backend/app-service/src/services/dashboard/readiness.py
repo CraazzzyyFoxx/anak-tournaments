@@ -16,12 +16,12 @@ from __future__ import annotations
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import enums
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.balancer.draft import DraftSession
 from shared.repository import TournamentRepository
 from shared.services.registration_window import registration_open_clause
-from src import models
 from src.schemas import TournamentReadiness
 
 __all__ = ("ReadinessService", "readiness")

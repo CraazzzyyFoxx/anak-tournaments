@@ -50,6 +50,7 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
+from shared import models  # noqa: E402
 from shared.core import enums  # noqa: E402
 from shared.core.enums import TournamentStatus  # noqa: E402
 from shared.core.social import SocialProvider, normalize_social_handle  # noqa: E402
@@ -69,7 +70,6 @@ from shared.testing import (
     create_sqlite_tables,  # noqa: E402
     install_postgres_type_shims,  # noqa: E402
 )
-from src import models  # noqa: E402
 from src.services.encounter import dispute_review  # noqa: E402
 from src.services.registration import lifecycle as lifecycle_module  # noqa: E402
 from src.services.registration import teams as teams_module  # noqa: E402

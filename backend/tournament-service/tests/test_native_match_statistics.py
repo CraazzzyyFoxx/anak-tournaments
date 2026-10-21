@@ -18,10 +18,11 @@ import sqlalchemy as sa
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from shared import models
 from shared.core.errors import BaseAPIException
 from shared.services.tournament.visibility import ensure_tournament_viewable
 from shared.testing.stats_parity import _DATES, BASE, STAMP, _insert, seed_native_sentinel
-from src import models, schemas
+from src import schemas
 from src.services.admin.matches import matches_service
 from src.services.encounter.flows import flows_service as encounters
 from src.services.visibility_resolvers import visibility_resolvers_service as visibility

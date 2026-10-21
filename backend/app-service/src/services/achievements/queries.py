@@ -11,11 +11,12 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
+from shared import models
+from shared.core import pagination, utils
 from shared.models.achievements.achievement import AchievementRule
 from shared.repository.stats_reads import MatchReadContext, get_match_reads
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
-from src import models
-from src.core import config, pagination, utils
+from src.core import config
 
 __all__ = ("AchievementQueries", "UserAchievementRow", "queries")
 

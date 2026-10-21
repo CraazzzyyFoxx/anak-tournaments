@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.enums import EncounterGameResultSource, EncounterGameState, EncounterResultStatus
 from shared.core.errors import ApiExc
@@ -39,7 +40,6 @@ from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.repository import BracketEncounterRepository, EncounterRepository, StageRepository
 from shared.services.encounter.participants import MemberSnapshot, place_team
 from shared.services.encounter.result import lock_encounter
-from src import models
 from src.schemas.ffa import (
     FfaColumnRead,
     FfaGameCellRead,

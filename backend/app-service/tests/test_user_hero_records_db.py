@@ -23,9 +23,8 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
-from shared.core import enums
+from shared.core import enums, pagination
 from shared.testing import create_test_async_engine, ensure_test_postgres
-from src.core import pagination
 from src.services.user.service import UserService
 from tests.encounter_seed import add_observed_game, seed_encounter, seed_scoring_rule
 

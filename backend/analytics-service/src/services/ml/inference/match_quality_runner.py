@@ -12,10 +12,10 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.disciplines.analytics import AnalyticsExports
 from shared.domain.analytics import StandingsModel
 from shared.repository.stats_queries import match_context, team_scores
-from src import models
 from src.core.analytics_exports import tournament_module
 
 from ..features.standings_features import build_standings_training_frame

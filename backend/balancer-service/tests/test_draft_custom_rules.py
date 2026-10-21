@@ -18,6 +18,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from shared import models
 from shared.core.enums import DraftFormat, DraftPickStatus, DraftPlayerStatus, DraftStatus
 from shared.core.errors import ApiHTTPException
 from shared.domain.roster_shape import RosterShape
@@ -31,7 +32,6 @@ from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament import Tournament
 from shared.repository import CatalogRoleRepository
 from shared.testing import create_test_async_engine  # noqa: E402
-from src import models
 from src.domain.draft.entities import PoolSeat
 from src.services.draft import lifecycle, selection
 

@@ -6,8 +6,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.services.audit import record_audit
-from src import models
 
 
 async def record_operator_audit(

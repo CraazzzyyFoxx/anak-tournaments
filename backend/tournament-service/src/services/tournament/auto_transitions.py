@@ -19,9 +19,9 @@ import sqlalchemy as sa
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from shared import models
 from shared.core import tournament_state
 from shared.core.enums import TournamentStatus
-from src import models
 from src.services.admin.tournament import tournament_service as admin_tournament_service
 
 __all__ = ("run_due_transitions",)

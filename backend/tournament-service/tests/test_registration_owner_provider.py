@@ -31,6 +31,7 @@ from sqlalchemy.orm import selectinload
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from shared import models  # noqa: E402
 from shared.core import enums  # noqa: E402
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.core.social import SocialProvider, normalize_social_handle  # noqa: E402
@@ -47,7 +48,6 @@ from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa
 from shared.services.ontology import project_disciplines  # noqa: E402
 from shared.services.social_identity import social_identity_service  # noqa: E402
 from shared.services.team_format import save_tournament_format  # noqa: E402
-from src import models  # noqa: E402
 from src.schemas.registration import RegistrationSubmit  # noqa: E402
 from src.services.registration import service as reg_service  # noqa: E402
 from src.services.registration import teams as teams_module  # noqa: E402

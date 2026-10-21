@@ -25,6 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import normalize_social_handle
@@ -36,7 +37,7 @@ from shared.repository.stats import StatsMatchRepository
 from shared.schemas.events import WorkspaceMemberChangedEvent
 from shared.schemas.user_merge_auth import AuthMergeResult
 from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
-from src import models, schemas
+from src import schemas
 from src.services import user_cache
 from src.services.admin.auth_merge import apply_auth_merge, preview_auth_merge
 

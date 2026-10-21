@@ -30,6 +30,7 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB  # noqa: E402
 
+from shared import models  # noqa: E402
 from shared.core.enums import (  # noqa: E402
     FirstBanRotation,
     FirstPickRule,
@@ -38,7 +39,6 @@ from shared.core.enums import (  # noqa: E402
 )
 from shared.domain import pick_ban_rules as pbr  # noqa: E402
 from shared.models.tournament.pick_ban import PickBanConfig  # noqa: E402
-from src import models  # noqa: E402
 from src.services.encounter.pick_ban_config import PickBanConfigService, SlotSpec  # noqa: E402
 
 

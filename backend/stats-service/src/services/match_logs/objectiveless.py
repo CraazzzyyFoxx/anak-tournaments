@@ -8,7 +8,9 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from shared import models
 from shared.clients.s3 import S3Client
+from shared.core import enums
 from shared.disciplines import DISCIPLINES
 from shared.domain.objectiveless_maps import (
     OBJECTIVELESS_GAMEMODES,
@@ -20,8 +22,6 @@ from shared.domain.objectiveless_maps import (
 from shared.repository.stats import StatsMatchRepository
 from shared.repository.stats_queries import team_scores
 from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
-from src import models
-from src.core import enums
 
 __all__ = ("load_producers", "resolve_encounter_maps")
 

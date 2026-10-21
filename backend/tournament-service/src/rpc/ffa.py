@@ -26,11 +26,11 @@ from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
 
+from shared import models
 from shared.domain.encounter_scoring import GameLine
 from shared.rpc.identity import ensure_workspace_permission, rehydrate_user_optional
 from shared.services.audit import record_admin_audit
 from shared.services.tournament.visibility import ensure_tournament_viewable
-from src import models
 from src.core import auth
 from src.rpc._helpers import _actor_player_id, _dump, _identity, _path_int, _payload, _read, _require_id, _run
 from src.schemas.ffa import FfaGameCancelInput, FfaGameResultsInput, FfaGamesCountInput

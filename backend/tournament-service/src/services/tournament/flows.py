@@ -5,6 +5,8 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
+from shared.core import enums, errors, pagination
 from shared.core.tournament_state import IN_PLAY_STATUSES
 from shared.division_grid import DivisionGrid
 from shared.models.identity.auth_user import AuthUser
@@ -12,8 +14,8 @@ from shared.services.challonge_refs import ChallongeRef, resolve_stage_challonge
 from shared.services.division_grid.normalization import DivisionGridNormalizationError, DivisionGridNormalizer
 from shared.services.team_format import tournament_shape_reads
 from shared.services.tournament.visibility import visible_tournaments_predicate
-from src import models, schemas
-from src.core import config, enums, errors, pagination
+from src import schemas
+from src.core import config
 from src.services.admin.tournament_link import tournament_link_service
 from src.services.draft_guards import has_unfinished_draft_session, unfinished_draft_tournament_ids
 from src.services.registration.service import registration_service

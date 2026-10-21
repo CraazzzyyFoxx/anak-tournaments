@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
+from shared import models
+from shared.core import enums, utils
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import (
@@ -16,8 +18,7 @@ from shared.repository import (
 from shared.repository.stats_queries import match_context
 from shared.repository.stats_reads import MatchReadContext, get_match_reads
 from shared.services.tournament.visibility import visible_tournament_ids_subquery
-from src import models, schemas
-from src.core import enums, utils
+from src import schemas
 from src.core.query_page import execute_page_with_total
 from src.core.workspace import workspace_filter
 from src.services.tournament import service as tournament_service

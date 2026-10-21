@@ -14,6 +14,7 @@ from typing import Any
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider
@@ -25,7 +26,7 @@ from shared.repository import (
     UserRepository,
     WorkspaceMemberRepository,
 )
-from src import models, schemas
+from src import schemas
 
 __all__ = ("PlayerLinkService", "players")
 

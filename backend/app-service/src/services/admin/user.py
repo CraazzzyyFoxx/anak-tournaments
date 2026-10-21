@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import paginated_dict
@@ -27,7 +28,7 @@ from shared.services.social_identity import (
     social_identity_service as socials,
 )
 from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
-from src import models, schemas
+from src import schemas
 
 __all__ = ("UserAdminService", "users")
 

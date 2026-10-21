@@ -31,6 +31,7 @@ from datetime import UTC, datetime
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import enums, tournament_state
 from shared.domain.pick_ban_config import has_pool
 from shared.repository.notification_recipients import NotificationRecipientRepository
@@ -43,7 +44,6 @@ from shared.repository.tournament import (
 from shared.services.encounter.participants import active_teams
 from shared.services.notifications import broadcast, notify
 from shared.services.registration_window import is_registration_window_open
-from src import models
 from src.services.bracket.advancement import AdvanceOutcome, advance_after_result
 from src.services.bracket.usability import is_encounter_live
 

@@ -12,10 +12,11 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
+from shared.core import enums, pagination
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.query import build_query_model
 from src import schemas
-from src.core import db, enums, pagination
+from src.core import db
 from src.core.workspace import (
     ALL_WORKSPACES,
     WorkspaceScope,

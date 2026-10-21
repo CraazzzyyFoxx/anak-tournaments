@@ -11,9 +11,10 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
+from shared.core import errors, pagination
 from shared.rpc.query import build_query_model
 from shared.services.workspace_scope import ALL_WORKSPACES
-from src.core import db, errors, pagination
+from src.core import db
 from src.rpc import _common as c
 from src.services.achievements.service import achievements as achievement_service
 

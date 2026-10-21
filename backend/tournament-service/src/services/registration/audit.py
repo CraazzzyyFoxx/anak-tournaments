@@ -24,12 +24,12 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.social import display_social_handle
 from shared.domain.forms import IDENTITY_PROVIDERS, identity_key
 from shared.domain.player_sub_roles import workspace_sub_role_slug
 from shared.schemas.role import RoleRef
 from shared.services.audit import AuditSource, record_audit
-from src import models
 from src.services.registration.answers import custom_answers, merge_custom_answers
 
 __all__ = ("ENTITY", "audit_service", "label", "profile_changes", "role_snapshot")

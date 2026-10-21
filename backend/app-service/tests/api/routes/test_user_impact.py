@@ -14,9 +14,9 @@ populated dev DB, not merely to pass — see task-8 report for details.
 import pytest
 from sqlalchemy.orm import Session
 
+from shared import models
+from shared.core import enums
 from shared.core.impact import BADGE_THRESHOLD
-from src import models
-from src.core import enums
 from tests.conftest import RpcHarness, build_query
 from tests.encounter_seed import add_duel, add_observed_game
 

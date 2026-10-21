@@ -11,6 +11,7 @@ from loguru import logger
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.division_grid import DivisionGrid
 from shared.domain.achievements.context import EvalContext
@@ -39,7 +40,6 @@ from shared.services.division_grid.normalization import (
     DivisionGridNormalizationError,
     DivisionGridNormalizer,
 )
-from src import models
 
 from .differ import diff_and_apply, load_existing_results, persist_slice_for_grain
 

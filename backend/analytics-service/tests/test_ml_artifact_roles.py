@@ -11,10 +11,10 @@ import typing
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.disciplines import discipline
 from shared.domain.analytics import PERFORMANCE_MODEL, SHIFT_MODEL
 from shared.repository import CatalogRoleRepository
-from src import models
 from src.core.analytics_exports import UnsupportedAnalytics
 from src.services.analytics.reads import flows_service
 from src.services.ml.training.registry import registry_service

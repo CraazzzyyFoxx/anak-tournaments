@@ -17,11 +17,11 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.clients.s3.upload import upload_asset, upload_avatar
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import WorkspaceRepository
 from shared.services.audit import record_audit
-from src import models
 from src.core.clients import s3_client
 from src.services.workspace.service import WorkspaceService
 from src.services.workspace.service import workspaces as _workspaces

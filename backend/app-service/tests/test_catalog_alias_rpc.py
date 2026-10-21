@@ -14,9 +14,10 @@ import sqlalchemy as sa
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.repository import CatalogAliasMissRepository
 from shared.testing.db import real_db_sessionmaker
-from src import models, openapi_docs, openapi_schemas, schemas
+from src import openapi_docs, openapi_schemas, schemas
 from src.rpc import catalog_aliases as catalog_aliases_rpc
 from src.services.admin.catalog_aliases import CatalogAliasService
 from tests.conftest import _CaptureBroker

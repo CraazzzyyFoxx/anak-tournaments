@@ -18,6 +18,7 @@ from typing import Any, Literal
 from faststream.rabbit.annotations import RabbitMessage
 from pydantic import BaseModel, Field
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.enums import (
     FirstBanRotation,
@@ -30,7 +31,6 @@ from shared.domain import pick_ban_rules as pbr
 from shared.repository import EncounterRepository
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services.audit import record_admin_audit
-from src import models
 from src.core import auth
 from src.rpc import admin_misc
 from src.rpc._helpers import _actor_player_id, _dump, _identity, _path_int, _payload, _q1, _require_id, _run

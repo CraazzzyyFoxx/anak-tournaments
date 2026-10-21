@@ -42,6 +42,7 @@ from typing import Any, NamedTuple
 
 from faststream.rabbit.annotations import RabbitMessage
 
+from shared import models
 from shared.balancer_registration_statuses import get_status_metas_map
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import DISCIPLINES, identity_provider
@@ -49,7 +50,7 @@ from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
 from shared.schemas.discipline_filter import DisciplineFilterQuery
 from shared.services.roster import roster_engine
-from src import models, schemas
+from src import schemas
 from src.core import auth
 from src.rpc._helpers import _bool, _dump, _identity, _path_int, _payload, _q1, _require_id, _run
 from src.schemas.registration import (

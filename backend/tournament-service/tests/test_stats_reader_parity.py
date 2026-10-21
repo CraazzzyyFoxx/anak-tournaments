@@ -25,10 +25,11 @@ from pydantic import BaseModel
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from shared import models
 from shared.core.errors import BaseAPIException
 from shared.services.match_reads import match_statistics_read
 from shared.services.tournament.visibility import ensure_tournament_viewable
-from src import models, schemas
+from src import schemas
 from src.services.admin.matches import matches_service
 from src.services.encounter.flows import flows_service as encounters
 from src.services.tournament.flows import flows_service as tournaments
@@ -836,8 +837,8 @@ def test_encounter_and_match_reads_carry_their_owner_context(stats_parity_databa
 def test_native_slots_preserve_observed_scores_for_retired_participants(stats_parity_database):
     async def exercise():
         # Local import: capture loads this module with frozen P3 production packages.
+        from shared import models
         from shared.models.stats.match import StatsMatchTeam
-        from src import models
 
         url, ids = stats_parity_database
         expected = json.loads(GOLDEN.read_text(encoding="utf-8"))

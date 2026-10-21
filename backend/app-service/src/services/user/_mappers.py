@@ -11,13 +11,14 @@ from datetime import UTC, datetime
 
 import sqlalchemy as sa
 
+from shared import models
 from shared.division_grid import DivisionGrid
 from shared.repository.stats_reads import MatchReadContext
 from shared.schemas.match import NativeFact
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.resolution import resolve_tournament_division
 from shared.services.match_reads import match_header_fields
-from src import models, schemas
+from src import schemas
 from src.schemas.division_grid import DivisionGridVersionRead
 
 _IDENTITY_ENTITIES = ("social_accounts",)

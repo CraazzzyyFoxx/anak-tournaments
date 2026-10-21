@@ -16,7 +16,7 @@ sys.path.insert(0, str(backend_root / "stats-service"))
 os.environ["DEBUG"] = "true"
 
 flows = importlib.import_module("src.services.match_logs.flows")
-enums = importlib.import_module("src.core.enums")
+enums = importlib.import_module("shared.core.enums")
 
 from shared.services.realtime import Resource, Scope  # noqa: E402
 

@@ -8,7 +8,7 @@ from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared import quota
+from shared import models, quota
 from shared.clients.s3 import S3Client
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider, normalize_social_handle
@@ -19,7 +19,7 @@ from shared.repository.stats import IngestJobRepository
 from shared.repository.tournament import TournamentRepository
 from shared.schemas.events import AchievementEvaluateEvent
 from shared.services.audit import record_admin_audit
-from src import models, schemas
+from src import schemas
 from src.core.config import settings
 from src.services.ingest.jobs import lock_object, provenance_classifier
 from src.services.match_logs.admin_reads import _validate_attached_encounter

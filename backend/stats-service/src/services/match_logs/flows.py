@@ -8,13 +8,13 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
+from shared.core import enums
 from shared.messaging.config import TOURNAMENT_EVENTS_EXCHANGE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.schemas.events import TournamentStandingsInvalidatedEvent
 from shared.services.encounter.events import enqueue_encounter_completed
 from shared.services.realtime import Resource, Scope, emit, enqueue_invalidation_outbox
-from src import models
-from src.core import enums
 
 
 def _encounter_is_completed(encounter: models.Encounter) -> bool:

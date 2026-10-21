@@ -4,11 +4,11 @@ from datetime import datetime
 
 from pydantic import BaseModel, BeforeValidator, computed_field
 
+from shared.core import enums, pagination
 from shared.disciplines import identity_provider as discipline_identity_provider
 from shared.schemas.discipline_filter import InstalledDisciplineFilter
 from shared.schemas.roster_slots import RosterShapeRead
 from shared.services.workspace_scope import ALL_WORKSPACES
-from src.core import enums, pagination
 from src.schemas.admin.tournament_link import TournamentLinkRead
 from src.schemas.base import BaseRead
 from src.schemas.division_grid import DivisionGridVersionRead

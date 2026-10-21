@@ -12,8 +12,8 @@ import typing
 import sqlalchemy as sa
 from sqlalchemy.orm import aliased
 
+from shared import models
 from shared.core import enums
-from src import models
 
 __all__ = ("seat_maps",)
 

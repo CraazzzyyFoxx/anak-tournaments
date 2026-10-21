@@ -7,6 +7,7 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.workspace_tier import is_verified_or_trusted
 from shared.messaging.config import WORKSPACE_MEMBER_CHANGED_QUEUE
@@ -35,7 +36,6 @@ from shared.services.audit import record_audit
 from shared.services.settings_provider import settings_provider
 from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
 from shared.tenancy.hostnames import RESERVED_SUBDOMAINS, normalize_custom_domain
-from src import models
 
 __all__ = ["MEMBERS_SORT_FIELDS", "RESERVED_SLUGS", "WorkspaceService", "reject_reserved_slug", "workspaces"]
 

@@ -4,8 +4,8 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import models
-from src.core import enums, pagination
+from shared import models
+from shared.core import enums, pagination
 from src.services.discipline_queries import DisciplineQueries
 from src.services.encounter_seats import Seat
 

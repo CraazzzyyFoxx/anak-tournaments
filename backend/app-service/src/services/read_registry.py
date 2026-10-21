@@ -14,12 +14,13 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.core import pagination
 from shared.models.achievements.achievement import AchievementRule
 from shared.rpc.crud import CrudDispatcher, EntityConfig
 from shared.rpc.query import build_query_model
 from shared.services.workspace_scope import ALL_WORKSPACES
 from src import schemas
-from src.core import db, pagination
+from src.core import db
 from src.rpc import _common as c
 from src.services.achievements.service import achievements as achievement_service
 

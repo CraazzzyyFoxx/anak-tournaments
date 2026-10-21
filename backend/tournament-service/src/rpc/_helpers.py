@@ -16,6 +16,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import UserRepository
 from shared.rpc.common import (
@@ -46,7 +47,6 @@ from shared.rpc.common import (
 )
 from shared.rpc.identity import MissingIdentityError
 from shared.schemas.rpc import rpc_error, rpc_ok, status_to_code
-from src import models
 from src.core import db
 
 __all__ = (

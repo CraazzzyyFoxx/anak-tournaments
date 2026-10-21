@@ -31,7 +31,7 @@ from shared.services.encounter.result import apply_result  # noqa: E402
 from shared.services.ontology import rated_leaf  # noqa: E402
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
 
-models = importlib.import_module("src.models")
+models = importlib.import_module("shared.models")
 evaluator = importlib.import_module("shared.services.achievements.evaluator")
 eval_context = importlib.import_module("shared.domain.achievements.context")
 

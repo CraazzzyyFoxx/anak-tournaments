@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.roster_shape import FLEX_SLOT_CODE
 from shared.repository import (
@@ -13,7 +14,6 @@ from shared.repository import (
     TournamentRepository,
 )
 from shared.repository.roles import CatalogRoleRepository
-from src import models
 from src.domain.balancer.role_naming import role_slot_code
 from src.schemas.team import InternalBalancerTeamsPayload
 

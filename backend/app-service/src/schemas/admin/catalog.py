@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field, field_validator
 
-from src.core import pagination
+from shared.core import pagination
 
 __all__ = (
     "CatalogEntityCreate",

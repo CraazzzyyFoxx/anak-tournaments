@@ -44,6 +44,7 @@ os.environ["DEBUG"] = "true"
 reg_admin = importlib.import_module("src.services.registration.sheet_sync")
 reg_service = importlib.import_module("src.services.registration.service")
 
+from shared import models  # noqa: E402
 from shared.core import enums  # noqa: E402
 from shared.core.social import SocialProvider, normalize_social_handle  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
@@ -54,7 +55,6 @@ from shared.models.registration.registration import (  # noqa: E402
 )
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
-from src import models  # noqa: E402
 from tests._lol_grid import seed_lol_grid  # noqa: E402
 
 _WORKSPACE_ID = 1

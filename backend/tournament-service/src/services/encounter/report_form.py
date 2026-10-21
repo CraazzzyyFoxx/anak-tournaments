@@ -12,10 +12,10 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import EncounterReportFormRepository
-from src import models
 from src.schemas.encounter_report_form import (
     COMMENT_MAX_LENGTH,
     CUSTOM_TEXT_MAX_LENGTH,

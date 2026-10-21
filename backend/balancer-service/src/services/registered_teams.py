@@ -23,11 +23,11 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.repository import BalancerRegistrationTeamRepository, TournamentRepository
 from shared.services.balancer_realtime import BALANCER_TEAMS_CHANGED
 from shared.services.team_format import tournament_slot_shape
-from src import models
 from src.services.balancer.realtime import emit_balancer_data, stage_export_invalidation
 from src.services.team_export import ExportPlan, team_materialization
 from src.services.team_export.registered import SkippedTeam, build_registered_export

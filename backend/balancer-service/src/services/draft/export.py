@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.enums import DraftPlayerStatus, DraftStatus
 from shared.domain.player_sub_roles import workspace_sub_role_slug
 from shared.domain.roster import PlayerRoster
@@ -27,7 +28,6 @@ from shared.repository.draft import (
     DraftTeamRepository,
 )
 from shared.schemas.role import RoleRef
-from src import models
 from src.domain.draft import ranks
 from src.domain.draft.errors import err as _err
 from src.schemas.team import BalancerTeam, BalancerTeamMember

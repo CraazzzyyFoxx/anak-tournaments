@@ -5,8 +5,9 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import pagination
-from src import models, schemas
+from src import schemas
 from src.services.rbac_policy import RbacPolicy, rbac_policy
 from src.services.sessions import SessionService, sessions
 

@@ -17,7 +17,7 @@ sys.path.insert(0, str(backend_root / "stats-service"))
 
 os.environ["DEBUG"] = "true"
 
-models = importlib.import_module("src.models")
+models = importlib.import_module("shared.models")
 from shared.repository.stats import _bulk_insert
 
 

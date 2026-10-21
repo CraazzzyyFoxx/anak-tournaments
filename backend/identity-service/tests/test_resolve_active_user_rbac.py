@@ -19,7 +19,7 @@ from types import SimpleNamespace
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src import models  # noqa: E402
+from shared import models  # noqa: E402
 from src.services.token_payload import TokenPayloadBuilder  # noqa: E402
 from src.services.token_validation import TokenValidationService  # noqa: E402
 from tests._fakes import FakeSessionCache  # noqa: E402

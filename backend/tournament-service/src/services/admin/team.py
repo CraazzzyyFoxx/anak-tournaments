@@ -3,6 +3,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.tournament.player_role import assignment_of
@@ -16,7 +17,7 @@ from shared.repository import (
 )
 from shared.services.ontology import resolve_role_ref
 from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
-from src import models, schemas
+from src import schemas
 from src.services.tournament.events import STRUCTURE_RESOURCES, publish_tournament_invalidation
 
 

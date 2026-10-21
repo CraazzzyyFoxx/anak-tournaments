@@ -74,7 +74,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src import models  # noqa: E402
+from shared import models  # noqa: E402
 from src.schemas.oauth import OAuthUserInfo  # noqa: E402
 from src.services.api_keys import api_keys  # noqa: E402
 

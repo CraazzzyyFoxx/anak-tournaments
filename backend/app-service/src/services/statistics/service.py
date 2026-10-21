@@ -3,8 +3,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.core import pagination
 from src import schemas
-from src.core import pagination
 
 from .queries import StatisticsQueries
 

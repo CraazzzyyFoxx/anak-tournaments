@@ -19,11 +19,12 @@ from __future__ import annotations
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.catalog_aliases import normalize_aliases
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import CatalogAliasMissRepository, CatalogEntityRepository
-from src import models, schemas
+from src import schemas
 
 __all__ = ("CatalogAliasService", "catalog_aliases")
 

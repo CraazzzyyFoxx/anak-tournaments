@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 import sqlalchemy as sa
 
+from shared import models
 from shared.clients import S3Client
 from shared.clients.s3.upload import upload_asset
 from shared.core.errors import BaseAPIException as HTTPException
@@ -15,7 +16,7 @@ from shared.disciplines import DISCIPLINES
 from shared.domain.achievements.validation import derive_depends_on, validate_rule_definition
 from shared.models.achievements.achievement import AchievementRule
 from shared.repository import AchievementRuleRepository, WorkspaceRepository
-from src import models, schemas
+from src import schemas
 from src.services.achievement.admin_reads import (
     get_source_workspace_or_404,
     get_workspace_for_discipline,

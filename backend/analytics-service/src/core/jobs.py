@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.workspace_tier import is_verified_or_trusted
 from shared.jobs import JobConflict, JobService, JobSpec, OneActive, OrmJobStore, Status
@@ -20,7 +21,6 @@ from shared.messaging.config import ANALYTICS_JOB_QUEUE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.repository import AnalyticsJobRepository, TournamentRepository, WorkspaceRepository
 from shared.schemas.events import AnalyticsJobRequested
-from src import models
 from src.core.analytics_exports import supports_analytics
 from src.worker.job_realtime import emit_job_event
 

@@ -12,7 +12,8 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
-from src import models, schemas
+from shared import models
+from src import schemas
 from src.core import db
 from src.rpc import _common as c
 from src.services.user_prefs import user_mix_prefs_service

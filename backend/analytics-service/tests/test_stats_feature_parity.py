@@ -26,8 +26,8 @@ import sqlalchemy as sa
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from shared import models
 from shared.disciplines.overwatch.analytics import COARSE_FEATURES, PerformanceModelV2
-from src import models
 from src.core import config
 from src.services.analytics.read_queries import analytics_read_service
 from src.services.analytics.service import analytics_service

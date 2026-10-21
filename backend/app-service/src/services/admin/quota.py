@@ -11,12 +11,12 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared import quota
+from shared import models, quota
 from shared.quota import admin as quota_admin
 from shared.repository import QuotaWorkspaceLimitRepository
 from shared.schemas.quota import QuotaOperationWrite, QuotaPlanLimitRead, QuotaPlanWrite
 from shared.services.audit import record_admin_audit
-from src import models, schemas
+from src import schemas
 
 __all__ = ("QuotaAdminService", "quota_admin_service")
 

@@ -13,9 +13,9 @@ import pandas as pd
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.domain.analytics import PerformanceModel, ShiftModel, StandingsModel
 from shared.services.workspace_scope import get_division_grid, get_tournament_workspace_id
-from src import models
 from src.core.analytics_exports import tournament_module
 from src.core.config import settings
 

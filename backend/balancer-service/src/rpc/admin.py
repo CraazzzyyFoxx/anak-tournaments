@@ -11,10 +11,10 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
-from shared import quota
+from shared import models, quota
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services.discord_client import DiscordClient
-from src import models, schemas
+from src import schemas
 from src.core import db
 from src.core.auth import _get_balance_workspace_id, _get_tournament_workspace_id
 from src.rpc import _common as c

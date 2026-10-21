@@ -8,9 +8,9 @@ import typing
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.core import errors, pagination
 from shared.models.achievements.achievement import AchievementRule
 from src import schemas
-from src.core import errors, pagination
 from src.services.user.service import users as user_service
 
 from . import _mappers

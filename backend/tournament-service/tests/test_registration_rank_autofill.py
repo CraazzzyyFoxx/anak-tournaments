@@ -16,7 +16,7 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 os.environ["DEBUG"] = "true"
 
-models = importlib.import_module("src.models")
+models = importlib.import_module("shared.models")
 rank_autofill = importlib.import_module("src.services.registration.rank_autofill")
 rank_sources = importlib.import_module("src.services.registration.rank_sources")
 

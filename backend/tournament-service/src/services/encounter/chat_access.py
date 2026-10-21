@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.services.chat import SPECTATOR_ROLE, ChatMembership, ChatRoom, ChatService
 from shared.services.tournament.display_name import tournament_display_name
 from shared.services.tournament.visibility import ensure_tournament_viewable
-from src import models
 from src.core import auth
 from src.services import visibility_resolvers
 from src.services.encounter.captain import captain_service

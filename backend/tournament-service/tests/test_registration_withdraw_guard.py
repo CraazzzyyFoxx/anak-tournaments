@@ -19,8 +19,8 @@ from unittest import IsolatedAsyncioTestCase
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from shared import models  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
-from src import models  # noqa: E402
 from src.services.registration import service as reg_service  # noqa: E402
 
 

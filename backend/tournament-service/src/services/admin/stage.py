@@ -12,6 +12,7 @@ from sqlalchemy import case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 
+from shared import models
 from shared.core import enums
 from shared.core import http_status as status
 from shared.core.errors import ApiExc
@@ -41,7 +42,7 @@ from shared.repository import (
 )
 from shared.services.encounter.participants import MemberSnapshot, active_teams, place_team, vacate_slot
 from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
-from src import models, schemas
+from src import schemas
 from src.domain.admin.best_of import best_of_config, resolve_best_of
 from src.domain.bracket import (
     BracketSkeleton,

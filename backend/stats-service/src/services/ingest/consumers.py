@@ -9,12 +9,12 @@ from faststream.rabbit import Channel, RabbitQueue
 from faststream.rabbit.annotations import RabbitMessage
 from sqlalchemy.exc import SQLAlchemyError
 
+from shared import models
 from shared.disciplines import DisciplineSpec
 from shared.messaging.config import ingest_queue, ingest_replay_queue
 from shared.observability import metrics, observe_message_processing
 from shared.repository.stats import IngestJobRepository
 from shared.schemas.events import ProcessIngestJobEvent
-from src import models
 from src.core import db
 from src.core.clients import s3_client
 from src.services.ingest.jobs import IngestRejected, decode_error

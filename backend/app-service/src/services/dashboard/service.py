@@ -1,9 +1,10 @@
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import enums
 from shared.services.registration_window import registration_open_clause
-from src import models, schemas
+from src import schemas
 
 __all__ = ("DashboardService", "dashboard")
 

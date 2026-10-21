@@ -32,6 +32,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.enums import (
     EncounterGameState,
@@ -58,7 +59,7 @@ from shared.repository import (
 from shared.services.encounter.events import enqueue_encounter_completed
 from shared.services.encounter.participants import active_teams
 from shared.services.encounter.result import apply_result, hold_result, lock_encounter, reopen
-from src import models, schemas
+from src import schemas
 from src.services.bracket import advancement
 from src.services.bracket.usability import is_encounter_live
 from src.services.encounter import report_form

@@ -28,11 +28,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pytest  # noqa: E402
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.models.platform.audit import AuditLog  # noqa: E402
 from shared.rpc.identity import api_key_label, credential_type, rehydrate_user  # noqa: E402
 from shared.services.audit import record_audit  # noqa: E402
-from src import models, schemas  # noqa: E402
+from src import schemas  # noqa: E402
 from src.core import db  # noqa: E402
 from src.rpc import api_keys as api_keys_rpc  # noqa: E402
 from src.rpc import auth as auth_rpc  # noqa: E402

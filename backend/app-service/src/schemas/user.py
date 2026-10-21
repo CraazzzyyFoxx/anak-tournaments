@@ -6,11 +6,11 @@ from dataclasses import dataclass, field
 import sqlalchemy as sa
 from pydantic import BaseModel, BeforeValidator, Field
 
+from shared.core import enums, pagination
 from shared.schemas.catalog import CatalogEntityRead
 from shared.schemas.match import MatchRead, NativeFact
 from shared.schemas.role import RoleRef
 from src import schemas
-from src.core import enums, pagination
 from src.schemas.division_grid import DivisionGridVersionRead
 
 # Structured GET filters are JSON-encoded query values; RPC callers may supply the object directly.

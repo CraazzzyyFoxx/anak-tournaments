@@ -4,6 +4,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
+from shared.core import enums
 from shared.core import http_status as status
 from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
@@ -21,8 +23,7 @@ from shared.repository.stats_reads import MatchReadContext, get_match_reads
 from shared.services.encounter.participants import MemberSnapshot, active_teams, place_team, vacate_slot
 from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 from shared.services.stats_owner_delete import capture_owner_delete, stage_owner_delete
-from src import models, schemas
-from src.core import enums
+from src import schemas
 from src.services.bracket.advancement import reset_downstream
 from src.services.bracket.swiss_state import remove_swiss_bye_round
 from src.services.notifications.lifecycle import after_encounter_teams_changed, lifecycle_notifier

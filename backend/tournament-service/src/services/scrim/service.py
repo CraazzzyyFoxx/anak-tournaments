@@ -30,6 +30,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.enums import (
     EncounterStatus,
@@ -42,9 +43,6 @@ from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.encounter_scoring import WINS_END_FORMULA
 from shared.domain.pick_ban_config import has_pool
-
-# Direct imports rather than through ``src.models``: that package re-exports only
-# part of the tournament domain, and these four modules are not in it.
 from shared.models.tournament.pick_ban import (
     PickBanConfig,
     PickBanConfigItem,
@@ -68,7 +66,6 @@ from shared.services.ontology import assert_discipline_enabled
 from shared.services.settings_provider import settings_provider
 from shared.services.team_format import copy_for_tournament
 from shared.services.tournament.visibility import ensure_tournament_viewable
-from src import models
 
 
 def _pick_ban():

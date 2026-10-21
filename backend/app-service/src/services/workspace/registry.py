@@ -13,9 +13,10 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.crud import CrudDispatcher, EntityConfig
-from src import models, schemas
+from src import schemas
 from src.core import db
 from src.services.workspace.service import workspaces as workspace_service
 

@@ -33,7 +33,7 @@ from src import schemas
 
 user_rpc = importlib.import_module("src.rpc.users")
 user_service = importlib.import_module("src.services.user.service")
-enums = importlib.import_module("src.core.enums")
+enums = importlib.import_module("shared.core.enums")
 
 
 def _query(**params: str) -> dict:

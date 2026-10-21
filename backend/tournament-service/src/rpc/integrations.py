@@ -30,7 +30,7 @@ from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
 
-from shared import quota
+from shared import models, quota
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import WorkspaceRepository
 from shared.rpc.identity import ensure_workspace_permission
@@ -39,7 +39,7 @@ from shared.services.division_grid.access import (
     require_grid_version_read_access,
     require_marketplace_source_access,
 )
-from src import models, schemas
+from src import schemas
 from src.clients.challonge import challonge_client
 from src.core import auth
 from src.rpc._helpers import _bool, _dump, _identity, _path_int, _payload, _q1, _require_id, _require_q1, _run

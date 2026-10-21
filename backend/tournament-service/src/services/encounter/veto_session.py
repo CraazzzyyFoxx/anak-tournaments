@@ -22,6 +22,7 @@ import sqlalchemy as sa
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.enums import MapVetoMode, MapVetoSessionStatus, PickBanKind, VetoSeedSource
 from shared.disciplines import discipline as discipline_spec
 from shared.domain import pick_ban_rules as pbr
@@ -30,7 +31,6 @@ from shared.models.encounter.team import EncounterTeam
 from shared.models.tournament.pick_ban import PickBanConfig
 from shared.repository import BracketEncounterRepository, PickBanConfigRepository, PickBanSessionRepository
 from shared.repository.pick_ban import CONFIG_POOL_LOAD
-from src import models
 
 _positions = BracketEncounterRepository()
 _configs = PickBanConfigRepository()

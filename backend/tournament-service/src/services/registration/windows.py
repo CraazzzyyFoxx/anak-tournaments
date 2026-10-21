@@ -17,13 +17,13 @@ from datetime import UTC, datetime
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import enums, tournament_state
 from shared.services.registration_window import (
     is_registration_window_open,
     registration_late_clause,
     registration_open_clause,
 )
-from src import models
 
 
 def is_check_in_window_active(

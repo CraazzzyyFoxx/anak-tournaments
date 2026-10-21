@@ -11,11 +11,11 @@ import base64
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.clients.s3 import S3Client
 from shared.clients.s3.upload import upload_avatar
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import UserRepository
-from src import models
 
 __all__ = ("AvatarService", "avatars")
 

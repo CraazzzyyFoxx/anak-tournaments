@@ -1,10 +1,7 @@
 """Canonical workspace-scoping utilities for SQLAlchemy queries.
 
-The join paths are keyed by model class, and every service's
-``src.models.Tournament`` (etc.) is the same class object as
-``shared.models.tournament.tournament.Tournament`` (each service's
-``src/models/__init__.py`` only re-exports ``shared.models.*``), so this one
-module serves every service.
+The join paths are keyed by model class (``shared.models``), so this one module
+serves every service.
 """
 
 from __future__ import annotations

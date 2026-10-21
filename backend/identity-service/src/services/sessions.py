@@ -10,8 +10,8 @@ from uuid import UUID
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.repository import RefreshTokenRepository
-from src import models
 from src.core import config
 from src.services.security import TokenCodec, token_codec
 from src.services.session_cache import SessionCache, session_cache

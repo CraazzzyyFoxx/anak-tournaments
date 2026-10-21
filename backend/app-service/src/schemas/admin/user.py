@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
-from src.core import pagination
+from shared.core import pagination
 
 __all__ = (
     "UserCreate",

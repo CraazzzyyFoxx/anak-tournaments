@@ -22,10 +22,10 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.domain.forms import FieldError, FormSchema, raise_field_errors, schema_from_form
 from shared.repository import RegistrationFormRepository, RegistrationFormVersionRepository
 from shared.services.realtime import Resource, Scope, emit
-from src import models
 from src.schemas.registration_form import RegistrationFormUpsert
 
 __all__ = ("RegistrationFormService", "form_service", "parse_form_schema")

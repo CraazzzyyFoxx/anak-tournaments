@@ -25,13 +25,13 @@ from unittest import IsolatedAsyncioTestCase, TestCase, mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from shared import models  # noqa: E402
 from shared.core.enums import TournamentStatus  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.core.social import normalize_social_handle  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
 from shared.services.roster import roster_engine  # noqa: E402
 from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
-from src import models  # noqa: E402
 from src.services.registration import service as reg_service  # noqa: E402
 from src.services.registration.answers import answer_service  # noqa: E402
 from src.services.registration.rank_autofill import _rank_autofill_balancer_addition  # noqa: E402

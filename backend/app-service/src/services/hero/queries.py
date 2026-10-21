@@ -11,11 +11,11 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
+from shared.core import enums, pagination
 from shared.division_grid import DivisionGrid, division_case_expr
 from shared.services.division_grid.access import effective_division_number_expr
 from shared.services.tournament.visibility import visible_tournament_ids_subquery
-from src import models
-from src.core import enums, pagination
 from src.services.discipline_queries import DisciplineQueries
 
 __all__ = ("HeroQueries",)

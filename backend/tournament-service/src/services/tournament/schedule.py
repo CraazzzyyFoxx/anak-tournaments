@@ -12,10 +12,11 @@ from __future__ import annotations
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import TournamentPhaseScheduleRepository, TournamentRepository
-from src import models, schemas
+from src import schemas
 from src.services.tournament.events import STRUCTURE_RESOURCES, publish_tournament_invalidation
 
 _TOURNAMENT_LOAD = (

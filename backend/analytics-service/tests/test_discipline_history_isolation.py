@@ -19,10 +19,10 @@ import sqlalchemy as sa
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from shared import models
 from shared.core import errors
 from shared.domain.analytics import MATCH_QUALITY_MODEL, PERFORMANCE_MODEL, STANDINGS_MODEL
 from shared.testing.stats_parity import _DATES, STAMP, _insert, seed_native_sentinel
-from src import models
 from src.core import config
 from src.services.analytics.reads import flows_service
 from tests.ow_analytics import exports

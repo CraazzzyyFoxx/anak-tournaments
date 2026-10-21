@@ -4,12 +4,12 @@ import sqlalchemy as sa
 from faststream.exceptions import RejectMessage
 from loguru import logger
 
+from shared import models
 from shared.messaging.config import ACHIEVEMENT_EVALUATE_QUEUE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.schemas.events import AchievementEvaluateEvent
 from shared.services.scrim_scope import is_scrim_container
 from shared.services.tournament.computation import dispatch_job
-from src import models
 from src.core import db
 from src.services.admin.stage import stage_service as admin_stage_service
 from src.services.computation.jobs import failure_message, is_refusal, jobs_service

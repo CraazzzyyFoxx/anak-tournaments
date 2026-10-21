@@ -6,8 +6,8 @@ Map statistics/top-user flows live in app-service; encounter flows only need
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.schemas.catalog import CatalogEntityRead
-from src import models
 
 
 def map_to_read(map: models.CatalogEntity, entities: list[str]) -> CatalogEntityRead:

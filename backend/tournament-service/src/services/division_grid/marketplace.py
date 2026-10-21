@@ -14,6 +14,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.clients import S3Client
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import (
@@ -25,7 +26,7 @@ from shared.repository import (
 )
 from shared.services.division_grid import cache as division_grid_cache
 from shared.services.ontology import assert_discipline_enabled
-from src import models, schemas
+from src import schemas
 from src.services.division_grid.service import DivisionGridService, division_grid_service
 
 __all__ = (

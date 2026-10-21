@@ -7,7 +7,8 @@ method here is the only one consumed by tournament-service's own flows
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import models, schemas
+from shared import models
+from src import schemas
 
 _IDENTITY_ENTITIES = ("social_accounts",)
 

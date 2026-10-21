@@ -7,11 +7,11 @@ from collections.abc import Sequence
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
+from shared.core import errors
 from shared.repository import SettingsRepository
 from shared.schemas.settings import SETTINGS_SCHEMAS
 from shared.services.settings_provider import settings_provider
-from src import models
-from src.core import errors
 
 __all__ = ("SettingsService", "settings_service")
 

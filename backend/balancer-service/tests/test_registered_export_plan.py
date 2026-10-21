@@ -26,8 +26,8 @@ for path in (str(SERVICE_ROOT), str(BACKEND_ROOT)):
         sys.path.insert(0, path)
 
 
+from shared import models  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
-from src import models  # noqa: E402
 from src.services import registered_teams  # noqa: E402
 from src.services.team_export import ExportOutcome, ExportPlan  # noqa: E402
 from src.services.team_export.materialization import MaterializationTeam  # noqa: E402

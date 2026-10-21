@@ -21,11 +21,12 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider
 from shared.repository import OAuthConnectionRepository
-from src import models, schemas
+from src import schemas
 from src.services.api_keys import ApiKeyService, api_keys
 from src.services.auth_users import AuthUserService, auth_users
 from src.services.security import TokenCodec, token_codec

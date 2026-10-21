@@ -9,7 +9,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import models
+from shared import models
 from src.services.encounter import captain as captain_mod
 
 # ── Schemas ──────────────────────────────────────────────────────────────

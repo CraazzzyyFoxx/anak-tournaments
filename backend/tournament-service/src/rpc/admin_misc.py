@@ -19,6 +19,7 @@ from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import StatsMatchRepository
@@ -27,7 +28,7 @@ from shared.rpc.query import build_query_model
 from shared.services.audit import record_admin_audit
 from shared.services.encounter.participants import active_teams
 from shared.services.match_reads import match_header_fields
-from src import models, schemas
+from src import schemas
 from src.core import auth
 from src.rpc._helpers import (
     _actor_player_id,

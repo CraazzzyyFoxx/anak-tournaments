@@ -7,6 +7,7 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import PaginationParams, paginated_dict
 from shared.domain.achievements.context import EvalContext
@@ -29,7 +30,7 @@ from shared.repository.support import AchievementOverrideRepository, Achievement
 from shared.repository.workspace import get_or_create_workspace_member
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from shared.services.achievements.evaluator import evaluate
-from src import models, schemas
+from src import schemas
 from src.core.workspace import get_division_grid
 from src.services.achievement.admin_reads import (
     get_workspace_for_discipline,

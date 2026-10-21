@@ -11,11 +11,12 @@ from typing import Any
 from faststream.rabbit import RabbitMessage
 
 from shared.catalog_sync import CatalogImageMirror
+from shared.core import errors
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import DISCIPLINES
 from shared.services.audit import record_admin_audit
 from src import schemas
-from src.core import db, errors
+from src.core import db
 from src.core.clients import s3_client
 from src.services.admin.settings import settings_service
 

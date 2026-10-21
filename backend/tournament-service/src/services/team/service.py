@@ -3,10 +3,11 @@ import typing
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
+from shared.core import enums
 from shared.repository import PlayerRepository, TeamRepository
 from shared.services.tournament.visibility import visible_tournament_ids_subquery
-from src import models, schemas
-from src.core import enums
+from src import schemas
 from src.core.query_page import execute_page_with_total
 
 

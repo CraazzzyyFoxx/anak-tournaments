@@ -17,6 +17,7 @@ from loguru import logger
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import normalize_social_handle, social_provider_for_oauth
@@ -28,7 +29,7 @@ from shared.repository import (
 )
 from shared.services.social_identity import SocialHandleConflict
 from shared.services.social_identity import social_identity_service as socials_writer
-from src import models, schemas
+from src import schemas
 from src.schemas.auth import suggest_username
 from src.services.auth_users import AuthUserService, auth_users
 from src.services.oauth_providers import OAuthProviderRegistry, oauth_providers

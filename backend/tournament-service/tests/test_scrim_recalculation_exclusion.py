@@ -42,7 +42,7 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 
-models = importlib.import_module("src.models")
+models = importlib.import_module("shared.models")
 enums = importlib.import_module("shared.core.enums")
 standings_service = importlib.import_module("src.services.standings.service")
 tournament_events = importlib.import_module("src.services.tournament.events")

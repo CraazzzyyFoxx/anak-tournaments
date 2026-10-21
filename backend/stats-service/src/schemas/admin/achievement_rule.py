@@ -8,8 +8,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from shared.core import pagination
 from shared.schemas.discipline_filter import InstalledDisciplineFilter
-from src.core import pagination
 
 __all__ = (
     "AchievementRuleRead",

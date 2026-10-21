@@ -19,9 +19,9 @@ import sqlalchemy as sa
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from shared import models
 from shared.disciplines import discipline
 from shared.repository import CatalogRoleRepository
-from src import models
 from src.core import config
 from src.core.analytics_exports import (
     ContradictoryDiscipline,

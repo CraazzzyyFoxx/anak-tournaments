@@ -10,14 +10,15 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
+from shared import models
+from shared.core import enums, pagination
 from shared.disciplines import DISCIPLINES, discipline, rated_role_codes
 from shared.division_grid import DivisionGrid
 from shared.repository.stats_queries import player_facts
 from shared.schemas.role import RoleRef
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
 from shared.services.division_grid.access import tournament_effective_version_id_expr
-from src import models
-from src.core import config, enums, pagination
+from src.core import config
 from src.services.discipline_queries import DisciplineQueries
 from src.services.encounter_seats import Seat
 

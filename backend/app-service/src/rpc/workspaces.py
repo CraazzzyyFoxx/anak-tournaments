@@ -30,6 +30,7 @@ from typing import Any
 from faststream.rabbit import RabbitMessage
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import Paginated
 from shared.disciplines import DISCIPLINES
@@ -41,7 +42,7 @@ from shared.services.audit import record_admin_audit
 from shared.services.discord_client import DiscordClient
 from shared.services.team_format import save_workspace_format, team_format_read, workspace_format
 from shared.tenancy.hostnames import normalize_custom_domain, subdomain_from_host
-from src import models, schemas
+from src import schemas
 from src.core import db
 from src.rpc import _common as c
 from src.services import notification_config

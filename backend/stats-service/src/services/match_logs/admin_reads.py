@@ -11,6 +11,7 @@ from loguru import logger
 from sqlalchemy import ColumnElement, and_, case, desc, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.messaging.config import (
@@ -22,7 +23,7 @@ from shared.messaging.config import (
 )
 from shared.models import IngestJobStatus
 from shared.repository import EncounterRepository
-from src import models, schemas
+from src import schemas
 from src.core import config
 
 # The ingest and replay queues of every discipline this deployment serves (STATS_DISCIPLINES), then the shared fanout queues.

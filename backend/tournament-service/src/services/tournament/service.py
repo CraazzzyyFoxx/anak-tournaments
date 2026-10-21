@@ -5,9 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
+from shared import models
+from shared.core import enums, pagination, utils
 from shared.repository import TournamentRepository
-from src import models, schemas
-from src.core import enums, pagination, utils
+from src import schemas
 from src.core.query_page import execute_page_with_total
 
 __all__ = (

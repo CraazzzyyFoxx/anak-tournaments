@@ -6,6 +6,8 @@ from statistics import mean
 from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
+from shared.core import enums, errors, pagination
 from shared.core.errors import BaseAPIException
 from shared.disciplines import DISCIPLINES
 from shared.division_grid import DivisionGrid
@@ -25,8 +27,8 @@ from shared.services.division_grid.resolution import (
     resolve_tournament_division,
     resolve_workspace_division,
 )
-from src import models, schemas
-from src.core import config, enums, errors, pagination
+from src import schemas
+from src.core import config
 from src.core.workspace import get_division_grid, get_division_grid_version
 from src.services.discipline_queries import DisciplineQueries
 from src.services.hero.service import heroes as hero_service

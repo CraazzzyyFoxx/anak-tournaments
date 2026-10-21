@@ -13,8 +13,9 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.repository import RoleRepository, UserPermissionDenyRepository, WorkspaceMemberRepository
-from src import models, schemas
+from src import schemas
 from src.services.players import describe_link
 from src.services.session_cache import SessionCache, session_cache
 

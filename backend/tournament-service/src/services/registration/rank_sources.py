@@ -19,6 +19,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 
+from shared import models
 from shared.core import enums
 from shared.core.social import SocialProvider
 from shared.disciplines import discipline
@@ -36,7 +37,6 @@ from shared.services.division_grid.normalization import (
     DivisionGridNormalizer,
 )
 from shared.services.roster import registration_load_options
-from src import models
 from src.domain.registration.ow_rank_selection import select_main_account_ow_ranks
 
 __all__ = ("native_ranks_by_registration", "primary_identity_key", "rank_sources_service")

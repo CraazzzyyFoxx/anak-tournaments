@@ -35,6 +35,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.disciplines import identity_provider
 from shared.domain.invite_token import generate_invite_token, hash_invite_token
@@ -49,7 +50,6 @@ from shared.repository import (
 from shared.services.notifications import notify
 from shared.services.realtime import Resource, Scope, emit
 from shared.services.team_format import tournament_slot_shape
-from src import models
 from src.schemas.registration import RegistrationRead, RegistrationSubmit
 from src.schemas.registration_team import (
     RegistrationFreeAgentRead,

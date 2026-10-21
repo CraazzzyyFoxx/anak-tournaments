@@ -6,9 +6,11 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
+from shared.core import pagination
 from shared.repository.stats_reads import duel_matches
-from src import models, schemas
-from src.core import config, pagination
+from src import schemas
+from src.core import config
 from src.services.hero.queries import HeroQueries
 from src.services.hero.service import heroes as hero_service
 from src.services.user.service import users as user_service

@@ -22,6 +22,7 @@ import sqlalchemy as sa
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from shared import models  # noqa: E402
 from shared.core import enums  # noqa: E402
 from shared.division_grid import DivisionGrid, DivisionTier  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
@@ -30,7 +31,6 @@ from shared.models.tournament.player_role import PlayerRole  # noqa: E402
 from shared.models.tournament.team import Player  # noqa: E402
 from shared.repository import CatalogRoleRepository  # noqa: E402
 from shared.services.ontology import project_disciplines  # noqa: E402
-from src import models  # noqa: E402
 from src.services.tournament.flows import flows_service  # noqa: E402
 
 GRID = DivisionGrid(

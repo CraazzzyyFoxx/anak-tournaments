@@ -11,7 +11,8 @@ from shared.core.errors import BaseAPIException as HTTPException
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from src import models, schemas  # noqa: E402
+from shared import models
+from src import schemas  # noqa: E402
 from src.services.auth import auth  # noqa: E402
 from src.services.auth_users import auth_users  # noqa: E402
 from src.services.players import players  # noqa: E402

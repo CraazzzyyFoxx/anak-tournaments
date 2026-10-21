@@ -28,10 +28,10 @@ errors = importlib.import_module("shared.core.errors")
 stage_service = importlib.import_module("src.services.admin.stage")
 ffa_module = importlib.import_module("src.services.encounter.ffa")
 
+from shared import models  # noqa: E402
 from shared.models.encounter import Encounter  # noqa: E402
 from shared.models.tournament.bracket_encounter import BracketEncounter  # noqa: E402
 from shared.services.encounter.participants import active_teams  # noqa: E402
-from src import models  # noqa: E402
 from tests._encounter_layer import EncounterLayerCase  # noqa: E402
 from tests._stage_regulation import stage_regulation  # noqa: E402
 

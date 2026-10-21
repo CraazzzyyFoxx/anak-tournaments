@@ -17,7 +17,7 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 
-models = importlib.import_module("src.models")
+models = importlib.import_module("shared.models")
 schemas = importlib.import_module("src.schemas")
 division_service = importlib.import_module("src.services.division_grid.service")
 grid_service = division_service.division_grid_service

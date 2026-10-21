@@ -12,7 +12,7 @@ no-op when it is ``None`` (back-compat for callers that don't scope).
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-from src import models
+from shared import models
 from src.services.user.queries import _scope
 
 

@@ -1,14 +1,15 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
+from shared.core import pagination
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.disciplines import discipline as discipline_spec
 from shared.division_grid import DivisionGrid
 from shared.repository import CatalogEntityRepository
 from shared.schemas.catalog import CatalogEntityRead
 from shared.schemas.role import RoleRef
-from src import models, schemas
-from src.core import pagination
+from src import schemas
 
 from .queries import HeroQueries
 

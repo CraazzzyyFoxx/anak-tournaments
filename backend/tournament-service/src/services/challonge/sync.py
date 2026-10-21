@@ -28,6 +28,7 @@ from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core import enums
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.domain.encounter_naming import build_encounter_name
@@ -53,7 +54,7 @@ from shared.services.encounter.events import enqueue_encounter_completed
 from shared.services.encounter.participants import active_teams, place_team, vacate_slot
 from shared.services.encounter.result import apply_result, lock_encounter
 from shared.services.realtime import Resource
-from src import models, schemas
+from src import schemas
 from src.clients.challonge import challonge_client
 from src.core import config
 from src.services.challonge.stage_refs import StageRefs, resolve_stage_refs_from_group

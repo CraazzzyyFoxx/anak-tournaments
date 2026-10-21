@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pytest  # noqa: E402
 
+from shared import models  # noqa: E402
 from shared.core import enums  # noqa: E402
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
@@ -47,7 +48,6 @@ from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
 from shared.services.ontology import project_disciplines  # noqa: E402
 from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
-from src import models  # noqa: E402
 from src.schemas import BalancerRegistrationUpdateRequest  # noqa: E402
 from src.schemas.registration import RegistrationSubmit  # noqa: E402
 from src.schemas.registration_build import _public_rosters, _reg_to_read  # noqa: E402

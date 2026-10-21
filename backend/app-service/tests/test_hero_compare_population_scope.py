@@ -39,13 +39,13 @@ os.environ["DEBUG"] = "true"
 
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB  # noqa: E402
 
+from shared import models  # noqa: E402
+from shared.core import enums  # noqa: E402
 from shared.division_grid import DivisionGrid  # noqa: E402
 from shared.models.catalog.role import CatalogRole, RoleDimension  # noqa: E402
 from shared.models.tournament.player_role import PlayerRole  # noqa: E402
 from shared.schemas.role import RoleRef  # noqa: E402
 from shared.testing import create_sqlite_tables  # noqa: E402
-from src import models  # noqa: E402
-from src.core import enums  # noqa: E402
 from src.services.user.queries import _scope  # noqa: E402
 from src.services.user.queries.compare import UserCompareQueries  # noqa: E402
 

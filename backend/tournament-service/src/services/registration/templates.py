@@ -25,12 +25,12 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.domain.forms import FormSchema
 from shared.repository import RegistrationFormTemplateRepository, WorkspaceRepository
 from shared.services.ontology import assert_discipline_enabled
-from src import models
 from src.schemas.registration_form import (
     RegistrationFormTemplateUpsert,
     RegistrationFormUpsert,

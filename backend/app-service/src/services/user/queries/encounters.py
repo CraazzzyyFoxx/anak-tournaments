@@ -12,14 +12,14 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from shared import models
+from shared.core import enums, pagination
 from shared.models.catalog.role import leaf_code
 from shared.repository.stats_queries import match_context
 from shared.repository.stats_reads import MatchReadContext, get_match_members, get_match_reads
 from shared.schemas.catalog import CatalogEntityRead
 from shared.schemas.match import NativeFact
 from shared.schemas.role import RoleRef
-from src import models
-from src.core import enums, pagination
 from src.core.workspace import workspace_filter
 from src.schemas.user import UserMatchViewer
 from src.services.discipline_queries import DisciplineQueries

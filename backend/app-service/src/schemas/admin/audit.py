@@ -15,8 +15,8 @@ from typing import Any
 
 from pydantic import Field
 
+from shared.core import pagination
 from shared.core.pagination import SortOrder
-from src.core import pagination
 from src.schemas import BaseRead
 
 __all__ = (

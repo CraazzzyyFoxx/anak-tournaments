@@ -6,8 +6,8 @@ import sqlalchemy as sa
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.services.workspace_scope import get_tournament_workspace_id
-from src import models
 from src.core.analytics_exports import analytics_exports, supports_analytics, tournament_discipline
 from src.core.config import settings
 from src.domain.ratings import (

@@ -10,14 +10,14 @@ import sqlalchemy as sa
 from sqlalchemy.orm import aliased, joinedload, selectinload
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
+from shared import models
+from shared.core import enums, utils
 from shared.division_grid import DivisionGrid, division_case_expr, division_filter_predicates
 from shared.models.catalog.role import CatalogRole, RoleDimension
 from shared.models.tournament.player_role import PlayerRole
 from shared.repository.stats_queries import player_facts
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import effective_division_number_expr
-from src import models
-from src.core import enums, utils
 
 
 def team_has_played_encounter(team_id_column: typing.Any = models.Team.id) -> sa.ColumnElement[bool]:

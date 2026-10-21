@@ -19,10 +19,10 @@ from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
+from shared.core import pagination
 from shared.models.achievements.achievement import AchievementRule
 from shared.repository.support import AchievementEvaluationResultRepository, AchievementRuleRepository
 from shared.testing import create_test_async_engine, ensure_test_postgres
-from src.core import pagination
 from src.schemas import AchievementRead
 from src.services.achievements.service import achievements
 

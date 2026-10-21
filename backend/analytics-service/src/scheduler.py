@@ -23,9 +23,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.disciplines import DISCIPLINES
 from shared.observability import observe_scheduled_job
-from src import models
 from src.core import db
 
 from .services.ml.features.aggregations import build_match_features_with_strength

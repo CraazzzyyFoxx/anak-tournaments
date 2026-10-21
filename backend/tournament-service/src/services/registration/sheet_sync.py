@@ -27,6 +27,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core import http_status as status
 from shared.core.errors import ApiHTTPException
@@ -43,7 +44,6 @@ from shared.repository import (
 )
 from shared.services.realtime import Resource, Scope, emit
 from shared.services.roster import roster_engine
-from src import models
 from src.domain.registration.mapping_catalog import (
     PARSER_CATALOG,
     build_target_specs,

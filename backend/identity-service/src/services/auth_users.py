@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import AuthUserRepository, RoleRepository, UserRepository, UserRoleRepository
-from src import models, schemas
+from src import schemas
 from src.services.security import PasswordHasher, passwords
 
 __all__ = ["AuthUserService", "auth_users"]

@@ -16,8 +16,8 @@ from dataclasses import dataclass
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.services.workspace_scope import workspace_scope_filter
-from src import models
 
 __all__ = (
     "TimeSeriesSplit",

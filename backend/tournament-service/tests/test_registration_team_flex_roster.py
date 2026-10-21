@@ -34,6 +34,7 @@ import sqlalchemy as sa
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from shared import models  # noqa: E402
 from shared.core import enums  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
 from shared.domain.team_format import TeamFormat  # noqa: E402
@@ -46,7 +47,6 @@ from shared.models.registration.registration import (  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
 from shared.services.team_format import save_tournament_format  # noqa: E402
-from src import models  # noqa: E402
 from src.schemas.registration import RegistrationSubmit  # noqa: E402
 from src.services.registration import teams as teams_module  # noqa: E402
 from src.services.registration.teams import TEAM_COMPLETE, TEAM_FORMING, teams_service  # noqa: E402

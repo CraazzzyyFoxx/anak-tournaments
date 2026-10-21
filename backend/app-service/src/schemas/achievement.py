@@ -13,9 +13,9 @@ __all__ = (
     "AchievementMatchLink",
 )
 
+from shared.core import pagination
 from shared.schemas.catalog import CatalogEntityRead
 from shared.schemas.match import MatchParticipantRead
-from src.core import pagination
 from src.schemas import UserRead
 
 ACHIEVEMENT_SORT = typing.Literal["id", "name", "slug", "rarity", "similarity:name", "similarity:slug"]

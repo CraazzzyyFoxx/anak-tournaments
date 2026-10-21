@@ -13,7 +13,7 @@ import typing
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src import models
+from shared import models
 from src.core.analytics_exports import tournament_module
 from src.core.config import settings
 

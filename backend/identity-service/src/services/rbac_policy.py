@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.identity.rbac import Permission, Role
-from src import models
 from src.schemas.auth import permission_key
 
 

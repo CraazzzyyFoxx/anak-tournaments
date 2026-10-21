@@ -5,9 +5,9 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared.core import errors
 from shared.repository import CatalogEntityRepository
 from src import schemas
-from src.core import errors
 
 __all__ = ("resolve",)
 

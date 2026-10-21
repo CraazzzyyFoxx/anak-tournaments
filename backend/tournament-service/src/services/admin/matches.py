@@ -8,13 +8,14 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core import http_status as status
 from shared.core import pagination
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository.stats_queries import match_context, player_facts
 from shared.repository.stats_reads import MatchReadContext, get_match_reads
 from shared.services.match_reads import match_header_fields
-from src import models, schemas
+from src import schemas
 
 __all__ = ("matches_service",)
 _NOT_FOUND = "Match not found"

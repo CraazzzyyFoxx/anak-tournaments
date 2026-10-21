@@ -24,12 +24,12 @@ import sqlalchemy as sa
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from shared import models  # noqa: E402
 from shared.core import enums  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
 from shared.repository import CatalogRoleRepository  # noqa: E402
 from shared.services.ontology import project_disciplines  # noqa: E402
-from src import models  # noqa: E402
 from src.services.registration.rank_sources import rank_sources_service  # noqa: E402
 
 OW_SUPPORT_RANK = 1500

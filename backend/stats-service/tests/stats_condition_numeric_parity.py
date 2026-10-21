@@ -20,10 +20,10 @@ from sqlalchemy.sql import operators, visitors
 from sqlalchemy.sql.elements import BinaryExpression
 from sqlalchemy.sql.functions import FunctionElement
 
+from shared import models
 from shared.disciplines.overwatch.achievements.conditions import log_stat_rank
 from shared.domain.achievements.context import EvalContext
 from shared.testing.stats_parity import _json_default
-from src import models
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 _UNIT_ROUNDOFF = Fraction(1, 2**53)

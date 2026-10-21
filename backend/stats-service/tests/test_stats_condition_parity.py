@@ -13,6 +13,7 @@ import sqlalchemy as sa
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from shared import models
 from shared.core.enums import LogStatsName
 from shared.core.enums import MatchEvent as MatchEventName
 from shared.disciplines.overwatch.achievements import conditions
@@ -28,7 +29,6 @@ from shared.models.achievements.achievement import (
     EvaluationRunTrigger,
 )
 from shared.services.achievements import evaluator
-from src import models
 from src.services.achievement.engine.runner import AchievementEvaluationRunnerService
 from src.services.achievement.rule_service import AchievementRuleService
 

@@ -28,8 +28,8 @@ from datetime import UTC, datetime
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from shared import models
 from shared.models.platform.audit import AuditLog
-from src import models
 from src.rpc import binary as binary_rpc
 from src.rpc import workspaces as workspaces_rpc
 from src.services.workspace import binary as workspace_binary_service

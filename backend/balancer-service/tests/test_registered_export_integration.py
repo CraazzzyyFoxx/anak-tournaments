@@ -32,6 +32,7 @@ for path in (str(SERVICE_ROOT), str(BACKEND_ROOT)):
 import sqlalchemy as sa  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
+from shared import models  # noqa: E402
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.domain.team_format import FormatDimension, FormatRule, TeamFormat  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
@@ -47,7 +48,6 @@ from shared.models.tournament.tournament import Tournament  # noqa: E402
 from shared.repository import CatalogRoleRepository  # noqa: E402
 from shared.services.team_format import save_tournament_format  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
-from src import models  # noqa: E402
 from src.services.registered_teams import registered_teams_service  # noqa: E402
 
 _UNIQUE = 0

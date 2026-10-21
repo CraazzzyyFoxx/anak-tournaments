@@ -17,9 +17,10 @@ from typing import Any
 
 from faststream.rabbit.annotations import RabbitMessage
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import rehydrate_user_optional
-from src import models, schemas
+from src import schemas
 from src.rpc._helpers import _dump, _identity, _payload, _q1, _read, _require_q1, _run
 from src.services.scrim.service import scrim_service
 

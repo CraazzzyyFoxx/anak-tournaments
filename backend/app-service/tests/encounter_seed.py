@@ -14,11 +14,11 @@ from typing import Any
 
 import sqlalchemy as sa
 
+from shared import models
 from shared.core import enums
 from shared.models.encounter import Encounter, EncounterGame, EncounterGameTeam, EncounterTeam, ScoringRule
 from shared.models.tournament import Team, Tournament
 from shared.models.tournament.bracket_encounter import BracketEncounter
-from src import models
 
 WINS_END = "games >= best_of or max_wins * 2 > best_of"
 

@@ -28,6 +28,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 import sqlalchemy as sa  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
 
+from shared import models  # noqa: E402
 from shared.core.enums import (  # noqa: E402
     DraftPickStatus,
     DraftPlayerStatus,
@@ -52,7 +53,6 @@ from shared.repository import CatalogRoleRepository  # noqa: E402
 from shared.schemas.role import RoleRef  # noqa: E402
 from shared.services.team_format import save_tournament_format  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
-from src import models  # noqa: E402
 from src.domain.draft.entities import PoolSeat  # noqa: E402
 from src.rpc import draft as draft_rpc  # noqa: E402
 from src.services.draft import board as draft_board  # noqa: E402

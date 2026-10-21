@@ -38,12 +38,12 @@ tournament_flows = importlib.import_module("src.services.tournament.flows")
 
 from sqlalchemy.orm import make_transient_to_detached  # noqa: E402
 
+from shared import models  # noqa: E402
+from shared.core import enums  # noqa: E402
 from shared.division_grid import DEFAULT_GRID  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.schemas.role import RoleRef  # noqa: E402
 from shared.schemas.roster_slots import RosterShapeRead  # noqa: E402
-from src import models  # noqa: E402
-from src.core import enums  # noqa: E402
 
 
 def _player() -> SimpleNamespace:

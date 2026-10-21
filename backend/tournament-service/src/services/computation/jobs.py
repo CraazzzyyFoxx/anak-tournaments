@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core.errors import BaseAPIException
 from shared.jobs import JobService, Retry, Status, Unlimited
 from shared.repository import (
@@ -17,7 +18,6 @@ from shared.services.tournament.computation import (
     create_job,
     dispatch_job,
 )
-from src import models
 
 JobKind = Literal["bracket", "standings"]
 JobStatus = Literal["pending", "running", "succeeded", "failed", "superseded"]

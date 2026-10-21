@@ -49,7 +49,7 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "stats-service"))
 
 
-models = importlib.import_module("src.models")
+models = importlib.import_module("shared.models")
 enums = importlib.import_module("shared.core.enums")
 achievement = importlib.import_module("shared.models.achievements.achievement")
 runner = importlib.import_module("src.services.achievement.engine.runner")

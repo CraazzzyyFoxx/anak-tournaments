@@ -8,8 +8,8 @@ import typing
 
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
-from src import models
-from src.core import utils
+from shared import models
+from shared.core import utils
 
 __all__ = ("map_entities",)
 

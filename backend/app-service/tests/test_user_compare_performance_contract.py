@@ -7,9 +7,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from shared import models
+from shared.core import errors
 from shared.division_grid import DEFAULT_GRID
-from src import models, schemas
-from src.core import errors
+from src import schemas
 from src.services.user.queries.compare import UserCompareQueries
 from src.services.user.service import UserService
 

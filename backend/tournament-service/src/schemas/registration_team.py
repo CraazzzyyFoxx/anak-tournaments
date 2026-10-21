@@ -15,9 +15,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from shared import models
 from shared.domain.team_roster import RosterOccupancy
 from shared.schemas.role import RoleRef
-from src import models
 from src.schemas.registration import RegistrationSubmit
 
 __all__ = (

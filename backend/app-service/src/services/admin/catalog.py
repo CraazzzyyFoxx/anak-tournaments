@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.catalog_aliases import normalize_aliases, slugify
 from shared.core import http_status as status
 from shared.core.errors import ApiExc, ApiHTTPException
@@ -20,7 +21,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import paginated_dict
 from shared.disciplines import DISCIPLINES, DisciplineSpec
 from shared.repository import CatalogEntityRepository
-from src import models, schemas
+from src import schemas
 
 __all__ = ("CatalogAdminService", "catalog", "check_attrs", "check_parent", "kind_spec", "to_read")
 

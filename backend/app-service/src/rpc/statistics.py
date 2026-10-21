@@ -8,10 +8,11 @@ from typing import Any
 
 from faststream.rabbit import RabbitMessage
 
+from shared.core import pagination
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.query import build_query_model
 from src import schemas
-from src.core import db, pagination
+from src.core import db
 from src.core.workspace import resolve_workspace_context
 from src.rpc import _common as c
 from src.services.dashboard.readiness import readiness as readiness_service

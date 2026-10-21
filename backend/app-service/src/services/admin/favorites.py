@@ -9,10 +9,11 @@ from __future__ import annotations
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.repository import FavoritePlayerRepository, UserRepository
-from src import models, schemas
+from src import schemas
 
 __all__ = ("FavoritePlayerService", "favorites")
 

@@ -61,7 +61,7 @@ from shared.tests import eager_loading  # noqa: E402
 
 pick_ban_admin = importlib.import_module("src.rpc.pick_ban_admin")
 helpers = importlib.import_module("src.rpc._helpers")
-models = importlib.import_module("src.models")
+models = importlib.import_module("shared.models")
 enums = importlib.import_module("shared.core.enums")
 catalog_models = importlib.import_module("shared.models.catalog")
 pick_ban_config = importlib.import_module("src.services.encounter.pick_ban_config")

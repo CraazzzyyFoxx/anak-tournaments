@@ -37,6 +37,7 @@ import sqlalchemy as sa  # noqa: E402
 from loguru import logger  # noqa: E402
 from sqlalchemy.orm import selectinload  # noqa: E402
 
+from shared import models
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.models.identity.rbac import Permission, Role, UserPermissionDeny, user_roles  # noqa: E402
 from shared.rbac import (  # noqa: E402
@@ -45,7 +46,7 @@ from shared.rbac import (  # noqa: E402
     ensure_workspace_system_roles,
 )
 from shared.repository import get_or_create_workspace_member  # noqa: E402
-from src import models, schemas  # noqa: E402
+from src import schemas  # noqa: E402
 from src.core import db  # noqa: E402
 from src.rpc import tokens as tokens_rpc  # noqa: E402
 from src.services.api_keys import api_keys  # noqa: E402

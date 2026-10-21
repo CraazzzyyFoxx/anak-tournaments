@@ -15,7 +15,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 from sqlalchemy.orm import configure_mappers  # noqa: E402
 
-import src.models  # noqa: E402,F401  (import registers all models)
+import shared.models  # noqa: E402,F401  (import registers all models)
 from shared.models.balancer import draft as draft_models  # noqa: E402
 from shared.models.balancer.draft import (  # noqa: E402
     DraftPick,

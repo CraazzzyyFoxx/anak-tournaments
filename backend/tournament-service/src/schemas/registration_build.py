@@ -15,6 +15,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.balancer_registration_statuses import build_unknown_status_meta
 from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid
@@ -29,7 +30,6 @@ from shared.services.division_grid.access import (
     runtime_fallback_grid,
 )
 from shared.services.roster import registration_load_options, roster_engine
-from src import models
 from src.schemas.admission import AdmissionRead
 from src.schemas.division_grid import DivisionGridVersionRead
 from src.schemas.registration import (

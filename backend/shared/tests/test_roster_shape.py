@@ -100,9 +100,3 @@ def test_shape_survives_the_serialization_paths_it_travels_through() -> None:
     assert copy.deepcopy(HYBRID) == HYBRID
     assert pickle.loads(pickle.dumps(HYBRID)) == HYBRID
     assert dataclasses.asdict(HYBRID) == {"entries": (("tank", 1), ("flex", 5))}
-
-
-def test_the_package_reexports_the_roster_shape() -> None:
-    from shared.domain import RosterShape as reexported
-
-    assert reexported is RosterShape

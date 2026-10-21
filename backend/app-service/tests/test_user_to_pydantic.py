@@ -1,8 +1,8 @@
 """Unit tests for UserService.to_read (unified social_accounts, no DB)."""
 
+from shared import models
 from shared.core.social import SocialProvider
 from shared.models.identity.social import SocialAccountVisibility
-from src import models
 from src.services.user.service import UserService
 
 

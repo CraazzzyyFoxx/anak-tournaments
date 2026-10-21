@@ -30,11 +30,11 @@ import json
 import pytest
 from sqlalchemy.orm import Session
 
+from shared import models
+from shared.core import enums
 from shared.models.catalog.role import CatalogRole, RoleDimension
 from shared.models.tournament.player_role import assignment_of
 from shared.schemas.role import RoleRef
-from src import models
-from src.core import enums
 from tests.conftest import RpcHarness, build_query
 from tests.encounter_seed import add_duel, add_observed_game
 

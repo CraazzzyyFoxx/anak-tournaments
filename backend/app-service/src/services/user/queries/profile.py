@@ -7,14 +7,14 @@ from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
+from shared.core import enums, pagination
 from shared.core.social import GAME_PROVIDERS, SocialProvider, normalize_social_handle
 from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid, division_case_expr
 from shared.models.stats.match import mv_entity_global_stats
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import tournament_effective_version_id_expr
-from src import models
-from src.core import enums, pagination
 from src.services.discipline_queries import DisciplineQueries
 from src.services.encounter_seats import Seat
 

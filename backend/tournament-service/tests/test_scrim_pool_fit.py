@@ -46,6 +46,7 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB  # noqa: E402
 
+from shared import models  # noqa: E402
 from shared.core.enums import MapVetoMode, PickBanKind  # noqa: E402
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.domain import pick_ban_rules as pbr  # noqa: E402
@@ -56,7 +57,6 @@ from shared.models.tournament.pick_ban import (  # noqa: E402
     PickBanConfigSlotItem,
 )
 from shared.testing import create_sqlite_tables  # noqa: E402
-from src import models  # noqa: E402
 from src.services.scrim import service as scrim  # noqa: E402
 
 #: The rulesets a copied tournament round carries: a slot-veto generator and a

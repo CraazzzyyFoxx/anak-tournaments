@@ -16,12 +16,12 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.balancer_registration_statuses import is_balancer_status_excluded
 from shared.disciplines import discipline
 from shared.domain.roster import PlayerRoster
 from shared.schemas.identity import PlayerIdentityRead
 from shared.services.roster import roster_engine
-from src import models
 from src.services.registration._common import (
     RegistrationCommonService,
     _common_service,

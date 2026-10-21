@@ -21,8 +21,8 @@ import typing
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.repository import AnalyticsAlgorithmRepository, CatalogRoleRepository, MLModelArtifactRepository
-from src import models
 from src.core.analytics_exports import analytics_exports
 
 __all__ = ("ModelRegistryService", "registry_service")

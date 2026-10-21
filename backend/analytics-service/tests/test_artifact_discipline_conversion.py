@@ -33,8 +33,8 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.orm import Session
 
+from shared import models
 from shared.disciplines.overwatch import analytics as ow_analytics
-from src import models
 from src.services.ml.models.base import load_artifact
 from tests.test_ml_prediction_parity import (
     GOLDEN,

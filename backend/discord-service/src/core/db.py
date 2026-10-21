@@ -1,11 +1,7 @@
-from shared.core.db import Base, create_database_from_settings
+from shared.core.db import create_database_from_settings
 from src.core.config import settings
 
-__all__ = (
-    "Base",
-    "async_engine",
-    "async_session_maker",
-)
+__all__ = ("async_engine", "async_session_maker")
 
 _db = create_database_from_settings(settings)
 

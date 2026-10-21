@@ -100,7 +100,7 @@ def test_patch_can_clear_nullable_fields_and_omitted_fields_stay_omitted() -> No
 
 @pytest.fixture
 def catalog_repo(monkeypatch: pytest.MonkeyPatch):
-    from src import models
+    from shared import models
 
     row = models.CatalogEntity(
         id=901,
@@ -178,7 +178,7 @@ class CatalogDeleteDbTests(IsolatedAsyncioTestCase):
         loop_factory = asyncio.SelectorEventLoop
 
     async def test_a_legacy_reference_returns_in_use_instead_of_deleting_the_entity(self) -> None:
-        from src import models
+        from shared import models
 
         engine = create_test_async_engine()
         Session = async_sessionmaker(engine, expire_on_commit=False)

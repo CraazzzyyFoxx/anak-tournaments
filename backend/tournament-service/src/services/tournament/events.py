@@ -8,6 +8,7 @@ from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from shared import models
 from shared.disciplines import discipline as discipline_spec
 from shared.messaging.config import TOURNAMENT_EVENTS_EXCHANGE, TOURNAMENT_STATE_CHANGED_ROUTING_KEY
 from shared.messaging.outbox import enqueue_outbox_event
@@ -20,7 +21,6 @@ from shared.schemas.identity import PlayerIdentityRead
 from shared.services.notifications import notify
 from shared.services.realtime import Resource, Scope, emit, enqueue_invalidation_outbox
 from shared.services.scrim_scope import is_scrim_container
-from src import models
 from src.services.computation.jobs import jobs_service
 
 #: Tournament names already snapshotted in this transaction, keyed by id.

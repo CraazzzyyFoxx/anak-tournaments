@@ -27,7 +27,7 @@ sys.path.insert(0, str(backend_root / "app-service"))
 os.environ["DEBUG"] = "true"
 
 flows = importlib.import_module("src.services.user.service")
-enums = importlib.import_module("src.core.enums")
+enums = importlib.import_module("shared.core.enums")
 pagination = importlib.import_module("shared.core.pagination")
 user_cache = importlib.import_module("src.services.user_cache")
 cache_resources = importlib.import_module("src.services.cache_resources")

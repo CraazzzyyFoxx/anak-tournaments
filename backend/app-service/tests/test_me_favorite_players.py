@@ -32,9 +32,10 @@ from typing import Any
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
 
+from shared import models
 from shared.core.errors import BaseAPIException
 from shared.rpc.identity import MissingIdentityError
-from src import models, schemas
+from src import schemas
 from src.rpc import users_admin
 from src.services.admin.favorites import favorites
 

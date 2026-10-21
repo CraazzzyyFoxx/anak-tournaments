@@ -13,6 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.balancer_registration_statuses import get_status_metas_map
 from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core.errors import ApiExc, ApiHTTPException
@@ -40,7 +41,6 @@ from shared.repository import (
 )
 from shared.services.realtime import Resource, Scope, emit
 from shared.services.social_identity import social_identity_service
-from src import models
 from src.core.clients import subscription_resolver
 from src.schemas.registration import (
     RegistrationListRead,

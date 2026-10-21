@@ -2,9 +2,9 @@ from dataclasses import dataclass
 
 from pydantic import UUID4, BaseModel, Field
 
+from shared.core import pagination
 from shared.schemas.discipline_filter import InstalledDisciplineFilter
 from shared.schemas.role import RoleRef
-from src.core import pagination
 from src.schemas import BaseRead
 from src.schemas.tournament import TournamentRead
 from src.schemas.user_base import UserRead

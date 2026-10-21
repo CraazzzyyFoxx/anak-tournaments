@@ -26,11 +26,11 @@ from sqlalchemy.sql import visitors
 from sqlalchemy.sql.functions import FunctionElement
 from sqlalchemy.sql.selectable import CTE
 
+from shared import models
+from shared.core import enums
 from shared.division_grid import DEFAULT_GRID
 from shared.models.stats import StatDef, StatsFact, StatsMatch, StatsMatchPlayer
 from shared.schemas.role import RoleRef
-from src import models
-from src.core import enums
 from src.services.user.queries import UserCompareQueries, UserProfileQueries
 
 compare_queries = UserCompareQueries.of("overwatch")

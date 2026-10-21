@@ -3,6 +3,8 @@ import typing
 from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
+from shared.core import errors, pagination, utils
 from shared.core.enums import EncounterGameState
 from shared.repository import (
     BracketEncounterRepository,
@@ -19,8 +21,8 @@ from shared.services.challonge_refs import (
     resolve_tournament_challonge,
 )
 from shared.services.match_reads import match_events_read, match_header_fields, match_statistics_read
-from src import models, schemas
-from src.core import config, errors, pagination, utils
+from src import schemas
+from src.core import config
 from src.services.bracket.advancement import SlotSource, resolve_slot_sources
 from src.services.encounter.service import EncounterService, encounter_service
 from src.services.map.flows import MapFlowsService, map_to_read

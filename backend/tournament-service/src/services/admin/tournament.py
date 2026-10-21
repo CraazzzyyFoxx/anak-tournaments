@@ -7,6 +7,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from shared import models
 from shared.core import http_status as status
 from shared.core import tournament_state
 from shared.core.enums import StageType, TournamentStatus
@@ -29,7 +30,7 @@ from shared.services.stats_owner_delete import capture_owner_delete, stage_owner
 from shared.services.team_format import copy_for_tournament, save_tournament_format
 from shared.services.tournament.computation import request_bracket_job
 from shared.services.tournament.slug import generate_unique_tournament_slug
-from src import models, schemas
+from src import schemas
 from src.clients.challonge import challonge_client
 from src.services.admin.stage import stage_service
 from src.services.draft_guards import assert_no_active_draft_session

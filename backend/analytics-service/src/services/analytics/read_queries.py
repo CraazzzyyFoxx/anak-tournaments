@@ -3,6 +3,7 @@ import typing
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.repository import (
     AnalyticsAlgorithmRepository,
     AnalyticsPlayerRepository,
@@ -10,7 +11,6 @@ from shared.repository import (
 )
 from shared.repository.stats_queries import match_context
 from shared.services.workspace_scope import workspace_filter
-from src import models
 
 VISIBLE_SHIFT_ALGORITHM_NAMES = ("Linear", "Points", "OpenSkill + ML")
 

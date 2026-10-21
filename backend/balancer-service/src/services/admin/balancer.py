@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import Row
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from shared import models
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import DISCIPLINES
@@ -21,7 +22,7 @@ from shared.repository import (
 )
 from shared.services.balancer_realtime import BALANCER_BALANCE_SAVED, BALANCER_CONFIG_CHANGED, BALANCER_TEAMS_CHANGED
 from shared.services.discord_errors import DiscordError
-from src import models, schemas
+from src import schemas
 from src.domain.balancer.config.public_contract import (
     normalize_balance_response_payload,
     normalize_config_payload,

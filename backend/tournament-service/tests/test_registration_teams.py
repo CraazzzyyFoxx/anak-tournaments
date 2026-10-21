@@ -38,11 +38,11 @@ import sqlalchemy as sa  # noqa: E402
 from pydantic import ValidationError  # noqa: E402
 from sqlalchemy.dialects import postgresql  # noqa: E402
 
+from shared import models  # noqa: E402
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.domain.invite_token import hash_invite_token  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.domain.team_roster import RosterMember, RosterOccupancy  # noqa: E402
-from src import models  # noqa: E402
 from src.schemas.registration_team import (  # noqa: E402
     RegistrationTeamAcceptRequest,
     RegistrationTeamInviteCreateRequest,
