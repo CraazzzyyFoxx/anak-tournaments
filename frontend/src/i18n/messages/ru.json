@@ -1347,7 +1347,7 @@
       "layers": {
         "canon": "Канон",
         "author": "Автор",
-        "native": "{game}",
+        "native": "Игровой",
         "hidden": "Скрытый",
         "effective_tournament": "Эффективный (турнир)",
         "effective_mix": "Эффективный (микс)",
@@ -1358,7 +1358,7 @@
       "sources": {
         "author": "Автор",
         "workspace": "Воркспейс",
-        "native": "{game}"
+        "native": "Игровой"
       },
       "filters": {
         "layer": "Слой",

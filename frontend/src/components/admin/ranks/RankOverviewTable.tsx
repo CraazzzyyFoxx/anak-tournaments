@@ -35,7 +35,6 @@ import { RowGameLabel, gameColumn } from "@/components/workspace/game-column";
 import { useGameScope } from "@/hooks/useGameScope";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
-import { useGameDescriptors } from "@/hooks/useGameDescriptors";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
@@ -159,15 +158,14 @@ function RowPlayer({ row }: Readonly<{ row: RankOverviewRow }>) {
   );
 }
 
-/** A row's layer, the native one named by the row's own game. */
+/** A row's layer. */
 function RowLayer({ row }: Readonly<{ row: RankOverviewRow }>) {
   const t = useTranslations("admin.rankOverview");
-  const games = useGameDescriptors();
   const Icon = LAYER_ICON[row.layer];
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs">
       <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-      {t(`layers.${row.layer}`, { game: games.get(row.discipline)?.name ?? row.discipline })}
+      {t(`layers.${row.layer}`)}
     </span>
   );
 }
@@ -252,13 +250,12 @@ function RankOverviewRows({
   const tBracket = useTranslations("adminBracket");
   const slotLabel = useSlotLabel(ontology);
   const format = useFormatter();
-  const descriptors = useGameDescriptors();
   const allGames = discipline === null;
   const grid = useDivisionGrid(discipline ?? undefined);
-  // Only a game that collects a native rank has that layer, named by the game.
-  const nativeRankName =
-    games.find((entry) => (allGames || entry.code === discipline) && entry.capabilities.native_rank_collection)?.name ??
-    null;
+  // Only a game that collects a native rank has that layer.
+  const hasNativeRank = games.some(
+    (entry) => (allGames || entry.code === discipline) && entry.capabilities.native_rank_collection,
+  );
   const { searchParams, setParams } = useQueryParams({ resetOnChange: ["page"] });
   const dateFrom = searchParams?.get(DATE_PARAMS.from) ?? "";
   const dateTo = searchParams?.get(DATE_PARAMS.to) ?? "";
@@ -290,9 +287,9 @@ function RankOverviewRows({
       key: "layer",
       label: t("filters.layer"),
       kind: "multi",
-      options: RANK_LAYERS.filter((value) => value !== "native" || nativeRankName !== null).map((value) => ({
+      options: RANK_LAYERS.filter((value) => value !== "native" || hasNativeRank).map((value) => ({
         value,
-        label: t(`layers.${value}`, { game: nativeRankName ?? "" }),
+        label: t(`layers.${value}`),
       })),
     };
     const author: FilterDef = {
@@ -325,7 +322,7 @@ function RankOverviewRows({
       { key: "div_max", label: t("filters.divisionMax"), kind: "single", options: divisionOptions },
       differs,
     ];
-  }, [t, tGame, slotLabel, ontology, nativeRankName, authorsQuery.data, divisionOptions, filterByGame, games, sortParam]);
+  }, [t, tGame, slotLabel, ontology, hasNativeRank, authorsQuery.data, divisionOptions, filterByGame, games, sortParam]);
 
   const filters = useFilters(defs);
   const layerFilter = filters.values.layer as string[];
@@ -340,7 +337,6 @@ function RankOverviewRows({
   const rankMax = maxTier?.rank_max ?? undefined;
 
   const columns = useMemo<ColumnDef<RankOverviewRow>[]>(() => {
-    const gameName = (code: string) => descriptors.get(code)?.name ?? code;
     const player: ColumnDef<RankOverviewRow> = {
       id: "display_name",
       header: t("columns.player"),
@@ -391,7 +387,7 @@ function RankOverviewRows({
           if (!source) return null;
           return (
             <span className="text-xs text-muted-foreground">
-              {t(`sources.${source}`, { game: gameName(row.original.discipline) })}
+              {t(`sources.${source}`)}
             </span>
           );
         },
@@ -481,7 +477,7 @@ function RankOverviewRows({
     // Beside the player: which game a row is matters as much as whose it is.
     const game = allGames ? [gameColumn<RankOverviewRow>(tGame("column"), (row) => row.discipline)] : [];
     return playerId == null ? [player, ...game, ...rest] : [...game, ...rest];
-  }, [t, tGame, format, playerId, allGames, axis, descriptors]);
+  }, [t, tGame, format, playerId, allGames, axis]);
 
   const activeKey = [filters.filterKey, dateFrom, dateTo].filter(Boolean).join("&");
 
