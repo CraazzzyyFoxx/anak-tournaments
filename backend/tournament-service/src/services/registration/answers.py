@@ -49,7 +49,7 @@ from shared.domain.forms import (
 )
 from shared.domain.roster import flex_role_mode_from_schema
 from shared.hero_catalog import HeroCatalog
-from src.services.registration._common import build_registration_roles, only_role_answer
+from src.services.registration._common import build_registration_roles, only_role_answer, root_role_codes
 from src.services.registration.roles_rules import validate_roles
 
 __all__ = (
@@ -313,7 +313,7 @@ class RegistrationAnswerService:
             value = values[key]
             setattr(registration, column, bool(value) if column in _BOOL_COLUMNS else (value or None))
         self._apply_identities(registration, values, schema=schema)
-        roots = [code for code, row in catalog_roles.items() if row.parent_role_id is None and row.workspace_id is None]
+        roots = root_role_codes(catalog_roles)
         # A NEW registration of a one-role game gets that role even when nothing asked (organizer and sheet rows
         # validate partially, so ``validate`` implied nothing). A stored row is edited, never re-seeded: its roles may
         # not even be loaded.
@@ -394,9 +394,7 @@ class RegistrationAnswerService:
         entries = build_registration_roles(
             roles,
             catalog_roles=catalog_roles,
-            role_codes=tuple(
-                code for code, row in catalog_roles.items() if row.parent_role_id is None and row.workspace_id is None
-            ),
+            role_codes=root_role_codes(catalog_roles),
             hero_catalog=hero_catalog,
             max_heroes=params.top_heroes.max,
             mode=flex_role_mode_from_schema(schema),

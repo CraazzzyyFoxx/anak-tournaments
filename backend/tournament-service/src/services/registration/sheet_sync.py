@@ -74,6 +74,7 @@ from src.services.registration._common import (
     RegistrationCommonService,
     _common_service,
     replace_registration_roles,
+    root_role_codes,
     sync_included_balancer_status,
 )
 from src.services.registration.answers import answer_service
@@ -211,9 +212,7 @@ def apply_sheet_fields_to_registration(
         registration,
         build_registration_role_payloads(
             parsed_fields,
-            role_codes=tuple(
-                code for code, row in catalog_roles.items() if row.parent_role_id is None and row.workspace_id is None
-            ),
+            role_codes=root_role_codes(catalog_roles),
         ),
         catalog_roles=catalog_roles,
         mode=mode,

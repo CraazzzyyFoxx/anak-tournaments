@@ -75,6 +75,11 @@ def _role_row(
     return models.RegistrationRole(catalog_role=leaf, dimension_id=leaf.dimension_id)
 
 
+def root_role_codes(catalog_roles: Mapping[str, models.CatalogRole]) -> tuple[str, ...]:
+    """The discipline's own top-level roles: no parent role, no workspace (workspace sub-roles excluded)."""
+    return tuple(code for code, row in catalog_roles.items() if row.parent_role_id is None and row.workspace_id is None)
+
+
 def apply_all_roles(
     entries: list[models.RegistrationRole],
     *,
@@ -183,9 +188,7 @@ def replace_registration_roles(
     max_heroes: int | None = None,
     mode: FlexRoleMode = "optional",
 ) -> None:
-    role_codes = tuple(
-        code for code, row in catalog_roles.items() if row.parent_role_id is None and row.workspace_id is None
-    )
+    role_codes = root_role_codes(catalog_roles)
     existing_by_role = {existing.role: existing for existing in registration.roles}
     next_roles: list[models.RegistrationRole] = []
     seen_roles: set[str] = set()
