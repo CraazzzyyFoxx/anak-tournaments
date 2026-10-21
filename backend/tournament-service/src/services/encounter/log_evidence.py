@@ -1,11 +1,11 @@
 """The match layer's answer to ingest evidence: may an observed log decide a game?
 
 ``stats-service`` observes and publishes :class:`MatchIngestedEvent` -- an opaque evidence id and revision, the
-game-result basis it was bound against, canonical placements per bound team and the participants the roster
-lacks. It never writes ``encounter.*``; this module alone decides what, if anything, becomes official, and it
-imports nothing from the stats package. Every decision, refusals included, is one durable ``match_ingested``
-receipt in the room journal (``record_room_event``, source ``stats-service``), written in the SAME transaction as
-whatever it decided, so a rolled-back result leaves no receipt and a redelivery applies once.
+game-result basis it was bound against, canonical placements per bound team, the participants the roster lacks and
+the observed map and mode. It never writes ``encounter.*``; this module alone decides what, if anything, becomes
+official, and it imports nothing from the stats package. Every decision, refusals included, is one durable
+``match_ingested`` receipt in the room journal (``record_room_event``, source ``stats-service``), written in the
+SAME transaction as whatever it decided, so a rolled-back result leaves no receipt and a redelivery applies once.
 
 Owner policy -- the only owners that can ever say yes:
 
@@ -20,7 +20,8 @@ Owner policy -- the only owners that can ever say yes:
 
 Outcomes (``apply_match_evidence`` returns exactly one; the first seven are journaled):
 
-``accepted``              the game is CONFIRMED with source ``admin_log`` (one ``result_version`` step)
+``accepted``              the game is CONFIRMED with source ``admin_log`` (one ``result_version`` step); a game
+                          that named no map or mode takes the observed ones
 ``logs_disabled``         the tournament does not accept logs as official; a later toggle never replays history
 ``owner_policy_refused``  mix, scrim, an unpublished (preview) bracket, or an extra participant whose rank/role
                           the roster rules cannot establish or that contradicts the roster
@@ -257,10 +258,15 @@ async def _record(
 
     Settlement can still refuse a result that passed validation (an elimination encounter that would end level
     raises ``bracket_tie``). The no-draw rule stays the settlement's; here the tentative result, version bump and
-    cascade are rolled back and the refusal is journaled instead of dead-lettering valid evidence.
+    cascade are rolled back and the refusal is journaled instead of dead-lettering valid evidence. A game that names
+    no map or mode yet takes the observation's with the result (the binding already refused a contradicting one).
     """
     try:
         async with session.begin_nested():
+            if game.map_id is None:
+                game.map_id = event.map_id
+            if game.mode_id is None:
+                game.mode_id = event.mode_id
             await games.record_result(
                 session,
                 encounter,

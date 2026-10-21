@@ -17,7 +17,7 @@ is the session's question, not this module's, and stays in
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -168,17 +168,19 @@ async def assert_pool_in_discipline(
     discipline: str,
     item_ids: Sequence[int],
     slots: Sequence[tuple[Sequence[int], int | None]],
-) -> None:
+) -> set[int]:
     """Every pool id (flat items, slot candidates and reserves) is a catalog row of ``discipline`` and of the
     kind's catalog (a character for the hero kind, a map for the map kind); 422 ``pool_item_not_in_catalog``
-    otherwise. The shared save boundary: the admin upsert and the scrim custom pool both go through it."""
+    otherwise. A map pool's flat items may also name the discipline's modes when it declares the ``mode`` kind: ingest
+    then admits only logs of those modes, and a room never offers a mode as a map (``CONFIG_ROOM_LOAD``). Returns
+    those mode items. The shared save boundary: the admin upsert and the scrim custom pool both go through it."""
     wanted = set(item_ids)
     for candidates, reserve in slots:
         wanted.update(candidates)
         if reserve is not None:
             wanted.add(reserve)
     if not wanted:
-        return
+        return set()
     found = set(
         await session.scalars(
             select(CatalogEntity.id).where(
@@ -188,7 +190,19 @@ async def assert_pool_in_discipline(
             )
         )
     )
-    if missing := sorted(wanted - found):
+    modes: set[int] = set()
+    flat = set(item_ids) - found
+    if kind == PickBanKind.MAP and flat and "mode" in installed_discipline(discipline).kinds:
+        modes = set(
+            await session.scalars(
+                select(CatalogEntity.id).where(
+                    CatalogEntity.id.in_(flat),
+                    CatalogEntity.kind == "mode",
+                    CatalogEntity.discipline == discipline,
+                )
+            )
+        )
+    if missing := sorted(wanted - found - modes):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=[
@@ -198,6 +212,7 @@ async def assert_pool_in_discipline(
                 )
             ],
         )
+    return modes
 
 
 async def validate_config(
@@ -212,8 +227,9 @@ async def validate_config(
     round: int | None,
     discipline: str,
 ) -> None:
-    """The whole save gate of a config body: the ruleset against the discipline's group vocabulary, the pool's
-    shape, and the pool's membership in the discipline's catalog."""
+    """The whole save gate of a config body: the pool's membership in the discipline's catalog, the ruleset against
+    the discipline's group vocabulary, and the pool's shape (its mode items do not count toward a room's demand)."""
+    modes = await assert_pool_in_discipline(session, kind=kind, discipline=discipline, item_ids=item_ids, slots=slots)
     validate_config_payload(
         kind=kind,
         mode=mode,
@@ -224,8 +240,8 @@ async def validate_config(
         round=round,
         discipline=discipline,
         groups=await group_vocabulary(session, kind, discipline),
+        modes=modes,
     )
-    await assert_pool_in_discipline(session, kind=kind, discipline=discipline, item_ids=item_ids, slots=slots)
 
 
 async def roster_slot_counts(session: AsyncSession, tournament_id: int) -> dict[str, int] | None:
@@ -315,6 +331,7 @@ def validate_config_payload(
     round: int | None,
     discipline: str,
     groups: Sequence[str] | None = None,
+    modes: Collection[int] = (),
 ) -> None:
     """Everything an upsert body must satisfy before it becomes a config row.
 
@@ -333,7 +350,9 @@ def validate_config_payload(
 
     ``groups`` is the kind's item-group vocabulary (see :func:`group_vocabulary`);
     ``None`` skips map-group name checks. ``discipline`` decides what the actor
-    vocabulary may say -- whether the game has sides to pick at all.
+    vocabulary may say -- whether the game has sides to pick at all. ``modes``
+    are the flat items that are modes, not maps: they restrict logs, never a
+    room, so a pool of only modes is a template to the room.
     """
     if round is not None and stage_id is None:
         raise HTTPException(status_code=422, detail="round requires stage_id")
@@ -395,17 +414,18 @@ def validate_config_payload(
     # playable and is replayed per map, so its steps are not "spent" items.
     if kind != PickBanKind.MAP:
         return
+    maps = len([item for item in item_ids if item not in modes])
+    if not maps:
+        return
     for index, phase in enumerate(pbr.parse_ruleset(ruleset).phases):
         if phase.generator is not None:
             # A generator sizes itself to the pool it is given.
             continue
         demand = _phase_demand(phase)
-        if demand > len(item_ids):
+        if demand > maps:
             raise HTTPException(
                 status_code=422,
-                detail=(
-                    f"phase {index} ({phase.id}) consumes {demand} items per map but the pool has only {len(item_ids)}"
-                ),
+                detail=f"phase {index} ({phase.id}) consumes {demand} items per map but the pool has only {maps}",
             )
 
 

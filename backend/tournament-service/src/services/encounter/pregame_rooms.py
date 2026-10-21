@@ -47,7 +47,7 @@ from shared.models.encounter.team import EncounterTeam
 from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.pick_ban import PickBanConfig
 from shared.models.tournament.stage import Stage
-from shared.repository.pick_ban import CONFIG_POOL_LOAD
+from shared.repository.pick_ban import CONFIG_ROOM_LOAD
 from src.schemas import pregame_rooms as schemas
 from src.services.encounter.pick_ban_action import PickBanActionService
 from src.services.encounter.pick_ban_session import (
@@ -111,7 +111,7 @@ class PregameRoomsService:
         # encounter in memory, which is what keeps this at one config query.
         configs = await _rows(
             session,
-            select(PickBanConfig).where(PickBanConfig.tournament_id == tournament_id).options(*CONFIG_POOL_LOAD),
+            select(PickBanConfig).where(PickBanConfig.tournament_id == tournament_id).options(*CONFIG_ROOM_LOAD),
         )
         configs_by_kind = {kind: [config for config in configs if config.kind == kind] for kind in _KINDS}
 

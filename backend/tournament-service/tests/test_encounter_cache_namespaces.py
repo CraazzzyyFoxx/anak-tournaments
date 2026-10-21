@@ -51,11 +51,11 @@ class EncounterCacheNamespaceTests(IsolatedAsyncioTestCase):
 
     def test_both_families_moved_off_their_pre_cutover_names(self) -> None:
         for template, function, name in (
-            (flows.ENCOUNTERS_CACHE_KEY, flows.EncounterFlowsService.get_all_encounters, "native_encounters"),
+            (flows.ENCOUNTERS_CACHE_KEY, flows.EncounterFlowsService.get_all_encounters, "native_encounters:v2"),
             (
                 flows.ENCOUNTERS_OVERVIEW_CACHE_KEY,
                 flows.EncounterFlowsService.get_encounters_overview,
-                "native_encounters_overview",
+                "native_encounters_overview:v2",
             ),
         ):
             key = _key(template, function, workspace_id=5, tournament_id=7)

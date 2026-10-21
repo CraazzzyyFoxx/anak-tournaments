@@ -19,6 +19,21 @@ CONFIG_POOL_LOAD = (
     selectinload(models.PickBanConfig.slots).selectinload(models.PickBanConfigSlot.items),
 )
 
+# What a room plays: the same pool without the mode items a map pool may name (they restrict ingested logs, never a
+# veto), so a pool of only modes reads as a rules template. Loader criteria apply to a collection when it is loaded:
+# a config already loaded whole in the same session keeps its modes, so room paths never share a session with the
+# editor's CONFIG_POOL_LOAD.
+CONFIG_ROOM_LOAD = (
+    selectinload(
+        models.PickBanConfig.items.and_(
+            models.PickBanConfigItem.item_id.not_in(
+                sa.select(models.CatalogEntity.id).where(models.CatalogEntity.kind == "mode")
+            )
+        )
+    ),
+    selectinload(models.PickBanConfig.slots).selectinload(models.PickBanConfigSlot.items),
+)
+
 
 class PickBanConfigRepository(BaseRepository[models.PickBanConfig]):
     def __init__(self) -> None:

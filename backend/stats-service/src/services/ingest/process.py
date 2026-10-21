@@ -45,12 +45,14 @@ from src.services.ingest.binding import (
     BindingMismatch,
     GameSeats,
     MapNotInPool,
+    ModeNotInPool,
     bound_match,
     bound_participants,
     check_forced_teams,
-    check_map_pool,
+    check_pool,
     check_roster_owners,
     find_binding,
+    fits,
     load_game_seats,
     match_teams,
 )
@@ -151,7 +153,7 @@ def classify(exc: BaseException) -> Failure:
         return Failure(exc.code, str(exc), exc.issues)
     if isinstance(exc, DecodeError):
         return Failure(exc.code, str(exc), (), exc.misses())
-    if isinstance(exc, (IdentityConflict, BindingMismatch, StaleTarget, MapNotInPool)):
+    if isinstance(exc, (IdentityConflict, BindingMismatch, StaleTarget, MapNotInPool, ModeNotInPool)):
         return Failure(exc.code, str(exc))
     if isinstance(exc, BaseAPIException):
         code, message = _api_code(exc)
@@ -167,6 +169,8 @@ _ADMIN_STATUS = {
     "identity_conflict": 409,
     "binding_stale": 409,
     "map_not_in_pool": 400,
+    "mode_not_in_pool": 400,
+    "mode_map_mismatch": 422,
     "binding_target_not_found": 404,
     "unknown_code": 422,
     "document_invalid": 422,
@@ -332,10 +336,10 @@ async def _publish(
     games = await load_game_seats(
         session, workspace_id=job.workspace_id, discipline=job.discipline, game_ids=[binding.encounter_game_id]
     )
-    if not games or games[0].encounter_id != binding.encounter_id or games[0].map_id != validated.map_id:
+    if not games or games[0].encounter_id != binding.encounter_id or not fits(games[0], validated):
         raise StaleTarget("the target game changed before it was locked")
     game: GameSeats = games[0]
-    await check_map_pool(session, encounter_id=binding.encounter_id, map_id=validated.map_id)
+    await check_pool(session, encounter_id=binding.encounter_id, map_id=validated.map_id, mode_id=validated.mode_id)
     if admin is not None:
         check_forced_teams(validated.doc, known, game, admin.teams)
         teams = dict(admin.teams)

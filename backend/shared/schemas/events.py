@@ -229,7 +229,8 @@ class MatchIngestedEvent(BaseEvent):
     Published by: stats-service (transactional outbox), event id ``match.ingested:{evidence_id}:{revision}``.
     Consumed by: the tournament match layer, which alone decides whether it is official. Carries no raw document,
     S3 reference or interpreted score facts: only opaque evidence identity, the game-result basis it was captured
-    against, canonical placements and the extra participants the roster lacks.
+    against, canonical placements, the extra participants the roster lacks and the observed map and mode (an accepted
+    result fills a game that named neither).
     """
 
     event_type: str = Field(default="match_ingested", frozen=True)
@@ -243,6 +244,8 @@ class MatchIngestedEvent(BaseEvent):
     basis_game_result_version: int = Field(..., ge=0, description="game.result_version the binding was made against")
     placements: list[MatchIngestPlacement] = Field(default_factory=list)
     extra_participants: list[MatchIngestExtraParticipant] = Field(default_factory=list)
+    map_id: int | None = Field(default=None, gt=0, description="catalog map the observation was played on")
+    mode_id: int | None = Field(default=None, gt=0, description="catalog mode of the observation, when it has one")
 
 
 class CacheInvalidatedEvent(BaseEvent):

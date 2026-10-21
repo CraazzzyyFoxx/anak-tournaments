@@ -63,7 +63,7 @@ from shared.repository import (
     PickBanSessionRepository,
     PickBanSubmissionRepository,
 )
-from shared.repository.pick_ban import CONFIG_POOL_LOAD
+from shared.repository.pick_ban import CONFIG_ROOM_LOAD
 from shared.services.encounter.participants import active_teams
 from src.services.bracket.usability import is_encounter_live
 from src.services.encounter.games import (
@@ -433,7 +433,9 @@ class PickBanSessionService:
         A pool-less row is a rules template: it plays nothing, "as if no row
         existed". So a more specific empty fan-out must not shadow a parent's
         pool -- otherwise saving a stage as a template closes every round's room
-        even after maps are authored at the tournament.
+        even after maps are authored at the tournament. The pool is the room's
+        (``CONFIG_ROOM_LOAD``): a map pool's mode items are not candidates, so a
+        pool of only modes is a template here too.
 
         Stays a service query: this loads every candidate row of the cascade and
         ranks them in Python, where ``PickBanConfigRepository.find_for_stage_round``
@@ -449,7 +451,7 @@ class PickBanSessionService:
                     PickBanConfig.stage_id == stage_id,
                 ),
             )
-            .options(*CONFIG_POOL_LOAD)
+            .options(*CONFIG_ROOM_LOAD)
         )
         return pick_config(result.scalars().all(), stage_id=stage_id, round=round)
 

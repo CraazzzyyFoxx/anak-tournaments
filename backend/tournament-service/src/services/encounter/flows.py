@@ -14,6 +14,7 @@ from shared.repository import (
     TeamRepository,
 )
 from shared.repository.stats_reads import MatchReadContext
+from shared.schemas.catalog import CatalogEntityRead
 from shared.schemas.match import MatchEventsRead
 from shared.services.challonge_refs import (
     ChallongeRef,
@@ -32,19 +33,19 @@ from src.services.team.flows import flows_service as team_flows_service
 from src.services.tournament.flows import TournamentFlowsService
 from src.services.tournament.flows import flows_service as tournament_flows_service
 
-# Both families embed ``MatchRead`` (and ``EncounterGameRead.map``). Their values are pickled in a persistent Redis
-# that outlives a deploy and cashews returns an unpickled value as it is, without re-validating its nested models,
-# so a wire change to those models needs a new namespace (``native_``), not a TTL wait. ``cache_resources._encounters``
-# evicts both through ``*encounters*:{tournament_id}:*``; ``tests/test_encounter_cache_namespaces.py`` pins that
-# against the keys cashews renders from these templates.
+# Both families embed ``MatchRead`` (and ``EncounterGameRead.map``/``.mode``). Their values are pickled in a persistent
+# Redis that outlives a deploy and cashews returns an unpickled value as it is, without re-validating its nested models,
+# so a wire change to those models needs a new namespace (``native_``, then ``:v2``), not a TTL wait.
+# ``cache_resources._encounters`` evicts both through ``*encounters*:{tournament_id}:*``;
+# ``tests/test_encounter_cache_namespaces.py`` pins that against the keys cashews renders from these templates.
 _ENCOUNTER_QUERY_KEY = (
     "{workspace_id}:{params.tournament_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}:"
     "{params.entities}:{params.only_count}:{params.query}:{params.fields}:{params.stage_id}:{params.stage_item_id}:"
     "{params.best_of}:{params.status}:{params.has_logs}:{params.closeness_min}:{params.closeness_max}:"
     "{params.scope}:{viewer_auth_user_id}"
 )
-ENCOUNTERS_CACHE_KEY = f"native_encounters:{_ENCOUNTER_QUERY_KEY}"
-ENCOUNTERS_OVERVIEW_CACHE_KEY = f"native_encounters_overview:{_ENCOUNTER_QUERY_KEY}"
+ENCOUNTERS_CACHE_KEY = f"native_encounters:v2:{_ENCOUNTER_QUERY_KEY}"
+ENCOUNTERS_OVERVIEW_CACHE_KEY = f"native_encounters_overview:v2:{_ENCOUNTER_QUERY_KEY}"
 
 
 def _seats(encounter: models.Encounter) -> list[models.EncounterTeam]:
@@ -264,6 +265,8 @@ class EncounterFlowsService:
                     position=game.position,
                     map_id=game.map_id,
                     map=map_to_read(game.map, []) if game.map is not None else None,
+                    mode_id=game.mode_id,
+                    mode=CatalogEntityRead.from_entity(game.mode, with_parent=False) if game.mode is not None else None,
                     state=game.state.value,
                     result_source=game.result_source.value if game.result_source is not None else None,
                     result_version=game.result_version,
@@ -647,7 +650,7 @@ class EncounterFlowsService:
         # No tournament_id in the args, so this key can't participate in the
         # targeted invalidation patterns — staleness is bounded by the short TTL.
         # ``native_`` namespaces the participant/fact document shape: a cached value of another shape is never read.
-        key="native_match_stats:{match_id}:{entities}:{workspace_id}",
+        key="native_match_stats:v2:{match_id}:{entities}:{workspace_id}",
         prefix="fastapi:",
     )
     async def get_match_with_stats(

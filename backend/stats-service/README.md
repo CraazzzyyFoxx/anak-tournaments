@@ -79,7 +79,7 @@ RPC namespace: `rpc.stats.*` (single namespace, registered in `src/rpc/`).
 | `rpc.stats.ach.*` | Achievement rules CRUD, condition-type catalog and tree validation, seed/reset, export/import and cross-workspace library import, evaluation trigger and runs, rule test/dry-run, qualifying-user list, manual overrides |
 | `rpc.stats.subscription.*` | Subscription collection admin: health stats, check log, per-user entitlement, trigger a re-check or a sweep |
 | `rpc.stats.impact.*` | Superuser recompute of the impact-scoring baselines |
-| `rpc.stats.catalog.sync` | Superuser `POST /api/v1/admin/catalog-sync/{discipline}`; dispatches through `shared.disciplines` to that module's source (OverFast or Data Dragon) |
+| `rpc.stats.catalog.sync`, `rpc.stats.catalog.sync_status` | Superuser `POST`/`GET /api/v1/admin/catalog-sync/{discipline}`: POST starts a background sync through `shared.disciplines` from that module's source (OverFast, Data Dragon or deadlock-api) and returns its first snapshot, 409 `catalog_sync_running` while one runs; GET reads the snapshot from Redis (`catalog_sync:{discipline}`, `null` when none). Stage changes are published to the starter's `user:{id}:catalog-sync` topic (`src/services/catalog_sync.py`) |
 | `rpc.stats.settings.*` | Superuser global settings CRUD (`public.settings`) |
 
 The full method list with request/response schemas is published at `/api/docs`, generated from
@@ -148,7 +148,9 @@ lists the selected disciplines' ingest queues.
    `ingest/identity.py` looks its participants up **read-only** (provider-constrained exact handle;
    a decoded Workshop name also matches the part before `#`; several players behind one identity
    narrow to the workspace's own, else `identity_conflict`) and `ingest/binding.py` searches
-   non-cancelled games of the workspace/discipline on the document's map. A document team is
+   non-cancelled games of the workspace/discipline on the document's map (a hinted or linked document
+   may also take a game that names no map yet; a mode only has to agree when game and document both
+   have one). A document team is
    tied to a seat only by identity: every known participant rostered on that one seat and no
    other, at least one, and the teams map one-to-one onto the game's participating teams (inactive
    historical seats count). A unique fitting game is the binding whether or not it already has an
@@ -158,11 +160,12 @@ lists the selected disciplines' ingest queues.
    also hold **every** participant on the line-up of the seat their team maps to; a participant
    outside it (unknown, rostered after the line-up was taken, another team's member) leaves the
    document `awaiting_link`. A hint only narrows candidates: a hinted game the participants contradict (or that
-   plays another map) fails with `binding_mismatch`, never a binding. Stage-generated seats carry their
+   plays another map or mode) fails with `binding_mismatch`, never a binding. Stage-generated seats carry their
    team's roster line-up (tournament-service, P8); stage encounters generated before that have none.
 6. **Write atomically.** Final lock order is encounter, game, job, existing `stats.match`; the
-   claim token, roster evidence, map and the tournament/stage/round map pool (`map_not_in_pool`)
-   are checked again under them. Only then are virtual
+   claim token, roster evidence, map, mode and the tournament/stage/round pool are checked again under
+   them: the pool's map items refuse another map (`map_not_in_pool`), its mode items another mode
+   (`mode_not_in_pool`); a pool of only maps or only modes leaves the other free. Only then are virtual
    players (`auth_user_id` NULL, no visibility row) and observation anchors created
    (`insert_observation_members`: `workspace_member.observed_only = true`, `removed_at` stays NULL;
    token memberships, hidden-workspace visibility and link-time role autofill skip such anchors, a
@@ -172,11 +175,12 @@ lists the selected disciplines' ingest queues.
    persists exactly what it supplied, and Push/Clash score normalization only touches decoded
    observations) and `writer.write_observations` replaces children via `replace_observations` and increments the
    revision once. Match team rows keep the document's array order as `source_position`. The
-   `match.ingested` outbox event (`match.ingested:{match_id}:{revision}`: placements and the
+   `match.ingested` outbox event (`match.ingested:{match_id}:{revision}`: placements, the observed map
+   and mode — an accepted result fills a game that names neither — and the
    participants the bound roster lacks, observed roles as dimension/role codes), the tournament
    invalidations, the `done` transition and the two disjoint evidence records
    (`stats.reparse` for the match, `stats.job_transition` for the job) share one commit. The
-   header (id, workspace, discipline, game, map) is never rebound.
+   header (id, workspace, discipline, game) is never rebound; its map and mode are the latest observation's.
 7. **Failure and result.** Decode, validation or write failures roll back the observation
    transaction, then mark the matching claim `failed` in a separate fenced transition with a
    structured `{code, message, issues}` error (`error_message` holds that JSON; historical text
@@ -449,7 +453,7 @@ to a matching discipline and kind and closes the miss in one request.
   `RANK_FETCH_WORKER_PREFETCH` (kept low to protect the upstream). They belong to the Overwatch
   module's rank collector (`shared/disciplines/overwatch/collector/settings.py`), not to the
   the service's config. The operational collection parameters — interval, scope, per-minute limit,
-  backoff base, max consecutive failures, rank mapping — live in `public.settings`, editable at
+  backoff base, max consecutive failures — live in `public.settings`, editable at
   runtime, not in the env file.
 - **Riot API** — `RIOT_API_KEY` (a development key expires every 24 h), `RIOT_ACCOUNT_CLUSTER`
   (`europe`), `RIOT_TIMEOUT`, `RIOT_MAX_RETRIES`, `LOL_RANK_FETCH_WORKER_PREFETCH`. They belong to the

@@ -580,6 +580,7 @@ class EncounterGameService:
             "id": game.id,
             "position": game.position,
             "map_id": game.map_id,
+            "mode_id": game.mode_id,
             "state": game.state.value if game.state is not None else None,
             "result_source": game.result_source.value if game.result_source is not None else None,
             "result_version": game.result_version,

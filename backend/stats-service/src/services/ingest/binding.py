@@ -1,7 +1,8 @@
 """Which encounter game a validated document belongs to, and which of its teams is which seat.
 
 Pure evidence, never a guess: a candidate is a non-cancelled game of this workspace and discipline on the document's
-map; its seats are the game's actual ``game_team`` participations and their ``team_member`` rosters (a seat that went
+map (a hinted document may also take a game that names no map yet) whose mode, when both have one, is the document's;
+its seats are the game's actual ``game_team`` participations and their ``team_member`` rosters (a seat that went
 inactive later still counts for a game it played). A document team is tied to a seat only by the identities of its
 participants:
 
@@ -32,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import enums
 from shared.disciplines.ingest import BoundMatch, BoundParticipant
-from shared.domain.pick_ban_config import pool_allows
+from shared.domain.pick_ban_config import pool_items
 from shared.repository.pick_ban import CONFIG_POOL_LOAD, PickBanConfigRepository
 from shared.repository.roles import CatalogRoleRepository
 from shared.schemas.match_doc import MatchDoc, MatchHint
@@ -42,13 +43,15 @@ __all__ = (
     "BindingMismatch",
     "InvalidTeamMap",
     "MapNotInPool",
-    "check_map_pool",
+    "ModeNotInPool",
+    "check_pool",
     "GameSeats",
     "bound_match",
     "check_forced_teams",
     "check_roster_owners",
     "bound_participants",
     "find_binding",
+    "fits",
     "load_game_seats",
     "match_teams",
 )
@@ -63,9 +66,15 @@ class BindingMismatch(ValueError):
 
 
 class MapNotInPool(ValueError):
-    """The game's map is outside the pool its tournament/stage/round allows."""
+    """The document's map is outside the maps the pool of its tournament/stage/round names."""
 
     code = "map_not_in_pool"
+
+
+class ModeNotInPool(ValueError):
+    """The document's mode is outside the modes the pool of its tournament/stage/round names."""
+
+    code = "mode_not_in_pool"
 
 
 class InvalidTeamMap(BindingMismatch):
@@ -81,12 +90,19 @@ class GameSeats:
     game_id: int
     encounter_id: int
     map_id: int | None
+    mode_id: int | None
     result_version: int
     seats: tuple[int, ...]
     #: seat (``encounter.team`` id) -> global player ids of its roster
     players: Mapping[int, frozenset[int]]
     #: seat -> workspace member ids of its roster
     members: Mapping[int, frozenset[int]]
+
+
+def fits(game: GameSeats, doc: ValidatedDocument) -> bool:
+    """The game's map and mode leave room for the document's: a named map is the document's, and so is the mode when
+    both have one (an unnamed map or mode is the observation's to fill)."""
+    return game.map_id in (None, doc.map_id) and (None in (game.mode_id, doc.mode_id) or game.mode_id == doc.mode_id)
 
 
 def _seat_hits(doc: MatchDoc, known: Mapping[str, int], game: GameSeats) -> dict[str, set[int]]:
@@ -180,7 +196,8 @@ async def load_game_seats(
     *,
     workspace_id: int,
     discipline: str,
-    map_id: int | None = None,
+    doc: ValidatedDocument | None = None,
+    hinted: bool = False,
     game_ids: Sequence[int] | None = None,
     encounter_id: int | None = None,
     tournament_id: int | None = None,
@@ -188,8 +205,9 @@ async def load_game_seats(
 ) -> list[GameSeats]:
     """Non-cancelled games of the owner, filtered by the given constraints, with their seats and rosters.
 
-    ``players`` keeps only games where at least one of those global players is rostered on a participating seat, so
-    the search starts from evidence and never walks a workspace's whole history.
+    ``doc`` keeps only games its map and mode fit (:func:`fits`); ``hinted`` also admits a game that names no map
+    yet. ``players`` keeps only games where at least one of those global players is rostered on a participating seat,
+    so the search starts from evidence and never walks a workspace's whole history.
     """
     game, encounter, side, member, anchor = (
         models.EncounterGame,
@@ -205,7 +223,7 @@ async def load_game_seats(
         .where(side.encounter_id == game.encounter_id, anchor.workspace_id == workspace_id)
     )
     query = (
-        sa.select(game.id, game.encounter_id, game.map_id, game.result_version)
+        sa.select(game.id, game.encounter_id, game.map_id, game.mode_id, game.result_version)
         .join(encounter, encounter.id == game.encounter_id)
         .where(
             encounter.workspace_id == workspace_id,
@@ -214,8 +232,12 @@ async def load_game_seats(
         )
         .order_by(game.id)
     )
-    if map_id is not None:
-        query = query.where(game.map_id == map_id)
+    if doc is not None:
+        query = query.where(
+            sa.or_(game.map_id == doc.map_id, game.map_id.is_(None)) if hinted else game.map_id == doc.map_id
+        )
+        if doc.mode_id is not None:
+            query = query.where(sa.or_(game.mode_id == doc.mode_id, game.mode_id.is_(None)))
     if game_ids is not None:
         query = query.where(game.id.in_(game_ids))
     if encounter_id is not None:
@@ -253,6 +275,7 @@ async def load_game_seats(
             game_id=row.id,
             encounter_id=row.encounter_id,
             map_id=row.map_id,
+            mode_id=row.mode_id,
             result_version=row.result_version,
             seats=tuple(seats[row.id]),
             players={seat: frozenset(roster_players[seat]) for seat in seats[row.id]},
@@ -297,20 +320,22 @@ async def find_binding(
         if game_ids is not None and game_ids != [hint.encounter_game_id]:
             raise BindingMismatch("the attached game differs from the game this log is already bound to")
         game_ids = [hint.encounter_game_id]
+    pinned = hint is not None or game_ids is not None
     candidates = await load_game_seats(
         session,
         workspace_id=workspace_id,
         discipline=doc.discipline,
-        map_id=doc.map_id,
+        doc=doc,
+        hinted=pinned,
         game_ids=game_ids,
         encounter_id=None if hint is None else hint.encounter_id,
         tournament_id=None if hint is None else hint.tournament_id,
         # Evidence first: without a hint only games where a known participant is rostered are searched at all.
-        players=None if hint is not None or game_ids is not None else sorted(set(known_players.values())),
+        players=None if pinned else sorted(set(known_players.values())),
     )
     if hint is not None and hint.encounter_game_id is not None and not candidates:
-        # The hint names a game of this workspace (validated) that is not a live game on the document's map.
-        raise BindingMismatch("the attached game is cancelled or is played on another map than the log's")
+        # The hint names a game of this workspace (validated) that is not a live game the document's map/mode fits.
+        raise BindingMismatch("the attached game is cancelled or is played on another map or mode than the log's")
     verdicts = [(game, *match_teams(doc.doc, known_players, game)) for game in candidates]
     fitting = [(game, teams) for game, verdict, teams in verdicts if verdict == "bound"]
     if hint is not None and not fitting:
@@ -320,12 +345,14 @@ async def find_binding(
             raise BindingMismatch("the attached game or encounter does not agree with the log's map and players")
         return None
     if fitting:
-        permitted = [
-            (game, teams)
-            for game, teams in fitting
-            if await map_pool_allows(session, encounter_id=game.encounter_id, map_id=doc.map_id)
+        refusals = [
+            await pool_refusal(session, encounter_id=game.encounter_id, map_id=doc.map_id, mode_id=doc.mode_id)
+            for game, _ in fitting
         ]
+        permitted = [pair for pair, refusal in zip(fitting, refusals, strict=True) if refusal is None]
         if not permitted:
+            if ModeNotInPool in refusals:
+                raise ModeNotInPool("the mode is outside the configured pool of every matching encounter")
             raise MapNotInPool("the map is outside the configured map pool of every matching encounter")
         fitting = permitted
     if len(fitting) != 1:
@@ -420,13 +447,19 @@ async def bound_participants(
     return out
 
 
-async def map_pool_allows(session: AsyncSession, *, encounter_id: int, map_id: int) -> bool:
-    """Whether the effective tournament/stage/round map pool of the encounter admits ``map_id`` (no pool admits all)."""
+async def pool_refusal(
+    session: AsyncSession, *, encounter_id: int, map_id: int, mode_id: int | None
+) -> type[MapNotInPool] | type[ModeNotInPool] | None:
+    """The refusal the encounter's effective tournament/stage/round pool gives this map and mode, if any.
+
+    A pool may name maps and modes: the map is checked against its map items only and the mode against its mode items
+    only, so a pool of only modes admits every map and one of only maps every mode (no pool admits all).
+    """
     tournament_id = await session.scalar(
         sa.select(models.Encounter.tournament_id).where(models.Encounter.id == encounter_id)
     )
     if tournament_id is None:
-        return True  # mixes and scrims carry no tournament pool
+        return None  # mixes and scrims carry no tournament pool
     stage_id, round_ = (
         await session.execute(
             sa.select(models.BracketEncounter.stage_id, models.BracketEncounter.round).where(
@@ -437,9 +470,27 @@ async def map_pool_allows(session: AsyncSession, *, encounter_id: int, map_id: i
     pools = await PickBanConfigRepository().list_by_tournament(
         session, tournament_id, kind=enums.PickBanKind.MAP, options=CONFIG_POOL_LOAD
     )
-    return pool_allows(pools, stage_id=stage_id, round=round_, item_id=map_id)
+    items = pool_items(pools, stage_id=stage_id, round=round_)
+    if not items:
+        return None
+    modes = set(
+        await session.scalars(
+            sa.select(models.CatalogEntity.id).where(
+                models.CatalogEntity.id.in_(items), models.CatalogEntity.kind == "mode"
+            )
+        )
+    )
+    maps = items - modes
+    if maps and map_id not in maps:
+        return MapNotInPool
+    if modes and mode_id not in modes:
+        return ModeNotInPool
+    return None
 
 
-async def check_map_pool(session: AsyncSession, *, encounter_id: int, map_id: int) -> None:
-    if not await map_pool_allows(session, encounter_id=encounter_id, map_id=map_id):
+async def check_pool(session: AsyncSession, *, encounter_id: int, map_id: int, mode_id: int | None) -> None:
+    refusal = await pool_refusal(session, encounter_id=encounter_id, map_id=map_id, mode_id=mode_id)
+    if refusal is MapNotInPool:
         raise MapNotInPool(f"map {map_id} is outside the configured map pool for encounter {encounter_id}")
+    if refusal is ModeNotInPool:
+        raise ModeNotInPool(f"mode {mode_id} is outside the configured mode pool for encounter {encounter_id}")

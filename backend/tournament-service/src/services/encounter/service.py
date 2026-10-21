@@ -42,10 +42,12 @@ def encounter_entities(in_entities: list[str], child: typing.Any | None = None) 
     if "matches" in in_entities:
         entities.append(utils.selectin_entity(child, models.Encounter.matches))
         # ``to_pydantic`` fills ``games`` off the SAME switch: a position and its
-        # map exist before any parsed log does, and the read carries both.
+        # map and mode exist before any parsed log does, and the read carries them.
         # selectin, never joined -- two to-many collections joined onto one
         # encounter multiply each other's rows.
-        entities.append(utils.selectin_entity(child, models.Encounter.games).selectinload(models.EncounterGame.map))
+        games = utils.selectin_entity(child, models.Encounter.games)
+        entities.append(games.selectinload(models.EncounterGame.map))
+        entities.append(games.selectinload(models.EncounterGame.mode))
 
     return entities
 

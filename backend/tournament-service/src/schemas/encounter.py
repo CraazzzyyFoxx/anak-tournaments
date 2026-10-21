@@ -129,6 +129,9 @@ class EncounterGameRead(BaseRead):
     position: int
     map_id: int | None = None
     map: CatalogEntityRead | None = None
+    #: The catalog mode the position is played in; filled from the accepted log when the tournament named none.
+    mode_id: int | None = None
+    mode: CatalogEntityRead | None = None
     state: str
     result_source: str | None = None
     result_version: int = 0

@@ -30,7 +30,7 @@ from shared.domain.pick_ban_config import pick_config
 from shared.models.encounter.team import EncounterTeam
 from shared.models.tournament.pick_ban import PickBanConfig
 from shared.repository import BracketEncounterRepository, PickBanConfigRepository, PickBanSessionRepository
-from shared.repository.pick_ban import CONFIG_POOL_LOAD
+from shared.repository.pick_ban import CONFIG_ROOM_LOAD
 
 _positions = BracketEncounterRepository()
 _configs = PickBanConfigRepository()
@@ -148,7 +148,7 @@ async def side_pick_required(session: AsyncSession, encounter: models.Encounter,
             bracket = await _positions.get_position(session, encounter.id)
             config = pick_config(
                 await _configs.list_by_tournament(
-                    session, encounter.tournament_id, kind=kind, options=CONFIG_POOL_LOAD
+                    session, encounter.tournament_id, kind=kind, options=CONFIG_ROOM_LOAD
                 ),
                 stage_id=bracket.stage_id if bracket is not None else None,
                 round=bracket.round if bracket is not None else None,

@@ -299,7 +299,11 @@ def _parse_rejection(exc: MatchDocError) -> IngestRejected:
     return IngestRejected(422, "document_invalid", "The document does not match owt.match/1", issues=exc.issues)
 
 
-SEMANTIC_CODES = {"unresolved_references": "unknown_code", "unknown_identity_provider": "document_invalid"}
+SEMANTIC_CODES = {
+    "unresolved_references": "unknown_code",
+    "unknown_identity_provider": "document_invalid",
+    "mode_map_mismatch": "mode_map_mismatch",
+}
 
 
 async def lock_object(session: AsyncSession, ref: str) -> None:

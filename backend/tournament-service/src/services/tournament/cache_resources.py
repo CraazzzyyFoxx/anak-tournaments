@@ -36,7 +36,7 @@ def _detail(tournament_id: int) -> tuple[str, ...]:
 
 
 def _encounters(tournament_id: int) -> tuple[str, ...]:
-    # `native_encounters:` and `native_encounters_overview:` (`{workspace}:{tournament}:...`, see
+    # `native_encounters:v2:` and `native_encounters_overview:v2:` (`{workspace}:{tournament}:...`, see
     # ``services.encounter.flows.ENCOUNTERS_CACHE_KEY``). Cross-tournament keys
     # (`...:{workspace}:None:...`) are left to TTL: a per-tournament write must
     # not SCAN every workspace's unscoped list.
