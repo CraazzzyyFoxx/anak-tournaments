@@ -10,10 +10,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
 import type { ChecklistItem, ChecklistPhase, ChecklistState } from "@/components/admin/tournament-checklist";
 
-const PHASE_KEYS: ChecklistPhase[] = ["setup", "registration", "formation", "bracket", "live"];
+const PHASE_KEYS: ChecklistPhase[] = ["setup", "registration", "formation", "bracket", "matches", "wrap_up"];
 
-/** Quiet states are an icon; only `warn` wants attention and gets a pill. */
-const STATE_ICON: Record<Exclude<ChecklistState, "warn">, { icon: LucideIcon; variant: "success" | "muted" }> = {
+/** Quiet states are an icon; `warn` wants attention and gets a pill; `info` has no verdict to show. */
+const STATE_ICON: Record<Exclude<ChecklistState, "warn" | "info">, { icon: LucideIcon; variant: "success" | "muted" }> = {
   done: { icon: CheckCircle2, variant: "success" },
   todo: { icon: Circle, variant: "muted" },
   skipped: { icon: Minus, variant: "muted" },
@@ -26,11 +26,10 @@ const STATE_LABEL_KEY = {
   warn: "states.warn",
   skipped: "states.skipped",
   "no-access": "states.noAccess"
-} as const satisfies Record<ChecklistState, string>;
+} as const satisfies Record<Exclude<ChecklistState, "info">, string>;
 
 function ChecklistRow({ item }: Readonly<{ item: ChecklistItem }>) {
   const t = useTranslations("adminTournament.lifecycle");
-  const stateLabel = t(STATE_LABEL_KEY[item.state]);
   return (
     <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2 last:border-b-0">
       <div className="min-w-0">
@@ -45,14 +44,14 @@ function ChecklistRow({ item }: Readonly<{ item: ChecklistItem }>) {
           <p className="truncate text-xs tabular-nums text-muted-foreground">{item.detail}</p>
         ) : null}
       </div>
-      {item.state === "warn" ? (
+      {item.state === "info" ? null : item.state === "warn" ? (
         <StatusPill tone="warning" className="shrink-0">
-          {stateLabel}
+          {t(STATE_LABEL_KEY.warn)}
         </StatusPill>
       ) : (
         <StatusIcon
           icon={STATE_ICON[item.state].icon}
-          label={stateLabel}
+          label={t(STATE_LABEL_KEY[item.state])}
           variant={STATE_ICON[item.state].variant}
           className="shrink-0"
         />
@@ -63,7 +62,8 @@ function ChecklistRow({ item }: Readonly<{ item: ChecklistItem }>) {
 
 /**
  * Living checklist of the Overview tab (§3, D22). Items come pre-computed
- * from `buildChecklist`; groups without applicable items are omitted.
+ * from `buildChecklist`; groups without applicable items are omitted, and a
+ * status with no work at all (archived) renders nothing.
  *
  * This is the tab's `<h2>` section — the hub previously rendered no heading
  * above `<h3>`, leaving these group titles as the document's first headings.
@@ -76,6 +76,7 @@ export function LifecycleChecklist({
   const groups = PHASE_KEYS
     .map((phase) => ({ phase, rows: items.filter((item) => item.phase === phase) }))
     .filter((group) => group.rows.length > 0);
+  if (!isLoading && groups.length === 0) return null;
 
   return (
     <Card>

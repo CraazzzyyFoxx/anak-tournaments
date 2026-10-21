@@ -7813,7 +7813,7 @@ export interface paths {
         };
         /**
          * Tournament readiness checklist
-         * @description Permission: workspace `tournament.read` or `team.read` on the tournament's own workspace. Returns the living readiness checklist for one tournament, telling its organisers what is still missing before it can run: schedule/grid/stage-slot configuration, bracket and encounter log coverage, and the registration, pool, balance and draft state. Each group of fields is masked to null when the caller lacks the permission that gates it, so a partial reader sees no-access rather than zeros. 403 without either permission, 404 if the tournament is unknown; hidden tournaments of the caller's own workspace are visible.
+         * @description Permission: workspace `tournament.read` or `team.read` on the tournament's own workspace. Returns the living readiness checklist for one tournament, telling its organisers what is still missing before it can run: schedule/grid/stage-slot configuration, bracket, duel log coverage and pending standings recalculation (`tournament.read`); the registration, pool, balance and draft state (`team.read`); the overdue, pending-confirmation and disputed results (`match.read`); and the achievement evaluation status (`achievement.read`). Each group of fields is masked to null when the caller lacks the permission that gates it, so a partial reader sees no-access rather than zeros. 403 without `tournament.read` or `team.read`, 404 if the tournament is unknown; hidden tournaments of the caller's own workspace are visible.
          *
          *     RPC subject: `rpc.app.statistics.tournament_readiness`
          */
@@ -21266,11 +21266,14 @@ export interface components {
          * @description Living-checklist aggregate for one tournament.
          *
          *     Field groups are masked by the caller's workspace permissions:
-         *     ``tournament.read`` gates the setup/bracket/logs fields, ``team.read`` gates
-         *     the registration/pool/balance/draft fields — a missing group yields ``None``
-         *     so the checklist renders "no-access" instead of zeros.
+         *     ``tournament.read`` gates the setup/bracket/logs/recalc fields, ``team.read``
+         *     the registration/pool/balance/draft fields, ``match.read`` the result backlog
+         *     and ``achievement.read`` the evaluation status — a missing group yields
+         *     ``None`` so the checklist renders "no-access" instead of zeros.
          */
         "app.TournamentReadiness": {
+            /** Achievements Status */
+            achievements_status: string | null;
             /** Balance Exported At */
             balance_exported_at: string | null;
             /** Balance Saved */
@@ -21279,10 +21282,10 @@ export interface components {
             bracket_generated: boolean | null;
             /** Draft Session Status */
             draft_session_status: string | null;
-            /** Encounters Total */
-            encounters_total: number | null;
-            /** Encounters With Logs */
-            encounters_with_logs: number | null;
+            /** Duel Encounters Total */
+            duel_encounters_total: number | null;
+            /** Duel Encounters With Logs */
+            duel_encounters_with_logs: number | null;
             /** Grid Selected */
             grid_selected: boolean | null;
             /** Logs Used */
@@ -21293,8 +21296,6 @@ export interface components {
             pool_ready: number | null;
             /** Registration Form Configured */
             registration_form_configured: boolean | null;
-            /** Registration Open */
-            registration_open: boolean | null;
             /** Registrations Approved */
             registrations_approved: number | null;
             /** Registrations Checked In */
@@ -21303,12 +21304,20 @@ export interface components {
             registrations_pending: number | null;
             /** Registrations Ranked */
             registrations_ranked: number | null;
+            /** Results Disputed */
+            results_disputed: number | null;
+            /** Results Overdue */
+            results_overdue: number | null;
+            /** Results Pending Confirmation */
+            results_pending_confirmation: number | null;
             /** Schedule Configured */
             schedule_configured: boolean | null;
             /** Stage Slots Filled */
             stage_slots_filled: boolean | null;
             /** Stages Total */
             stages_total: number | null;
+            /** Standings Recalc Pending */
+            standings_recalc_pending: boolean | null;
             /** Status */
             status: string;
             /** Team Formation */

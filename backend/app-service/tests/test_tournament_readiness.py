@@ -3,19 +3,21 @@
 Seeds a throwaway workspace/tournament with the sync ``db`` fixture (mirrors
 ``test_tournament_visibility_reads.py``) and exercises both the pure
 ``compute_readiness`` aggregate and the ``rpc.app.statistics.tournament_readiness``
-subscriber, including permission masking (ANY(tournament.read, team.read) gate,
-missing group -> None fields).
+subscriber, including permission masking (ANY(tournament.read, team.read) gate;
+tournament/team/match/achievement ``read`` each unmask one group, a missing
+group -> None fields).
 """
 
 from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import sqlalchemy as sa
 
+from shared import models
 from shared.core import enums
 from shared.models.catalog.role import CatalogRole, RoleDimension
 from shared.models.encounter import ScoringRule
@@ -26,6 +28,7 @@ from shared.models.registration.registration import (
 )
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament import Stage, Tournament, TournamentPhaseSchedule
+from tests.encounter_seed import seed_encounter, seed_scoring_rule
 
 TOPIC = "rpc.app.statistics.tournament_readiness"
 
@@ -133,12 +136,12 @@ def test_readiness_counts(rpc, seeded):
     assert r.stages_total == 1
     assert r.stage_slots_filled is False
     assert r.bracket_generated is False
-    assert r.encounters_total == 0
-    assert r.encounters_with_logs == 0
+    assert r.duel_encounters_total == 0
+    assert r.duel_encounters_with_logs == 0
     assert r.logs_used is False
+    assert r.standings_recalc_pending is False
     # team.read group
     assert r.registration_form_configured is True
-    assert r.registration_open is True
     assert r.registrations_pending == 1
     assert r.registrations_approved == 3
     assert r.registrations_checked_in == 2
@@ -148,6 +151,12 @@ def test_readiness_counts(rpc, seeded):
     assert r.balance_saved is False
     assert r.balance_exported_at is None
     assert r.draft_session_status is None
+    # match.read group
+    assert r.results_overdue == 0
+    assert r.results_pending_confirmation == 0
+    assert r.results_disputed == 0
+    # achievement.read group: no enabled rule for the discipline
+    assert r.achievements_status == "not_configured"
 
 
 def test_readiness_masks_fields_without_team_read(rpc, seeded):
@@ -164,8 +173,12 @@ def test_readiness_masks_fields_without_team_read(rpc, seeded):
     assert d["registrations_approved"] is None
     assert d["registrations_ranked"] is None
     assert d["pool_ready"] is None
-    assert d["registration_open"] is None
     assert d["balance_saved"] is None
+    # match.read / achievement.read groups are masked too
+    assert d["results_overdue"] is None
+    assert d["results_pending_confirmation"] is None
+    assert d["results_disputed"] is None
+    assert d["achievements_status"] is None
 
 
 def test_readiness_masks_fields_without_tournament_read(rpc, seeded):
@@ -183,9 +196,24 @@ def test_readiness_masks_fields_without_tournament_read(rpc, seeded):
     # tournament.read-gated fields are masked
     assert d["stages_total"] is None
     assert d["logs_used"] is None
+    assert d["duel_encounters_total"] is None
+    assert d["duel_encounters_with_logs"] is None
+    assert d["standings_recalc_pending"] is None
     # team.read group visible
     assert d["registrations_approved"] == 3
     assert d["registrations_checked_in"] == 2
+
+
+def test_readiness_match_and_achievement_read_unmask_their_groups(rpc, seeded):
+    ws_id, tournament_id = seeded
+    perms = [{"resource": resource, "action": "read"} for resource in ("team", "match", "achievement")]
+    resp = rpc.call_sync(TOPIC, {"id": tournament_id, "identity": _identity(ws_id, perms)})
+    assert resp["ok"] is True
+    d = resp["data"]
+    assert d["results_overdue"] == 0
+    assert d["results_disputed"] == 0
+    assert d["achievements_status"] == "not_configured"
+    assert d["stages_total"] is None
 
 
 def test_readiness_forbidden_without_any_permission(rpc, seeded):
@@ -202,3 +230,91 @@ def test_readiness_not_found(rpc):
     resp = rpc.call_sync(TOPIC, {"id": 999999999, "identity": {"user_id": 1, "is_superuser": True, "is_active": True}})
     assert resp["ok"] is False
     assert resp["error"]["code"] == "not_found"
+
+
+def test_readiness_counts_duels_toward_logs_and_open_results_by_status(db_session):
+    """Lobbies never count toward log coverage; open results split by status;
+    a requested recalculation and an evaluation run surface as such."""
+    from src.services.dashboard.readiness import readiness
+
+    now = datetime.now(UTC)
+
+    async def go():
+        suffix = uuid.uuid4().hex[:12]
+        ws = Workspace(slug=f"ready-{suffix}", name=f"Ready {suffix}")
+        played_map = models.CatalogEntity(
+            discipline="overwatch", kind="map", slug=f"ready-{suffix}", name=f"Ready {suffix}", image_path="x"
+        )
+        db_session.add_all([ws, played_map])
+        await db_session.flush()
+        ws_id, map_id = ws.id, played_map.id
+        try:
+            t = Tournament(
+                workspace_id=ws_id, name=f"Live {suffix}", slug=f"live-{suffix}", status=enums.TournamentStatus.LIVE
+            )
+            db_session.add(t)
+            await db_session.flush()
+            rule_id = await seed_scoring_rule(db_session, ws_id)
+            duel = [(None, 0), (None, 0)]
+
+            async def encounter(name, seats=duel, *, logged=False, **columns):
+                row = await seed_encounter(db_session, t, rule_id, seats, name=name, **columns)
+                if logged:
+                    db_session.add(
+                        models.StatsMatch(
+                            workspace_id=ws_id, discipline=t.discipline, encounter_id=row.id, map_entity_id=map_id
+                        )
+                    )
+                return row
+
+            await encounter("logged", logged=True)
+            await encounter("plain")
+            # A lobby with logs is still not a duel: neither total nor covered.
+            await encounter("lobby", [*duel, (None, 0)], logged=True)
+            await encounter("overdue", completed=False, scheduled_at=now - timedelta(hours=1))
+            await encounter("upcoming", completed=False, scheduled_at=now + timedelta(days=1))
+            for name, result_status in (
+                ("pending", enums.EncounterResultStatus.PENDING_CONFIRMATION),
+                ("disputed", enums.EncounterResultStatus.DISPUTED),
+            ):
+                (await encounter(name, completed=False)).result_status = result_status
+            db_session.add_all(
+                [
+                    models.TournamentRecalculationState(
+                        tournament_id=t.id, requested_generation=2, completed_generation=1
+                    ),
+                    models.AchievementRule(
+                        workspace_id=ws_id,
+                        slug=f"ready-{suffix}",
+                        name="Rule",
+                        description_ru="ru",
+                        description_en="en",
+                        discipline=t.discipline,
+                        category="overall",
+                        scope="global",
+                        grain="user",
+                        condition_tree={},
+                        depends_on=[],
+                        enabled=True,
+                        rule_version=1,
+                    ),
+                    models.EvaluationRun(workspace_id=ws_id, trigger="manual", tournament_id=t.id, status="done"),
+                ]
+            )
+            tournament_id = t.id
+            await db_session.commit()
+            db_session.expunge_all()
+            return await readiness.compute_readiness(db_session, tournament_id)
+        finally:
+            await db_session.rollback()
+            # Workspace first: its matches hold the map.
+            await db_session.execute(sa.delete(Workspace).where(Workspace.id == ws_id))
+            await db_session.execute(sa.delete(models.CatalogEntity).where(models.CatalogEntity.id == map_id))
+            await db_session.commit()
+
+    r = asyncio.run(go())
+    # logged, plain, overdue, upcoming, pending, disputed; the logged lobby is in neither count.
+    assert (r.duel_encounters_total, r.duel_encounters_with_logs, r.logs_used) == (6, 1, True)
+    assert (r.results_overdue, r.results_pending_confirmation, r.results_disputed) == (1, 1, 1)
+    assert r.standings_recalc_pending is True
+    assert r.achievements_status == "done"

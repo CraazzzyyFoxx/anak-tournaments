@@ -8911,7 +8911,8 @@
         "registration": "Регистрация",
         "formation": "Формирование команд",
         "bracket": "Сетка",
-        "live": "Идёт"
+        "matches": "Матчи",
+        "wrap_up": "Финализация"
       },
       "states": {
         "done": "Готово",
@@ -9591,8 +9592,7 @@
       "phaseSchedule": "Расписание фаз",
       "divisionGrid": "Шкала дивизионов",
       "registrationForm": "Форма регистрации",
-      "registrationOpen": "Регистрация открыта",
-      "approvedRegistrations": "Одобренные заявки",
+      "registrationsReviewed": "Заявки рассмотрены",
       "approvedDetail": "Одобрено: {approved} · ожидают: {pending}",
       "ranksCovered": "Ранги заполнены",
       "rankedDetail": "С рангом: {ranked}/{approved}",
@@ -9608,9 +9608,17 @@
       "stagesConfigured": "Этапы настроены",
       "stageSlotsFilled": "Слоты этапов заполнены",
       "bracketGenerated": "Сетка создана",
+      "resultsConfirmed": "Результаты подтверждены",
+      "resultsDisputed": "Спорных: {count}",
+      "resultsAwaiting": "Ждут подтверждения: {count}",
+      "resultsOverdue": "Просрочено: {count}",
       "logsCoverMatches": "Логи покрывают матчи",
       "logsNotUsed": "Логи не используются",
-      "logsDetail": "С логами: {withLogs}/{total} матчей"
+      "logsDetail": "С логами: {withLogs}/{total} матчей",
+      "achievementsEvaluated": "Достижения пересчитаны",
+      "achievementsDetail": "{status, select, not_configured {Активных правил нет} none {Ещё не пересчитывались} queued {Пересчёт в очереди} running {Идёт пересчёт} partial {Часть правил с ошибкой} failed {Последний пересчёт упал} other {Ещё не пересчитывались}}",
+      "standingsRecalculated": "Таблица пересчитана",
+      "standingsQueued": "Пересчёт в очереди"
     }
   },
   "adminAccess": {

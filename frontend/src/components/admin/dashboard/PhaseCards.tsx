@@ -5,7 +5,7 @@ import { useNow, useTranslations } from "next-intl";
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Circle, Lock } from "lucide-react";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
-import { buildChecklist, type ChecklistItem, type ChecklistPhase } from "@/components/admin/tournament-checklist";
+import { buildChecklist, type ChecklistItem } from "@/components/admin/tournament-checklist";
 import { formatRelative } from "@/components/kit/format-time";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { EYEBROW_CLASS, TONE_TEXT, type Tone } from "@/components/kit/tone";
@@ -149,29 +149,22 @@ function NoAccess() {
 }
 
 /**
- * The hub checklist's phases that can still hold work once a tournament reached
- * the card's phase. Without it a formation card nags "registration open" after
- * registration has, correctly, closed.
+ * Preparation and formation: the hub's own living checklist, open items only.
+ * `buildChecklist` already drops what the card's status no longer needs, so a
+ * formation card never nags "registration form" after registration closed.
  */
-const CARD_CHECKLIST_PHASES: Record<"preparation" | "formation", readonly ChecklistPhase[]> = {
-  preparation: ["setup", "bracket"],
-  formation: ["registration", "formation", "bracket"]
-};
-
-/** Preparation and formation: the hub's own living checklist, open items only. */
 function ChecklistBody({ card }: Readonly<{ card: DashboardTournamentCard }>) {
   const t = useTranslations("adminShell.dashboard");
   const tChecklist = useTranslations("adminTournaments.checklist");
-  const phases = CARD_CHECKLIST_PHASES[card.phase === "formation" ? "formation" : "preparation"];
   const items = buildChecklist(
     card.readiness,
     {
       basePath: `/admin/tournaments/${card.id}`,
-      schedule: card.phase_schedule.map((entry) => entry.status),
+      status: card.status as TournamentStatus,
       hasChallongeSource: card.has_challonge_source
     },
     tChecklist
-  ).filter((item) => phases.includes(item.phase));
+  );
   // Masked groups come back as "no-access" items: neither work nor progress.
   if (items.every((item) => item.state === "no-access" || item.state === "skipped")) return <NoAccess />;
   const open = items.filter((item) => item.state === "todo" || item.state === "warn");

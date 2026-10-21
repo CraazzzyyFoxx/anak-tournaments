@@ -27,6 +27,11 @@ from shared import models
 from shared.core import enums
 from shared.core.tournament_state import FINISHED_STATUSES, PHASE_ORDER
 from src import schemas
+from src.services.dashboard.readiness import (
+    has_enabled_achievement_rules,
+    latest_evaluation_run_status,
+    standings_recalc_pending,
+)
 from src.services.dashboard.readiness import readiness as readiness_service
 
 __all__ = ("AdminDashboardService", "DashboardPermissions", "overview")
@@ -255,6 +260,8 @@ class AdminDashboardService:
                     tournament.id,
                     can_tournament_read=permissions.tournament_read,
                     can_team_read=permissions.team_read,
+                    can_match_read=permissions.match_read,
+                    can_achievement_read=permissions.achievement_read,
                 ),
                 play=schemas.DashboardPlay(
                     encounters_total=counts["total"],
@@ -332,21 +339,6 @@ class AdminDashboardService:
                 sa.and_(source.source_type == "stage", source.stage_id.is_not(None)),
             ),
         )
-        run = models.EvaluationRun
-        run_status = (
-            sa.select(run.status).where(run.tournament_id == tournament.id).order_by(run.created_at.desc()).limit(1)
-        )
-        # The engine evaluates one game's enabled rules at a time, so "nothing to evaluate" is per discipline.
-        rule = models.AchievementRule
-        has_achievement_rules = sa.exists().where(
-            rule.workspace_id == tournament.workspace_id,
-            rule.discipline == tournament.discipline,
-            rule.enabled.is_(True),
-        )
-        state = models.TournamentRecalculationState
-        recalc_pending = sa.exists().where(
-            state.tournament_id == tournament.id, state.requested_generation > state.completed_generation
-        )
 
         result = await session.execute(
             sa.select(
@@ -354,9 +346,11 @@ class AdminDashboardService:
                 finished_at.label("finished_at"),
                 registrations_last_24h.scalar_subquery().label("registrations_last_24h"),
                 has_challonge_source.label("has_challonge_source"),
-                run_status.scalar_subquery().label("run_status"),
-                has_achievement_rules.label("has_achievement_rules"),
-                recalc_pending.label("recalc_pending"),
+                latest_evaluation_run_status(tournament.id).label("run_status"),
+                has_enabled_achievement_rules(tournament.workspace_id, tournament.discipline).label(
+                    "has_achievement_rules"
+                ),
+                standings_recalc_pending(tournament.id).label("recalc_pending"),
             ).where(
                 tournament.workspace_id == workspace_id,
                 sa.or_(

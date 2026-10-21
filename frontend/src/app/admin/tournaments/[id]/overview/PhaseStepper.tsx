@@ -24,7 +24,6 @@ export function PhaseStepper({ tournament }: Readonly<{ tournament: Tournament }
   const tStatus = useTranslations("common.statusBadge");
   const phases = effectivePhases({
     teamFormation: tournament.team_formation,
-    schedule: tournament.phase_schedule.map((entry) => entry.status),
     currentStatus: tournament.status
   });
   const drifted = phases.find((phase) => phase.drifted);

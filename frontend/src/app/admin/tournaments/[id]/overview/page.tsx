@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import adminService from "@/services/admin.service";
 import { getTournamentWorkspaceQueryKeys } from "@/lib/tournament/workspace-query-keys";
 import { tabError, tabFallback, useHubStagesQuery, useHubTournamentQuery } from "../hubQueries";
-import { buildChecklist, hasChallongeSource } from "@/components/admin/tournament-checklist";
+import { buildChecklist, hasChallongeSource, pickNextAction } from "@/components/admin/tournament-checklist";
 import { LifecycleChecklist } from "./LifecycleChecklist";
 import { PhaseStepper } from "./PhaseStepper";
 
@@ -46,7 +46,7 @@ export default function OverviewTabPage() {
   const checklistItems = readiness
     ? buildChecklist(readiness, {
         basePath: `/admin/tournaments/${tournamentId}`,
-        schedule: tournament.phase_schedule.map((entry) => entry.status),
+        status: tournament.status,
         hasChallongeSource: hasChallongeSource(tournament, stagesQuery.data ?? [])
       }, checklistT)
     : [];
@@ -55,10 +55,9 @@ export default function OverviewTabPage() {
 
   // F3 ·3: the one thing worth doing next. Same `buildChecklist` the list
   // below renders — ranked, not a second data source, so the hero and the
-  // checklist can never disagree.
-  const nextAction = checklistItems.find(
-    (item) => (item.state === "warn" || item.state === "todo") && item.href
-  );
+  // checklist can never disagree. Nothing open: no hero — the status
+  // transition is the header's job.
+  const nextAction = pickNextAction(checklistItems);
 
   return (
     <div className="flex flex-col gap-4">

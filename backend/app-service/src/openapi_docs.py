@@ -122,10 +122,13 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: workspace `tournament.read` or `team.read` on the tournament's own workspace. Returns the"
             " living readiness checklist for one tournament, telling its organisers what is still missing before it can"
-            " run: schedule/grid/stage-slot configuration, bracket and encounter log coverage, and the registration,"
-            " pool, balance and draft state. Each group of fields is masked to null when the caller lacks the permission"
-            " that gates it, so a partial reader sees no-access rather than zeros. 403 without either permission, 404 if"
-            " the tournament is unknown; hidden tournaments of the caller's own workspace are visible."
+            " run: schedule/grid/stage-slot configuration, bracket, duel log coverage and pending standings"
+            " recalculation (`tournament.read`); the registration, pool, balance and draft state (`team.read`); the"
+            " overdue, pending-confirmation and disputed results (`match.read`); and the achievement evaluation status"
+            " (`achievement.read`). Each group of fields is masked to null when the caller lacks the permission that"
+            " gates it, so a partial reader sees no-access rather than zeros. 403 without `tournament.read` or"
+            " `team.read`, 404 if the tournament is unknown; hidden tournaments of the caller's own workspace are"
+            " visible."
         ),
     },
     # ── users (bespoke reads) ──────────────────────────────────────────────────────

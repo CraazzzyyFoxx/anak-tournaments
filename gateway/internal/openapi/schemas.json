@@ -2167,7 +2167,7 @@
       "summary": "All-time records"
     },
     "rpc.app.statistics.tournament_readiness": {
-      "description": "Permission: workspace `tournament.read` or `team.read` on the tournament's own workspace. Returns the living readiness checklist for one tournament, telling its organisers what is still missing before it can run: schedule/grid/stage-slot configuration, bracket and encounter log coverage, and the registration, pool, balance and draft state. Each group of fields is masked to null when the caller lacks the permission that gates it, so a partial reader sees no-access rather than zeros. 403 without either permission, 404 if the tournament is unknown; hidden tournaments of the caller's own workspace are visible.",
+      "description": "Permission: workspace `tournament.read` or `team.read` on the tournament's own workspace. Returns the living readiness checklist for one tournament, telling its organisers what is still missing before it can run: schedule/grid/stage-slot configuration, bracket, duel log coverage and pending standings recalculation (`tournament.read`); the registration, pool, balance and draft state (`team.read`); the overdue, pending-confirmation and disputed results (`match.read`); and the achievement evaluation status (`achievement.read`). Each group of fields is masked to null when the caller lacks the permission that gates it, so a partial reader sees no-access rather than zeros. 403 without `tournament.read` or `team.read`, 404 if the tournament is unknown; hidden tournaments of the caller's own workspace are visible.",
       "response": {
         "array": false,
         "ref": "app.TournamentReadiness"
@@ -20214,8 +20214,19 @@
       "type": "object"
     },
     "app.TournamentReadiness": {
-      "description": "Living-checklist aggregate for one tournament.\n\nField groups are masked by the caller's workspace permissions:\n``tournament.read`` gates the setup/bracket/logs fields, ``team.read`` gates\nthe registration/pool/balance/draft fields \u2014 a missing group yields ``None``\nso the checklist renders \"no-access\" instead of zeros.",
+      "description": "Living-checklist aggregate for one tournament.\n\nField groups are masked by the caller's workspace permissions:\n``tournament.read`` gates the setup/bracket/logs/recalc fields, ``team.read``\nthe registration/pool/balance/draft fields, ``match.read`` the result backlog\nand ``achievement.read`` the evaluation status \u2014 a missing group yields\n``None`` so the checklist renders \"no-access\" instead of zeros.",
       "properties": {
+        "achievements_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Achievements Status"
+        },
         "balance_exported_at": {
           "anyOf": [
             {
@@ -20260,7 +20271,7 @@
           ],
           "title": "Draft Session Status"
         },
-        "encounters_total": {
+        "duel_encounters_total": {
           "anyOf": [
             {
               "type": "integer"
@@ -20269,9 +20280,9 @@
               "type": "null"
             }
           ],
-          "title": "Encounters Total"
+          "title": "Duel Encounters Total"
         },
-        "encounters_with_logs": {
+        "duel_encounters_with_logs": {
           "anyOf": [
             {
               "type": "integer"
@@ -20280,7 +20291,7 @@
               "type": "null"
             }
           ],
-          "title": "Encounters With Logs"
+          "title": "Duel Encounters With Logs"
         },
         "grid_selected": {
           "anyOf": [
@@ -20337,17 +20348,6 @@
           ],
           "title": "Registration Form Configured"
         },
-        "registration_open": {
-          "anyOf": [
-            {
-              "type": "boolean"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Registration Open"
-        },
         "registrations_approved": {
           "anyOf": [
             {
@@ -20392,6 +20392,39 @@
           ],
           "title": "Registrations Ranked"
         },
+        "results_disputed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Results Disputed"
+        },
+        "results_overdue": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Results Overdue"
+        },
+        "results_pending_confirmation": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Results Pending Confirmation"
+        },
         "schedule_configured": {
           "anyOf": [
             {
@@ -20425,6 +20458,17 @@
           ],
           "title": "Stages Total"
         },
+        "standings_recalc_pending": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Standings Recalc Pending"
+        },
         "status": {
           "title": "Status",
           "type": "string"
@@ -20447,11 +20491,11 @@
         "stages_total",
         "stage_slots_filled",
         "bracket_generated",
-        "encounters_total",
-        "encounters_with_logs",
+        "duel_encounters_total",
+        "duel_encounters_with_logs",
         "logs_used",
+        "standings_recalc_pending",
         "registration_form_configured",
-        "registration_open",
         "registrations_pending",
         "registrations_approved",
         "registrations_checked_in",
@@ -20460,7 +20504,11 @@
         "pool_need_fix",
         "balance_saved",
         "balance_exported_at",
-        "draft_session_status"
+        "draft_session_status",
+        "results_overdue",
+        "results_pending_confirmation",
+        "results_disputed",
+        "achievements_status"
       ],
       "title": "TournamentReadiness",
       "type": "object"

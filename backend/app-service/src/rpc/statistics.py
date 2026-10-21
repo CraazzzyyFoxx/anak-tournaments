@@ -66,7 +66,8 @@ def register(broker: Any, logger: Any) -> None:
 
     # GET /api/v1/admin/tournaments/{id}/readiness — hub living checklist.
     # Gate: ANY(tournament.read, team.read) on the tournament's workspace; the
-    # granted groups drive field masking inside compute_readiness.
+    # granted groups (also match.read, achievement.read) drive field masking
+    # inside compute_readiness.
     # Deliberately NO hidden-tournament gate: a workspace reader may see hidden
     # tournaments of their own workspace (same disposition as balancer admin RPCs).
     @broker.subscriber("rpc.app.statistics.tournament_readiness")
@@ -76,19 +77,21 @@ def register(broker: Any, logger: Any) -> None:
             c.require_active(user)
             tournament_id = c.require_id(data)
             tournament = await readiness_service.get_tournament_or_404(session, tournament_id)
-            can_tournament_read = user.has_workspace_permission(tournament.workspace_id, "tournament", "read")
-            can_team_read = user.has_workspace_permission(tournament.workspace_id, "team", "read")
+            ws = tournament.workspace_id
+            can_tournament_read = user.has_workspace_permission(ws, "tournament", "read")
+            can_team_read = user.has_workspace_permission(ws, "team", "read")
             if not (can_tournament_read or can_team_read):
                 raise HTTPException(
                     status_code=403,
-                    detail=f"Permission denied for workspace {tournament.workspace_id}: "
-                    "tournament.read or team.read required",
+                    detail=f"Permission denied for workspace {ws}: tournament.read or team.read required",
                 )
             return await readiness_service.compute_readiness(
                 session,
                 tournament_id,
                 can_tournament_read=can_tournament_read,
                 can_team_read=can_team_read,
+                can_match_read=user.has_workspace_permission(ws, "match", "read"),
+                can_achievement_read=user.has_workspace_permission(ws, "achievement", "read"),
             )
 
         return await c.envelope(logger, "statistics.tournament_readiness", op, session_factory=_SF)

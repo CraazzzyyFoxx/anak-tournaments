@@ -34,8 +34,10 @@ type Pending = { kind: "status"; status: TournamentStatus } | { kind: "finished"
  * The hub header's status actions (DESIGN.md §14 "Header actions").
  *
  * A primary `→ Next` button for the first forward transition the state machine
- * allows; a "Change status" menu that shows the current status checked, then
- * the allowed transitions and, for a superuser, every other status as a
+ * allows — except Archived, which is bookkeeping after the end rather than a
+ * next step and so stays in the menu only; a "Change status" menu that shows
+ * the current status checked, then the allowed transitions and, for a
+ * superuser, every other status as a
  * labelled "Forced" group (sent with `force`); and the finished flag as its own
  * button, since it is a flag and not a pick from the status list. Everything
  * needs `tournament.update`, so without it nothing renders. Every action goes
@@ -61,7 +63,7 @@ export function TournamentStatusControl({
 
   const current = tournament.status;
   const allowed = VALID_TRANSITIONS[current];
-  const next = allowed.find((status) => phaseRank(status) > phaseRank(current));
+  const next = allowed.find((status) => phaseRank(status) > phaseRank(current) && status !== "archived");
   const allowedOptions = TOURNAMENT_PHASES.filter((status) => allowed.includes(status));
   const forcedOptions = isSuperuser
     ? TOURNAMENT_PHASES.filter((status) => status !== current && !allowed.includes(status))

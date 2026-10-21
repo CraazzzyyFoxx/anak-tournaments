@@ -359,9 +359,10 @@ export interface TournamentStatusTransitionInput {
  * Readiness aggregate for the hub living checklist (D13, §7.1).
  * Mirrors backend/app-service/src/services/dashboard/readiness.py. Field
  * groups are masked by the caller's permissions: `tournament.read` gates the
- * setup/bracket/logs group, `team.read` gates the registration/pool/balance/
- * draft group — a masked group arrives as `null` and the checklist renders
- * "no-access" instead of zeros (D16).
+ * setup/bracket/logs/standings group, `team.read` the registration/pool/
+ * balance/draft group, `match.read` the result counts, `achievement.read` the
+ * evaluation status — a masked group arrives as `null` and the checklist
+ * renders "no-access" instead of zeros (D16).
  */
 export interface TournamentReadiness {
   tournament_id: number;
@@ -373,12 +374,13 @@ export interface TournamentReadiness {
   stages_total: number | null;
   stage_slots_filled: boolean | null;
   bracket_generated: boolean | null;
-  encounters_total: number | null;
-  encounters_with_logs: number | null;
+  /** Duels only (`slot_count == 2`): a lobby never produces a match log. */
+  duel_encounters_total: number | null;
+  duel_encounters_with_logs: number | null;
   logs_used: boolean | null;
+  standings_recalc_pending: boolean | null;
   // visible with team.read:
   registration_form_configured: boolean | null;
-  registration_open: boolean | null;
   registrations_pending: number | null;
   registrations_approved: number | null;
   registrations_checked_in: number | null;
@@ -388,6 +390,12 @@ export interface TournamentReadiness {
   balance_saved: boolean | null;
   balance_exported_at: string | null;
   draft_session_status: string | null;
+  // visible with match.read:
+  results_overdue: number | null;
+  results_pending_confirmation: number | null;
+  results_disputed: number | null;
+  // visible with achievement.read: "not_configured" | "none" | the latest evaluation run's status
+  achievements_status: string | null;
 }
 
 // ─── Stage Admin ────────────────────────────────────────────────────────────

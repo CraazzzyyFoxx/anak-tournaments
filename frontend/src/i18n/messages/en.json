@@ -8911,7 +8911,8 @@
         "registration": "Registration",
         "formation": "Team formation",
         "bracket": "Bracket",
-        "live": "Live"
+        "matches": "Matches",
+        "wrap_up": "Wrap-up"
       },
       "states": {
         "done": "Done",
@@ -9591,8 +9592,7 @@
       "phaseSchedule": "Phase schedule",
       "divisionGrid": "Division grid",
       "registrationForm": "Registration form",
-      "registrationOpen": "Registration open",
-      "approvedRegistrations": "Approved registrations",
+      "registrationsReviewed": "Registrations reviewed",
       "approvedDetail": "{approved} approved · {pending} pending",
       "ranksCovered": "Ranks covered",
       "rankedDetail": "{ranked}/{approved} ranked",
@@ -9608,9 +9608,17 @@
       "stagesConfigured": "Stages configured",
       "stageSlotsFilled": "Stage slots filled",
       "bracketGenerated": "Bracket generated",
+      "resultsConfirmed": "Results confirmed",
+      "resultsDisputed": "{count} disputed",
+      "resultsAwaiting": "{count} awaiting confirmation",
+      "resultsOverdue": "{count} overdue",
       "logsCoverMatches": "Logs cover matches",
       "logsNotUsed": "Logs: not used",
-      "logsDetail": "{withLogs}/{total} matches with logs"
+      "logsDetail": "{withLogs}/{total} matches with logs",
+      "achievementsEvaluated": "Achievements evaluated",
+      "achievementsDetail": "{status, select, not_configured {No enabled rules} none {Not evaluated yet} queued {Evaluation queued} running {Evaluating} partial {Some rules failed} failed {Last run failed} other {Not evaluated yet}}",
+      "standingsRecalculated": "Standings recalculated",
+      "standingsQueued": "Recalculation queued"
     }
   },
   "adminAccess": {
