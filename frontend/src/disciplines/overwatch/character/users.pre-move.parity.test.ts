@@ -49,13 +49,12 @@ describe("users/components/heroes/utils.ts → disciplines/overwatch/character/u
 
 describe("users/heroes-compare/config/stat-columns.ts → disciplines/overwatch/character/compare/stat-columns", () => {
   const expected = read(PRE, "heroes-compare-stat-columns.json").output;
-  const columns = Object.values(statColumns.COL).map(({ key, labelKey, ascending, barColor, accentColor }) => ({
-    key,
-    labelKey,
-    ascending,
-    barColor,
-    accentColor
-  }));
+  const columns = Object.values(statColumns.COL).map(({ key, labelKey, ascending }) => ({ key, labelKey, ascending }));
+
+  type Parity = {
+    columns: { key: string; labelKey: string; ascending: boolean }[];
+    per_response: Record<string, { columns: Record<string, { formatted?: string }> }[]>;
+  };
 
   it("reproduces every captured column value from the real native character leaderboards", () => {
     const perResponse = Object.fromEntries(
@@ -81,25 +80,26 @@ describe("users/heroes-compare/config/stat-columns.ts → disciplines/overwatch/
       all_stat_option_keys: statColumns.ALL_STAT_OPTIONS.map((c) => c.key),
       NUM_COLUMNS: statColumns.NUM_COLUMNS,
       default_columns_by_role: Object.fromEntries(roles.map((r) => [String(r), statColumns.getDefaultColumnKeys(r)]))
-    }) as { columns: { key: string }[] };
-    const withoutU1 = (value: { columns: { key: string }[] }) => ({
+    }) as Parity;
+    // The board went monochrome after the move: a column no longer carries its own bar and accent colours, so the
+    // captured ones (U1's included) are no longer the contract.
+    const withoutColours = (value: Parity) => ({
       ...value,
-      columns: value.columns.map((column) =>
-        column.key === "per10_damage_taken" ? { ...column, barColor: "U1", accentColor: "U1" } : column
-      )
+      columns: value.columns.map(({ key, labelKey, ascending }) => ({ key, labelKey, ascending }))
     });
-    expect(withoutU1(actual)).toEqual(withoutU1(expected));
-  });
-
-  it("U1 (awaiting ruling): per10_damage_taken lost its tank-role token colours", () => {
-    const old = (expected.columns as { key: string; barColor: string; accentColor: string }[]).find(
-      (column) => column.key === "per10_damage_taken"
-    );
-    const current = columns.find((column) => column.key === "per10_damage_taken");
-    expect(old).toMatchObject({
-      barColor: "bg-[color:color-mix(in_srgb,var(--aqt-tank)_65%,transparent)]",
-      accentColor: "bg-[color:var(--aqt-tank)]"
-    });
-    expect(current).toMatchObject({ barColor: "bg-slate-400/65", accentColor: "bg-slate-400" });
+    // Fixed after the move: accuracy is a fraction on the wire and the pre-move board printed 0.5 as "0.5%".
+    // stat-columns.test.ts pins the corrected text, so the captured strings are no longer the contract.
+    const withoutAccuracyText = (value: Parity) => {
+      const copy = norm(value) as Parity;
+      for (const rows of Object.values(copy.per_response)) {
+        for (const row of rows) {
+          delete row.columns.avg_weapon_accuracy.formatted;
+          delete row.columns.avg_crit_accuracy.formatted;
+        }
+      }
+      return copy;
+    };
+    const comparable = (value: Parity) => withoutColours(withoutAccuracyText(value));
+    expect(comparable(actual)).toEqual(comparable(expected));
   });
 });

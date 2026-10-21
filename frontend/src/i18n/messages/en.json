@@ -5652,17 +5652,34 @@
         "selectHero": "Select hero",
         "searchHeroes": "Search heroes...",
         "tournamentScope": "Tournament scope",
+        "minGames": "Minimum games on the hero",
+        "minGamesValue": "Min. games: {value}",
+        "minGamesHint": "Players with fewer games are left off the board: a game or two makes a per-10 average swing.",
+        "searchPlayer": "Find a player",
         "resetColumnsTitle": "Reset columns to role defaults",
         "resetColumns": "Reset columns"
+      },
+      "rail": {
+        "label": "Heroes",
+        "noClass": "No class"
       },
       "table": {
         "heroFallback": "Hero",
         "scope": "scope",
-        "playersCount": "<em>{count}</em> {count, plural, one {player} other {players}}",
         "noData": "No data found for this hero.",
         "noDataInTournament": "No data found for this hero in this tournament.",
+        "noMatches": "No ranked player matches “{query}”.",
+        "allBelowFloor": "No player has {min}+ games on this hero yet.",
         "rank": "Rank",
         "player": "Player",
+        "games": "Games",
+        "division": "Div {division}",
+        "lowerIsBetter": "lower is better",
+        "beats": "Better than {value}% of ranked players",
+        "belowFloor": "{count, plural, one {# player} other {# players}} with fewer than {min} games {count, plural, one {is} other {are}} hidden.",
+        "showBelowFloor": "Show everyone",
+        "showing": "Showing {shown} of {total}",
+        "showMore": "Show {count} more",
         "selectStat": "Change column stat: {stat}"
       },
       "hero": {
@@ -5670,16 +5687,15 @@
         "blocked": "Blocked",
         "damage": "Damage",
         "playersRanked": "Players ranked",
+        "rankedOf": "{min}+ games, of {total}",
         "withLoggedTime": "with logged {name} time",
         "pickToRank": "pick a hero to rank",
         "topStat": "Top {stat}",
         "bestKd": "Best K/D",
-        "role": "Role",
-        "statColumns": "{name} · 5 stat columns",
         "usersBreadcrumb": "Users",
         "breadcrumb": "Hero compare",
         "title": "Who plays it best?",
-        "lede": "Pick a hero and rank every player who's logged time on it. One shared row order across every column — click any column header to sort the whole board by it."
+        "lede": "Per-10 averages for everyone with logged time on a hero. Click a column to re-rank the board."
       },
       "invalidHero": {
         "title": "That hero is not in this game",

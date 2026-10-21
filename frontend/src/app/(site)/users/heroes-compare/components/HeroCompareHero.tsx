@@ -7,12 +7,13 @@ import { useTranslations } from "next-intl";
 
 import { PageHero, HeroCoord } from "@/components/site/PageHero";
 
-/** The comparison page's title block; its headline figures (`aside`) are the browsed game's module's. */
+/** The comparison page's header (the board starts right under it); its headline figures (`aside`) are the browsed game's module's. */
 const HeroCompareHero = ({ aside }: Readonly<{ aside: ReactNode }>) => {
   const t = useTranslations();
 
   return (
     <PageHero
+      compact
       eyebrow={
         <HeroCoord className="inline-flex items-center gap-2">
           <Link href="/users" className="transition-colors hover:text-[color:var(--aqt-teal)]">

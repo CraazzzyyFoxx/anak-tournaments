@@ -1,33 +1,19 @@
-interface RankBadgeProps {
-  rank: number;
-}
+const MEDAL: Record<number, string> = {
+  1: "bg-[color:var(--aqt-medal-gold)] text-[color:var(--aqt-medal-gold-fg)]",
+  2: "bg-[color:var(--aqt-medal-silver)] text-[color:var(--aqt-medal-silver-fg)]",
+  3: "bg-[color:var(--aqt-medal-bronze)] text-[color:var(--aqt-medal-bronze-fg)]"
+};
 
-const BASE = "block text-center tabular-nums";
-
-const RankBadge = ({ rank }: RankBadgeProps) => {
-  if (rank === 1)
-    return (
-      <span className={`${BASE} font-[family-name:var(--aqt-display)] text-ui font-extrabold text-[color:var(--aqt-medal-gold)]`}>
-        1
-      </span>
-    );
-  if (rank === 2)
-    return (
-      <span className={`${BASE} font-[family-name:var(--aqt-data)] text-label font-bold text-[color:var(--aqt-medal-silver)]`}>
-        2
-      </span>
-    );
-  if (rank === 3)
-    return (
-      <span className={`${BASE} font-[family-name:var(--aqt-data)] text-label font-bold text-[color:var(--aqt-medal-bronze)]`}>
-        3
-      </span>
-    );
-  return (
-    <span className={`${BASE} font-[family-name:var(--aqt-data)] text-label font-semibold text-[color:var(--aqt-fg-faint)]`}>
+/** The place on the board: a medal chip for the podium, a faint number after it. */
+const RankBadge = ({ rank }: Readonly<{ rank: number }>) =>
+  MEDAL[rank] ? (
+    <span className={`inline-grid size-[22px] place-items-center rounded-md text-label font-bold tabular-nums ${MEDAL[rank]}`}>
+      {rank}
+    </span>
+  ) : (
+    <span className="inline-block w-[22px] text-center text-label font-semibold tabular-nums text-[color:var(--aqt-fg-faint)]">
       {rank}
     </span>
   );
-};
 
 export default RankBadge;

@@ -2,79 +2,72 @@
 
 import { useTranslations } from "next-intl";
 
+import { HeroStat } from "@/components/site/PageHero";
 import type { CharacterCompareProps } from "@/disciplines/types";
 import { characterClass } from "@/lib/catalog/attrs";
-import { cn } from "@/lib/utils";
 
-import { COL } from "./stat-columns";
+import { atSampleFloor } from "./board";
+import { COL, getSignatureKey } from "./stat-columns";
 import { useCharacterLeaderboard } from "./useCharacterLeaderboard";
 
-/** The headline stat per hero class (`attrs.class`) on the per-10 board; a class without its own reads damage. */
-const SIGNATURE = {
-  support: { key: "per10_healing", label: "users.heroesCompare.hero.healing" },
-  tank: { key: "per10_damage_blocked", label: "users.heroesCompare.hero.blocked" }
+/** The headline's short name for each class's signature stat ("Top healing"); the board's column labels carry "/ 10". */
+const SIGNATURE_LABEL = {
+  per10_healing: "users.heroesCompare.hero.healing",
+  per10_damage_blocked: "users.heroesCompare.hero.blocked",
+  per10_damage: "users.heroesCompare.hero.damage"
 } as const;
-const DEFAULT_SIGNATURE = { key: "per10_damage", label: "users.heroesCompare.hero.damage" } as const;
 
-/** Overwatch's headline figures of the character comparison (the `characterCompareSummary` slot). */
+/** A battletag cannot wrap: it is cut to the stat's width, whole in its tooltip. */
+const PlayerName = ({ name }: Readonly<{ name: string }>) => (
+  <span className="block max-w-[11rem] truncate" title={name}>
+    {name}
+  </span>
+);
+
+/**
+ * Overwatch's headline figures of the character comparison (the `characterCompareSummary` slot), over the players
+ * the board ranks: the sample floor leaves the same players out of both.
+ */
 const CharacterCompareSummary = (props: CharacterCompareProps) => {
   const t = useTranslations();
-  const { character } = props;
+  const { character, minGames } = props;
   const { rows } = useCharacterLeaderboard(props);
+  const ranked = atSampleFloor(rows, minGames);
 
-  const heroClass = characterClass(character);
-  const signature = SIGNATURE[(heroClass?.toLowerCase() ?? "") as keyof typeof SIGNATURE] ?? DEFAULT_SIGNATURE;
-  const sigDef = COL[signature.key];
-  const topSig = rows.length ? rows.reduce((best, r) => (sigDef.getValue(r) > sigDef.getValue(best) ? r : best)) : undefined;
-  const bestKd = rows.length ? rows.reduce((best, r) => (r.kd > best.kd ? r : best)) : undefined;
+  const signatureKey = getSignatureKey(characterClass(character));
+  const sigDef = COL[signatureKey];
+  const signatureLabel = SIGNATURE_LABEL[signatureKey as keyof typeof SIGNATURE_LABEL];
+  const topSig = ranked.length ? ranked.reduce((best, r) => (sigDef.getValue(r) > sigDef.getValue(best) ? r : best)) : undefined;
+  const bestKd = ranked.length ? ranked.reduce((best, r) => (r.kd > best.kd ? r : best)) : undefined;
 
-  const stats = [
-    {
-      label: t("users.heroesCompare.hero.playersRanked"),
-      value: rows.length || "—",
-      sub: character
-        ? t("users.heroesCompare.hero.withLoggedTime", { name: character.name })
-        : t("users.heroesCompare.hero.pickToRank")
-    },
-    {
-      label: t("users.heroesCompare.hero.topStat", { stat: t(signature.label) }),
-      value: topSig ? topSig.username : "—",
-      sub: topSig ? `${sigDef.formatValue(sigDef.getValue(topSig))} / 10` : "",
-      small: true
-    },
-    {
-      label: t("users.heroesCompare.hero.bestKd"),
-      value: bestKd ? COL.kd.formatValue(bestKd.kd) : "—",
-      sub: bestKd ? bestKd.username : ""
-    },
-    {
-      label: t("users.heroesCompare.hero.role"),
-      value: heroClass ?? "—",
-      sub: character ? t("users.heroesCompare.hero.statColumns", { name: character.name }) : "",
-      small: true,
-      accent: true
-    }
-  ];
+  const rankedSub = !character
+    ? t("users.heroesCompare.hero.pickToRank")
+    : minGames > 1
+      ? t("users.heroesCompare.hero.rankedOf", { min: minGames, total: rows.length })
+      : t("users.heroesCompare.hero.withLoggedTime", { name: character.name });
 
   return (
-    <div className="grid grid-cols-2 gap-x-7 gap-y-5 text-left sm:grid-cols-4 lg:text-right">
-      {stats.map((stat) => (
-        <div key={stat.label} className="flex flex-col gap-1 lg:items-end">
-          <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-            {stat.label}
-          </span>
-          <span
-            className={cn(
-              "font-onest font-bold leading-none tabular-nums",
-              stat.small ? "text-2xl" : "text-3xl",
-              stat.accent ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg)]"
-            )}
-          >
-            {stat.value}
-          </span>
-          {stat.sub ? <span className="text-label text-[color:var(--aqt-fg-dim)]">{stat.sub}</span> : null}
-        </div>
-      ))}
+    <div className="flex flex-wrap gap-x-7 gap-y-4 lg:justify-end">
+      <HeroStat label={t("users.heroesCompare.hero.playersRanked")} value={ranked.length || "—"} sub={rankedSub} />
+      <HeroStat
+        label={t("users.heroesCompare.hero.topStat", { stat: t(signatureLabel) })}
+        value={
+          topSig ? (
+            <>
+              {sigDef.formatValue(sigDef.getValue(topSig))}
+              <span className="ml-1 text-label font-semibold text-[color:var(--aqt-fg-dim)]">/ 10</span>
+            </>
+          ) : (
+            "—"
+          )
+        }
+        sub={topSig ? <PlayerName name={topSig.username} /> : undefined}
+      />
+      <HeroStat
+        label={t("users.heroesCompare.hero.bestKd")}
+        value={bestKd ? COL.kd.formatValue(bestKd.kd) : "—"}
+        sub={bestKd ? <PlayerName name={bestKd.username} /> : undefined}
+      />
     </div>
   );
 };

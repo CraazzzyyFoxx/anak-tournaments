@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Sword } from "lucide-react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -10,10 +10,13 @@ import tournamentService from "@/services/tournament.service";
 import { type SearchableImageOption } from "@/components/ui/searchable-image-select";
 
 import HeroCompareHero from "./HeroCompareHero";
-import HeroLeaderboardFiltersCard from "./HeroLeaderboardFiltersCard";
+import HeroLeaderboardFiltersCard, { defaultMinGames, parseMinGames } from "./HeroLeaderboardFiltersCard";
+import HeroRail, { RAIL_MAX_CHARACTERS } from "./HeroRail";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useCatalogEntities, useCatalogSelection } from "@/hooks/useCatalogEntities";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import ProfileWidget from "@/components/profile/ProfileWidget";
 import { useGameScope } from "@/hooks/useGameScope";
@@ -24,7 +27,7 @@ import type { StatsScope } from "@/lib/site/stats-scope";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 /** The URL params the page itself owns; everything else (a module's board state) is the board's. */
-const PAGE_PARAMS = ["discipline", "hero_id", "tournament_id"];
+const PAGE_PARAMS = ["discipline", "hero_id", "tournament_id", "min_games"];
 /**
  * The URL ids of one game (the page's own params but the game): a tab or a pill pick of another game
  * leaves them behind (spec §4.4, R5).
@@ -33,8 +36,9 @@ const HERO_GAME_PARAMS = PAGE_PARAMS.filter((param) => param !== "discipline");
 
 /**
  * Character comparison: the host resolves the browsed game, checks the picked character against that game's
- * catalog and owns the tournament scope; the game's module reads and draws the comparison (`characterCompare`,
- * `characterCompareSummary` profile slots). A game without a renderer is told so, and nothing is read for it.
+ * catalog and owns the tournament scope, the sample floor and the name search; the game's module reads and draws
+ * the comparison (`characterCompare`, `characterCompareSummary` profile slots). A game without a renderer is told
+ * so, and nothing is read for it.
  */
 const HeroLeaderboardContent = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: GameScopeInit }>) => {
   const t = useTranslations();
@@ -46,6 +50,9 @@ const HeroLeaderboardContent = ({ scope, initial }: Readonly<{ scope: StatsScope
   const tournamentId = searchParams.get("tournament_id")
     ? Number(searchParams.get("tournament_id"))
     : undefined;
+  const minGames = parseMinGames(searchParams.get("min_games"), tournamentId);
+  // A transient "find me" filter over the loaded board: local, not worth a history entry per keystroke.
+  const [query, setQuery] = useState("");
 
   const updateParams = (updates: Record<string, string | number | undefined>) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -58,6 +65,8 @@ const HeroLeaderboardContent = ({ scope, initial }: Readonly<{ scope: StatsScope
     }
     router.replace(`${pathname}?${params.toString()}`);
   };
+  const setMinGames = (value: number) =>
+    updateParams({ min_games: value === defaultMinGames(tournamentId) ? undefined : value });
 
   // The server's inputs drive the first render, so the tabs it draws are the ones the browser hydrates.
   const gameScope = useGameScope({ pageClass: "single", initial });
@@ -77,6 +86,8 @@ const HeroLeaderboardContent = ({ scope, initial }: Readonly<{ scope: StatsScope
   });
 
   const { axis } = gameScope;
+  // The same read the comparison slots wait on (`ProfileWidget`): the rail's class order and role glyphs.
+  const metadataQuery = useDisciplineMetadata(axis, discipline);
 
   const heroOptions: SearchableImageOption[] = useMemo(
     () =>
@@ -87,6 +98,10 @@ const HeroLeaderboardContent = ({ scope, initial }: Readonly<{ scope: StatsScope
       })),
     [heroesQuery.data]
   );
+  const railHeroes =
+    heroesQuery.data && heroesQuery.data.length > 0 && heroesQuery.data.length <= RAIL_MAX_CHARACTERS
+      ? heroesQuery.data
+      : null;
 
   const selectedHero = heroSelection.entity ?? undefined;
 
@@ -109,7 +124,10 @@ const HeroLeaderboardContent = ({ scope, initial }: Readonly<{ scope: StatsScope
     character: heroChecked ? selectedHero : undefined,
     tournamentId,
     tournamentName: selectedTournamentName,
-    axis
+    axis,
+    minGames,
+    onMinGamesChange: setMinGames,
+    query
   };
 
   if (gameScope.resolution?.game.kind === "invalid" || gameScope.resolution?.game.kind === "empty") {
@@ -137,17 +155,33 @@ const HeroLeaderboardContent = ({ scope, initial }: Readonly<{ scope: StatsScope
         }
       />
 
+      {railHeroes ? (
+        <HeroRail
+          heroes={railHeroes}
+          selectedId={heroId}
+          ontology={metadataQuery.data}
+          onSelect={(id) => updateParams({ hero_id: id })}
+        />
+      ) : heroesQuery.isLoading ? (
+        <Skeleton className="h-[152px] w-full rounded-[var(--aqt-radius)]" />
+      ) : null}
+
       <HeroLeaderboardFiltersCard
+        showHeroPicker={!railHeroes && !heroesQuery.isLoading}
         heroId={heroId}
-        tournamentId={tournamentId}
         heroOptions={heroOptions}
-        tournaments={tournamentsQuery.data?.results ?? []}
         isLoadingHeroes={heroesQuery.isLoading}
         isErrorHeroes={heroesQuery.isError}
+        onHeroChange={(v) => updateParams({ hero_id: v ? Number(v) : undefined })}
+        tournamentId={tournamentId}
+        tournaments={tournamentsQuery.data?.results ?? []}
         isLoadingTournaments={tournamentsQuery.isLoading}
         isErrorTournaments={tournamentsQuery.isError}
-        onHeroChange={(v) => updateParams({ hero_id: v ? Number(v) : undefined })}
         onTournamentChange={(id) => updateParams({ tournament_id: id })}
+        minGames={minGames}
+        onMinGamesChange={setMinGames}
+        query={query}
+        onQueryChange={setQuery}
         onResetColumns={handleResetColumns}
         resetDisabled={heroId === undefined}
       />

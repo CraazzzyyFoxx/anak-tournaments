@@ -191,16 +191,65 @@ describe("hero leaderboard selection", () => {
     expect(mocks.leaderboard).not.toHaveBeenCalled();
   });
 
-  describe("another game's cached results", () => {
-    const OW_ROW = {
-      rank: 1, user_id: 1, username: "ow-ranked", player_name: "ow-ranked", role: null, div: 1, team: null, team_id: null,
-      games_played: 3, playtime_seconds: 900, per10_eliminations: 10, per10_healing: 0, per10_deaths: 4,
-      per10_damage: 1, per10_final_blows: 1, per10_damage_blocked: 0, per10_solo_kills: 0, per10_obj_kills: 0,
-      per10_defensive_assists: 0, per10_offensive_assists: 0, per10_all_damage: 1, per10_damage_taken: 1,
-      per10_self_healing: 0, per10_ultimates_used: 0, per10_multikills: 0, per10_env_kills: 0, per10_crit_hits: 0,
-      avg_weapon_accuracy: 0.5, avg_crit_accuracy: 0.1, kd: 2, kda: 3
-    };
+  /** One Overwatch row with enough games on the hero to clear the all-time sample floor (5). */
+  const OW_ROW = {
+    rank: 1, user_id: 1, username: "ow-ranked", player_name: "ow-ranked", role: null, div: 1, team: null, team_id: null,
+    games_played: 12, playtime_seconds: 900, per10_eliminations: 10, per10_healing: 0, per10_deaths: 4,
+    per10_damage: 1, per10_final_blows: 1, per10_damage_blocked: 0, per10_solo_kills: 0, per10_obj_kills: 0,
+    per10_defensive_assists: 0, per10_offensive_assists: 0, per10_all_damage: 1, per10_damage_taken: 1,
+    per10_self_healing: 0, per10_ultimates_used: 0, per10_multikills: 0, per10_env_kills: 0, per10_crit_hits: 0,
+    avg_weapon_accuracy: 0.5, avg_crit_accuracy: 0.1, kd: 2, kda: 3
+  };
+  const ROOKIE = { ...OW_ROW, user_id: 2, username: "ow-rookie", player_name: "ow-rookie", games_played: 2 };
 
+  describe("the sample floor", () => {
+    beforeEach(() => {
+      mocks.getEntity.mockResolvedValue(catalogEntity({ id: 7, name: "Ana", attrs: { class: "support" } }));
+      mocks.leaderboard.mockResolvedValue({ results: [OW_ROW, ROOKIE], total: 2, page: 1, per_page: -1 });
+    });
+
+    it("leaves a player with a game or two off the all-time board, says so, and brings them back on request", async () => {
+      await mount("/users/heroes-compare?hero_id=7&discipline=overwatch");
+      await settleUntil(() => container.textContent!.includes("ow-ranked"));
+
+      expect(container.textContent).not.toContain("ow-rookie");
+      expect(container.textContent).toContain("1 player with fewer than 5 games is hidden.");
+
+      const showAll = [...container.querySelectorAll("button")].find((button) => button.textContent === "Show everyone");
+      await act(async () => showAll!.click());
+      await settleUntil(() => container.textContent!.includes("ow-rookie"));
+      expect(new URL(navigation.replaces.at(-1)!, "http://x").searchParams.get("min_games")).toBe("1");
+    });
+
+    it("keeps everyone on one tournament's board, where a handful of games is all anyone has", async () => {
+      await mount("/users/heroes-compare?hero_id=7&discipline=overwatch&tournament_id=4");
+      await settleUntil(() => container.textContent!.includes("ow-ranked"));
+
+      expect(container.textContent).toContain("ow-rookie");
+    });
+  });
+
+  it("picks the board's hero from the rail", async () => {
+    mocks.listEntities.mockResolvedValue({
+      results: [
+        catalogEntity({ id: 7, name: "Ana", attrs: { class: "support" } }),
+        catalogEntity({ id: 8, name: "Reinhardt", attrs: { class: "tank" } })
+      ],
+      total: 2,
+      page: 1,
+      per_page: -1
+    });
+    await mount("/users/heroes-compare?discipline=overwatch");
+    const portrait = () => container.querySelector<HTMLButtonElement>('button[aria-label="Reinhardt"]');
+    await settleUntil(() => portrait() !== null);
+
+    await act(async () => portrait()!.click());
+    await settle();
+
+    expect(new URL(navigation.replaces.at(-1)!, "http://x").searchParams.get("hero_id")).toBe("8");
+  });
+
+  describe("another game's cached results", () => {
     async function showOverwatchResults() {
       mocks.getEntity.mockResolvedValue(catalogEntity({ id: 7, name: "Ana", attrs: { class: "support" } }));
       mocks.leaderboard.mockResolvedValue({ results: [OW_ROW], total: 1, page: 1, per_page: -1 });

@@ -77,6 +77,12 @@ export interface CharacterCompareProps {
   tournamentName: string | undefined;
   axis: WorkspaceAxis;
   metadata: DisciplineMetadata;
+  /** The sample floor: a player with fewer games on the character is left off the board and its figures. */
+  minGames: number;
+  /** Moves the floor (the board's way back to the players it leaves off). */
+  onMinGamesChange: (value: number) => void;
+  /** A player-name search over the board; a match keeps the rank it holds on the whole board. */
+  query: string;
 }
 
 /** What a game's analytics board hands back to the host's tournament hero (slice 9 amendment). */
