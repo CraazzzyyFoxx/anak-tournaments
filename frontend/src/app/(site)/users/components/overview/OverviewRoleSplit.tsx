@@ -39,8 +39,6 @@ interface Props {
   axis: WorkspaceAxis;
   /** The player's characters in that game (no per-stat best records) — the signature source. */
   characters: CharacterSummary[];
-  /** Per-character game counts over the player's maps; `null` without map data. */
-  games: Record<number, number> | null;
 }
 
 /**
@@ -48,7 +46,7 @@ interface Props {
  * unassigned bucket, by maps played and won. The roles' names, glyphs and hues come from the game's ontology; the
  * game's module may add a signature character per role (`roleSignatures` slot).
  */
-const OverviewRoleSplit = ({ profile, discipline, axis, characters, games }: Props) => {
+const OverviewRoleSplit = ({ profile, discipline, axis, characters }: Props) => {
   const t = useTranslations();
   const nameOf = useRoleName();
   const ontology = useDisciplineMetadata(axis, discipline).data ?? null;
@@ -156,7 +154,7 @@ const OverviewRoleSplit = ({ profile, discipline, axis, characters, games }: Pro
             axis={axis}
             discipline={discipline}
             slot="roleSignatures"
-            props={{ characters, games, roles: ratedRoles }}
+            props={{ characters, roles: ratedRoles }}
             fallback={null}
           />
         ) : null}

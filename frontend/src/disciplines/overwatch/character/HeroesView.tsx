@@ -9,7 +9,8 @@ import { LogStatsName, getHumanizedStats } from "../stat-names";
 import { characterClass } from "@/lib/catalog/attrs";
 import { CardSurface } from "@/components/profile/atoms";
 import { formatPercent } from "@/lib/format";
-import { computeDelta, formatDelta, formatStatValue, getOverall, isRevertedStat } from "./utils";
+import { LOW_SAMPLE_GAMES } from "@/lib/colors";
+import { computeDelta, formatDelta, formatStatValue, getOverall, heroWinrate, isRevertedStat } from "./utils";
 import HeroRadar, { RADAR_STATS, type RadarPoint } from "./HeroRadar";
 import HeroSpotlight, { QUICK_CANDIDATES } from "./HeroSpotlight";
 import HeroStatsTable, { type StatSortKey } from "./HeroStatsTable";
@@ -75,7 +76,7 @@ const HeroesView = ({ characters, filterSlot, maps, metadata }: SlotProps["chara
     };
     return enriched.map((it) => {
       const stats = it.hero.stats;
-      const wr = avg(stats, LogStatsName.Winrate);
+      const wr = heroWinrate(it.hero);
       let positive = 0;
       let total = 0;
       for (const s of stats) {
@@ -90,7 +91,7 @@ const HeroesView = ({ characters, filterSlot, maps, metadata }: SlotProps["chara
         role: characterClass(it.hero.character),
         playtime: it.playtime,
         share: it.share,
-        winratePct: wr == null ? null : wr <= 1 ? wr * 100 : wr,
+        winratePct: wr == null ? null : wr * 100,
         kda: avg(stats, LogStatsName.KDA),
         dmg10: avg(stats, LogStatsName.HeroDamageDealt),
         impact: total > 0 ? positive / total : 0
@@ -165,18 +166,21 @@ const HeroesView = ({ characters, filterSlot, maps, metadata }: SlotProps["chara
   // Spotlight quick-stats (Winrate / KDA / Dmg10 …) with delta vs global.
   const quickStats = useMemo(() => {
     if (!selected) return [];
+    const hero = selected.hero;
     const out: { name: LogStatsName; label: string; value: string; delta: number | null }[] = [];
     for (const name of QUICK_CANDIDATES) {
-      const stat = selected.hero.stats.find((s) => s.name === name);
-      if (!stat || !Number.isFinite(stat.avg_10)) continue;
-      const reversed = isRevertedStat(name);
-      const delta = computeDelta(stat.avg_10, stat.avg_10_all, reversed);
-      // Winrate arrives either as a 0..1 ratio or as an already-scaled percent.
-      const winrateValue =
-        stat.avg_10 <= 1 ? formatPercent(stat.avg_10, 0) : `${stat.avg_10.toFixed(0)}%`;
-      const value =
-        name === LogStatsName.Winrate ? winrateValue : formatStatValue(format, name, stat.avg_10);
-      out.push({ name, label: quickLabel(name), value, delta });
+      if (name === LogStatsName.Winrate) {
+        // The winrate is the hero's game record, not a logged stat; its delta is in points and needs a sample.
+        const wr = heroWinrate(hero);
+        if (wr == null) continue;
+        const delta = hero.games >= LOW_SAMPLE_GAMES && hero.win_rate_all != null ? wr - hero.win_rate_all : null;
+        out.push({ name, label: quickLabel(name), value: formatPercent(wr, 0), delta });
+      } else {
+        const stat = hero.stats.find((s) => s.name === name);
+        if (!stat || !Number.isFinite(stat.avg_10)) continue;
+        const delta = computeDelta(stat.avg_10, stat.avg_10_all, isRevertedStat(name));
+        out.push({ name, label: quickLabel(name), value: formatStatValue(format, name, stat.avg_10), delta });
+      }
       if (out.length === 4) break;
     }
     return out;

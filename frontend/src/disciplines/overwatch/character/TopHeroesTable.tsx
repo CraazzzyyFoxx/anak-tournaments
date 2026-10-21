@@ -9,20 +9,18 @@ import { LogStatsName } from "../stat-names";
 import { characterClass } from "@/lib/catalog/attrs";
 import { CardSurface } from "@/components/profile/atoms";
 import { formatSeconds } from "@/lib/format";
-import { formatStatValue, getOverall, statAvg10, toFraction } from "./utils";
-import { winrateColor } from "@/lib/colors";
+import { formatStatValue, getOverall, heroWinrate, statAvg10 } from "./utils";
+import { LOW_SAMPLE_GAMES, winrateColor } from "@/lib/colors";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
-import HeroUserStatsPopover from "./HeroUserStatsPopover";
+import { HeroStatsPopover } from "./HeroUserStatsPopover";
 import { useHeroClass } from "./classes";
+import { cn } from "@/lib/utils";
 
-// design-book §5/§6: percentile / vs-avg is noise under this many games.
-const LOW_SAMPLE_GAMES = 10;
 const LIMIT = 8;
 
 interface Row {
   id: number;
-  hero: SlotProps["topCharacters"]["characters"][number]["character"];
-  stats: SlotProps["topCharacters"]["characters"][number]["stats"];
+  hero: SlotProps["topCharacters"]["characters"][number];
   heroClass: string | undefined;
   games: number;
   /** Total seconds on the hero — this is what the table is ordered by. */
@@ -46,15 +44,11 @@ const textHeader = "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2
 const numCell = "aqt-tnum px-3 py-2.5 text-right text-caption text-[color:var(--aqt-fg-muted)]";
 
 /** Overwatch's most-played heroes on the profile overview (the `topCharacters` slot). */
-const TopHeroesTable = ({ characters, games: gamesByHero, userSlug, metadata }: SlotProps["topCharacters"]) => {
+const TopHeroesTable = ({ characters, userSlug, metadata }: SlotProps["topCharacters"]) => {
   const t = useTranslations();
   const format = useFormatter();
   const heroClass = useHeroClass(metadata);
   if (characters.length === 0) return null;
-
-  // Real per-hero game count summed over every map the hero was played on (`null` without map data). This is
-  // the only place the profile exposes a games count.
-  const hasGamesData = gamesByHero !== null;
 
   const withPlaytime = characters.map((h) => ({ h, playtime: getOverall(h, LogStatsName.HeroTimePlayed) }));
   const totalPlaytime = withPlaytime.reduce((sum, x) => sum + x.playtime, 0);
@@ -63,34 +57,27 @@ const TopHeroesTable = ({ characters, games: gamesByHero, userSlug, metadata }: 
     .sort((a, b) => b.playtime - a.playtime)
     .slice(0, LIMIT)
     .map(({ h, playtime }) => {
-      const winStat = h.stats.find((s) => s.name === LogStatsName.Winrate);
-      const winFrac = toFraction(winStat?.avg_10);
-      const globalFrac = winStat && winStat.avg_10_all > 0 ? toFraction(winStat.avg_10_all) : null;
-      const games = gamesByHero?.[h.character.id] ?? 0;
-      const lowSample = hasGamesData && games < LOW_SAMPLE_GAMES;
+      const winFrac = heroWinrate(h);
+      const lowSample = h.games < LOW_SAMPLE_GAMES;
       return {
         id: h.character.id,
-        hero: h.character,
-        stats: h.stats,
+        hero: h,
         heroClass: characterClass(h.character),
-        games,
+        games: h.games,
         playtime,
         share: totalPlaytime > 0 ? playtime / totalPlaytime : null,
         winPct: lowSample || winFrac == null ? null : winFrac * 100,
         kda: statAvg10(h.stats, LogStatsName.KDA),
         dmg10: statAvg10(h.stats, LogStatsName.HeroDamageDealt),
-        vsAvg: lowSample || winFrac == null || globalFrac == null ? null : winFrac - globalFrac,
+        vsAvg: lowSample || winFrac == null || h.win_rate_all == null ? null : winFrac - h.win_rate_all,
         lowSample
       };
     });
 
-  // Only render a metric column when at least one row can fill it. The overview
-  // fetches heroes without an explicit stat list, and the backend's default set
-  // omits winrate — which shipped WIN% and VS AVG as two full columns of dashes.
-  // Gating on the data (as the games column already did) keeps the table honest
-  // and self-heals the day those stats start arriving.
+  // Only render a metric column when at least one row can fill it: a player without scored games (no parsed logs)
+  // would otherwise get full columns of dashes.
   const columns = {
-    games: hasGamesData,
+    games: rows.some((r) => r.games > 0),
     playtime: rows.some((r) => r.playtime > 0),
     share: totalPlaytime > 0,
     winrate: rows.some((r) => r.winPct != null),
@@ -117,7 +104,7 @@ const TopHeroesTable = ({ characters, games: gamesByHero, userSlug, metadata }: 
           <thead>
             <tr>
               <th className={textHeader}>{t("users.overview.topHeroes.col.hero")}</th>
-              <th className={`${textHeader} text-center`}>{t("users.overview.topHeroes.col.role")}</th>
+              <th className={cn(textHeader, "text-center")}>{t("users.overview.topHeroes.col.role")}</th>
               {columns.games ? <th className={numHeader}>{t("users.overview.topHeroes.col.games")}</th> : null}
               {columns.playtime ? <th className={numHeader}>{t("users.overview.topHeroes.col.time")}</th> : null}
               {columns.share ? (
@@ -142,14 +129,14 @@ const TopHeroesTable = ({ characters, games: gamesByHero, userSlug, metadata }: 
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2.5">
                       <CatalogEntityImage
-                        entity={r.hero}
+                        entity={r.hero.character}
                         size="sm"
-                        title={r.hero.name}
-                        popover={<HeroUserStatsPopover entity={r.hero} stats={r.stats} metadata={metadata} />}
+                        title={r.hero.character.name}
+                        popover={<HeroStatsPopover hero={r.hero} metadata={metadata} />}
                       />
                       <div className="min-w-0">
                         <div className="truncate text-caption font-bold text-[color:var(--aqt-fg)]">
-                          {r.hero.name}
+                          {r.hero.character.name}
                         </div>
                         {r.lowSample ? (
                           <span

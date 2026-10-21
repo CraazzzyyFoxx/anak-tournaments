@@ -31,7 +31,7 @@ function render() {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <NextIntlClientProvider locale="en" messages={messages}>
-        <OverviewRoleSplit profile={profile} discipline="overwatch" axis={AXIS} characters={[]} games={null} />
+        <OverviewRoleSplit profile={profile} discipline="overwatch" axis={AXIS} characters={[]} />
       </NextIntlClientProvider>
     </QueryClientProvider>
   );

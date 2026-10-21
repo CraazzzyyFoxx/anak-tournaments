@@ -2,9 +2,12 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { PickBanPlayerHeroes } from "@/components/pick-ban/PickBanPlayerHeroes";
+import type * as OverwatchMatchUI from "@/disciplines/overwatch/match";
+import type * as MatchCharactersModule from "@/disciplines/overwatch/match/MatchCharacters";
+import { loadMatchUI } from "@/disciplines/registry/match";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
 import { catalogEntity } from "@/test/catalog";
@@ -15,6 +18,17 @@ declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+// The game's module and its lazy slot are two chunk loads, each a module-runner round trip that settled outside
+// `mount`'s act — and under load outlasted `vi.waitFor`. The module is loaded in `beforeAll`; the slot is the real
+// renderer without the lazy boundary, so it renders on the first commit.
+vi.mock("@/disciplines/overwatch/match", async (importOriginal) => {
+  const { default: ui } = await importOriginal<typeof OverwatchMatchUI>();
+  const { default: matchCharacters } = await vi.importActual<typeof MatchCharactersModule>(
+    "@/disciplines/overwatch/match/MatchCharacters"
+  );
+  return { default: { ...ui, slots: { ...ui.slots, matchCharacters } } };
+});
 
 const mounted: { root: Root; client: QueryClient; container: HTMLDivElement }[] = [];
 const metadata = {
@@ -109,6 +123,11 @@ const names = (container: HTMLElement, playerId: number) =>
     (element) => element.textContent
   );
 
+// A settled module renders on the widget's first commit, inside `mount`'s act.
+beforeAll(async () => {
+  await loadMatchUI("overwatch");
+});
+
 afterEach(async () => {
   for (const { root, client, container } of mounted.splice(0)) {
     await act(async () => root.unmount());
@@ -122,7 +141,7 @@ describe("PickBanPlayerHeroes", () => {
     "resolves registrations before reading observed heroes (reversed: %s)",
     async (reverse) => {
       const container = await mount(match(reverse), [17, 41]);
-      await vi.waitFor(() => expect(names(container, 17)).toEqual(["Ana", "Baptiste"]));
+      expect(names(container, 17)).toEqual(["Ana", "Baptiste"]);
       expect(names(container, 41)).toEqual(["D.Va"]);
     }
   );

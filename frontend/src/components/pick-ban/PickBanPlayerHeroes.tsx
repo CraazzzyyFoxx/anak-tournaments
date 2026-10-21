@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
 import { loadMatchUI } from "@/disciplines/registry/match";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
@@ -53,7 +54,14 @@ export function PickBanPlayerHeroes({
   if (matchId == null) {
     body = <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("noLog")}</p>;
   } else if (history.isPending || (match && metadata.isPending)) {
-    body = status(t("loading"));
+    body = (
+      <div role="status" className="flex flex-wrap gap-2">
+        <span className="sr-only">{t("loading")}</span>
+        {[0, 1, 2].map((chip) => (
+          <Skeleton key={chip} aria-hidden className="h-9 w-24 rounded-lg" />
+        ))}
+      </div>
+    );
   } else if (history.isError) {
     body = retry(history.refetch, history.isFetching);
   } else if (metadata.isError) {

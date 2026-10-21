@@ -62,3 +62,7 @@ export const statAvg10 = (stats: CharacterSummary["stats"], name: LogStatsName):
   const stat = stats.find((s) => s.name === name);
   return stat && Number.isFinite(stat.avg_10) ? stat.avg_10 : null;
 };
+
+/** The player's winrate (0..1) on a hero from its game record; `null` without a game. */
+export const heroWinrate = (hero: Pick<CharacterSummary, "games" | "win">): number | null =>
+  hero.games > 0 ? hero.win / hero.games : null;
