@@ -29,6 +29,9 @@ from src import schemas
 
 __all__ = ("PlayerLinkService", "players")
 
+#: Game sign-ons whose OAuth subject proves a stored game handle (``oauth_handle_candidates``).
+_GAME_SIGN_ONS = (SocialProvider.RIOT, SocialProvider.STEAM)
+
 
 def _normalized(values: Iterable[str | None]) -> set[str]:
     return {value.strip().casefold() for value in values if value and value.strip()}
@@ -66,23 +69,23 @@ class PlayerLinkService:
         self,
         session: AsyncSession,
         auth_user_id: int,
-    ) -> tuple[OAuthConnection | None, OAuthConnection | None, OAuthConnection | None]:
+    ) -> tuple[OAuthConnection | None, OAuthConnection | None, list[OAuthConnection]]:
         connections = await self.connections.list_by_user_providers(
             session,
             auth_user_id=auth_user_id,
-            providers=["discord", "battlenet", SocialProvider.RIOT],
+            providers=["discord", "battlenet", *_GAME_SIGN_ONS],
         )
         discord_conn = next((conn for conn in connections if conn.provider == "discord"), None)
         battlenet_conn = next((conn for conn in connections if conn.provider == "battlenet"), None)
-        riot_conn = next((conn for conn in connections if conn.provider == SocialProvider.RIOT), None)
+        game_conns = [conn for conn in connections if conn.provider in _GAME_SIGN_ONS]
 
-        if discord_conn is None and battlenet_conn is None and riot_conn is None:
+        if discord_conn is None and battlenet_conn is None and not game_conns:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Link Discord, Battle.net or Riot OAuth account before linking a player",
+                detail="Link Discord, Battle.net, Riot or Steam OAuth account before linking a player",
             )
 
-        return discord_conn, battlenet_conn, riot_conn
+        return discord_conn, battlenet_conn, game_conns
 
     async def _get_player(self, session: AsyncSession, player_id: int) -> models.User:
         player = await self.players.get(session, player_id)
@@ -96,7 +99,7 @@ class PlayerLinkService:
     # -- ownership ---------------------------------------------------------
 
     async def _verify_ownership(self, session: AsyncSession, auth_user_id: int, player_id: int) -> None:
-        discord_conn, battlenet_conn, riot_conn = await self._get_oauth_connections(session, auth_user_id)
+        discord_conn, battlenet_conn, game_conns = await self._get_oauth_connections(session, auth_user_id)
 
         discord_match = False
         battlenet_match = False
@@ -133,21 +136,19 @@ class PlayerLinkService:
             if oauth_battletags and player_battletags and not oauth_battletags.isdisjoint(player_battletags):
                 battlenet_match = True
 
-        riot_match = False
-        if riot_conn is not None:
-            riot_ids = oauth_handle_candidates(
-                SocialProvider.RIOT, username=riot_conn.username, display_name=riot_conn.display_name
-            )
-            player_riot_ids = {
-                normalize_social_handle(SocialProvider.RIOT, handle)
-                for handle in await self.socials.list_handles(session, user_id=player_id, provider=SocialProvider.RIOT)
+        game_match = False
+        for conn in game_conns:
+            oauth_ids = oauth_handle_candidates(conn.provider, username=conn.username, display_name=conn.display_name)
+            player_ids = {
+                normalize_social_handle(conn.provider, handle)
+                for handle in await self.socials.list_handles(session, user_id=player_id, provider=conn.provider)
             }
-            riot_match = bool(riot_ids & player_riot_ids)
+            game_match = game_match or bool(oauth_ids & player_ids)
 
-        if not discord_match and not battlenet_match and not riot_match:
+        if not discord_match and not battlenet_match and not game_match:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Discord, Battle.net or Riot account does not match selected player",
+                detail="Discord, Battle.net, Riot or Steam account does not match selected player",
             )
 
     # -- storage -----------------------------------------------------------

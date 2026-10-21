@@ -211,7 +211,7 @@ state. The submit (`owt:mix.seat_set:<game>`, fields `role1`..`role3`, `flex`) b
 replaced in place. Refusals are worded from the mix's own blocker codes (`signup_closed`,
 `roster_full`, `role_edit_off`, …); the link blockers add a profile link: `discord_not_linked`,
 the mix game's provider (`battlenet_not_linked` for Overwatch, `riot_not_linked` for League of
-Legends) and the provider-neutral `player_not_linked`.
+Legends, `steam_not_linked` for Deadlock) and the provider-neutral `player_not_linked`.
 
 **`/mix`** (guild-only) shows the same seat panel for the newest open mix of the workspace bound to
 that guild (`workspace.discord_guild_id` → `rpc.balancer.custom.self_current`), so a player never

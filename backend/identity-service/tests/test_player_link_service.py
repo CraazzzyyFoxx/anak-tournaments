@@ -43,8 +43,8 @@ from tests._fakes import FakeSocialAccounts as _StubSocials  # noqa: E402
 # DB-free unit tests: stub repositories, real service logic.
 # ---------------------------------------------------------------------------
 
-NO_CONNECTION_DETAIL = "Link Discord, Battle.net or Riot OAuth account before linking a player"
-NO_MATCH_DETAIL = "Discord, Battle.net or Riot account does not match selected player"
+NO_CONNECTION_DETAIL = "Link Discord, Battle.net, Riot or Steam OAuth account before linking a player"
+NO_MATCH_DETAIL = "Discord, Battle.net, Riot or Steam account does not match selected player"
 
 
 class _StubPlayers:

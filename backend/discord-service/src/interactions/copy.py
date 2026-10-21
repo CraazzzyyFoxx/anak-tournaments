@@ -308,6 +308,7 @@ _MIX_BLOCKERS: dict[Locale, dict[str, str]] = {
         "discord_not_linked": "Этот Discord не привязан к аккаунту OWT — привяжите его в профиле.",
         "battlenet_not_linked": "К аккаунту не привязан Battle.net — привяжите его в профиле.",
         "riot_not_linked": "К аккаунту не привязан Riot — привяжите его в профиле.",
+        "steam_not_linked": "К аккаунту не привязан Steam — привяжите его в профиле.",
         "player_not_linked": "К аккаунту ещё не привязан профиль игрока — привяжите его в профиле на сайте.",
         "self_join_denied": "Самозапись на миксы для вас закрыта.",
         "already_joined": "Вы уже записаны на этот микс.",
@@ -322,6 +323,7 @@ _MIX_BLOCKERS: dict[Locale, dict[str, str]] = {
         "discord_not_linked": "This Discord account isn't linked to an OWT account — link it in your profile.",
         "battlenet_not_linked": "No Battle.net account is linked to yours — link it in your profile.",
         "riot_not_linked": "No Riot account is linked to yours — link it in your profile.",
+        "steam_not_linked": "No Steam account is linked to yours — link it in your profile.",
         "player_not_linked": "Your account isn't linked to a player profile yet — link one in your profile on the site.",
         "self_join_denied": "Signing yourself up for mixes is turned off for you.",
         "already_joined": "You're already signed up for this mix.",
@@ -381,7 +383,7 @@ _VOICE_PROMPT: dict[Locale, dict[str, str]] = {
 MIX_BLOCKERS: frozenset[str] = frozenset(_MIX_BLOCKERS["ru"])
 #: The refusals a profile link can actually fix.
 LINK_BLOCKERS: frozenset[str] = frozenset(
-    {"discord_not_linked", "battlenet_not_linked", "riot_not_linked", "player_not_linked"}
+    {"discord_not_linked", "battlenet_not_linked", "riot_not_linked", "steam_not_linked", "player_not_linked"}
 )
 #: The voice refusals the balancer sends as a bare 409 detail; a 503 is said by
 #: the generic "the bot is offline" card instead, so it is not one of these.

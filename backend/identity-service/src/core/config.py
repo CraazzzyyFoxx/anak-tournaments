@@ -72,6 +72,10 @@ class Settings(BaseServiceSettings):
     RIOT_CLIENT_SECRET: str | None = None
     RIOT_ACCOUNT_CLUSTER: str = "europe"
 
+    # Steam OpenID 2.0. No client credentials: Steam verifies its own assertion (``check_authentication``), the
+    # claimed SteamID64 is the subject. Only the return URL (``OAUTH_REDIRECT``) is needed.
+    STEAM_OAUTH_ENABLED: bool = False
+
     # The one OAuth callback URL registered with every provider: always the
     # platform apex, never derived from the request host, because providers only
     # accept a static pre-registered redirect_uri. The originating host, post-auth

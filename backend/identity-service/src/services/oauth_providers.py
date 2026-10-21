@@ -9,15 +9,17 @@ proven ``schemas.OAuthUserInfo``; what that identity means for a site account is
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 import httpx
 from loguru import logger
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.social import SocialProvider, steam_account_id
 from src import schemas
 from src.core.config import Settings, settings
 
@@ -451,12 +453,94 @@ class RiotOAuthProvider(OAuthProviderBase):
         return cpid if isinstance(cpid, str) else None
 
 
+class SteamOpenIDProvider(OAuthProviderBase):
+    """Steam OpenID 2.0: no client credentials, Steam itself vouches for the claimed SteamID64.
+
+    Steam sends back ``openid.*`` parameters and no ``code``; the frontend callback forwards all of them as one query
+    string in its place. The subject is the decimal SteamID3 account id, which is also the stored handle (``username``);
+    the persona name is only a display name.
+    """
+
+    provider_name = SocialProvider.STEAM
+    LOGIN_URL = "https://steamcommunity.com/openid/login"
+    PROFILE_URL = "https://api.deadlock-api.com/v1/players/steam"
+    _OPENID_NS = "http://specs.openid.net/auth/2.0"
+    _IDENTIFIER_SELECT = "http://specs.openid.net/auth/2.0/identifier_select"
+    _CLAIMED_ID = re.compile(r"https://steamcommunity\.com/openid/id/(\d{17})")
+    # check_authentication vouches for the signed fields only; an unsigned claimed_id is anyone's to forge.
+    _MUST_BE_SIGNED = frozenset({"op_endpoint", "claimed_id", "identity", "return_to"})
+
+    def get_authorization_url(self, state: str) -> str:
+        redirect = urlsplit(settings.OAUTH_REDIRECT)
+        params = {
+            "openid.ns": self._OPENID_NS,
+            "openid.mode": "checkid_setup",
+            "openid.return_to": f"{settings.OAUTH_REDIRECT}?{urlencode({'state': state})}",
+            "openid.realm": f"{redirect.scheme}://{redirect.netloc}",
+            "openid.identity": self._IDENTIFIER_SELECT,
+            "openid.claimed_id": self._IDENTIFIER_SELECT,
+        }
+        return f"{self.LOGIN_URL}?{urlencode(params)}"
+
+    async def exchange_code(self, code: str) -> dict[str, Any]:
+        params = dict(parse_qsl(code, keep_blank_values=True))
+        claimed = self._CLAIMED_ID.fullmatch(params.get("openid.claimed_id", ""))
+        if (
+            claimed is None
+            or params.get("openid.op_endpoint") != self.LOGIN_URL
+            or not params.get("openid.return_to", "").startswith(f"{settings.OAUTH_REDIRECT}?")
+            or not self._MUST_BE_SIGNED <= set(params.get("openid.signed", "").split(","))
+        ):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid Steam sign-in response")
+        try:
+            response = await self.http.client().post(
+                self.LOGIN_URL, data={**params, "openid.mode": "check_authentication"}
+            )
+            if response.status_code != 200 or "is_valid:true" not in response.text.split():
+                logger.warning("Steam OpenID verification failed", status_code=response.status_code)
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to verify Steam sign-in")
+        except Exception as exc:
+            _raise_provider_call_error(exc, provider_label="Steam", error_detail="Steam authentication failed")
+        return {"access_token": claimed.group(1)}
+
+    async def get_user_info(self, access_token: str) -> schemas.OAuthUserInfo:
+        account_id = steam_account_id(access_token)
+        if account_id is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Steam account id is invalid")
+        profile = await self._profile(account_id)
+        avatar = profile.get("avatarfull")
+        return schemas.OAuthUserInfo(
+            provider=schemas.OAuthProvider.STEAM,
+            provider_user_id=account_id,
+            email=None,
+            username=account_id,
+            display_name=str(profile.get("personaname") or "").strip() or account_id,
+            avatar_url=avatar if isinstance(avatar, str) else None,
+            raw_data={"steamid64": access_token},
+        )
+
+    async def _profile(self, account_id: str) -> dict[str, Any]:
+        """deadlock-api's cached Steam profile, best effort: any failure leaves only the account id."""
+        try:
+            response = await self.http.client().get(self.PROFILE_URL, params={"account_ids": account_id})
+            if response.status_code != 200:
+                return {}
+            payload = response.json()
+        except (httpx.HTTPError, ValueError):
+            return {}
+        rows = payload if isinstance(payload, list) else []
+        return next(
+            (row for row in rows if isinstance(row, dict) and str(row.get("account_id")) == account_id),
+            {},
+        )
+
+
 class OAuthProviderRegistry:
     """Which providers this deployment offers, and their client instances."""
 
-    # A provider is only offered when its enable flag is on AND all three
-    # credentials are present: a half-configured provider would fail at the
-    # redirect, so it must not be advertised.
+    # A provider is only offered when its enable flag is on AND every setting it
+    # names is present (client id/secret, none for Steam OpenID, and the redirect):
+    # a half-configured provider would fail at the redirect, so it must not be advertised.
     PROVIDER_SETTINGS: dict[str, dict[str, str]] = {
         "discord": {
             "enabled": "DISCORD_OAUTH_ENABLED",
@@ -482,6 +566,7 @@ class OAuthProviderRegistry:
             "client_secret": "RIOT_CLIENT_SECRET",
             "redirect_uri": "OAUTH_REDIRECT",
         },
+        SocialProvider.STEAM: {"enabled": "STEAM_OAUTH_ENABLED", "redirect_uri": "OAUTH_REDIRECT"},
     }
 
     def __init__(self, *, http: OAuthHttpClient | None = None, config: Settings = settings) -> None:
@@ -492,6 +577,7 @@ class OAuthProviderRegistry:
             "twitch": TwitchOAuthProvider(self.http),
             "battlenet": BattleNetOAuthProvider(self.http),
             "riot": RiotOAuthProvider(self.http),
+            SocialProvider.STEAM: SteamOpenIDProvider(self.http),
         }
 
     def _provider_config(self, provider_name: str) -> dict[str, str]:
@@ -508,11 +594,7 @@ class OAuthProviderRegistry:
         if not enabled:
             return False
 
-        required_settings = (
-            provider_config["client_id"],
-            provider_config["client_secret"],
-            provider_config["redirect_uri"],
-        )
+        required_settings = [setting for key, setting in provider_config.items() if key != "enabled"]
         return all(bool(getattr(self.config, setting_name, None)) for setting_name in required_settings)
 
     def ensure_enabled(self, provider_name: str) -> None:

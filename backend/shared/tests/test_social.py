@@ -41,6 +41,7 @@ def test_oauth_capability_drives_every_oauth_derived_set() -> None:
         SocialProvider.BATTLENET,
         SocialProvider.DISCORD,
         SocialProvider.RIOT,
+        SocialProvider.STEAM,
         SocialProvider.TWITCH,
     }
     assert is_oauth_provider(SocialProvider.DISCORD)
@@ -57,6 +58,7 @@ def test_verifiable_providers_are_the_ones_whose_ownership_can_be_proven() -> No
         SocialProvider.BATTLENET,
         SocialProvider.DISCORD,
         SocialProvider.RIOT,
+        SocialProvider.STEAM,
         SocialProvider.TWITCH,
     }
     assert VERIFIABLE_PROVIDERS == {spec.id for spec in PROVIDERS.values() if spec.can_be_verified}

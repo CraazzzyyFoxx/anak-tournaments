@@ -47,6 +47,7 @@ IDENTITY_PROVIDERS: tuple[str, ...] = (
     SocialProvider.VK,
     SocialProvider.YOUTUBE,
     SocialProvider.RIOT,
+    SocialProvider.STEAM,
 )
 
 #: Upper bound an organizer may set on handles per identity field.
@@ -145,6 +146,7 @@ DEFAULT_PATTERNS: dict[str, str] = {
     identity_key(SocialProvider.TWITCH): r"^[a-zA-Z0-9_]{4,25}$",
     identity_key(SocialProvider.BOOSTY): r"^[^#]{2,50}$",
     identity_key(SocialProvider.RIOT): r"^[^#]{3,16}#[0-9a-z]{3,5}$",
+    identity_key(SocialProvider.STEAM): rf"^{PROVIDERS[SocialProvider.STEAM].handle_pattern}$",
     "url": r"^https?://.+$",
 }
 

@@ -28,12 +28,17 @@ ORM/kernel this service builds on.
 - **Sessions** — list, revoke a single session, logout, and logout-all (revoke every session
   for the user). Refresh tokens are persisted in Postgres and revocable; revoking a session
   also blacklists its `sid` in Redis for the remaining access-token lifetime.
-- **OAuth** — Discord, Twitch, Battle.net and Riot (Riot Sign-On; a provider is advertised only
-  when its enable flag is on and all credentials are present): authorization URL, callback
-  exchange, account link/unlink, and listing connected providers. A Riot sign-in stores the PUUID
-  as the verified `riot` social account's `provider_user_id` and the Riot ID as its handle. State
-  is signed, and the OAuth handoff to custom domains is completed via single-use, browser-bound
-  Redis tickets.
+- **OAuth** — Discord, Twitch, Battle.net, Riot (Riot Sign-On) and Steam (OpenID 2.0; a provider
+  is advertised only when its enable flag is on and every credential it needs is present; Steam
+  needs none besides `OAUTH_REDIRECT`): authorization URL, callback exchange, account
+  link/unlink, and listing connected providers. A Riot sign-in stores the PUUID as the verified
+  `riot` social account's `provider_user_id` and the Riot ID as its handle. Steam returns no
+  `code`: the callback page forwards its `openid.*` parameters as the code, which is checked
+  (claimed id, signed fields, `op_endpoint`, `return_to`) and verified with Steam's
+  `check_authentication`; the verified `steam` social account's subject and handle are both the
+  decimal SteamID3 account id, the persona name and avatar (from deadlock-api, best effort) only
+  display. State is signed, and the OAuth handoff to custom domains is completed via single-use,
+  browser-bound Redis tickets.
 - **SSO exchange** — redeems a one-time SSO ticket so a custom-domain OAuth callback can hand
   the session back to the tenant origin without exposing tokens in the redirect.
 - **RBAC** — permissions, roles, role↔permission grants, user↔role assignments, and a
@@ -105,7 +110,9 @@ diagram.
 - **RabbitMQ** — the RPC transport (`rpc.identity.*`) and the shared broker topology.
 - **S3** — avatar object storage.
 - **External APIs** — Discord, Twitch, Battle.net and Riot (`auth.riotgames.com`, account-v1 on
-  `https://{RIOT_ACCOUNT_CLUSTER}.api.riotgames.com`) OAuth token/userinfo endpoints, reached
+  `https://{RIOT_ACCOUNT_CLUSTER}.api.riotgames.com`) OAuth token/userinfo endpoints, Steam OpenID
+  (`steamcommunity.com/openid/login`) and the deadlock-api Steam profile
+  (`api.deadlock-api.com/v1/players/steam`), reached
   through the outbound `proxy` container when the shared `PROXY_TYPE` / `PROXY_*` settings are
   configured; the production compose block `depends_on` it.
 
@@ -123,9 +130,10 @@ only the service-specific overrides:
   token of a live session may be replayed once more instead of counting as a reuse attack; `0`
   restores hard single-use.
 
-Settings that change behaviour elsewhere: `DISCORD_/TWITCH_/BATTLENET_/RIOT_OAUTH_ENABLED` gate which
+Settings that change behaviour elsewhere: `DISCORD_/TWITCH_/BATTLENET_/RIOT_/STEAM_OAUTH_ENABLED` gate which
 providers are advertised; Riot also needs `RIOT_CLIENT_ID` / `RIOT_CLIENT_SECRET` and reads the
-Riot ID from account-v1 on `RIOT_ACCOUNT_CLUSTER` (default `europe`). `SERVICE_CLIENTS` defines which
+Riot ID from account-v1 on `RIOT_ACCOUNT_CLUSTER` (default `europe`); Steam needs no credentials (its
+OpenID realm is the scheme and host of `OAUTH_REDIRECT`). `SERVICE_CLIENTS` defines which
 machine callers may mint service tokens, and `RPC_PREFETCH_COUNT` bounds in-flight requests per process.
 
 ## Running
