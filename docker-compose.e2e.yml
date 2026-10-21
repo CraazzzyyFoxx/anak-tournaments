@@ -104,9 +104,13 @@ services:
     ports: !reset []
     environment:
       NEXT_PUBLIC_SITE_URL: http://localhost:${E2E_PORT:-8090}
-    # Every route of the app gets compiled in one run: 512M fills (ENOSPC, 500s).
-    tmpfs: !override
-      - /app/.next:size=4G
+    # Every route of the app gets compiled in one run: the dev 512M tmpfs fills
+    # (ENOSPC, 500s), and a bigger one counts against the memory limit (OOM).
+    # A disk volume also keeps compiles warm across restarts.
+    tmpfs: !reset []
+    volumes:
+      - frontend-e2e-next:/app/.next
+    restart: unless-stopped
     # Cold `next dev` compiles of ~150 routes dominate a run.
     deploy:
       resources:
@@ -120,3 +124,6 @@ services:
     # back to 127.0.0.1 at once.
     ports: !override
       - "127.0.0.1:${E2E_PORT:-8090}:80"
+
+volumes:
+  frontend-e2e-next:
