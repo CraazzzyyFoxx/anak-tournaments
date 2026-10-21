@@ -109,7 +109,7 @@ const roots: { unmount: () => void }[] = [];
 
 async function mount(
   currentGame: CustomGame | undefined,
-  props: { canWrite?: boolean; gameLoading?: boolean; canDelete?: boolean } = {}
+  props: { canWrite?: boolean; gameLoading?: boolean; canDelete?: boolean; showsRoles?: boolean } = {}
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -122,6 +122,7 @@ async function mount(
         game={currentGame}
         gameLoading={props.gameLoading ?? false}
         onOpenPool={onOpenPool}
+        showsRoles={props.showsRoles ?? true}
         onOpenAccess={onOpenAccess}
         canDelete={props.canDelete ?? false}
         onDeleteMix={onDeleteMix}
@@ -400,6 +401,15 @@ describe("PickupMixHeader signup settings", () => {
     await click(popover.querySelector('[aria-label="roleEdit"]'));
 
     expect(onSetSelfService).toHaveBeenCalledWith({ self_role_edit: true });
+  });
+
+  it("offers no role-edit switch in a game with one role", async () => {
+    const popover = await openSignup(await mount(game(), { showsRoles: false }));
+
+    // The popover itself still opens: only the switch with nothing to edit is gone.
+    expect(radio(popover, "signupOpen")).not.toBeNull();
+    expect(popover.querySelector('[aria-label="roleEdit"]')).toBeNull();
+    expect(popover.body.textContent).not.toContain("roleEdit");
   });
 
   it("shows a viewer who cannot write none of it", async () => {

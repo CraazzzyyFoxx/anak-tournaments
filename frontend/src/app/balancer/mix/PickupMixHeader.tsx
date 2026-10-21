@@ -77,6 +77,8 @@ type PickupMixHeaderProps = {
   game: CustomGame | undefined;
   gameLoading: boolean;
   onOpenPool: () => void;
+  /** The mix's game has roles to order (`MixOwner.showsRoles`); `false` hides "Players edit their own roles". */
+  showsRoles: boolean;
   /** Omitted -- the name is read-only. Resolve/reject so the editor knows whether to close. */
   onRename?: (name: string) => Promise<unknown>;
   onOpenAccess: () => void;
@@ -118,6 +120,7 @@ export function PickupMixHeader({
   game,
   gameLoading,
   onOpenPool,
+  showsRoles,
   onOpenAccess,
   canDelete = false,
   deleting = false,
@@ -196,6 +199,7 @@ export function PickupMixHeader({
         {canWrite && game != null && onSetSelfService ? (
           <SignupSettings
             game={game}
+            showsRoles={showsRoles}
             saving={savingSelfService}
             onSetSelfService={onSetSelfService}
           />
@@ -353,10 +357,12 @@ export function PickupMixHeader({
  */
 function SignupSettings({
   game,
+  showsRoles,
   saving,
   onSetSelfService
 }: Readonly<{
   game: CustomGame;
+  showsRoles: boolean;
   saving: boolean;
   onSetSelfService: (patch: { self_signup?: MixSelfSignup; self_role_edit?: boolean }) => void;
 }>) {
@@ -412,15 +418,17 @@ function SignupSettings({
         ) : null}
         <p className="text-label text-[color:var(--aqt-fg-dim)]">{t(`signupHint.${mode}`)}</p>
 
-        <div className="flex items-center gap-2 border-t border-[color:var(--aqt-border)] pt-3">
-          <Switch
-            checked={game.self_role_edit}
-            disabled={saving}
-            aria-label={t("roleEdit")}
-            onCheckedChange={(checked) => onSetSelfService({ self_role_edit: checked })}
-          />
-          <span className="text-caption text-[color:var(--aqt-fg-muted)]">{t("roleEdit")}</span>
-        </div>
+        {showsRoles ? (
+          <div className="flex items-center gap-2 border-t border-[color:var(--aqt-border)] pt-3">
+            <Switch
+              checked={game.self_role_edit}
+              disabled={saving}
+              aria-label={t("roleEdit")}
+              onCheckedChange={(checked) => onSetSelfService({ self_role_edit: checked })}
+            />
+            <span className="text-caption text-[color:var(--aqt-fg-muted)]">{t("roleEdit")}</span>
+          </div>
+        ) : null}
       </PopoverContent>
     </Popover>
   );

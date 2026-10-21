@@ -22,7 +22,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MixSelfSeat, MixSelfState } from "@/services/custom-game.service";
 
 import { PickupMySeatPanel } from "./PickupMySeatPanel";
-import { OW_OWNER } from "./mix-owner.fixture";
+import { DEADLOCK_OWNER, OW_OWNER } from "./mix-owner.fixture";
+import type { MixOwner } from "./pickup-lineup";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -108,7 +109,7 @@ function tick() {
 const roots: { unmount: () => void }[] = [];
 let rerender: (saving: boolean) => Promise<void> = async () => {};
 
-async function mount(value: MixSelfState) {
+async function mount(value: MixSelfState, owner: MixOwner = OW_OWNER) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -117,7 +118,7 @@ async function mount(value: MixSelfState) {
     root.render(
       <PickupMySeatPanel
         state={value}
-        owner={OW_OWNER}
+        owner={owner}
         saving={saving}
         onJoin={onJoin}
         onLeave={onLeave}
@@ -318,5 +319,32 @@ describe("PickupMySeatPanel roles", () => {
 
     const waiting = await mount(state({ lobby_count: 2, seat: seat({ current_lobby: null }) }));
     expect(waiting.textContent).toContain("waitingSeat");
+  });
+
+  it("shows a one-role game's rank alone: no roles, no Full flex, no role names", async () => {
+    const ranked = await mount(state({ seat: seat({ roles: null, ranks: { agent: 2900 } }) }), DEADLOCK_OWNER);
+
+    expect(ranked.querySelectorAll('[role="switch"]')).toHaveLength(0);
+    expect(ranked.textContent).toContain("2900");
+    expect(ranked.textContent).not.toContain("Agent");
+    expect(ranked.textContent).not.toContain("rolesAllRanked");
+
+    const unranked = await mount(
+      state({ seat: seat({ roles: null, ranks: { agent: null } }), unranked_roles: ["agent"] }),
+      DEADLOCK_OWNER,
+    );
+    expect(unranked.textContent).toContain("unrankedOne");
+    expect(unranked.textContent).not.toContain("Agent");
+  });
+
+  it("offers no Full flex in a game without it and never sends one", async () => {
+    const scope = await mount(state({ seat: seat({ is_flex: true }) }), { ...OW_OWNER, flex: false });
+
+    expect(scope.querySelector('[aria-label="Full flex for you"]')).toBeNull();
+    await click(scope.querySelector('[aria-label="Support for you"]'));
+    expect(onSave).toHaveBeenLastCalledWith({
+      roles: ["tank", "damage", "support"].map((role) => ({ dimension: "player_role", role })),
+      is_flex: false,
+    });
   });
 });

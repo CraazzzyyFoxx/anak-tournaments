@@ -199,16 +199,18 @@ export function LineupRow({
       {lobbyCount > 1 ? <LineupLobbyBadge currentLobby={row.current_lobby} /> : null}
       <RotationHintBadge hint={rotationHint} pinned={row.participation === "must_play"} />
 
-      <RowAction>
-        <RolePriorityRail
-          row={row}
-          owner={owner}
-          label={label}
-          canWrite={canWrite && !dimmed}
-          saving={saving}
-          onPatch={onPatch}
-        />
-      </RowAction>
+      {owner.showsRoles ? (
+        <RowAction>
+          <RolePriorityRail
+            row={row}
+            owner={owner}
+            label={label}
+            canWrite={canWrite && !dimmed}
+            saving={saving}
+            onPatch={onPatch}
+          />
+        </RowAction>
+      ) : null}
 
       <div className="flex w-[92px] shrink-0 items-center justify-end gap-1.5">
         {division == null ? null : (

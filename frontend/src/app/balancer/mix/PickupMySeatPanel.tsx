@@ -134,8 +134,10 @@ export function PickupMySeatPanel({
     if (owner.dimension == null) return;
     setDraft(next);
     onSave({
-      roles: roleRefsOf(next.order, owner.dimension),
-      is_flex: next.isFlex,
+      // A one-role game has nothing to order: `null` is every ranked role, and repairs a stored `[]`.
+      roles: owner.showsRoles ? roleRefsOf(next.order, owner.dimension) : null,
+      // A game without Full flex never sends one, which also clears a flag stored before it lost it.
+      is_flex: owner.flex && next.isFlex,
     });
   };
 
@@ -199,15 +201,15 @@ export function PickupMySeatPanel({
 
       {state.unranked_roles.length > 0 ? (
         <p className="text-caption text-amber-200">
-          {t("unranked", {
-            roles: state.unranked_roles.map((role) => slotLabel(role)).join(", "),
-          })}
+          {owner.showsRoles
+            ? t("unranked", { roles: state.unranked_roles.map((role) => slotLabel(role)).join(", ") })
+            : t("unrankedOne")}
         </p>
       ) : null}
 
       {seat == null ? null : (
         <div className="space-y-2">
-          {seat.roles == null ? <p className={CAPTION_CLASS}>{t("rolesAllRanked")}</p> : null}
+          {owner.showsRoles && seat.roles == null ? <p className={CAPTION_CLASS}>{t("rolesAllRanked")}</p> : null}
           <PickupRoleOrderEditor
             owner={owner}
             order={draft.order}

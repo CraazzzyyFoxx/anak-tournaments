@@ -25,7 +25,7 @@ import type { CustomGamePlayer } from "@/services/custom-game.service";
 import type { RosterMember } from "@/services/workspace-player.service";
 
 import { PickupAddPlayersDialog } from "./PickupAddPlayersDialog";
-import { LOL_OWNER, OW_OWNER } from "./mix-owner.fixture";
+import { DEADLOCK_OWNER, LOL_OWNER, OW_OWNER } from "./mix-owner.fixture";
 import type { MixOwner } from "./pickup-lineup";
 
 vi.mock("@/hooks/useDisciplineMetadata", () => ({
@@ -307,6 +307,21 @@ describe("PickupAddPlayersDialog", () => {
     expect(scope.textContent).toContain("11/2");
     expect(scope.textContent?.match(/\d+\/2/g)).toHaveLength(5);
     expect(scope.textContent).not.toContain("0/4");
+  });
+
+  it("names no role in a one-role game: no glyph column, no role chips, no supply strip", async () => {
+    const rows = Array.from({ length: 13 }, (_unused, index) =>
+      seated(200 + index, `P${index}#1000`, {
+        roles: null,
+        ranks: { agent: 2400 },
+        rank_sources: { agent: "native" as const },
+      }),
+    );
+    const scope = await mount({ rows, owner: DEADLOCK_OWNER, discipline: "deadlock" });
+
+    expect(scope.textContent).toContain("1 over a full lobby");
+    expect(scope.textContent).not.toContain("13/12");
+    expect(scope.querySelector('[aria-label^="Agent"]')).toBeNull();
   });
 
   it("offers Remove for somebody already in the mix and Add for everyone else", async () => {

@@ -174,18 +174,20 @@ export function PickupAddPlayersDialog({
             <div className="flex shrink-0 items-center gap-2.5 border-y border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-1.5">
               <span aria-hidden="true" className="size-6 shrink-0" />
               <span className={cn(EYEBROW_CLASS, "min-w-0 flex-1")}>Player</span>
-              <div aria-hidden="true" className="flex shrink-0 items-center gap-1.5">
-                {owner.roles.map((role) => (
-                  <IconTooltip
-                    key={role}
-                    label={slotLabel(role)}
-                    hint="This host's rank for the role"
-                    className="size-8 items-center justify-center opacity-70"
-                  >
-                    <PlayerRoleIcon role={role} ontology={owner.ontology} size={14} decorative />
-                  </IconTooltip>
-                ))}
-              </div>
+              {owner.showsRoles ? (
+                <div aria-hidden="true" className="flex shrink-0 items-center gap-1.5">
+                  {owner.roles.map((role) => (
+                    <IconTooltip
+                      key={role}
+                      label={slotLabel(role)}
+                      hint="This host's rank for the role"
+                      className="size-8 items-center justify-center opacity-70"
+                    >
+                      <PlayerRoleIcon role={role} ontology={owner.ontology} size={14} decorative />
+                    </IconTooltip>
+                  ))}
+                </div>
+              ) : null}
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-2 py-1.5">

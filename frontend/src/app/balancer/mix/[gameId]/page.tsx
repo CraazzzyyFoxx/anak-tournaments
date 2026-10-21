@@ -288,6 +288,7 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
               game={game}
               gameLoading={gameQuery.isLoading}
               onOpenPool={() => setIsPoolOpen(true)}
+              showsRoles={owner.showsRoles}
               onOpenAccess={() => setIsAccessOpen(true)}
               canDelete={isAdminHere}
               deleting={hardDeleteMix.isPending}

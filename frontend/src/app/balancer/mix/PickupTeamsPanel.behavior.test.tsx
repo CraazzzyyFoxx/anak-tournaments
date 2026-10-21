@@ -36,7 +36,7 @@ import { catalogMap, catalogMode } from "@/test/catalog";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 
 import { PickupTeamsPanel } from "./PickupTeamsPanel";
-import { LOL_OWNER, OW_OWNER } from "./mix-owner.fixture";
+import { DEADLOCK_OWNER, LOL_OWNER, OW_OWNER } from "./mix-owner.fixture";
 import type { MixOwner } from "./pickup-lineup";
 
 declare global {
@@ -396,6 +396,31 @@ describe("PickupTeamsPanel", () => {
 
     for (const name of names) expect(scope.textContent).toContain(name);
     expect(scope.querySelectorAll("section li")).toHaveLength(10);
+  });
+
+  it("labels no seat with a role in a one-role game", async () => {
+    const deadlock = {
+      players: {
+        "7": { name: "karin", ratings: { agent: 2900 }, role_preferences: ["agent"] },
+        "8": { name: "Egor", ratings: { agent: 3100 }, role_preferences: ["agent"] },
+      },
+      feasibility: null,
+      variants: [
+        {
+          teams: [
+            { id: 1, average_mmr: 2900, roster: { agent: ["7"] } },
+            { id: 2, average_mmr: 3100, roster: { agent: ["8"] } },
+          ],
+          statistics: {},
+          benched: [],
+        },
+      ],
+    };
+    const scope = await mount(game({ lobbies: [lobbyRow({ balance_result: deadlock })] }), { owner: DEADLOCK_OWNER });
+
+    expect(scope.textContent).toContain("karin");
+    expect(scope.textContent).toContain("Egor");
+    expect(scope.querySelector('[role="img"][aria-label="Agent"]')).toBeNull();
   });
 
   it("shows the option's own verdict but not who it left out -- the lineup already marks them benched", async () => {

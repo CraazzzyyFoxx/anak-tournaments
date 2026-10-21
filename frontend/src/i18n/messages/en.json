@@ -7830,6 +7830,7 @@
       "waitingSeat": "Waiting for a seat",
       "rolesAllRanked": "Every role you have a rank for",
       "unranked": "No rank yet: {roles}. The host will fill it in.",
+      "unrankedOne": "No rank yet. The host will fill it in.",
       "fixLinks": "Open account settings",
       "blocker": {
         "mix_closed": "This mix is over.",
@@ -7867,6 +7868,7 @@
       "seatedIn": "Playing in lobby {letter}",
       "waiting": "waiting",
       "waitingTitle": "Waiting for a seat",
+      "rankHeading": "Rank",
       "pinHeading": "Lobby",
       "pinGroup": "Lobby for {name}",
       "pinOption": "{option} for {name}",

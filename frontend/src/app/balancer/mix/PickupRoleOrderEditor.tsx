@@ -66,6 +66,9 @@ type PickupRoleOrderEditorProps = {
  *
  * Off roles trail the on ones in the game's declared order: an unselected role has no
  * priority, so ranking them would imply one.
+ *
+ * A one-role game (`owner.showsRoles` false) has nothing to order or switch: only its rank is shown. A game without
+ * Full flex (`owner.flex` false) gets no flex switch.
  */
 export function PickupRoleOrderEditor({
   owner,
@@ -79,39 +82,45 @@ export function PickupRoleOrderEditor({
   rankFor,
   layout = "list"
 }: Readonly<PickupRoleOrderEditorProps>) {
+  if (!owner.showsRoles) {
+    const [role] = owner.roles;
+    return role == null ? null : <OnlyRoleRank role={role} owner={owner} disabled={disabled} rank={rankFor(role)} />;
+  }
   const offRoles = owner.roles.filter((role) => !order.includes(role));
 
   return (
     // `contents` on the lists lets their cards sit in this grid directly.
     <div className="@container">
       <div className={cn("grid gap-2", layout === "grid" && "@xl:grid-cols-2")}>
-        <div
-          className={cn(
-            "flex items-center justify-between gap-3 rounded-lg border px-3 py-2",
-            isFlex
-              ? "border-emerald-400/20 bg-emerald-500/[0.08]"
-              : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]"
-          )}
-        >
-          <div className="min-w-0">
-            <span className="text-xs font-medium text-[color:var(--aqt-fg)]">Full flex</span>
-            {isFlex ? (
-              <p className="mt-0.5 text-label text-[color:var(--aqt-fg-dim)]">
-                Every role is equally preferred — priority order stops mattering.
-              </p>
-            ) : (
-              <p className="mt-0.5 text-label text-[color:var(--aqt-fg-dim)]">
-                Drag below to set who the balancer seats first.
-              </p>
+        {owner.flex ? (
+          <div
+            className={cn(
+              "flex items-center justify-between gap-3 rounded-lg border px-3 py-2",
+              isFlex
+                ? "border-emerald-400/20 bg-emerald-500/[0.08]"
+                : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]"
             )}
+          >
+            <div className="min-w-0">
+              <span className="text-xs font-medium text-[color:var(--aqt-fg)]">Full flex</span>
+              {isFlex ? (
+                <p className="mt-0.5 text-label text-[color:var(--aqt-fg-dim)]">
+                  Every role is equally preferred — priority order stops mattering.
+                </p>
+              ) : (
+                <p className="mt-0.5 text-label text-[color:var(--aqt-fg-dim)]">
+                  Drag below to set who the balancer seats first.
+                </p>
+              )}
+            </div>
+            <Switch
+              checked={isFlex}
+              disabled={disabled}
+              aria-label={`Full flex for ${label}`}
+              onCheckedChange={onFlexChange}
+            />
           </div>
-          <Switch
-            checked={isFlex}
-            disabled={disabled}
-            aria-label={`Full flex for ${label}`}
-            onCheckedChange={onFlexChange}
-          />
-        </div>
+        ) : null}
 
         <SortableRows
           items={order}
@@ -311,6 +320,30 @@ function RoleCardBody({
         </div>
       )}
     </div>
+  );
+}
+
+/** A one-role game's rank: the crest and number, or the host's field, with nothing to choose around it. */
+function OnlyRoleRank({
+  role,
+  owner,
+  disabled,
+  rank
+}: Readonly<{ role: string; owner: MixOwner; disabled: boolean; rank: PickupRoleRank }>) {
+  const accent = roleRankAccent(owner.ontology, role);
+  return rank.onChange == null ? (
+    <RankChip rank={rank} grid={owner.grid} active accent={accent} />
+  ) : (
+    <RoleRankControls
+      rankValue={rank.rankValue}
+      sourceLabel={rank.sourceLabel}
+      accent={accent}
+      active
+      disabled={disabled}
+      onClear={rank.onClear}
+      onChange={rank.onChange}
+      grid={owner.grid}
+    />
   );
 }
 

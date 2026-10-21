@@ -67,12 +67,14 @@ export function SeatRow({
             : "border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] hover:bg-[color:var(--aqt-overlay-3)]"
       )}
     >
-      <IconTooltip
-        label={`${slotLabel(seat.role)}${seat.subRole ? ` \u00B7 ${seat.subRole}` : ""}`}
-        className="size-6 shrink-0 items-center justify-center opacity-90"
-      >
-        <PlayerRoleIcon role={seat.role} ontology={owner.ontology} size={24} decorative />
-      </IconTooltip>
+      {owner.showsRoles ? (
+        <IconTooltip
+          label={`${slotLabel(seat.role)}${seat.subRole ? ` \u00B7 ${seat.subRole}` : ""}`}
+          className="size-6 shrink-0 items-center justify-center opacity-90"
+        >
+          <PlayerRoleIcon role={seat.role} ontology={owner.ontology} size={24} decorative />
+        </IconTooltip>
+      ) : null}
       {division == null ? null : (
         <IconTooltip
           label={getDivisionLabel(grid, division) ?? String(division)}
@@ -111,9 +113,11 @@ export function SeatDragPreview({ seat, owner }: Readonly<{ seat: PickupSeat; ow
         "flex cursor-grabbing items-center gap-3 rounded-lg border-[color:var(--aqt-teal)] px-3.5 py-3 shadow-lg"
       )}
     >
-      <span className="flex size-6 shrink-0 items-center justify-center opacity-90">
-        <PlayerRoleIcon role={seat.role} ontology={owner.ontology} size={24} label={slotLabel(seat.role)} decorative />
-      </span>
+      {owner.showsRoles ? (
+        <span className="flex size-6 shrink-0 items-center justify-center opacity-90">
+          <PlayerRoleIcon role={seat.role} ontology={owner.ontology} size={24} label={slotLabel(seat.role)} decorative />
+        </span>
+      ) : null}
       <span className="min-w-0 flex-1 truncate text-base font-semibold text-[color:var(--aqt-fg)]">
         {seat.name}
       </span>

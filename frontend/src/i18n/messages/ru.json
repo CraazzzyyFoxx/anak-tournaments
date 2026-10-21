@@ -7830,6 +7830,7 @@
       "waitingSeat": "Ждёте места",
       "rolesAllRanked": "Все роли, по которым есть ранг",
       "unranked": "Нет ранга: {roles}. Хост проставит.",
+      "unrankedOne": "Ранга пока нет. Хост проставит.",
       "fixLinks": "Открыть настройки аккаунта",
       "blocker": {
         "mix_closed": "Микс завершён.",
@@ -7867,6 +7868,7 @@
       "seatedIn": "Играет в лобби {letter}",
       "waiting": "ждёт",
       "waitingTitle": "Ждёт места",
+      "rankHeading": "Ранг",
       "pinHeading": "Лобби",
       "pinGroup": "Лобби для {name}",
       "pinOption": "{option} для {name}",
