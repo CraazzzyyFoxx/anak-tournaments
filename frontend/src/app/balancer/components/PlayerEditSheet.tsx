@@ -158,29 +158,32 @@ export function PlayerEditModal({
                 )}
               </div>
             </div>
-            <div
-              className={cn(
-                "rounded-lg border px-3 py-2",
-                form.isFlex
-                  ? "border-emerald-400/20 bg-emerald-500/[0.08]"
-                  : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]"
-              )}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <Label
-                  htmlFor="is-flex"
-                  className="cursor-pointer text-xs font-medium text-[color:var(--aqt-fg)]"
-                >
-                  Flex player
-                </Label>
-                <Switch
-                  id="is-flex"
-                  checked={form.isFlex}
-                  onCheckedChange={form.setIsFlex}
-                  aria-label="Flex player"
-                />
+            {/* A game without Full flex (`discipline.flex`) offers no switch for it. */}
+            {ontology?.discipline.flex === false ? null : (
+              <div
+                className={cn(
+                  "rounded-lg border px-3 py-2",
+                  form.isFlex
+                    ? "border-emerald-400/20 bg-emerald-500/[0.08]"
+                    : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]"
+                )}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <Label
+                    htmlFor="is-flex"
+                    className="cursor-pointer text-xs font-medium text-[color:var(--aqt-fg)]"
+                  >
+                    Flex player
+                  </Label>
+                  <Switch
+                    id="is-flex"
+                    checked={form.isFlex}
+                    onCheckedChange={form.setIsFlex}
+                    aria-label="Flex player"
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div className="space-y-2">

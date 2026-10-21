@@ -503,4 +503,22 @@ describe("owner game role and rank capabilities", () => {
       "top"
     ]);
   });
+
+  it("offers the Flex player switch only in a game with Full flex", async () => {
+    await render(sheetFor("overwatch"));
+    expect(document.querySelector('[aria-label="Flex player"]')).not.toBeNull();
+
+    await render(
+      <PlayerEditModal
+        player={player}
+        discipline="overwatch"
+        ontology={{ ...OW_METADATA, discipline: { ...OW_METADATA.discipline, flex: false } }}
+        divisionGridVersionId={null}
+        open
+        onOpenChange={() => {}}
+        onSave={onSave}
+      />
+    );
+    expect(document.querySelector('[aria-label="Flex player"]')).toBeNull();
+  });
 });
