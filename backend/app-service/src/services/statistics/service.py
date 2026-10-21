@@ -155,7 +155,7 @@ class StatisticsService:
     async def get_maps(
         self, session: AsyncSession, *, discipline: str, workspace_id: int | None = None
     ) -> schemas.MapStatsResponse:
-        """One game's maps grouped by mode (catalog parent; parentless last), most played first."""
+        """One game's maps grouped by the mode played (the match's own; modeless last), most played first."""
         by_mode: dict[int | None, list[sa.Row]] = {}
         for row in await StatisticsQueries.of(discipline).get_map_stats(session, workspace_id):
             by_mode.setdefault(row.mode_id, []).append(row)

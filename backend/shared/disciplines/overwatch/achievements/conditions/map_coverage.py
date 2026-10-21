@@ -77,7 +77,8 @@ async def execute_map_coverage(
     if field == "map":
         distinct_col = _FACTS.c.map_entity_id
     elif field == "gamemode":
-        distinct_col = models.CatalogEntity.parent_id
+        # The match's own mode, not the map's catalog parent.
+        distinct_col = _FACTS.c.mode_entity_id
     else:
         raise ValueError(f"Unsupported map_coverage field: {field!r}")
 
@@ -110,7 +111,7 @@ async def execute_map_coverage(
 
     if gamemode:
         mode = aliased(models.CatalogEntity, name="mode")
-        query = query.join(mode, mode.id == models.CatalogEntity.parent_id).where(
+        query = query.join(mode, mode.id == _FACTS.c.mode_entity_id).where(
             mode.name == gamemode, mode.kind == "mode", mode.discipline == "overwatch"
         )
 

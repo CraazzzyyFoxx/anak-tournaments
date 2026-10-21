@@ -548,6 +548,12 @@ async def _scores(session: AsyncSession, ids: dict[str, int]) -> dict:
                 assert map_ is not None
                 if push is not None:
                     map_.parent_id = push.id
+                    # The resolver reads a match's own mode: move the map's observations along with it.
+                    await session.execute(
+                        sa.update(models.StatsMatch)
+                        .where(models.StatsMatch.map_entity_id == map_.id)
+                        .values(mode_entity_id=push.id)
+                    )
                 else:
                     # No duplicate seeder: change the existing fixture mode.
                     mode = await session.get(models.CatalogEntity, map_.parent_id)

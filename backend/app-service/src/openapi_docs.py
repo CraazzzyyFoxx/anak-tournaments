@@ -109,11 +109,12 @@ DOCS: dict[str, dict] = {
         "summary": "Map statistics",
         "description": (
             "Permission: public; no authentication required. Returns the path discipline's maps (404"
-            " `discipline_not_installed` for an unknown game) grouped by mode (the map's catalog parent; maps without one"
-            " in a last null bucket), optionally workspace-scoped, most played first. A game is one of a completed"
-            " series of a public, non-league tournament: the series' confirmed games with a map when it has any, else"
-            " its parsed maps, so nothing counts twice. `share` is a map's games over its mode's; `avg_duration_s`"
-            " averages the parsed maps (null when none)."
+            " `discipline_not_installed` for an unknown game) grouped by the mode each game was played in (the game's"
+            " or parsed map's own mode, not the map's catalog parent, so one map can sit under several modes; games"
+            " without a mode in a last null bucket), optionally workspace-scoped, most played first. A game is one of"
+            " a completed series of a public, non-league tournament: the series' confirmed games with a map when it has"
+            " any, else its parsed maps, so nothing counts twice. `share` is a map's games over its mode's;"
+            " `avg_duration_s` averages the parsed maps of that map and mode (null when none)."
         ),
     },
     "rpc.app.statistics.tournament_readiness": {
@@ -210,7 +211,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.users.tournament_encounters": {
         "summary": "User tournament encounters",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's encounters (with per-match stats) within one tournament — the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI.",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's encounters (with per-match stats) within one tournament — the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI. Each match carries its `map` and its own `mode` (null when none).",
     },
     "rpc.app.users.tournament_leaderboard": {
         "summary": "Tournament stat leaderboard",
@@ -218,15 +219,15 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.users.maps": {
         "summary": "User maps",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated, sortable per-map record (win/loss/draw/winrate), optionally workspace-scoped.",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated, sortable per-map record (win/loss/draw/winrate), optionally workspace-scoped. `mode_id` counts only the matches played in that mode (the match's own mode, not the map's catalog parent).",
     },
     "rpc.app.users.maps_summary": {
         "summary": "User maps summary",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns aggregate totals for a player's per-map record, optionally workspace-scoped.",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns aggregate totals for a player's per-map record, optionally workspace-scoped; `mode_id` filters by the match's own mode as in the per-map list.",
     },
     "rpc.app.users.encounters": {
         "summary": "User encounters",
-        "description": "Permission: public; no authentication required. Returns a player's paginated encounters — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` — filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent.",
+        "description": "Permission: public; no authentication required. Returns a player's paginated encounters — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` — filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent. Each match carries its `map` and its own `mode` (null when none).",
     },
     "rpc.app.users.matches_summary": {
         "summary": "User matches summary",

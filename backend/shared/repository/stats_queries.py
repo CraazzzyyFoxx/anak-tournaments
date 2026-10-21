@@ -24,6 +24,7 @@ def player_facts(*, discipline: str | None) -> sa.Subquery:
             e.tournament_id,
             m.duration_s,
             m.map_entity_id,
+            m.mode_entity_id,
             mt.source_position,
         )
         .select_from(f)
@@ -81,7 +82,12 @@ def match_context(*, discipline: str | None = None) -> sa.Subquery:
         .join(e, sa.and_(e.id == m.encounter_id, e.workspace_id == m.workspace_id, e.discipline == m.discipline))
         .outerjoin(
             g,
-            sa.and_(g.id == m.encounter_game_id, g.encounter_id == m.encounter_id, g.map_id == m.map_entity_id),
+            # A hinted match may sit on a game whose map is still empty until its result applies.
+            sa.and_(
+                g.id == m.encounter_game_id,
+                g.encounter_id == m.encounter_id,
+                sa.or_(g.map_id.is_(None), g.map_id == m.map_entity_id),
+            ),
         )
         .where(sa.or_(m.encounter_game_id.is_(None), g.id.is_not(None)))
     )

@@ -504,6 +504,10 @@ class _Fixture:
             encounter_id=encounter_id,
             encounter_game_id=game_id,
             map_entity_id=map_id,
+            # As the matchmode01 backfill and ingest do: a match's mode is its map's catalog parent.
+            mode_entity_id=self.session.scalar(
+                sa.select(models.CatalogEntity.parent_id).where(models.CatalogEntity.id == map_id)
+            ),
             duration_s=time if time is not None else 0,
         )
         for source_position, team_id, score in ((1, home_team_id, home_score), (2, away_team_id, away_score)):

@@ -30,10 +30,11 @@ USER_CACHE_KEY_PREFIXES: tuple[str, ...] = (
     # workspace/game, and a pickle of an older shape must sit under a name no reader asks for. The version stays a
     # part of the prefix so the subject's id is still the first component after it (``{prefix}:{user_id}:*``).
     "user_tournament_stats:v2",
-    "user_tournament_encounters:v6",
+    # v7 (and ``user_encounters:v7``): match rows gained ``mode_id``/``mode``.
+    "user_tournament_encounters:v7",
     # v2: rows gained games/win/loss/draw/win_rate_all/record; a v1 pickle would serve them as defaults.
     "user_characters:v2",
-    "user_encounters:v6",
+    "user_encounters:v7",
     "user_maps",
     "user_teammates",
     "user_matches_summary",

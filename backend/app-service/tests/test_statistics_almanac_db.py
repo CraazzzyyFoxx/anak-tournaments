@@ -250,6 +250,7 @@ class StatisticsAlmanacTest(IsolatedAsyncioTestCase):
                 encounter_id=encounter.id,
                 position=position,
                 map_id=entity.id,
+                mode_id=entity.parent_id,
                 state=enums.EncounterGameState.CONFIRMED,
                 result_source=enums.EncounterGameResultSource.ADMIN,
                 confirmed_at=DAY,
@@ -261,6 +262,7 @@ class StatisticsAlmanacTest(IsolatedAsyncioTestCase):
                 discipline=OW,
                 encounter_id=encounter.id,
                 map_entity_id=entity.id,
+                mode_entity_id=entity.parent_id,
                 duration_s=seconds,
             )
 

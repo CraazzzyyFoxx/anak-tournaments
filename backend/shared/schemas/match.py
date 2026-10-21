@@ -72,8 +72,12 @@ class MatchRead(BaseRead):
     map_index: int | None
     #: Catalog entity of kind ``map``.
     map_id: int
-    #: Expanded by ``entities=map`` (``map.parent`` carries the mode).
+    #: Expanded by ``entities=map``; ``map.parent`` is the map's catalog parent, not necessarily the match's mode.
     map: CatalogEntityRead | None = None
+    #: The match's own catalog ``mode`` (Deadlock plays several on one map); ``None``: the catalog has no mode.
+    mode_id: int | None = None
+    #: Expanded with ``map``.
+    mode: CatalogEntityRead | None = None
     #: Seconds.
     duration_s: float | None
     #: Raw provenance, unchanged names.

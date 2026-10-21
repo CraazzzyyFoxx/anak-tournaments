@@ -232,6 +232,7 @@ class MapService:
             sa.select(
                 matches.c.id.label("match_id"),
                 matches.c.map_entity_id.label("map_id"),
+                matches.c.mode_entity_id.label("mode_id"),
                 matches.c.encounter_id,
                 matches.c.home_tournament_team_id.label("home_team_id"),
                 matches.c.home_score,
@@ -305,7 +306,8 @@ class MapService:
                 ).where(models.Tournament.workspace_id == workspace_id)
 
         if params.mode_id:
-            subquery_query = subquery_query.where(models.CatalogEntity.parent_id == params.mode_id)
+            # The match's own mode, not the map's catalog parent: one map can be played in several modes.
+            subquery_query = subquery_query.where(user_match_teams.c.mode_id == params.mode_id)
 
         if params.query:
             fields = params.fields if params.fields else ["name"]

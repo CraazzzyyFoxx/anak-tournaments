@@ -78,7 +78,7 @@ async def resolve_encounter_maps(session: AsyncSession, encounter_id: int, *, pr
     if encounter is None:
         return False
     mode = aliased(models.CatalogEntity, name="mode")
-    match, game, entity = models.StatsMatch, models.EncounterGame, models.CatalogEntity
+    match, game = models.StatsMatch, models.EncounterGame
     rows = (
         await session.execute(
             sa.select(match, mode.slug)
@@ -86,14 +86,11 @@ async def resolve_encounter_maps(session: AsyncSession, encounter_id: int, *, pr
                 game,
                 game.id == match.encounter_game_id,
             )
-            .join(
-                entity,
-                sa.and_(entity.id == match.map_entity_id, entity.discipline == match.discipline, entity.kind == "map"),
-            )
+            # The match's own mode, not its map's catalog parent.
             .join(
                 mode,
                 sa.and_(
-                    mode.id == entity.parent_id,
+                    mode.id == match.mode_entity_id,
                     mode.discipline == match.discipline,
                     mode.kind == "mode",
                 ),

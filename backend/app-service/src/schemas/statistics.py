@@ -120,7 +120,7 @@ class MapStat(BaseModel):
 
 
 class MapModeStats(BaseModel):
-    #: The map's catalog parent; null for maps without one.
+    #: The mode the games were played in (the game's/match's own); null for games without one.
     mode: StatMapRef | None
     games: int
     maps: list[MapStat]

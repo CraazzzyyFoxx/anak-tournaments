@@ -58,7 +58,7 @@ class AdminMatchRow(MatchRead):
     """One observed map: the native match header (participants, official result lines, observed team facts) plus the
     admin context. Deleted source teams and absent raw provenance stay null."""
 
-    #: Always expanded, with its mode as ``parent``.
+    #: Always expanded with its catalog ``parent``; the match's own mode is ``mode``.
     map: CatalogEntityRead
     encounter_name: str
     tournament_id: int

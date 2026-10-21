@@ -224,7 +224,7 @@ class MatchReadWithUserStats(MatchRead):
     the viewer's seat was a participant of without being observed.
     """
 
-    #: Always expanded, with its mode as ``parent``.
+    #: Always expanded with its catalog ``parent``; the match's own mode is ``mode``.
     map: CatalogEntityRead
     viewer: UserMatchViewer | None = None
     member_totals: list[NativeFact] = Field(default_factory=list)

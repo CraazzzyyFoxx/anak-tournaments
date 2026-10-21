@@ -64,9 +64,9 @@ def participant_reads(context: MatchReadContext) -> list[MatchParticipantRead]:
 def match_header_fields(
     context: MatchReadContext, *, with_map: bool = False, with_parent: bool = False
 ) -> dict[str, Any]:
-    """The ``MatchRead`` columns of one context; ``map`` only on request (``parent`` carries the mode).
+    """The ``MatchRead`` columns of one context; ``map`` and the match's own ``mode`` only on request.
 
-    ``with_parent`` needs the map's parent loaded, which ``get_match_reads`` always does.
+    ``with_parent`` adds the map's catalog parent, which ``get_match_reads`` always loads; a match's mode is ``mode``.
     """
     match, game, job = context.match, context.game, context.job
     return {
@@ -81,6 +81,10 @@ def match_header_fields(
         "map_index": game.position if game is not None else None,
         "map_id": match.map_entity_id,
         "map": CatalogEntityRead.from_entity(context.map, with_parent=with_parent) if with_map else None,
+        "mode_id": match.mode_entity_id,
+        "mode": CatalogEntityRead.from_entity(context.mode, with_parent=False)
+        if with_map and context.mode is not None
+        else None,
         "duration_s": match.duration_s,
         "log_name": context.display_filename,
         "raw_status": job.raw_status if job is not None else None,

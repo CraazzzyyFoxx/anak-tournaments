@@ -694,34 +694,39 @@ class StatisticsQueries(DisciplineQueries):
     # ---- maps -----------------------------------------------------------------
 
     async def get_map_stats(self, session: AsyncSession, workspace_id: int | None = None) -> typing.Sequence[sa.Row]:
-        """Per map of this game: its catalog entity and mode (parent), games played and average parsed length.
+        """Per (map, mode) of this game: the map's catalog entity, the mode played, games and average parsed length.
 
         Games are those of completed series in public tournaments: a series' confirmed games with a map when it
         has any, else its parsed maps (imported history has logs but no game rows), so nothing counts twice.
-        ``avg_duration_s`` averages every parsed map of those series.
+        ``avg_duration_s`` averages every parsed map of those series. The mode is the game's/match's own column,
+        never the map's catalog parent: one map can be played in several modes.
         """
         game, match = models.EncounterGame, models.StatsMatch
         official = sa.and_(game.state == enums.EncounterGameState.CONFIRMED, game.map_id.is_not(None))
         has_games = sa.exists().where(game.encounter_id == match.encounter_id, official)
         played = sa.union_all(
-            sa.select(game.encounter_id, game.map_id.label("map_id")).where(official),
-            sa.select(match.encounter_id, match.map_entity_id).where(~has_games),
+            sa.select(game.encounter_id, game.map_id.label("map_id"), game.mode_id.label("mode_id")).where(official),
+            sa.select(match.encounter_id, match.map_entity_id, match.mode_entity_id).where(~has_games),
         ).subquery("played_maps")
         scope = (models.Encounter.status == enums.EncounterStatus.COMPLETED, *self._public_tournaments(workspace_id))
         games = (
-            sa.select(played.c.map_id, sa.func.count().label("games"))
+            sa.select(played.c.map_id, played.c.mode_id, sa.func.count().label("games"))
             .join(models.Encounter, models.Encounter.id == played.c.encounter_id)
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
             .where(*scope)
-            .group_by(played.c.map_id)
+            .group_by(played.c.map_id, played.c.mode_id)
             .subquery("map_games")
         )
         durations = (
-            sa.select(match.map_entity_id.label("map_id"), sa.func.avg(match.duration_s).label("avg_duration_s"))
+            sa.select(
+                match.map_entity_id.label("map_id"),
+                match.mode_entity_id.label("mode_id"),
+                sa.func.avg(match.duration_s).label("avg_duration_s"),
+            )
             .join(models.Encounter, models.Encounter.id == match.encounter_id)
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
             .where(*scope)
-            .group_by(match.map_entity_id)
+            .group_by(match.map_entity_id, match.mode_entity_id)
             .subquery("map_durations")
         )
         mode = aliased(models.CatalogEntity, name="mode")
@@ -737,8 +742,14 @@ class StatisticsQueries(DisciplineQueries):
             )
             .select_from(games)
             .join(models.CatalogEntity, models.CatalogEntity.id == games.c.map_id)
-            .outerjoin(mode, mode.id == models.CatalogEntity.parent_id)
-            .outerjoin(durations, durations.c.map_id == games.c.map_id)
+            .outerjoin(mode, mode.id == games.c.mode_id)
+            .outerjoin(
+                durations,
+                sa.and_(
+                    durations.c.map_id == games.c.map_id,
+                    durations.c.mode_id.is_not_distinct_from(games.c.mode_id),
+                ),
+            )
         )
         return (await session.execute(query)).all()
 

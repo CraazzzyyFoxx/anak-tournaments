@@ -1568,7 +1568,7 @@ class UserService(DisciplineQueries):
 
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_tournament_encounters:v6:{id}:{self.discipline}:{tournament_id}",
+        key="backend:user_tournament_encounters:v7:{id}:{self.discipline}:{tournament_id}",
     )
     async def get_tournament_encounters(
         self, session: AsyncSession, id: int, tournament_id: int
@@ -1963,7 +1963,7 @@ class UserService(DisciplineQueries):
     @cache(
         ttl=config.settings.users_cache_ttl,
         key=(
-            "backend:user_encounters:v6:{user_id}:{self._discipline}:{workspace_id}:{params.page}:{params.per_page}:"
+            "backend:user_encounters:v7:{user_id}:{self._discipline}:{workspace_id}:{params.page}:{params.per_page}:"
             "{params.sort}:{params.order}:{result_filter}:{stage}:{mvp1}:{has_logs}:{opponent}"
         ),
         lock=True,

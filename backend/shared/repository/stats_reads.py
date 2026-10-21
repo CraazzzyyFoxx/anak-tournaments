@@ -102,6 +102,8 @@ class MatchReadContext:
     #: Every ``stats.match_team`` row, ordered by ``(slot, encounter_team_id)``.
     participants: tuple[ParticipantContext, ...]
     display_filename: str | None
+    #: The match's own ``mode_entity_id`` entity, never the map's catalog parent; ``None`` without one.
+    mode: models.CatalogEntity | None = None
 
 
 async def get_match_reads(
@@ -120,10 +122,11 @@ async def get_match_reads(
         models.CatalogEntity,
         models.IngestJob,
     )
+    mode = aliased(models.CatalogEntity, name="mode")
     rows = (
         (
             await session.execute(
-                sa.select(m, g, e, entity, job)
+                sa.select(m, g, e, entity, job, mode)
                 .select_from(m)
                 .join(
                     e,
@@ -131,7 +134,11 @@ async def get_match_reads(
                 )
                 .outerjoin(
                     g,
-                    sa.and_(g.id == m.encounter_game_id, g.encounter_id == m.encounter_id, g.map_id == m.map_entity_id),
+                    sa.and_(
+                        g.id == m.encounter_game_id,
+                        g.encounter_id == m.encounter_id,
+                        sa.or_(g.map_id.is_(None), g.map_id == m.map_entity_id),
+                    ),
                 )
                 .join(
                     entity,
@@ -143,6 +150,7 @@ async def get_match_reads(
                         job.id == m.ingest_job_id, job.workspace_id == m.workspace_id, job.discipline == m.discipline
                     ),
                 )
+                .outerjoin(mode, mode.id == m.mode_entity_id)
                 .where(m.id.in_(match_ids), sa.or_(m.encounter_game_id.is_(None), g.id.is_not(None)))
                 .options(selectinload(entity.parent), *encounter_options)
             )
@@ -194,6 +202,7 @@ async def get_match_reads(
             game=game,
             encounter=encounter,
             map=map_entity,
+            mode=mode_entity,
             job=ingest_job,
             participants=tuple(
                 ParticipantContext(
@@ -206,7 +215,7 @@ async def get_match_reads(
             ),
             display_filename=ingest_job.filename if ingest_job is not None else None,
         )
-        for match, game, encounter, map_entity, ingest_job in rows
+        for match, game, encounter, map_entity, ingest_job, mode_entity in rows
     }
 
 
