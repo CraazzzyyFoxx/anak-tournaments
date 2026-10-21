@@ -4,8 +4,10 @@ import { useCallback, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useDebounce } from "use-debounce";
 
+import { Skeleton } from "@/components/ui/skeleton";
+
 export interface SearchComboboxMessages {
-  /** Shown while the query is in flight. */
+  /** Screen-reader text while the query is in flight; skeleton rows show visually. */
   loading: string;
   /** Shown when the query errors. */
   error: string;
@@ -73,13 +75,19 @@ export function useSearchComboboxQuery<TItem, TSelected>({
     [onSelect]
   );
 
-  const emptyMessage = resultsQuery.isFetching
-    ? messages.loading
-    : resultsQuery.isError
-      ? messages.error
-      : !shouldSearch
-        ? messages.minChars
-        : messages.empty;
+  const emptyMessage = resultsQuery.isFetching ? (
+    <div role="status" className="space-y-2 px-2">
+      <span className="sr-only">{messages.loading}</span>
+      <Skeleton aria-hidden className="h-4 w-full" />
+      <Skeleton aria-hidden className="h-4 w-2/3" />
+    </div>
+  ) : resultsQuery.isError ? (
+    messages.error
+  ) : !shouldSearch ? (
+    messages.minChars
+  ) : (
+    messages.empty
+  );
 
   return {
     open,

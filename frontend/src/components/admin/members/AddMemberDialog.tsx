@@ -58,7 +58,7 @@ export function AddMemberDialog({
   const userFieldId = useId();
   const roleFieldId = useId();
   const [userId, setUserId] = useState<string>("");
-  // One system role, same as the row's role select; custom roles are added from the row.
+  // One system role to start with; any further roles are added from the row's editor.
   const [role, setRole] = useState<WorkspaceSystemRole>("player");
   const [userComboOpen, setUserComboOpen] = useState(false);
 

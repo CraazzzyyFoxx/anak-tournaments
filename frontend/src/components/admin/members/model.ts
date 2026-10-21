@@ -1,3 +1,6 @@
+import { useCallback } from "react";
+import { useTranslations } from "next-intl";
+
 import type { WorkspaceMember, WorkspaceSystemRole } from "@/types/workspace.types";
 
 export const SYSTEM_ROLES: WorkspaceSystemRole[] = ["owner", "admin", "referee", "host", "player"];
@@ -5,23 +8,33 @@ export function isSystemRoleName(name: string): name is WorkspaceSystemRole {
   return (SYSTEM_ROLES as string[]).includes(name);
 }
 
-/** Best human-readable handle for a member, used in control names and confirmations. */
-export function memberLabel(member: WorkspaceMember): string {
-  return member.username ?? member.email ?? `User #${member.auth_user_id}`;
+type RoleLike = Readonly<{ name: string; is_system: boolean }>;
+
+function roleRank(role: RoleLike): number {
+  return role.is_system && isSystemRoleName(role.name) ? SYSTEM_ROLES.indexOf(role.name) : SYSTEM_ROLES.length;
 }
 
-/** The custom (non-system) role ids currently held by a member. */
-export function memberCustomRoleIds(member: WorkspaceMember): number[] {
-  return member.rbac_roles.filter((role) => !role.is_system).map((role) => role.id);
+/** System roles in the backend's rank order (owner → player), then custom roles by name. */
+export function sortRoles<T extends RoleLike>(roles: readonly T[]): T[] {
+  return [...roles].sort((a, b) => roleRank(a) - roleRank(b) || a.name.localeCompare(b.name));
 }
 
 /**
- * Highest-priority system role a member holds, mirroring the backend's RBAC
- * derivation. `undefined` when the member holds no system role at all -- a real
- * state the "Fill missing roles" action exists to repair.
+ * One label per role, the same in the cell, the filter and its chips: system
+ * roles translated, custom ones marked — a custom "Admin" is not the system admin.
  */
-export function memberPrimaryRole(member: WorkspaceMember): WorkspaceSystemRole | undefined {
-  return SYSTEM_ROLES.find((name) =>
-    member.rbac_roles.some((role) => role.is_system && role.name === name)
+export function useRoleLabel(): (role: RoleLike) => string {
+  const tm = useTranslations("adminAccess.member");
+  return useCallback(
+    (role: RoleLike) =>
+      role.is_system && isSystemRoleName(role.name)
+        ? tm(`${role.name}Role`)
+        : tm("customRole", { name: role.name }),
+    [tm]
   );
+}
+
+/** Best human-readable handle for a member, used in control names and confirmations. */
+export function memberLabel(member: WorkspaceMember): string {
+  return member.username ?? member.email ?? `User #${member.auth_user_id}`;
 }

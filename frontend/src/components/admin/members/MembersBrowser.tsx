@@ -12,14 +12,13 @@ import { notify } from "@/lib/notify";
 import { usePermissions } from "@/hooks/usePermissions";
 import { rbacService } from "@/services/rbac.service";
 import workspaceService from "@/services/workspace.service";
-import type { RbacRole } from "@/types/rbac.types";
 import type { WorkspaceMember, WorkspaceSystemRole } from "@/types/workspace.types";
 import { workspaceQueryKeys } from "@/lib/workspace/query-keys";
 import { useTranslations } from "next-intl";
 
 import { AddMemberDialog } from "./AddMemberDialog";
 import { memberFilterDefs } from "./filters";
-import { isSystemRoleName, memberCustomRoleIds, memberLabel, memberPrimaryRole } from "./model";
+import { memberLabel, sortRoles, useRoleLabel } from "./model";
 import { useMemberColumns } from "./useMemberColumns";
 
 /**
@@ -57,14 +56,12 @@ export function MembersBrowser({
       scopedRoles?.find((role) => role.name === name)?.id,
     [scopedRoles]
   );
-  const customScopedRoles: RbacRole[] = useMemo(
-    () => (scopedRoles ?? []).filter((role) => !isSystemRoleName(role.name)),
-    [scopedRoles]
-  );
+  const roles = useMemo(() => sortRoles(scopedRoles ?? []), [scopedRoles]);
+  const roleLabel = useRoleLabel();
 
   const filterDefs = useMemo(
-    () => memberFilterDefs(scopedRoles ?? [], { role: t("role"), excludeRole: tm("excludeRole") }),
-    [scopedRoles, t, tm]
+    () => memberFilterDefs(roles, { role: t("role"), excludeRole: tm("excludeRole") }, roleLabel),
+    [roles, roleLabel, t, tm]
   );
   const filters = useFilters(filterDefs);
   const roleFilter = String(filters.values.role ?? "");
@@ -75,16 +72,6 @@ export function MembersBrowser({
   const invalidateMembers = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.memberList(workspaceId) });
   }, [queryClient, workspaceId]);
-
-  const updateRolesMutation = useMutation({
-    mutationFn: ({ authUserId, roleIds }: { authUserId: number; roleIds: number[] }) =>
-      workspaceService.updateMemberRole(workspaceId, authUserId, roleIds),
-    onSuccess: () => {
-      invalidateMembers();
-      notify.success(tw("rolesUpdated"));
-    },
-    onError: (error) => notify.apiError(error)
-  });
 
   const removeMemberMutation = useMutation({
     mutationFn: (authUserId: number) => workspaceService.removeMember(workspaceId, authUserId),
@@ -109,43 +96,11 @@ export function MembersBrowser({
     onError: (error) => notify.apiError(error)
   });
 
-  const changePrimaryRole = useCallback(
-    (member: WorkspaceMember, nextRole: WorkspaceSystemRole) => {
-      if (nextRole === memberPrimaryRole(member)) return;
-      const sysId = systemRoleId(nextRole);
-      if (sysId == null) {
-        notify.error(tw("roleNotConfigured"));
-        return;
-      }
-      updateRolesMutation.mutate({
-        authUserId: member.auth_user_id,
-        roleIds: [sysId, ...memberCustomRoleIds(member)]
-      });
-    },
-    [systemRoleId, updateRolesMutation, tw]
-  );
-
-  const toggleCustomRole = useCallback(
-    (member: WorkspaceMember, roleId: number) => {
-      const current = new Set(memberCustomRoleIds(member));
-      if (current.has(roleId)) current.delete(roleId);
-      else current.add(roleId);
-      const primary = memberPrimaryRole(member);
-      const sysId = primary != null ? systemRoleId(primary) : undefined;
-      updateRolesMutation.mutate({
-        authUserId: member.auth_user_id,
-        roleIds: [...(sysId != null ? [sysId] : []), ...current]
-      });
-    },
-    [systemRoleId, updateRolesMutation]
-  );
-
   const columns = useMemberColumns({
+    workspaceId,
+    roles,
     canUpdateMembers,
     canDeleteMembers,
-    customScopedRoles,
-    changePrimaryRole,
-    toggleCustomRole,
     requestRemoval: setPendingRemoval
   });
 

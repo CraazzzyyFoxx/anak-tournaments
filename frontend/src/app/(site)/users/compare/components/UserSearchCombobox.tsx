@@ -74,13 +74,19 @@ const UserSearchCombobox = ({
     [onSelect]
   );
 
-  const emptyMessage = usersQuery.isFetching
-    ? t("users.compare.loadingUsers")
-    : usersQuery.isError
-      ? t("users.compare.usersLoadError")
-      : !shouldSearch
-        ? t("users.compare.typeToSearch")
-        : t("users.compare.noUsers");
+  const emptyMessage = usersQuery.isFetching ? (
+    <div role="status" className="space-y-2 px-2">
+      <span className="sr-only">{t("users.compare.loadingUsers")}</span>
+      <Skeleton aria-hidden className="h-4 w-full" />
+      <Skeleton aria-hidden className="h-4 w-2/3" />
+    </div>
+  ) : usersQuery.isError ? (
+    t("users.compare.usersLoadError")
+  ) : !shouldSearch ? (
+    t("users.compare.typeToSearch")
+  ) : (
+    t("users.compare.noUsers")
+  );
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

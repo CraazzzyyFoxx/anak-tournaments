@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Check, ChevronsUpDown, Trash2 } from "lucide-react";
 import { createKebabColumn } from "@/components/data-table";
@@ -15,38 +16,115 @@ import {
   CommandList
 } from "@/components/ui/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select";
+import { notify } from "@/lib/notify";
 import { cn, initials } from "@/lib/utils";
+import { workspaceQueryKeys } from "@/lib/workspace/query-keys";
+import workspaceService from "@/services/workspace.service";
 import type { RbacRole } from "@/types/rbac.types";
-import type { WorkspaceMember, WorkspaceSystemRole } from "@/types/workspace.types";
+import type { WorkspaceMember } from "@/types/workspace.types";
 import { useTranslations } from "next-intl";
 
-import { SYSTEM_ROLES, memberCustomRoleIds, memberLabel, memberPrimaryRole } from "./model";
+import { memberLabel, sortRoles, useRoleLabel } from "./model";
+
+/**
+ * Every role the member holds, edited as the set the backend stores: a click
+ * grants or revokes that one role and leaves the rest alone.
+ */
+function MemberRolesCell({
+  member,
+  workspaceId,
+  roles
+}: Readonly<{ member: WorkspaceMember; workspaceId: number; roles: readonly RbacRole[] }>) {
+  const t = useTranslations("adminAccess.common");
+  const tw = useTranslations("adminAccess.workspace");
+  const tm = useTranslations("adminAccess.member");
+  const roleLabel = useRoleLabel();
+  const queryClient = useQueryClient();
+  const held = member.rbac_roles.map((role) => role.id);
+
+  const update = useMutation({
+    mutationFn: (roleIds: number[]) =>
+      workspaceService.updateMemberRole(workspaceId, member.auth_user_id, roleIds),
+    // Pending until the list has refetched: the next click must start from the
+    // saved set, not from this row's stale one.
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: workspaceQueryKeys.memberList(workspaceId) });
+      notify.success(tw("rolesUpdated"));
+    },
+    onError: (error) => notify.apiError(error)
+  });
+
+  const toggle = (roleId: number) =>
+    update.mutate(held.includes(roleId) ? held.filter((id) => id !== roleId) : [...held, roleId]);
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="max-w-full justify-between gap-2 font-normal"
+          aria-label={tm("userRoles", { member: memberLabel(member) })}
+        >
+          {held.length > 0 ? (
+            <span className="truncate">{sortRoles(member.rbac_roles).map(roleLabel).join(" · ")}</span>
+          ) : (
+            <span className="text-muted-foreground">{t("noRole")}</span>
+          )}
+          <ChevronsUpDown aria-hidden className="size-3 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-64 p-0" align="start">
+        <Command>
+          <CommandInput placeholder={t("searchRoles")} />
+          <CommandList>
+            <CommandEmpty>{tm("noRolesMatch")}</CommandEmpty>
+            <CommandGroup>
+              {roles.map((role) => (
+                <CommandItem
+                  key={role.id}
+                  value={roleLabel(role)}
+                  disabled={update.isPending}
+                  onSelect={() => toggle(role.id)}
+                >
+                  <Check
+                    aria-hidden
+                    className={cn("mr-2 size-4", held.includes(role.id) ? "opacity-100" : "opacity-0")}
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate">{roleLabel(role)}</p>
+                    {!role.is_system && role.description ? (
+                      <p className="truncate text-xs text-muted-foreground">{role.description}</p>
+                    ) : null}
+                  </div>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export function useMemberColumns({
+  workspaceId,
+  roles,
   canUpdateMembers,
   canDeleteMembers,
-  customScopedRoles,
-  changePrimaryRole,
-  toggleCustomRole,
   requestRemoval
 }: Readonly<{
+  workspaceId: number;
+  /** The workspace's roles, already in display order. */
+  roles: readonly RbacRole[];
   canUpdateMembers: boolean;
   canDeleteMembers: boolean;
-  customScopedRoles: RbacRole[];
-  changePrimaryRole: (member: WorkspaceMember, nextRole: WorkspaceSystemRole) => void;
-  toggleCustomRole: (member: WorkspaceMember, roleId: number) => void;
   requestRemoval: (member: WorkspaceMember) => void;
 }>): ColumnDef<WorkspaceMember>[] {
   const t = useTranslations("adminAccess.common");
   const tm = useTranslations("adminAccess.member");
   const tk = useTranslations("kit.authUser");
+  const roleLabel = useRoleLabel();
 
   return useMemo<ColumnDef<WorkspaceMember>[]>(() => {
     const cols: ColumnDef<WorkspaceMember>[] = [
@@ -80,94 +158,18 @@ export function useMemberColumns({
         size: 340,
         enableSorting: true,
         // Editing stays in the cell -- the one deliberate exception to "details
-        // go in a dialog or an inspector": two fields, and changing a role is
-        // the whole reason this screen is opened.
+        // go in a dialog or an inspector": changing roles is the whole reason
+        // this screen is opened.
         cell: ({ row }) => {
           const member = row.original;
-          const customCount = memberCustomRoleIds(member).length;
           if (!canUpdateMembers) {
             return member.rbac_roles.length === 0 ? null : (
               <span className="text-sm text-muted-foreground">
-                {member.rbac_roles.map((role) => role.name).join(" · ")}
+                {sortRoles(member.rbac_roles).map(roleLabel).join(" · ")}
               </span>
             );
           }
-          return (
-            <div className="flex items-center gap-2">
-              <Select
-                value={memberPrimaryRole(member)}
-                onValueChange={(value) => changePrimaryRole(member, value as WorkspaceSystemRole)}
-              >
-                <SelectTrigger
-                  size="sm"
-                  className="w-32"
-                  aria-label={tm("userRole", { member: memberLabel(member) })}
-                >
-                  <SelectValue placeholder={t("noRole")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {SYSTEM_ROLES.map((name) => (
-                    <SelectItem key={name} value={name} className="text-sm">
-                      {tm(`${name}Role`)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              {customScopedRoles.length > 0 ? (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1"
-                      aria-label={tm("customRoles", { member: memberLabel(member) })}
-                    >
-                      {tm("custom")}
-                      {customCount > 0 ? <span className="tabular-nums">{customCount}</span> : null}
-                      <ChevronsUpDown aria-hidden className="size-3 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-0" align="start">
-                    <Command>
-                      <CommandInput placeholder={tm("searchCustomRoles")} />
-                      <CommandList>
-                        <CommandEmpty>{t("noCustomRoles")}</CommandEmpty>
-                        <CommandGroup>
-                          {customScopedRoles.map((role) => {
-                            const checked = memberCustomRoleIds(member).includes(role.id);
-                            return (
-                              <CommandItem
-                                key={role.id}
-                                value={role.name}
-                                onSelect={() => toggleCustomRole(member, role.id)}
-                              >
-                                <Check
-                                  aria-hidden
-                                  className={cn(
-                                    "mr-2 size-4",
-                                    checked ? "opacity-100" : "opacity-0"
-                                  )}
-                                />
-                                <div className="min-w-0">
-                                  <p className="truncate">{role.name}</p>
-                                  {role.description ? (
-                                    <p className="truncate text-xs text-muted-foreground">
-                                      {role.description}
-                                    </p>
-                                  ) : null}
-                                </div>
-                              </CommandItem>
-                            );
-                          })}
-                        </CommandGroup>
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-              ) : null}
-            </div>
-          );
+          return <MemberRolesCell member={member} workspaceId={workspaceId} roles={roles} />;
         }
       }
     ];
@@ -187,15 +189,5 @@ export function useMemberColumns({
       )
     );
     return cols;
-  }, [
-    canUpdateMembers,
-    canDeleteMembers,
-    customScopedRoles,
-    changePrimaryRole,
-    toggleCustomRole,
-    requestRemoval,
-    t,
-    tm,
-    tk
-  ]);
+  }, [workspaceId, roles, canUpdateMembers, canDeleteMembers, requestRemoval, roleLabel, t, tm, tk]);
 }
