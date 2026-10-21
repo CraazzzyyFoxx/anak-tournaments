@@ -769,6 +769,59 @@
             "default": null,
             "title": "Search"
           }
+        },
+        {
+          "name": "since",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Only rows with created_at >= since.",
+            "title": "Since"
+          }
+        },
+        {
+          "name": "exclude_actor_user_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hide rows by this actor; machine rows (NULL actor) are kept.",
+            "title": "Exclude Actor User Id"
+          }
+        },
+        {
+          "name": "source",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Comma-separated audit sources to keep, e.g. `admin,api_key,discord,challonge`.",
+            "title": "Source"
+          }
         }
       ],
       "response": {
@@ -952,14 +1005,6 @@
         "ref": "app.CatalogEntityRead"
       },
       "summary": "Get a catalog entity"
-    },
-    "rpc.app.catalog.legacy": {
-      "description": "Permission: public; no authentication required. Returns the catalog entity an old hero, map or gamemode id became in the catalog migration (entity_id, discipline, kind, slug); 404 for any other id. Available until the deploy after the multi-game release.",
-      "response": {
-        "array": false,
-        "ref": "app.CatalogLegacyRead"
-      },
-      "summary": "Resolve an old catalog id"
     },
     "rpc.app.catalog.list": {
       "description": "Permission: public; no authentication required. Returns a paginated list of one discipline's characters, maps or modes (`kind`); `search`, `parent_id`, `attrs` (JSON object) and `active` filter it, active rows only unless `active=false` is passed. 404 `discipline_not_installed` for an unknown discipline, 404 `catalog_kind_not_declared` for a kind the game does not declare (League has no `mode`).",
@@ -1696,6 +1741,48 @@
       },
       "summary": "List achievements"
     },
+    "rpc.app.statistics.admin_dashboard": {
+      "description": "Permission: any of workspace `tournament.read`, `team.read`, `match.read`, `user.read` or `achievement.read`. Returns the organizer home of one workspace: one card per tournament that is not finished (hidden ones included) plus completed tournaments within 14 days of finishing whose wrap-up (results confirmed, duel logs, achievements, standings) is not done; the next 7 days of phase-schedule boundaries plus every overdue phase start; the work queue of those cards ordered by severity; and the backlog of every other tournament with a data-quality issue. Each field group is null when the caller lacks the permission that gates it, never zero. 422 without `workspace_id`, 403 without any of the permissions.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.AdminDashboard"
+      },
+      "summary": "Organizer dashboard"
+    },
+    "rpc.app.statistics.admin_dashboard_trends": {
+      "description": "Permission: workspace `tournament.read`. Returns participants, newcomers, duel log coverage and the median match-end-to-confirmation time of the workspace's last 10 finished, non-league, non-hidden tournaments, oldest first, optionally narrowed to one installed `discipline` (404 `discipline_not_installed` for an unknown code). 422 without `workspace_id`.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": true,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "description": "Installed discipline code; absent or \"all\": every game",
+            "type": "string"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.DashboardTrends"
+      },
+      "summary": "Organizer dashboard trends"
+    },
     "rpc.app.statistics.champion": {
       "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments won, across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
       "query_params": [
@@ -1958,31 +2045,6 @@
         "ref": "app.Paginated_CharacterPlaytime_"
       },
       "summary": "Character playtime shares"
-    },
-    "rpc.app.statistics.dashboard": {
-      "description": "Permission: public; no authentication required. Returns aggregate dashboard statistics for the optional workspace; the catalog counts are the required `discipline`'s.",
-      "query_params": [
-        {
-          "name": "discipline",
-          "required": true,
-          "schema": {
-            "description": "Installed discipline code",
-            "type": "string"
-          }
-        },
-        {
-          "name": "workspace_id",
-          "required": false,
-          "schema": {
-            "type": "integer"
-          }
-        }
-      ],
-      "response": {
-        "array": false,
-        "ref": "app.DashboardStats"
-      },
-      "summary": "Dashboard stats"
     },
     "rpc.app.statistics.tournament_readiness": {
       "description": "Permission: workspace `tournament.read` or `team.read` on the tournament's own workspace. Returns the living readiness checklist for one tournament, telling its organisers what is still missing before it can run: schedule/grid/stage-slot configuration, bracket and encounter log coverage, and the registration, pool, balance and draft state. Each group of fields is masked to null when the caller lacks the permission that gates it, so a partial reader sees no-access rather than zeros. 403 without either permission, 404 if the tournament is unknown; hidden tournaments of the caller's own workspace are visible.",
@@ -5051,7 +5113,7 @@
       "summary": "Set my pickup mix preferences"
     },
     "rpc.balancer.ranks.list": {
-      "description": "Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the same workspace grid. `division` is resolved on the workspace's effective grid of the row's game. Filtering, sorting, the exact total and the page all run in the database. Optional `discipline` reads one enabled game (422 `discipline_not_enabled` for another); without it the rows are the union over every game the workspace runs, each tagged with its `discipline`, and `role`, `rank_min`, `rank_max` and `sort=rank_value|division` are a 422 (`<param> requires discipline`): those values live on different grids. A game with no grid here lists its rows with a null `division`.",
+      "description": "Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, native, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over the game's native rank on the workspace grid, effective_mix is the author's book over the canon over the native rank on the same workspace grid. `division` is resolved on the workspace's effective grid of the row's game. Filtering, sorting, the exact total and the page all run in the database. Optional `discipline` reads one enabled game (422 `discipline_not_enabled` for another); without it the rows are the union over every game the workspace runs, each tagged with its `discipline`, and `role`, `rank_min`, `rank_max` and `sort=rank_value|division` are a 422 (`<param> requires discipline`): those values live on different grids. A game with no grid here lists its rows with a null `division`.",
       "query_params": [
         {
           "name": "discipline",
@@ -5097,7 +5159,7 @@
           "name": "layer",
           "required": false,
           "schema": {
-            "description": "Repeatable. One of ['canon', 'author', 'ow', 'hidden', 'effective_tournament', 'effective_mix', 'registration', 'tournament', 'casual']; defaults to the current layers ['canon', 'author', 'ow', 'hidden', 'effective_tournament', 'effective_mix'].",
+            "description": "Repeatable. One of ['canon', 'author', 'native', 'hidden', 'effective_tournament', 'effective_mix', 'registration', 'tournament', 'casual']; defaults to the current layers ['canon', 'author', 'native', 'hidden', 'effective_tournament', 'effective_mix'].",
             "items": {
               "type": "string"
             },
@@ -6942,8 +7004,88 @@
       },
       "summary": "Upload match logs"
     },
-    "rpc.stats.rank.battle_tag_history": {
-      "description": "Permission: public; no authentication required. Returns a single battle tag's OverFast rank time series with granularity, date range, platform and role filters.",
+    "rpc.stats.rank.collect": {
+      "description": "Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' accounts are touched), otherwise global `rank.update`. Enqueues a native rank-collection run for a user or specific linked game accounts and returns the enqueued count. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "request": {
+        "array": false,
+        "ref": "stats.CollectTriggerRequest"
+      },
+      "response": {
+        "array": false,
+        "ref": "stats.CollectTriggerResponse"
+      },
+      "summary": "Trigger rank collection"
+    },
+    "rpc.stats.rank.fetch_log": {
+      "description": "Permission: workspace `rank.read` when `workspace_id` is given (rows are then scoped to the game accounts of that workspace's players), otherwise global `rank.read`. Lists native rank-collection fetch-log entries filtered by status, source and cursor. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "status",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "source",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "before_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "response": {
+        "array": true,
+        "ref": "stats.FetchLogRead"
+      },
+      "summary": "Rank fetch log"
+    },
+    "rpc.stats.rank.game_account_history": {
+      "description": "Permission: public; no authentication required. Returns one game account's rank time series (`discipline` names the game, default `overwatch`) with granularity, date range, platform and role filters; League series are per queue. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
       "query_params": [
         {
           "name": "granularity",
@@ -6979,36 +7121,39 @@
           "schema": {
             "type": "string"
           }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
         }
       ],
       "response": {
         "array": false,
         "ref": "stats.RankHistoryResponse"
       },
-      "summary": "Battle tag rank history"
-    },
-    "rpc.stats.rank.collect": {
-      "description": "Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' tags are touched), otherwise global `rank.update`. Enqueues an OverFast rank-collection run for a user or specific battle tags and returns the enqueued count.",
-      "request": {
-        "array": false,
-        "ref": "stats.CollectTriggerRequest"
-      },
-      "response": {
-        "array": false,
-        "ref": "stats.CollectTriggerResponse"
-      },
-      "summary": "Trigger rank collection"
-    },
-    "rpc.stats.rank.fetch_log": {
-      "description": "Permission: workspace `rank.read` when `workspace_id` is given (rows are then scoped to the battle tags of that workspace's players), otherwise global `rank.read`. Lists OverFast rank-collection fetch-log entries filtered by status, source and cursor.",
-      "response": {
-        "array": true,
-        "ref": "stats.FetchLogRead"
-      },
-      "summary": "Rank fetch log"
+      "summary": "Game account rank history"
     },
     "rpc.stats.rank.reenable_disabled": {
-      "description": "Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' tags are requeued), otherwise global `rank.update`. Requeues battle tags that were auto-disabled by a transient OverFast outage (status disabled -> pending, failure counter reset), spreading them across the collection interval; optionally limited to tags that previously succeeded. Returns the re-enabled count.",
+      "description": "Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' accounts are requeued), otherwise global `rank.update`. Requeues game accounts that were auto-disabled by a transient upstream outage (status disabled -> pending, failure counter reset), spreading them across the collection interval; optionally limited to accounts that previously succeeded. Returns the re-enabled count. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "request": {
         "array": false,
         "ref": "stats.ReenableDisabledRequest"
@@ -7020,7 +7165,23 @@
       "summary": "Re-enable disabled rank collection"
     },
     "rpc.stats.rank.stats": {
-      "description": "Permission: workspace `rank.read` when `workspace_id` is given (aggregates are then scoped to the battle tags of that workspace's players), otherwise global `rank.read`. Aggregated OverFast rank-collection health: battle-tag state counts by status and priority tier, snapshot coverage over 24h/7d, last successful capture, last-24h fetch-outcome mix with error rate, and the active config.",
+      "description": "Permission: workspace `rank.read` when `workspace_id` is given (aggregates are then scoped to the game accounts of that workspace's players), otherwise global `rank.read`. Aggregated native rank-collection health: account state counts by status and priority tier, snapshot coverage over 24h/7d, last successful capture, last-24h fetch-outcome mix with error rate, upstream circuit state, and the active config. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "response": {
         "array": false,
         "ref": "stats.RankCollectionStats"
@@ -7028,7 +7189,23 @@
       "summary": "Rank collection health stats"
     },
     "rpc.stats.rank.user_collection": {
-      "description": "Permission: workspace `rank.read` when `workspace_id` is given (empty unless the player is a member of that workspace), otherwise global `rank.read`. Returns the OverFast rank-collection status for each of a user's battle tags.",
+      "description": "Permission: workspace `rank.read` when `workspace_id` is given (empty unless the player is a member of that workspace), otherwise global `rank.read`. Returns the native rank-collection status for each of a user's game accounts. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
       "response": {
         "array": true,
         "ref": "stats.CollectionStatusRead"
@@ -7036,11 +7213,18 @@
       "summary": "User rank collection status"
     },
     "rpc.stats.rank.user_current": {
-      "description": "Permission: public; no authentication required. Returns a user's current OverFast ranks for the requested platform.",
+      "description": "Permission: public; no authentication required. Returns a user's current collected native ranks for the requested platform. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
       "query_params": [
         {
           "name": "platform",
-          "required": true,
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": false,
           "schema": {
             "type": "string"
           }
@@ -7053,7 +7237,7 @@
       "summary": "Current user ranks"
     },
     "rpc.stats.rank.user_history": {
-      "description": "Permission: public; no authentication required. Returns a user's OverFast rank time series with configurable granularity, date range, platform and role filters.",
+      "description": "Permission: public; no authentication required. Returns a user's collected native rank time series with configurable granularity, date range, platform and role filters. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.",
       "query_params": [
         {
           "name": "granularity",
@@ -7092,6 +7276,13 @@
         },
         {
           "name": "role",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "discipline",
           "required": false,
           "schema": {
             "type": "string"
@@ -13185,6 +13376,55 @@
       "title": "AchievementTournamentLink",
       "type": "object"
     },
+    "app.AdminDashboard": {
+      "properties": {
+        "backlog": {
+          "$ref": "#/components/schemas/app.DashboardBacklog"
+        },
+        "generated_at": {
+          "format": "date-time",
+          "title": "Generated At",
+          "type": "string"
+        },
+        "issues": {
+          "items": {
+            "$ref": "#/components/schemas/app.DashboardIssue"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "timeline": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/app.DashboardTimelineEvent"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Timeline"
+        },
+        "tournaments": {
+          "items": {
+            "$ref": "#/components/schemas/app.DashboardTournamentCard"
+          },
+          "title": "Tournaments",
+          "type": "array"
+        }
+      },
+      "required": [
+        "generated_at",
+        "tournaments",
+        "timeline",
+        "issues",
+        "backlog"
+      ],
+      "title": "AdminDashboard",
+      "type": "object"
+    },
     "app.AdminUserNotificationsRead": {
       "description": "One *other* account's notification state, for the admin inspector.\n\nA superset of ``NotificationPreferencesRead`` rather than a sibling of it:\nthe operator's question is \"why has this person not heard from us\", and the\nswitches alone cannot answer it -- an unlinked Discord, a badge nobody\nclears and nothing ever sent are three different diagnoses.",
       "properties": {
@@ -13421,6 +13661,19 @@
           "default": null,
           "title": "Entity Type"
         },
+        "exclude_actor_user_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Hide rows by this actor; machine rows (NULL actor) are kept.",
+          "title": "Exclude Actor User Id"
+        },
         "only_count": {
           "default": false,
           "title": "Only Count",
@@ -13456,6 +13709,20 @@
           "default": null,
           "title": "Search"
         },
+        "since": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Only rows with created_at >= since.",
+          "title": "Since"
+        },
         "sort": {
           "default": "created_at",
           "enum": [
@@ -13468,6 +13735,20 @@
           ],
           "title": "Sort",
           "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Comma-separated audit sources to keep, e.g. `admin,api_key,discord,challonge`.",
+          "title": "Source"
         },
         "workspace_id": {
           "anyOf": [
@@ -14653,35 +14934,6 @@
       "title": "CatalogEntityUpdate",
       "type": "object"
     },
-    "app.CatalogLegacyRead": {
-      "description": "What an old ``overwatch.hero|map|gamemode`` id became.",
-      "properties": {
-        "discipline": {
-          "title": "Discipline",
-          "type": "string"
-        },
-        "entity_id": {
-          "title": "Entity Id",
-          "type": "integer"
-        },
-        "kind": {
-          "title": "Kind",
-          "type": "string"
-        },
-        "slug": {
-          "title": "Slug",
-          "type": "string"
-        }
-      },
-      "required": [
-        "entity_id",
-        "discipline",
-        "kind",
-        "slug"
-      ],
-      "title": "CatalogLegacyRead",
-      "type": "object"
-    },
     "app.CharacterLeaderboardEntry": {
       "properties": {
         "avg_crit_accuracy": {
@@ -15179,148 +15431,666 @@
       "title": "CharacterWithUserStats",
       "type": "object"
     },
-    "app.DashboardActiveTournamentStats": {
+    "app.DashboardBacklog": {
       "properties": {
         "encounters_missing_logs": {
-          "title": "Encounters Missing Logs",
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encounters Missing Logs"
+        },
+        "rows": {
+          "items": {
+            "$ref": "#/components/schemas/app.DashboardBacklogRow"
+          },
+          "title": "Rows",
+          "type": "array"
+        },
+        "stage_slots_empty": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stage Slots Empty"
+        },
+        "teams_without_players": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Teams Without Players"
+        },
+        "tournaments_total": {
+          "title": "Tournaments Total",
           "type": "integer"
         },
-        "encounters_total": {
-          "title": "Encounters Total",
-          "type": "integer"
+        "tournaments_without_stages": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tournaments Without Stages"
         },
-        "log_coverage_percent": {
-          "title": "Log Coverage Percent",
-          "type": "integer"
+        "users_without_identities": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Users Without Identities"
+        }
+      },
+      "required": [
+        "rows",
+        "tournaments_total",
+        "encounters_missing_logs",
+        "teams_without_players",
+        "tournaments_without_stages",
+        "stage_slots_empty",
+        "users_without_identities"
+      ],
+      "title": "DashboardBacklog",
+      "type": "object"
+    },
+    "app.DashboardBacklogRow": {
+      "description": "One tournament without a card that has a visible non-zero issue.",
+      "properties": {
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
+        "encounters_missing_logs": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Encounters Missing Logs"
+        },
+        "has_stages": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Has Stages"
+        },
+        "stage_slots_empty": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Stage Slots Empty"
+        },
+        "teams_without_players": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Teams Without Players"
         },
         "tournament_id": {
           "title": "Tournament Id",
           "type": "integer"
+        },
+        "tournament_name": {
+          "title": "Tournament Name",
+          "type": "string"
         }
       },
       "required": [
         "tournament_id",
-        "encounters_total",
+        "tournament_name",
+        "discipline",
         "encounters_missing_logs",
-        "log_coverage_percent"
+        "teams_without_players",
+        "stage_slots_empty",
+        "has_stages"
       ],
-      "title": "DashboardActiveTournamentStats",
+      "title": "DashboardBacklogRow",
       "type": "object"
     },
-    "app.DashboardIssues": {
+    "app.DashboardIssue": {
       "properties": {
-        "encounters_awaiting_result": {
-          "title": "Encounters Awaiting Result",
+        "count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Count"
+        },
+        "key": {
+          "enum": [
+            "results_disputed",
+            "results_overdue",
+            "results_pending_confirmation",
+            "phase_overdue",
+            "registrations_pending",
+            "pool_need_fix",
+            "ranks_missing",
+            "balance_not_exported",
+            "stage_slots_empty",
+            "logs_missing",
+            "achievements_pending",
+            "standings_recalc_pending"
+          ],
+          "title": "Key",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "critical",
+            "warning",
+            "info"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
           "type": "integer"
         },
-        "encounters_missing_logs": {
-          "title": "Encounters Missing Logs",
+        "tournament_name": {
+          "title": "Tournament Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "severity",
+        "tournament_id",
+        "tournament_name",
+        "count"
+      ],
+      "title": "DashboardIssue",
+      "type": "object"
+    },
+    "app.DashboardPlay": {
+      "description": "``match.read``; the card's ``play`` is None without it.",
+      "properties": {
+        "encounters_completed": {
+          "title": "Encounters Completed",
+          "type": "integer"
+        },
+        "encounters_disputed": {
+          "title": "Encounters Disputed",
+          "type": "integer"
+        },
+        "encounters_live": {
+          "title": "Encounters Live",
+          "type": "integer"
+        },
+        "encounters_overdue": {
+          "title": "Encounters Overdue",
           "type": "integer"
         },
         "encounters_pending_confirmation": {
           "title": "Encounters Pending Confirmation",
           "type": "integer"
         },
-        "stage_slots_empty": {
-          "title": "Stage Slots Empty",
-          "type": "integer"
-        },
-        "teams_without_players": {
-          "title": "Teams Without Players",
-          "type": "integer"
-        },
-        "tournaments_without_stages": {
-          "title": "Tournaments Without Stages",
-          "type": "integer"
-        },
-        "users_without_identities": {
-          "title": "Users Without Identities",
+        "encounters_total": {
+          "title": "Encounters Total",
           "type": "integer"
         }
       },
       "required": [
-        "encounters_missing_logs",
-        "teams_without_players",
-        "tournaments_without_stages",
-        "users_without_identities",
-        "encounters_awaiting_result",
+        "encounters_total",
+        "encounters_completed",
+        "encounters_live",
+        "encounters_overdue",
         "encounters_pending_confirmation",
-        "stage_slots_empty"
+        "encounters_disputed"
       ],
-      "title": "DashboardIssues",
+      "title": "DashboardPlay",
       "type": "object"
     },
-    "app.DashboardStats": {
+    "app.DashboardScheduleEntry": {
       "properties": {
-        "active_tournament_stats": {
+        "ends_at": {
           "anyOf": [
             {
-              "$ref": "#/components/schemas/app.DashboardActiveTournamentStats"
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Ends At"
+        },
+        "starts_at": {
+          "format": "date-time",
+          "title": "Starts At",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "starts_at",
+        "ends_at"
+      ],
+      "title": "DashboardScheduleEntry",
+      "type": "object"
+    },
+    "app.DashboardTimelineEvent": {
+      "properties": {
+        "at": {
+          "format": "date-time",
+          "title": "At",
+          "type": "string"
+        },
+        "edge": {
+          "enum": [
+            "start",
+            "end"
+          ],
+          "title": "Edge",
+          "type": "string"
+        },
+        "overdue": {
+          "title": "Overdue",
+          "type": "boolean"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        },
+        "tournament_name": {
+          "title": "Tournament Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tournament_id",
+        "tournament_name",
+        "status",
+        "edge",
+        "at",
+        "overdue"
+      ],
+      "title": "DashboardTimelineEvent",
+      "type": "object"
+    },
+    "app.DashboardTournamentCard": {
+      "properties": {
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
+        "end_date": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "End Date"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Finished At"
+        },
+        "has_challonge_source": {
+          "title": "Has Challonge Source",
+          "type": "boolean"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "is_hidden": {
+          "title": "Is Hidden",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "next_deadline_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Deadline At"
+        },
+        "phase": {
+          "enum": [
+            "preparation",
+            "registration",
+            "formation",
+            "live",
+            "wrap_up"
+          ],
+          "title": "Phase",
+          "type": "string"
+        },
+        "phase_schedule": {
+          "items": {
+            "$ref": "#/components/schemas/app.DashboardScheduleEntry"
+          },
+          "title": "Phase Schedule",
+          "type": "array"
+        },
+        "play": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.DashboardPlay"
             },
             {
               "type": "null"
             }
           ]
         },
-        "characters_total": {
-          "title": "Characters Total",
-          "type": "integer"
+        "readiness": {
+          "$ref": "#/components/schemas/app.TournamentReadiness"
         },
-        "encounters_completed": {
-          "title": "Encounters Completed",
-          "type": "integer"
+        "registration_closes_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Registration Closes At"
         },
-        "encounters_total": {
-          "title": "Encounters Total",
-          "type": "integer"
+        "registrations_last_24h": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Registrations Last 24H"
         },
-        "issues": {
-          "$ref": "#/components/schemas/app.DashboardIssues"
+        "start_date": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Start Date"
         },
-        "maps_total": {
-          "title": "Maps Total",
-          "type": "integer"
+        "status": {
+          "title": "Status",
+          "type": "string"
         },
-        "modes_total": {
-          "title": "Modes Total",
-          "type": "integer"
+        "team_formation": {
+          "title": "Team Formation",
+          "type": "string"
         },
-        "players_total": {
-          "title": "Players Total",
-          "type": "integer"
-        },
-        "teams_total": {
-          "title": "Teams Total",
-          "type": "integer"
-        },
-        "tournaments_active": {
-          "title": "Tournaments Active",
-          "type": "integer"
-        },
-        "tournaments_registration_open": {
-          "title": "Tournaments Registration Open",
-          "type": "integer"
-        },
-        "tournaments_total": {
-          "title": "Tournaments Total",
-          "type": "integer"
+        "wrap_up": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.DashboardWrapUp"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
-        "tournaments_total",
-        "tournaments_active",
-        "teams_total",
-        "players_total",
-        "encounters_total",
-        "tournaments_registration_open",
-        "encounters_completed",
-        "characters_total",
-        "modes_total",
-        "maps_total",
-        "active_tournament_stats",
-        "issues"
+        "id",
+        "name",
+        "discipline",
+        "status",
+        "phase",
+        "is_hidden",
+        "team_formation",
+        "start_date",
+        "end_date",
+        "finished_at",
+        "phase_schedule",
+        "next_deadline_at",
+        "registration_closes_at",
+        "registrations_last_24h",
+        "has_challonge_source",
+        "readiness",
+        "play",
+        "wrap_up"
       ],
-      "title": "DashboardStats",
+      "title": "DashboardTournamentCard",
+      "type": "object"
+    },
+    "app.DashboardTrendPoint": {
+      "properties": {
+        "discipline": {
+          "title": "Discipline",
+          "type": "string"
+        },
+        "duel_encounters_total": {
+          "title": "Duel Encounters Total",
+          "type": "integer"
+        },
+        "duel_encounters_with_logs": {
+          "title": "Duel Encounters With Logs",
+          "type": "integer"
+        },
+        "median_confirm_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Median Confirm Seconds"
+        },
+        "newcomers": {
+          "title": "Newcomers",
+          "type": "integer"
+        },
+        "participants": {
+          "title": "Participants",
+          "type": "integer"
+        },
+        "start_date": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Start Date"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        },
+        "tournament_name": {
+          "title": "Tournament Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tournament_id",
+        "tournament_name",
+        "discipline",
+        "start_date",
+        "participants",
+        "newcomers",
+        "duel_encounters_total",
+        "duel_encounters_with_logs",
+        "median_confirm_seconds"
+      ],
+      "title": "DashboardTrendPoint",
+      "type": "object"
+    },
+    "app.DashboardTrends": {
+      "properties": {
+        "points": {
+          "items": {
+            "$ref": "#/components/schemas/app.DashboardTrendPoint"
+          },
+          "title": "Points",
+          "type": "array"
+        }
+      },
+      "required": [
+        "points"
+      ],
+      "title": "DashboardTrends",
+      "type": "object"
+    },
+    "app.DashboardWrapUp": {
+      "description": "Present only on a ``wrap_up`` card. ``done`` is computed on full data regardless of permissions.",
+      "properties": {
+        "achievements_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Achievements Status"
+        },
+        "done": {
+          "title": "Done",
+          "type": "boolean"
+        },
+        "duel_encounters_total": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Duel Encounters Total"
+        },
+        "duel_encounters_with_logs": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Duel Encounters With Logs"
+        },
+        "logs_used": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Logs Used"
+        },
+        "results_open": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Results Open"
+        },
+        "standings_recalc_pending": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Standings Recalc Pending"
+        }
+      },
+      "required": [
+        "done",
+        "results_open",
+        "logs_used",
+        "duel_encounters_total",
+        "duel_encounters_with_logs",
+        "achievements_status",
+        "standings_recalc_pending"
+      ],
+      "title": "DashboardWrapUp",
       "type": "object"
     },
     "app.DisciplineCapabilities": {
@@ -16370,8 +17140,15 @@
           "type": "string"
         },
         "native_tier": {
-          "title": "Native Tier",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Native Tier"
         },
         "number": {
           "title": "Number",
@@ -27944,7 +28721,7 @@
             }
           ],
           "default": null,
-          "description": "Roster team name, or the platform on an ow row.",
+          "description": "Roster team name, or the platform/region on a native row.",
           "title": "Team"
         }
       },
@@ -28079,7 +28856,7 @@
           "enum": [
             "canon",
             "author",
-            "ow",
+            "native",
             "hidden",
             "effective_tournament",
             "effective_mix",
@@ -28095,7 +28872,7 @@
           "title": "Member Id",
           "type": "integer"
         },
-        "ow_division": {
+        "native_division": {
           "anyOf": [
             {
               "type": "string"
@@ -28105,10 +28882,10 @@
             }
           ],
           "default": null,
-          "description": "ow only: the native OverFast division, e.g. 'gold'.",
-          "title": "Ow Division"
+          "description": "native only: the game's own division, e.g. 'gold' or 'DIAMOND'.",
+          "title": "Native Division"
         },
-        "ow_tier": {
+        "native_tier": {
           "anyOf": [
             {
               "type": "integer"
@@ -28118,8 +28895,8 @@
             }
           ],
           "default": null,
-          "description": "ow only: the native tier inside that division.",
-          "title": "Ow Tier"
+          "description": "native only: the tier inside that division (null for an unsplit tier).",
+          "title": "Native Tier"
         },
         "player_id": {
           "description": "players.user id -- the identity /admin/people/[id] is keyed by.",
@@ -30675,6 +31452,7 @@
         "discord",
         "twitch",
         "battlenet",
+        "riot",
         "google",
         "github"
       ],
@@ -33456,14 +34234,14 @@
     },
     "stats.CollectionStatusRead": {
       "properties": {
-        "battle_tag": {
-          "title": "Battle Tag",
-          "type": "string"
-        },
         "consecutive_failures": {
           "default": 0,
           "title": "Consecutive Failures",
           "type": "integer"
+        },
+        "handle": {
+          "title": "Handle",
+          "type": "string"
         },
         "last_checked_at": {
           "anyOf": [
@@ -33540,7 +34318,7 @@
       },
       "required": [
         "social_account_id",
-        "battle_tag"
+        "handle"
       ],
       "title": "CollectionStatusRead",
       "type": "object"
@@ -33655,10 +34433,6 @@
     },
     "stats.CurrentRank": {
       "properties": {
-        "battle_tag": {
-          "title": "Battle Tag",
-          "type": "string"
-        },
         "captured_at": {
           "format": "date-time",
           "title": "Captured At",
@@ -33675,13 +34449,60 @@
           ],
           "title": "Division"
         },
+        "handle": {
+          "title": "Handle",
+          "type": "string"
+        },
         "is_ranked": {
           "title": "Is Ranked",
           "type": "boolean"
         },
+        "losses": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Losses"
+        },
+        "lp": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lp"
+        },
         "platform": {
-          "title": "Platform",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Platform"
+        },
+        "queue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Queue"
         },
         "rank_value": {
           "anyOf": [
@@ -33695,8 +34516,15 @@
           "title": "Rank Value"
         },
         "role": {
-          "title": "Role",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Role"
         },
         "season": {
           "anyOf": [
@@ -33723,11 +34551,23 @@
             }
           ],
           "title": "Tier"
+        },
+        "wins": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wins"
         }
       },
       "required": [
         "social_account_id",
-        "battle_tag",
+        "handle",
         "role",
         "platform",
         "rank_value",
@@ -33840,6 +34680,7 @@
           "title": "Finished At"
         },
         "id": {
+          "format": "uuid",
           "title": "Id",
           "type": "string"
         },
@@ -33902,10 +34743,6 @@
     },
     "stats.FetchLogRead": {
       "properties": {
-        "battle_tag": {
-          "title": "Battle Tag",
-          "type": "string"
-        },
         "created_at": {
           "format": "date-time",
           "title": "Created At",
@@ -33921,6 +34758,10 @@
             }
           ],
           "title": "Error"
+        },
+        "handle": {
+          "title": "Handle",
+          "type": "string"
         },
         "id": {
           "title": "Id",
@@ -33965,7 +34806,7 @@
       "required": [
         "id",
         "social_account_id",
-        "battle_tag",
+        "handle",
         "status",
         "source",
         "error",
@@ -35424,9 +36265,9 @@
           "title": "Interval Seconds",
           "type": "integer"
         },
-        "invalid_battle_tags_24h": {
+        "invalid_handles_24h": {
           "default": 0,
-          "title": "Invalid Battle Tags 24H",
+          "title": "Invalid Handles 24H",
           "type": "integer"
         },
         "last_success_at": {
@@ -35444,16 +36285,6 @@
         "never_checked": {
           "title": "Never Checked",
           "type": "integer"
-        },
-        "overfast_base_url": {
-          "default": "",
-          "title": "Overfast Base Url",
-          "type": "string"
-        },
-        "overfast_circuit_state": {
-          "default": "closed",
-          "title": "Overfast Circuit State",
-          "type": "string"
         },
         "rate_limit_per_minute": {
           "title": "Rate Limit Per Minute",
@@ -35478,6 +36309,16 @@
         "total": {
           "title": "Total",
           "type": "integer"
+        },
+        "upstream_base_url": {
+          "default": "",
+          "title": "Upstream Base Url",
+          "type": "string"
+        },
+        "upstream_circuit_state": {
+          "default": "closed",
+          "title": "Upstream Circuit State",
+          "type": "string"
         }
       },
       "required": [
@@ -35523,6 +36364,30 @@
           "title": "Is Ranked",
           "type": "boolean"
         },
+        "losses": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Losses"
+        },
+        "lp": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lp"
+        },
         "rank_value": {
           "anyOf": [
             {
@@ -35555,6 +36420,18 @@
             }
           ],
           "title": "Tier"
+        },
+        "wins": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Wins"
         }
       },
       "required": [
@@ -35603,12 +36480,8 @@
       "type": "object"
     },
     "stats.RankSeries": {
-      "description": "One time series for a (battle_tag, role, platform) tuple.\n\nThe frontend pivots a list of these into either grouping: fix a battle tag\nand draw a line per role, or fix a role and draw a line per battle tag.",
+      "description": "One time series of one game account: per (role, platform) for Overwatch, per ``queue`` for League.",
       "properties": {
-        "battle_tag": {
-          "title": "Battle Tag",
-          "type": "string"
-        },
         "current": {
           "anyOf": [
             {
@@ -35618,6 +36491,10 @@
               "type": "null"
             }
           ]
+        },
+        "handle": {
+          "title": "Handle",
+          "type": "string"
         },
         "latest_captured_at": {
           "anyOf": [
@@ -35643,8 +36520,15 @@
           "title": "Peak Rank Value"
         },
         "platform": {
-          "title": "Platform",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Platform"
         },
         "points": {
           "items": {
@@ -35653,9 +36537,28 @@
           "title": "Points",
           "type": "array"
         },
+        "queue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Queue"
+        },
         "role": {
-          "title": "Role",
-          "type": "string"
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Role"
         },
         "social_account_id": {
           "title": "Social Account Id",
@@ -35664,7 +36567,7 @@
       },
       "required": [
         "social_account_id",
-        "battle_tag",
+        "handle",
         "role",
         "platform",
         "points",
@@ -41194,9 +42097,9 @@
           "title": "Include Icons",
           "type": "boolean"
         },
-        "include_ow_rank_mappings": {
+        "include_native_rank_mappings": {
           "default": true,
-          "title": "Include Ow Rank Mappings",
+          "title": "Include Native Rank Mappings",
           "type": "boolean"
         },
         "source_grid_id": {

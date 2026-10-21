@@ -1,9 +1,7 @@
 -- Anak Tournaments — PostgreSQL DDL compiled from SQLAlchemy metadata.
 -- Open in any SQL editor (DataGrip, DBeaver, VS Code).
 -- Runtime mappings only, not a complete physical-database dump.
--- Retained/unused pending P9: matches.{match,statistics,event,kill_feed,stat_baselines,mv_hero_global_stats},
--- log_processing.record and legacy overwatch/casual storage. stats01 does not drop them.
--- Tables: 164
+-- Tables: 163
 -- Source of truth is backend/shared/models. Regenerate: python scripts/export_db_schema.py
 
 CREATE SCHEMA IF NOT EXISTS achievements;
@@ -14,9 +12,9 @@ CREATE SCHEMA IF NOT EXISTS catalog;
 CREATE SCHEMA IF NOT EXISTS draft;
 CREATE SCHEMA IF NOT EXISTS encounter;
 CREATE SCHEMA IF NOT EXISTS mix;
-CREATE SCHEMA IF NOT EXISTS overwatch_rank;
 CREATE SCHEMA IF NOT EXISTS players;
 CREATE SCHEMA IF NOT EXISTS quota;
+CREATE SCHEMA IF NOT EXISTS rank;
 CREATE SCHEMA IF NOT EXISTS realtime;
 CREATE SCHEMA IF NOT EXISTS registration;
 CREATE SCHEMA IF NOT EXISTS roster;
@@ -511,6 +509,8 @@ CREATE INDEX ix_auth_refresh_token_session_id ON auth.refresh_token (session_id)
 
 CREATE UNIQUE INDEX ix_auth_refresh_token_token ON auth.refresh_token (token);
 
+CREATE INDEX ix_auth_refresh_token_user_id ON auth.refresh_token (user_id);
+
 CREATE TABLE auth.role_permissions (
 	id SERIAL NOT NULL,
 	role_id INTEGER NOT NULL,
@@ -848,15 +848,6 @@ CREATE TABLE catalog.entity (
 	CONSTRAINT fk_entity_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code)
 );
 
-CREATE TABLE catalog.entity_legacy (
-	legacy_kind VARCHAR(16) NOT NULL,
-	legacy_id BIGINT NOT NULL,
-	entity_id BIGINT NOT NULL,
-	PRIMARY KEY (legacy_kind, legacy_id),
-	CONSTRAINT ck_entity_legacy_kind CHECK (legacy_kind IN ('hero', 'map', 'gamemode')),
-	CONSTRAINT fk_entity_legacy_entity FOREIGN KEY(entity_id) REFERENCES catalog.entity (id)
-);
-
 CREATE TABLE catalog.role (
 	id BIGSERIAL NOT NULL,
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
@@ -1095,6 +1086,12 @@ CREATE TABLE encounter.encounter (
 );
 
 CREATE INDEX ix_encounter_custom_game_id ON encounter.encounter (custom_game_id);
+
+CREATE INDEX ix_encounter_ended_at ON encounter.encounter (ended_at);
+
+CREATE INDEX ix_encounter_scheduled_at ON encounter.encounter (scheduled_at);
+
+CREATE INDEX ix_encounter_started_at ON encounter.encounter (started_at);
 
 CREATE INDEX ix_encounter_status_live_upcoming ON encounter.encounter (tournament_id, status) WHERE status IN ('PENDING'::encounter.encounterstatus, 'OPEN'::encounter.encounterstatus);
 
@@ -1457,6 +1454,8 @@ CREATE TABLE mix.co_host (
 	FOREIGN KEY(user_id) REFERENCES auth."user" (id) ON DELETE CASCADE
 );
 
+CREATE INDEX ix_mix_co_host_user_id ON mix.co_host (user_id);
+
 CREATE TABLE mix.custom_game (
 	id BIGSERIAL NOT NULL,
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
@@ -1572,75 +1571,6 @@ CREATE TABLE mix.team_name (
 	CONSTRAINT ck_custom_game_team_name_index CHECK (team_index BETWEEN 0 AND 11),
 	FOREIGN KEY(custom_game_id) REFERENCES mix.custom_game (id) ON DELETE CASCADE
 );
-
-CREATE TABLE overwatch_rank.battle_tag_state (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	social_account_id BIGINT NOT NULL,
-	battle_tag VARCHAR(255) NOT NULL,
-	player_id_slug VARCHAR(255) NOT NULL,
-	last_checked_at TIMESTAMP WITH TIME ZONE,
-	last_success_at TIMESTAMP WITH TIME ZONE,
-	status VARCHAR(32) DEFAULT 'pending' NOT NULL,
-	consecutive_failures INTEGER DEFAULT '0' NOT NULL,
-	next_eligible_at TIMESTAMP WITH TIME ZONE,
-	last_error TEXT,
-	priority_tier SMALLINT DEFAULT '0' NOT NULL,
-	PRIMARY KEY (id),
-	UNIQUE (social_account_id),
-	FOREIGN KEY(social_account_id) REFERENCES players.social_account (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_battle_tag_state_due ON overwatch_rank.battle_tag_state (status, next_eligible_at, last_checked_at);
-
-CREATE INDEX ix_battle_tag_state_priority ON overwatch_rank.battle_tag_state (priority_tier, last_checked_at);
-
-CREATE TABLE overwatch_rank.fetch_log (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	social_account_id BIGINT,
-	battle_tag VARCHAR(255) NOT NULL,
-	status VARCHAR(32) NOT NULL,
-	source VARCHAR(32) NOT NULL,
-	error TEXT,
-	snapshots_written INTEGER DEFAULT '0' NOT NULL,
-	PRIMARY KEY (id),
-	FOREIGN KEY(social_account_id) REFERENCES players.social_account (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_fetch_log_created_at ON overwatch_rank.fetch_log (created_at);
-
-CREATE INDEX ix_fetch_log_status_created ON overwatch_rank.fetch_log (status, created_at);
-
-CREATE TABLE overwatch_rank.rank_snapshot (
-	id BIGSERIAL NOT NULL,
-	user_id BIGINT NOT NULL,
-	social_account_id BIGINT NOT NULL,
-	battle_tag VARCHAR(255) NOT NULL,
-	platform VARCHAR(16) NOT NULL,
-	role VARCHAR(16) NOT NULL,
-	division VARCHAR(32),
-	tier SMALLINT,
-	season INTEGER,
-	rank_value INTEGER,
-	mapping_version VARCHAR(64),
-	is_ranked BOOLEAN DEFAULT 'true' NOT NULL,
-	captured_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	source VARCHAR(32) DEFAULT 'scheduled' NOT NULL,
-	PRIMARY KEY (id),
-	FOREIGN KEY(user_id) REFERENCES players."user" (id) ON DELETE CASCADE,
-	FOREIGN KEY(social_account_id) REFERENCES players.social_account (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_overwatch_rank_rank_snapshot_captured_at ON overwatch_rank.rank_snapshot (captured_at);
-
-CREATE INDEX ix_rank_snapshot_latest_ranked ON overwatch_rank.rank_snapshot (social_account_id, role, captured_at DESC) WHERE rank_value IS NOT NULL AND is_ranked IS TRUE;
-
-CREATE INDEX ix_rank_snapshot_series_captured ON overwatch_rank.rank_snapshot (social_account_id, role, platform, captured_at);
-
-CREATE INDEX ix_rank_snapshot_user_captured ON overwatch_rank.rank_snapshot (user_id, captured_at);
 
 CREATE TABLE players.favorite_player (
 	id BIGSERIAL NOT NULL,
@@ -1897,6 +1827,8 @@ CREATE TABLE division_grid_import_job (
 CREATE INDEX ix_division_grid_import_job_requested_by_user_id ON division_grid_import_job (requested_by_user_id);
 
 CREATE INDEX ix_division_grid_import_job_source_workspace_id ON division_grid_import_job (source_workspace_id);
+
+CREATE INDEX ix_division_grid_import_job_status ON division_grid_import_job (status);
 
 CREATE INDEX ix_division_grid_import_job_workspace_id ON division_grid_import_job (workspace_id);
 
@@ -2228,6 +2160,83 @@ CREATE TABLE quota.workspace_limit (
 	FOREIGN KEY(updated_by) REFERENCES auth."user" (id) ON DELETE SET NULL
 );
 
+CREATE TABLE rank.account_state (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	discipline VARCHAR(32) NOT NULL,
+	social_account_id BIGINT NOT NULL,
+	handle VARCHAR(255) NOT NULL,
+	external_id VARCHAR(255),
+	region VARCHAR(16),
+	last_checked_at TIMESTAMP WITH TIME ZONE,
+	last_success_at TIMESTAMP WITH TIME ZONE,
+	status VARCHAR(32) DEFAULT 'pending' NOT NULL,
+	consecutive_failures INTEGER DEFAULT '0' NOT NULL,
+	next_eligible_at TIMESTAMP WITH TIME ZONE,
+	last_error TEXT,
+	priority_tier SMALLINT DEFAULT '0' NOT NULL,
+	PRIMARY KEY (id),
+	UNIQUE (social_account_id),
+	FOREIGN KEY(social_account_id) REFERENCES players.social_account (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_account_state_due ON rank.account_state (discipline, status, next_eligible_at, last_checked_at);
+
+CREATE INDEX ix_account_state_priority ON rank.account_state (priority_tier, last_checked_at);
+
+CREATE TABLE rank.fetch_log (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	discipline VARCHAR(32) NOT NULL,
+	social_account_id BIGINT,
+	handle VARCHAR(255) NOT NULL,
+	status VARCHAR(32) NOT NULL,
+	source VARCHAR(32) NOT NULL,
+	error TEXT,
+	snapshots_written INTEGER DEFAULT '0' NOT NULL,
+	PRIMARY KEY (id),
+	FOREIGN KEY(social_account_id) REFERENCES players.social_account (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_fetch_log_created_at ON rank.fetch_log (created_at);
+
+CREATE INDEX ix_fetch_log_status_created ON rank.fetch_log (status, created_at);
+
+CREATE TABLE rank.rank_snapshot (
+	id BIGSERIAL NOT NULL,
+	discipline VARCHAR(32) NOT NULL,
+	user_id BIGINT NOT NULL,
+	social_account_id BIGINT NOT NULL,
+	handle VARCHAR(255) NOT NULL,
+	platform VARCHAR(16),
+	role VARCHAR(16),
+	queue VARCHAR(16),
+	division VARCHAR(32),
+	tier SMALLINT,
+	season INTEGER,
+	lp INTEGER,
+	wins INTEGER,
+	losses INTEGER,
+	rank_value INTEGER,
+	mapping_version VARCHAR(64),
+	is_ranked BOOLEAN DEFAULT 'true' NOT NULL,
+	captured_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	source VARCHAR(32) DEFAULT 'scheduled' NOT NULL,
+	PRIMARY KEY (id),
+	FOREIGN KEY(user_id) REFERENCES players."user" (id) ON DELETE CASCADE,
+	FOREIGN KEY(social_account_id) REFERENCES players.social_account (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_rank_rank_snapshot_captured_at ON rank.rank_snapshot (captured_at);
+
+CREATE INDEX ix_rank_snapshot_latest_ranked ON rank.rank_snapshot (social_account_id, role, queue, captured_at DESC) WHERE rank_value IS NOT NULL AND is_ranked IS TRUE;
+
+CREATE INDEX ix_rank_snapshot_series_captured ON rank.rank_snapshot (social_account_id, role, platform, queue, captured_at);
+
+CREATE INDEX ix_rank_snapshot_user_captured ON rank.rank_snapshot (user_id, captured_at);
+
 CREATE TABLE realtime.workspace_event (
 	id BIGSERIAL NOT NULL,
 	topic TEXT NOT NULL,
@@ -2392,9 +2401,6 @@ CREATE TABLE registration.registration (
 	tournament_id BIGINT NOT NULL,
 	workspace_member_id BIGINT,
 	display_name VARCHAR(255),
-	battle_tag VARCHAR(255),
-	battle_tag_normalized VARCHAR(255),
-	smurf_tags_json JSON,
 	stream_pov BOOLEAN DEFAULT 'false' NOT NULL,
 	is_reserve BOOLEAN DEFAULT 'false' NOT NULL,
 	form_version_id BIGINT,
@@ -2437,8 +2443,6 @@ CREATE INDEX ix_registration_registration_tournament_id ON registration.registra
 CREATE INDEX ix_registration_registration_workspace_member_id ON registration.registration (workspace_member_id);
 
 CREATE INDEX ix_registration_tournament_balancer_status ON registration.registration (tournament_id, status, balancer_status) WHERE deleted_at IS NULL;
-
-CREATE UNIQUE INDEX uq_registration_tournament_tag_active ON registration.registration (tournament_id, battle_tag_normalized) WHERE battle_tag_normalized IS NOT NULL AND deleted_at IS NULL;
 
 CREATE UNIQUE INDEX uq_registration_user ON registration.registration (tournament_id, workspace_member_id) WHERE deleted_at IS NULL;
 
@@ -3574,6 +3578,8 @@ CREATE INDEX ix_tournament_tournament_division_grid_version_id ON tournament.tou
 CREATE INDEX ix_tournament_tournament_is_hidden ON tournament.tournament (is_hidden);
 
 CREATE UNIQUE INDEX ix_tournament_tournament_slug ON tournament.tournament (slug);
+
+CREATE INDEX ix_tournament_tournament_status ON tournament.tournament (status);
 
 CREATE INDEX ix_tournament_tournament_workspace_id ON tournament.tournament (workspace_id);
 

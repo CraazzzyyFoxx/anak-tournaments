@@ -1856,50 +1856,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/battle-tags/{id}/rank-history": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Battle tag rank history
-         * @description Permission: public; no authentication required. Returns a single battle tag's OverFast rank time series with granularity, date range, platform and role filters.
-         *
-         *     RPC subject: `rpc.stats.rank.battle_tag_history`
-         */
-        get: operations["get__api_v1_battle_tags__id__rank_history"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/catalog/legacy/{legacy_kind}/{legacy_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Resolve an old catalog id
-         * @description Permission: public; no authentication required. Returns the catalog entity an old hero, map or gamemode id became in the catalog migration (entity_id, discipline, kind, slug); 404 for any other id. Available until the deploy after the multi-game release.
-         *
-         *     RPC subject: `rpc.app.catalog.legacy`
-         */
-        get: operations["get__api_v1_catalog_legacy__legacy_kind___legacy_id_"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/catalog/{discipline}/{kind}": {
         parameters: {
             query?: never;
@@ -2482,6 +2438,28 @@ export interface paths {
          *     RPC subject: `rpc.tournament.get_encounter`
          */
         get: operations["get__api_v1_encounters__id_"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/game-accounts/{id}/rank-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Game account rank history
+         * @description Permission: public; no authentication required. Returns one game account's rank time series (`discipline` names the game, default `overwatch`) with granularity, date range, platform and role filters; League series are per queue. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.
+         *
+         *     RPC subject: `rpc.stats.rank.game_account_history`
+         */
+        get: operations["get__api_v1_game_accounts__id__rank_history"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3160,28 +3138,6 @@ export interface paths {
          *     RPC subject: `rpc.app.statistics.champion`
          */
         get: operations["get__api_v1_statistics_champion"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/statistics/dashboard": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Dashboard stats
-         * @description Permission: public; no authentication required. Returns aggregate dashboard statistics for the optional workspace; the catalog counts are the required `discipline`'s.
-         *
-         *     RPC subject: `rpc.app.statistics.dashboard`
-         */
-        get: operations["get__api_v1_statistics_dashboard"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4101,7 +4057,7 @@ export interface paths {
         };
         /**
          * Current user ranks
-         * @description Permission: public; no authentication required. Returns a user's current OverFast ranks for the requested platform.
+         * @description Permission: public; no authentication required. Returns a user's current collected native ranks for the requested platform. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.
          *
          *     RPC subject: `rpc.stats.rank.user_current`
          */
@@ -4255,7 +4211,7 @@ export interface paths {
         };
         /**
          * User rank history
-         * @description Permission: public; no authentication required. Returns a user's OverFast rank time series with configurable granularity, date range, platform and role filters.
+         * @description Permission: public; no authentication required. Returns a user's collected native rank time series with configurable granularity, date range, platform and role filters. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.
          *
          *     RPC subject: `rpc.stats.rank.user_history`
          */
@@ -5748,6 +5704,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Organizer dashboard
+         * @description Permission: any of workspace `tournament.read`, `team.read`, `match.read`, `user.read` or `achievement.read`. Returns the organizer home of one workspace: one card per tournament that is not finished (hidden ones included) plus completed tournaments within 14 days of finishing whose wrap-up (results confirmed, duel logs, achievements, standings) is not done; the next 7 days of phase-schedule boundaries plus every overdue phase start; the work queue of those cards ordered by severity; and the backlog of every other tournament with a data-quality issue. Each field group is null when the caller lacks the permission that gates it, never zero. 422 without `workspace_id`, 403 without any of the permissions.
+         *
+         *     RPC subject: `rpc.app.statistics.admin_dashboard`
+         */
+        get: operations["get__api_v1_admin_dashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/dashboard/trends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Organizer dashboard trends
+         * @description Permission: workspace `tournament.read`. Returns participants, newcomers, duel log coverage and the median match-end-to-confirmation time of the workspace's last 10 finished, non-league, non-hidden tournaments, oldest first, optionally narrowed to one installed `discipline` (404 `discipline_not_installed` for an unknown code). 422 without `workspace_id`.
+         *
+         *     RPC subject: `rpc.app.statistics.admin_dashboard_trends`
+         */
+        get: operations["get__api_v1_admin_dashboard_trends"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/encounter-reports": {
         parameters: {
             query?: never;
@@ -6665,7 +6665,7 @@ export interface paths {
         put?: never;
         /**
          * Trigger rank collection
-         * @description Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' tags are touched), otherwise global `rank.update`. Enqueues an OverFast rank-collection run for a user or specific battle tags and returns the enqueued count.
+         * @description Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' accounts are touched), otherwise global `rank.update`. Enqueues a native rank-collection run for a user or specific linked game accounts and returns the enqueued count. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.
          *
          *     RPC subject: `rpc.stats.rank.collect`
          */
@@ -6685,9 +6685,7 @@ export interface paths {
         };
         /**
          * Rank fetch log
-         * @description Permission: workspace `rank.read` when `workspace_id` is given (rows are then scoped to the battle tags of that workspace's players), otherwise global `rank.read`. Lists OverFast rank-collection fetch-log entries filtered by status, source and cursor.
-         *
-         *     Accepts arbitrary query parameters (pagination/filtering); see the service for the full list.
+         * @description Permission: workspace `rank.read` when `workspace_id` is given (rows are then scoped to the game accounts of that workspace's players), otherwise global `rank.read`. Lists native rank-collection fetch-log entries filtered by status, source and cursor. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.
          *
          *     RPC subject: `rpc.stats.rank.fetch_log`
          */
@@ -6711,7 +6709,7 @@ export interface paths {
         put?: never;
         /**
          * Re-enable disabled rank collection
-         * @description Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' tags are requeued), otherwise global `rank.update`. Requeues battle tags that were auto-disabled by a transient OverFast outage (status disabled -> pending, failure counter reset), spreading them across the collection interval; optionally limited to tags that previously succeeded. Returns the re-enabled count.
+         * @description Permission: workspace `rank.update` when `workspace_id` is given (only that workspace's players' accounts are requeued), otherwise global `rank.update`. Requeues game accounts that were auto-disabled by a transient upstream outage (status disabled -> pending, failure counter reset), spreading them across the collection interval; optionally limited to accounts that previously succeeded. Returns the re-enabled count. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.
          *
          *     RPC subject: `rpc.stats.rank.reenable_disabled`
          */
@@ -6731,7 +6729,7 @@ export interface paths {
         };
         /**
          * Rank collection health stats
-         * @description Permission: workspace `rank.read` when `workspace_id` is given (aggregates are then scoped to the battle tags of that workspace's players), otherwise global `rank.read`. Aggregated OverFast rank-collection health: battle-tag state counts by status and priority tier, snapshot coverage over 24h/7d, last successful capture, last-24h fetch-outcome mix with error rate, and the active config.
+         * @description Permission: workspace `rank.read` when `workspace_id` is given (aggregates are then scoped to the game accounts of that workspace's players), otherwise global `rank.read`. Aggregated native rank-collection health: account state counts by status and priority tier, snapshot coverage over 24h/7d, last successful capture, last-24h fetch-outcome mix with error rate, upstream circuit state, and the active config. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.
          *
          *     RPC subject: `rpc.stats.rank.stats`
          */
@@ -6753,7 +6751,7 @@ export interface paths {
         };
         /**
          * User rank collection status
-         * @description Permission: workspace `rank.read` when `workspace_id` is given (empty unless the player is a member of that workspace), otherwise global `rank.read`. Returns the OverFast rank-collection status for each of a user's battle tags.
+         * @description Permission: workspace `rank.read` when `workspace_id` is given (empty unless the player is a member of that workspace), otherwise global `rank.read`. Returns the native rank-collection status for each of a user's game accounts. `discipline` query parameter names the game (default `overwatch`); 404 `rank_collection_unsupported` for a game that collects no ranks.
          *
          *     RPC subject: `rpc.stats.rank.user_collection`
          */
@@ -10569,7 +10567,7 @@ export interface paths {
         };
         /**
          * List all rank values in the workspace
-         * @description Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, ow, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over OW on the workspace grid, effective_mix is the author's book over the canon over OW on the same workspace grid. `division` is resolved on the workspace's effective grid of the row's game. Filtering, sorting, the exact total and the page all run in the database. Optional `discipline` reads one enabled game (422 `discipline_not_enabled` for another); without it the rows are the union over every game the workspace runs, each tagged with its `discipline`, and `role`, `rank_min`, `rank_max` and `sort=rank_value|division` are a 422 (`<param> requires discipline`): those values live on different grids. A game with no grid here lists its rows with a null `division`.
+         * @description Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, native, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over the game's native rank on the workspace grid, effective_mix is the author's book over the canon over the native rank on the same workspace grid. `division` is resolved on the workspace's effective grid of the row's game. Filtering, sorting, the exact total and the page all run in the database. Optional `discipline` reads one enabled game (422 `discipline_not_enabled` for another); without it the rows are the union over every game the workspace runs, each tagged with its `discipline`, and `role`, `rank_min`, `rank_max` and `sort=rank_value|division` are a 422 (`<param> requires discipline`): those values live on different grids. A game with no grid here lists its rows with a null `division`.
          *
          *     RPC subject: `rpc.balancer.ranks.list`
          */
@@ -12182,20 +12180,6 @@ export interface components {
              */
             updated_at: string | null;
         };
-        /**
-         * CatalogLegacyRead
-         * @description What an old ``overwatch.hero|map|gamemode`` id became.
-         */
-        "app.CatalogLegacyRead": {
-            /** Discipline */
-            discipline: string;
-            /** Entity Id */
-            entity_id: number;
-            /** Kind */
-            kind: string;
-            /** Slug */
-            slug: string;
-        };
         /** CharacterLeaderboardEntry */
         "app.CharacterLeaderboardEntry": {
             /** Avg Crit Accuracy */
@@ -12352,59 +12336,6 @@ export interface components {
              * @default null
              */
             win_rate_all: number | null;
-        };
-        /** DashboardActiveTournamentStats */
-        "app.DashboardActiveTournamentStats": {
-            /** Encounters Missing Logs */
-            encounters_missing_logs: number;
-            /** Encounters Total */
-            encounters_total: number;
-            /** Log Coverage Percent */
-            log_coverage_percent: number;
-            /** Tournament Id */
-            tournament_id: number;
-        };
-        /** DashboardIssues */
-        "app.DashboardIssues": {
-            /** Encounters Awaiting Result */
-            encounters_awaiting_result: number;
-            /** Encounters Missing Logs */
-            encounters_missing_logs: number;
-            /** Encounters Pending Confirmation */
-            encounters_pending_confirmation: number;
-            /** Stage Slots Empty */
-            stage_slots_empty: number;
-            /** Teams Without Players */
-            teams_without_players: number;
-            /** Tournaments Without Stages */
-            tournaments_without_stages: number;
-            /** Users Without Identities */
-            users_without_identities: number;
-        };
-        /** DashboardStats */
-        "app.DashboardStats": {
-            active_tournament_stats: components["schemas"]["app.DashboardActiveTournamentStats"] | null;
-            /** Characters Total */
-            characters_total: number;
-            /** Encounters Completed */
-            encounters_completed: number;
-            /** Encounters Total */
-            encounters_total: number;
-            issues: components["schemas"]["app.DashboardIssues"];
-            /** Maps Total */
-            maps_total: number;
-            /** Modes Total */
-            modes_total: number;
-            /** Players Total */
-            players_total: number;
-            /** Teams Total */
-            teams_total: number;
-            /** Tournaments Active */
-            tournaments_active: number;
-            /** Tournaments Registration Open */
-            tournaments_registration_open: number;
-            /** Tournaments Total */
-            tournaments_total: number;
         };
         /**
          * DisciplineCapabilities
@@ -12759,7 +12690,7 @@ export interface components {
             /** Native Division */
             native_division: string;
             /** Native Tier */
-            native_tier: number;
+            native_tier: number | null;
             /** Number */
             number: number;
             /** Rank Max */
@@ -16453,8 +16384,6 @@ export interface components {
         };
         /** CurrentRank */
         "stats.CurrentRank": {
-            /** Battle Tag */
-            battle_tag: string;
             /**
              * Captured At
              * Format: date-time
@@ -16462,20 +16391,42 @@ export interface components {
             captured_at: string;
             /** Division */
             division: string | null;
+            /** Handle */
+            handle: string;
             /** Is Ranked */
             is_ranked: boolean;
+            /**
+             * Losses
+             * @default null
+             */
+            losses: number | null;
+            /**
+             * Lp
+             * @default null
+             */
+            lp: number | null;
             /** Platform */
-            platform: string;
+            platform: string | null;
+            /**
+             * Queue
+             * @default null
+             */
+            queue: string | null;
             /** Rank Value */
             rank_value: number | null;
             /** Role */
-            role: string;
+            role: string | null;
             /** Season */
             season: number | null;
             /** Social Account Id */
             social_account_id: number;
             /** Tier */
             tier: number | null;
+            /**
+             * Wins
+             * @default null
+             */
+            wins: number | null;
         };
         /** CurrentRanksResponse */
         "stats.CurrentRanksResponse": {
@@ -16752,12 +16703,27 @@ export interface components {
             division: string | null;
             /** Is Ranked */
             is_ranked: boolean;
+            /**
+             * Losses
+             * @default null
+             */
+            losses: number | null;
+            /**
+             * Lp
+             * @default null
+             */
+            lp: number | null;
             /** Rank Value */
             rank_value: number | null;
             /** Season */
             season: number | null;
             /** Tier */
             tier: number | null;
+            /**
+             * Wins
+             * @default null
+             */
+            wins: number | null;
         };
         /** RankHistoryResponse */
         "stats.RankHistoryResponse": {
@@ -16773,25 +16739,27 @@ export interface components {
         };
         /**
          * RankSeries
-         * @description One time series for a (battle_tag, role, platform) tuple.
-         *
-         *     The frontend pivots a list of these into either grouping: fix a battle tag
-         *     and draw a line per role, or fix a role and draw a line per battle tag.
+         * @description One time series of one game account: per (role, platform) for Overwatch, per ``queue`` for League.
          */
         "stats.RankSeries": {
-            /** Battle Tag */
-            battle_tag: string;
             current: components["schemas"]["stats.RankHistoryPoint"] | null;
+            /** Handle */
+            handle: string;
             /** Latest Captured At */
             latest_captured_at: string | null;
             /** Peak Rank Value */
             peak_rank_value: number | null;
             /** Platform */
-            platform: string;
+            platform: string | null;
             /** Points */
             points: components["schemas"]["stats.RankHistoryPoint"][];
+            /**
+             * Queue
+             * @default null
+             */
+            queue: string | null;
             /** Role */
-            role: string;
+            role: string | null;
             /** Social Account Id */
             social_account_id: number;
         };
@@ -20071,6 +20039,21 @@ export interface components {
             /** Shift */
             shift: number;
         };
+        /** AdminDashboard */
+        "app.AdminDashboard": {
+            backlog: components["schemas"]["app.DashboardBacklog"];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Issues */
+            issues: components["schemas"]["app.DashboardIssue"][];
+            /** Timeline */
+            timeline: components["schemas"]["app.DashboardTimelineEvent"][] | null;
+            /** Tournaments */
+            tournaments: components["schemas"]["app.DashboardTournamentCard"][];
+        };
         /**
          * AdminUserNotificationsRead
          * @description One *other* account's notification state, for the admin inspector.
@@ -20537,6 +20520,198 @@ export interface components {
              * @default null
              */
             slug: string | null;
+        };
+        /** DashboardBacklog */
+        "app.DashboardBacklog": {
+            /** Encounters Missing Logs */
+            encounters_missing_logs: number | null;
+            /** Rows */
+            rows: components["schemas"]["app.DashboardBacklogRow"][];
+            /** Stage Slots Empty */
+            stage_slots_empty: number | null;
+            /** Teams Without Players */
+            teams_without_players: number | null;
+            /** Tournaments Total */
+            tournaments_total: number;
+            /** Tournaments Without Stages */
+            tournaments_without_stages: number | null;
+            /** Users Without Identities */
+            users_without_identities: number | null;
+        };
+        /**
+         * DashboardBacklogRow
+         * @description One tournament without a card that has a visible non-zero issue.
+         */
+        "app.DashboardBacklogRow": {
+            /** Discipline */
+            discipline: string;
+            /** Encounters Missing Logs */
+            encounters_missing_logs: number | null;
+            /** Has Stages */
+            has_stages: boolean | null;
+            /** Stage Slots Empty */
+            stage_slots_empty: number | null;
+            /** Teams Without Players */
+            teams_without_players: number | null;
+            /** Tournament Id */
+            tournament_id: number;
+            /** Tournament Name */
+            tournament_name: string;
+        };
+        /** DashboardIssue */
+        "app.DashboardIssue": {
+            /** Count */
+            count: number | null;
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: AppDashboardIssueKey;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: AppDashboardIssueSeverity;
+            /** Tournament Id */
+            tournament_id: number;
+            /** Tournament Name */
+            tournament_name: string;
+        };
+        /**
+         * DashboardPlay
+         * @description ``match.read``; the card's ``play`` is None without it.
+         */
+        "app.DashboardPlay": {
+            /** Encounters Completed */
+            encounters_completed: number;
+            /** Encounters Disputed */
+            encounters_disputed: number;
+            /** Encounters Live */
+            encounters_live: number;
+            /** Encounters Overdue */
+            encounters_overdue: number;
+            /** Encounters Pending Confirmation */
+            encounters_pending_confirmation: number;
+            /** Encounters Total */
+            encounters_total: number;
+        };
+        /** DashboardScheduleEntry */
+        "app.DashboardScheduleEntry": {
+            /** Ends At */
+            ends_at: string | null;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /** Status */
+            status: string;
+        };
+        /** DashboardTimelineEvent */
+        "app.DashboardTimelineEvent": {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Edge
+             * @enum {string}
+             */
+            edge: AppDashboardTimelineEventEdge;
+            /** Overdue */
+            overdue: boolean;
+            /** Status */
+            status: string;
+            /** Tournament Id */
+            tournament_id: number;
+            /** Tournament Name */
+            tournament_name: string;
+        };
+        /** DashboardTournamentCard */
+        "app.DashboardTournamentCard": {
+            /** Discipline */
+            discipline: string;
+            /** End Date */
+            end_date: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Has Challonge Source */
+            has_challonge_source: boolean;
+            /** Id */
+            id: number;
+            /** Is Hidden */
+            is_hidden: boolean;
+            /** Name */
+            name: string;
+            /** Next Deadline At */
+            next_deadline_at: string | null;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: AppDashboardTournamentCardPhase;
+            /** Phase Schedule */
+            phase_schedule: components["schemas"]["app.DashboardScheduleEntry"][];
+            play: components["schemas"]["app.DashboardPlay"] | null;
+            readiness: components["schemas"]["app.TournamentReadiness"];
+            /** Registration Closes At */
+            registration_closes_at: string | null;
+            /** Registrations Last 24H */
+            registrations_last_24h: number | null;
+            /** Start Date */
+            start_date: string | null;
+            /** Status */
+            status: string;
+            /** Team Formation */
+            team_formation: string;
+            wrap_up: components["schemas"]["app.DashboardWrapUp"] | null;
+        };
+        /** DashboardTrendPoint */
+        "app.DashboardTrendPoint": {
+            /** Discipline */
+            discipline: string;
+            /** Duel Encounters Total */
+            duel_encounters_total: number;
+            /** Duel Encounters With Logs */
+            duel_encounters_with_logs: number;
+            /** Median Confirm Seconds */
+            median_confirm_seconds: number | null;
+            /** Newcomers */
+            newcomers: number;
+            /** Participants */
+            participants: number;
+            /** Start Date */
+            start_date: string | null;
+            /** Tournament Id */
+            tournament_id: number;
+            /** Tournament Name */
+            tournament_name: string;
+        };
+        /** DashboardTrends */
+        "app.DashboardTrends": {
+            /** Points */
+            points: components["schemas"]["app.DashboardTrendPoint"][];
+        };
+        /**
+         * DashboardWrapUp
+         * @description Present only on a ``wrap_up`` card. ``done`` is computed on full data regardless of permissions.
+         */
+        "app.DashboardWrapUp": {
+            /** Achievements Status */
+            achievements_status: string | null;
+            /** Done */
+            done: boolean;
+            /** Duel Encounters Total */
+            duel_encounters_total: number | null;
+            /** Duel Encounters With Logs */
+            duel_encounters_with_logs: number | null;
+            /** Logs Used */
+            logs_used: boolean | null;
+            /** Results Open */
+            results_open: number | null;
+            /** Standings Recalc Pending */
+            standings_recalc_pending: boolean | null;
         };
         /** LookupItem */
         "app.LookupItem": {
@@ -21458,7 +21633,7 @@ export interface components {
             lobby_index: number | null;
             /**
              * Team
-             * @description Roster team name, or the platform on an ow row.
+             * @description Roster team name, or the platform/region on a native row.
              * @default null
              */
             team: string | null;
@@ -21528,17 +21703,17 @@ export interface components {
              */
             member_id: number;
             /**
-             * Ow Division
-             * @description ow only: the native OverFast division, e.g. 'gold'.
+             * Native Division
+             * @description native only: the game's own division, e.g. 'gold' or 'DIAMOND'.
              * @default null
              */
-            ow_division: string | null;
+            native_division: string | null;
             /**
-             * Ow Tier
-             * @description ow only: the native tier inside that division.
+             * Native Tier
+             * @description native only: the tier inside that division (null for an unsplit tier).
              * @default null
              */
-            ow_tier: number | null;
+            native_tier: number | null;
             /**
              * Player Id
              * @description players.user id -- the identity /admin/people/[id] is keyed by.
@@ -22858,13 +23033,13 @@ export interface components {
         };
         /** CollectionStatusRead */
         "stats.CollectionStatusRead": {
-            /** Battle Tag */
-            battle_tag: string;
             /**
              * Consecutive Failures
              * @default 0
              */
             consecutive_failures: number;
+            /** Handle */
+            handle: string;
             /**
              * Last Checked At
              * @default null
@@ -22965,7 +23140,10 @@ export interface components {
             error_message: string | null;
             /** Finished At */
             finished_at: string | null;
-            /** Id */
+            /**
+             * Id
+             * Format: uuid
+             */
             id: string;
             /** Results Created */
             results_created: number;
@@ -22989,8 +23167,6 @@ export interface components {
         };
         /** FetchLogRead */
         "stats.FetchLogRead": {
-            /** Battle Tag */
-            battle_tag: string;
             /**
              * Created At
              * Format: date-time
@@ -22998,6 +23174,8 @@ export interface components {
             created_at: string;
             /** Error */
             error: string | null;
+            /** Handle */
+            handle: string;
             /** Id */
             id: number;
             /** Snapshots Written */
@@ -23296,24 +23474,14 @@ export interface components {
             /** Interval Seconds */
             interval_seconds: number;
             /**
-             * Invalid Battle Tags 24H
+             * Invalid Handles 24H
              * @default 0
              */
-            invalid_battle_tags_24h: number;
+            invalid_handles_24h: number;
             /** Last Success At */
             last_success_at: string | null;
             /** Never Checked */
             never_checked: number;
-            /**
-             * Overfast Base Url
-             * @default
-             */
-            overfast_base_url: string;
-            /**
-             * Overfast Circuit State
-             * @default closed
-             */
-            overfast_circuit_state: string;
             /** Rate Limit Per Minute */
             rate_limit_per_minute: number;
             /** Scope */
@@ -23326,6 +23494,16 @@ export interface components {
             tier2: number;
             /** Total */
             total: number;
+            /**
+             * Upstream Base Url
+             * @default
+             */
+            upstream_base_url: string;
+            /**
+             * Upstream Circuit State
+             * @default closed
+             */
+            upstream_circuit_state: string;
         };
         /**
          * RankStatusCounts
@@ -25379,10 +25557,10 @@ export interface components {
              */
             include_icons: boolean;
             /**
-             * Include Ow Rank Mappings
+             * Include Native Rank Mappings
              * @default true
              */
-            include_ow_rank_mappings: boolean;
+            include_native_rank_mappings: boolean;
             /** Source Grid Id */
             source_grid_id: number;
             /** Source Version Id */
@@ -35540,133 +35718,6 @@ export interface operations {
             };
         };
     };
-    get__api_v1_battle_tags__id__rank_history: {
-        parameters: {
-            query?: {
-                granularity?: string;
-                date_from?: string;
-                date_to?: string;
-                platform?: string;
-                role?: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["stats.RankHistoryResponse"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    get__api_v1_catalog_legacy__legacy_kind___legacy_id_: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                legacy_kind: string;
-                legacy_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.CatalogLegacyRead"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     get__api_v1_catalog__discipline___kind_: {
         parameters: {
             query?: {
@@ -37805,6 +37856,73 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["tournament.EncounterRead"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_game_accounts__id__rank_history: {
+        parameters: {
+            query?: {
+                granularity?: string;
+                date_from?: string;
+                date_to?: string;
+                platform?: string;
+                role?: string;
+                discipline?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["stats.RankHistoryResponse"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -40307,67 +40425,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["app.Paginated_PlayerStatistics_"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    get__api_v1_statistics_dashboard: {
-        parameters: {
-            query: {
-                discipline: string;
-                workspace_id?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["app.DashboardStats"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -43355,8 +43412,9 @@ export interface operations {
     };
     get__api_v1_users__id__current_ranks: {
         parameters: {
-            query: {
-                platform: string;
+            query?: {
+                platform?: string;
+                discipline?: string;
             };
             header?: never;
             path: {
@@ -43832,6 +43890,7 @@ export interface operations {
                 social_account_id?: number;
                 platform?: string;
                 role?: string;
+                discipline?: string;
             };
             header?: never;
             path: {
@@ -45002,6 +45061,9 @@ export interface operations {
                 action?: string | null;
                 actor_user_id?: number | null;
                 search?: string | null;
+                since?: string | null;
+                exclude_actor_user_id?: number | null;
+                source?: string | null;
             };
             header?: never;
             path?: never;
@@ -49583,6 +49645,163 @@ export interface operations {
             };
         };
     };
+    get__api_v1_admin_dashboard: {
+        parameters: {
+            query: {
+                workspace_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.AdminDashboard"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_admin_dashboard_trends: {
+        parameters: {
+            query: {
+                workspace_id: number;
+                discipline?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.DashboardTrends"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     get__api_v1_admin_encounter_reports: {
         parameters: {
             query?: {
@@ -53164,7 +53383,8 @@ export interface operations {
     post__api_v1_admin_rank_collect: {
         parameters: {
             query?: {
-                workspace_id?: string;
+                workspace_id?: number;
+                discipline?: string;
             };
             header?: never;
             path?: never;
@@ -53245,7 +53465,14 @@ export interface operations {
     };
     get__api_v1_admin_rank_fetch_log: {
         parameters: {
-            query?: never;
+            query?: {
+                workspace_id?: number;
+                status?: string;
+                source?: string;
+                before_id?: number;
+                limit?: number;
+                discipline?: string;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -53322,7 +53549,8 @@ export interface operations {
     post__api_v1_admin_rank_reenable_disabled: {
         parameters: {
             query?: {
-                workspace_id?: string;
+                workspace_id?: number;
+                discipline?: string;
             };
             header?: never;
             path?: never;
@@ -53404,7 +53632,8 @@ export interface operations {
     get__api_v1_admin_rank_stats: {
         parameters: {
             query?: {
-                workspace_id?: string;
+                workspace_id?: number;
+                discipline?: string;
             };
             header?: never;
             path?: never;
@@ -53482,7 +53711,8 @@ export interface operations {
     get__api_v1_admin_rank_users__id__collection: {
         parameters: {
             query?: {
-                workspace_id?: string;
+                workspace_id?: number;
+                discipline?: string;
             };
             header?: never;
             path: {
@@ -74396,6 +74626,7 @@ export enum IdentityOAuthProvider {
     discord = "discord",
     twitch = "twitch",
     battlenet = "battlenet",
+    riot = "riot",
     google = "google",
     github = "github"
 }
@@ -74625,6 +74856,36 @@ export enum AppCatalogAliasMissReadKind {
     event = "event",
     role = "role"
 }
+export enum AppDashboardIssueKey {
+    results_disputed = "results_disputed",
+    results_overdue = "results_overdue",
+    results_pending_confirmation = "results_pending_confirmation",
+    phase_overdue = "phase_overdue",
+    registrations_pending = "registrations_pending",
+    pool_need_fix = "pool_need_fix",
+    ranks_missing = "ranks_missing",
+    balance_not_exported = "balance_not_exported",
+    stage_slots_empty = "stage_slots_empty",
+    logs_missing = "logs_missing",
+    achievements_pending = "achievements_pending",
+    standings_recalc_pending = "standings_recalc_pending"
+}
+export enum AppDashboardIssueSeverity {
+    critical = "critical",
+    warning = "warning",
+    info = "info"
+}
+export enum AppDashboardTimelineEventEdge {
+    start = "start",
+    end = "end"
+}
+export enum AppDashboardTournamentCardPhase {
+    preparation = "preparation",
+    registration = "registration",
+    formation = "formation",
+    live = "live",
+    wrap_up = "wrap_up"
+}
 export enum AppUserMergeFieldPolicyAvatar_url {
     source = "source",
     target = "target"
@@ -74663,7 +74924,7 @@ export enum BalancerRankContextKind {
 export enum BalancerRankOverviewRowLayer {
     canon = "canon",
     author = "author",
-    ow = "ow",
+    native = "native",
     hidden = "hidden",
     effective_tournament = "effective_tournament",
     effective_mix = "effective_mix",
