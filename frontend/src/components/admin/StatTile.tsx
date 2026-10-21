@@ -45,7 +45,7 @@ export function StatTile({
         className
       )}
     >
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <p className={EYEBROW_CLASS}>{label}</p>
         <p className={cn("mt-2 truncate text-2xl font-semibold tabular-nums", attention && TONE_TEXT[tone])}>
           {value}

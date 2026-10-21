@@ -19,7 +19,8 @@ and hides on its own; a block the reader's role cannot see is absent, never zero
   pending registrations within 24 h of closing) before warnings.
 * **Бэклог.** Everything else, collapsed, per tournament, with workspace totals.
 * **Тренды.** Participants, newcomer share, duel log coverage and median match-end-to-confirmation over the last 10
-  finished, public, non-league tournaments.
+  finished, public, non-league tournaments of every game; hovering a point names its tournament and game.
+* **No game filter.** Every game's tournaments are shown together, each with its game mark.
 * **Активность.** Staff audit entries of the last 7 days (`admin`, `api_key`, `discord`, `challonge`), own actions
   hidden unless "Включая мои"; consecutive same actor + action rows merged.
 * **Состояние платформы** (superusers): stream poller, rank collector per game, unresolved names, ML model freshness

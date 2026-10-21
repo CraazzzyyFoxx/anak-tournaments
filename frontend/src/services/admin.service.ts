@@ -2010,9 +2010,9 @@ class AdminService {
     return response.json();
   }
 
-  /** The last ten finished tournaments of the ambient workspace; `discipline` narrows to one game. */
-  async getDashboardTrends(discipline?: string | null): Promise<DashboardTrends> {
-    const response = await apiFetch("/api/v1/admin/dashboard/trends", { query: { discipline } });
+  /** The last ten finished tournaments of the ambient workspace, every game. */
+  async getDashboardTrends(): Promise<DashboardTrends> {
+    const response = await apiFetch("/api/v1/admin/dashboard/trends");
     return response.json();
   }
 }

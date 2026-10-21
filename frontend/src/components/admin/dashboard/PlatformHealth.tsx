@@ -119,7 +119,8 @@ export function PlatformHealth({ workspaceId, className }: Readonly<{ workspaceI
     ...(disciplines.data
       ? rankGames.map((game, index) => ({
           key: `ranks:${game.code}`,
-          label: t("healthRanks"),
+          // Two games collect ranks: the icon alone left the two rows identical.
+          label: rankGames.length > 1 ? t("healthRanksGame", { game: game.name }) : t("healthRanks"),
           game: game.code,
           href: `/admin/collectors/rank?discipline=${game.code}`,
           ...rowState(ranks[index], (data) => {
@@ -194,15 +195,17 @@ export function PlatformHealth({ workspaceId, className }: Readonly<{ workspaceI
     );
   }
 
+  // Tiles, not label-to-status rows: across a wide column the status sat a
+  // screen away from the thing it describes.
   return (
     <Block title={title} className={className}>
-      <ul className="divide-y divide-border/50">
+      <ul className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-3">
         {rows.map((row) => (
-          <li key={row.key} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
-            <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-foreground">
+          <li key={row.key} className="flex min-w-0 flex-col gap-1 rounded-lg border border-border/60 px-3 py-2.5">
+            <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
               {row.game ? <GameIcon slug={row.game} /> : null}
               {row.href ? (
-                <HoverPrefetchLink href={row.href} className="truncate hover:underline">
+                <HoverPrefetchLink href={row.href} className="truncate hover:text-foreground hover:underline">
                   {row.label}
                 </HoverPrefetchLink>
               ) : (
@@ -210,19 +213,21 @@ export function PlatformHealth({ workspaceId, className }: Readonly<{ workspaceI
               )}
             </span>
             {row.failed ? (
-              <span className={cn("flex items-center gap-2 text-xs", TONE_TEXT.danger)}>
+              <span className={cn("flex flex-wrap items-center gap-2 text-sm", TONE_TEXT.danger)}>
                 {t("healthFailed")}
                 <Button variant="outline" size="sm" onClick={row.retry}>
                   {tCommon("retry")}
                 </Button>
               </span>
             ) : row.verdict ? (
-              <span className={cn("flex items-center gap-1.5 text-sm", TONE_TEXT[row.verdict.tone])}>
+              <span className={cn("flex min-w-0 items-center gap-1.5 text-sm", TONE_TEXT[row.verdict.tone])}>
                 <StatusDot tone={row.verdict.tone} />
-                {row.verdict.text}
+                <span className="truncate" title={row.verdict.text}>
+                  {row.verdict.text}
+                </span>
               </span>
             ) : (
-              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-5 w-28" />
             )}
           </li>
         ))}

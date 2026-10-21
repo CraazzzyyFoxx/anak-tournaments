@@ -26,15 +26,12 @@ function present(count: number | null | undefined): count is number {
  */
 export function Backlog({
   backlog,
-  game,
   failed,
   onRetry,
   className
 }: Readonly<{
   /** `undefined` while loading. */
   backlog: DashboardBacklog | undefined;
-  /** The game filter; the totals stay workspace-wide, the rows follow it. */
-  game: string | null;
   failed: boolean;
   onRetry: () => void;
   className?: string;
@@ -53,7 +50,7 @@ export function Backlog({
   if (!backlog) return <Skeleton className={cn("h-[4.5rem] rounded-xl", className)} />;
   if (backlog.tournaments_total === 0 && !present(backlog.users_without_identities)) return null;
 
-  const rows = game === null ? backlog.rows : backlog.rows.filter((row) => row.discipline === game);
+  const rows = backlog.rows;
   const totals: Fact[] = [
     present(backlog.encounters_missing_logs)
       ? { key: "logs", label: t("backlogMissingLogs", { count: backlog.encounters_missing_logs }), href: "/admin/matches?view=encounters" }

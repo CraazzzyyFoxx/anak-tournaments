@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { ArrowRight, Plus } from "lucide-react";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { ActivityFeed } from "@/components/admin/dashboard/ActivityFeed";
@@ -15,14 +15,11 @@ import { PlatformHealth } from "@/components/admin/dashboard/PlatformHealth";
 import { Timeline } from "@/components/admin/dashboard/Timeline";
 import { Trends } from "@/components/admin/dashboard/Trends";
 import { WorkQueue } from "@/components/admin/dashboard/WorkQueue";
-import { gameFilterDefs } from "@/components/admin/game-filter";
 import { EmptyNote } from "@/components/kit/EmptyNote";
-import { FilterBar } from "@/components/kit/FilterBar";
-import { useFilters } from "@/components/kit/useFilters";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useCurrentWorkspaceId } from "@/hooks/useCurrentWorkspace";
-import { useGameScope } from "@/hooks/useGameScope";
 import { usePermissions, type AppPermission } from "@/hooks/usePermissions";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { cn } from "@/lib/utils";
@@ -45,19 +42,11 @@ const DASHBOARD_PERMISSIONS: AppPermission[] = [
  */
 export default function AdminDashboard() {
   const t = useTranslations("adminShell.dashboard");
-  const tGame = useTranslations("common.discipline");
   const { canAccessPermission, isSuperuser } = usePermissions();
   const workspaceId = useCurrentWorkspaceId();
   const { user } = useAuthProfile();
   const hour = new Date().getHours();
   const greetingPeriod = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
-
-  // `?discipline=` as on the other multi pages. The chip exists only over two
-  // or more enabled games; without it every game's tournaments are shown.
-  const scope = useGameScope({ pageClass: "multi", axis: workspaceId ?? "all" });
-  const gameDefs = gameFilterDefs(scope.games, tGame("column"), undefined, tGame("all"));
-  const filters = useFilters(gameDefs);
-  const game = gameDefs.length > 0 ? scope.game : null;
 
   const canReadDashboard = DASHBOARD_PERMISSIONS.some((permission) => canAccessPermission(permission, workspaceId));
   const canReadTournaments = canAccessPermission("tournament.read", workspaceId);
@@ -104,35 +93,33 @@ export default function AdminDashboard() {
   // A failed background refetch keeps the last good data on screen.
   const failed = dashboardQuery.isError && data === undefined;
   const retry = () => void dashboardQuery.refetch();
-  // The game filter is client-side: the dashboard is small and already whole.
-  const cards = data && (game === null ? data.tournaments : data.tournaments.filter((card) => card.discipline === game));
+  const cards = data?.tournaments;
   // Timeline and queue rows carry their tournament's game and hidden flag through its card.
   const cardOf = new Map(data?.tournaments.map((card) => [card.id, card] as const));
-  const issues = data?.issues.filter((issue) => game === null || cardOf.get(issue.tournament_id)?.discipline === game);
   // `null` is no `tournament.read`: the block is absent, not loading.
   const timelineHidden = data?.timeline === null;
-  const timeline = data?.timeline?.filter(
-    (event) => game === null || cardOf.get(event.tournament_id)?.discipline === game
-  );
   const betweenTournaments = data?.tournaments.length === 0;
   // In the live phase the queue is what an organizer opens the page for.
   const liveFirst = cards?.some((card) => card.phase === "live") ?? false;
-  // No queue between tournaments: the left column then takes the full width.
+  // No queue between tournaments; without a queue and an activity feed the
+  // left column takes the full width.
   const showQueue = canReadDashboard && !betweenTournaments;
+  const hasRail = showQueue || canReadAudit;
 
   return (
     <div className="flex flex-col gap-4">
       {header}
-      {gameDefs.length > 0 ? <FilterBar defs={gameDefs} filters={filters} /> : null}
       {!canReadDashboard && !canReadAudit && !isSuperuser ? <EmptyNote>{t("noAccess")}</EmptyNote> : null}
       {canReadDashboard ? (
         <DashboardRealtime workspaceId={workspaceId} tournamentIds={data?.tournaments.map((card) => card.id) ?? []} />
       ) : null}
 
-      {/* One column below `xl`. The left-column wrapper is `contents` there, so
-          its blocks are siblings of the cards and `order` can lift the queue.
+      {/* At `xl`: cards across, then a main column and a right rail. Below `xl`
+          both column wrappers are `contents`, so every block is a sibling in one
+          column and `order` sorts them: cards, queue, timeline, trends, activity,
+          backlog, health; on phones the queue leads in the live phase.
           `minmax(0, …)`: a bare `fr` track grows to its widest child's min-content
-          (the timeline strip), pushing the right column off-screen. */}
+          (the timeline strip), pushing the rail off-screen. */}
       <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(0,7fr)_minmax(0,3fr)] xl:items-start">
         {canReadDashboard ? (
           <div className="xl:col-span-2">
@@ -141,46 +128,64 @@ export default function AdminDashboard() {
             ) : !cards ? (
               <PhaseCardsSkeleton />
             ) : betweenTournaments ? (
-              // The header already carries "Create tournament": one CTA per intent.
-              <EmptyNote title={t("betweenTitle")}>{t("betweenBody")}</EmptyNote>
-            ) : cards.length === 0 ? (
-              <EmptyNote>{t("noCardsForGame")}</EmptyNote>
+              // "Create tournament" lives in the header: one CTA per intent.
+              <NoCards />
             ) : (
               <PhaseCards cards={cards} />
             )}
           </div>
         ) : null}
 
-        {/* The queue comes first in the DOM, so below `xl` it follows the cards;
-            at `xl` it is pinned to the right column of the second row. */}
-        {showQueue ? (
-          <WorkQueue
-            issues={issues}
-            cardOf={cardOf}
-            failed={failed}
-            onRetry={retry}
-            className={cn("xl:col-start-2 xl:row-start-2", liveFirst && "max-md:order-first")}
-          />
+        {hasRail ? (
+          <div className="contents xl:col-start-2 xl:row-start-2 xl:flex xl:flex-col xl:gap-4">
+            {showQueue ? (
+              <WorkQueue
+                issues={data?.issues}
+                cardOf={cardOf}
+                failed={failed}
+                onRetry={retry}
+                className={cn(liveFirst && "max-md:order-first")}
+              />
+            ) : null}
+            {canReadAudit ? <ActivityFeed workspaceId={workspaceId} className="max-xl:order-1" /> : null}
+          </div>
         ) : null}
 
         <div
           className={cn(
             "contents xl:col-start-1 xl:row-start-2 xl:flex xl:flex-col xl:gap-4",
-            !showQueue && "xl:col-span-2"
+            !hasRail && "xl:col-span-2"
           )}
         >
           {canReadTournaments && !timelineHidden && !betweenTournaments ? (
-            <Timeline events={timeline} cardOf={cardOf} failed={failed} onRetry={retry} />
+            <Timeline events={data?.timeline ?? undefined} cardOf={cardOf} failed={failed} onRetry={retry} />
           ) : null}
-          {canReadTournaments ? <Trends workspaceId={workspaceId} discipline={game} /> : null}
-          {canReadAudit ? <ActivityFeed workspaceId={workspaceId} /> : null}
+          {canReadTournaments ? <Trends workspaceId={workspaceId} /> : null}
+          {canReadDashboard ? (
+            <Backlog backlog={data?.backlog} failed={failed} onRetry={retry} className="max-xl:order-2" />
+          ) : null}
+          {isSuperuser ? <PlatformHealth workspaceId={workspaceId} className="max-xl:order-2" /> : null}
         </div>
-
-        {canReadDashboard ? (
-          <Backlog backlog={data?.backlog} game={game} failed={failed} onRetry={retry} className="xl:col-span-2" />
-        ) : null}
-        {isSuperuser ? <PlatformHealth workspaceId={workspaceId} className="xl:col-span-2" /> : null}
       </div>
     </div>
+  );
+}
+
+/** The cards row between tournaments: one line and the way to the full list. */
+function NoCards() {
+  const t = useTranslations("adminShell.dashboard");
+  return (
+    <Card className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-6 py-4">
+      <div className="min-w-0">
+        <h2 className="font-semibold leading-tight">{t("betweenTitle")}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{t("betweenBody")}</p>
+      </div>
+      <Button asChild variant="outline" size="sm">
+        <Link href="/admin/tournaments">
+          {t("allTournaments")}
+          <ArrowRight className="size-3.5" aria-hidden />
+        </Link>
+      </Button>
+    </Card>
   );
 }

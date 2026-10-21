@@ -25,8 +25,7 @@ export const adminQueryKeys = {
   dashboardActivity: (workspaceId: KeyPart, excludeActorId: KeyPart) =>
     ["admin", "dashboard", "activity", workspaceId, excludeActorId] as const,
   /** Outside `dashboardRoot` on purpose: trends move when a tournament finishes, not on realtime flushes. */
-  dashboardTrends: (workspaceId: KeyPart, discipline: KeyPart) =>
-    ["admin", "dashboard-trends", workspaceId, discipline] as const,
+  dashboardTrends: (workspaceId: KeyPart) => ["admin", "dashboard-trends", workspaceId] as const,
   /** Finished tournaments since the active ML artifacts were trained (platform health). */
   mlTrainingLag: () => ["admin", "ml-training-lag"] as const,
   personAchievements: (personId: KeyPart) =>
