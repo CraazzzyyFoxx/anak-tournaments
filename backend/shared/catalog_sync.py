@@ -138,7 +138,15 @@ class CatalogImageMirror:
             return url
 
         slugs = list(images)
-        urls = await asyncio.gather(*(_resolve(slug, *images[slug]) for slug in slugs))
+        tasks = [asyncio.create_task(_resolve(slug, *images[slug])) for slug in slugs]
+        try:
+            urls = await asyncio.gather(*tasks)
+        except BaseException:
+            # gather leaves the rest running: their progress would land after the sync's failure and reset it to running.
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
         return dict(zip(slugs, urls, strict=True))
 
 

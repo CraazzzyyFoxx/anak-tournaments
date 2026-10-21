@@ -130,6 +130,37 @@ def test_the_mirror_propagates_an_upload_failure() -> None:
         )
 
 
+def test_a_failed_download_stops_the_others_before_it_surfaces() -> None:
+    """A download still running after the failure would report on top of the sync's verdict, as if it went on."""
+    snapshots: list = []
+    s3 = _S3()
+
+    async def scenario() -> None:
+        gate = asyncio.Event()
+
+        class _Http2(_Http):
+            async def get(self, path: str, **_: object) -> _Response:
+                if path.endswith("bad"):
+                    raise RuntimeError("boom")
+                await gate.wait()
+                return await super().get(path)
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await CatalogImageMirror(s3).resolve_many(
+                _Http2({}),
+                _progress(snapshots),
+                discipline="overwatch",
+                kind="map",
+                images={"good": (None, "https://src/good.png"), "bad": (None, "https://src/bad")},
+            )
+        gate.set()
+        await asyncio.sleep(0.01)
+
+    asyncio.run(scenario())
+    assert s3.keys == []
+    assert [stages[2] for _source, stages in snapshots] == [_stage("map", "pending", done=0, total=2)]
+
+
 def test_alias_merge_keeps_manual_names_and_sorts_a_deduplicated_union_without_the_canonical_name() -> None:
     assert merge_aliases(existing=["Ana-hand", "Ана", "Ana"], localized=["Ана", "アナ", "Ana"], canonical="Ana") == [
         "Ana-hand",
