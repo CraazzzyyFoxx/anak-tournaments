@@ -459,6 +459,7 @@ beforeEach(() => {
   getEncounter.mockResolvedValue(encounter());
   getMetadata.mockImplementation(async (_axis: unknown, code: string) => ({
     discipline: { code, character_classes: ["tank", "damage", "support"], capabilities: {} },
+    dimensions: [],
     roles: []
   }));
   getMyRole.mockResolvedValue({ encounter_team_id: null, slot: null });
@@ -1981,6 +1982,7 @@ describe("phase selection", () => {
   describe("the game's metadata, which its bans slot needs", () => {
     const OW_METADATA = {
       discipline: { code: "overwatch", character_classes: ["tank", "damage", "support"], capabilities: {} },
+      dimensions: [],
       roles: []
     };
     const bansBy = (side: "home" | "away") => ({

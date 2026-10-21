@@ -90,13 +90,15 @@ export const DEADLOCK_METADATA = metadata("deadlock", "Deadlock", "steam", "agen
 ]);
 
 const ALL = [OW_METADATA, LOL_METADATA];
+/** Every game the metadata read resolves; the installed-games list stays Overwatch and League. */
+const RESOLVABLE = [...ALL, DEADLOCK_METADATA];
 
 /** The `vi.mock("@/services/discipline.service", …)` factory result. */
 export const disciplineServiceMock = {
   default: {
     list: async () => ALL.map((entry) => entry.discipline),
     metadata: async (_axis: unknown, code: string) => {
-      const found = ALL.find((entry) => entry.discipline.code === code);
+      const found = RESOLVABLE.find((entry) => entry.discipline.code === code);
       if (!found) throw new Error(`discipline_not_installed: ${code}`);
       return found;
     }

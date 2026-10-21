@@ -32,6 +32,7 @@ import type {
 } from "@/types/balancer-admin.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 import type { DisciplineMetadata } from "@/types/discipline.types";
+import { showsRoles } from "@/lib/roster/ontology";
 import { AdditionalHandleStrip, HandleCopyButton } from "./HandleCopyControls";
 import RankHistory from "@/components/RankHistory";
 import { Spinner } from "@/components/ui/spinner";
@@ -99,6 +100,8 @@ export function PlayerEditModal({
   const nativeRankName = ontology?.discipline.capabilities.native_rank_collection
     ? ontology.discipline.name
     : null;
+  // A game with one rated role edits its rank alone: no role list to order, no role to add, turn off or remove.
+  const showsRoleList = showsRoles(ontology);
 
   return (
     <Sheet
@@ -188,19 +191,23 @@ export function PlayerEditModal({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">Roles</Label>
+              <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
+                {showsRoleList ? "Roles" : "Rank"}
+              </Label>
               <div className="flex flex-nowrap items-center gap-1.5">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 whitespace-nowrap border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2.5 text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-                  onClick={form.addRole}
-                  disabled={form.addableRole === null}
-                >
-                  <Plus className="mr-1 h-3 w-3" />
-                  Add role
-                </Button>
+                {showsRoleList ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 whitespace-nowrap border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2.5 text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+                    onClick={form.addRole}
+                    disabled={form.addableRole === null}
+                  >
+                    <Plus className="mr-1 h-3 w-3" />
+                    Add role
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   variant="outline"
@@ -279,6 +286,7 @@ export function PlayerEditModal({
                   subtypeOptions={form.subtypeOptions}
                   ontology={ontology}
                   nativeRankName={nativeRankName}
+                  showsRole={showsRoleList}
                 />
               )}
             </SortableRows>

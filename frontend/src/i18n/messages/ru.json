@@ -3078,6 +3078,7 @@
       "allDivisions": "Все дивизионы",
       "divisionOption": "D{division}",
       "columnLabel": "{role} — игроков: {count}",
+      "players": "Игроки",
       "columnEmpty": "На эту роль пока никого",
       "rank": "D{division} · {rank}",
       "flexTitle": "Играет на нескольких ролях, поэтому показан в каждой из них: {roles}",

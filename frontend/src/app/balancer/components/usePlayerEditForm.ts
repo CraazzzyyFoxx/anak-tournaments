@@ -9,7 +9,7 @@ import {
   type PlayerRankHistoryPreview,
   type PlayerRankHistoryPreviewEntry
 } from "@/components/balancer/workspace-helpers";
-import { ratedDimension, registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
+import { ratedDimension, registrationRoles, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import {
   useCurrentWorkspaceId,
   useDivisionGrid,
@@ -148,7 +148,7 @@ export function usePlayerEditForm({
     return getDivisionLabel(workspaceGrid, divisionNumber);
   };
 
-  const [roleEntries, setRoleEntries] = useState<BalancerPlayerRoleEntry[]>(
+  const [editedEntries, setRoleEntries] = useState<BalancerPlayerRoleEntry[]>(
     normalizeRoleEntries(player.role_entries_json)
   );
   const [isFlex, setIsFlex] = useState(player.is_flex);
@@ -168,6 +168,27 @@ export function usePlayerEditForm({
     () => registrationRoles(ontology).map((role) => role.code),
     [ontology]
   );
+  // A one-role game edits its sole role's rank alone, with no switch to turn it off: the editor holds exactly that
+  // one entry, declared on. A stored entry keeps its rank and sub-role; a registration without one gets a fresh one.
+  const soleRole = showsRoles(ontology) ? null : (selectableRoleCodes[0] ?? null);
+  const roleEntries = useMemo<BalancerPlayerRoleEntry[]>(() => {
+    if (soleRole === null) return editedEntries;
+    const stored = editedEntries.find((entry) => entry.role === soleRole);
+    return [
+      {
+        ...(stored ?? {
+          role: soleRole,
+          subtype: null,
+          division_number: null,
+          rank_value: null,
+          is_active: false,
+          ow_rank_value: null
+        }),
+        priority: 1,
+        is_declared_active: true
+      }
+    ];
+  }, [editedEntries, soleRole]);
   const addableRole =
     selectableRoleCodes.find((code) => !roleEntries.some((entry) => entry.role === code)) ?? null;
 

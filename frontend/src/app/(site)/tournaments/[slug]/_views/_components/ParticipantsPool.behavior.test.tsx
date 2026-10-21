@@ -498,3 +498,42 @@ describe("participants pool", () => {
     }
   });
 });
+
+describe("the pool of a one-role game", () => {
+  it("is one column of players that names no role", async () => {
+    const agent = (rank: number): RegistrationRole => ({
+      role: { dimension: "agent", role: "agent" },
+      is_primary: true,
+      priority: 0,
+      rank_value: rank,
+      top_characters: []
+    });
+    tournament = {
+      ...makeTournament("draft", "check_in", {
+        slots: { agent: 6 },
+        team_size: 6,
+        flex_slots: 0,
+        has_role_slots: true,
+        draft_rounds: 5,
+        source: "tournament"
+      }),
+      discipline: "deadlock"
+    };
+    listRegistrations.mockResolvedValue({
+      registrations: [makeRegistration(1, "206464648", [agent(3900)]), makeRegistration(2, "206464649", [agent(3100)])],
+      division_grids: {},
+      hidden: false,
+      total: 2,
+      role_counts: {},
+      max_participants: null
+    });
+
+    await mountPool();
+
+    const columns = container.querySelectorAll("[data-pool-column]");
+    expect(columns).toHaveLength(1);
+    expect(columns[0].getAttribute("aria-label")).toBe(en.tournamentDetail.participantsPool.players);
+    expect(columns[0].textContent).toContain(en.tournamentDetail.participantsPool.players);
+    expect(columns[0].textContent).not.toContain("Agent");
+  });
+});

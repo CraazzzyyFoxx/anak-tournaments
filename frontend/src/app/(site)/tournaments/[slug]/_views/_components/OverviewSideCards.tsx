@@ -6,6 +6,7 @@ import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { slotCodesOf } from "@/lib/roster/shape";
+import { showsRoles } from "@/lib/roster/ontology";
 import { groupTournamentStageFlow } from "@/lib/tournament/stages";
 import type { TeamFormation, Tournament } from "@/types/tournament.types";
 
@@ -96,7 +97,8 @@ export function OverviewFormatCard({ tournament }: Readonly<{ tournament: Tourna
           {t(
             `common.${(tournament.team_formation ?? "balancer") as TeamFormation}`
           )}
-          {rosterSlots.length > 0 ? (
+          {/* One role: every slot is it, so the glyph row would say nothing. */}
+          {rosterSlots.length > 0 && showsRoles(ontology) ? (
             <span className="ml-2 inline-flex items-center gap-2 align-middle">
               {rosterSlots.map(({ code, count }) => (
                 <span

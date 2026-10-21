@@ -7,7 +7,7 @@ import { CompareScope } from "@/app/(site)/users/compare/types";
 import { parseOptionalInt, getMapIconSrc } from "@/app/(site)/users/compare/utils";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { useRoleName } from "@/hooks/useRoleName";
-import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
+import { registrationRoles, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import type { DivisionGridLike } from "@/lib/divisions/grid";
 import UserSearchCombobox from "@/app/(site)/users/compare/components/UserSearchCombobox";
 import SearchableImageSelect, {
@@ -196,16 +196,19 @@ const CompareFiltersPanel = ({
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <FilterField label={t("users.compare.filters.roleFilter")}>
-            <SearchableImageSelect
-              value={role}
-              onValueChange={(value) => updateParams({ role: value })}
-              options={roleOptions}
-              placeholder={t("users.compare.allRoles")}
-              ariaLabel={t("users.compare.filters.roleFilter")}
-              disabled={isTargetBaseline}
-            />
-          </FilterField>
+          {/* A one-role game has nothing to filter by. */}
+          {showsRoles(ontology) ? (
+            <FilterField label={t("users.compare.filters.roleFilter")}>
+              <SearchableImageSelect
+                value={role}
+                onValueChange={(value) => updateParams({ role: value })}
+                options={roleOptions}
+                placeholder={t("users.compare.allRoles")}
+                ariaLabel={t("users.compare.filters.roleFilter")}
+                disabled={isTargetBaseline}
+              />
+            </FilterField>
+          ) : null}
 
           <FilterField label={t("users.compare.filters.divisionMin")}>
             <DivisionCombobox

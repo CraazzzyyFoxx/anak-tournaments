@@ -3078,6 +3078,7 @@
       "allDivisions": "All divisions",
       "divisionOption": "D{division}",
       "columnLabel": "{role} — {count} players",
+      "players": "Players",
       "columnEmpty": "Nobody in this role yet",
       "rank": "D{division} · {rank}",
       "flexTitle": "Plays several roles, so appears in each of them: {roles}",

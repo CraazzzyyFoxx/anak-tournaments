@@ -59,7 +59,8 @@ describe("native team-format editor", () => {
     expect(container.querySelectorAll("input")).toHaveLength(0);
   });
   it("falls back to role initials when ontology artwork cannot load", async () => {
-    const withIcon = { ...ontology, roles: [{ ...ontology.roles[0], attrs: { icon: "/disciplines/native/missing.svg" } }] };
+    // Two rated roles: a one-role game draws no role glyph at all, so the initials fallback needs a game that names roles.
+    const withIcon = { ...ontology, roles: [{ ...ontology.roles[0], attrs: { icon: "/disciplines/native/missing.svg" } }, { ...ontology.roles[0], id: 4, code: "carry", name: "Carry", sort_order: 1 }] };
     await mount(<PlayerRoleIcon role={{ dimension: "position", role: "support" }} ontology={withIcon} />);
     await act(async () => container.querySelector("img")!.dispatchEvent(new Event("error")));
     expect(container.textContent).toBe("SU");
