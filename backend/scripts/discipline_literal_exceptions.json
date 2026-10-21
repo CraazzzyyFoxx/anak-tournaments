@@ -552,6 +552,16 @@
       "remove_when": "provider is removed"
     },
     {
+      "path": "backend/identity-service/src/schemas/oauth.py",
+      "rule": "identity",
+      "token": "steam",
+      "context": "STEAM = \"steam\"",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
       "path": "backend/identity-service/src/services/oauth_providers.py",
       "rule": "identity",
       "token": "battlenet",
@@ -622,10 +632,20 @@
       "remove_when": "provider is removed"
     },
     {
+      "path": "backend/identity-service/src/services/oauth_providers.py",
+      "rule": "discipline-code",
+      "token": "deadlock",
+      "context": "PROFILE_URL = \"https://api.deadlock-api.com/v1/players/steam\"",
+      "count": 1,
+      "reason": "Steam sign-on persona/avatar lookup: deadlock-api's Steam profile endpoint (Deadlock spec §3), not a game branch",
+      "owner": "module",
+      "remove_when": "Steam profiles come from another source"
+    },
+    {
       "path": "backend/identity-service/src/services/players.py",
       "rule": "identity",
       "token": "battlenet",
-      "context": "providers=[\"discord\", \"battlenet\", SocialProvider.RIOT],",
+      "context": "providers=[\"discord\", \"battlenet\", *_GAME_SIGN_ONS],",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -1246,6 +1266,16 @@
       "rule": "identity",
       "token": "battle_tag",
       "context": "oauth_alias_fields=(\"battletag\", \"battle_tag\", \"preferred_username\"),",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/shared/core/social.py",
+      "rule": "identity",
+      "token": "steam",
+      "context": "STEAM = \"steam\"",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -1952,6 +1982,16 @@
       "remove_when": "provider is removed"
     },
     {
+      "path": "frontend/src/app/(site)/auth/steam/login/route.ts",
+      "rule": "identity",
+      "token": "steam",
+      "context": "return await startOAuthLogin(request, \"steam\");",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
       "path": "frontend/src/app/(site)/docs/dev/schema/page.tsx",
       "rule": "discipline-code",
       "token": "overwatch",
@@ -2525,7 +2565,7 @@
       "path": "frontend/src/components/AuthModal.tsx",
       "rule": "identity",
       "token": "battlenet",
-      "context": "? [\"discord\", \"twitch\", \"battlenet\", \"riot\"].map((provider) => (",
+      "context": "? [\"discord\", \"twitch\", \"battlenet\", \"riot\", \"steam\"].map((provider) => (",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -2535,7 +2575,7 @@
       "path": "frontend/src/components/AuthModal.tsx",
       "rule": "identity",
       "token": "riot",
-      "context": "? [\"discord\", \"twitch\", \"battlenet\", \"riot\"].map((provider) => (",
+      "context": "? [\"discord\", \"twitch\", \"battlenet\", \"riot\", \"steam\"].map((provider) => (",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -2546,6 +2586,16 @@
       "rule": "identity",
       "token": "battlenet",
       "context": "className={provider === \"battlenet\" ? \"brightness-125\" : \"\"}",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/components/AuthModal.tsx",
+      "rule": "identity",
+      "token": "steam",
+      "context": "? [\"discord\", \"twitch\", \"battlenet\", \"riot\", \"steam\"].map((provider) => (",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -2565,7 +2615,7 @@
       "path": "frontend/src/components/account-settings/MyAccountSection.tsx",
       "rule": "identity",
       "token": "battlenet",
-      "context": "const OAUTH_ADDABLE = [\"battlenet\", \"riot\", \"discord\", \"twitch\"] as const;",
+      "context": "const OAUTH_ADDABLE = [\"battlenet\", \"riot\", \"steam\", \"discord\", \"twitch\"] as const;",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -2575,7 +2625,17 @@
       "path": "frontend/src/components/account-settings/MyAccountSection.tsx",
       "rule": "identity",
       "token": "riot",
-      "context": "const OAUTH_ADDABLE = [\"battlenet\", \"riot\", \"discord\", \"twitch\"] as const;",
+      "context": "const OAUTH_ADDABLE = [\"battlenet\", \"riot\", \"steam\", \"discord\", \"twitch\"] as const;",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/components/account-settings/MyAccountSection.tsx",
+      "rule": "identity",
+      "token": "steam",
+      "context": "const OAUTH_ADDABLE = [\"battlenet\", \"riot\", \"steam\", \"discord\", \"twitch\"] as const;",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -2762,6 +2822,26 @@
       "remove_when": "identifier is migrated with its data/URL"
     },
     {
+      "path": "frontend/src/components/pick-ban/CharacterBansBoard.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "<PickBanItemThumb kind=\"hero\" item={champion.item} name={champion.name} size={22} muted />",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
+      "path": "frontend/src/components/pick-ban/CharacterBansBoard.tsx",
+      "rule": "catalog-label",
+      "token": "hero",
+      "context": "<PickBanItemThumb kind=\"hero\" item={action.item} name={action.name} size={26} muted={isBan} />",
+      "count": 1,
+      "reason": "persisted identifier: PickBanKind 'hero' (DB enum value, realtime domain pick-ban:hero, pregame wire)",
+      "owner": "P9",
+      "remove_when": "pick-ban kind is migrated to 'character'"
+    },
+    {
       "path": "frontend/src/components/pick-ban/PickBanDraftTray.tsx",
       "rule": "catalog-label",
       "token": "hero",
@@ -2862,6 +2942,16 @@
       "remove_when": "provider is removed"
     },
     {
+      "path": "frontend/src/lib/auth/oauth-callback.ts",
+      "rule": "identity",
+      "token": "steam",
+      "context": "\"steam\",",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
       "path": "frontend/src/lib/encounters/query-keys.ts",
       "rule": "catalog-label",
       "token": "hero",
@@ -2886,6 +2976,16 @@
       "rule": "identity",
       "token": "riot",
       "context": "\"riot\"",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/lib/forms/builtin-keys.ts",
+      "rule": "identity",
+      "token": "steam",
+      "context": "\"steam\"",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -2952,6 +3052,26 @@
       "remove_when": "provider is removed"
     },
     {
+      "path": "frontend/src/lib/social/providers.ts",
+      "rule": "identity",
+      "token": "steam",
+      "context": "\"steam\"",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/lib/social/providers.ts",
+      "rule": "identity",
+      "token": "steam",
+      "context": "value: \"steam\",",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
       "path": "frontend/src/types/achievement.types.ts",
       "rule": "catalog-label",
       "token": "hero",
@@ -2995,7 +3115,7 @@
       "path": "frontend/src/types/auth.types.ts",
       "rule": "identity",
       "token": "battlenet",
-      "context": "export type OAuthProviderName = \"discord\" | \"twitch\" | \"battlenet\" | \"riot\";",
+      "context": "export type OAuthProviderName = \"discord\" | \"twitch\" | \"battlenet\" | \"riot\" | \"steam\";",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -3005,7 +3125,17 @@
       "path": "frontend/src/types/auth.types.ts",
       "rule": "identity",
       "token": "riot",
-      "context": "export type OAuthProviderName = \"discord\" | \"twitch\" | \"battlenet\" | \"riot\";",
+      "context": "export type OAuthProviderName = \"discord\" | \"twitch\" | \"battlenet\" | \"riot\" | \"steam\";",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/types/auth.types.ts",
+      "rule": "identity",
+      "token": "steam",
+      "context": "export type OAuthProviderName = \"discord\" | \"twitch\" | \"battlenet\" | \"riot\" | \"steam\";",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -3035,7 +3165,7 @@
       "path": "frontend/src/types/rbac.types.ts",
       "rule": "identity",
       "token": "battlenet",
-      "context": "export type OAuthProvider = \"discord\" | \"twitch\" | \"battlenet\" | \"riot\" | \"google\" | \"github\";",
+      "context": "export type OAuthProvider = \"discord\" | \"twitch\" | \"battlenet\" | \"riot\" | \"steam\" | \"google\" | \"github\";",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -3045,7 +3175,17 @@
       "path": "frontend/src/types/rbac.types.ts",
       "rule": "identity",
       "token": "riot",
-      "context": "export type OAuthProvider = \"discord\" | \"twitch\" | \"battlenet\" | \"riot\" | \"google\" | \"github\";",
+      "context": "export type OAuthProvider = \"discord\" | \"twitch\" | \"battlenet\" | \"riot\" | \"steam\" | \"google\" | \"github\";",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/types/rbac.types.ts",
+      "rule": "identity",
+      "token": "steam",
+      "context": "export type OAuthProvider = \"discord\" | \"twitch\" | \"battlenet\" | \"riot\" | \"steam\" | \"google\" | \"github\";",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -3065,7 +3205,7 @@
       "path": "frontend/src/types/user.types.ts",
       "rule": "identity",
       "token": "battlenet",
-      "context": "\"battlenet\" | \"discord\" | \"twitch\" | \"boosty\" | \"vk\" | \"youtube\" | \"riot\";",
+      "context": "\"battlenet\" | \"discord\" | \"twitch\" | \"boosty\" | \"vk\" | \"youtube\" | \"riot\" | \"steam\";",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -3075,7 +3215,17 @@
       "path": "frontend/src/types/user.types.ts",
       "rule": "identity",
       "token": "riot",
-      "context": "\"battlenet\" | \"discord\" | \"twitch\" | \"boosty\" | \"vk\" | \"youtube\" | \"riot\";",
+      "context": "\"battlenet\" | \"discord\" | \"twitch\" | \"boosty\" | \"vk\" | \"youtube\" | \"riot\" | \"steam\";",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/types/user.types.ts",
+      "rule": "identity",
+      "token": "steam",
+      "context": "\"battlenet\" | \"discord\" | \"twitch\" | \"boosty\" | \"vk\" | \"youtube\" | \"riot\" | \"steam\";",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",

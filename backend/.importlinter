@@ -34,6 +34,7 @@ source_modules =
 forbidden_modules =
     shared.disciplines.overwatch
     shared.disciplines.lol
+    shared.disciplines.deadlock
 
 [importlinter:contract:registry-support-modules-are-module-agnostic]
 name = shared.disciplines support modules never import a concrete discipline module
@@ -49,3 +50,4 @@ source_modules =
 forbidden_modules =
     shared.disciplines.overwatch
     shared.disciplines.lol
+    shared.disciplines.deadlock

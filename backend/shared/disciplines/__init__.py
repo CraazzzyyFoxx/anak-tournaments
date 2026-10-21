@@ -7,6 +7,7 @@ behaviour behind that code. Core imports names from here and never from ``shared
 
 from __future__ import annotations
 
+from shared.disciplines.deadlock import SPEC as _DEADLOCK
 from shared.disciplines.ingest import INGESTORS, assemble_ingestors
 from shared.disciplines.lol import SPEC as _LOL
 from shared.disciplines.overwatch import SPEC as _OVERWATCH
@@ -66,7 +67,7 @@ def _assemble(specs: tuple[DisciplineSpec, ...]) -> dict[str, DisciplineSpec]:
     return registry
 
 
-DISCIPLINES: dict[str, DisciplineSpec] = _assemble((_OVERWATCH, _LOL))
+DISCIPLINES: dict[str, DisciplineSpec] = _assemble((_OVERWATCH, _LOL, _DEADLOCK))
 INGESTORS.update(assemble_ingestors(DISCIPLINES.values()))
 
 
