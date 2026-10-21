@@ -5551,11 +5551,17 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Read a discipline's catalog sync
+         * @description Permission: superuser only. The discipline's last catalog sync snapshot, the same body `catalog_sync.progress` carries; `null` when nothing ran in the last 15 minutes, or when a running sync stopped reporting for 5 minutes (its worker died). 404 for a discipline without a sync.
+         *
+         *     RPC subject: `rpc.stats.catalog.sync_status`
+         */
+        get: operations["get__api_v1_admin_catalog_sync__discipline_"];
         put?: never;
         /**
-         * Sync a discipline's catalog
-         * @description Permission: superuser only. Pulls the discipline module's catalog source (Overwatch: OverFast; League of Legends: Data Dragon; Deadlock: deadlock-api) into catalog.entity, mirroring images to S3; existing rows keep their name and attrs; an existing parent is kept; a missing one is filled from the source; nothing is deleted. 404 for a discipline without a sync; 503 `catalog_source_unavailable` when the source times out, is unreachable or answers an error (rows already applied stay; run it again).
+         * Start a discipline's catalog sync
+         * @description Permission: superuser only. Starts a background sync of the discipline module's catalog source (named in the snapshot's `source`) into catalog.entity, mirroring images to S3, and returns its first snapshot (`status: running`) at once. Existing rows keep their name and attrs; an existing parent is kept; a missing one is filled from the source; nothing is deleted. Stages run in order: `source`, then the discipline's kinds `mode`, `map`, `character`; a kind counts the images it actually downloads (`done`/`total`) and reports the rows it created, committing on its own. Every change is published whole as `catalog_sync.progress` on the caller's `user:{id}:catalog-sync` topic (non-durable). A failed sync is `status: failed` with `error.code` `catalog_source_unavailable` (the source timed out, is unreachable or answered an error), the code of the module's refusal (e.g. `catalog_conflict`), `interrupted` or `internal_error`; the stage it died in is `failed`, finished stages stay `done`. 404 for a discipline without a sync; 409 `catalog_sync_running` while a sync of the same discipline runs.
          *
          *     RPC subject: `rpc.stats.catalog.sync`
          */
@@ -9149,14 +9155,14 @@ export interface paths {
         put?: never;
         /**
          * Upload asset
-         * @description Permission: workspace `asset.create` in the given workspace, or superuser when no `workspace_id` is given. Uploads an achievements/divisions asset to S3, returning its key and public URL; 422 on invalid asset_type.
+         * @description Permission: workspace `asset.create` in the given workspace, or superuser when no `workspace_id` is given. Uploads an achievements/divisions/catalog asset to S3, returning its key and public URL; 422 on invalid asset_type.
          *
          *     RPC subject: `rpc.app.assets.upload`
          */
         post: operations["post__api_v1_assets__asset_type___slug_"];
         /**
          * Delete asset
-         * @description Permission: workspace `asset.delete` in the given workspace, or superuser when no `workspace_id` is given. Deletes an achievements/divisions asset from S3 by slug prefix; 422 on invalid asset_type, 404 if nothing deleted.
+         * @description Permission: workspace `asset.delete` in the given workspace, or superuser when no `workspace_id` is given. Deletes an achievements/divisions/catalog asset from S3 by slug prefix; 422 on invalid asset_type, 404 if nothing deleted.
          *
          *     RPC subject: `rpc.app.assets.delete`
          */
@@ -10689,7 +10695,7 @@ export interface paths {
         };
         /**
          * List workspace grids
-         * @description Permission: workspace `division_grid.read`. Lists a workspace's division grids.
+         * @description Permission: workspace `division_grid.read`. Lists a workspace's division grids, each with `tournament_count`: the tournaments pinned to any of its versions.
          *
          *     RPC subject: `rpc.tournament.grid_workspace_list`
          */
@@ -10697,7 +10703,7 @@ export interface paths {
         put?: never;
         /**
          * Create division grid
-         * @description Permission: workspace `division_grid.create`. Creates a division grid in a workspace.
+         * @description Permission: workspace `division_grid.create`. Creates a division grid in a workspace. `slug` is optional: when omitted it is derived as `{discipline}-grid`, then `-2`, `-3`… With `from_version_id` (a published version of this workspace's or a system grid of the same game; 422 `division_grid_discipline_mismatch` for another game, 409 for an unpublished one) v1 is a published copy of that version's tiers and label; otherwise v1 is the game's native ladder, and a game without one starts with no version. Never activates anything.
          *
          *     RPC subject: `rpc.tournament.grid_workspace_create`
          */
@@ -23347,6 +23353,59 @@ export interface components {
                 [key: string]: number;
             };
         };
+        /** CatalogSyncError */
+        "stats.CatalogSyncError": {
+            /** Code */
+            code: string;
+            /** Msg */
+            msg: string;
+        };
+        /** CatalogSyncStage */
+        "stats.CatalogSyncStage": {
+            /** Created */
+            created: number | null;
+            /** Done */
+            done: number | null;
+            /** Key */
+            key: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: StatsCatalogSyncStageState;
+            /** Total */
+            total: number | null;
+        };
+        /**
+         * CatalogSyncState
+         * @description One discipline's catalog sync: the snapshot ``GET`` reads and every ``catalog_sync.progress`` event carries.
+         */
+        "stats.CatalogSyncState": {
+            /** Discipline */
+            discipline: string;
+            error: components["schemas"]["stats.CatalogSyncError"] | null;
+            /** Source */
+            source: string | null;
+            /** Stages */
+            stages: components["schemas"]["stats.CatalogSyncStage"][];
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Started By */
+            started_by: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: StatsCatalogSyncStateStatus;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
         /** CollectTriggerRequest */
         "stats.CollectTriggerRequest": {
             /**
@@ -25804,10 +25863,18 @@ export interface components {
              * @default null
              */
             discipline: string | null;
+            /**
+             * From Version Id
+             * @default null
+             */
+            from_version_id: number | null;
             /** Name */
             name: string;
-            /** Slug */
-            slug: string;
+            /**
+             * Slug
+             * @default null
+             */
+            slug: string | null;
         };
         /** DivisionGridImportJobRead */
         "tournament.DivisionGridImportJobRead": {
@@ -26122,6 +26189,11 @@ export interface components {
              * @default null
              */
             source_workspace_id: number | null;
+            /**
+             * Tournament Count
+             * @default null
+             */
+            tournament_count: number | null;
             /** Versions */
             versions?: components["schemas"]["tournament.DivisionGridVersionRead"][];
             /** Workspace Id */
@@ -49315,6 +49387,84 @@ export interface operations {
             };
         };
     };
+    get__api_v1_admin_catalog_sync__discipline_: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                discipline: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["stats.CatalogSyncState"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     post__api_v1_admin_catalog_sync__discipline_: {
         parameters: {
             query?: never;
@@ -49332,7 +49482,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": components["schemas"]["stats.CatalogSyncState"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -75776,6 +75926,17 @@ export enum BalancerWorkspaceRankerReadVariant {
 export enum BalancerWorkspaceRankerUpsertVariant {
     reference = "reference",
     corrected = "corrected"
+}
+export enum StatsCatalogSyncStageState {
+    pending = "pending",
+    running = "running",
+    done = "done",
+    failed = "failed"
+}
+export enum StatsCatalogSyncStateStatus {
+    running = "running",
+    done = "done",
+    failed = "failed"
 }
 export enum StatsRawSourceStatus {
     available = "available",
