@@ -211,6 +211,12 @@ export type NativeMatchMember = Schema<"tournament.NativeMatchMember">;
 /** A child segment (a round); segment 0 is the whole match and has no row. */
 export type NativeSegment = Schema<"tournament.NativeSegment">;
 
+/** A game's match filed by its id in the game's own records (`stats.match_fetch`), fetched and imported in the background. */
+export type MatchImport = Schema<"tournament.MatchImportRead">;
+/** An organizer warning on an import; only the organizer read carries any. */
+export type MatchImportWarning = Schema<"tournament.MatchImportWarningRead">;
+export type MatchImportInput = Schema<"tournament.MatchImportInput">;
+
 export interface NativeMatchStatistics {
   /** Every observed member, event-only ones included. */
   members: NativeMatchMember[];

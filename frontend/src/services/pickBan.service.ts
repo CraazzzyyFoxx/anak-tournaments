@@ -1,4 +1,5 @@
 import { apiFetch } from "@/lib/api/fetch";
+import type { MatchImport, MatchImportInput } from "@/types/encounter.types";
 import type {
   MapVetoMode,
   PickBanAction,
@@ -66,29 +67,6 @@ interface GameReportResult {
 
 /** `EncounterTeam.id` (as a string) -> whether that captain confirmed readiness. */
 type ReadinessMap = Record<string, boolean>;
-
-/**
- * One game's match filed by its id in the game's own records (`stats.match_fetch`), fetched and imported in the
- * background. Hand-typed until `api.generated.ts` carries the match-import routes.
- */
-export interface MatchImport {
-  id: number;
-  status: "pending" | "done" | "failed";
-  attempts: number;
-  last_error: string | null;
-  external_id: string;
-  created_at: string;
-  /** Filled on the organizer read only; a captain's always reads `[]`. */
-  warnings: MatchImportWarning[];
-}
-
-export interface MatchImportWarning {
-  code: "fetch_failed" | "participants_dropped" | "banned_character_played";
-  /** `participants_dropped`: how many. */
-  count: number | null;
-  /** `banned_character_played`: the characters' catalog names. */
-  characters: string[];
-}
 
 class PickBanService {
   /**
@@ -239,7 +217,7 @@ class PickBanService {
   async importMatch(encounterId: number, gameId: number, externalId: string, admin: boolean): Promise<MatchImport> {
     const response = await apiFetch(
       `/api/v1/${admin ? "admin/" : ""}encounters/${encounterId}/games/${gameId}/match-import`,
-      { method: "POST", body: { external_id: externalId } }
+      { method: "POST", body: { external_id: externalId } satisfies MatchImportInput }
     );
     return response.json();
   }

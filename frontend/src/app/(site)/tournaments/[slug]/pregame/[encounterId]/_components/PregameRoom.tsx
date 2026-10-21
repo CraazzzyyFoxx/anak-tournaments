@@ -189,10 +189,9 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
   const showRostersButton = !loop.waitingOnReadiness;
   const canUploadLog = workspaceId != null && hasWorkspacePermission(workspaceId, "log.create");
   // A tournament game of a discipline that declares a match fetcher can be filed by its match id (a scrim room
-  // publishes no result). `match_fetch` is read through `in` until `api.generated.ts` is regenerated with it.
-  const capabilities = room.metadata.status === "ready" ? room.metadata.metadata.discipline.capabilities : null;
+  // publishes no result).
   const matchImport =
-    seriesReport && capabilities != null && "match_fetch" in capabilities && capabilities.match_fetch === true;
+    seriesReport && room.metadata.status === "ready" && room.metadata.metadata.discipline.capabilities.match_fetch;
   const header = (
     <>
       <PregameHeader

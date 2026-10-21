@@ -13,7 +13,8 @@ import { Spinner } from "@/components/ui/spinner";
 import { ApiError } from "@/lib/api/error";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { notify } from "@/lib/notify";
-import pickBanService, { type MatchImport as MatchImportRow } from "@/services/pickBan.service";
+import pickBanService from "@/services/pickBan.service";
+import type { MatchImport as MatchImportRow } from "@/types/encounter.types";
 
 /** Refusals a submitter can act on (the match-import routes); anything else is the generic failure. */
 const IMPORT_ERROR_CODES = [
@@ -137,7 +138,7 @@ function ImportRow({ row }: Readonly<{ row: MatchImportRow }>) {
   const t = useTranslations("pickBan.room.matchImport");
   const Icon = STATUS_ICON[row.status];
   // A failed fetch is the row's own state and `last_error`; its warning would say it twice.
-  const warnings = row.warnings.filter((warning) => warning.code !== "fetch_failed");
+  const warnings = (row.warnings ?? []).filter((warning) => warning.code !== "fetch_failed");
   return (
     <li className="flex flex-col gap-0.5 text-caption">
       <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-[color:var(--aqt-fg-muted)]">
@@ -158,7 +159,7 @@ function ImportRow({ row }: Readonly<{ row: MatchImportRow }>) {
           <AlertTriangle aria-hidden className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           {warning.code === "participants_dropped"
             ? t("warnings.participants_dropped", { count: warning.count ?? 0 })
-            : t("warnings.banned_character_played", { characters: warning.characters.join(", ") })}
+            : t("warnings.banned_character_played", { characters: (warning.characters ?? []).join(", ") })}
         </span>
       ))}
     </li>

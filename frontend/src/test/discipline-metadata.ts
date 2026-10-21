@@ -43,7 +43,8 @@ function descriptor(code: string, name: string, provider: string): DisciplineDes
       native_rank_collection: true,
       native_ladder: true,
       achievement_conditions: code === "overwatch",
-      analytics: code === "overwatch"
+      analytics: code === "overwatch",
+      match_fetch: false
     }
   } as DisciplineDescriptor;
 }
