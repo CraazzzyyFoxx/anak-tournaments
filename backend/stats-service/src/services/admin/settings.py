@@ -62,6 +62,9 @@ class SettingsService:
         self._validate_value(key, value)
         setting = await self.repo.upsert(session, key, value, description=description, updated_by=updated_by)
         await session.commit()
+        # ``updated_at`` (onupdate=func.now()) is expired by the UPDATE flush; load it here so
+        # the response's sync read does not lazy-load outside the greenlet (MissingGreenlet).
+        await session.refresh(setting)
         await settings_provider.invalidate_setting(key)
         return setting
 
