@@ -6,10 +6,10 @@
 //  1. reading and retiring are separate grants, so a `notification.read` holder
 //     must get the table with no retire control at all — offering one would be
 //     a button that guarantees a 403;
-//  2. a bulk retire is offered only with a kind chosen, and sends that kind
-//     rather than the ids that happen to be on the page. The list is paged on
-//     the server, so "retire every registration.approved" must not mean
-//     "retire the 25 of them on this page";
+//  2. a bulk retire waits for a kind (shown disabled, saying so), and sends
+//     that kind rather than the ids that happen to be on the page. The list is
+//     paged on the server, so "retire every registration.approved" must not
+//     mean "retire the 25 of them on this page";
 //  3. a per-row retire goes through the confirmation and names exactly that id,
 //     because the row it takes out of somebody's inbox is not recoverable from
 //     this screen.
@@ -184,9 +184,12 @@ describe("/admin/notifications", () => {
     });
   });
 
-  it("offers the bulk retire only with a kind chosen, and sends the kind, not the loaded ids", async () => {
+  it("holds the bulk retire until a kind is chosen, and sends the kind, not the loaded ids", async () => {
     const unfiltered = await mount();
-    expect(buttons(unfiltered, LABEL.retire.kindAction)).toHaveLength(0);
+    const [blocked] = buttons(unfiltered, LABEL.retire.kindAction);
+    expect(blocked.disabled).toBe(true);
+    const reason = document.getElementById(blocked.getAttribute("aria-describedby") ?? "");
+    expect(reason?.textContent).toBe(LABEL.retire.pickKind);
 
     const filtered = await mount("?kind=registration.approved");
     expect(listWorkspaceNotifications).toHaveBeenLastCalledWith(

@@ -147,9 +147,20 @@ afterEach(async () => {
   if (root) await act(async () => root!.unmount());
   root = null;
   document.body.innerHTML = "";
+  vi.restoreAllMocks();
 });
 
-beforeEach(() => getMatchKillFeed.mockReset());
+// happy-dom lays nothing out, so recharts' ResponsiveContainer measures 0×0
+// and warns that the chart is invisible. Give its box a browser-like size.
+const measure = HTMLElement.prototype.getBoundingClientRect;
+beforeEach(() => {
+  getMatchKillFeed.mockReset();
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return this.classList.contains("recharts-responsive-container")
+      ? new DOMRect(0, 0, 600, 300)
+      : measure.call(this);
+  });
+});
 
 describe("historical observed participations", () => {
   it("keeps both participations' observations and snapshot names without a source team", () => {

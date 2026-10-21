@@ -9,7 +9,7 @@
 //     control room and used to say nothing about which;
 //  3. `paused` is still Live, and a session nobody has created yet is Setup.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act } from "react";
+import { act, type ComponentProps } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -40,9 +40,13 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams()
 }));
 
-// A bare anchor: the app-router context next/link needs is not mounted, and
-// every prop the tab row passes is valid on `<a>`.
-vi.mock("next/link", () => ({ default: "a" }));
+// A bare anchor: the app-router context next/link needs is not mounted.
+// `prefetch` is Link's own prop, not a DOM attribute, so it stops here.
+vi.mock("next/link", () => ({
+  default: ({ prefetch: _prefetch, ...rest }: ComponentProps<"a"> & { prefetch?: boolean | null }) => (
+    <a {...rest} />
+  )
+}));
 
 vi.mock("@/hooks/usePermissions", () => ({
   usePermissions: () => ({ canAccessPermission: () => true, isLoaded: true })

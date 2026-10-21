@@ -42,6 +42,9 @@ const MESSAGES = {
   kit: en.kit,
   kitAudit: en.kitAudit,
   kitTable: en.kitTable,
+  bracket: en.bracket,
+  accountSettings: { logDirectory: en.accountSettings.logDirectory },
+  adminTournaments: { standings: en.adminTournaments.standings },
   adminMatches: {
     matches: en.adminMatches.matches,
     audit: en.adminMatches.audit,

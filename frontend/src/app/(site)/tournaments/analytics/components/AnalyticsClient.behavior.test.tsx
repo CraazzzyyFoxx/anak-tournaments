@@ -62,7 +62,7 @@ vi.mock("@/hooks/usePermissions", () => ({
 
 // The registry's loader, replaced by a module whose board shows what the host handed it.
 const seen = vi.hoisted(() => ({ props: null as unknown }));
-const registry = vi.hoisted(() => ({ loadAnalyticsUI: vi.fn() }));
+const registry = vi.hoisted(() => ({ loadAnalyticsUI: Object.assign(vi.fn(), { peek: () => undefined }) }));
 vi.mock("@/disciplines/registry/analytics", () => registry);
 const BOARD: DisciplineUI<AnalyticsSlot> = {
   code: "overwatch",

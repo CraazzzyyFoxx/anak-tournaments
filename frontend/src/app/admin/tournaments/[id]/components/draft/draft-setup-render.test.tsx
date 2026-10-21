@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import type { RosterShape } from "@/lib/roster/shape";
 import { OW_METADATA } from "@/test/discipline-metadata";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
-import type { DraftFormatSettings, DraftSession } from "@/types/draft.types";
+import type { DraftFeasibility, DraftFormatSettings, DraftSession } from "@/types/draft.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 
 import { DraftCaptainsStep } from "./DraftCaptainsStep";
@@ -12,6 +12,7 @@ import { DraftConfigStep } from "./DraftConfigStep";
 import { DraftHistoryPanel } from "./DraftHistoryPanel";
 import { DraftFormatFields } from "./DraftFormatFields";
 import { DraftOrderStep } from "./DraftOrderStep";
+import { DraftReadyStep } from "./DraftReadyStep";
 import type { DraftSetupConfig } from "./setup-types";
 
 const SESSIONS = vi.hoisted(
@@ -310,5 +311,48 @@ describe("draft history panel", () => {
     // the behavior suite opens it. Statically, each row has exactly one trigger.
     expect(html.match(/aria-haspopup="menu"/g) ?? []).toHaveLength(2);
     expect(html).not.toContain("history.delete");
+  });
+});
+
+describe("draft ready step", () => {
+  const readySession = { id: 3, roster_shape: SHAPE, rounds: 4, pick_time_seconds: 45 } as unknown as DraftSession;
+  const render = (feasibility: Pick<DraftFeasibility, "is_feasible"> | null, failed = false) =>
+    renderToStaticMarkup(
+      <DraftReadyStep
+        tournamentId={5}
+        session={readySession}
+        feasibility={feasibility as DraftFeasibility | null}
+        feasibilityFailed={failed}
+        onRetryFeasibility={() => {}}
+        pending={false}
+        onStart={() => {}}
+        onReseed={() => {}}
+      />
+    );
+
+  test("keeps Start visible and disabled until feasibility says the draft can start", () => {
+    // Start is the only control here that can be disabled while nothing is pending.
+    for (const [feasibility, disabled] of [
+      [null, true],
+      [{ is_feasible: false }, true],
+      [{ is_feasible: true }, false]
+    ] as const) {
+      const html = render(feasibility);
+      expect(html).toContain("startDraft");
+      expect(html.includes('disabled=""')).toBe(disabled);
+    }
+    expect(render(null)).toContain("checkingFeasibility");
+    expect(render(null)).not.toContain("notReadyToStart");
+  });
+
+  test("names the failed feasibility check as Start's reason and offers a retry", () => {
+    const html = render(null, true);
+    expect(html).not.toContain("checkingFeasibility");
+    expect(html).toContain("retry");
+    expect(html.includes('disabled=""')).toBe(true);
+    const describedBy = /aria-describedby="([^"]+)"/.exec(html)?.[1];
+    const reasonAt = html.indexOf(`id="${describedBy}"`);
+    expect(reasonAt).toBeGreaterThan(-1);
+    expect(html.slice(reasonAt, html.indexOf("</p>", reasonAt))).toContain("loadFailed");
   });
 });

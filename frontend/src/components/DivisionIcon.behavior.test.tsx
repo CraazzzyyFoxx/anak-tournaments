@@ -10,8 +10,13 @@ import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/image", () => ({
-  // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
-  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} alt={props.alt ?? ""} />
+  default: ({
+    unoptimized: _unoptimized,
+    ...props
+  }: React.ImgHTMLAttributes<HTMLImageElement> & { unoptimized?: boolean }) => (
+    // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
+    <img {...props} alt={props.alt ?? ""} />
+  )
 }));
 
 import DivisionIcon from "./DivisionIcon";

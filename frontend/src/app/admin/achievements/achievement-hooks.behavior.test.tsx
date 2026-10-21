@@ -216,10 +216,12 @@ describe("the rule form is scoped to a discipline", () => {
     await act(async () => form.setFormData({ ...form.formData, name: "Draft", entity_id: 77 }));
     expect(form.formData.entity_id).toBe(77);
 
-    const overwatch = Array.from(document.querySelectorAll<HTMLButtonElement>('#rule-game [role="radio"]')).find(
-      (radio) => radio.textContent?.includes("Overwatch")
+    const field = document.getElementById("rule-game")!;
+    expect(field.textContent).toContain("Overwatch");
+    await act(async () => field.click());
+    const overwatch = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((option) =>
+      option.textContent?.includes("Overwatch")
     );
-    expect(overwatch?.getAttribute("aria-checked")).toBe("true");
     await act(async () => overwatch!.click());
 
     expect(form.formData).toMatchObject({ discipline: "overwatch", name: "Draft", entity_id: 77 });

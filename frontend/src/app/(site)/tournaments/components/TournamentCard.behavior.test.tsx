@@ -30,12 +30,18 @@ vi.mock("next/link", () => ({
   )
 }));
 // `next/image` rewrites src through the optimizer loader; the stand-in keeps
-// the stored URL so the test can read it. `fill`/`sizes` are Next-only props,
-// not DOM attributes.
+// the stored URL so the test can read it. `fill`/`sizes`/`unoptimized` are
+// Next-only props, not DOM attributes.
 vi.mock("next/image", () => ({
-  default: ({ fill: _fill, sizes: _sizes, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & {
+  default: ({
+    fill: _fill,
+    sizes: _sizes,
+    unoptimized: _unoptimized,
+    ...props
+  }: React.ImgHTMLAttributes<HTMLImageElement> & {
     fill?: boolean;
     sizes?: string;
+    unoptimized?: boolean;
     // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
   }) => <img {...props} alt={props.alt ?? ""} />
 }));

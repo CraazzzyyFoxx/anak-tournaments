@@ -9,8 +9,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
+import type * as OverwatchMatchUI from "@/disciplines/overwatch/match";
+import type * as MatchCharactersModule from "@/disciplines/overwatch/match/MatchCharacters";
+import { loadMatchUI } from "@/disciplines/registry/match";
 import en from "@/i18n/messages/en.json";
 import { ApiError } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
@@ -142,6 +145,19 @@ vi.mock("@/hooks/usePermissions", () => ({
 vi.mock("@/lib/notify", () => ({
   notify: { apiError: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn() }
 }));
+// A player's previous-map heroes are the game's match module's `matchCharacters` slot. The module and its lazy slot
+// are two chunk loads, each a module-runner round trip that settled outside the room's acts. The module is loaded in
+// `beforeAll`; the slot is the real renderer without the lazy boundary, so it renders on the widget's first commit.
+vi.mock("@/disciplines/overwatch/match", async (importOriginal) => {
+  const { default: ui } = await importOriginal<typeof OverwatchMatchUI>();
+  const { default: matchCharacters } = await vi.importActual<typeof MatchCharactersModule>(
+    "@/disciplines/overwatch/match/MatchCharacters"
+  );
+  return { default: { ...ui, slots: { ...ui.slots, matchCharacters } } };
+});
+beforeAll(async () => {
+  await loadMatchUI("overwatch");
+});
 
 const ROOM = en.pickBan.room;
 
@@ -944,10 +960,7 @@ describe("phase selection", () => {
     await render();
     const row = document.body.querySelector('[data-target-player="55"]')!.closest("li")!;
     if (hasLog) {
-      // The game's module renders the list once its lazy renderer has loaded.
-      await vi.waitFor(() =>
-        expect(Array.from(row.querySelectorAll("ul img")).map((image) => image.getAttribute("alt"))).toEqual(["Tank A", "Tank B"])
-      );
+      expect(Array.from(row.querySelectorAll("ul img")).map((image) => image.getAttribute("alt"))).toEqual(["Tank A", "Tank B"]);
     } else {
       expect(row.textContent).toContain(ROOM.playerHeroes.noLog);
       expect(row.querySelector("ul")).toBeNull();

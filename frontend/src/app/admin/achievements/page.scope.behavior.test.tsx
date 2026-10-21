@@ -83,7 +83,9 @@ async function openMenu() {
 
 const item = (label: string) =>
   Array.from(document.querySelectorAll('[role="menuitem"]')).find((node) => node.textContent?.startsWith(label));
-const PER_GAME = ["Evaluate achievements", "Export JSON", "Seed defaults", "Hard reset"];
+const PER_GAME = ["Export JSON", "Seed defaults", "Hard reset"];
+const evaluateButton = () =>
+  [...container.querySelectorAll("button")].find((node) => node.textContent === "Evaluate achievements");
 
 beforeEach(() => {
   scopeGame.value = null;
@@ -106,10 +108,16 @@ async function openCreate() {
 }
 
 describe("/admin/achievements per filtered game", () => {
-  it("disables the per-game bulk actions without a filtered game, says why, and keeps import", async () => {
+  it("disables the per-game bulk actions without a filtered game, says why in text, and keeps import", async () => {
     await mount();
-    await openMenu();
 
+    // Evaluate stays in the header, disabled, described by a visible reason.
+    const evaluate = evaluateButton();
+    expect(evaluate?.disabled).toBe(true);
+    const reason = document.getElementById(evaluate!.getAttribute("aria-describedby")!);
+    expect(reason?.textContent).toBe("Pick a game in the filter");
+
+    await openMenu();
     for (const label of PER_GAME) {
       expect(item(label)?.hasAttribute("data-disabled"), label).toBe(true);
       expect(item(label)?.textContent, label).toContain("Pick a game in the filter");
@@ -120,8 +128,10 @@ describe("/admin/achievements per filtered game", () => {
   it("acts on the filtered game", async () => {
     scopeGame.value = "lol";
     await mount();
-    await openMenu();
 
+    expect(evaluateButton()?.disabled).toBe(false);
+    expect(evaluateButton()?.hasAttribute("aria-describedby")).toBe(false);
+    await openMenu();
     for (const label of PER_GAME) expect(item(label)?.hasAttribute("data-disabled"), label).toBe(false);
   });
 

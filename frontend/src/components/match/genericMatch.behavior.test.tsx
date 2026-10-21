@@ -174,6 +174,15 @@ async function click(element: Element) {
   });
 }
 
+/** Lets a settled read reach the view: react-query notifies its observers on a zero timeout, so wait one out in act. */
+async function settle() {
+  await act(async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 0);
+    await promise;
+  });
+}
+
 /** The select whose accessible label is `label`: it must be named by a visible element carrying that text. */
 function combobox(container: HTMLElement, label: string): HTMLElement {
   for (const trigger of container.querySelectorAll<HTMLElement>('[role="combobox"]')) {
@@ -288,7 +297,8 @@ describe("the generic statistics view", () => {
       tab.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
       tab.click();
     });
-    await vi.waitFor(() => expect(container.querySelectorAll("ol li")).toHaveLength(2));
+    await settle();
+    expect(container.querySelectorAll("ol li")).toHaveLength(2);
     const rows = [...container.querySelectorAll("ol li")].map((row) => row.textContent);
     expect(rows[0]).toContain("0:05");
     expect(rows[0]).toContain("Kill");
@@ -311,17 +321,15 @@ describe("the generic statistics view", () => {
       tab.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
       tab.click();
     });
-    await vi.waitFor(() =>
-      expect(container.textContent).toContain(en.matches.native.timeline.error)
-    );
+    await settle();
+    expect(container.textContent).toContain(en.matches.native.timeline.error);
     await click(
       [...container.querySelectorAll("button")].find(
         (node) => node.textContent === en.common.retry
       )!
     );
-    await vi.waitFor(() =>
-      expect(container.textContent).toContain(en.matches.native.timeline.empty)
-    );
+    await settle();
+    expect(container.textContent).toContain(en.matches.native.timeline.empty);
   });
 });
 
@@ -383,11 +391,13 @@ describe("MatchRowBadge", () => {
   it("says the metadata read failed and retries it, instead of silently dropping the badge", async () => {
     getMetadata.mockRejectedValueOnce(new Error("down")).mockResolvedValue(metadata);
     const container = await mount(<MatchRowBadge match={row()} />, null);
-    await vi.waitFor(() => expect(container.querySelector("button")).not.toBeNull());
+    await settle();
+    expect(container.querySelector("button")).not.toBeNull();
     const retry = container.querySelector("button")!;
     expect(retry.getAttribute("title")).toBe(en.matches.native.badgeError);
     await click(retry);
-    await vi.waitFor(() => expect(container.querySelector("button")).toBeNull());
+    await settle();
+    expect(container.querySelector("button")).toBeNull();
     expect(getMetadata).toHaveBeenCalled();
   });
 });

@@ -9,7 +9,7 @@
 // editing. The section below shows THIS stage's rows and says so with a pinned
 // chip instead of a filter that can be widened again.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, type ReactNode } from "react";
+import { act, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -73,7 +73,11 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams("stage=10&section=standings")
 }));
 
-vi.mock("next/link", () => ({ default: "a" }));
+vi.mock("next/link", () => ({
+  default: ({ prefetch: _prefetch, ...rest }: ComponentProps<"a"> & { prefetch?: boolean | null }) => (
+    <a {...rest} />
+  )
+}));
 
 // The code split is a bundling concern, and vitest's module runner never
 // settles an `import()` issued from a mocked module during render — so the

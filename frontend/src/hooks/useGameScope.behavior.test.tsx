@@ -158,11 +158,13 @@ describe("hydration", () => {
     container.innerHTML = html;
     const errors = vi.spyOn(console, "error").mockImplementation(() => {});
     await act(async () => {
-      hydrateRoot(
-        container,
-        <QueryClientProvider client={client()}>
-          <Probe options={options} />
-        </QueryClientProvider>
+      roots.push(
+        hydrateRoot(
+          container,
+          <QueryClientProvider client={client()}>
+            <Probe options={options} />
+          </QueryClientProvider>
+        )
       );
     });
 

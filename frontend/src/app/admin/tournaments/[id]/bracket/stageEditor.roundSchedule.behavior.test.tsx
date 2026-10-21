@@ -80,7 +80,16 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: { href: string; children: unknown }) => (
+  default: ({
+    href,
+    children,
+    prefetch: _prefetch,
+    ...rest
+  }: {
+    href: string;
+    children: unknown;
+    prefetch?: boolean | null;
+  }) => (
     <a href={href} {...rest}>
       {children as never}
     </a>

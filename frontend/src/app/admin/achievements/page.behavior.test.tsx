@@ -97,14 +97,10 @@ const click = (element: Element | null | undefined) =>
   });
 const table = () => container.querySelector("[data-table]");
 const evaluateDialog = () => container.querySelector("[data-evaluate-open]");
-/** The chip popover portals out of the page, so its items are document-wide. */
-const commandItem = (label: string) =>
-  [...document.querySelectorAll('[cmdk-item=""]')].find((node) => node.textContent?.trim().startsWith(label));
-
+/** Picks a game in the filter bar's inline select; its listbox portals out of the page (an option reads as its mark, then its name). */
 async function pickGame(name: string) {
-  await click(container.querySelector('button[aria-label="Add filter"]'));
-  await click(commandItem("Game"));
-  await click(commandItem(name));
+  await click(container.querySelector('button[role="combobox"][aria-label="Game"]'));
+  await click([...document.querySelectorAll('[role="option"]')].find((node) => node.textContent?.endsWith(name)));
 }
 
 async function mount() {
@@ -144,8 +140,8 @@ beforeEach(() => {
   });
 });
 
-describe("the achievements page's game chip", () => {
-  it("lists every game's rules, whatever the saved scope, until the chip narrows them to one game", async () => {
+describe("the achievements page's game select", () => {
+  it("lists every game's rules, whatever the saved scope, until the select narrows them to one game", async () => {
     useWorkspaceStore.setState({ gameScope: "overwatch", lastGame: "overwatch" });
     await mount();
     expect(table()?.getAttribute("data-discipline")).toBe("");
@@ -158,7 +154,7 @@ describe("the achievements page's game chip", () => {
 });
 
 describe("the achievements page keeps each game's drafts to that game", () => {
-  it("drops an evaluate selection made for Overwatch when the chip moves to League", async () => {
+  it("drops an evaluate selection made for Overwatch when the select moves to League", async () => {
     navigation.reset("/admin/achievements?discipline=overwatch");
     await mount();
     await click(container.querySelector("[data-evaluate]"));

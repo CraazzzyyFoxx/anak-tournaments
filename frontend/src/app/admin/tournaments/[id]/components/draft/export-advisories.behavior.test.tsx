@@ -63,13 +63,6 @@ function menuItems(): HTMLElement[] {
   return [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
 }
 
-async function chooseMenuItem(label: string) {
-  const item = menuItems().find((node) => node.textContent?.trim() === label);
-  expect(item).toBeDefined();
-  await act(async () => { item!.click(); });
-  await settle();
-}
-
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();
@@ -92,13 +85,8 @@ describe("draft export advisories", () => {
     await mount(surface === "history"
       ? <DraftHistoryPanel tournamentId={5} />
       : <LifecycleControls tournamentId={5} board={{ session, current_pick: null, picks: [] } as unknown as DraftBoard} />);
-    if (surface === "history") {
-      await openRowMenu();
-      await chooseMenuItem("actions.export");
-    } else {
-      await click("actions.export");
-      await click("Confirm export");
-    }
+    await click("actions.export");
+    if (surface === "controls") await click("Confirm export");
     await vi.waitFor(() => expect(notify.warning).toHaveBeenCalled());
     expect(notify.warning).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
       description: advisories.join("\n"), duration: Infinity
@@ -109,8 +97,7 @@ describe("draft export advisories", () => {
   it("keeps a clean export as a success", async () => {
     vi.mocked(draftService.lifecycle).mockResolvedValue({ ...session, advisories: [] } as DraftSession);
     await mount(<DraftHistoryPanel tournamentId={5} />);
-    await openRowMenu();
-    await chooseMenuItem("actions.export");
+    await click("actions.export");
     await vi.waitFor(() => expect(notify.success).toHaveBeenCalled());
     expect(notify.warning).not.toHaveBeenCalled();
   });
@@ -123,12 +110,33 @@ describe("draft history row actions", () => {
     expect(menuItems().map((item) => item.textContent?.trim())).toContain("history.delete");
   });
 
-  it("leaves delete out of the menu while the draft is on the clock", async () => {
+  it("shows delete disabled with its reason while the draft is on the clock", async () => {
     vi.mocked(draftService.listSessions).mockResolvedValue([{ ...session, status: "live" }]);
     await mount(<DraftHistoryPanel tournamentId={5} />);
     await openRowMenu();
-    const labels = menuItems().map((item) => item.textContent?.trim());
-    expect(labels).toContain("openBoard");
-    expect(labels).not.toContain("history.delete");
+    const remove = menuItems().find((item) => item.textContent?.startsWith("history.delete"));
+    expect(remove?.hasAttribute("data-disabled")).toBe(true);
+    expect(remove?.textContent).toContain("history.cancelFirst");
+  });
+});
+
+describe("control room pause and resume", () => {
+  const paused = { ...session, status: "paused" } as DraftSession;
+  const board = { session: paused, current_pick: null, picks: [] } as unknown as DraftBoard;
+  const resumeButton = () =>
+    [...container.querySelectorAll("button")].find((item) => item.textContent === "actions.resume");
+
+  it("resumes a paused draft in one click", async () => {
+    await mount(<LifecycleControls tournamentId={5} board={board} />);
+    await click("actions.resume");
+    expect(draftService.lifecycle).toHaveBeenCalledWith(5, paused.id, "resume");
+  });
+
+  it("keeps Resume visible but disabled, with the reason, while the roles are infeasible", async () => {
+    await mount(<LifecycleControls tournamentId={5} board={board} resumeBlocked />);
+    const button = resumeButton();
+    expect(button?.disabled).toBe(true);
+    const reason = document.getElementById(button!.getAttribute("aria-describedby")!);
+    expect(reason?.textContent).toBe("resumeBlocked");
   });
 });

@@ -96,6 +96,7 @@ async function render(team: RegistrationTeam): Promise<HTMLElement> {
       </NextIntlClientProvider>
     );
   });
+  await settle();
   return container;
 }
 
@@ -107,15 +108,20 @@ function findButton(text: string): HTMLButtonElement {
   return match as HTMLButtonElement;
 }
 
-async function click(element: HTMLElement): Promise<void> {
-  await act(async () => {
-    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
+/** Lets a settled read reach the view: react-query notifies its observers on a zero timeout, so wait one out in act. */
+async function settle(): Promise<void> {
   await act(async () => {
     const { promise, resolve } = Promise.withResolvers<void>();
     setTimeout(resolve, 0);
     await promise;
   });
+}
+
+async function click(element: HTMLElement): Promise<void> {
+  await act(async () => {
+    element.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await settle();
 }
 
 beforeEach(() => {

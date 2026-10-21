@@ -105,7 +105,7 @@ vi.mock("@/app/(site)/users/components/overview/OverviewRecentEncounters", () =>
 vi.mock("@/app/(site)/users/components/overview/OverviewAchievementsPreview", () => ({ default: () => null }));
 vi.mock("@/app/(site)/users/components/overview/LobbyLeaderboardModal", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
-vi.mock("@/disciplines/registry/profile", () => ({ loadProfileUI: async () => null }));
+vi.mock("@/disciplines/registry/profile", () => ({ loadProfileUI: Object.assign(async () => null, { peek: () => undefined }) }));
 // The overview awaits its sections, as the RSC renderer does (`resolveServer` only awaits async components).
 vi.mock("@/app/(site)/users/_views/UserOverviewPage", async (importOriginal) => {
   const actual = await importOriginal<typeof OverviewModule>();

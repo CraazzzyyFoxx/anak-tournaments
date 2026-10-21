@@ -94,11 +94,13 @@ async function mount(node: ReactNode) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  createRoot(container).render(
-    <NextIntlClientProvider locale="en" messages={messages}>
-      <QueryClientProvider client={client}>{node}</QueryClientProvider>
-    </NextIntlClientProvider>
-  );
+  await act(async () => {
+    createRoot(container).render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <QueryClientProvider client={client}>{node}</QueryClientProvider>
+      </NextIntlClientProvider>
+    );
+  });
   await flush();
 }
 

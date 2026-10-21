@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import { act, useEffect, useState, type ReactNode } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import { EncounterReportsBrowser } from "@/components/admin/EncounterReportsBrowser";
@@ -102,15 +102,27 @@ function Harness({ render }: Readonly<{ render: () => ReactNode }>) {
   // while rendering is a side effect the react-compiler rules reject.
   useEffect(() => {
     rerender = () => force((value) => value + 1);
+    return () => {
+      rerender = null;
+    };
   }, []);
   return <>{render()}</>;
 }
+
+const roots: Root[] = [];
+
+// A URL write pokes the mounted harness, so a root left over from the last test
+// would re-render outside `act` the moment the next one resets the URL.
+afterEach(async () => {
+  await act(async () => roots.splice(0).forEach((root) => root.unmount()));
+});
 
 async function mount(render: () => ReactNode) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const root = createRoot(container);
+  roots.push(root);
   await act(async () => {
     root.render(
       <NextIntlClientProvider locale="en" messages={en}>
@@ -146,12 +158,18 @@ function commandItem(label: string) {
   );
 }
 
-/** Open the "+ Filter" popover and pick `filter › option`. */
+/** Open the "+ Filter" popover, pick `filter › option`, and close it — a multi picker stays open. */
 async function pickChip(scope: ParentNode, filter: string, option?: string) {
   await click(scope.querySelector('button[aria-label="Add filter"]'));
   await click(await waitFor(() => commandItem(filter), `the ${filter} filter`));
   if (option) {
     await click(await waitFor(() => commandItem(option), `the ${option} option`));
+  }
+  if (document.querySelector("[cmdk-root]")) {
+    await act(async () => {
+      document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    await tick();
   }
 }
 

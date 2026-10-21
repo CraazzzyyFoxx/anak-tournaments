@@ -31,12 +31,16 @@ export default defineConfig({
     // same way, so every combobox popover threw the moment it opened.
     server: { deps: { inline: ["@tanstack/react-table", "cmdk"] } },
     environment: "node",
+    // Node 25 ships a global `localStorage` stub (no methods without
+    // `--localstorage-file`) that shadows happy-dom's, so every
+    // `localStorage.getItem` threw. Node 22 (CI) has it off already.
+    execArgv: ["--no-experimental-webstorage"],
     // A plain glob, not an allow-list. The frontend used to run two runners
     // (vitest plus `bun test` on the complement), which forced a hand-kept
     // file-level `include` — and an unmatched file is silently not collected,
     // so nine tests once sat green without ever running. One runner, one glob:
     // every `*.test.ts(x)` under `src` is collected by construction.
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    setupFiles: ["src/test/next-intl-fallback.ts"]
+    setupFiles: ["src/test/setup.ts"]
   }
 });

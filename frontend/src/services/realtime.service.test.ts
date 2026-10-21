@@ -294,6 +294,7 @@ describe("realtime subscribed confirmations", () => {
   });
 
   it("re-handshakes after a refresh instead of prompting login when the session is alive", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     getAccessTokenCookie.mockResolvedValue(undefined); // cookie expired before the reconnect
     refreshAccessToken.mockResolvedValue({ status: "refreshed", token: "fresh" });
     const topic = "tournament:1:balancer";
@@ -311,9 +312,17 @@ describe("realtime subscribed confirmations", () => {
     recovered.receive({ op: "error", topic, code: "auth_required", message: "Log in" });
     expect(useAuthModalStore.getState().isOpen).toBe(true);
     expect(currentSocket()).toBe(recovered);
+    expect(warn).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith("Realtime subscription error", {
+      op: "error",
+      topic,
+      code: "auth_required",
+      message: "Log in"
+    });
   });
 
   it("opens the login modal when auth_required arrives and the session is dead", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     getAccessTokenCookie.mockResolvedValue(undefined);
     refreshAccessToken.mockResolvedValue({ status: "unauthenticated" });
     const topic = "tournament:1:balancer";
@@ -322,14 +331,27 @@ describe("realtime subscribed confirmations", () => {
 
     currentSocket().receive({ op: "error", topic, code: "auth_required", message: "Log in" });
     await vi.waitFor(() => expect(useAuthModalStore.getState().isOpen).toBe(true));
+    expect(warn).toHaveBeenCalledWith("Realtime subscription error", {
+      op: "error",
+      topic,
+      code: "auth_required",
+      message: "Log in"
+    });
   });
 
   it("does not open the login modal on a plain forbidden error", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const topic = "tournament:1:balancer";
     trackCleanup(realtimeClient.subscribe(topic, () => undefined));
     currentSocket().open();
 
     currentSocket().receive({ op: "error", topic, code: "forbidden", message: "no" });
     expect(useAuthModalStore.getState().isOpen).toBe(false);
+    expect(warn).toHaveBeenCalledWith("Realtime subscription error", {
+      op: "error",
+      topic,
+      code: "forbidden",
+      message: "no"
+    });
   });
 });

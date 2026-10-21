@@ -125,40 +125,45 @@ describe("GameTabs", () => {
 });
 
 describe("GameField", () => {
-  const radios = () => [...container.querySelectorAll<HTMLButtonElement>('[role="radio"]')];
+  const trigger = () => document.querySelector<HTMLButtonElement>('button[role="combobox"]')!;
+  const options = () => [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+  const open = () => act(async () => trigger().click());
 
-  it("lists the enabled games under its label, checks the value and reports a pick", async () => {
+  it("lists the enabled games under its label, shows the value and reports a pick", async () => {
     const onChange = vi.fn();
     await render(<GameField games={[OW, LOL, OFF]} value="lol" onChange={onChange} id="game" />);
 
-    const group = container.querySelector('[role="radiogroup"]');
-    expect(document.getElementById(group?.getAttribute("aria-labelledby") ?? "")?.textContent).toBe("Game");
-    expect(container.querySelector("#game [role='radiogroup']")).toBe(group);
-    expect(radios().map((radio) => radio.textContent)).toEqual(["OWOverwatch", "LoLLeague of Legends"]);
-    expect(radios().map((radio) => radio.getAttribute("aria-checked"))).toEqual(["false", "true"]);
+    expect(container.querySelector('label[for="game"]')?.textContent).toBe("Game");
+    expect(trigger().id).toBe("game");
+    expect(trigger().textContent).toContain("League of Legends");
 
-    await act(async () => radios()[0]?.click());
+    await open();
+    expect(options().map((option) => option.textContent)).toEqual(["OWOverwatch", "LoLLeague of Legends"]);
+
+    await act(async () => options()[0]?.click());
     expect(onChange).toHaveBeenCalledWith("overwatch");
+    expect(options()).toEqual([]);
   });
 
-  it("takes no pick when the checked game is pressed again, a reselect or a deselect attempt alike", async () => {
+  it("takes no pick when the selected game is picked again", async () => {
     const onChange = vi.fn();
     await render(<GameField games={[OW, LOL]} value="lol" onChange={onChange} />);
 
-    await act(async () => radios()[1]?.click());
-    await act(async () => radios()[1]?.click());
+    await open();
+    await act(async () => options()[1]?.click());
 
     expect(onChange).not.toHaveBeenCalled();
-    expect(radios().map((radio) => radio.getAttribute("aria-checked"))).toEqual(["false", "true"]);
+    expect(trigger().textContent).toContain("League of Legends");
   });
 
-  it("checks nothing without a value and takes no pick once locked", async () => {
+  it("asks for a game without a value and takes no pick once locked", async () => {
     const onChange = vi.fn();
     await render(<GameField games={[OW, LOL]} value={null} onChange={onChange} disabled />);
 
-    expect(radios().map((radio) => radio.getAttribute("aria-checked"))).toEqual(["false", "false"]);
-    expect(radios().every((radio) => radio.disabled)).toBe(true);
-    await act(async () => radios()[1]?.click());
+    expect(trigger().textContent).toBe("Select a game");
+    expect(trigger().disabled).toBe(true);
+    await open();
+    expect(options()).toEqual([]);
     expect(onChange).not.toHaveBeenCalled();
   });
 });

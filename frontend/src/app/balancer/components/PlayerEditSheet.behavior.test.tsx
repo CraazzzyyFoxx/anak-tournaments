@@ -476,16 +476,17 @@ describe("owner game role and rank capabilities", () => {
     />
   );
 
-  it("shows a live native rank, named by its game, only for a game that collects one", async () => {
+  it("shows a live native rank named by its own game", async () => {
     await render(sheetFor("overwatch", { ow_rank_value: 1500 }));
     expect(document.body.textContent).toContain("Live Overwatch rank");
     expect(document.body.textContent).toContain("Overwatch");
     expect(document.body.textContent).not.toContain("No live");
 
+    // League collects its own native ranks too: named by League, never by Overwatch.
     await render(sheetFor("lol"));
     expect(document.body.textContent).toContain("Skill rating");
-    expect(document.body.textContent).not.toContain("Live rank");
-    expect(document.body.textContent).not.toContain("No live");
+    expect(document.body.textContent).toContain("Live League of Legends rank");
+    expect(document.body.textContent).not.toContain("Overwatch rank");
   });
 
   it("adds the first position of the League dictionary the player does not have", async () => {

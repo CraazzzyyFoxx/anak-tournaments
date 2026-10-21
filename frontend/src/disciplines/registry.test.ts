@@ -53,9 +53,11 @@ describe("slot-family loaders", () => {
     expect(lol?.code).toBe("lol");
     expect(Object.keys(lol?.slots ?? {})).toEqual(["pregameCharacterBans"]);
     expect(lol?.slots.pregameCharacterBans).not.toBe((await loadPregameUI("overwatch"))?.slots.pregameCharacterBans);
-    for (const load of [loadRankUI, loadAdminUI, loadProfileUI, loadAnalyticsUI]) {
+    for (const load of [loadAdminUI, loadProfileUI, loadAnalyticsUI]) {
       await expect(load("lol")).resolves.toBeNull();
     }
+    expect(Object.keys((await loadRankUI("lol"))?.slots ?? {})).toEqual(["rankHistory"]);
+    expect((await loadRankUI("lol"))?.slots.rankHistory).not.toBe((await loadRankUI("overwatch"))?.slots.rankHistory);
   });
 
   it("keep a slot's component identity stable across loads", async () => {

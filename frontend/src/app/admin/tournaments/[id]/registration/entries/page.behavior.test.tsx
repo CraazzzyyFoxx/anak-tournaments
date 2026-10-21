@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 //
 // Registration › Entries (F4). What is pinned here:
-//  1. the sub-tab bar holds only the two views of who entered (entries,
-//     teams) — one view is no bar at all — and the tools that act on entries
-//     (Sheets feed, rank autofill) sit in a "Tools" menu beside it;
+//  1. the sub-tab bar holds the views of who entered (entries, teams) and the
+//     tools that act on entries (Sheets feed, rank autofill), each a routed
+//     tab;
 //  2. `teams` is offered only on a tournament that forms its teams by
 //     registration — it used to be a Radix `Tabs` switcher inside this page,
 //     which is neither the admin's one tab implementation nor linkable;
@@ -58,8 +58,12 @@ vi.mock("next/navigation", () => ({
 vi.mock("next/link", () => ({
   default: forwardRef<
     HTMLAnchorElement,
-    { href: string; children: ReactNode } & React.AnchorHTMLAttributes<HTMLAnchorElement>
-  >(function Link({ href, children, ...props }, ref) {
+    {
+      href: string;
+      children: ReactNode;
+      prefetch?: boolean | null;
+    } & React.AnchorHTMLAttributes<HTMLAnchorElement>
+  >(function Link({ href, children, prefetch: _prefetch, ...props }, ref) {
     return (
       <a ref={ref} href={href} {...props}>
         {children}
@@ -207,7 +211,10 @@ function Harness() {
 async function mount(search = "", expectTable = true) {
   currentSearch = search;
   currentPath = "/admin/tournaments/80/registration/entries";
-  window.history.replaceState(null, "", `${currentPath}${search}`);
+  // A harness already mounted by this test re-renders from the new URL.
+  await act(async () => {
+    window.history.replaceState(null, "", `${currentPath}${search}`);
+  });
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -300,21 +307,16 @@ afterEach(async () => {
 });
 
 describe("Registration entries", () => {
-  it("offers no tab bar for one view, and the tools in a menu", async () => {
+  it("offers the tools as routed tabs beside entries", async () => {
     const scope = await mount();
+    const links = [
+      ...(scope.querySelector("nav[aria-label='Registration sections']")?.querySelectorAll("a") ??
+        [])
+    ];
 
-    // No `teams`: this tournament balances, so entries is the only view.
-    expect(scope.querySelector("nav[aria-label='Registration sections']")).toBeNull();
-
-    const tools = [...scope.querySelectorAll("button")].find(
-      (button) => button.textContent === "Tools"
-    );
-    await act(async () => {
-      tools?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-      await tick();
-    });
-    const items = [...document.body.querySelectorAll("[role='menuitem']")];
-    expect(items.map((item) => item.getAttribute("href"))).toEqual([
+    // No `teams`: this tournament balances, so the bar is entries and the tools.
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/admin/tournaments/80/registration/entries",
       "/admin/tournaments/80/registration/feed",
       "/admin/tournaments/80/registration/rank-autofill"
     ]);
@@ -333,7 +335,9 @@ describe("Registration entries", () => {
     // the entries table whose state no URL could carry.
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
       "/admin/tournaments/80/registration/entries",
-      "/admin/tournaments/80/registration/teams"
+      "/admin/tournaments/80/registration/teams",
+      "/admin/tournaments/80/registration/feed",
+      "/admin/tournaments/80/registration/rank-autofill"
     ]);
     expect(
       links.filter((link) => link.getAttribute("aria-current") === "page").map((l) => l.textContent)
