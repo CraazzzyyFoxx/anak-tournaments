@@ -64,7 +64,6 @@ OPERATIONS: dict[str, Op] = {
         response=Paginated[schemas.CatalogEntityRead], query=schemas.CatalogEntityListQueryParams
     ),
     "rpc.app.catalog.get": Op(response=schemas.CatalogEntityRead),
-    "rpc.app.catalog.legacy": Op(response=schemas.CatalogLegacyRead),
     "rpc.app.disciplines.list": Op(response=DisciplineDescriptor, response_array=True, query_params=(_WS_OR_ALL,)),
     "rpc.app.disciplines.metadata": Op(response=DisciplineMetadata, query_params=(_WS_OR_ALL,)),
     # ── statistics ─────────────────────────────────────────────────────────

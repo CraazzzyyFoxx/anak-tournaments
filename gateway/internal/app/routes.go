@@ -21,12 +21,9 @@ var ReadRoutes = []edge.RouteSpec{
 	// Five/six segments: no clash with the three-segment /statistics/{champion,winrate,won-maps} literals. ---
 	{Method: "GET", Pattern: "/api/v1/statistics/{discipline}/characters/playtime", Queue: "rpc.app.statistics.character_playtime", Path: []string{"discipline"}, AllQuery: true, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/statistics/{discipline}/characters/{entity_id}/leaderboard", Queue: "rpc.app.statistics.character_leaderboard", IDParam: "entity_id", Path: []string{"discipline"}, AllQuery: true, Auth: edge.AuthOptional},
-	// --- catalog: one discipline's characters/maps/modes, public, never cached (P7 §3.2). The literal `legacy`
-	// segment below is more specific than {discipline}, so ServeMux keeps the old-id resolver reachable. ---
+	// --- catalog: one discipline's characters/maps/modes, public, never cached (P7 §3.2) ---
 	{Method: "GET", Pattern: "/api/v1/catalog/{discipline}/{kind}", Queue: "rpc.app.catalog.list", Path: []string{"discipline", "kind"}, AllQuery: true, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/catalog/{discipline}/{kind}/{id}", Queue: "rpc.app.catalog.get", IDParam: "id", Path: []string{"discipline", "kind"}, Auth: edge.AuthNone},
-	// --- catalog: an old hero/map/gamemode id -> its catalog entity (D84; removed with discipline02) ---
-	{Method: "GET", Pattern: "/api/v1/catalog/legacy/{legacy_kind}/{legacy_id}", Queue: "rpc.app.catalog.legacy", Path: []string{"legacy_kind", "legacy_id"}, Auth: edge.AuthNone},
 	// --- disciplines: installed descriptors and native metadata; AuthOptional so a hidden workspace's members may read
 	// its ontology, never cached (P7 §1.1) ---
 	{Method: "GET", Pattern: "/api/v1/disciplines", Queue: "rpc.app.disciplines.list", Query: []string{"workspace_id"}, Auth: edge.AuthOptional},
@@ -34,7 +31,6 @@ var ReadRoutes = []edge.RouteSpec{
 	// --- achievements (list only; get surface is the subtree) ---------------
 	{Method: "GET", Pattern: "/api/v1/achievements", Queue: "rpc.app.read.list", Entity: "achievement", Action: "list", AllQuery: true, Auth: edge.AuthNone},
 	// --- statistics ---------------------------------------------------------
-	{Method: "GET", Pattern: "/api/v1/statistics/dashboard", Queue: "rpc.app.statistics.dashboard", Query: []string{"workspace_id", "discipline"}, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/statistics/champion", Queue: "rpc.app.statistics.champion", AllQuery: true, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/statistics/winrate", Queue: "rpc.app.statistics.winrate", AllQuery: true, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/statistics/won-maps", Queue: "rpc.app.statistics.won_maps", AllQuery: true, Auth: edge.AuthNone},

@@ -177,34 +177,35 @@ class CatalogDeleteDbTests(IsolatedAsyncioTestCase):
     if sys.platform == "win32":
         loop_factory = asyncio.SelectorEventLoop
 
-    async def test_a_legacy_reference_returns_in_use_instead_of_deleting_the_entity(self) -> None:
+    async def test_a_referenced_entity_returns_in_use_instead_of_deleting_it(self) -> None:
         from shared import models
 
         engine = create_test_async_engine()
         Session = async_sessionmaker(engine, expire_on_commit=False)
+        service = CatalogAdminService()
         try:
             async with Session() as session:
-                entity = await CatalogAdminService().create(
-                    session,
-                    "overwatch",
-                    "character",
-                    schemas.CatalogEntityCreate(name="Delete conflict check", attrs={"class": "support"}),
+                mode = await service.create(
+                    session, "overwatch", "mode", schemas.CatalogEntityCreate(name="Delete conflict check")
                 )
-                entity_id = entity.id
-                legacy = models.CatalogEntityLegacy(legacy_kind="hero", legacy_id=entity_id, entity_id=entity_id)
-                session.add(legacy)
-                await session.commit()
+                mode_id = mode.id
+                child_id = (
+                    await service.create(
+                        session,
+                        "overwatch",
+                        "map",
+                        schemas.CatalogEntityCreate(name="Delete conflict check map", parent_id=mode_id),
+                    )
+                ).id
                 try:
                     with self.assertRaises(BaseAPIException) as refused:
-                        await CatalogAdminService().delete(session, "overwatch", "character", entity_id)
+                        await service.delete(session, "overwatch", "mode", mode_id)
                     assert refused.exception.status_code == 409
                     assert "in use" in refused.exception.detail
-                    assert await session.get(models.CatalogEntity, entity_id) is not None
+                    assert await session.get(models.CatalogEntity, mode_id) is not None
                 finally:
-                    await session.rollback()
-                    await session.delete(legacy)
-                    await session.commit()
-                    await CatalogAdminService().delete(session, "overwatch", "character", entity_id)
+                    await service.delete(session, "overwatch", "map", child_id)
+                    await service.delete(session, "overwatch", "mode", mode_id)
         finally:
             await engine.dispose()
 

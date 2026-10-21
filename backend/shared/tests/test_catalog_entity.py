@@ -12,19 +12,12 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from scripts.export_db_schema import column_line
-from shared.models.catalog.entity import CatalogEntity, CatalogEntityLegacy
+from shared.models.catalog.entity import CatalogEntity
 from shared.repository import CatalogEntityRepository
 from shared.testing import create_test_async_engine
 from shared.testing.db import ensure_test_postgres
 
 _TAG = itertools.count()
-
-
-def test_legacy_keys_are_not_documented_as_generated_ids() -> None:
-    columns = CatalogEntityLegacy.__table__.columns
-    assert "increment" not in column_line(columns.legacy_kind)
-    assert "increment" not in column_line(columns.legacy_id)
 
 
 class CatalogEntityTests(IsolatedAsyncioTestCase):
@@ -111,19 +104,3 @@ class CatalogEntityTests(IsolatedAsyncioTestCase):
             assert await repo.exists(s, id=hero.id)
             assert not await repo.exists(s, id=ow_map.id)
             assert not await repo.exists(s, filters=[CatalogEntity.id == champion.id])
-
-    async def test_an_old_id_resolves_to_the_entity_it_became(self) -> None:
-        legacy_id = 2_000_000_000 + os.getpid() % 1_000_000
-        async with self.Session() as s:
-            hero = self._entity("legacy")
-            s.add(hero)
-            await s.flush()
-            s.add(CatalogEntityLegacy(legacy_kind="hero", legacy_id=legacy_id, entity_id=hero.id))
-            await s.commit()
-            try:
-                repo = CatalogEntityRepository()
-                assert (await repo.get_by_legacy_id(s, "hero", legacy_id)).id == hero.id
-                assert await repo.get_by_legacy_id(s, "map", legacy_id) is None
-            finally:
-                await s.execute(sa.delete(CatalogEntityLegacy).where(CatalogEntityLegacy.legacy_id == legacy_id))
-                await s.commit()

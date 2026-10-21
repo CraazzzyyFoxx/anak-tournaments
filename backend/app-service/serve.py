@@ -43,7 +43,6 @@ from src.rpc import (
     binary,
     catalog,
     catalog_aliases,
-    catalog_legacy,
     disciplines,
     metadata_admin,
     notifications,
@@ -123,7 +122,6 @@ reads_generic.register(broker, logger)
 for _mod in (users, achievements, statistics, workspaces):
     _mod.register(broker, logger)
 catalog.register(broker, logger)
-catalog_legacy.register(broker, logger)
 disciplines.register(broker, logger)
 
 # Workspace update/delete via the shared CRUD engine.

@@ -4,9 +4,6 @@ One table for every kind, so a fact, a pick-ban pool or a game names an entity t
 the core's vocabulary (``shared.disciplines.CATALOG_KINDS``); what a kind is called in a game's UI is the module's
 label. A map's mode is its ``parent``; a hero's or champion's class is ``attrs["class"]``. A reference from another
 table is a composite FK onto ``(id, kind[, discipline])`` with a kind-constant column on the referencing side.
-
-``CatalogEntityLegacy`` maps the old ``overwatch.*`` ids onto these rows for the reconcile and the
-redirect of old URLs; ``discipline02`` drops it with ``overwatch.*``.
 """
 
 from __future__ import annotations
@@ -26,7 +23,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.core import db
 
-__all__ = ("CatalogEntity", "CatalogEntityLegacy")
+__all__ = ("CatalogEntity",)
 
 
 class CatalogEntity(db.TimeStampIntegerMixin):
@@ -66,15 +63,3 @@ class CatalogEntity(db.TimeStampIntegerMixin):
     parent: Mapped[CatalogEntity | None] = relationship(
         primaryjoin="foreign(CatalogEntity.parent_id) == remote(CatalogEntity.id)", viewonly=True
     )
-
-
-class CatalogEntityLegacy(db.Base):
-    __tablename__ = "entity_legacy"
-    __table_args__ = (
-        CheckConstraint("legacy_kind IN ('hero', 'map', 'gamemode')", name="ck_entity_legacy_kind"),
-        {"schema": "catalog"},
-    )
-
-    legacy_kind: Mapped[str] = mapped_column(String(16), primary_key=True, autoincrement=False)
-    legacy_id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, autoincrement=False)
-    entity_id: Mapped[int] = mapped_column(ForeignKey("catalog.entity.id", name="fk_entity_legacy_entity"))

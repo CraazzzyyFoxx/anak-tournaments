@@ -172,26 +172,6 @@
       "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
-      "path": "backend/app-service/src/services/catalog_legacy.py",
-      "rule": "catalog-label",
-      "token": "hero",
-      "context": "_LEGACY_KINDS = frozenset({\"hero\", \"map\", \"gamemode\"})",
-      "count": 1,
-      "reason": "P1 legacy catalog URL compatibility: old hero/map/gamemode ids in retained browser params",
-      "owner": "P9",
-      "remove_when": "discipline02 retires legacy catalog ids"
-    },
-    {
-      "path": "backend/app-service/src/services/catalog_legacy.py",
-      "rule": "catalog-label",
-      "token": "gamemode",
-      "context": "_LEGACY_KINDS = frozenset({\"hero\", \"map\", \"gamemode\"})",
-      "count": 1,
-      "reason": "P1 legacy catalog URL compatibility: old hero/map/gamemode ids in retained browser params",
-      "owner": "P9",
-      "remove_when": "discipline02 retires legacy catalog ids"
-    },
-    {
       "path": "backend/app-service/src/services/hero/queries.py",
       "rule": "catalog-label",
       "token": "hero_id",
@@ -452,56 +432,6 @@
       "remove_when": "the mix card counts the mix game's roles"
     },
     {
-      "path": "backend/balancer-service/src/domain/mix_self_service.py",
-      "rule": "identity",
-      "token": "battlenet",
-      "context": "elif \"battlenet\" in missing_links:",
-      "count": 1,
-      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
-      "owner": "module",
-      "remove_when": "provider is removed"
-    },
-    {
-      "path": "backend/balancer-service/src/services/rank_overview.py",
-      "rule": "ow-prefix",
-      "token": "ow_division",
-      "context": "(ow_division if ow_division is not None else _null(sa.String)).label(\"ow_division\"),",
-      "count": 1,
-      "reason": "collector wire: the OW native-rank snapshot branch's projected columns (null for every other game)",
-      "owner": "module",
-      "remove_when": "the rank overview's native layer is served by the module"
-    },
-    {
-      "path": "backend/balancer-service/src/services/rank_overview.py",
-      "rule": "ow-prefix",
-      "token": "ow_tier",
-      "context": "(ow_tier if ow_tier is not None else _null(sa.Integer)).label(\"ow_tier\"),",
-      "count": 1,
-      "reason": "collector wire: the OW native-rank snapshot branch's projected columns (null for every other game)",
-      "owner": "module",
-      "remove_when": "the rank overview's native layer is served by the module"
-    },
-    {
-      "path": "backend/balancer-service/src/services/rank_overview.py",
-      "rule": "ow-prefix",
-      "token": "ow_division",
-      "context": "\"ow_division\": row.ow_division,",
-      "count": 1,
-      "reason": "collector wire: the OW native-rank snapshot branch's projected columns (null for every other game)",
-      "owner": "module",
-      "remove_when": "the rank overview's native layer is served by the module"
-    },
-    {
-      "path": "backend/balancer-service/src/services/rank_overview.py",
-      "rule": "ow-prefix",
-      "token": "ow_tier",
-      "context": "\"ow_tier\": row.ow_tier,",
-      "count": 1,
-      "reason": "collector wire: the OW native-rank snapshot branch's projected columns (null for every other game)",
-      "owner": "module",
-      "remove_when": "the rank overview's native layer is served by the module"
-    },
-    {
       "path": "backend/discord-service/src/interactions/copy.py",
       "rule": "discipline-code",
       "token": "overwatch",
@@ -612,6 +542,16 @@
       "remove_when": "provider is removed"
     },
     {
+      "path": "backend/identity-service/src/schemas/oauth.py",
+      "rule": "identity",
+      "token": "riot",
+      "context": "RIOT = \"riot\"",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
       "path": "backend/identity-service/src/services/oauth_providers.py",
       "rule": "identity",
       "token": "battlenet",
@@ -652,10 +592,40 @@
       "remove_when": "provider is removed"
     },
     {
+      "path": "backend/identity-service/src/services/oauth_providers.py",
+      "rule": "identity",
+      "token": "riot",
+      "context": "provider_name = \"riot\"",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/identity-service/src/services/oauth_providers.py",
+      "rule": "identity",
+      "token": "riot",
+      "context": "\"riot\": {",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "backend/identity-service/src/services/oauth_providers.py",
+      "rule": "identity",
+      "token": "riot",
+      "context": "\"riot\": RiotOAuthProvider(self.http),",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
       "path": "backend/identity-service/src/services/players.py",
       "rule": "identity",
       "token": "battlenet",
-      "context": "providers=[\"discord\", \"battlenet\"],",
+      "context": "providers=[\"discord\", \"battlenet\", SocialProvider.RIOT],",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -1492,26 +1462,6 @@
       "remove_when": "identifier is migrated with its data/URL"
     },
     {
-      "path": "backend/shared/models/ranks/overwatch_rank.py",
-      "rule": "discipline-code",
-      "token": "overwatch",
-      "context": "RANK_SCHEMA = \"overwatch_rank\"",
-      "count": 1,
-      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
-      "owner": "P9",
-      "remove_when": "identifier is migrated with its data/URL"
-    },
-    {
-      "path": "backend/shared/models/registration/registration.py",
-      "rule": "identity",
-      "token": "battle_tag_normalized",
-      "context": "\"battle_tag_normalized\",",
-      "count": 1,
-      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
-      "owner": "P9",
-      "remove_when": "identifier is migrated with its data/URL"
-    },
-    {
       "path": "backend/shared/models/tenancy/workspace.py",
       "rule": "discipline-code",
       "token": "overwatch",
@@ -1540,26 +1490,6 @@
       "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
       "owner": "P9",
       "remove_when": "identifier is migrated with its data/URL"
-    },
-    {
-      "path": "backend/shared/repository/ranks.py",
-      "rule": "identity",
-      "token": "battle_tag",
-      "context": "columns = [\"social_account_id\", \"battle_tag\", \"player_id_slug\"]",
-      "count": 1,
-      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
-      "owner": "module",
-      "remove_when": "provider is removed"
-    },
-    {
-      "path": "backend/shared/repository/ranks.py",
-      "rule": "identity",
-      "token": "battle_tag",
-      "context": "acc.username.label(\"battle_tag\"),",
-      "count": 1,
-      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
-      "owner": "module",
-      "remove_when": "provider is removed"
     },
     {
       "path": "backend/shared/services/stats_evidence.py",
@@ -1645,11 +1575,21 @@
       "path": "backend/stats-service/src/rpc/rank.py",
       "rule": "discipline-code",
       "token": "overwatch",
-      "context": "_DISCIPLINE = \"overwatch\"",
+      "context": "_DEFAULT_DISCIPLINE = \"overwatch\"",
       "count": 1,
       "reason": "OW-only stats/analytics code P5/P6 kept in core (LogStatsName/MatchEvent/HeroClass, MVP/impact SQL, OW-only services; C21)",
       "owner": "P9",
       "remove_when": "P9 relocates it into shared.disciplines.overwatch"
+    },
+    {
+      "path": "backend/stats-service/src/openapi_docs.py",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "`discipline` query parameter names the game (default `overwatch`)",
+      "count": 8,
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
     },
     {
       "path": "backend/stats-service/src/schemas/admin/achievement_rule.py",
@@ -1996,6 +1936,16 @@
       "rule": "identity",
       "token": "battlenet",
       "context": "return await startOAuthLogin(request, \"battlenet\");",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/app/(site)/auth/riot/login/route.ts",
+      "rule": "identity",
+      "token": "riot",
+      "context": "return await startOAuthLogin(request, \"riot\");",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -2575,7 +2525,17 @@
       "path": "frontend/src/components/AuthModal.tsx",
       "rule": "identity",
       "token": "battlenet",
-      "context": "? [\"discord\", \"twitch\", \"battlenet\"].map((provider) => (",
+      "context": "? [\"discord\", \"twitch\", \"battlenet\", \"riot\"].map((provider) => (",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/components/AuthModal.tsx",
+      "rule": "identity",
+      "token": "riot",
+      "context": "? [\"discord\", \"twitch\", \"battlenet\", \"riot\"].map((provider) => (",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -2605,7 +2565,17 @@
       "path": "frontend/src/components/account-settings/MyAccountSection.tsx",
       "rule": "identity",
       "token": "battlenet",
-      "context": "const OAUTH_ADDABLE = [\"battlenet\", \"discord\", \"twitch\"] as const;",
+      "context": "const OAUTH_ADDABLE = [\"battlenet\", \"riot\", \"discord\", \"twitch\"] as const;",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/components/account-settings/MyAccountSection.tsx",
+      "rule": "identity",
+      "token": "riot",
+      "context": "const OAUTH_ADDABLE = [\"battlenet\", \"riot\", \"discord\", \"twitch\"] as const;",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -2732,14 +2702,14 @@
       "remove_when": "identifier is migrated with its data/URL"
     },
     {
-      "path": "frontend/src/components/admin/collectors/rank-history.tsx",
-      "rule": "identity",
-      "token": "battle_tag",
-      "context": "accessorKey: \"battle_tag\",",
+      "path": "frontend/src/components/admin/collectors/rank-settings.tsx",
+      "rule": "discipline-code",
+      "token": "overwatch",
+      "context": "discipline === \"overwatch\" ? \"parser.rank_collection\"",
       "count": 1,
-      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
-      "owner": "module",
-      "remove_when": "provider is removed"
+      "reason": "persisted/wire identifier (column default, table/schema name, stored parser/mode id, URL value, include token)",
+      "owner": "P9",
+      "remove_when": "identifier is migrated with its data/URL"
     },
     {
       "path": "frontend/src/components/admin/pregame-rooms/model.ts",
@@ -2882,34 +2852,14 @@
       "remove_when": "provider is removed"
     },
     {
-      "path": "frontend/src/lib/catalog/legacy-redirect.ts",
-      "rule": "catalog-label",
-      "token": "hero",
-      "context": "export type LegacyKind = \"hero\" | \"map\";",
+      "path": "frontend/src/lib/auth/oauth-callback.ts",
+      "rule": "identity",
+      "token": "riot",
+      "context": "\"riot\",",
       "count": 1,
-      "reason": "P1 legacy catalog URL compatibility: old hero/map/gamemode ids in retained browser params",
-      "owner": "P9",
-      "remove_when": "discipline02 retires legacy catalog ids"
-    },
-    {
-      "path": "frontend/src/lib/catalog/legacy-redirect.ts",
-      "rule": "catalog-label",
-      "token": "hero",
-      "context": "{ path: /^\\/users\\/heroes-compare\\/?$/, params: { hero_id: \"hero\" }, browsing: true },",
-      "count": 1,
-      "reason": "P1 legacy catalog URL compatibility: old hero/map/gamemode ids in retained browser params",
-      "owner": "P9",
-      "remove_when": "discipline02 retires legacy catalog ids"
-    },
-    {
-      "path": "frontend/src/lib/catalog/legacy-redirect.ts",
-      "rule": "catalog-label",
-      "token": "hero",
-      "context": "params: { left_hero_id: \"hero\", right_hero_id: \"hero\", map_id: \"map\" },",
-      "count": 2,
-      "reason": "P1 legacy catalog URL compatibility: old hero/map/gamemode ids in retained browser params",
-      "owner": "P9",
-      "remove_when": "discipline02 retires legacy catalog ids"
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
     },
     {
       "path": "frontend/src/lib/encounters/query-keys.ts",
@@ -3045,7 +2995,17 @@
       "path": "frontend/src/types/auth.types.ts",
       "rule": "identity",
       "token": "battlenet",
-      "context": "export type OAuthProviderName = \"discord\" | \"twitch\" | \"battlenet\";",
+      "context": "export type OAuthProviderName = \"discord\" | \"twitch\" | \"battlenet\" | \"riot\";",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/types/auth.types.ts",
+      "rule": "identity",
+      "token": "riot",
+      "context": "export type OAuthProviderName = \"discord\" | \"twitch\" | \"battlenet\" | \"riot\";",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",
@@ -3075,7 +3035,17 @@
       "path": "frontend/src/types/rbac.types.ts",
       "rule": "identity",
       "token": "battlenet",
-      "context": "export type OAuthProvider = \"discord\" | \"twitch\" | \"battlenet\" | \"google\" | \"github\";",
+      "context": "export type OAuthProvider = \"discord\" | \"twitch\" | \"battlenet\" | \"riot\" | \"google\" | \"github\";",
+      "count": 1,
+      "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
+      "owner": "module",
+      "remove_when": "provider is removed"
+    },
+    {
+      "path": "frontend/src/types/rbac.types.ts",
+      "rule": "identity",
+      "token": "riot",
+      "context": "export type OAuthProvider = \"discord\" | \"twitch\" | \"battlenet\" | \"riot\" | \"google\" | \"github\";",
       "count": 1,
       "reason": "authentic provider registry: Battle.net/Riot OAuth and social providers, OW collector wire",
       "owner": "module",

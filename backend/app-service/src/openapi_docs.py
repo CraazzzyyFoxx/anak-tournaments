@@ -31,10 +31,6 @@ DOCS: dict[str, dict] = {
         "summary": "Get a catalog entity",
         "description": "Permission: public; no authentication required. Returns one entity with its parent expanded; inactive rows are readable. 404 `not_found` when the id is not a row of that discipline and kind (never an entity relabelled from another game).",
     },
-    "rpc.app.catalog.legacy": {
-        "summary": "Resolve an old catalog id",
-        "description": "Permission: public; no authentication required. Returns the catalog entity an old hero, map or gamemode id became in the catalog migration (entity_id, discipline, kind, slug); 404 for any other id. Available until the deploy after the multi-game release.",
-    },
     "rpc.app.disciplines.list": {
         "summary": "List installed disciplines",
         "description": "Permission: public; an optional identity lets a hidden workspace's members read it. Returns the installed disciplines with their kinds, capabilities and, for `workspace_id=<id>`, whether the workspace enabled each (`all` is the global view, every discipline enabled). Order: declaration order for `all`; for a workspace, its enabled disciplines first in its own `disciplines_enabled` order, then the rest in declaration order. 404 for an unknown or hidden-to-viewer workspace, 422 `invalid_workspace_id` otherwise.",

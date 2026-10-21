@@ -1,7 +1,5 @@
-"""Public catalog payloads: the shared native entity read, the legacy-id resolution and the character statistics
-shapes (playtime shares and the per-character leaderboard)."""
-
-from pydantic import BaseModel
+"""Public catalog payloads: the shared native entity read and the character statistics shapes (playtime shares and
+the per-character leaderboard)."""
 
 from shared.schemas.catalog import (
     CatalogEntityRead,
@@ -15,7 +13,6 @@ from shared.schemas.catalog import (
 
 __all__ = (
     "CatalogEntityRead",
-    "CatalogLegacyRead",
     "CharacterLeaderboardEntry",
     "CharacterLeaderboardParams",
     "CharacterLeaderboardQueryParams",
@@ -23,12 +20,3 @@ __all__ = (
     "CharacterPlaytimePaginationParams",
     "CharacterPlaytimeQueryPaginationParams",
 )
-
-
-class CatalogLegacyRead(BaseModel):
-    """What an old ``overwatch.hero|map|gamemode`` id became."""
-
-    entity_id: int
-    discipline: str
-    kind: str
-    slug: str

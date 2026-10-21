@@ -78,22 +78,3 @@ func TestDraftCardRouteIsPublicAndWorkspaceScoped(t *testing.T) {
 	}
 	t.Fatal("GET /api/v1/users/{id}/draft-card missing from ReadRoutes")
 }
-
-func TestLegacyCatalogLookupIsPublicAndForwardsItsPath(t *testing.T) {
-	for _, r := range ReadRoutes {
-		if r.Pattern != "/api/v1/catalog/legacy/{legacy_kind}/{legacy_id}" {
-			continue
-		}
-		if r.Method != http.MethodGet || r.Queue != "rpc.app.catalog.legacy" {
-			t.Fatalf("legacy catalog route is %s -> %q", r.Method, r.Queue)
-		}
-		if r.Auth != edge.AuthNone {
-			t.Errorf("legacy catalog lookup must be public, got Auth=%v", r.Auth)
-		}
-		if len(r.Path) != 2 || r.Path[0] != "legacy_kind" || r.Path[1] != "legacy_id" {
-			t.Errorf("legacy catalog lookup must forward both path params, got Path=%v", r.Path)
-		}
-		return
-	}
-	t.Fatal("GET /api/v1/catalog/legacy/{legacy_kind}/{legacy_id} missing from ReadRoutes")
-}

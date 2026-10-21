@@ -83,18 +83,6 @@ class CatalogEntityRepository(BaseRepository[models.CatalogEntity]):
             )
         ).all()
 
-    async def get_by_legacy_id(
-        self, session: AsyncSession, legacy_kind: str, legacy_id: int
-    ) -> models.CatalogEntity | None:
-        """The entity an ``overwatch.*`` id became (``catalog.entity_legacy``; both go in ``discipline02``)."""
-        legacy = models.CatalogEntityLegacy
-        query = (
-            self.select()
-            .join(legacy, legacy.entity_id == models.CatalogEntity.id)
-            .where(legacy.legacy_kind == legacy_kind, legacy.legacy_id == legacy_id)
-        )
-        return (await session.execute(query)).scalars().first()
-
     async def playtime(
         self,
         session: AsyncSession,
