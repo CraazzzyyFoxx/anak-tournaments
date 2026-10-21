@@ -81,8 +81,9 @@ function board(tournamentId: number, workspaceId: number) {
     metadata: OW_METADATA,
     canReadV2: false,
     canUpdate: false,
+    ended: true,
     hero: (parts) => (
-      <header data-testid="hero" data-ranked-by={parts.rankedBy ?? ""} data-teams={parts.counts?.teams ?? ""}>
+      <header data-testid="hero" data-teams={parts.counts?.teams ?? ""}>
         {parts.controls}
       </header>
     )
@@ -106,6 +107,8 @@ async function render(tournamentId: number, workspaceId: number, query: string) 
 }
 
 const hero = () => container.querySelector<HTMLElement>("[data-testid=hero]");
+/** The board's ranking picker, which it hands to the host's hero. */
+const rankingPicker = () => hero()?.querySelector<HTMLElement>('[role="combobox"][aria-label="Algorithm"]') ?? null;
 
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -131,7 +134,7 @@ describe("Overwatch analytics board", () => {
 
     expect(api.getAnalytics).toHaveBeenCalledWith(TOURNAMENT, 2, 910_000, expect.objectContaining({ signal: expect.anything() }));
     expect(container.textContent).toContain("P4 team_home");
-    expect(hero()?.dataset.rankedBy).toBe("Linear");
+    expect(rankingPicker()?.textContent).toBe("Linear");
     expect(hero()?.dataset.teams).toBe(String(MAIN.input_old_wire.analytics.body.summary.total_teams));
     expect(api.getPerformanceV2).not.toHaveBeenCalled();
     // Roles come from the owner metadata the host handed in (the analytics DTO's nested tournament has no owner
@@ -151,7 +154,7 @@ describe("Overwatch analytics board", () => {
 
     // Pending: nothing of the first tournament stands in, and its algorithm id is not trusted yet.
     expect(container.textContent).not.toContain("P4 team_home");
-    expect(hero()?.dataset.rankedBy).toBe("");
+    expect(rankingPicker()).toBeNull();
     expect(hero()?.dataset.teams).toBe("");
     expect(api.getAnalytics).not.toHaveBeenCalledWith(OTHER_TOURNAMENT, expect.anything(), expect.anything(), expect.anything());
 

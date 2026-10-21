@@ -2,25 +2,32 @@
 
 import { useState } from "react";
 import { ArrowRight } from "lucide-react";
-import { roleOf } from "@/lib/roster/role-ref";
-import { findRole, type RoleOntology } from "@/lib/roster/ontology";
-
-import { getImpactColor } from "@/lib/colors";
-import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
-import { usePermissions } from "@/hooks/usePermissions";
-import { useRoleName } from "@/hooks/useRoleName";
-import type { DivisionGridVersion } from "@/types/workspace.types";
-import DivisionIcon from "@/components/DivisionIcon";
+
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
-import { PlayerVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
-import { GlossaryTerm, isAnomalyGlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
-import InfoDot from "@/disciplines/overwatch/analytics/components/InfoDot";
-import ImpactBar from "@/disciplines/overwatch/analytics/components/community/ImpactBar";
-import ChangeShiftDialog from "@/disciplines/overwatch/analytics/components/community/ChangeShiftDialog";
-import ExplanationPopover from "@/disciplines/overwatch/analytics/components/ExplanationPopover";
-import styles from "@/disciplines/overwatch/analytics/components/Analytics.module.css";
+import { Card } from "@/components/ui/card";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useRoleName } from "@/hooks/useRoleName";
+import { getImpactColor } from "@/lib/colors";
+import { useFormatter } from "@/lib/datetime/client";
+import { findRole, type RoleOntology } from "@/lib/roster/ontology";
+import { roleOf } from "@/lib/roster/role-ref";
+import type { DivisionGridVersion } from "@/types/workspace.types";
+import { type GlossaryTerm, isAnomalyGlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
+import type { PlayerVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
+
+import AnomalyFlag, { useAnomalyCopy } from "../AnomalyFlag";
+import { moveTone } from "../DeltaText";
+import DivisionMark from "../DivisionMark";
+import ExplanationPopover from "../ExplanationPopover";
+import InfoDot from "../InfoDot";
+import ChangeShiftDialog from "./ChangeShiftDialog";
+import ImpactBar from "./ImpactBar";
+import PlayerNick from "./PlayerNick";
+
+const LABEL = "text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
+const SECTION = "border-t border-[color:var(--aqt-border)] px-4 py-3";
 
 interface PlayerDetailProps {
   player: PlayerVM;
@@ -29,18 +36,24 @@ interface PlayerDetailProps {
   /** The tournament's own role dictionary: the role's name and glyph come from it. */
   ontology: RoleOntology;
   canReadV2?: boolean;
-  onExplain?: (term: GlossaryTerm) => void;
+  onExplain: (term: GlossaryTerm) => void;
 }
 
+/**
+ * Player drill-down as one card: identity, the predicted move, impact and
+ * confidence, the impact percentile, the watch flag, why the model says so,
+ * and (organizers) the manual shift.
+ */
 export default function PlayerDetail({
   player,
   teamName,
   tournamentGrid,
   ontology,
   canReadV2 = false,
-  onExplain,
+  onExplain
 }: Readonly<PlayerDetailProps>) {
   const t = useTranslations();
+  const format = useFormatter();
   const nameOf = useRoleName();
   const { hasPermission } = usePermissions();
   const [editing, setEditing] = useState(false);
@@ -49,7 +62,7 @@ export default function PlayerDetail({
   const direction = player.predicted_direction;
   const up = direction === "promote";
   const down = direction === "demote";
-  const moveColor = up ? "var(--c-up)" : down ? "var(--c-down)" : "var(--c-muted)";
+  const moveColor = moveTone(up ? 1 : down ? -1 : 0);
   const moveWord = up
     ? t("analytics.community.player.climb")
     : down
@@ -66,7 +79,6 @@ export default function PlayerDetail({
   const roleLower = roleLabel.toLowerCase();
   const confPct = Math.round(player.confidence * 100);
   const predictedDivision = player.predicted_division ?? player.division;
-  const isNew = player.is_newcomer || player.is_newcomer_role;
 
   const impactDesc =
     player.impact >= 80
@@ -84,9 +96,11 @@ export default function PlayerDetail({
         : t("analytics.community.player.confidenceThin");
 
   const flag = player.anomalies[0];
+  // The kind is said in words from the glossary, never as the raw API value (DESIGN.md §11).
+  const flagLabel = useAnomalyCopy(flag?.kind ?? "watch").label;
   const why: string[] = [];
   if (flag) {
-    why.push(t("analytics.community.why.flag", { kind: flag.kind }));
+    why.push(t("analytics.community.why.flag", { kind: flagLabel }));
     why.push(t("analytics.community.why.flagSignal", { pct: Math.round(flag.score * 100) }));
   } else if (up) {
     why.push(t("analytics.community.why.climbImpact", { division: player.division, role: roleLower }));
@@ -99,156 +113,133 @@ export default function PlayerDetail({
     why.push(
       player.confidence < 0.6
         ? t("analytics.community.why.holdThin", { pct: confPct })
-        : t("analytics.community.why.holdSteady"),
+        : t("analytics.community.why.holdSteady")
     );
   }
 
   return (
-    <>
-      {/* hero */}
-      <div className={cn(styles.cCard, styles.cPlayerHero)}>
-        <DivisionIcon division={player.division} tournamentGrid={tournamentGrid} width={54} height={54} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div className={styles.cPlayerName}>
-            {player.name}
-            {isNew ? (
-              <span className={styles.cTagNew}>
-                {player.is_newcomer_role
-                  ? t("analytics.community.player.newRoleTag")
-                  : t("analytics.community.player.newTag")}
-              </span>
-            ) : null}
-          </div>
-          <div className={styles.cPlayerRole}>
-            <PlayerRoleIcon role={player.role} ontology={ontology} size={15} decorative />
-            <span>
+    <Card className="overflow-hidden">
+      <header className="flex items-center gap-3 px-4 py-4">
+        <DivisionMark division={player.division} tournamentGrid={tournamentGrid} size={48} />
+        <div className="min-w-0">
+          <h2>
+            <PlayerNick player={player} className="text-heading font-semibold" />
+          </h2>
+          <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-caption text-[color:var(--aqt-fg-muted)]">
+            <PlayerRoleIcon role={player.role} ontology={ontology} size={14} decorative />
+            <span className="truncate">
               {t("analytics.community.player.roleLine", {
                 role: roleLabel,
                 division: player.division,
-                team: teamName,
+                team: teamName
               })}
             </span>
-          </div>
+          </p>
         </div>
-      </div>
+      </header>
 
-      {/* predicted move */}
-      <div
-        className={cn(styles.cCard, up && styles.cMoveCardUp, down && styles.cMoveCardDown)}
-      >
-        <span className={styles.cCardTitle}>
-          {t("analytics.community.player.predictedMove")}{" "}
+      <section className={SECTION}>
+        <h3 className={`${LABEL} flex items-center gap-0.5`}>
+          {t("analytics.community.player.predictedMove")}
           <InfoDot term="predicted_move" onExplain={onExplain} />
-        </span>
-        <div className={styles.cBetween} style={{ marginTop: 4 }}>
-          <div>
-            <div className={styles.cMoveWord} style={{ color: moveColor }}>
+        </h3>
+        <div className="mt-1.5 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-ui font-semibold" style={{ color: moveColor }}>
               {moveWord}
-            </div>
+            </p>
             {direction !== "flat" ? (
-              <div className={styles.cMoveSub}>
-                {t("analytics.community.player.divMove", {
-                  from: player.division,
-                  to: predictedDivision,
-                })}
-              </div>
+              <p className="text-caption text-[color:var(--aqt-fg-muted)]">
+                {t("analytics.community.player.divMove", { from: player.division, to: predictedDivision })}
+              </p>
             ) : null}
           </div>
           {direction !== "flat" ? (
-            <div className={styles.cMoveBadges}>
-              <DivisionIcon division={player.division} tournamentGrid={tournamentGrid} width={38} height={38} />
-              <ArrowRight size={18} style={{ color: moveColor }} aria-hidden="true" />
-              <DivisionIcon division={predictedDivision} tournamentGrid={tournamentGrid} width={44} height={44} />
-            </div>
+            <span className="flex shrink-0 items-center gap-1.5">
+              <DivisionMark division={player.division} tournamentGrid={tournamentGrid} size={32} />
+              <ArrowRight aria-hidden className="size-4" style={{ color: moveColor }} />
+              <DivisionMark division={predictedDivision} tournamentGrid={tournamentGrid} size={36} />
+            </span>
           ) : null}
         </div>
-      </div>
+      </section>
 
-      {/* metrics */}
-      <div className={styles.cMetricGrid}>
-        <div className={styles.cMetric}>
-          <span className={styles.cMetricL}>
-            {t("analytics.community.player.impact")}{" "}
+      <dl className="grid grid-cols-2 border-t border-[color:var(--aqt-border)]">
+        <div className="px-4 py-3">
+          <dt className={`${LABEL} flex items-center gap-0.5`}>
+            {t("analytics.community.player.impact")}
             <InfoDot term="impact" onExplain={onExplain} />
-          </span>
-          <span className={styles.cMetricV} style={{ color: getImpactColor(player.impact) }}>
-            {player.impact}
-          </span>
-          <span className={styles.cMetricS}>{impactDesc}</span>
-        </div>
-        <div className={styles.cMetric}>
-          <span className={styles.cMetricL}>
-            {t("analytics.community.player.confidence")}{" "}
-            <InfoDot term="confidence" onExplain={onExplain} />
-          </span>
-          <span className={cn(styles.cMetricV, styles.cTnum)}>{confPct}%</span>
-          <span className={styles.cMetricS}>{confDesc}</span>
-        </div>
-      </div>
-
-      {/* impact percentile */}
-      <div className={styles.cCard} style={{ padding: "13px 16px" }}>
-        <div className={styles.cBetween}>
-          <span className={styles.cCardTitle}>
-            {t("analytics.community.player.percentileTitle")}
-          </span>
-          <span className={styles.cMetricS}>
-            {t("analytics.community.player.percentileVs", {
-              division: player.division,
-              role: roleLower,
-            })}
-          </span>
-        </div>
-        <div style={{ marginTop: 10 }}>
-          <ImpactBar value={player.impact} />
-        </div>
-      </div>
-
-      {/* flag card */}
-      {flag ? (
-        <div className={styles.cFlagCard}>
-          <div className={styles.cFlagCardHead}>
-            <span className={styles.cFlagDot} />
-            <span className={styles.cCardTitle} style={{ color: "var(--c-warn)" }}>
-              {t("analytics.community.player.flagTitle", { kind: flag.kind })}{" "}
-              {isAnomalyGlossaryTerm(flag.kind) ? (
-                <InfoDot term={flag.kind} onExplain={onExplain} />
-              ) : null}
+          </dt>
+          <dd className="mt-1">
+            <span
+              className="aqt-tnum block font-onest text-title font-semibold"
+              style={{ color: getImpactColor(player.impact) }}
+            >
+              {format.number(player.impact)}
             </span>
-          </div>
-          <p className={styles.cFlagCardBody}>
-            {t("analytics.community.player.flagBody", { kind: flag.kind })}
-          </p>
+            <span className="text-caption text-[color:var(--aqt-fg-muted)]">{impactDesc}</span>
+          </dd>
         </div>
+        <div className="border-l border-[color:var(--aqt-border)] px-4 py-3">
+          <dt className={`${LABEL} flex items-center gap-0.5`}>
+            {t("analytics.community.player.confidence")}
+            <InfoDot term="confidence" onExplain={onExplain} />
+          </dt>
+          <dd className="mt-1">
+            <span className="aqt-tnum block font-onest text-title font-semibold text-[color:var(--aqt-fg)]">
+              {format.number(player.confidence, { style: "percent", maximumFractionDigits: 0 })}
+            </span>
+            <span className="text-caption text-[color:var(--aqt-fg-muted)]">{confDesc}</span>
+          </dd>
+        </div>
+      </dl>
+
+      <section className={SECTION}>
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className={LABEL}>{t("analytics.community.player.percentileTitle")}</h3>
+          <span className="text-caption text-[color:var(--aqt-fg-muted)]">
+            {t("analytics.community.player.percentileVs", { division: player.division, role: roleLower })}
+          </span>
+        </div>
+        {/* The figure is printed above; the bar places it on the 0–100 scale. */}
+        <ImpactBar value={player.impact} showValue={false} className="mt-2" />
+      </section>
+
+      {flag ? (
+        <section className={SECTION}>
+          <h3 className="flex items-center gap-0.5">
+            <AnomalyFlag kind={flag.kind} reasons={flag.reasons} withLabel />
+            {isAnomalyGlossaryTerm(flag.kind) ? <InfoDot term={flag.kind} onExplain={onExplain} /> : null}
+          </h3>
+          <p className="mt-1 text-caption text-[color:var(--aqt-fg-muted)]">
+            {t("analytics.community.player.flagBody", { kind: flagLabel })}
+          </p>
+        </section>
       ) : null}
 
-      {/* why */}
-      <div className={styles.cCard}>
-        <div className={styles.cBetween}>
-          <span className={styles.cCardTitle}>{t("analytics.community.player.whyTitle")}</span>
-          {canReadV2 ? (
-            <ExplanationPopover playerId={player.id} tournamentId={player.tournament_id} />
-          ) : null}
+      <section className={SECTION}>
+        <div className="flex items-center justify-between gap-3">
+          <h3 className={LABEL}>{t("analytics.community.player.whyTitle")}</h3>
+          {canReadV2 ? <ExplanationPopover playerId={player.id} tournamentId={player.tournament_id} /> : null}
         </div>
-        <ul className={styles.cWhy}>
+        <ul className="mt-2 space-y-1.5">
           {why.map((line, index) => (
-            <li key={index}>
-              <span className={styles.cWhyBullet} style={{ background: moveColor }} />
+            <li key={index} className="flex gap-2 text-body text-[color:var(--aqt-fg-muted)]">
+              <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-[color:var(--aqt-fg-dim)]" />
               {line}
             </li>
           ))}
         </ul>
-      </div>
+      </section>
 
-      {/* organizer-only manual shift */}
       {canEdit ? (
-        <div className={styles.cShiftEdit}>
-          <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
+        <footer className={SECTION}>
+          <Button type="button" variant="outline" size="sm" onClick={() => setEditing(true)}>
             {t("analytics.standings.editManualShift")}
           </Button>
           <ChangeShiftDialog player={player} open={editing} onOpenChange={setEditing} />
-        </div>
+        </footer>
       ) : null}
-    </>
+    </Card>
   );
 }

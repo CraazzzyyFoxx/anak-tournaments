@@ -1,53 +1,50 @@
 "use client";
 
-
+import { Info } from "lucide-react";
 import { useTranslations } from "next-intl";
-import MetricTooltip from "@/disciplines/overwatch/analytics/components/MetricTooltip";
-import { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
-import styles from "@/disciplines/overwatch/analytics/components/Analytics.module.css";
+
+import { Button } from "@/components/ui/button";
+import { IconTooltip } from "@/components/ui/icon-tooltip";
+import type { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
 
 interface InfoDotProps {
   term: GlossaryTerm;
-  /** Opens the full glossary sheet. When omitted the dot is hover-only. */
+  /** Opens the term's glossary sheet: the tap path, since a tooltip never opens on touch. */
   onExplain?: (term: GlossaryTerm) => void;
-  /** Keep out of the tab order when nested inside another clickable element. */
-  focusable?: boolean;
 }
 
 /**
- * The small "ⓘ" affordance next to a metric. Hovering reveals the one-line
- * glossary explanation (via {@link MetricTooltip}); clicking opens the full
- * bottom-sheet entry when an `onExplain` handler is wired.
+ * The explainer beside a metric: hover or focus shows the one-line glossary
+ * entry, a click or tap opens the full one. `-my-2` keeps the 28px hit box from
+ * growing the line it sits on.
  */
-export default function InfoDot({ term, onExplain, focusable = true }: Readonly<InfoDotProps>) {
+export default function InfoDot({ term, onExplain }: Readonly<InfoDotProps>) {
   const t = useTranslations();
   const label = t(`analytics.glossary.${term}.label`);
+  const plain = t(`analytics.glossary.${term}.plain`);
 
-  // A real <button>, not a span with role="button": Enter/Space and the focus
-  // ring come from the platform. With no `onExplain` the dot is hover-only, so
-  // it stays a plain <span> rather than a button that does nothing.
+  if (!onExplain) {
+    return (
+      <IconTooltip label={label} hint={plain} className="align-middle">
+        <Info aria-hidden className="size-3.5" />
+      </IconTooltip>
+    );
+  }
+
   return (
-    <MetricTooltip term={term} focusable={false} showIcon={false}>
-      {onExplain ? (
-        <button
-          type="button"
-          className={styles.cInfoDot}
-          // Nested inside another clickable element, the dot keeps its click
-          // target but leaves the tab order to the enclosing control.
-          tabIndex={focusable ? undefined : -1}
-          aria-label={label}
-          onClick={(event) => {
-            event.stopPropagation();
-            onExplain(term);
-          }}
-        >
-          i
-        </button>
-      ) : (
-        <span className={styles.cInfoDot} aria-hidden>
-          i
-        </span>
-      )}
-    </MetricTooltip>
+    <IconTooltip label={label} hint={plain} control className="-my-2 align-middle">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label={label}
+        onClick={(event) => {
+          event.stopPropagation();
+          onExplain(term);
+        }}
+      >
+        <Info aria-hidden />
+      </Button>
+    </IconTooltip>
   );
 }

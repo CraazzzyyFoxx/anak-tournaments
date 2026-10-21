@@ -1,19 +1,19 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Flag } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 
-import { cn } from "@/lib/utils";
 import TeamName from "@/components/TeamName";
-import { useTranslations, useLocale } from "next-intl";
-import { TeamVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
-import {
-  formatPlace,
-  standingsRank,
-} from "@/disciplines/overwatch/analytics/analytics.helpers";
-import DeltaPill from "@/disciplines/overwatch/analytics/components/DeltaPill";
+import { TeamPlacement } from "@/components/TournamentTeamCard";
+import { Card } from "@/components/ui/card";
+import { RowButton } from "@/components/ui/row-button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import styles from "@/disciplines/overwatch/analytics/components/Analytics.module.css";
+import { groupDisplayName, groupHue } from "@/lib/tournament/group";
+import { formatPlace, standingsRank } from "@/disciplines/overwatch/analytics/analytics.helpers";
+import type { TeamVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
+
+import DeltaText, { moveTone } from "./DeltaText";
 
 export type StandingsMode = "standings" | "movers" | "watch";
 
@@ -23,82 +23,75 @@ interface StandingsListProps {
   onSelectTeam: (teamId: number) => void;
   mode: StandingsMode;
   onModeChange: (mode: StandingsMode) => void;
-  /** Trailing control on the sort-tab row (the list/table view toggle). */
+  /** The tournament has ended: places 1–3 are medals. */
+  ended: boolean;
+  /** The teams span several groups, so the group colour tells them apart. */
+  showGroups: boolean;
+  /** Trailing control on the toolbar row (the list/table view toggle). */
   headerEnd?: React.ReactNode;
 }
 
-const MODES: StandingsMode[] = ["standings", "movers", "watch"];
-
 function sortTeams(teams: TeamVM[], mode: StandingsMode): TeamVM[] {
   if (mode === "movers") {
-    return [...teams].sort(
-      (a, b) => Math.abs(b.placement_delta ?? 0) - Math.abs(a.placement_delta ?? 0),
-    );
+    return [...teams].sort((a, b) => Math.abs(b.placement_delta ?? 0) - Math.abs(a.placement_delta ?? 0));
   }
-  if (mode === "watch") {
-    return teams.filter((team) => team.flagCount > 0);
-  }
+  if (mode === "watch") return teams.filter((team) => team.flagCount > 0);
   return [...teams].sort((a, b) => standingsRank(a) - standingsRank(b));
 }
 
-function moveColor(delta: number | null): string {
-  if (delta == null || delta === 0) return "var(--c-muted)";
-  return delta > 0 ? "var(--c-up)" : "var(--c-down)";
-}
-
 /**
- * The per-row predicted → actual mini-connector — the horizon, inlined. Before
- * the bracket is played there is no actual place to connect to, so the row
- * shows the forecast on its own.
+ * Predicted → actual on the bracket's place scale: the hollow dot is the
+ * forecast, the filled one the finish, the segment between them coloured by
+ * direction. One summary sentence names it for assistive tech and in `title`;
+ * before the bracket is played only the forecast is drawn.
  */
-function RowHorizon({ team, maxPosition }: Readonly<{ team: TeamVM; maxPosition: number }>) {
+function PlaceConnector({ team, maxPosition }: Readonly<{ team: TeamVM; maxPosition: number }>) {
   const t = useTranslations();
-  const locale = useLocale();
+  const locale = useLocale() as "en" | "ru";
   const predicted = team.predicted_place;
+  if (predicted == null || maxPosition < 2) return <span aria-hidden />;
+
   const actual = team.placement;
-  if (predicted == null) {
-    return <span className={styles.cRowHz} aria-hidden="true" />;
-  }
-  const predictedLabel = (
-    <span className={styles.cRowHzPred}>
-      {t("analytics.community.standings.predShort", { place: formatPlace(predicted, locale) })}
-    </span>
-  );
-  if (actual == null || maxPosition < 2) {
-    return <span className={styles.cRowHz}>{predictedLabel}</span>;
-  }
-  const pos = (place: number) => ((place - 1) / (maxPosition - 1)) * 100;
-  const predictedPct = pos(predicted);
-  const actualPct = pos(actual);
-  const low = Math.min(predictedPct, actualPct);
-  const high = Math.max(predictedPct, actualPct);
-  const color = moveColor(team.placement_delta);
+  const pos = (place: number) => `${((place - 1) / (maxPosition - 1)) * 100}%`;
+  const predictedText = t("analytics.community.team.predictedShort", { place: formatPlace(predicted, locale) });
+  const summary =
+    actual == null
+      ? predictedText
+      : `${predictedText}, ${t("analytics.community.team.finishedShort", { place: formatPlace(actual, locale) })}`;
+  const color = moveTone(team.placement_delta);
 
   return (
-    <span className={styles.cRowHz}>
-      {predictedLabel}
-      <span className={styles.cHorizonTrack}>
-        <span className={styles.cHorizonLine} />
-        {team.placement_delta != null && team.placement_delta !== 0 ? (
-          <span
-            className={styles.cHconn}
-            style={{ left: `${low}%`, width: `${high - low}%`, background: color }}
-          />
-        ) : null}
-        <span className={cn(styles.cHdot, styles.cHdotPred)} style={{ left: `${predictedPct}%` }} />
+    <span role="img" aria-label={summary} title={summary} className="relative block h-4 min-w-0">
+      <span className="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-[color:var(--aqt-border-2)]" />
+      {actual != null && actual !== predicted ? (
         <span
-          className={styles.cHdot}
-          style={{ left: `${actualPct}%`, background: color, border: `2px solid ${color}` }}
+          className="absolute top-1/2 h-0.5 -translate-y-1/2 rounded-full"
+          style={{
+            left: pos(Math.min(predicted, actual)),
+            right: `calc(100% - ${pos(Math.max(predicted, actual))})`,
+            background: color
+          }}
         />
-      </span>
+      ) : null}
+      <span
+        className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-[color:var(--aqt-fg-dim)] bg-[color:var(--aqt-card)]"
+        style={{ left: pos(predicted) }}
+      />
+      {actual != null ? (
+        <span
+          className="absolute top-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+          style={{ left: pos(actual), background: actual === predicted ? "var(--aqt-fg-dim)" : color }}
+        />
+      ) : null}
     </span>
   );
 }
 
 /**
- * The community standings: a sortable list (Standings / Biggest movers / Watch
- * list) where each row carries its predicted→actual connector inline and
- * selects a team for the detail panel. The single team spine of the page.
+ * The standings: Standings / Biggest movers / Watch list over one framed list
+ * whose rows carry the place, the team, its record and flags, the
+ * predicted → actual connector and the place delta; a row selects its team for
+ * the detail panel.
  */
 export default function StandingsList({
   teams,
@@ -106,109 +99,118 @@ export default function StandingsList({
   onSelectTeam,
   mode,
   onModeChange,
-  headerEnd,
+  ended,
+  showGroups,
+  headerEnd
 }: Readonly<StandingsListProps>) {
   const t = useTranslations();
-  const locale = useLocale();
-  const rows = useMemo(() => sortTeams(teams, mode), [teams, mode]);
+  const locale = useLocale() as "en" | "ru";
+  const hasFlags = teams.some((team) => team.flagCount > 0);
+  // The watch list is only a choice while something is flagged (DESIGN.md §0.3).
+  const activeMode: StandingsMode = mode === "watch" && !hasFlags ? "standings" : mode;
+  const rows = useMemo(() => sortTeams(teams, activeMode), [teams, activeMode]);
   const maxPosition = useMemo(
-    () =>
-      teams.reduce(
-        (max, team) => Math.max(max, team.placement ?? 0, team.predicted_place ?? 0),
-        0,
-      ),
-    [teams],
+    () => teams.reduce((max, team) => Math.max(max, team.placement ?? 0, team.predicted_place ?? 0), 0),
+    [teams]
   );
 
-  const modeLabel: Record<StandingsMode, string> = {
-    standings: t("analytics.community.standings.sortStandings"),
-    movers: t("analytics.community.standings.sortMovers"),
-    watch: t("analytics.community.standings.sortWatch"),
-  };
+  const modes: { value: StandingsMode; label: string }[] = [
+    { value: "standings", label: t("analytics.community.standings.sortStandings") },
+    { value: "movers", label: t("analytics.community.standings.sortMovers") },
+    ...(hasFlags ? [{ value: "watch" as const, label: t("analytics.community.standings.sortWatch") }] : [])
+  ];
 
   return (
-    <div className={styles.cStandings}>
-      <div className={styles.cStandingsHead}>
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <ToggleGroup
           type="single"
           variant="pill"
           size="sm"
-          value={mode}
+          value={activeMode}
           onValueChange={(next) => next && onModeChange(next as StandingsMode)}
           aria-label={t("analytics.community.standings.sortLabel")}
         >
-          {MODES.map((value) => (
-            <ToggleGroupItem key={value} value={value}>
-              {modeLabel[value]}
+          {modes.map((option) => (
+            <ToggleGroupItem key={option.value} value={option.value}>
+              {option.label}
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
         {headerEnd}
       </div>
 
-      <div className={styles.cTeamRows}>
-        {rows.length === 0 ? (
-          <div className={styles.cStandingsEmpty}>
-            {t("analytics.community.standings.watchEmpty")}
-          </div>
-        ) : (
-          rows.map((team) => {
-            const groupName = team.group?.name ?? "—";
-            return (
-              <button
-                key={team.id}
-                type="button"
-                className={styles.cTeamRow}
-                data-sel={selectedTeamId === team.id}
+      <Card className="overflow-hidden">
+        <ul className="divide-y divide-[color:var(--aqt-border)]">
+          {rows.map((team) => (
+            <li key={team.id}>
+              <RowButton
+                aria-current={selectedTeamId === team.id ? "true" : undefined}
                 onClick={() => onSelectTeam(team.id)}
+                className="grid grid-cols-[2.25rem_minmax(0,1fr)_auto_1rem] items-center gap-x-3 px-3.5 py-2.5 sm:grid-cols-[2.25rem_minmax(0,1.5fr)_minmax(5rem,1fr)_3.75rem_1rem] sm:gap-x-4"
               >
-                <span
-                  className={cn(
-                    styles.cRank,
-                    team.placement === 1 && styles.cRank1,
-                    team.placement == null && team.predicted_place != null && styles.cRankPred,
-                  )}
-                  title={
-                    team.placement == null && team.predicted_place != null
-                      ? t("analytics.community.standings.predShort", {
-                          place: formatPlace(team.predicted_place, locale),
-                        })
-                      : undefined
-                  }
-                >
-                  {team.placement ?? team.predicted_place ?? "—"}
+                <span className="flex justify-center">
+                  {team.placement != null ? (
+                    <TeamPlacement placement={team.placement} medal={ended} />
+                  ) : team.predicted_place != null ? (
+                    <span
+                      className="aqt-tnum text-caption text-[color:var(--aqt-fg-dim)]"
+                      title={t("analytics.community.team.predictedShort", {
+                        place: formatPlace(team.predicted_place, locale)
+                      })}
+                    >
+                      #{team.predicted_place}
+                    </span>
+                  ) : null}
                 </span>
-                <span className={styles.cTeamId}>
-                  <TeamName team={team} size="xs" nameClassName={styles.cTeamName} />
-                  <span className={styles.cTeamMeta}>
-                    <span>
+                <span className="flex min-w-0 flex-col gap-0.5">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <TeamName team={team} size="sm" nameClassName="text-ui font-semibold text-[color:var(--aqt-fg)]" />
+                    {/* Wrapped: `.group-chip` sets its own display, which would outrank `hidden`. */}
+                    {showGroups && team.group?.name ? (
+                      <span className="hidden shrink-0 sm:inline-flex">
+                        <span
+                          className="group-chip"
+                          style={{ "--group-hue": groupHue(team.group.name) } as React.CSSProperties}
+                        >
+                          {groupDisplayName(team.group.name, t("common.group"))}
+                        </span>
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="flex min-w-0 items-center gap-1.5 text-caption text-[color:var(--aqt-fg-muted)]">
+                    <span className="aqt-tnum">
                       {team.wins}–{team.losses}
                     </span>
-                    <span>·</span>
-                    <span>{t("analytics.community.standings.group", { group: groupName })}</span>
                     {team.flagCount > 0 ? (
                       <>
-                        <span>·</span>
-                        <span className={styles.cFlagText}>
+                        <span className="text-[color:var(--aqt-fg-dim)]">·</span>
+                        <span className="inline-flex items-center gap-1 text-[color:var(--aqt-amber)]">
+                          <Flag aria-hidden className="size-3" />
                           {t(
                             team.flagCount === 1
                               ? "analytics.community.standings.flagCountOne"
                               : "analytics.community.standings.flagCount",
-                            { count: team.flagCount },
+                            { count: team.flagCount }
                           )}
                         </span>
                       </>
                     ) : null}
                   </span>
                 </span>
-                <RowHorizon team={team} maxPosition={maxPosition} />
-                <DeltaPill delta={team.placement_delta} />
-                <ChevronRight className={styles.cChevron} size={16} aria-hidden="true" />
-              </button>
-            );
-          })
-        )}
-      </div>
+                {/* Capped: on a wide list the scale stays readable instead of stretching across it. */}
+                <span className="hidden w-full max-w-[13rem] justify-self-end sm:block">
+                  <PlaceConnector team={team} maxPosition={maxPosition} />
+                </span>
+                <span className="flex justify-end">
+                  <DeltaText delta={team.placement_delta} />
+                </span>
+                <ChevronRight aria-hidden className="size-4 text-[color:var(--aqt-fg-faint)]" />
+              </RowButton>
+            </li>
+          ))}
+        </ul>
+      </Card>
     </div>
   );
 }

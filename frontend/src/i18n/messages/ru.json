@@ -1812,9 +1812,6 @@
   },
   "analytics": {
     "briefing": {
-      "eyebrow": "Аналитика турнира",
-      "rankedBy": "ранжировано по {algorithm}",
-      "titleFallback": "Аналитика турнира",
       "pickPrompt": "Выберите турнир и алгоритм, чтобы увидеть сводку.",
       "tournament": "Турнир",
       "algorithm": "Алгоритм",
@@ -1826,35 +1823,24 @@
       "errorAlgorithms": "Не удалось загрузить алгоритмы"
     },
     "verdict": {
-      "headline": "Команд: {teams} · Игроков: {players}",
       "moves": "Вероятных смен дивизиона: {count}",
       "flags": "Флагов на разбор: {count}",
       "misses": "Команд с сильным промахом прогноза: {count}",
       "newcomers": "Новичков: {count}",
       "forecast": "прогноз в среднем ошибается на ~{delta} мест"
     },
-    "triage": {
-      "title": "Требует внимания",
-      "allClear": "Всё спокойно — нет флагов, сюрпризов и новичков для разбора.",
-      "flags": "Флаги на разбор",
-      "misses": "Промахи прогноза",
-      "moves": "Вероятные смены дивизиона",
-      "newcomers": "Новички",
-      "forecastFinished": "прогноз {predicted} · итог {finished}",
-      "newPlayer": "новый игрок",
-      "newRole": "новая роль"
-    },
     "standings": {
       "title": "Таблица",
-      "sortedBy": "Команд: {count} · сортировка: {mode}",
       "sortStandings": "По местам",
       "sortPredicted": "По прогнозу",
       "sortShift": "По сдвигу",
+      "sortLabel": "Сортировка команд",
+      "togglePlayers": "Игроки команды {team}",
+      "moreFlags": "{count, plural, one {ещё # флаг} few {ещё # флага} many {ещё # флагов} other {ещё # флага}}",
       "record": "победы–поражения",
-      "confidence": "уверенность",
-      "predicted": "Прогноз {place}",
+      "predicted": "Прогноз #{place}",
       "predictedRange": "Прогноз {mean} (p10–p90 {p10}–{p90})",
-      "manual": "вручную",
+      "manual": "Ручная корректировка",
       "colRole": "Роль",
       "colBattleTag": "BattleTag",
       "colCurrent": "Текущий",
@@ -1869,32 +1855,17 @@
       "colFlags": "Флаги",
       "editManualShift": "Изменить ручной сдвиг",
       "save": "Сохранить изменения",
-      "shiftLabel": "Сдвиг",
       "localPercentileTitle": "Локальный перцентиль {value} / n={n}",
-      "monteCarloTitle": "Монте-Карло: среднее {mean}, P(топ-1) {prob}%",
       "shiftBreakdownTooltip": "Балансировщик {balancer} · вручную {manual}"
     },
     "forecast": {
       "up": "Вверх",
       "down": "Вниз",
       "hold": "Без изменений",
-      "by": "на ~{magnitude} {unit}",
-      "confidence": "Уверенность: {label}",
-      "confidenceWithPct": "Уверенность: {label} ({pct}%)",
       "divisionUnit": "див"
     },
-    "confidence": {
-      "high": "Высокая",
-      "medium": "Средняя",
-      "low": "Низкая"
-    },
     "organizer": {
-      "title": "Инструменты организатора",
-      "subtitle": "пересчёт · обучение · ручные правки"
-    },
-    "deepDive": {
-      "title": "Подробнее",
-      "subtitle": "горизонт прогноза · шансы в таблице · качество матчей"
+      "title": "Инструменты организатора"
     },
     "page": {
       "chooseParams": "Выберите параметры",
@@ -1905,15 +1876,6 @@
       "noTeamsDesc": "Для выбранного турнира команды не найдены.",
       "unsupported": "Аналитика недоступна для {game}",
       "unsupportedDesc": "У этой игры нет модуля аналитики, поэтому для её турниров не рассчитываются прогнозы, рейтинги и расклады."
-    },
-    "horizon": {
-      "title": "Горизонт: прогноз vs факт",
-      "subtitle": "Пустое кольцо — прогноз. Закрашенная точка — фактическое место.",
-      "predicted": "Прогноз",
-      "actual": "Факт",
-      "predictedTip": "Прогноз: {place}",
-      "actualTip": "Факт: {place}",
-      "deltaAvg": "Средн. Δ"
     },
     "distribution": {
       "title": "Распределение прогноза мест",
@@ -1929,7 +1891,6 @@
     },
     "matchQuality": {
       "title": "Качество матчей и аномалии",
-      "subtitle": "Пост-оценка по энкаунтерам (насколько близко, ожидаемо, ровно) плюс флаги аномалий.",
       "encounter": "Энкаунтер #{id}",
       "comp": "близко",
       "pred": "ожидаемо",
@@ -1939,11 +1900,6 @@
       "confirm": "Подтвердить — флаг верный",
       "dismiss": "Отклонить — ложное срабатывание",
       "vs": "vs"
-    },
-    "anomalyLegend": {
-      "trigger": "Что значат флаги",
-      "title": "Флаги аномалий",
-      "note": "Флаги — это подсказки к разбору, а не вердикты."
     },
     "anomalyReason": {
       "top_impact": "Среди сильнейших по вкладу в своей роли",
@@ -1963,7 +1919,8 @@
       "raised": "подняла",
       "lowered": "опустила",
       "loading": "Загрузка…",
-      "unavailable": "Объяснение пока недоступно."
+      "unavailable": "Объяснение пока недоступно.",
+      "otherFeature": "Другой показатель"
     },
     "features": {
       "final_blows_p10": "Добивания / 10 мин",
@@ -2114,28 +2071,14 @@
       }
     },
     "hero": {
-      "idLine": "#{number} · {dates}",
-      "statTeams": "Команды",
-      "statTeamsSub": "зарегистрировано",
-      "statPlayers": "Игроки",
-      "statPlayersSub": "в составах",
-      "statGroups": "Группы",
-      "statGroupsSub": "групповой этап",
-      "statStages": "Этапы",
-      "statStagesSub": "группы → плей-офф",
-      "pillFormat": "Формат",
-      "pillTeamsBy": "Сбор команд",
       "formatLeague": "Лига",
-      "formatCup": "Кубок",
-      "stageProgress": "{stage}"
+      "formatCup": "Кубок"
     },
     "community": {
       "verdict": {
-        "eyebrow": "Сетка на данный момент",
         "story": "{team} — главная история: модель прочила им №{predicted}, а сейчас они идут №{place}.",
         "letdown": "А {team} — разочарование сетки: с прогноза №{predicted} опустились до №{place}.",
-        "empty": "Рано судить — пока ни одна команда сильно не отклонилась от прогноза.",
-        "whatsThis": "Что это?"
+        "empty": "Рано судить — пока ни одна команда сильно не отклонилась от прогноза."
       },
       "kpi": {
         "climbing": "Рост",
@@ -2153,39 +2096,21 @@
       },
       "standings": {
         "title": "Турнирная таблица",
-        "rankedBy": "ранжировано по {algorithm}",
-        "sortStandings": "Таблица",
+        "sortStandings": "По местам",
         "sortMovers": "Главные сдвиги",
         "sortWatch": "Список внимания",
         "flagCount": "{count, plural, one {# флаг} few {# флага} many {# флагов} other {# флагов}}",
         "flagCountOne": "{count} флаг",
-        "watchEmpty": "Сейчас флагов нет — сетка чистая.",
-        "group": "Гр. {group}",
         "onForm": "в форме",
-        "predShort": "прог. {place}",
         "viewList": "Список",
         "viewTable": "Таблица",
         "viewLabel": "Вид таблицы",
         "sortLabel": "Сортировка таблицы"
       },
-      "horizon": {
-        "title": "Прогноз и факт",
-        "allTeams": "все {count} команд",
-        "predicted": "Прогноз",
-        "climbed": "Поднялись",
-        "fellShort": "Не дотянули",
-        "scaleStart": "1-е",
-        "scaleFinish": "финиш →",
-        "scaleEnd": "{count}-е",
-        "predictedTip": "Прогноз {place}",
-        "finishedTip": "Финиш {place}"
-      },
       "team": {
         "rosterCount": "Состав · {count} игроков",
-        "predictedVsActual": "Прогноз и факт",
         "predictedShort": "Прогноз {place}",
         "finishedShort": "Финиш {place}",
-        "backTo": "Назад к {team}",
         "groupRecord": "Группа {group} · {wins}–{losses}",
         "pickPrompt": "Выберите команду, чтобы разобрать её состав."
       },
@@ -2207,12 +2132,9 @@
         "confidenceThin": "выборка мала",
         "percentileTitle": "Перцентиль вклада",
         "percentileVs": "среди {role} Див {division}",
-        "flagTitle": "флаг «{kind}»",
         "flagBody": "Поднят автоматически для проверки — не приговор. Нажмите ⓘ, чтобы узнать, что значит «{kind}».",
         "whyTitle": "Почему модель так считает",
-        "roleLine": "{role} · Див {division} · {team}",
-        "newTag": "новый",
-        "newRoleTag": "новая роль"
+        "roleLine": "{role} · Див {division} · {team}"
       },
       "move": {
         "climb": "Рост",
@@ -2240,14 +2162,11 @@
       "step2Title": "Кто растёт, а кто падает?",
       "step2Body": "Для каждого игрока есть прогноз перехода — оценка модели, играет ли он выше или ниже своего дивизиона.",
       "step3Title": "Насколько мы уверены?",
-      "step3Body": "Полоски уверенности показывают, сколько данных стоит за каждой оценкой. Нажмите любой пунктирный термин или ⓘ.",
-      "foot": "Ничего здесь не окончательно — это живая оценка, которая уточняется по ходу сетки.",
-      "cardTitle": "Впервые здесь? Разберитесь за 30 секунд",
-      "cardSubtitle": "Что значит каждое число на этой странице."
+      "step3Body": "Уверенность показывает, сколько данных стоит за каждой оценкой. Нажмите ⓘ рядом с любым показателем, чтобы узнать, что он значит.",
+      "foot": "Ничего здесь не окончательно — это живая оценка, которая уточняется по ходу сетки."
     },
     "sheet": {
       "glossaryKicker": "Глоссарий",
-      "close": "Закрыть",
       "help": "Как это работает"
     },
     "job": {
@@ -2268,15 +2187,29 @@
       "scopeSelected": "Выбранные",
       "scopeSelectedHint": "Ручной выбор",
       "trainingSample": "Обучающая выборка",
-      "sampleAll": "Все прошедшие турниры из всех воркспейсов.",
-      "sampleCurrent": "Только турниры из текущего воркспейса.",
-      "sampleSelected": "{count, plural, one {# выбранный воркспейс} few {# выбранных воркспейса} many {# выбранных воркспейсов} other {# выбранных воркспейсов}}.",
       "workspaces": "Воркспейсы",
       "workspaceListNotLoaded": "Список воркспейсов не загружен.",
       "selectAtLeastOneWorkspace": "Выберите хотя бы один воркспейс.",
       "finishedRelative": "завершено {relative}",
       "startedRelative": "запущено {relative}",
-      "createdRelative": "создано {relative}"
+      "createdRelative": "создано {relative}",
+      "status": {
+        "pending": "В очереди",
+        "running": "Выполняется",
+        "succeeded": "Готово",
+        "failed": "Ошибка"
+      },
+      "stage": {
+        "ratings_recalc": "Пересчёт рейтингов",
+        "ml_inference": "ML-инференс",
+        "train": "Обучение моделей",
+        "other": "Другой этап"
+      },
+      "stageState": {
+        "running": "Выполняется",
+        "done": "Готово",
+        "failed": "Ошибка"
+      }
     },
     "meta": {
       "title": "Аналитика турниров",

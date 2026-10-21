@@ -1812,9 +1812,6 @@
   },
   "analytics": {
     "briefing": {
-      "eyebrow": "Tournament analytics",
-      "rankedBy": "ranked by {algorithm}",
-      "titleFallback": "Tournament analytics",
       "pickPrompt": "Pick a tournament and an algorithm to see the briefing.",
       "tournament": "Tournament",
       "algorithm": "Algorithm",
@@ -1826,35 +1823,24 @@
       "errorAlgorithms": "Failed to load algorithms"
     },
     "verdict": {
-      "headline": "{teams} teams · {players} players",
       "moves": "{count} likely division changes",
       "flags": "{count} flags to review",
       "misses": "{count} teams the forecast missed badly",
       "newcomers": "{count} newcomers",
       "forecast": "forecast off by ~{delta} places on average"
     },
-    "triage": {
-      "title": "Needs attention",
-      "allClear": "All clear — no flags, surprises or first-timers to look at.",
-      "flags": "Flags to review",
-      "misses": "Forecast misses",
-      "moves": "Likely division moves",
-      "newcomers": "First-timers",
-      "forecastFinished": "forecast {predicted} · finished {finished}",
-      "newPlayer": "new player",
-      "newRole": "new role"
-    },
     "standings": {
       "title": "Standings",
-      "sortedBy": "{count} teams · sorted by {mode}",
       "sortStandings": "Standings",
       "sortPredicted": "By predicted",
       "sortShift": "By shift",
+      "sortLabel": "Sort teams",
+      "togglePlayers": "Players of {team}",
+      "moreFlags": "{count, plural, one {# more flag} other {# more flags}}",
       "record": "record",
-      "confidence": "confidence",
-      "predicted": "Predicted {place}",
+      "predicted": "Predicted #{place}",
       "predictedRange": "Predicted {mean} (p10–p90 {p10}–{p90})",
-      "manual": "manual",
+      "manual": "Manual adjustment",
       "colRole": "Role",
       "colBattleTag": "Battle tag",
       "colCurrent": "Current",
@@ -1869,32 +1855,17 @@
       "colFlags": "Flags",
       "editManualShift": "Edit manual shift",
       "save": "Save changes",
-      "shiftLabel": "Shift",
       "localPercentileTitle": "Local percentile {value} / n={n}",
-      "monteCarloTitle": "Monte Carlo: mean {mean}, P(top1) {prob}%",
       "shiftBreakdownTooltip": "Balancer {balancer} · manual {manual}"
     },
     "forecast": {
       "up": "Moving up",
       "down": "Moving down",
       "hold": "Holding",
-      "by": "by ~{magnitude} {unit}",
-      "confidence": "Confidence: {label}",
-      "confidenceWithPct": "Confidence: {label} ({pct}%)",
       "divisionUnit": "div"
     },
-    "confidence": {
-      "high": "High",
-      "medium": "Medium",
-      "low": "Low"
-    },
     "organizer": {
-      "title": "Organizer tools",
-      "subtitle": "recalculate · train · manual edits"
-    },
-    "deepDive": {
-      "title": "Deep dive",
-      "subtitle": "forecast horizon · standings odds · match quality"
+      "title": "Organizer tools"
     },
     "page": {
       "chooseParams": "Choose parameters",
@@ -1905,15 +1876,6 @@
       "noTeamsDesc": "No teams found for the selected tournament.",
       "unsupported": "Analytics is not available for {game}",
       "unsupportedDesc": "This game has no analytics module, so no forecast, ranking or standings are computed for its tournaments."
-    },
-    "horizon": {
-      "title": "Predicted vs actual horizon",
-      "subtitle": "Open ring is predicted. Filled dot is actual placement.",
-      "predicted": "Predicted",
-      "actual": "Actual",
-      "predictedTip": "Predicted: {place}",
-      "actualTip": "Actual: {place}",
-      "deltaAvg": "Delta avg"
     },
     "distribution": {
       "title": "Predicted standings distribution",
@@ -1929,7 +1891,6 @@
     },
     "matchQuality": {
       "title": "Match quality & anomalies",
-      "subtitle": "Post-hoc per-encounter scoring (how close, how expected, how even) plus anomaly flags.",
       "encounter": "Encounter #{id}",
       "comp": "close",
       "pred": "expected",
@@ -1939,11 +1900,6 @@
       "confirm": "Confirm — true positive",
       "dismiss": "Dismiss — false positive",
       "vs": "vs"
-    },
-    "anomalyLegend": {
-      "trigger": "What flags mean",
-      "title": "Anomaly flags",
-      "note": "Flags are review hints, not verdicts."
     },
     "anomalyReason": {
       "top_impact": "Among the strongest performers in their role",
@@ -1963,7 +1919,8 @@
       "raised": "raised",
       "lowered": "lowered",
       "loading": "Loading…",
-      "unavailable": "No explanation available yet."
+      "unavailable": "No explanation available yet.",
+      "otherFeature": "Another stat"
     },
     "features": {
       "final_blows_p10": "Final blows / 10 min",
@@ -2114,28 +2071,14 @@
       }
     },
     "hero": {
-      "idLine": "#{number} · {dates}",
-      "statTeams": "Teams",
-      "statTeamsSub": "registered",
-      "statPlayers": "Players",
-      "statPlayersSub": "rostered",
-      "statGroups": "Groups",
-      "statGroupsSub": "group stage",
-      "statStages": "Stages",
-      "statStagesSub": "groups → playoff",
-      "pillFormat": "Format",
-      "pillTeamsBy": "Teams by",
       "formatLeague": "League",
-      "formatCup": "Cup",
-      "stageProgress": "{stage}"
+      "formatCup": "Cup"
     },
     "community": {
       "verdict": {
-        "eyebrow": "The bracket so far",
         "story": "{team} are the story — the model had them {predicted}, they're sitting {place}.",
         "letdown": "Meanwhile {team} are the bracket's let-down, slipping from a predicted {predicted} to {place}.",
-        "empty": "Too early to call — no team has strayed far from its forecast yet.",
-        "whatsThis": "What's this?"
+        "empty": "Too early to call — no team has strayed far from its forecast yet."
       },
       "kpi": {
         "climbing": "Climbing",
@@ -2153,39 +2096,21 @@
       },
       "standings": {
         "title": "Standings",
-        "rankedBy": "ranked by {algorithm}",
         "sortStandings": "Standings",
         "sortMovers": "Biggest movers",
         "sortWatch": "Watch list",
         "flagCount": "{count} flags",
         "flagCountOne": "{count} flag",
-        "watchEmpty": "No watch flags right now — the bracket's clean.",
-        "group": "Grp {group}",
         "onForm": "on form",
-        "predShort": "pred {place}",
         "viewList": "List",
         "viewTable": "Table",
         "viewLabel": "Standings view",
         "sortLabel": "Sort standings by"
       },
-      "horizon": {
-        "title": "Predicted vs Actual",
-        "allTeams": "all {count} teams",
-        "predicted": "Predicted",
-        "climbed": "Climbed",
-        "fellShort": "Fell short",
-        "scaleStart": "1st",
-        "scaleFinish": "finish →",
-        "scaleEnd": "{count}th",
-        "predictedTip": "Predicted {place}",
-        "finishedTip": "Finished {place}"
-      },
       "team": {
         "rosterCount": "Roster · {count} players",
-        "predictedVsActual": "Predicted vs actual",
         "predictedShort": "Predicted {place}",
         "finishedShort": "Finished {place}",
-        "backTo": "Back to {team}",
         "groupRecord": "Group {group} · {wins}–{losses}",
         "pickPrompt": "Pick a team to dig into its roster."
       },
@@ -2207,12 +2132,9 @@
         "confidenceThin": "thin sample",
         "percentileTitle": "Impact percentile",
         "percentileVs": "vs Div {division} {role}s",
-        "flagTitle": "{kind} flag",
         "flagBody": "Automatically raised for review — not a verdict. Tap the ⓘ to see what \"{kind}\" means.",
         "whyTitle": "Why the model says this",
-        "roleLine": "{role} · Div {division} · {team}",
-        "newTag": "new",
-        "newRoleTag": "new role"
+        "roleLine": "{role} · Div {division} · {team}"
       },
       "move": {
         "climb": "Climb",
@@ -2240,14 +2162,11 @@
       "step2Title": "Who's climbing or dropping?",
       "step2Body": "Each player gets a predicted move — the model's read on whether they're playing above or below their current division.",
       "step3Title": "How sure are we?",
-      "step3Body": "Confidence bars show how much data is behind each call. Tap any dotted term or the ⓘ to see what it means.",
-      "foot": "Nothing here is final — it's a live read that sharpens as the bracket plays out.",
-      "cardTitle": "New here? Read the analytics in 30s",
-      "cardSubtitle": "What every number on this page means."
+      "step3Body": "Confidence shows how much data is behind each call. Tap the ⓘ next to any figure to see what it means.",
+      "foot": "Nothing here is final — it's a live read that sharpens as the bracket plays out."
     },
     "sheet": {
       "glossaryKicker": "Glossary",
-      "close": "Close",
       "help": "How this works"
     },
     "job": {
@@ -2268,15 +2187,29 @@
       "scopeSelected": "Selected",
       "scopeSelectedHint": "Manual scope",
       "trainingSample": "Training sample",
-      "sampleAll": "All historical tournaments across all workspaces.",
-      "sampleCurrent": "Only tournaments from the current workspace.",
-      "sampleSelected": "{count, plural, one {# selected workspace} other {# selected workspaces}}.",
       "workspaces": "Workspaces",
       "workspaceListNotLoaded": "Workspace list is not loaded.",
       "selectAtLeastOneWorkspace": "Select at least one workspace.",
       "finishedRelative": "finished {relative}",
       "startedRelative": "started {relative}",
-      "createdRelative": "created {relative}"
+      "createdRelative": "created {relative}",
+      "status": {
+        "pending": "Queued",
+        "running": "Running",
+        "succeeded": "Done",
+        "failed": "Failed"
+      },
+      "stage": {
+        "ratings_recalc": "Ratings recalculation",
+        "ml_inference": "ML inference",
+        "train": "Model training",
+        "other": "Other step"
+      },
+      "stageState": {
+        "running": "Running",
+        "done": "Done",
+        "failed": "Failed"
+      }
     },
     "meta": {
       "title": "Tournaments Analytics",

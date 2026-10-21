@@ -7,7 +7,6 @@ import { SelectContent, SelectGroup, SelectItem } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipSelect } from "@/components/ui/tooltip-select";
 import { useTranslations } from "next-intl";
-import styles from "@/app/(site)/tournaments/analytics/components/Analytics.module.css";
 
 interface AnalyticsPickerProps {
   tournaments: Tournament[];
@@ -21,7 +20,7 @@ interface AnalyticsPickerProps {
 
 /**
  * The tournament selector (plus the game board's own controls) as a compact,
- * label-less control row in the hero's right rail; each select carries a tooltip.
+ * label-less control row in the hero's right column; each select carries a tooltip.
  */
 export default function AnalyticsPicker({
   tournaments,
@@ -34,9 +33,9 @@ export default function AnalyticsPicker({
   const t = useTranslations();
 
   return (
-    <div className={styles.cPickerRow}>
+    <div className="flex flex-wrap items-center gap-2.5">
       {loadingTournaments ? (
-        <div role="status" className={styles.cPickTournament}>
+        <div role="status" className="min-w-0 max-w-[27.5rem] flex-[1_1_15rem]">
           <span className="sr-only">{t("analytics.briefing.loadingTournaments")}</span>
           <Skeleton aria-hidden className="h-8 w-full" />
         </div>
@@ -48,7 +47,7 @@ export default function AnalyticsPicker({
             isErrorTournaments ? t("analytics.briefing.errorTournaments") : t("analytics.briefing.selectTournament")
           }
           disabled={isErrorTournaments}
-          className={styles.cPickTournament}
+          className="min-w-0 max-w-[27.5rem] flex-[1_1_15rem]"
           onValueChange={onTournamentChange}
         >
           <SelectContent className="max-h-[min(var(--radix-select-content-available-height),20rem)]">

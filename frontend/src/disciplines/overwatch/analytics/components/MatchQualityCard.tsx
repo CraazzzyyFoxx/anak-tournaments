@@ -3,110 +3,101 @@
 import React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, X } from "lucide-react";
-import analyticsService from "@/services/analytics.service";
-import encounterService from "@/services/encounter.service";
-import { AnomalyKind, AnomalyVerdict, MatchQuality } from "@/types/analytics.types";
-import { Badge } from "@/components/ui/badge";
+import { useTranslations } from "next-intl";
+
+import TeamName from "@/components/TeamName";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
-import { useTranslations } from "next-intl";
-import { cn } from "@/lib/utils";
-import AnomalyLegend from "@/disciplines/overwatch/analytics/components/AnomalyLegend";
-import AnomalyTooltip from "@/disciplines/overwatch/analytics/components/AnomalyTooltip";
+import { useFormatter } from "@/lib/datetime/client";
+import analyticsService from "@/services/analytics.service";
+import encounterService from "@/services/encounter.service";
+import { AnomalyVerdict, MatchQuality } from "@/types/analytics.types";
+import type { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
+import AnomalyFlag from "@/disciplines/overwatch/analytics/components/AnomalyFlag";
+import InfoDot from "@/disciplines/overwatch/analytics/components/InfoDot";
 import { analyticsQueryKeys } from "@/lib/analytics/query-keys";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { duelSeats } from "@/lib/encounter/seats";
 
 interface MatchQualityCardProps {
   tournamentId: number;
+  /** Opens the match-quality glossary entry (the tap path for the explainer). */
+  onExplain?: (term: GlossaryTerm) => void;
+  /** The bracket's players by id, so a flag (and its review) says whose it is. */
+  playerNames?: ReadonlyMap<number, string>;
+}
+
+/** Quality ramp of a 0–100 score: ≥75 good, ≥50 middling, below that poor. */
+function qualityTone(score: number): string {
+  if (score >= 75) return "var(--aqt-up)";
+  if (score >= 50) return "var(--aqt-amber)";
+  return "var(--aqt-rose)";
 }
 
 function FeedbackButtons({
   current,
   pending,
   onVerdict,
-  confirmLabel,
-  dismissLabel,
 }: Readonly<{
   current?: AnomalyVerdict;
   pending: boolean;
   onVerdict: (verdict: AnomalyVerdict) => void;
-  confirmLabel: string;
-  dismissLabel: string;
 }>) {
+  const t = useTranslations();
+  const confirmLabel = t("analytics.matchQuality.confirm");
+  const dismissLabel = t("analytics.matchQuality.dismiss");
+
   return (
-    <span className="inline-flex items-center gap-0.5">
-      <button
+    <span className="inline-flex items-center">
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-sm"
         disabled={pending}
-        onClick={() => onVerdict("confirmed")}
-        title={confirmLabel}
+        aria-pressed={current === "confirmed"}
         aria-label={confirmLabel}
-        className={cn(
-          "rounded p-0.5 transition-colors disabled:opacity-50",
-          current === "confirmed"
-            ? "text-[color:var(--aqt-emerald)]"
-            : "text-muted-foreground hover:text-[color:var(--aqt-emerald)]",
-        )}
+        title={confirmLabel}
+        onClick={() => onVerdict("confirmed")}
       >
-        <Check className="h-3 w-3" aria-hidden="true" />
-      </button>
-      <button
+        <Check
+          aria-hidden
+          className={current === "confirmed" ? "text-[color:var(--aqt-up)]" : undefined}
+        />
+      </Button>
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-sm"
         disabled={pending}
-        onClick={() => onVerdict("dismissed")}
-        title={dismissLabel}
+        aria-pressed={current === "dismissed"}
         aria-label={dismissLabel}
-        className={cn(
-          "rounded p-0.5 transition-colors disabled:opacity-50",
-          current === "dismissed"
-            ? "text-[color:var(--aqt-rose)]"
-            : "text-muted-foreground hover:text-[color:var(--aqt-rose)]",
-        )}
+        title={dismissLabel}
+        onClick={() => onVerdict("dismissed")}
       >
-        <X className="h-3 w-3" aria-hidden="true" />
-      </button>
+        <X
+          aria-hidden
+          className={current === "dismissed" ? "text-[color:var(--aqt-rose)]" : undefined}
+        />
+      </Button>
     </span>
   );
 }
 
-function scoreColor(score: number): string {
-  if (score >= 75)
-    return "bg-[color:color-mix(in_srgb,var(--aqt-emerald)_20%,transparent)] text-[color:var(--aqt-emerald)]";
-  if (score >= 50)
-    return "bg-[color:color-mix(in_srgb,var(--aqt-amber)_20%,transparent)] text-[color:var(--aqt-amber)]";
-  return "bg-[color:color-mix(in_srgb,var(--aqt-rose)_20%,transparent)] text-[color:var(--aqt-rose)]";
-}
-
-function anomalyTone(kind: AnomalyKind): string {
-  switch (kind) {
-    case "smurf":
-      return "border-[color:color-mix(in_srgb,var(--aqt-amber)_50%,transparent)] text-[color:var(--aqt-amber)]";
-    case "troll":
-      return "border-[color:color-mix(in_srgb,var(--aqt-rose)_50%,transparent)] text-[color:var(--aqt-rose)]";
-    case "throw":
-      return "border-[color:color-mix(in_srgb,var(--aqt-violet)_50%,transparent)] text-[color:var(--aqt-violet)]";
-    case "sandbag":
-      // The same pink it always had, no longer borrowed from a role's colour token.
-      return "border-[color:color-mix(in_srgb,hsl(337_81%_66%)_50%,transparent)] text-[color:hsl(337_81%_66%)]";
-    default:
-      return "";
-  }
-}
-
 /**
- * Match Quality view (Phase 4) — one row per encounter with the four
- * sub-scores plus anomaly flags. Lives on the analytics page as a collapsible
- * section; expand to reveal flag reasons inline.
+ * Match Quality view — one row per encounter: its quality score, the three
+ * sub-scores and the anomaly flags (organizers confirm or dismiss each flag).
  */
-export default function MatchQualityCard({ tournamentId }: Readonly<MatchQualityCardProps>) {
+export default function MatchQualityCard({ tournamentId, onExplain, playerNames }: Readonly<MatchQualityCardProps>) {
   const { hasPermission } = usePermissions();
   const t = useTranslations();
+  const format = useFormatter();
   const canReview = hasPermission("analytics.update");
   const queryClient = useQueryClient();
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: analyticsQueryKeys.matchQuality(tournamentId),
     queryFn: () => analyticsService.getMatchQuality(tournamentId),
     staleTime: 60_000,
@@ -139,119 +130,144 @@ export default function MatchQualityCard({ tournamentId }: Readonly<MatchQuality
       }),
   });
 
-  // Encounter names so each row reads "Team A vs Team B" instead of a raw id.
+  // Encounters so each row names its two teams instead of a raw id.
   const { data: encounters } = useQuery({
     queryKey: encounterQueryKeys.byTournament(tournamentId),
     queryFn: () => encounterService.getAll(1, "", tournamentId, -1),
     staleTime: 60_000,
   });
 
-  const encounterLabelById = React.useMemo(() => {
-    const map = new Map<number, string>();
-    (encounters?.results ?? []).forEach((encounter) => {
-      const [one, two] = duelSeats(encounter.teams);
-      const teams = one && two ? `${one.name} ${t("analytics.matchQuality.vs")} ${two.name}` : null;
-      const label = encounter.name?.trim() || teams;
-      if (label) map.set(encounter.id, label);
-    });
-    return map;
-  }, [encounters, t]);
+  const encounterById = React.useMemo(
+    () => new Map((encounters?.results ?? []).map((encounter) => [encounter.id, encounter])),
+    [encounters],
+  );
 
   const rows: MatchQuality[] = React.useMemo(() => {
     if (!data) return [];
     return [...data].sort((a, b) => a.encounter_id - b.encounter_id);
   }, [data]);
 
+  const title = t("analytics.matchQuality.title");
+  const whole = (value: number) => format.number(value, { maximumFractionDigits: 0 });
+
+  if (isError) {
+    return (
+      <PageStateCard
+        state="error"
+        title={title}
+        description={t("analytics.matchQuality.unavailable")}
+        onAction={() => void refetch()}
+      />
+    );
+  }
+
+  if (!isLoading && rows.length === 0) {
+    return <PageStateCard state="empty" title={title} description={t("analytics.matchQuality.noData")} />;
+  }
+
   return (
     <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-base">{t("analytics.matchQuality.title")}</CardTitle>
-          <AnomalyLegend className="shrink-0" />
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {t("analytics.matchQuality.subtitle")}
-        </p>
+      <CardHeader className="flex-row items-center gap-1 space-y-0 pb-2">
+        <CardTitle asChild>
+          <h3 className="text-heading font-semibold">{title}</h3>
+        </CardTitle>
+        <InfoDot term="match_quality" onExplain={onExplain} />
       </CardHeader>
       <CardContent>
-        {isLoading && (
-          <div className="space-y-2">
-            <Skeleton className="h-6 w-full" />
-            <Skeleton className="h-6 w-full" />
-            <Skeleton className="h-6 w-full" />
-          </div>
-        )}
-        {isError && (
-          <p className="text-sm text-muted-foreground">
-            {t("analytics.matchQuality.unavailable")}
-          </p>
-        )}
-        {rows.length === 0 && !isLoading && !isError && (
-          <p className="text-sm text-muted-foreground">{t("analytics.matchQuality.noData")}</p>
-        )}
-        {rows.length > 0 && (
-          <ul className="divide-y divide-border/60">
-            {rows.map((row) => (
-              <li key={row.encounter_id} className="py-2 grid grid-cols-12 gap-3 items-center text-sm">
-                <span
-                  className="col-span-2 truncate font-medium"
-                  title={encounterLabelById.get(row.encounter_id)}
-                >
-                  {encounterLabelById.get(row.encounter_id) ??
-                    t("analytics.matchQuality.encounter", { id: row.encounter_id })}
+        {isLoading ? (
+          <ul aria-hidden className="divide-y divide-[color:var(--aqt-border)]">
+            {[0, 1, 2].map((row) => (
+              <li key={row} className="flex flex-col gap-1.5 py-2.5">
+                <span className="flex items-center gap-3">
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="ml-auto h-4 w-8" />
                 </span>
-                <span
-                  className={cn(
-                    "col-span-1 text-center rounded-md px-2 py-0.5 font-semibold",
-                    scoreColor(row.quality_score),
-                  )}
-                  title={t("analytics.glossary.match_quality.plain")}
-                >
-                  {row.quality_score.toFixed(0)}
-                </span>
-                <span className="col-span-2 text-center text-xs text-muted-foreground">
-                  {t("analytics.matchQuality.comp")} <strong>{row.competitiveness.toFixed(0)}</strong>
-                </span>
-                <span className="col-span-2 text-center text-xs text-muted-foreground">
-                  {t("analytics.matchQuality.pred")} <strong>{row.predictability.toFixed(0)}</strong>
-                </span>
-                <span className="col-span-2 text-center text-xs text-muted-foreground">
-                  {t("analytics.matchQuality.skill")} <strong>{row.skill_balance.toFixed(0)}</strong>
-                </span>
-                <span className="col-span-3 flex gap-1.5 flex-wrap justify-end items-center">
-                  {(row.anomaly_flags ?? []).map((flag, i) => (
-                    <span
-                      key={`${flag.player_id}-${flag.kind}-${i}`}
-                      className="inline-flex items-center gap-1"
-                    >
-                      <AnomalyTooltip kind={flag.kind} reasons={flag.reasons}>
-                        <Badge
-                          variant="outline"
-                          className={cn("text-label uppercase", anomalyTone(flag.kind))}
-                        >
-                          {flag.kind} · #{flag.player_id}
-                        </Badge>
-                      </AnomalyTooltip>
-                      {canReview ? (
-                        <FeedbackButtons
-                          current={verdictByKey.get(`${flag.player_id}-${flag.kind}`)}
-                          pending={feedbackMutation.isPending}
-                          confirmLabel={t("analytics.matchQuality.confirm")}
-                          dismissLabel={t("analytics.matchQuality.dismiss")}
-                          onVerdict={(verdict) =>
-                            feedbackMutation.mutate({
-                              playerId: flag.player_id,
-                              kind: flag.kind,
-                              verdict,
-                            })
-                          }
-                        />
-                      ) : null}
-                    </span>
-                  ))}
-                </span>
+                <Skeleton className="h-3 w-56" />
               </li>
             ))}
+          </ul>
+        ) : (
+          <ul className="divide-y divide-[color:var(--aqt-border)]">
+            {rows.map((row) => {
+              const encounter = encounterById.get(row.encounter_id);
+              const [one, two] = duelSeats(encounter?.teams);
+              const flags = row.anomaly_flags ?? [];
+              return (
+                <li key={row.encounter_id} className="flex flex-col gap-1 py-2.5">
+                  <div className="flex items-center gap-3">
+                    <span className="flex min-w-0 flex-1 items-center gap-1.5 text-body font-medium text-[color:var(--aqt-fg)]">
+                      {one && two ? (
+                        <>
+                          <TeamName team={{ name: one.name, image_url: one.team?.image_url }} size="xs" />
+                          <span className="shrink-0 font-normal text-[color:var(--aqt-fg-dim)]">
+                            {t("analytics.matchQuality.vs")}
+                          </span>
+                          <TeamName team={{ name: two.name, image_url: two.team?.image_url }} size="xs" />
+                        </>
+                      ) : (
+                        <span className="truncate">
+                          {encounter?.name?.trim() ||
+                            t("analytics.matchQuality.encounter", { id: row.encounter_id })}
+                        </span>
+                      )}
+                    </span>
+                    <span
+                      className="aqt-tnum shrink-0 text-ui font-semibold"
+                      style={{ color: qualityTone(row.quality_score) }}
+                    >
+                      <span className="sr-only">{t("analytics.glossary.match_quality.label")} </span>
+                      {whole(row.quality_score)}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="text-caption text-[color:var(--aqt-fg-muted)]">
+                      {t("analytics.matchQuality.comp")}{" "}
+                      <span className="aqt-tnum text-[color:var(--aqt-fg)]">{whole(row.competitiveness)}</span>
+                      <span aria-hidden className="mx-1.5 text-[color:var(--aqt-fg-dim)]">
+                        ·
+                      </span>
+                      {t("analytics.matchQuality.pred")}{" "}
+                      <span className="aqt-tnum text-[color:var(--aqt-fg)]">{whole(row.predictability)}</span>
+                      <span aria-hidden className="mx-1.5 text-[color:var(--aqt-fg-dim)]">
+                        ·
+                      </span>
+                      {t("analytics.matchQuality.skill")}{" "}
+                      <span className="aqt-tnum text-[color:var(--aqt-fg)]">{whole(row.skill_balance)}</span>
+                    </span>
+                    {flags.length > 0 ? (
+                      <span className="flex flex-wrap items-center gap-2">
+                        {flags.map((flag, index) => (
+                          <span
+                            key={`${flag.player_id}-${flag.kind}-${index}`}
+                            className="inline-flex items-center gap-0.5"
+                          >
+                            <AnomalyFlag kind={flag.kind} reasons={flag.reasons} />
+                            {playerNames?.get(flag.player_id) ? (
+                              <span className="text-caption text-[color:var(--aqt-fg-muted)]">
+                                {playerNames.get(flag.player_id)?.split("#")[0]}
+                              </span>
+                            ) : null}
+                            {canReview ? (
+                              <FeedbackButtons
+                                current={verdictByKey.get(`${flag.player_id}-${flag.kind}`)}
+                                pending={feedbackMutation.isPending}
+                                onVerdict={(verdict) =>
+                                  feedbackMutation.mutate({
+                                    playerId: flag.player_id,
+                                    kind: flag.kind,
+                                    verdict,
+                                  })
+                                }
+                              />
+                            ) : null}
+                          </span>
+                        ))}
+                      </span>
+                    ) : null}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </CardContent>

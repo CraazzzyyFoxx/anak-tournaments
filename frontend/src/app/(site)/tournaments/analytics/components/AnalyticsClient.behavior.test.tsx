@@ -72,7 +72,7 @@ const BOARD: DisciplineUI<AnalyticsSlot> = {
         seen.props = props;
         return (
           <>
-            {props.hero({ rankedBy: "Linear", counts: { teams: 2, players: 3, groups: 1 } })}
+            {props.hero({ counts: { teams: 2, players: 3 }, controls: <span>Linear</span> })}
             <p data-testid="board">{`board of ${props.tournamentId}`}</p>
           </>
         );
@@ -177,7 +177,7 @@ describe("tournament analytics host", () => {
     const props = seen.props as SlotProps["analytics"];
     expect(props).toMatchObject({ tournamentId: 20, workspaceId: OW_WORKSPACE, canReadV2: true, canUpdate: false });
     expect(props.metadata.discipline.code).toBe("overwatch");
-    // The host's hero carries the board's ranking and counts, and the tournament's own identity.
+    // The host's hero carries the board's controls and counts, and the tournament's own identity.
     expect(container.textContent).toContain("Overwatch Cup");
     expect(container.textContent).toContain("Linear");
     expect(container.querySelectorAll("h1")).toHaveLength(1);

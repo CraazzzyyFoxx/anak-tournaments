@@ -3,8 +3,8 @@
  *
  * The user-facing label and one-sentence explanation for each term live in the
  * i18n message files under the `analytics.glossary.<term>` namespace
- * (en.ts / ru.ts), so this module only owns the term *identifiers*. Consumers
- * render them via `MetricTooltip`, which translates `label` / `plain`.
+ * (en.json / ru.json), so this module only owns the term *identifiers*. Consumers
+ * render them via `InfoDot` (tooltip + glossary sheet) and `AnomalyFlag`.
  */
 
 export type GlossaryTerm =

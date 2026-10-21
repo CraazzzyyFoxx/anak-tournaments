@@ -1,38 +1,47 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft } from "lucide-react";
-
 import { useTranslations } from "next-intl";
-import { PerformanceV2, StandingsDistribution } from "@/types/analytics.types";
-import type { RoleOntology } from "@/lib/roster/ontology";
-import { TeamVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
-import { useMasterDetailSelection } from "@/disciplines/overwatch/analytics/useMasterDetailSelection";
-import { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
-import StandingsList, {
-  type StandingsMode,
-} from "@/disciplines/overwatch/analytics/components/StandingsList";
-import AnalyticsStandings from "@/disciplines/overwatch/analytics/components/AnalyticsStandings";
-import MatchQualityCard from "@/disciplines/overwatch/analytics/components/MatchQualityCard";
-import TeamDetail from "@/disciplines/overwatch/analytics/components/community/TeamDetail";
-import PlayerDetail from "@/disciplines/overwatch/analytics/components/community/PlayerDetail";
+
+import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import styles from "@/disciplines/overwatch/analytics/components/Analytics.module.css";
+import { useQueryParams } from "@/hooks/useQueryParams";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import type { PerformanceV2, StandingsDistribution } from "@/types/analytics.types";
+import type { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
+import type { TeamVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
+import { useMasterDetailSelection } from "@/disciplines/overwatch/analytics/useMasterDetailSelection";
+
+import AnalyticsStandings from "./AnalyticsStandings";
+import MatchQualityCard from "./MatchQualityCard";
+import PlayerDetail from "./community/PlayerDetail";
+import TeamDetail from "./community/TeamDetail";
+import StandingsList, { type StandingsMode } from "./StandingsList";
 
 interface MasterDetailProps {
   tournamentId: number;
   teams: TeamVM[];
-  canReadV2?: boolean;
+  canReadV2: boolean;
+  /** The tournament has ended: places 1–3 are medals. */
+  ended: boolean;
+  /** The teams span several groups, so rows carry their group chip. */
+  showGroups: boolean;
   mode: StandingsMode;
   onModeChange: (mode: StandingsMode) => void;
   performanceByPlayer: Map<number, PerformanceV2>;
   distributionByTeam?: Map<number, StandingsDistribution>;
   /** The tournament's own role dictionary (its game's metadata), for player role names and glyphs. */
   ontology: RoleOntology;
-  onExplain?: (term: GlossaryTerm) => void;
+  onExplain: (term: GlossaryTerm) => void;
 }
 
-/** Desktop-first media query (avoids a hydration mismatch by defaulting true). */
+type StandingsView = "list" | "table";
+
+/** The split's breakpoint (`lg`): below it the list and the panels take turns. */
+const DESKTOP_QUERY = "(min-width: 1024px)";
+
+/** Desktop-first media query (defaults true, so the server render and the first client render agree). */
 function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState(true);
   useEffect(() => {
@@ -46,68 +55,70 @@ function useMediaQuery(query: string): boolean {
 }
 
 /**
- * The single team spine: a community standings list beside a sticky detail
- * aside (desktop) / push-nav stack (mobile). A public "List | Table" toggle —
- * sitting on each view's sort-tab row — swaps the community list for the dense
- * per-player table. Organizer-only depth (match quality, the v2 impact / vs-local
- * / Monte-Carlo columns) is woven in where the viewer has `analytics.read`.
- * Selection resets when the parent re-keys on tournament switch.
+ * The single team spine: the standings list beside a sticky team/player panel
+ * (desktop) or taking turns with it (mobile push-nav). A List / Table switch,
+ * kept in `?view=` like a tournament section's view, swaps the list for the
+ * dense per-player table. Organizer-only depth (match quality, the v2 columns,
+ * Monte-Carlo) is woven in where the viewer has `analytics.read`. Selection
+ * resets when the parent re-keys on a tournament or ranking switch.
  */
 export default function MasterDetail({
   tournamentId,
   teams,
   canReadV2,
+  ended,
+  showGroups,
   mode,
   onModeChange,
   performanceByPlayer,
   distributionByTeam,
   ontology,
-  onExplain,
+  onExplain
 }: Readonly<MasterDetailProps>) {
   const t = useTranslations();
-  const isDesktop = useMediaQuery("(min-width: 860px)");
-  const [view, setView] = useState<"list" | "table">("list");
-  const defaultTeamId = teams[0]?.id ?? null;
-  const selection = useMasterDetailSelection(defaultTeamId);
+  const isDesktop = useMediaQuery(DESKTOP_QUERY);
+  // Client-only state: the History API, not a server round trip; the default is never written.
+  const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
+  const view: StandingsView = searchParams?.get("view") === "table" ? "table" : "list";
+  const selection = useMasterDetailSelection(teams[0]?.id ?? null);
+  const teamById = (id: number | null) => (id == null ? null : (teams.find((team) => team.id === id) ?? null));
+  const playerNames = useMemo(
+    () => new Map(teams.flatMap((team) => team.players.map((player) => [player.id, player.name] as const))),
+    [teams]
+  );
 
-  const teamById = (id: number | null) =>
-    id == null ? null : teams.find((team) => team.id === id) ?? null;
-
-  // The list/table view toggle is public — it rides the right edge of each
-  // view's sort row (passed in as `headerEnd`). `self-end` keeps it off the
-  // full width when that row stacks below 860px.
   const viewToggle = (
     <ToggleGroup
       type="single"
       variant="pill"
       size="sm"
       value={view}
-      onValueChange={(next) => next && setView(next as "list" | "table")}
+      onValueChange={(next) => {
+        if (next) setParams({ view: next === "list" ? null : next });
+      }}
       aria-label={t("analytics.community.standings.viewLabel")}
-      className="self-end"
     >
-      <ToggleGroupItem value="list">
-        {t("analytics.community.standings.viewList")}
-      </ToggleGroupItem>
-      <ToggleGroupItem value="table">
-        {t("analytics.community.standings.viewTable")}
-      </ToggleGroupItem>
+      <ToggleGroupItem value="list">{t("analytics.community.standings.viewList")}</ToggleGroupItem>
+      <ToggleGroupItem value="table">{t("analytics.community.standings.viewTable")}</ToggleGroupItem>
     </ToggleGroup>
   );
 
-  // ── Table view: the dense per-player table (public). Match quality stays
-  //    organizer-only — its data is permission-gated server-side. ──
   if (view === "table") {
     return (
-      <div className={styles.cColMain}>
+      <div className="flex flex-col gap-6">
         <AnalyticsStandings
           teams={teams}
           performanceByPlayer={performanceByPlayer}
           distributionByTeam={distributionByTeam}
           ontology={ontology}
+          canReadV2={canReadV2}
+          ended={ended}
+          onExplain={onExplain}
           headerEnd={viewToggle}
         />
-        {canReadV2 ? <MatchQualityCard tournamentId={tournamentId} /> : null}
+        {canReadV2 ? (
+          <MatchQualityCard tournamentId={tournamentId} onExplain={onExplain} playerNames={playerNames} />
+        ) : null}
       </div>
     );
   }
@@ -119,6 +130,8 @@ export default function MasterDetail({
       onSelectTeam={selection.selectTeam}
       mode={mode}
       onModeChange={onModeChange}
+      ended={ended}
+      showGroups={showGroups}
       headerEnd={viewToggle}
     />
   );
@@ -129,6 +142,7 @@ export default function MasterDetail({
       team={team}
       distribution={canReadV2 ? distributionByTeam?.get(team.id) : undefined}
       ontology={ontology}
+      showGroup={showGroups}
       onSelectPlayer={(playerId) => selection.selectPlayer(team.id, playerId)}
       onExplain={onExplain}
     />
@@ -150,54 +164,51 @@ export default function MasterDetail({
     );
   };
 
-  // ── Mobile: single-column push-nav driven by the selection stack ──
+  const back = (label: string, onClick: () => void) => (
+    <Button type="button" variant="ghost" size="sm" onClick={onClick} className="-ml-2 self-start">
+      <ChevronLeft aria-hidden />
+      {label}
+    </Button>
+  );
+
+  // ── Mobile: one column, list → team → player, each with its way back ──
   if (!isDesktop) {
     const current = selection.current;
-    if (current.kind === "overview") {
-      return <div className={styles.cColMain}>{list}</div>;
-    }
-    const team = teamById(current.teamId);
-    if (!team) return <div className={styles.cColMain}>{list}</div>;
+    const team = current.kind === "overview" ? null : teamById(current.teamId);
+    if (!team || current.kind === "overview") return list;
     return (
-      <div className={styles.cColMain}>
-        <button type="button" className={styles.cAsideBack} onClick={selection.back}>
-          <ChevronLeft size={14} aria-hidden="true" />
-          {current.kind === "player"
-            ? t("analytics.community.player.backTo", { team: team.name })
-            : t("analytics.community.standings.title")}
-        </button>
+      <div className="flex flex-col gap-3">
+        {current.kind === "player"
+          ? back(t("analytics.community.player.backTo", { team: team.name }), selection.back)
+          : back(t("analytics.community.standings.title"), selection.back)}
         {current.kind === "player" ? renderPlayer(team, current.playerId) : renderTeam(team)}
       </div>
     );
   }
 
-  // ── Desktop: list beside a sticky detail aside ──
+  // ── Desktop: the list beside a sticky panel ──
   const selectedTeam = teamById(selection.selectedTeamId);
   const selectedPlayer =
     selectedTeam && selection.selectedPlayerId != null
-      ? selectedTeam.players.find((player) => player.id === selection.selectedPlayerId) ?? null
+      ? (selectedTeam.players.find((player) => player.id === selection.selectedPlayerId) ?? null)
       : null;
 
   return (
-    <div className={styles.cMasterDetail}>
-      <div className={styles.cColMain}>{list}</div>
-      <aside className={styles.cAside}>
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+      {list}
+      {/* Sticky under the site header; scrolls inside itself when a player's panel outgrows the window. */}
+      <aside className="flex flex-col gap-3 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto">
         {selectedPlayer && selectedTeam ? (
           <>
-            <button
-              type="button"
-              className={styles.cAsideBack}
-              onClick={() => selection.selectTeam(selectedTeam.id)}
-            >
-              <ChevronLeft size={14} aria-hidden="true" />
-              {t("analytics.community.player.backTo", { team: selectedTeam.name })}
-            </button>
+            {back(t("analytics.community.player.backTo", { team: selectedTeam.name }), () =>
+              selection.selectTeam(selectedTeam.id)
+            )}
             {renderPlayer(selectedTeam, selectedPlayer.id)}
           </>
         ) : selectedTeam ? (
           renderTeam(selectedTeam)
         ) : (
-          <div className={styles.cAsideEmpty}>{t("analytics.community.team.pickPrompt")}</div>
+          <p className="text-caption text-[color:var(--aqt-fg-muted)]">{t("analytics.community.team.pickPrompt")}</p>
         )}
       </aside>
     </div>

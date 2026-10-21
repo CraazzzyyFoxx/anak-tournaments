@@ -271,7 +271,8 @@ code are migration debt, not precedent.
 | Pagination                  | `ui/data-pagination.tsx`                                                                                                |
 | Data table                  | `components/data-table/DataTable.tsx`                                                                                   |
 | URL state                   | `hooks/useQueryParams.ts`                                                                                               |
-| Button                      | `ui/button.tsx`; `static={false}` opts into a reduced-motion-safe press                                                 |
+| Button                      | `ui/button.tsx`; `static={false}` opts into a reduced-motion-safe press; `size="icon-sm"` (28px) for an icon beside text |
+| Row that is one action      | `RowButton` (`ui/row-button.tsx`): row hover, `aria-current="true"` selected fill, inset focus ring; the caller lays out |
 
 ### Status and data
 

@@ -2,11 +2,12 @@
 
 import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertCircle, Brain, CheckCircle2, PlayCircle } from "lucide-react";
+import { Brain, CheckCircle2, PlayCircle, XCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +16,8 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useInvalidation } from "@/hooks/useInvalidation";
 import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -45,45 +48,22 @@ type JobMutationVariables = {
   trainingWorkspaceIds?: number[] | null;
 };
 
-function statusTone(status: AnalyticsJob["status"]): string {
-  switch (status) {
-    case "running":
-      return "border-[color:color-mix(in_srgb,var(--aqt-blue)_40%,transparent)] text-[color:var(--aqt-blue)]";
-    case "succeeded":
-      return "border-[color:color-mix(in_srgb,var(--aqt-emerald)_40%,transparent)] text-[color:var(--aqt-emerald)]";
-    case "failed":
-      return "border-[color:color-mix(in_srgb,var(--aqt-rose)_50%,transparent)] text-[color:var(--aqt-rose)]";
-    default:
-      return "border-[color:color-mix(in_srgb,var(--aqt-amber)_40%,transparent)] text-[color:var(--aqt-amber)]";
-  }
-}
+const TRAIN_SCOPES = [
+  { value: "all", label: "analytics.job.scopeAll", hint: "analytics.job.scopeAllHint" },
+  { value: "current", label: "analytics.job.scopeCurrent", hint: "analytics.job.scopeCurrentHint" },
+  { value: "custom", label: "analytics.job.scopeSelected", hint: "analytics.job.scopeSelectedHint" }
+] as const;
 
-function StageRow({ name, stage }: Readonly<{ name: string; stage: AnalyticsJobProgressStage }>) {
-  const tone =
-    stage.state === "done"
-      ? "text-[color:var(--aqt-emerald)]"
-      : stage.state === "failed"
-        ? "text-[color:var(--aqt-rose)]"
-        : "text-[color:var(--aqt-blue)]";
-
-  return (
-    <li className="flex items-center justify-between gap-3 text-xs">
-      <span className="text-muted-foreground">{name}</span>
-      <span className={cn("uppercase tabular-nums", tone)}>{stage.state}</span>
-    </li>
-  );
-}
+const STAGE_TONE: Record<AnalyticsJobProgressStage["state"], string> = {
+  running: "text-[color:var(--aqt-fg)]",
+  done: "text-[color:var(--aqt-up)]",
+  failed: "text-[color:var(--aqt-rose)]"
+};
 
 export default function MLAdminToolbar({ tournamentId, workspaceId }: Readonly<MLAdminToolbarProps>) {
   const t = useTranslations();
   const format = useFormatter();
   const now = useMinuteClock();
-
-  const trainScopeDescription = (scope: TrainScope, selectedCount: number): string => {
-    if (scope === "all") return t("analytics.job.sampleAll");
-    if (scope === "current") return t("analytics.job.sampleCurrent");
-    return t("analytics.job.sampleSelected", { count: selectedCount });
-  };
 
   const { isSuperuser } = usePermissions();
   const workspaces = useWorkspaceStore((state) => state.workspaces);
@@ -199,35 +179,36 @@ export default function MLAdminToolbar({ tournamentId, workspaceId }: Readonly<M
     }
   });
 
+  const fieldId = React.useId();
+  const isComputePending = createJobMutation.isPending && createJobMutation.variables?.kind === "compute";
+  const isTrainPending = createJobMutation.isPending && createJobMutation.variables?.kind === "train_ml";
+  const stages = Object.entries(liveJob?.progress ?? {});
+  const stageLabel = (name: string) => {
+    const key = `analytics.job.stage.${name}` as "analytics.job.stage.train";
+    return t.has(key) ? t(key) : t("analytics.job.stage.other");
+  };
+
   return (
-    <div className="w-full space-y-3">
+    <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
         <Button
-          className="h-10 flex-1 justify-between gap-2"
+          size="lg"
           onClick={() => createJobMutation.mutate({ kind: "compute" })}
           disabled={isActive || createJobMutation.isPending}
         >
-          <span className="truncate">{t("analytics.job.runAnalytics")}</span>
-          {createJobMutation.isPending && createJobMutation.variables?.kind === "compute" ? (
-            <Spinner />
-          ) : (
-            <PlayCircle className="h-4 w-4" />
-          )}
+          {isComputePending ? <Spinner /> : <PlayCircle aria-hidden />}
+          {t("analytics.job.runAnalytics")}
         </Button>
 
         {isSuperuser ? (
           <Button
+            size="lg"
             variant="outline"
-            className="h-10 flex-1 justify-between gap-2"
             onClick={() => setIsTrainDialogOpen(true)}
             disabled={isActive || createJobMutation.isPending}
           >
-            <span className="truncate">{t("analytics.job.trainMl")}</span>
-            {createJobMutation.isPending && createJobMutation.variables?.kind === "train_ml" ? (
-              <Spinner />
-            ) : (
-              <Brain className="h-4 w-4" />
-            )}
+            {isTrainPending ? <Spinner /> : <Brain aria-hidden />}
+            {t("analytics.job.trainMl")}
           </Button>
         ) : null}
       </div>
@@ -241,89 +222,91 @@ export default function MLAdminToolbar({ tournamentId, workspaceId }: Readonly<M
             </DialogHeader>
 
             <div className="space-y-4">
-              <div className="grid gap-2 sm:grid-cols-3">
-                <Button
-                  type="button"
-                  variant={trainScope === "all" ? "default" : "outline"}
-                  className="h-auto justify-start px-3 py-3 text-left"
-                  onClick={() => setTrainScope("all")}
+              <div className="space-y-3">
+                <p
+                  id={`${fieldId}-scope`}
+                  className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
                 >
-                  <span>
-                    <span className="block font-semibold">{t("analytics.job.scopeAll")}</span>
-                    <span className="block text-xs opacity-75">{t("analytics.job.scopeAllHint")}</span>
-                  </span>
-                </Button>
-                <Button
-                  type="button"
-                  variant={trainScope === "current" ? "default" : "outline"}
-                  className="h-auto justify-start px-3 py-3 text-left"
-                  onClick={() => {
-                    setTrainScope("current");
-                    if (workspaceId != null) setSelectedWorkspaceIds([workspaceId]);
+                  {t("analytics.job.trainingSample")}
+                </p>
+                <RadioGroup
+                  aria-labelledby={`${fieldId}-scope`}
+                  value={trainScope}
+                  onValueChange={(value) => {
+                    const scope = value as TrainScope;
+                    setTrainScope(scope);
+                    if (scope === "current" && workspaceId != null) setSelectedWorkspaceIds([workspaceId]);
                   }}
-                  disabled={workspaceId == null}
                 >
-                  <span>
-                    <span className="block font-semibold">{t("analytics.job.scopeCurrent")}</span>
-                    <span className="block text-xs opacity-75">{t("analytics.job.scopeCurrentHint")}</span>
-                  </span>
-                </Button>
-                <Button
-                  type="button"
-                  variant={trainScope === "custom" ? "default" : "outline"}
-                  className="h-auto justify-start px-3 py-3 text-left"
-                  onClick={() => setTrainScope("custom")}
-                >
-                  <span>
-                    <span className="block font-semibold">{t("analytics.job.scopeSelected")}</span>
-                    <span className="block text-xs opacity-75">{t("analytics.job.scopeSelectedHint")}</span>
-                  </span>
-                </Button>
-              </div>
-
-              <div className="rounded-md border bg-background/40 p-3 text-sm">
-                <div className="font-medium">{t("analytics.job.trainingSample")}</div>
-                <div className="mt-1 text-muted-foreground">
-                  {trainScopeDescription(trainScope, selectedWorkspaceIds.length)}
-                </div>
+                  {TRAIN_SCOPES.map((scope) => {
+                    const id = `${fieldId}-scope-${scope.value}`;
+                    const disabled = scope.value === "current" && workspaceId == null;
+                    return (
+                      <div key={scope.value} className="flex items-start gap-3">
+                        <RadioGroupItem
+                          id={id}
+                          value={scope.value}
+                          disabled={disabled}
+                          aria-describedby={`${id}-hint`}
+                        />
+                        <div className={cn("grid gap-1", disabled && "opacity-50")}>
+                          <Label htmlFor={id}>{t(scope.label)}</Label>
+                          <p id={`${id}-hint`} className="text-caption text-[color:var(--aqt-fg-muted)]">
+                            {t(scope.hint)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </RadioGroup>
               </div>
 
               {trainScope === "custom" ? (
-                <div className="rounded-md border bg-background/30">
-                  <div className="border-b px-3 py-2 text-xs font-medium text-muted-foreground">
+                <div
+                  role="group"
+                  aria-labelledby={`${fieldId}-workspaces`}
+                  className="space-y-3 border-t border-[color:var(--aqt-border)] pt-4"
+                >
+                  <p
+                    id={`${fieldId}-workspaces`}
+                    className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
+                  >
                     {t("analytics.job.workspaces")}
-                  </div>
-                  <div className="grid max-h-56 gap-1 overflow-auto p-2">
-                    {workspaces.length ? (
-                      workspaces.map((workspace) => (
-                        <label
-                          key={workspace.id}
-                          className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-muted/40"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedWorkspaceIds.includes(workspace.id)}
-                            onChange={() => toggleWorkspace(workspace.id)}
-                          />
-                          <span className="min-w-0">
-                            <span className="block truncate font-medium">{workspace.name}</span>
-                            <span className="block truncate text-xs text-muted-foreground">
-                              {workspace.slug}
-                            </span>
-                          </span>
-                        </label>
-                      ))
-                    ) : (
-                      <span className="px-2 py-3 text-sm text-muted-foreground">
-                        {t("analytics.job.workspaceListNotLoaded")}
-                      </span>
-                    )}
-                  </div>
+                  </p>
+                  {workspaces.length ? (
+                    <div className="-m-1 grid max-h-56 gap-3 overflow-auto p-1">
+                      {workspaces.map((workspace) => {
+                        const id = `${fieldId}-workspace-${workspace.id}`;
+                        return (
+                          <div key={workspace.id} className="flex items-start gap-3">
+                            <Checkbox
+                              id={id}
+                              checked={selectedWorkspaceIds.includes(workspace.id)}
+                              onCheckedChange={() => toggleWorkspace(workspace.id)}
+                              aria-describedby={`${id}-slug`}
+                            />
+                            <div className="grid min-w-0 gap-1 wrap-break-word">
+                              <Label htmlFor={id}>{workspace.name}</Label>
+                              <p id={`${id}-slug`} className="text-caption text-[color:var(--aqt-fg-muted)]">
+                                {workspace.slug}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-body text-[color:var(--aqt-fg-muted)]">
+                      {t("analytics.job.workspaceListNotLoaded")}
+                    </p>
+                  )}
                 </div>
               ) : null}
 
               {!isTrainScopeValid ? (
-                <p className="text-sm text-red-300">{t("analytics.job.selectAtLeastOneWorkspace")}</p>
+                <p className="text-body text-[color:var(--aqt-rose)]">
+                  {t("analytics.job.selectAtLeastOneWorkspace")}
+                </p>
               ) : null}
             </div>
 
@@ -341,11 +324,7 @@ export default function MLAdminToolbar({ tournamentId, workspaceId }: Readonly<M
                 }
                 disabled={isActive || createJobMutation.isPending || !isTrainScopeValid}
               >
-                {createJobMutation.isPending && createJobMutation.variables?.kind === "train_ml" ? (
-                  <Spinner className="mr-2" />
-                ) : (
-                  <Brain className="mr-2 h-4 w-4" />
-                )}
+                {isTrainPending ? <Spinner /> : <Brain aria-hidden />}
                 {t("analytics.job.startTraining")}
               </Button>
             </DialogFooter>
@@ -354,51 +333,61 @@ export default function MLAdminToolbar({ tournamentId, workspaceId }: Readonly<M
       ) : null}
 
       {liveJob ? (
-        <div
-          className={cn(
-            "rounded-md border bg-background/40 p-3 text-xs",
-            statusTone(liveJob.status)
-          )}
-        >
-          <header className="mb-2 flex items-center justify-between gap-3">
-            <span className="flex items-center gap-2 font-medium">
-              {liveJob.status === "running" || liveJob.status === "pending" ? (
-                <Spinner className="size-3.5" />
-              ) : liveJob.status === "succeeded" ? (
-                <CheckCircle2 className="h-3.5 w-3.5" />
+        <div className="space-y-2 border-t border-[color:var(--aqt-border)] pt-4">
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-caption text-[color:var(--aqt-fg-muted)]">
+            <span className="flex items-center gap-2 text-body text-[color:var(--aqt-fg)]">
+              {liveJob.status === "succeeded" ? (
+                <CheckCircle2 aria-hidden className="size-4 text-[color:var(--aqt-up)]" />
+              ) : liveJob.status === "failed" ? (
+                <XCircle aria-hidden className="size-4 text-[color:var(--aqt-rose)]" />
               ) : (
-                <AlertCircle className="h-3.5 w-3.5" />
+                <Spinner />
               )}
-              {t("analytics.job.jobLabel", { id: liveJob.id })} /{" "}
-              {liveJob.kind === "train_ml" ? t("analytics.job.trainMl") : t("analytics.job.compute")} /{" "}
-              {liveJob.status}
+              {t(`analytics.job.status.${liveJob.status}`)}
             </span>
-            <span className="text-muted-foreground">
-              {now !== null &&
-                (liveJob.finished_at
-                  ? t("analytics.job.finishedRelative", {
-                      relative: format.relativeTime(new Date(liveJob.finished_at), now)
-                    })
-                  : liveJob.started_at
-                    ? t("analytics.job.startedRelative", {
-                        relative: format.relativeTime(new Date(liveJob.started_at), now)
+            <span aria-hidden className="text-[color:var(--aqt-fg-dim)]">
+              ·
+            </span>
+            <span>{liveJob.kind === "train_ml" ? t("analytics.job.trainMl") : t("analytics.job.compute")}</span>
+            <span aria-hidden className="text-[color:var(--aqt-fg-dim)]">
+              ·
+            </span>
+            <span>{t("analytics.job.jobLabel", { id: liveJob.id })}</span>
+            {now !== null ? (
+              <>
+                <span aria-hidden className="text-[color:var(--aqt-fg-dim)]">
+                  ·
+                </span>
+                <span>
+                  {liveJob.finished_at
+                    ? t("analytics.job.finishedRelative", {
+                        relative: format.relativeTime(new Date(liveJob.finished_at), now)
                       })
-                    : t("analytics.job.createdRelative", {
-                        relative: format.relativeTime(new Date(liveJob.created_at), now)
-                      }))}
-            </span>
-          </header>
+                    : liveJob.started_at
+                      ? t("analytics.job.startedRelative", {
+                          relative: format.relativeTime(new Date(liveJob.started_at), now)
+                        })
+                      : t("analytics.job.createdRelative", {
+                          relative: format.relativeTime(new Date(liveJob.created_at), now)
+                        })}
+                </span>
+              </>
+            ) : null}
+          </p>
 
-          {Object.keys(liveJob.progress ?? {}).length > 0 ? (
-            <ul className="space-y-0.5">
-              {Object.entries(liveJob.progress).map(([name, stage]) => (
-                <StageRow key={name} name={name} stage={stage} />
+          {stages.length > 0 ? (
+            <ul className="max-w-sm space-y-1 pl-6 text-caption">
+              {stages.map(([name, stage]) => (
+                <li key={name} className="flex items-center justify-between gap-3">
+                  <span className="text-[color:var(--aqt-fg-muted)]">{stageLabel(name)}</span>
+                  <span className={STAGE_TONE[stage.state]}>{t(`analytics.job.stageState.${stage.state}`)}</span>
+                </li>
               ))}
             </ul>
           ) : null}
 
           {liveJob.error ? (
-            <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap wrap-break-word rounded bg-background/40 p-2 text-label text-red-100">
+            <pre className="ml-6 max-h-32 overflow-auto whitespace-pre-wrap wrap-break-word rounded-md bg-[color:var(--aqt-card-2)] p-2 text-label text-[color:var(--aqt-fg-muted)]">
               {liveJob.error}
             </pre>
           ) : null}

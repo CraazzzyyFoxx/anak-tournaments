@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
+import { CircleHelp } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { SelectContent, SelectGroup, SelectItem } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,15 +16,13 @@ import { analyticsQueryKeys } from "@/lib/analytics/query-keys";
 import analyticsService from "@/services/analytics.service";
 
 import { type GlossaryTerm } from "./analytics-glossary";
-import { getPreferredAnalyticsAlgorithmId, sortAnalyticsAlgorithms, type KpiId } from "./analytics.helpers";
-import styles from "./components/Analytics.module.css";
+import { getPreferredAnalyticsAlgorithmId, sortAnalyticsAlgorithms } from "./analytics.helpers";
 import BottomSheet, { type SheetState } from "./components/BottomSheet";
-import HowItWorksCard from "./components/HowItWorksCard";
-import KpiRail from "./components/KpiRail";
+import KpiStats, { KpiStatsSkeleton } from "./components/KpiStats";
 import MasterDetail from "./components/MasterDetail";
 import OrganizerTools from "./components/OrganizerTools";
 import { type StandingsMode } from "./components/StandingsList";
-import VerdictBanner from "./components/VerdictBanner";
+import VerdictLede from "./components/VerdictLede";
 import { useAnalyticsViewModel } from "./useAnalyticsViewModel";
 
 function parseId(value: string | null): number | null {
@@ -31,27 +31,33 @@ function parseId(value: string | null): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-/** Placeholder rows while a result loads (verdict + KPI cards, standings board, deep dive). */
+/** The board's first paint: its toolbar row, then the standings list beside the team panel. */
 export function AnalyticsBoardSkeleton() {
   return (
-    <>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
-          <Skeleton key={index} className="h-24 rounded-lg" />
-        ))}
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <Skeleton className="h-8 w-72 max-w-full rounded-lg" />
+        <Skeleton className="h-8 w-28 rounded-lg" />
       </div>
-      <Skeleton className="h-[520px] rounded-lg" />
-      <Skeleton className="h-12 rounded-lg" />
-    </>
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+        <div className="space-y-px overflow-hidden rounded-xl border border-[color:var(--aqt-border)]">
+          {Array.from({ length: 8 }).map((_, index) => (
+            <Skeleton key={index} className="h-[3.75rem] rounded-none" />
+          ))}
+        </div>
+        <Skeleton className="hidden h-[26rem] rounded-xl lg:block" />
+      </div>
+    </div>
   );
 }
 
 /**
  * Overwatch's tournament analytics board (the `analytics` slot): the ranking-algorithm choice (`?algorithm=`), the
- * v1 shift result plus the permission-gated v2 ML reads, and the fan-facing verdict, KPIs and standings drawn from
- * them. Every read is keyed by this tournament (and owner workspace), with no placeholder: another tournament's
- * algorithms or result never stand in while this one's load, and the result is not requested until this
- * tournament's own algorithm list has confirmed the chosen id.
+ * v1 shift result plus the permission-gated v2 ML reads, and what the page shows from them — the verdict and the six
+ * figures in the host's hero, the standings beside the team/player panel below it. Every read is keyed by this
+ * tournament (and owner workspace), with no placeholder: another tournament's algorithms or result never stand in
+ * while this one's load, and the result is not requested until this tournament's own algorithm list has confirmed
+ * the chosen id.
  */
 export default function AnalyticsBoard({
   tournamentId,
@@ -59,6 +65,7 @@ export default function AnalyticsBoard({
   metadata,
   canReadV2,
   canUpdate,
+  ended,
   hero
 }: Readonly<SlotProps["analytics"]>) {
   const router = useRouter();
@@ -110,24 +117,16 @@ export default function AnalyticsBoard({
     [standingsRows]
   );
 
-  // Fan-facing view model: per-player impact, the six KPIs, the verdict and the
-  // group count. Derived from the public v1 payload (+ v2 impact when allowed).
+  // Fan-facing view model: per-player impact, the six KPIs, the verdict. Derived from the public v1 payload (+ v2
+  // impact when allowed).
   const viewModel = useAnalyticsViewModel(analytics, performanceByPlayer, canReadV2);
 
-  // Glossary / how-it-works explainer sheet, opened by info dots + the help card.
+  // Glossary / how-it-works explainer sheet, opened by the info dots and the hero's guide action.
   const [sheet, setSheet] = useState<SheetState | null>(null);
   const explain = useCallback((term: GlossaryTerm) => setSheet({ kind: "term", term }), []);
-  const showHow = useCallback(() => setSheet({ kind: "how" }), []);
   const closeSheet = useCallback(() => setSheet(null), []);
 
-  // Standings sort/filter is lifted so the KPI cards can drive it (triage folds
-  // into the standings instead of a separate section).
   const [standingsMode, setStandingsMode] = useState<StandingsMode>("standings");
-  const standingsRef = React.useRef<HTMLDivElement | null>(null);
-  const onKpiSelect = useCallback((id: KpiId) => {
-    setStandingsMode(id === "watch" ? "watch" : "movers");
-    standingsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
 
   // An absent or unknown ranking (e.g. one kept in the URL from another tournament) is replaced, without a history
   // entry, by this tournament's preferred one once its list has loaded.
@@ -146,7 +145,7 @@ export default function AnalyticsBoard({
   };
 
   const algorithmPicker = algorithmsQuery.isPending ? (
-    <div role="status" className={styles.cPickAlgorithm}>
+    <div role="status" className="min-w-[9rem] flex-[0_1_12rem]">
       <span className="sr-only">{t("analytics.briefing.loadingAlgorithms")}</span>
       <Skeleton aria-hidden className="h-8 w-full" />
     </div>
@@ -158,7 +157,7 @@ export default function AnalyticsBoard({
         algorithmsQuery.isError ? t("analytics.briefing.errorAlgorithms") : t("analytics.briefing.selectAlgorithm")
       }
       disabled={algorithmsQuery.isError}
-      className={styles.cPickAlgorithm}
+      className="min-w-[9rem] flex-[0_1_12rem]"
       onValueChange={pushAlgorithm}
     >
       <SelectContent>
@@ -217,40 +216,45 @@ export default function AnalyticsBoard({
       );
     }
     return (
-      <>
-        <VerdictBanner verdict={viewModel.verdict} onExplain={explain} />
-        <KpiRail kpis={viewModel.kpis} onExplain={explain} onSelect={onKpiSelect} />
-        <div ref={standingsRef}>
-          <MasterDetail
-            key={`${tournamentId}-${algorithmId}`}
-            tournamentId={tournamentId}
-            teams={viewModel.teams}
-            canReadV2={canReadV2}
-            mode={standingsMode}
-            onModeChange={setStandingsMode}
-            performanceByPlayer={performanceByPlayer}
-            distributionByTeam={distributionByTeam}
-            ontology={metadata}
-            onExplain={explain}
-          />
-        </div>
-        <HowItWorksCard onOpen={showHow} />
-      </>
+      <MasterDetail
+        key={`${tournamentId}-${algorithmId}`}
+        tournamentId={tournamentId}
+        teams={viewModel.teams}
+        canReadV2={canReadV2}
+        ended={ended}
+        showGroups={viewModel.groupCount > 1}
+        mode={standingsMode}
+        onModeChange={setStandingsMode}
+        performanceByPlayer={performanceByPlayer}
+        distributionByTeam={distributionByTeam}
+        ontology={metadata}
+        onExplain={explain}
+      />
     );
   };
+
+  // The figures keep their footprint while this ranking's result loads, so the hero does not grow when they land.
+  const loadingResult = activeAlgorithm !== null && !analyticsQuery.isError && !viewModel;
 
   return (
     <>
       {hero({
-        rankedBy: activeAlgorithm?.name,
         counts:
           analytics && viewModel
-            ? {
-                teams: analytics.summary.total_teams,
-                players: analytics.summary.total_players,
-                groups: viewModel.groupCount
-              }
+            ? { teams: analytics.summary.total_teams, players: analytics.summary.total_players }
             : null,
+        lede: viewModel ? <VerdictLede verdict={viewModel.verdict} onExplain={explain} /> : undefined,
+        stats: viewModel ? (
+          <KpiStats kpis={viewModel.kpis} onExplain={explain} />
+        ) : loadingResult ? (
+          <KpiStatsSkeleton />
+        ) : undefined,
+        actions: (
+          <Button type="button" variant="outline" size="sm" onClick={() => setSheet({ kind: "how" })}>
+            <CircleHelp aria-hidden />
+            {t("analytics.sheet.help")}
+          </Button>
+        ),
         controls: algorithmPicker
       })}
       {canUpdate ? <OrganizerTools tournamentId={tournamentId} workspaceId={workspaceId} /> : null}

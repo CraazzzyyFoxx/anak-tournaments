@@ -3,16 +3,12 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Info } from "lucide-react";
+import { useTranslations } from "next-intl";
 
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
-import { useTranslations } from "next-intl";
+import { useFormatter } from "@/lib/datetime/client";
 import analyticsService from "@/services/analytics.service";
 import { analyticsQueryKeys } from "@/lib/analytics/query-keys";
 
@@ -20,20 +16,6 @@ interface ExplanationPopoverProps {
   playerId: number;
   tournamentId: number;
   algorithmId?: number;
-}
-
-function formatFeatureValue(value: number | null): string | null {
-  if (value === null || value === undefined) return null;
-  if (Number.isInteger(value)) return value.toString();
-  return value.toFixed(1);
-}
-
-/** Fallback when a feature has no translation: "final_blows_p10" → "Final blows / 10 min". */
-function humanizeFeature(feature: string, per10minSuffix: string): string {
-  const base = feature.endsWith("_p10") ? feature.slice(0, -4) : feature;
-  const words = base.replace(/_/g, " ").trim();
-  const capitalized = words.charAt(0).toUpperCase() + words.slice(1);
-  return feature.endsWith("_p10") ? `${capitalized}${per10minSuffix}` : capitalized;
 }
 
 /**
@@ -47,6 +29,7 @@ export default function ExplanationPopover({
   algorithmId,
 }: Readonly<ExplanationPopoverProps>) {
   const t = useTranslations();
+  const format = useFormatter();
   const [open, setOpen] = React.useState(false);
 
   const { data, isLoading, isError } = useQuery({
@@ -57,26 +40,17 @@ export default function ExplanationPopover({
     staleTime: 5 * 60 * 1000,
   });
 
-  const featureLabel = (feature: string): string => {
-    // Runtime-dynamic feature name: assert it's a valid message key (next-intl
-    // types keys as literal unions; the humanize fallback below still runs).
-    const translated = t(`analytics.features.${feature}` as Parameters<typeof t>[0]);
-    return translated === `analytics.features.${feature}`
-      ? humanizeFeature(feature, t("analytics.features.per10minSuffix"))
-      : translated;
-  };
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          type="button"
           variant="ghost"
-          size="icon"
-          className="h-7 w-7"
+          size="icon-sm"
           title={t("analytics.explanation.trigger")}
           aria-label={t("analytics.explanation.trigger")}
         >
-          <Info className="h-4 w-4" aria-hidden="true" />
+          <Info aria-hidden />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-80" align="end">
@@ -89,43 +63,47 @@ export default function ExplanationPopover({
           </div>
         )}
         {isError && (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-caption text-[color:var(--aqt-fg-muted)]">
             {t("analytics.explanation.unavailable")}
           </p>
         )}
         {data && (
           <div className="space-y-2">
             <header>
-              <p className="text-sm font-semibold">{t("analytics.explanation.title")}</p>
-              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+              <p className="text-body font-semibold text-[color:var(--aqt-fg)]">
+                {t("analytics.explanation.title")}
+              </p>
+              <p className="mt-0.5 text-caption text-[color:var(--aqt-fg-muted)]">
                 {t("analytics.explanation.subtitle")}
               </p>
             </header>
-            <ul className="space-y-1.5 text-xs">
+            <ul className="space-y-1.5 text-caption">
               {data.contributions.slice(0, 5).map((contribution) => {
                 const raised = contribution.shap >= 0;
-                const value = formatFeatureValue(contribution.value);
+                // Runtime feature name: next-intl types keys as literals. An
+                // untranslated one reads as a generic stat, never the raw key.
+                const key = `analytics.features.${contribution.feature}` as Parameters<typeof t>[0];
                 return (
                   <li
                     key={contribution.feature}
                     className="flex items-center justify-between gap-2"
                   >
-                    <span className="min-w-0 truncate text-foreground">
-                      {featureLabel(contribution.feature)}
-                      {value != null ? (
-                        <span className="ml-1 tabular-nums text-muted-foreground">{value}</span>
+                    <span className="min-w-0 truncate text-[color:var(--aqt-fg)]">
+                      {t.has(key) ? t(key) : t("analytics.explanation.otherFeature")}
+                      {contribution.value != null ? (
+                        <span className="aqt-tnum ml-1 text-[color:var(--aqt-fg-dim)]">
+                          {format.number(contribution.value, { maximumFractionDigits: 1 })}
+                        </span>
                       ) : null}
                     </span>
                     <span
-                      className={cn(
-                        "inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 font-medium",
-                        raised ? "text-emerald-300" : "text-rose-300",
-                      )}
+                      className="inline-flex shrink-0 items-center gap-0.5 font-medium"
+                      style={{ color: raised ? "var(--aqt-up)" : "var(--aqt-rose)" }}
                     >
                       {raised ? (
-                        <ArrowUp className="h-3 w-3" aria-hidden="true" />
+                        <ArrowUp className="size-3.5" aria-hidden="true" />
                       ) : (
-                        <ArrowDown className="h-3 w-3" aria-hidden="true" />
+                        <ArrowDown className="size-3.5" aria-hidden="true" />
                       )}
                       {raised
                         ? t("analytics.explanation.raised")

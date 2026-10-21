@@ -33,7 +33,7 @@ export interface AnalyticsViewModel {
   teams: TeamVM[];
   kpis: KpiVM[];
   verdict: CommunityVerdict;
-  /** Distinct group count across the bracket (for the hero stat block). */
+  /** Distinct group count across the bracket: a group chip is shown only when the rows span more than one. */
   groupCount: number;
 }
 

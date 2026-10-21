@@ -1,17 +1,16 @@
 "use client";
 
-import { ArrowDown, ArrowRight, ArrowUp, Minus } from "lucide-react";
-
-import { cn } from "@/lib/utils";
-import { useTranslations } from "next-intl";
-import type { DivisionGridVersion } from "@/types/workspace.types";
-import type { RoleOntology } from "@/lib/roster/ontology";
-import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { PlayerVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
-import AnomalyTooltip from "@/disciplines/overwatch/analytics/components/AnomalyTooltip";
-import ImpactBar from "@/disciplines/overwatch/analytics/components/community/ImpactBar";
-import styles from "@/disciplines/overwatch/analytics/components/Analytics.module.css";
+import { RowButton } from "@/components/ui/row-button";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import type { DivisionGridVersion } from "@/types/workspace.types";
+import type { PlayerVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
+
+import AnomalyFlag from "../AnomalyFlag";
+import DivisionMark from "../DivisionMark";
+import MoveMark from "../MoveMark";
+import ImpactBar from "./ImpactBar";
+import PlayerNick from "./PlayerNick";
 
 interface RosterRowProps {
   player: PlayerVM;
@@ -21,88 +20,33 @@ interface RosterRowProps {
   onSelect: () => void;
 }
 
-function MoveChip({
-  player,
-  tournamentGrid,
-}: Readonly<{
-  player: PlayerVM;
-  tournamentGrid?: DivisionGridVersion | null;
-}>) {
-  const t = useTranslations();
-  const target = player.predicted_division ?? player.division;
-
-  if (player.predicted_direction === "flat") {
-    return (
-      <span className={cn(styles.cMove, styles.cMoveFlat)}>
-        <Minus aria-hidden="true" />
-        {t("analytics.community.move.hold")}
-      </span>
-    );
-  }
-
-  const up = player.predicted_direction === "promote";
-  return (
-    <span className={cn(styles.cMove, up ? styles.cMoveUp : styles.cMoveDown)}>
-      {up ? <ArrowUp aria-hidden="true" /> : <ArrowDown aria-hidden="true" />}
-      {up ? t("analytics.community.move.climb") : t("analytics.community.move.drop")}
-      <ArrowRight className={styles.cMoveSep} aria-hidden="true" />
-      <DivisionIcon
-        division={target}
-        tournamentGrid={tournamentGrid}
-        width={20}
-        height={20}
-        className={styles.cMoveDiv}
-      />
-    </span>
-  );
-}
-
 /**
- * A roster line in the team detail: role + division badge, name (with newcomer
- * tag), impact bar, optional watch-flag chip, and the predicted move. Selecting
- * it opens the player detail.
+ * A roster line in the team panel: role, division crest, nick with its
+ * newcomer marks and watch flag, the impact bar, and the predicted move.
+ * Selecting it opens the player panel.
  */
 export default function RosterRow({ player, tournamentGrid, ontology, onSelect }: Readonly<RosterRowProps>) {
-  const t = useTranslations();
-  const isNew = player.is_newcomer || player.is_newcomer_role;
   const flag = player.anomalies[0];
 
   return (
-    // A real button, not a div with role="button": `.cRosterRow` already
-    // carries the full button reset, and Enter/Space come for free.
-    <button type="button" className={styles.cRosterRow} onClick={onSelect}>
-      <span className={styles.cRoleChip}>
-        <PlayerRoleIcon role={player.role} ontology={ontology} size={19} />
-      </span>
-      <span className={styles.cBadgeWrap}>
-        <DivisionIcon division={player.division} tournamentGrid={tournamentGrid} width={30} height={30} />
-      </span>
-      <span className={styles.cPId}>
-        <span className={styles.cPName}>
-          {player.name}
-          {isNew ? (
-            <span className={styles.cTagNew}>
-              {player.is_newcomer_role
-                ? t("analytics.community.player.newRoleTag")
-                : t("analytics.community.player.newTag")}
-            </span>
-          ) : null}
+    <RowButton
+      onClick={onSelect}
+      className="grid grid-cols-[1.25rem_1.75rem_minmax(0,1fr)_auto] items-center gap-x-2.5 px-4 py-2.5"
+    >
+      <PlayerRoleIcon role={player.role} ontology={ontology} size={18} />
+      <DivisionMark division={player.division} tournamentGrid={tournamentGrid} size={28} />
+      <span className="flex min-w-0 flex-col gap-1.5">
+        <span className="flex min-w-0 items-center gap-1.5">
+          <PlayerNick player={player} className="text-ui font-semibold" />
+          {flag ? <AnomalyFlag kind={flag.kind} reasons={flag.reasons} /> : null}
         </span>
-        <span className={styles.cPMeta}>
-          <span style={{ width: 84 }}>
-            <ImpactBar value={player.impact} />
-          </span>
-          {flag ? (
-            <AnomalyTooltip kind={flag.kind} reasons={flag.reasons} focusable={false}>
-              <span className={styles.cFlag}>
-                <span className={styles.cFlagDot} />
-                {flag.kind}
-              </span>
-            </AnomalyTooltip>
-          ) : null}
-        </span>
+        <ImpactBar value={player.impact} className="max-w-[8rem]" />
       </span>
-      <MoveChip player={player} tournamentGrid={tournamentGrid} />
-    </button>
+      <MoveMark
+        direction={player.predicted_direction}
+        target={player.predicted_division ?? player.division}
+        tournamentGrid={tournamentGrid}
+      />
+    </RowButton>
   );
 }

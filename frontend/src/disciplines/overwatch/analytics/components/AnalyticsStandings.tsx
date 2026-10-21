@@ -1,49 +1,54 @@
-import React, { useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, ChevronRight, Minus } from "lucide-react";
-import { roleOf } from "@/lib/roster/role-ref";
-import { findRole, type RoleOntology } from "@/lib/roster/ontology";
+"use client";
+
+import { Fragment, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import {
-  AnalyticsAnomaly,
+  ArrowDown,
+  ArrowUp,
+  ChevronDown,
+  Minus,
+  Pencil,
+  Shuffle,
+  SlidersHorizontal,
+  Sprout
+} from "lucide-react";
+import { useTranslations } from "next-intl";
+
+import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import TeamName from "@/components/TeamName";
+import { TeamPlacement } from "@/components/TournamentTeamCard";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { IconTooltip } from "@/components/ui/icon-tooltip";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow
+} from "@/components/ui/table";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { usePermissions } from "@/hooks/usePermissions";
+import { useFormatter } from "@/lib/datetime/client";
+import { sortTeamPlayers } from "@/lib/player";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import { groupDisplayName, groupHue } from "@/lib/tournament/group";
+import { cn } from "@/lib/utils";
+import type {
   PerformanceV2,
   PlayerAnalytics,
   StandingsDistribution,
   TeamAnalytics
 } from "@/types/analytics.types";
-import type { DivisionGridVersion } from "@/types/workspace.types";
-import {
-  confidenceWord,
-  formatAnalyticsNumber,
-  formatConfidencePercent,
-  standingsRank
-} from "@/disciplines/overwatch/analytics/analytics.helpers";
-import AnomalyTooltip from "@/disciplines/overwatch/analytics/components/AnomalyTooltip";
+import type { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
+import { standingsRank } from "@/disciplines/overwatch/analytics/analytics.helpers";
+import AnomalyFlag from "@/disciplines/overwatch/analytics/components/AnomalyFlag";
+import DeltaText, { moveTone } from "@/disciplines/overwatch/analytics/components/DeltaText";
+import DivisionMark from "@/disciplines/overwatch/analytics/components/DivisionMark";
 import ExplanationPopover from "@/disciplines/overwatch/analytics/components/ExplanationPopover";
-import ForecastChip from "@/disciplines/overwatch/analytics/components/ForecastChip";
-import MetricTooltip from "@/disciplines/overwatch/analytics/components/MetricTooltip";
-import TeamName from "@/components/TeamName";
-import { useTranslations } from "next-intl";
-import { useRoleName } from "@/hooks/useRoleName";
-import { sortTeamPlayers } from "@/lib/player";
-import { groupDisplayName } from "@/lib/tournament/group";
-import { cn } from "@/lib/utils";
-import { usePermissions } from "@/hooks/usePermissions";
-import analyticsService from "@/services/analytics.service";
-import DivisionIcon from "@/components/DivisionIcon";
-import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import styles from "./Analytics.module.css";
-import { analyticsQueryKeys } from "@/lib/analytics/query-keys";
+import InfoDot from "@/disciplines/overwatch/analytics/components/InfoDot";
+import MoveMark from "@/disciplines/overwatch/analytics/components/MoveMark";
+import ChangeShiftDialog from "@/disciplines/overwatch/analytics/components/community/ChangeShiftDialog";
 
 type SortMode = "standings" | "predicted" | "shift";
 
@@ -51,515 +56,371 @@ interface AnalyticsStandingsProps {
   teams: TeamAnalytics[];
   performanceByPlayer: Map<number, PerformanceV2>;
   distributionByTeam?: Map<number, StandingsDistribution>;
-  /** Trailing control on the sort-tab row (the list/table view toggle). */
-  headerEnd?: React.ReactNode;
   /** The tournament's own role dictionary (its game's metadata): role glyphs, names and roster order. */
   ontology: RoleOntology;
+  /** Trailing control on the toolbar row (the list/table view toggle). */
+  headerEnd?: ReactNode;
+  /** The viewer may read the v2 model: the Impact and vs-similar columns exist only then. */
+  canReadV2: boolean;
+  /** The tournament is over: places 1–3 are medals. */
+  ended: boolean;
+  /** Opens a column's glossary entry (the tap path for the explainers). */
+  onExplain?: (term: GlossaryTerm) => void;
 }
 
-const anomalyHue: Record<string, string> = {
-  smurf: "350 84% 65%",
-  troll: "38 92% 60%",
-  throw: "2 75% 62%",
-  sandbag: "275 72% 68%"
+const HEAD_CLASS =
+  "h-9 whitespace-nowrap px-3 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
+const CELL_CLASS = "px-3 py-2";
+const NUM_CLASS = "aqt-tnum text-right";
+const ROW_CLASS = "border-[color:var(--aqt-overlay-border)] hover:bg-[color:var(--aqt-overlay-2)]";
+
+const SIGNED = { maximumFractionDigits: 2, signDisplay: "exceptZero" } as const;
+
+/** "Nick#1234" → ["Nick", "#1234"]. */
+const splitTag = (name: string): [string, string | null] => {
+  const hash = name.indexOf("#");
+  return hash < 0 ? [name, null] : [name.slice(0, hash), name.slice(hash)];
 };
 
-const AnomalyChip = ({ anomaly, label }: { anomaly?: AnalyticsAnomaly; label?: string }) => {
-  const kind = label ?? anomaly?.kind ?? "manual";
-  const hue = anomaly ? (anomalyHue[anomaly.kind] ?? "199 90% 60%") : "38 92% 60%";
-
-  const chip = (
-    <span className={styles.chip}>
-      <span className={styles.chipDot} style={{ background: `hsl(${hue})` }} />
-      {kind}
-    </span>
-  );
-
-  // Anomaly chips get a decoded tooltip; the manual-shift chip stays plain.
-  if (!anomaly) {
-    return chip;
-  }
-
+function Head({
+  children,
+  term,
+  onExplain,
+  numeric
+}: Readonly<{
+  children: ReactNode;
+  term?: GlossaryTerm;
+  onExplain?: (term: GlossaryTerm) => void;
+  numeric?: boolean;
+}>) {
   return (
-    <AnomalyTooltip kind={anomaly.kind} reasons={anomaly.reasons} focusable={false}>
-      {chip}
-    </AnomalyTooltip>
+    <TableHead scope="col" className={cn(HEAD_CLASS, numeric && "text-right")}>
+      {term ? (
+        <span className="inline-flex items-center gap-1">
+          {children}
+          <InfoDot term={term} onExplain={onExplain} />
+        </span>
+      ) : (
+        children
+      )}
+    </TableHead>
   );
-};
+}
 
-const DivisionBadge = ({
-  division,
-  tournamentGrid,
-  dimmed,
-  size = 26
-}: {
-  division: number | null;
-  tournamentGrid?: DivisionGridVersion | null;
-  dimmed?: boolean;
-  size?: number;
-}) => {
-  if (division == null) {
-    return <span className="text-muted-foreground">-</span>;
-  }
+/** The team's summed division forecast as coloured text: arrow, size, unit. */
+function TeamForecast({ shift }: Readonly<{ shift: number }>) {
+  const t = useTranslations();
+  const format = useFormatter();
 
-  return (
-    <DivisionIcon
-      division={division}
-      tournamentGrid={tournamentGrid}
-      width={size}
-      height={size}
-      className={cn("inline-block", dimmed && "opacity-45")}
-    />
-  );
-};
-
-const DivisionMove = ({
-  player,
-  tournamentGrid
-}: {
-  player: PlayerAnalytics;
-  tournamentGrid?: DivisionGridVersion | null;
-}) => {
-  const arrow = player.predicted_direction === "promote"
-    ? "up"
-    : player.predicted_direction === "demote"
-      ? "down"
-      : "flat";
-
-  return (
-    <span className={styles.divisionMove}>
-      <DivisionBadge division={player.division} tournamentGrid={tournamentGrid} />
-      <span
-        className={cn(
-          "text-xs font-bold",
-          arrow === "up" && styles.trendPositive,
-          arrow === "down" && styles.trendNegative,
-          arrow === "flat" && "text-muted-foreground"
-        )}
-      >
-        {arrow === "up" ? (
-          <ArrowUp className="h-3.5 w-3.5" />
-        ) : arrow === "down" ? (
-          <ArrowDown className="h-3.5 w-3.5" />
-        ) : (
-          <Minus className="h-3.5 w-3.5" />
-        )}
+  if (shift === 0) {
+    return (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap text-[color:var(--aqt-fg-dim)]">
+        <Minus aria-hidden className="size-3.5" />
+        {t("analytics.forecast.hold")}
       </span>
-      <DivisionBadge
-        division={player.predicted_division ?? player.division}
-        tournamentGrid={tournamentGrid}
-        dimmed={player.predicted_direction === "flat"}
-      />
+    );
+  }
+
+  const up = shift > 0;
+  const Icon = up ? ArrowUp : ArrowDown;
+  return (
+    <span
+      className="inline-flex items-center gap-1 whitespace-nowrap font-medium"
+      style={{ color: moveTone(shift) }}
+    >
+      <Icon aria-hidden className="size-3.5" />
+      <span className="sr-only">{t(up ? "analytics.forecast.up" : "analytics.forecast.down")}</span>
+      <span className="aqt-tnum">
+        {format.number(Math.abs(shift), { maximumFractionDigits: 1 })}{" "}
+        {t("analytics.forecast.divisionUnit")}
+      </span>
     </span>
   );
-};
+}
 
-const ChangeDivisionModal = ({
-  player,
-  open,
-  setOpen
-}: {
-  player: PlayerAnalytics;
-  open: boolean;
-  setOpen: (open: boolean) => void;
-}) => {
-  const [division, setDivision] = useState(player.shift ?? 0);
-  const queryClient = useQueryClient();
+/** Nick, faint `#tag`, then the newcomer / new-role marks as `RosterPlayer` draws them. */
+function PlayerIdentity({ player }: Readonly<{ player: PlayerAnalytics }>) {
   const t = useTranslations();
-
-  const onSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    await analyticsService.patchPlayerShift(player.team_id, player.id, division);
-    await queryClient.invalidateQueries({ queryKey: analyticsQueryKeys.all() });
-    setOpen(false);
-  };
+  const [nick, tag] = splitTag(player.name);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>{t("analytics.standings.editManualShift")}</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={onSubmit} className="grid gap-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor={`analytics-shift-${player.id}`} className="text-right">
-              {t("analytics.standings.shiftLabel")}
-            </Label>
-            <Input
-              id={`analytics-shift-${player.id}`}
-              value={division}
-              className="col-span-3"
-              type="number"
-              onChange={(event) => setDivision(Number(event.target.value))}
-            />
-          </div>
-          <DialogFooter>
-            <Button type="submit">{t("analytics.standings.save")}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
-const TeamDetail = ({
-  team,
-  performanceByPlayer,
-  ontology
-}: {
-  team: TeamAnalytics;
-  performanceByPlayer: Map<number, PerformanceV2>;
-  ontology: RoleOntology;
-}) => {
-  const [editingPlayer, setEditingPlayer] = useState<PlayerAnalytics | null>(null);
-  const { hasPermission } = usePermissions();
-  const t = useTranslations();
-  const canEdit = hasPermission("analytics.update");
-  const tournamentGrid = team.tournament?.division_grid_version;
-  const nameOf = useRoleName();
-  const roleText = (ref: PlayerAnalytics["role"]) => {
-    const node = ontology ? findRole(ontology, ref) : null;
-    return node ? nameOf(node) : (roleOf(ref) ?? "");
-  };
-  const players = useMemo(() => sortTeamPlayers(team.players, ontology), [team.players, ontology]);
-
-  return (
-    <div className={styles.teamDetail}>
-      <div className={styles.detailTableWrap}>
-        <table className={styles.detailTable}>
-          <thead>
-            <tr>
-              <th scope="col">{t("analytics.standings.colRole")}</th>
-              <th scope="col">{t("analytics.standings.colBattleTag")}</th>
-              <th scope="col" className={styles.center}>
-                {t("analytics.standings.colCurrent")}
-              </th>
-              <th scope="col" className={styles.center}>
-                {t("analytics.standings.colForecast")}
-              </th>
-              <th scope="col" className={styles.center}>
-                <MetricTooltip term="recent_moves" showIcon>
-                  {t("analytics.standings.colMove2")}
-                </MetricTooltip>
-              </th>
-              <th scope="col" className={styles.center}>
-                <MetricTooltip term="recent_moves" showIcon>
-                  {t("analytics.standings.colMove1")}
-                </MetricTooltip>
-              </th>
-              <th scope="col" className={styles.center}>
-                <MetricTooltip term="points" showIcon>
-                  {t("analytics.standings.colSignal")}
-                </MetricTooltip>
-              </th>
-              <th scope="col" className={styles.center}>
-                <MetricTooltip term="impact" showIcon>
-                  {t("analytics.standings.colImpact")}
-                </MetricTooltip>
-              </th>
-              <th scope="col" className={styles.center}>
-                <MetricTooltip term="vs_local" showIcon>
-                  {t("analytics.standings.colVsLocal")}
-                </MetricTooltip>
-              </th>
-              <th scope="col" className={styles.center}>
-                <MetricTooltip term="confidence" showIcon>
-                  {t("analytics.standings.colConfidence")}
-                </MetricTooltip>
-              </th>
-              <th scope="col" className={styles.center}>
-                <MetricTooltip term="shift" showIcon>
-                  {t("analytics.standings.colManual")}
-                </MetricTooltip>
-              </th>
-              <th scope="col">{t("analytics.standings.colFlags")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {players.map((player) => {
-              const isHighPoints = player.points >= 1;
-              const isLowPoints = player.points <= -1;
-              const performance = performanceByPlayer.get(player.id);
-
-              return (
-                <tr key={player.id}>
-                  <td>
-                    <div className="flex items-center gap-2">
-                      <PlayerRoleIcon role={player.role} ontology={ontology} size={18} decorative />
-                      <span className="text-muted-foreground">{roleText(player.role)}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="min-w-0">
-                      <div className="truncate font-medium" title={player.name}>
-                        {player.name}
-                      </div>
-                      {player.is_newcomer || player.is_newcomer_role ? (
-                        <div className="mt-1">
-                          <AnomalyChip
-                            label={
-                              player.is_newcomer
-                                ? t("analytics.triage.newPlayer")
-                                : t("analytics.triage.newRole")
-                            }
-                          />
-                        </div>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className={styles.center}>
-                    <DivisionBadge division={player.division} tournamentGrid={tournamentGrid} />
-                  </td>
-                  <td className={styles.center}>
-                    <DivisionMove player={player} tournamentGrid={tournamentGrid} />
-                  </td>
-                  <td className={styles.center}>{formatAnalyticsNumber(player.move_2)}</td>
-                  <td className={styles.center}>{formatAnalyticsNumber(player.move_1)}</td>
-                  <td
-                    className={cn(
-                      styles.center,
-                      "font-semibold tabular-nums",
-                      isHighPoints && styles.pointsHigh,
-                      isLowPoints && styles.pointsLow
-                    )}
-                  >
-                    {player.points > 0 ? "+" : ""}
-                    {formatAnalyticsNumber(player.points)}
-                  </td>
-                  <td className={styles.center}>
-                    {performance ? (
-                      <span className="inline-flex items-center justify-center gap-1">
-                        {formatAnalyticsNumber(performance.impact_score, 0)}
-                        {/* No algorithmId: SHAP explanations are produced by the
-                            Performance ML v2 algorithm, not the selected shift
-                            algorithm, so the latest explanation is the right one. */}
-                        <ExplanationPopover
-                          playerId={player.id}
-                          tournamentId={player.tournament_id}
-                        />
-                      </span>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                  <td className={styles.center}>
-                    {performance ? (
-                      <span
-                        title={t("analytics.standings.localPercentileTitle", {
-                          value: formatAnalyticsNumber(performance.local_percentile, 0),
-                          n: performance.local_reference_n
-                        })}
-                      >
-                        {performance.local_zscore > 0 ? "+" : ""}
-                        {formatAnalyticsNumber(performance.local_zscore, 2)}
-                      </span>
-                    ) : (
-                      "-"
-                    )}
-                  </td>
-                  <td className={styles.center}>{formatConfidencePercent(player.confidence)}</td>
-                  <td className={styles.center}>
-                    {canEdit ? (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="px-2 tabular-nums"
-                        onClick={() => setEditingPlayer(player)}
-                        title={t("analytics.standings.editManualShift")}
-                      >
-                        {formatAnalyticsNumber(player.shift)}
-                      </Button>
-                    ) : (
-                      <span className="tabular-nums">{formatAnalyticsNumber(player.shift)}</span>
-                    )}
-                  </td>
-                  <td>
-                    <div className={styles.chips}>
-                      {player.anomalies.map((anomaly, index) => (
-                        <AnomalyChip key={`${player.id}-${anomaly.kind}-${index}`} anomaly={anomaly} />
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      {editingPlayer ? (
-        <ChangeDivisionModal
-          player={editingPlayer}
-          open={editingPlayer != null}
-          setOpen={(open) => {
-            if (!open) setEditingPlayer(null);
-          }}
-        />
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      <span className="font-medium text-[color:var(--aqt-fg)]">
+        {nick}
+        {tag ? <span className="font-normal text-[color:var(--aqt-fg-faint)]">{tag}</span> : null}
+      </span>
+      {player.is_newcomer ? (
+        <IconTooltip label={t("teams.roster.newcomer")} hint={t("teams.roster.newcomerHint")}>
+          <Sprout aria-hidden className="size-3.5 text-[color:var(--aqt-rose)]" />
+        </IconTooltip>
       ) : null}
-    </div>
+      {/* A flex player has no role to be new to (same rule as `RosterPlayer`). */}
+      {player.is_newcomer_role && player.role != null ? (
+        <IconTooltip label={t("teams.roster.newcomerRole")} hint={t("teams.roster.newcomerRoleHint")}>
+          <Shuffle aria-hidden className="size-3.5 text-[color:var(--aqt-amber)]" />
+        </IconTooltip>
+      ) : null}
+    </span>
   );
-};
+}
 
-const RoleLane = ({ team, ontology }: { team: TeamAnalytics; ontology: RoleOntology }) => {
-  const tournamentGrid = team.tournament?.division_grid_version;
-  const players = useMemo(() => sortTeamPlayers(team.players, ontology), [team.players, ontology]);
-
-  return (
-    <div className={styles.roleLane}>
-      {players.map((player) => (
-        <div
-          key={player.id}
-          className={cn(
-            styles.roleCell,
-            (player.is_newcomer || player.is_newcomer_role) && styles.roleCellNew,
-            player.anomalies.length > 0 && styles.roleCellAnomaly
-          )}
-          title={player.name}
-        >
-          <PlayerRoleIcon role={player.role} ontology={ontology} size={14} />
-          <DivisionBadge division={player.division} tournamentGrid={tournamentGrid} size={22} />
-          <span className={styles.roleName}>{player.name.split("#")[0]}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-const CONFIDENCE_TONE_CLASS: Record<"high" | "medium" | "low", string> = {
-  high: "text-[color:var(--aqt-emerald)]",
-  medium: "text-[color:var(--aqt-amber)]",
-  low: "text-muted-foreground"
-};
-
-// Group band tint. Only A–D get a hue; a fifth group (or a team without one)
-// falls through to the neutral band rather than reusing another group's colour.
-const GROUP_BAND_CLASS: Record<string, string | undefined> = {
-  A: styles.groupA,
-  B: styles.groupB,
-  C: styles.groupC,
-  D: styles.groupD
-};
-
-const TeamRow = ({
+/** One team as its own `<tbody>`: the summary row, then a row per player while open. */
+function TeamRows({
   team,
   open,
   onToggle,
-  performanceByPlayer,
   distribution,
-  ontology
-}: {
+  performanceByPlayer,
+  ontology,
+  canReadV2,
+  canEdit,
+  ended,
+  showGroup,
+  onEditShift
+}: Readonly<{
   team: TeamAnalytics;
   open: boolean;
   onToggle: () => void;
-  performanceByPlayer: Map<number, PerformanceV2>;
   distribution?: StandingsDistribution;
+  performanceByPlayer: Map<number, PerformanceV2>;
   ontology: RoleOntology;
-}) => {
+  canReadV2: boolean;
+  canEdit: boolean;
+  ended: boolean;
+  showGroup: boolean;
+  onEditShift: (player: PlayerAnalytics) => void;
+}>) {
   const t = useTranslations();
-  const groupName = team.group?.name ?? "-";
-  const conf = confidenceWord(team.avg_confidence);
-  const shiftDirection =
-    team.total_shift > 0 ? "promote" : team.total_shift < 0 ? "demote" : "flat";
-  const groupClass = GROUP_BAND_CLASS[groupName];
-  const placementDelta = team.placement_delta;
-  const deltaClass = placementDelta == null
-    ? undefined
-    : placementDelta > 0
-      ? styles.deltaUp
-      : placementDelta < 0
-        ? styles.deltaDown
-        : undefined;
+  const format = useFormatter();
+  const players = useMemo(() => sortTeamPlayers(team.players, ontology), [team.players, ontology]);
+  const tournamentGrid = team.tournament?.division_grid_version;
+  const decimal = (value: number, digits = 2) => format.number(value, { maximumFractionDigits: digits });
+  const percent = (value: number) =>
+    format.number(Math.min(1, Math.max(0, value)), { style: "percent" });
+  const editLabel = t("analytics.standings.editManualShift");
 
-  // No onKeyDown: the row is a real <button>, so Enter/Space activate it natively.
+  // Role … the column before Forecast: the team's identity spans the per-player detail columns.
+  const leadSpan = canReadV2 ? 8 : 6;
+  const shownFlags = team.anomalies.slice(0, 2);
+  const hiddenFlags = team.anomalies.length - shownFlags.length;
+
+  const facts: ReactNode[] = [];
+  if (distribution) {
+    facts.push(
+      t("analytics.standings.predictedRange", {
+        mean: decimal(distribution.mean_position, 1),
+        p10: decimal(distribution.p10_position, 0),
+        p90: decimal(distribution.p90_position, 0)
+      }),
+      `${t("analytics.distribution.top1")} ${percent(distribution.prob_top1)}`
+    );
+  } else if (team.predicted_place != null) {
+    facts.push(t("analytics.standings.predicted", { place: team.predicted_place }));
+  }
+  if (team.placement_delta != null) {
+    facts.push(<DeltaText delta={team.placement_delta} />);
+  }
 
   return (
-    <div className={styles.teamRow} id={team.id.toString()}>
-      <button
-        type="button"
-        className={styles.teamRowMain}
-        aria-expanded={open}
-        onClick={onToggle}
-      >
-        <span className={cn(styles.groupBand, groupClass)} />
-        <div className={styles.placement}>
-          <div className={styles.placementNum}>{team.placement ?? "-"}</div>
-          <div className={cn(styles.placementDelta, deltaClass)}>
-            {placementDelta == null ? "-" : placementDelta > 0 ? `+${placementDelta}` : placementDelta}
-          </div>
-        </div>
-        <div className={styles.teamName}>
-          <div className={styles.teamTitle}>
-            <TeamName team={team} size="xs" />
-          </div>
-          <div className={styles.teamMeta}>
-            <span>{groupDisplayName(groupName, t("common.group"))}</span>
-            {distribution ? (
-              <span
-                title={t("analytics.standings.monteCarloTitle", {
-                  mean: distribution.mean_position.toFixed(1),
-                  prob: (distribution.prob_top1 * 100).toFixed(0)
-                })}
-              >
-                {t("analytics.standings.predictedRange", {
-                  mean: distribution.mean_position.toFixed(1),
-                  p10: distribution.p10_position.toFixed(0),
-                  p90: distribution.p90_position.toFixed(0)
-                })}
-              </span>
-            ) : (
-              <span>{t("analytics.standings.predicted", { place: team.predicted_place ?? "-" })}</span>
-            )}
-          </div>
-        </div>
-        <RoleLane team={team} ontology={ontology} />
-        <div className={styles.record}>
-          <span className={styles.wins}>{team.wins}</span>
-          <span className="mx-1 text-muted-foreground">/</span>
-          <span className={styles.losses}>{team.losses}</span>
-          <div className="text-label text-muted-foreground">{t("analytics.standings.record")}</div>
-        </div>
-        <div className={styles.confidence}>
-          <div className={styles.confidenceText}>
-            <MetricTooltip term="confidence" focusable={false}>
-              <span className="text-muted-foreground">{t("analytics.standings.confidence")}</span>
-            </MetricTooltip>
-            <br />
-            <span
-              className={cn("font-semibold", CONFIDENCE_TONE_CLASS[conf.tone])}
-              title={formatConfidencePercent(team.avg_confidence)}
+    <TableBody className="border-t border-[color:var(--aqt-border)]">
+      <TableRow className={ROW_CLASS}>
+        <TableHead
+          scope="rowgroup"
+          colSpan={leadSpan}
+          className="h-auto px-3 py-2.5 font-normal text-[color:var(--aqt-fg)]"
+        >
+          <div className="flex items-center gap-3">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-expanded={open}
+              aria-label={t("analytics.standings.togglePlayers", { team: team.name })}
+              onClick={onToggle}
             >
-              {t(`analytics.confidence.${conf.tone}`)}
+              <ChevronDown aria-hidden className={cn("transition-transform", open && "rotate-180")} />
+            </Button>
+            <span className="w-8 shrink-0">
+              {team.placement != null ? <TeamPlacement placement={team.placement} medal={ended} /> : null}
+            </span>
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="flex min-w-0 items-center gap-2">
+                <TeamName team={team} size="sm" nameClassName="text-ui font-semibold" />
+                {showGroup && team.group?.name ? (
+                  <span
+                    className="group-chip shrink-0"
+                    style={{ "--group-hue": groupHue(team.group.name) } as CSSProperties}
+                  >
+                    {groupDisplayName(team.group.name, t("common.group"))}
+                  </span>
+                ) : null}
+              </span>
+              {facts.length > 0 ? (
+                <span className="flex flex-wrap items-center gap-x-1.5 text-caption text-[color:var(--aqt-fg-muted)]">
+                  {facts.map((fact, index) => (
+                    <Fragment key={index}>
+                      {index > 0 ? (
+                        <span aria-hidden className="text-[color:var(--aqt-fg-dim)]">
+                          ·
+                        </span>
+                      ) : null}
+                      <span>{fact}</span>
+                    </Fragment>
+                  ))}
+                </span>
+              ) : null}
+              {/* The roster at a glance: role glyph + nick, as the Teams list draws it. */}
+              <span
+                className="block max-w-[24rem] truncate text-caption text-[color:var(--aqt-fg-muted)]"
+                title={players.map((player) => splitTag(player.name)[0]).join(", ")}
+              >
+                {players.map((player) => (
+                  <span key={player.id} className="mr-3 last:mr-0">
+                    {/* Inline, not flex: `truncate` can only ellipsize plain text runs. */}
+                    <span className="mr-1 inline-block align-[-2px]">
+                      <PlayerRoleIcon role={player.role} ontology={ontology} size={13} decorative />
+                    </span>
+                    {splitTag(player.name)[0]}
+                  </span>
+                ))}
+              </span>
+            </span>
+            <span className="aqt-tnum shrink-0 text-ui font-semibold">
+              <span className="sr-only">{t("analytics.standings.record")} </span>
+              {format.number(team.wins)}–{format.number(team.losses)}
             </span>
           </div>
-        </div>
-        <div className={styles.shiftCell}>
-          <ForecastChip
-            direction={shiftDirection}
-            magnitude={Math.abs(team.total_shift)}
-            focusable={false}
-            rawTooltip={t("analytics.standings.shiftBreakdownTooltip", {
-              balancer: formatAnalyticsNumber(team.balancer_shift, 1),
-              manual: formatAnalyticsNumber(team.manual_shift, 1)
-            })}
-          />
-        </div>
-        <div className={styles.chips}>
-          {team.anomalies.slice(0, 2).map((anomaly, index) => (
-            <AnomalyChip key={`${team.id}-${anomaly.kind}-${index}`} anomaly={anomaly} />
-          ))}
+        </TableHead>
+        <TableCell className={CELL_CLASS}>
+          <TeamForecast shift={team.total_shift} />
+        </TableCell>
+        <TableCell className={cn(CELL_CLASS, NUM_CLASS)}>{percent(team.avg_confidence)}</TableCell>
+        <TableCell className={cn(CELL_CLASS, "text-right")}>
           {team.manual_shift_points !== 0 ? (
-            <AnomalyChip label={t("analytics.standings.manual")} />
+            <IconTooltip
+              label={t("analytics.standings.manual")}
+              hint={t("analytics.standings.shiftBreakdownTooltip", {
+                balancer: decimal(team.balancer_shift, 1),
+                manual: decimal(team.manual_shift, 1)
+              })}
+              className="align-middle text-[color:var(--aqt-fg-muted)]"
+            >
+              <SlidersHorizontal aria-hidden className="size-3.5" />
+            </IconTooltip>
           ) : null}
-        </div>
-        <ChevronRight
-          className={cn(styles.chevron, open && styles.chevronOpen)}
-          size={18}
-          aria-hidden="true"
-        />
-      </button>
-      {open ? <TeamDetail team={team} performanceByPlayer={performanceByPlayer} ontology={ontology} /> : null}
-    </div>
+        </TableCell>
+        <TableCell className={CELL_CLASS}>
+          {team.anomalies.length > 0 ? (
+            <span className="flex items-center gap-1.5">
+              {shownFlags.map((anomaly, index) => (
+                <AnomalyFlag
+                  key={`${anomaly.player_id}-${anomaly.kind}-${index}`}
+                  kind={anomaly.kind}
+                  reasons={anomaly.reasons}
+                />
+              ))}
+              {hiddenFlags > 0 ? (
+                <span className="aqt-tnum text-[color:var(--aqt-fg-dim)]">
+                  <span aria-hidden>+{hiddenFlags}</span>
+                  <span className="sr-only">
+                    {t("analytics.standings.moreFlags", { count: hiddenFlags })}
+                  </span>
+                </span>
+              ) : null}
+            </span>
+          ) : null}
+        </TableCell>
+      </TableRow>
+      {open
+        ? players.map((player) => {
+            const performance = canReadV2 ? performanceByPlayer.get(player.id) : undefined;
+            return (
+              <TableRow key={player.id} className={cn(ROW_CLASS, "bg-[color:var(--aqt-overlay-1)]")}>
+                <TableCell className={CELL_CLASS}>
+                  <PlayerRoleIcon role={player.role} ontology={ontology} size={18} />
+                </TableCell>
+                <TableCell className={CELL_CLASS}>
+                  <PlayerIdentity player={player} />
+                </TableCell>
+                <TableCell className={CELL_CLASS}>
+                  <DivisionMark division={player.division} tournamentGrid={tournamentGrid} size={22} />
+                </TableCell>
+                <TableCell className={cn(CELL_CLASS, NUM_CLASS)}>{decimal(player.move_2)}</TableCell>
+                <TableCell className={cn(CELL_CLASS, NUM_CLASS)}>{decimal(player.move_1)}</TableCell>
+                <TableCell className={cn(CELL_CLASS, NUM_CLASS)}>{format.number(player.points, SIGNED)}</TableCell>
+                {canReadV2 ? (
+                  <>
+                    <TableCell className={cn(CELL_CLASS, NUM_CLASS)}>
+                      {performance ? (
+                        <span className="inline-flex items-center gap-1">
+                          {decimal(performance.impact_score, 0)}
+                          {/* No algorithmId: SHAP explanations come from the Performance ML v2
+                              algorithm, not the selected shift algorithm, so the latest one is right. */}
+                          <ExplanationPopover playerId={player.id} tournamentId={player.tournament_id} />
+                        </span>
+                      ) : null}
+                    </TableCell>
+                    <TableCell className={cn(CELL_CLASS, NUM_CLASS)}>
+                      {performance ? (
+                        <span
+                          title={t("analytics.standings.localPercentileTitle", {
+                            value: decimal(performance.local_percentile, 0),
+                            n: performance.local_reference_n
+                          })}
+                        >
+                          {format.number(performance.local_zscore, SIGNED)}
+                        </span>
+                      ) : null}
+                    </TableCell>
+                  </>
+                ) : null}
+                <TableCell className={CELL_CLASS}>
+                  <MoveMark
+                    direction={player.predicted_direction}
+                    target={player.predicted_division ?? player.division}
+                    tournamentGrid={tournamentGrid}
+                    withWord={false}
+                  />
+                </TableCell>
+                <TableCell className={cn(CELL_CLASS, NUM_CLASS)}>{percent(player.confidence)}</TableCell>
+                <TableCell className={cn(CELL_CLASS, NUM_CLASS)}>
+                  <span className="inline-flex items-center gap-1">
+                    {decimal(player.shift)}
+                    {canEdit ? (
+                      <IconTooltip label={editLabel} control>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={editLabel}
+                          onClick={() => onEditShift(player)}
+                        >
+                          <Pencil aria-hidden />
+                        </Button>
+                      </IconTooltip>
+                    ) : null}
+                  </span>
+                </TableCell>
+                <TableCell className={CELL_CLASS}>
+                  {player.anomalies.length > 0 ? (
+                    <span className="flex items-center gap-1.5">
+                      {player.anomalies.map((anomaly, index) => (
+                        <AnomalyFlag
+                          key={`${player.id}-${anomaly.kind}-${index}`}
+                          kind={anomaly.kind}
+                          reasons={anomaly.reasons}
+                        />
+                      ))}
+                    </span>
+                  ) : null}
+                </TableCell>
+              </TableRow>
+            );
+          })
+        : null}
+    </TableBody>
   );
-};
+}
 
 const sortedTeams = (teams: TeamAnalytics[], mode: SortMode) => {
   if (mode === "predicted") {
@@ -573,7 +434,8 @@ const sortedTeams = (teams: TeamAnalytics[], mode: SortMode) => {
 
   if (mode === "shift") {
     return [...teams].sort(
-      (left, right) => Math.abs(right.total_shift) - Math.abs(left.total_shift) || left.name.localeCompare(right.name)
+      (left, right) =>
+        Math.abs(right.total_shift) - Math.abs(left.total_shift) || left.name.localeCompare(right.name)
     );
   }
 
@@ -582,73 +444,124 @@ const sortedTeams = (teams: TeamAnalytics[], mode: SortMode) => {
   );
 };
 
+/**
+ * The Table view: a sort toolbar, then one table where every team is a
+ * `<tbody>` (summary row, its players while open). The table scrolls inside its
+ * own labelled region, so the page never does.
+ */
 const AnalyticsStandings = ({
   teams,
   performanceByPlayer,
   distributionByTeam,
+  ontology,
   headerEnd,
-  ontology
+  canReadV2,
+  ended,
+  onExplain
 }: AnalyticsStandingsProps) => {
   const t = useTranslations();
+  const { hasPermission } = usePermissions();
+  const canEdit = hasPermission("analytics.update");
   const [mode, setMode] = useState<SortMode>("standings");
   const [expandedId, setExpandedId] = useState<number | null>(teams[0]?.id ?? null);
+  const [editingPlayer, setEditingPlayer] = useState<PlayerAnalytics | null>(null);
   const visibleTeams = useMemo(() => sortedTeams(teams, mode), [teams, mode]);
-  const modeLabel: Record<SortMode, string> = {
-    standings: t("analytics.standings.sortStandings"),
-    predicted: t("analytics.standings.sortPredicted"),
-    shift: t("analytics.standings.sortShift")
-  };
+  // A group chip only tells rows apart when they span more than one group.
+  const showGroup = useMemo(
+    () => new Set(teams.map((team) => team.group?.name).filter(Boolean)).size > 1,
+    [teams]
+  );
 
   return (
-    <Card className="overflow-hidden">
-      <div className={styles.sectionHead}>
-        <div>
-          <div className={styles.sectionTitle}>{t("analytics.standings.title")}</div>
-          <div className={styles.sectionSub}>
-            {t("analytics.standings.sortedBy", { count: teams.length, mode: modeLabel[mode] })}
-          </div>
-        </div>
-        <div className={styles.sectionHeadEnd}>
-          <div className={styles.sectionTabs} aria-label={t("analytics.standings.title")}>
-            <button
-              type="button"
-              className={cn(styles.sectionTab, mode === "standings" && styles.sectionTabActive)}
-              onClick={() => setMode("standings")}
-            >
-              {modeLabel.standings}
-            </button>
-            <button
-              type="button"
-              className={cn(styles.sectionTab, mode === "predicted" && styles.sectionTabActive)}
-              onClick={() => setMode("predicted")}
-            >
-              {modeLabel.predicted}
-            </button>
-            <button
-              type="button"
-              className={cn(styles.sectionTab, mode === "shift" && styles.sectionTabActive)}
-              onClick={() => setMode("shift")}
-            >
-              {modeLabel.shift}
-            </button>
-          </div>
-          {headerEnd}
-        </div>
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <ToggleGroup
+          type="single"
+          variant="pill"
+          size="sm"
+          value={mode}
+          onValueChange={(next) => next && setMode(next as SortMode)}
+          aria-label={t("analytics.standings.sortLabel")}
+        >
+          <ToggleGroupItem value="standings">{t("analytics.standings.sortStandings")}</ToggleGroupItem>
+          <ToggleGroupItem value="predicted">{t("analytics.standings.sortPredicted")}</ToggleGroupItem>
+          <ToggleGroupItem value="shift">{t("analytics.standings.sortShift")}</ToggleGroupItem>
+        </ToggleGroup>
+        {headerEnd}
       </div>
-      <div className={styles.teamGrid}>
-        {visibleTeams.map((team) => (
-          <TeamRow
-            key={team.id}
-            team={team}
-            open={expandedId === team.id}
-            onToggle={() => setExpandedId((current) => current === team.id ? null : team.id)}
-            performanceByPlayer={performanceByPlayer}
-            distribution={distributionByTeam?.get(team.id)}
-            ontology={ontology}
-          />
-        ))}
-      </div>
-    </Card>
+      <Card>
+        <div
+          role="region"
+          aria-label={t("analytics.standings.title")}
+          tabIndex={0}
+          className="overflow-x-auto rounded-[inherit] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+        >
+          <Table wrapperClassName="overflow-visible" className="text-caption">
+            <TableHeader>
+              <TableRow className="border-[color:var(--aqt-border)] hover:bg-transparent">
+                <Head>{t("analytics.standings.colRole")}</Head>
+                <Head>{t("analytics.standings.colBattleTag")}</Head>
+                <Head>{t("analytics.standings.colCurrent")}</Head>
+                <Head term="recent_moves" onExplain={onExplain} numeric>
+                  {t("analytics.standings.colMove2")}
+                </Head>
+                <Head numeric>{t("analytics.standings.colMove1")}</Head>
+                <Head term="points" onExplain={onExplain} numeric>
+                  {t("analytics.standings.colSignal")}
+                </Head>
+                {canReadV2 ? (
+                  <>
+                    <Head term="impact" onExplain={onExplain} numeric>
+                      {t("analytics.standings.colImpact")}
+                    </Head>
+                    <Head term="vs_local" onExplain={onExplain} numeric>
+                      {t("analytics.standings.colVsLocal")}
+                    </Head>
+                  </>
+                ) : null}
+                <Head term="predicted_move" onExplain={onExplain}>
+                  {t("analytics.standings.colForecast")}
+                </Head>
+                <Head term="confidence" onExplain={onExplain} numeric>
+                  {t("analytics.standings.colConfidence")}
+                </Head>
+                <Head term="shift" onExplain={onExplain} numeric>
+                  {t("analytics.standings.colManual")}
+                </Head>
+                <Head term="watch" onExplain={onExplain}>
+                  {t("analytics.standings.colFlags")}
+                </Head>
+              </TableRow>
+            </TableHeader>
+            {visibleTeams.map((team) => (
+              <TeamRows
+                key={team.id}
+                team={team}
+                open={expandedId === team.id}
+                onToggle={() => setExpandedId((current) => (current === team.id ? null : team.id))}
+                distribution={distributionByTeam?.get(team.id)}
+                performanceByPlayer={performanceByPlayer}
+                ontology={ontology}
+                canReadV2={canReadV2}
+                canEdit={canEdit}
+                ended={ended}
+                showGroup={showGroup}
+                onEditShift={setEditingPlayer}
+              />
+            ))}
+          </Table>
+        </div>
+      </Card>
+      {editingPlayer ? (
+        <ChangeShiftDialog
+          player={editingPlayer}
+          open
+          onOpenChange={(open) => {
+            if (!open) setEditingPlayer(null);
+          }}
+        />
+      ) : null}
+    </div>
   );
 };
 

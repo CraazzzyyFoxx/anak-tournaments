@@ -2,43 +2,40 @@
 
 import { useMemo } from "react";
 import { ArrowRight } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 
-import { cn } from "@/lib/utils";
 import TeamName from "@/components/TeamName";
-import { useTranslations, useLocale } from "next-intl";
-import type { RoleOntology } from "@/lib/roster/ontology";
+import { Card } from "@/components/ui/card";
+import { useFormatter } from "@/lib/datetime/client";
 import { sortTeamPlayers } from "@/lib/player";
-import { StandingsDistribution } from "@/types/analytics.types";
+import type { RoleOntology } from "@/lib/roster/ontology";
+import type { StandingsDistribution } from "@/types/analytics.types";
 import { formatPlace } from "@/disciplines/overwatch/analytics/analytics.helpers";
-import { TeamVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
-import { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
-import DeltaPill from "@/disciplines/overwatch/analytics/components/DeltaPill";
-import InfoDot from "@/disciplines/overwatch/analytics/components/InfoDot";
-import RosterRow from "@/disciplines/overwatch/analytics/components/community/RosterRow";
-import styles from "@/disciplines/overwatch/analytics/components/Analytics.module.css";
+import type { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-glossary";
+import type { TeamVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
+
+import DeltaText from "../DeltaText";
+import InfoDot from "../InfoDot";
+import RosterRow from "./RosterRow";
+
+const LABEL = "text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 
 interface TeamDetailProps {
   team: TeamVM;
-  /** Monte-Carlo distribution for this team (organizer-only; woven into detail). */
+  /** Monte-Carlo distribution for this team (organizer-only; woven into the detail). */
   distribution?: StandingsDistribution;
   /** The tournament's own role dictionary (its game's metadata): roster order and role glyphs. */
   ontology: RoleOntology;
+  /** The bracket has several groups, so the header names this team's. */
+  showGroup: boolean;
   onSelectPlayer: (playerId: number) => void;
-  onExplain?: (term: GlossaryTerm) => void;
+  onExplain: (term: GlossaryTerm) => void;
 }
 
-function moveColor(delta: number | null): string {
-  if (delta == null || delta === 0) return "var(--c-muted)";
-  return delta > 0 ? "var(--c-up)" : "var(--c-down)";
-}
-
-function percent(value: number): string {
-  return `${Math.round(value * 100)}%`;
-}
-
-/** Compact Monte-Carlo block — woven into the team detail for organizers. */
+/** The organizer's Monte-Carlo read: the three probabilities as facts, the finishing-place histogram under them. */
 function MonteCarlo({ distribution }: Readonly<{ distribution: StandingsDistribution }>) {
   const t = useTranslations();
+  const format = useFormatter();
   const bars = useMemo(() => {
     const entries = Object.entries(distribution.position_histogram)
       .map(([pos, count]) => ({ pos: Number(pos), count }))
@@ -46,116 +43,116 @@ function MonteCarlo({ distribution }: Readonly<{ distribution: StandingsDistribu
     const max = entries.reduce((m, e) => Math.max(m, e.count), 0) || 1;
     return entries.map((e) => ({ ...e, height: Math.max(6, (e.count / max) * 100) }));
   }, [distribution.position_histogram]);
+  const percent = (value: number) => format.number(value, { style: "percent", maximumFractionDigits: 0 });
 
   return (
-    <div className={styles.cMonte}>
-      <span className={styles.cCardTitle}>{t("analytics.distribution.title")}</span>
-      <div className={styles.cMonteProbs}>
-        <div className={styles.cMonteProb}>
-          <div className={styles.cMonteProbL}>{t("analytics.distribution.top1")}</div>
-          <div className={styles.cMonteProbV}>{percent(distribution.prob_top1)}</div>
-        </div>
-        <div className={styles.cMonteProb}>
-          <div className={styles.cMonteProbL}>{t("analytics.distribution.top3")}</div>
-          <div className={styles.cMonteProbV}>{percent(distribution.prob_top3)}</div>
-        </div>
-        <div className={styles.cMonteProb}>
-          <div className={styles.cMonteProbL}>{t("analytics.distribution.top8")}</div>
-          <div className={styles.cMonteProbV}>{percent(distribution.prob_top8)}</div>
-        </div>
-      </div>
-      <div className={styles.cMonteHist} aria-hidden="true">
+    <section className="border-t border-[color:var(--aqt-border)] px-4 py-3">
+      <h3 className={LABEL}>{t("analytics.distribution.title")}</h3>
+      <dl className="mt-2 grid grid-cols-3 gap-3">
+        {(
+          [
+            ["top1", distribution.prob_top1],
+            ["top3", distribution.prob_top3],
+            ["top8", distribution.prob_top8]
+          ] as const
+        ).map(([key, value]) => (
+          <div key={key}>
+            <dt className="text-caption text-[color:var(--aqt-fg-muted)]">{t(`analytics.distribution.${key}`)}</dt>
+            <dd className="aqt-tnum text-ui font-semibold text-[color:var(--aqt-fg)]">{percent(value)}</dd>
+          </div>
+        ))}
+      </dl>
+      {/* The probabilities above are its text; the shape is the extra a sighted reader gets. */}
+      <div aria-hidden className="mt-3 flex h-10 items-end gap-px">
         {bars.map((bar) => (
           <span
             key={bar.pos}
-            className={styles.cMonteBar}
+            className="flex-1 rounded-t-sm bg-[color:color-mix(in_srgb,var(--aqt-teal)_55%,transparent)]"
             style={{ height: `${bar.height}%` }}
             title={`#${bar.pos}: ${bar.count}`}
           />
         ))}
       </div>
-    </div>
+    </section>
   );
 }
 
 /**
- * Team drill-down: place + delta header, a compact predicted→actual summary
- * (the full connector lives inline in the standings row), the organizer
- * Monte-Carlo distribution, and the roster (each player opens player detail).
+ * Team drill-down as one card: place, name and delta in the header, the
+ * predicted → finished line, the organizer's Monte-Carlo read, then the roster
+ * (each player opens the player panel).
  */
 export default function TeamDetail({
   team,
   distribution,
   ontology,
+  showGroup,
   onSelectPlayer,
-  onExplain,
+  onExplain
 }: Readonly<TeamDetailProps>) {
   const t = useTranslations();
-  const locale = useLocale();
+  const locale = useLocale() as "en" | "ru";
   const tournamentGrid = team.tournament?.division_grid_version;
   const players = useMemo(() => sortTeamPlayers(team.players, ontology), [team.players, ontology]);
-  const groupName = team.group?.name ?? "—";
-  const hasForecast = team.predicted_place != null;
-  const color = moveColor(team.placement_delta);
+  const record = `${team.wins}–${team.losses}`;
 
   return (
-    <>
-      <div className={styles.cCard}>
-        <div className={styles.cTeamHeadTop}>
-          <div>
-            <div className={styles.cTeamEyebrow}>
-              {t("analytics.community.team.groupRecord", {
-                group: groupName,
-                wins: team.wins,
-                losses: team.losses,
-              })}
-            </div>
-            <div className={styles.cTeamPlaceRow}>
-              <span className={cn(styles.cTeamPlace, team.placement === 1 && styles.cTeamPlaceWin)}>
+    <Card className="overflow-hidden">
+      <header className="flex items-start justify-between gap-3 px-4 pt-4 pb-3">
+        <div className="min-w-0">
+          <p className={`${LABEL} aqt-tnum`}>
+            {showGroup && team.group?.name
+              ? t("analytics.community.team.groupRecord", {
+                  group: team.group.name,
+                  wins: team.wins,
+                  losses: team.losses
+                })
+              : record}
+          </p>
+          <h2 className="mt-1.5 flex min-w-0 items-baseline gap-2.5">
+            {team.placement != null ? (
+              <span className="aqt-tnum shrink-0 font-onest text-title font-semibold text-[color:var(--aqt-fg)]">
                 {formatPlace(team.placement, locale)}
               </span>
-              <TeamName team={team} size="sm" nameClassName={styles.cTeamNameBig} />
-            </div>
-          </div>
-          <DeltaPill delta={team.placement_delta} />
-        </div>
-
-        {hasForecast ? (
-          <div className={styles.cPvaLine}>
-            <span className={cn(styles.cPvaDot, styles.cHdotPred)} />
-            {t("analytics.community.team.predictedShort", {
-              place: formatPlace(team.predicted_place, locale),
-            })}
-            {team.placement != null ? (
-              <>
-                <ArrowRight size={13} aria-hidden="true" />
-                <span className={styles.cPvaDot} style={{ background: color }} />
-                {t("analytics.community.team.finishedShort", {
-                  place: formatPlace(team.placement, locale),
-                })}
-              </>
             ) : null}
-            <InfoDot term="predicted_move" onExplain={onExplain} />
-          </div>
-        ) : null}
+            <TeamName team={team} size="sm" nameClassName="text-heading font-semibold text-[color:var(--aqt-fg)]" />
+          </h2>
+        </div>
+        <DeltaText delta={team.placement_delta} className="mt-0.5 shrink-0" />
+      </header>
 
-        {distribution ? <MonteCarlo distribution={distribution} /> : null}
-      </div>
+      {team.predicted_place != null ? (
+        <p className="flex flex-wrap items-center gap-1.5 px-4 pb-3 text-caption text-[color:var(--aqt-fg-muted)]">
+          {t("analytics.community.team.predictedShort", { place: formatPlace(team.predicted_place, locale) })}
+          {team.placement != null ? (
+            <>
+              <ArrowRight aria-hidden className="size-3.5 text-[color:var(--aqt-fg-dim)]" />
+              {t("analytics.community.team.finishedShort", { place: formatPlace(team.placement, locale) })}
+            </>
+          ) : null}
+          <InfoDot term="predicted_move" onExplain={onExplain} />
+        </p>
+      ) : null}
 
-      <div className={styles.cRosterTitle}>
-        {t("analytics.community.team.rosterCount", { count: players.length })}
-      </div>
-      <div className={styles.cRoster}>
-        {players.map((player) => (
-          <RosterRow
-            key={player.id}
-            player={player}
-            tournamentGrid={tournamentGrid}
-            ontology={ontology}
-            onSelect={() => onSelectPlayer(player.id)}
-          />
-        ))}
-      </div>
-    </>
+      {distribution ? <MonteCarlo distribution={distribution} /> : null}
+
+      <section className="border-t border-[color:var(--aqt-border)]">
+        <h3 className={`${LABEL} px-4 pt-3 pb-1`}>
+          {t("analytics.community.team.rosterCount", { count: players.length })}
+        </h3>
+        <ul className="divide-y divide-[color:var(--aqt-border)]">
+          {players.map((player) => (
+            <li key={player.id}>
+              <RosterRow
+                player={player}
+                tournamentGrid={tournamentGrid}
+                ontology={ontology}
+                onSelect={() => onSelectPlayer(player.id)}
+              />
+            </li>
+          ))}
+        </ul>
+      </section>
+    </Card>
   );
 }

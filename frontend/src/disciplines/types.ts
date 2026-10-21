@@ -81,10 +81,14 @@ export interface CharacterCompareProps {
 
 /** What a game's analytics board hands back to the host's tournament hero (slice 9 amendment). */
 export interface AnalyticsHeroParts {
-  /** The ranking the board shows ("ranked by …"). */
-  rankedBy?: string | null;
-  /** The loaded result's bracket counts; absent until it has loaded. */
-  counts?: { teams: number; players: number; groups: number } | null;
+  /** The loaded result's team and player counts, for the hero's meta line; absent until it has loaded. */
+  counts?: { teams: number; players: number } | null;
+  /** The board's one-paragraph reading of the result: the hero's lede. */
+  lede?: ReactNode;
+  /** The board's headline figures (`HeroStat`s), the hero's right column. */
+  stats?: ReactNode;
+  /** The board's hero actions (its "how to read this" guide). */
+  actions?: ReactNode;
   /** The board's own controls (its ranking picker), rendered beside the host's tournament picker. */
   controls?: ReactNode;
 }
@@ -167,6 +171,8 @@ export type SlotProps = {
     canReadV2: boolean;
     /** The viewer may recalculate / edit analytics. */
     canUpdate: boolean;
+    /** The tournament has ended: its places 1–3 are medals (DESIGN.md §2). */
+    ended: boolean;
     hero: (parts: AnalyticsHeroParts) => ReactNode;
   };
   nativeRankEditor: {
