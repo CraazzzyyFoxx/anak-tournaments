@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RankAutofillPreviewTables } from "@/components/balancer/rank-autofill/_components/RankAutofillPreviewTables";
+import { buildRegistrationUpdateFromPlayerPayload } from "@/components/balancer/registration-update-payload";
 import { PickBanTargetBoard } from "@/components/pick-ban/PickBanTargetBoard";
 import messages from "@/i18n/messages/en.json";
 import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
@@ -628,6 +629,40 @@ describe("owner game role and rank capabilities", () => {
     expect(onSave.mock.calls[0][1].role_entries_json).toEqual([
       expect.objectContaining({ role: "agent", is_declared_active: true, rank_value: 1500 }),
       expect.objectContaining(retired)
+    ]);
+  });
+
+  it("keeps the sole role primary when a retired role was stored ahead of it", async () => {
+    // Stored order put the retired role first; the save leads with the game's only role, so the write keeps it primary.
+    const retired = {
+      ...player.role_entries_json[0],
+      role: "tank",
+      priority: 1,
+      rank_value: 2500,
+      is_active: false,
+      is_declared_active: true
+    };
+    await render(deadlockSheet([retired, { ...player.role_entries_json[0], role: "agent", priority: 2, rank_value: 1500 }]));
+    const notes = document.querySelector<HTMLTextAreaElement>("textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(notes, "Plays evenings");
+      notes.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await clickButton("Save");
+
+    const payload = onSave.mock.calls[0][1];
+    expect(payload.role_entries_json).toEqual([
+      expect.objectContaining({ role: "agent", priority: 1, is_declared_active: true, rank_value: 1500 }),
+      expect.objectContaining({ ...retired, priority: 2 })
+    ]);
+    expect(
+      buildRegistrationUpdateFromPlayerPayload(payload, undefined, "agent").roles?.map((role) => [
+        role.role.role,
+        role.is_primary
+      ])
+    ).toEqual([
+      ["agent", true],
+      ["tank", false]
     ]);
   });
 });

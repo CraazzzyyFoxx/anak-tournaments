@@ -169,27 +169,29 @@ export function usePlayerEditForm({
     [ontology]
   );
   // A one-role game edits its sole role's rank alone, with no switch to turn it off: its entry is always declared on,
-  // keeping its stored rank and sub-role, and a registration without one gets a fresh one. Every other stored entry
-  // (a role the module retired, with its character preferences) is saved back unchanged: a save replaces the roles.
+  // keeping its stored rank and sub-role, and a registration without one gets a fresh one. It leads the list, so the
+  // write keeps it primary. Every other stored entry (a role the module retired, with its character preferences)
+  // follows in its stored order, otherwise unchanged: a save replaces the registration's roles.
   const soleRole = showsRoles(ontology) ? null : (selectableRoleCodes[0] ?? null);
   const roleEntries = useMemo<BalancerPlayerRoleEntry[]>(() => {
     if (soleRole === null) return editedEntries;
-    if (!editedEntries.some((entry) => entry.role === soleRole)) {
-      return [
-        ...editedEntries,
-        {
-          role: soleRole,
-          subtype: null,
-          priority: editedEntries.length + 1,
-          division_number: null,
-          rank_value: null,
-          is_active: false,
-          is_declared_active: true,
-          ow_rank_value: null
-        }
-      ];
-    }
-    return editedEntries.map((entry) => (entry.role === soleRole ? { ...entry, is_declared_active: true } : entry));
+    const stored = editedEntries.find((entry) => entry.role === soleRole);
+    const sole: BalancerPlayerRoleEntry = {
+      ...(stored ?? {
+        role: soleRole,
+        subtype: null,
+        priority: 1,
+        division_number: null,
+        rank_value: null,
+        is_active: false,
+        ow_rank_value: null
+      }),
+      is_declared_active: true
+    };
+    return [sole, ...editedEntries.filter((entry) => entry !== stored)].map((entry, index) => ({
+      ...entry,
+      priority: index + 1
+    }));
   }, [editedEntries, soleRole]);
   const addableRole =
     selectableRoleCodes.find((code) => !roleEntries.some((entry) => entry.role === code)) ?? null;
