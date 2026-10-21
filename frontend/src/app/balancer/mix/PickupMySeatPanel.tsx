@@ -134,8 +134,7 @@ export function PickupMySeatPanel({
     if (owner.dimension == null) return;
     setDraft(next);
     onSave({
-      // A one-role game has nothing to order: `null` is every ranked role, and repairs a stored `[]`.
-      roles: owner.showsRoles ? roleRefsOf(next.order, owner.dimension) : null,
+      roles: roleRefsOf(next.order, owner.dimension),
       // A game without Full flex never sends one, which also clears a flag stored before it lost it.
       is_flex: owner.flex && next.isFlex,
     });
