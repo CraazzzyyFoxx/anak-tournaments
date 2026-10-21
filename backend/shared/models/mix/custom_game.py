@@ -122,7 +122,8 @@ class CustomGameCoHost(db.Base):
     __table_args__ = ({"schema": "mix"},)
 
     custom_game_id: Mapped[int] = mapped_column(ForeignKey("mix.custom_game.id", ondelete="CASCADE"), primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="CASCADE"), primary_key=True)
+    # The PK leads with custom_game_id; "mixes this account co-hosts" needs its own index.
+    user_id: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="CASCADE"), primary_key=True, index=True)
 
 
 class CustomGameLobby(db.Base):

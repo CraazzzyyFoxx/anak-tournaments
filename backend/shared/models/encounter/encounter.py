@@ -76,6 +76,9 @@ class Encounter(db.TimeStampIntegerMixin):
         ),
         Index("ix_encounter_workspace_id", "workspace_id"),
         Index("ix_encounter_custom_game_id", "custom_game_id"),
+        Index("ix_encounter_scheduled_at", "scheduled_at"),
+        Index("ix_encounter_started_at", "started_at"),
+        Index("ix_encounter_ended_at", "ended_at"),
         # Target of the participations' and the bracket row's composite FKs.
         UniqueConstraint("id", "tournament_id", name="uq_encounter_id_tournament"),
         # Owner, workspace and discipline in one key: a copied column can

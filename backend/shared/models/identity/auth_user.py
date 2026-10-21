@@ -310,7 +310,7 @@ class RefreshToken(db.TimeStampIntegerMixin):
     __table_args__ = ({"schema": "auth"},)
 
     token: Mapped[str] = mapped_column(Text(), unique=True, index=True, nullable=False)
-    user_id: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="CASCADE"), index=True, nullable=False)
     session_id: Mapped[UUID] = mapped_column(Uuid(), index=True, nullable=False)
     session_started_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(db.DateTime(timezone=True), nullable=False)

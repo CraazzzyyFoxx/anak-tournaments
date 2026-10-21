@@ -210,7 +210,9 @@ class DivisionGridImportJob(db.TimeStampIntegerMixin):
         nullable=True,
         index=True,
     )
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="pending", server_default="pending")
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", server_default="pending", index=True
+    )
     progress: Mapped[int] = mapped_column(Integer(), nullable=False, default=0, server_default="0")
     request_json: Mapped[dict] = mapped_column(JSON, nullable=False)
     result_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)

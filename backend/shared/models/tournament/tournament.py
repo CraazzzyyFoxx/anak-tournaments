@@ -86,6 +86,7 @@ class Tournament(db.TimeStampIntegerMixin):
         TOURNAMENT_STATUS_ENUM,
         default=enums.TournamentStatus.ANNOUNCEMENT,
         nullable=False,
+        index=True,
     )
     # Purely informational dates ("when the tournament takes place") — they do
     # NOT drive status transitions; phase timing lives in
