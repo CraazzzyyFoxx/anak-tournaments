@@ -23,14 +23,11 @@ from .ml import (
     AnomalyFeedbackBody,
     AnomalyFeedbackRow,
     ExplanationRow,
-    InferRequestBody,
-    JobAcceptedResponse,
     MatchQualityRow,
     MLArtifactRow,
     PerformanceRow,
     PlayerAnomalyRow,
     StandingsRow,
-    TrainRequestBody,
 )
 
 __all__ = (
@@ -42,8 +39,6 @@ __all__ = (
     "AnomalyFeedbackRow",
     "BaseRead",
     "ExplanationRow",
-    "InferRequestBody",
-    "JobAcceptedResponse",
     "MLArtifactRow",
     "MatchQualityRow",
     "PerformanceRow",
@@ -60,6 +55,5 @@ __all__ = (
     "TournamentAnalytics",
     "TournamentAnalyticsSummary",
     "TournamentMin",
-    "TrainRequestBody",
     "UserReadMin",
 )

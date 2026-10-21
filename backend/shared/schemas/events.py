@@ -389,48 +389,6 @@ class AnalyticsJobRequested(BaseEvent):
     job_id: int = Field(..., description="analytics.job.id of the persisted request")
 
 
-class AnalyticsTrainRequest(BaseEvent):
-    """Request to (re)train v2 ML models up to a cutoff tournament.
-
-    Published by: analytics-service HTTP (`POST /v2/train`).
-    Consumed by: analytics-service worker (`serve.py`).
-    """
-
-    event_type: str = Field(default="analytics_train_request", frozen=True)
-    cutoff_tournament_id: int = Field(..., description="Train on tournaments <= this id")
-    model_kinds: list[str] | None = Field(
-        default=None,
-        description="Subset of model kinds to train (default: all active kinds)",
-    )
-    workspace_id: int | None = Field(
-        default=None,
-        description="Optional workspace scope filter",
-    )
-    workspace_ids: list[int] | None = Field(
-        default=None,
-        description="Optional multi-workspace training scope. None means all workspaces.",
-    )
-
-
-class AnalyticsInferRequest(BaseEvent):
-    """Request to run v2 ML inference for a single tournament.
-
-    Published by: analytics-service HTTP (`POST /v2/infer`).
-    Consumed by: analytics-service worker (`serve.py`).
-    """
-
-    event_type: str = Field(default="analytics_infer_request", frozen=True)
-    tournament_id: int = Field(..., description="Tournament to infer for")
-    model_kinds: list[str] | None = Field(
-        default=None,
-        description="Subset of model kinds to run (default: all active kinds)",
-    )
-    workspace_id: int | None = Field(
-        default=None,
-        description="Optional workspace scope filter",
-    )
-
-
 class FetchRankEvent(BaseEvent):
     """Event to fetch one battle tag's competitive rank from OverFast.
 

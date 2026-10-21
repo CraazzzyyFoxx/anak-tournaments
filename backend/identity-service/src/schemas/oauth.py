@@ -190,7 +190,6 @@ class PlayerLinkRequest(BaseModel):
     """Request to link player to auth user"""
 
     player_id: int
-    is_primary: bool = True
 
 
 class LinkedPlayer(BaseModel):

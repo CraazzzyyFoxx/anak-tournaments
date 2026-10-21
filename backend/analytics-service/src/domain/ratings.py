@@ -17,7 +17,6 @@ __all__ = (
     "COEF_NOVICE_SECOND",
     "COEF_REGULAR",
     "LINEAR",
-    "OPEN_SKILL",
     "OPENSKILL_LOOKBACK",
     "POINTS",
     "compute_linear_metrics",
@@ -36,7 +35,6 @@ COEF_REGULAR = 1 / 0.065
 OPENSKILL_LOOKBACK = 10
 LINEAR = "Linear"
 POINTS = "Points"
-OPEN_SKILL = "Open Skill"
 _MU = 1100
 
 

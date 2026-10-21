@@ -68,7 +68,7 @@ function LinkAccount({ personId }: Readonly<{ personId: number }>) {
 
   const link = useMutation({
     mutationFn: (authUserId: number) =>
-      rbacService.assignLinkedPlayer(authUserId, { player_id: personId, is_primary: true }),
+      rbacService.assignLinkedPlayer(authUserId, { player_id: personId }),
     onSuccess: async () => {
       await invalidateAccount(queryClient);
       notify.success(t("linked"));

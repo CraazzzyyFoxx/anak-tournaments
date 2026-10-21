@@ -105,7 +105,9 @@ operation is a configuration change. `balancer.job` is seeded by
 [`quota0001_quota_schema.py`](../backend/migrations/versions/quota0001_quota_schema.py) (lines
 185-189); everything else by
 [`quota0002_metered_operations.py`](../backend/migrations/versions/quota0002_metered_operations.py)
-(lines 34-56).
+(lines 34-56), less the `analytics.train` / `analytics.infer` rows that
+[`quota0003_drop_analytics_train_infer.py`](../backend/migrations/versions/quota0003_drop_analytics_train_infer.py)
+deletes with their endpoints (training and inference now run as analytics jobs).
 
 | Operation | Cost | What it does |
 |---|---|---|
@@ -125,15 +127,13 @@ operation is a configuration change. `balancer.job` is seeded by
 | `tournament.challonge_export` | 5 | Pushes a bracket to Challonge |
 | `tournament.sheet_sync` | 3 | Syncs a registration Google Sheet |
 | `tournament.sheet_players_export` | 2 | Exports registered players to a Google Sheet |
-| `analytics.train` | 10 | Trains the analytics models — the most expensive call in the platform |
-| `analytics.infer` | 5 | Runs inference over a tournament |
 | `analytics.recalculate` | 5 | Recomputes analytics for a tournament |
 | `app.assets.upload` | 1 | Stores a workspace asset |
 | `app.workspace_icon_upload` | 1 | Stores a workspace icon |
 | `stream.repoll` | 3 | Re-polls every live tournament against the shared Twitch Helix budget |
 
 On the seeded 100 heavy units per key per day (§4) that is roughly 100 balancer jobs, or 20 Challonge
-imports, or 10 model trainings — and any mix of them draws on the same pool.
+imports, or 20 analytics recalculations — and any mix of them draws on the same pool.
 
 `stats.logs.upload` and `stats.logs.process_tournament` were `parser.logs.upload` and `parser.logs.process_tournament`
 before the stats-service rename; migration `ingest01` renames the `quota.operation` rows in place, with their costs
@@ -335,7 +335,7 @@ the platform operators for anything that raises a ceiling.
 | What | Where |
 |---|---|
 | Seeded plans and their limits | [`backend/migrations/versions/quota0001_quota_schema.py`](../backend/migrations/versions/quota0001_quota_schema.py) |
-| Operation prices | [`backend/migrations/versions/quota0002_metered_operations.py`](../backend/migrations/versions/quota0002_metered_operations.py) |
+| Operation prices | [`backend/migrations/versions/quota0002_metered_operations.py`](../backend/migrations/versions/quota0002_metered_operations.py), minus [`quota0003_drop_analytics_train_infer.py`](../backend/migrations/versions/quota0003_drop_analytics_train_infer.py) |
 | Live edits (plans, prices, per-workspace and per-key overrides) | the admin surface over the `quota` schema — `rpc.quota.plan.*`, `rpc.quota.operation.*`, `rpc.app.workspaces.quota_set`, `rpc.identity.api_key.quota_set` |
 | Disable one operation | set its `enabled = false` in `quota.operation`; it takes effect without a deploy |
 | Disable the whole gate | `QUOTA_ENABLED=false` (restart-scoped; [`backend/shared/core/config.py`](../backend/shared/core/config.py)) |

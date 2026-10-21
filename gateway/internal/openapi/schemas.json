@@ -147,18 +147,6 @@
       },
       "summary": "Player streaks"
     },
-    "rpc.analytics.infer": {
-      "description": "Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML inference job for a tournament to the worker queue. Metered as `analytics.infer`: the call consumes quota against the caller's workspace/API-key limits and answers 429 `quota_exceeded` with a `Retry-After` header once they are spent.",
-      "request": {
-        "array": false,
-        "ref": "analytics.InferRequestBody"
-      },
-      "response": {
-        "array": false,
-        "ref": "analytics.JobAcceptedResponse"
-      },
-      "summary": "Run inference"
-    },
     "rpc.analytics.jobs_active": {
       "description": "Permission: global `analytics.read`. Returns the currently active analytics job for the optional workspace_id, or null if none.",
       "query_params": [
@@ -269,10 +257,6 @@
         "ref": "analytics.MatchQualityRow"
       },
       "summary": "Match quality"
-    },
-    "rpc.analytics.openskill": {
-      "description": "Permission: global `analytics.update`. Deprecated OpenSkill v1 endpoint; validates tournament/workspace then always returns 410 gone, directing callers to run the unified analytics job.",
-      "summary": "OpenSkill (gone)"
     },
     "rpc.analytics.performance": {
       "description": "Permission: global `analytics.read`. Returns ML performance rows for a tournament, optionally filtered by algorithm_id.",
@@ -405,18 +389,6 @@
         "ref": "analytics.StandingsRow"
       },
       "summary": "Standings distribution"
-    },
-    "rpc.analytics.train": {
-      "description": "Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML training job to the worker queue. Metered as `analytics.train` \u2014 the most expensive operation on the platform, so its quota cost is the highest: the call answers 429 `quota_exceeded` with a `Retry-After` header once the caller's limits are spent.",
-      "request": {
-        "array": false,
-        "ref": "analytics.TrainRequestBody"
-      },
-      "response": {
-        "array": false,
-        "ref": "analytics.JobAcceptedResponse"
-      },
-      "summary": "Train model"
     },
     "rpc.app.achievements.user": {
       "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's earned (and optionally locked) achievements, scoped by tournament or without-tournament and workspace, and optionally to one game's rules (`discipline`; unknown code 404 discipline_not_installed); rejects combining tournament_id with without_tournament=true.",
@@ -5538,10 +5510,6 @@
         "ref": "identity.LinkedPlayer"
       },
       "summary": "List linked players"
-    },
-    "rpc.identity.player.set_primary": {
-      "description": "Permission: authenticated (active) user; self-service \u2014 404 unless the player is the caller's own link. Marks a linked player as the active user's primary player and returns the updated link.",
-      "summary": "Set primary player"
     },
     "rpc.identity.player.unlink": {
       "description": "Permission: authenticated (active) user; self-service \u2014 404 unless the player is linked to the caller. Unlinks a game player from the active user by player_id; returns 204 No Content.",
@@ -11732,69 +11700,6 @@
       "title": "ExplanationRow",
       "type": "object"
     },
-    "analytics.InferRequestBody": {
-      "properties": {
-        "model_kinds": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Model Kinds"
-        },
-        "tournament_id": {
-          "title": "Tournament Id",
-          "type": "integer"
-        },
-        "workspace_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Workspace Id"
-        }
-      },
-      "required": [
-        "tournament_id"
-      ],
-      "title": "InferRequestBody",
-      "type": "object"
-    },
-    "analytics.JobAcceptedResponse": {
-      "properties": {
-        "correlation_id": {
-          "title": "Correlation Id",
-          "type": "string"
-        },
-        "job": {
-          "title": "Job",
-          "type": "string"
-        },
-        "message": {
-          "title": "Message",
-          "type": "string"
-        }
-      },
-      "required": [
-        "message",
-        "job",
-        "correlation_id"
-      ],
-      "title": "JobAcceptedResponse",
-      "type": "object"
-    },
     "analytics.MLArtifactRow": {
       "properties": {
         "algorithm_id": {
@@ -12914,62 +12819,6 @@
         "created_at"
       ],
       "title": "TournamentMin",
-      "type": "object"
-    },
-    "analytics.TrainRequestBody": {
-      "properties": {
-        "cutoff_tournament_id": {
-          "title": "Cutoff Tournament Id",
-          "type": "integer"
-        },
-        "model_kinds": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Model Kinds"
-        },
-        "workspace_id": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Workspace Id"
-        },
-        "workspace_ids": {
-          "anyOf": [
-            {
-              "items": {
-                "type": "integer"
-              },
-              "type": "array"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Training data scope. None means all workspaces; a list limits the training sample to those workspace IDs.",
-          "title": "Workspace Ids"
-        }
-      },
-      "required": [
-        "cutoff_tournament_id"
-      ],
-      "title": "TrainRequestBody",
       "type": "object"
     },
     "analytics.UserReadMin": {
@@ -23849,6 +23698,8 @@
         "name": {
           "anyOf": [
             {
+              "maxLength": 255,
+              "minLength": 1,
               "type": "string"
             },
             {
@@ -26872,7 +26723,7 @@
       "type": "string"
     },
     "balancer.DraftPoolCaptainInput": {
-      "description": "A captain chosen from the balancer pool (by balancer.registration id).",
+      "description": "A captain chosen from the balancer pool (by registration.registration id).",
       "properties": {
         "name": {
           "anyOf": [
@@ -30534,11 +30385,6 @@
     "identity.AuthUserPlayerLinkAssign": {
       "description": "Schema for assigning a player account to an auth user from admin tools.",
       "properties": {
-        "is_primary": {
-          "default": true,
-          "title": "Is Primary",
-          "type": "boolean"
-        },
         "player_id": {
           "exclusiveMinimum": 0,
           "title": "Player Id",
@@ -31303,11 +31149,6 @@
     "identity.PlayerLinkRequest": {
       "description": "Request to link player to auth user",
       "properties": {
-        "is_primary": {
-          "default": true,
-          "title": "Is Primary",
-          "type": "boolean"
-        },
         "player_id": {
           "title": "Player Id",
           "type": "integer"

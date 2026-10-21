@@ -158,7 +158,6 @@ class AuthUserPlayerLinkAssign(BaseModel):
     """Schema for assigning a player account to an auth user from admin tools."""
 
     player_id: int = Field(..., gt=0)
-    is_primary: bool = True
 
 
 # User Role Assignment Schemas

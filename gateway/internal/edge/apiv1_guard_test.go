@@ -119,8 +119,8 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	// stream-svc: the repoll route nests under the read route's {tournament_id}.
 	d.Register(mux, stream.PublicRoutes)
 	d.Register(mux, stream.AdminRoutes)
-	// identity-svc: the rbac users/{user_id} vs users/assign-role and the player
-	// linked/{player_id}/primary patterns are what would conflict under ServeMux.
+	// identity-svc: the rbac users/{user_id} vs users/assign-role patterns are
+	// what would conflict under ServeMux.
 	h := identity.NewHandler(errCaller{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	mux.HandleFunc("POST /api/v1/auth/validate", h.Validate)
 	mux.HandleFunc("POST /api/v1/auth/login", h.Login)
@@ -156,7 +156,6 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	mux.HandleFunc("POST /api/v1/auth/player/link", h.PlayerLink)
 	mux.HandleFunc("DELETE /api/v1/auth/player/unlink/{player_id}", h.PlayerUnlink)
 	mux.HandleFunc("GET /api/v1/auth/player/linked", h.PlayerLinked)
-	mux.HandleFunc("PATCH /api/v1/auth/player/linked/{player_id}/primary", h.PlayerSetPrimary)
 	// Avatar (multipart). `identityBin`, not `bin`: app.NewBinary already owns
 	// that name above, and both now register on the same mux.
 	identityBin := identity.NewBinary(h, nil)
@@ -438,9 +437,8 @@ func TestApiV1_MigratedReadsHitDispatcher(t *testing.T) {
 // The /api/v1/auth wiring: the HTTP-over-RPC tunnel + auth-service proxy are
 // decommissioned, every /api/v1/auth/* path is a typed RPC route, and
 // unmatched paths must hit the 404 guard. Building it must NOT panic — the
-// rbac users/{user_id} vs users/assign-role and the player
-// linked/{player_id}/primary patterns are the cases that would conflict
-// under ServeMux.
+// rbac users/{user_id} vs users/assign-role patterns are the case that would
+// conflict under ServeMux.
 func TestApiAuthGuard_NoConflictAndUnmatched404(t *testing.T) {
 	mux := buildGuardedMux(t) // panics here on any ServeMux pattern conflict
 	srv := httptest.NewServer(mux)
@@ -484,7 +482,6 @@ func TestApiAuth_TypedRoutesHitHandler(t *testing.T) {
 		{"POST", "/api/v1/auth/player/link"},
 		{"DELETE", "/api/v1/auth/player/unlink/5"},
 		{"GET", "/api/v1/auth/player/linked"},
-		{"PATCH", "/api/v1/auth/player/linked/5/primary"},
 		{"POST", "/api/v1/auth/me/avatar"},
 		{"DELETE", "/api/v1/auth/me/avatar"},
 	}

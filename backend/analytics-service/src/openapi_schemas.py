@@ -3,7 +3,7 @@
 Schemas-only module consumed by the export script — see ``shared.rpc.openapi``.
 No generic-CRUD engine here; every subject is a bespoke @broker.subscriber.
 Models mirror the rating-flow return annotations and the ML handlers' direct
-model construction. ``openskill`` (410 gone) is intentionally omitted.
+model construction.
 """
 
 from __future__ import annotations
@@ -18,14 +18,11 @@ from src.schemas.ml import (
     AnomalyFeedbackBody,
     AnomalyFeedbackRow,
     ExplanationRow,
-    InferRequestBody,
-    JobAcceptedResponse,
     MatchQualityRow,
     MLArtifactRow,
     PerformanceRow,
     PlayerAnomalyRow,
     StandingsRow,
-    TrainRequestBody,
 )
 
 # Ad-hoc query params (analytics handlers read these via c.q1; no query model).
@@ -105,6 +102,4 @@ OPERATIONS: dict[str, Op] = {
     "rpc.analytics.points": Op(
         response=AnalyticsJobRow, query_params=(QueryParam("tournament_id", "integer", required=True), _WS)
     ),
-    "rpc.analytics.train": Op(request=TrainRequestBody, response=JobAcceptedResponse),
-    "rpc.analytics.infer": Op(request=InferRequestBody, response=JobAcceptedResponse),
 }

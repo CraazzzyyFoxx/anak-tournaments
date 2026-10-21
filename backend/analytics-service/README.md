@@ -62,8 +62,8 @@ derives numbers from what is already in the database.
 | Signal reads | Tournament analytics, streaks, performance, standings distributions, match quality, player anomalies, per-player explanations. |
 | Artifact reads | ML model artifacts, optionally filtered to the active one per kind. |
 | Job reads | Active job, recent job list, single job by id. |
-| Light mutations | Manual shift override, anomaly-feedback upsert, and the deprecated OpenSkill v1 method (always `410`). |
-| Job control | Create a job (`compute` or `train_ml`), plus the `recalculate` and `points` wrappers that create a scoped `compute` job, and the deprecated direct `train` / `infer` dispatch. |
+| Light mutations | Manual shift override and anomaly-feedback upsert. |
+| Job control | Create a job (`compute` or `train_ml`), plus the `recalculate` and `points` wrappers that create a scoped `compute` job. |
 
 The full method list with request/response schemas is published at `/api/docs`, generated
 from `src/openapi_schemas.py` (`OPERATIONS`) and `src/openapi_docs.py` (`DOCS`).
@@ -74,14 +74,12 @@ from `src/openapi_schemas.py` (`OPERATIONS`) and `src/openapi_docs.py` (`DOCS`).
 | Queue | Payload | Runs | TTL |
 |---|---|---|---|
 | `analytics_job` | `AnalyticsJobRequested` (job id only) | The unified pipeline: dispatch by `AnalyticsJob.kind` to ratings recompute + ML inference (`compute`) or training (`train_ml`) | 1 h |
-| `analytics_train` | `AnalyticsTrainRequest` | `train_all_models` for a cutoff tournament | 1 h |
-| `analytics_infer` | `AnalyticsInferRequest` | `run_for_tournament` | 30 min |
 | `tournament_state_changed` (bound to `tournament.events`, key `tournament.state.changed`) | `TournamentStateChangedEvent` | A tournament that becomes `completed` gets a `compute` job (`src/worker/tournament_events.py`): the `create_job` gates minus the actor, skipped and acked for an unverified workspace or an active job | 5 min |
 
 Each has a matching `<queue>.dlq`, declared by `analytics-worker` at startup.
 
-**Dispatch** — every request event above that analytics sends (`AnalyticsJobRequested`,
-`AnalyticsTrainRequest`, `AnalyticsInferRequest`) is an outbox row written in the request's own
+**Dispatch** — every request event above that analytics sends (`AnalyticsJobRequested`) is an
+outbox row written in the request's own
 transaction (for a job, the same one that creates the row), relayed by the
 `event_outbox_drain` tick that both processes run every second.
 
@@ -205,8 +203,6 @@ Settings that change behaviour:
 - `RPC_PREFETCH_COUNT` (default 16) — `analytics-svc` concurrency; the worker uses the
   broker default.
 
-`PORT=8006` in `analytics.env.example` is vestigial; nothing here binds it.
-
 ## Running
 
 ```bash
@@ -261,8 +257,7 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile workers
   fine.
 - **Cost traps.** Training builds feature frames across every tournament up to the cutoff;
   the feature cache is what keeps that tolerable, and clearing it makes the next training
-  run far more expensive. Inference duration is reported as the
-  `analytics.inference.duration` metric.
+  run far more expensive.
 
 Shift and model recompute procedures live in
 [`docs/runbook-shift-recompute.md`](docs/runbook-shift-recompute.md).

@@ -69,10 +69,6 @@ DOCS: dict[str, dict] = {
         "summary": "Submit anomaly feedback",
         "description": "Permission: global `analytics.update`. Upserts a reviewer verdict/note for a player anomaly and returns the saved row.",
     },
-    "rpc.analytics.openskill": {
-        "summary": "OpenSkill (gone)",
-        "description": "Permission: global `analytics.update`. Deprecated OpenSkill v1 endpoint; validates tournament/workspace then always returns 410 gone, directing callers to run the unified analytics job.",
-    },
     "rpc.analytics.create_job": {
         "summary": "Create analytics job",
         "description": "Permission: superuser for `kind=train_ml`; for `kind=compute`, workspace `analytics.update` when `workspace_id` is supplied (that workspace must also be verified or trusted) or global `analytics.update` when it is omitted. Creates an analytics job and enqueues it to the worker, returning 202; 409 on an active-job conflict.",
@@ -84,13 +80,5 @@ DOCS: dict[str, dict] = {
     "rpc.analytics.points": {
         "summary": "Recompute points",
         "description": "Permission: workspace `analytics.update` when `workspace_id` is supplied (that workspace must also be verified or trusted), else global `analytics.update`. Creates a 202 async compute job scoped to the Points algorithm for the required tournament_id.",
-    },
-    "rpc.analytics.train": {
-        "summary": "Train model",
-        "description": "Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML training job to the worker queue. Metered as `analytics.train` — the most expensive operation on the platform, so its quota cost is the highest: the call answers 429 `quota_exceeded` with a `Retry-After` header once the caller's limits are spent.",
-    },
-    "rpc.analytics.infer": {
-        "summary": "Run inference",
-        "description": "Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML inference job for a tournament to the worker queue. Metered as `analytics.infer`: the call consumes quota against the caller's workspace/API-key limits and answers 429 `quota_exceeded` with a `Retry-After` header once they are spent.",
     },
 }

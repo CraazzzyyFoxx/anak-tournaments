@@ -1,9 +1,8 @@
 """Player linking with ownership checks.
 
 A player↔auth-user link is ``players.user.auth_user_id`` (nullable, unique FK to
-``auth.user.id``), so an auth user links to at most one player. ``is_primary`` on
-the public signatures and the RPC wire schema is accepted but ignored; every
-linked player is reported as primary.
+``auth.user.id``), so an auth user links to at most one player, and every linked
+player is reported as primary.
 """
 
 from __future__ import annotations
@@ -222,12 +221,10 @@ class PlayerLinkService:
         session: AsyncSession,
         current_user: models.AuthUser,
         player_id: int,
-        is_primary: bool,
     ) -> models.User:
         """Link a game player to ``current_user`` after ownership verification.
 
-        ``is_primary`` is accepted for wire compatibility but ignored (single
-        link => always primary). Returns the linked ``players.user`` row.
+        Returns the linked ``players.user`` row.
         """
         await self._verify_ownership(session, current_user.id, player_id)
         return await self._link_to_auth_user(session, auth_user_id=current_user.id, player_id=player_id)
@@ -250,19 +247,12 @@ class PlayerLinkService:
 
     # -- admin -------------------------------------------------------------
 
-    async def admin_link(
-        self,
-        session: AsyncSession,
-        auth_user_id: int,
-        player_id: int,
-        is_primary: bool,
-    ) -> models.User:
-        """Admin link (no ownership check). ``is_primary`` accepted but ignored."""
+    async def admin_link(self, session: AsyncSession, auth_user_id: int, player_id: int) -> models.User:
+        """Admin link (no ownership check)."""
         return await self._link_to_auth_user(session, auth_user_id=auth_user_id, player_id=player_id)
 
-    async def admin_unlink(self, session: AsyncSession, auth_user_id: int, player_id: int) -> None:
-        """Admin unlink (no ownership check). ``auth_user_id`` accepted for
-        signature compatibility; the single-link column is cleared regardless."""
+    async def admin_unlink(self, session: AsyncSession, player_id: int) -> None:
+        """Admin unlink (no ownership check): clears the player's single-link column."""
         await self._unlink_from_auth_user(session, player_id=player_id)
 
     # -- RPC-facing wrappers ----------------------------------------------
@@ -276,7 +266,7 @@ class PlayerLinkService:
         """Link a game player to the current auth user."""
         logger.info(f"Linking player {link_data.player_id} to user {current_user.username}")
 
-        player = await self.link(session, current_user, link_data.player_id, link_data.is_primary)
+        player = await self.link(session, current_user, link_data.player_id)
         return schemas.PlayerLinkResponse(
             message="Player linked successfully", player=schemas.LinkedPlayer(**describe_link(player))
         )
@@ -290,27 +280,6 @@ class PlayerLinkService:
         return [
             schemas.LinkedPlayer(**describe_link(player)) for player in await self.linked_players(session, current_user)
         ]
-
-    async def confirm_primary(
-        self,
-        session: AsyncSession,
-        current_user: models.AuthUser,
-        player_id: int,
-    ) -> dict:
-        """Confirm ``player_id`` is the caller's linked player; mutates nothing.
-
-        An auth user has at most one linked player (``players.user.auth_user_id``),
-        so it is already primary and there is nothing to reassign.
-        """
-        logger.info(f"Setting player {player_id} as primary for user {current_user.username}")
-
-        player = await self.players.get_by_auth_user_id(session, current_user.id)
-        if player is None or player.id != player_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Player link not found",
-            )
-        return {"message": "Primary player updated successfully"}
 
 
 players = PlayerLinkService()

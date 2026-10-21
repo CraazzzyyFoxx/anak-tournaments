@@ -19,9 +19,6 @@ __all__ = (
     "MatchQualityRow",
     "ExplanationRow",
     "MLArtifactRow",
-    "TrainRequestBody",
-    "InferRequestBody",
-    "JobAcceptedResponse",
     "PlayerAnomalyRow",
     "AnomalyFeedbackRow",
     "AnomalyFeedbackBody",
@@ -96,30 +93,6 @@ class MLArtifactRow(BaseModel):
     is_active: bool
     created_at: datetime
     updated_at: datetime | None
-
-
-class TrainRequestBody(BaseModel):
-    cutoff_tournament_id: int
-    model_kinds: list[str] | None = None
-    workspace_id: int | None = None
-    workspace_ids: list[int] | None = Field(
-        default=None,
-        description=(
-            "Training data scope. None means all workspaces; a list limits the training sample to those workspace IDs."
-        ),
-    )
-
-
-class InferRequestBody(BaseModel):
-    tournament_id: int
-    model_kinds: list[str] | None = None
-    workspace_id: int | None = None
-
-
-class JobAcceptedResponse(BaseModel):
-    message: str
-    job: str  # "train" | "infer"
-    correlation_id: str
 
 
 class PlayerAnomalyRow(BaseModel):

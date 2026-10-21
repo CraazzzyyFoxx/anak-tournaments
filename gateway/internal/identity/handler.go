@@ -79,10 +79,9 @@ const (
 	queueRbacListSessions       = "rpc.identity.rbac.list_sessions"
 	queueRbacDeleteOAuthConn    = "rpc.identity.rbac.delete_oauth_connection"
 
-	queuePlayerLink       = "rpc.identity.player.link"
-	queuePlayerUnlink     = "rpc.identity.player.unlink"
-	queuePlayerLinked     = "rpc.identity.player.linked"
-	queuePlayerSetPrimary = "rpc.identity.player.set_primary"
+	queuePlayerLink   = "rpc.identity.player.link"
+	queuePlayerUnlink = "rpc.identity.player.unlink"
+	queuePlayerLinked = "rpc.identity.player.linked"
 
 	// maxJSONBody caps the request body before it is buffered into an RPC
 	// message, matching edge.maxBody. Without it a slowloris/oversized body could
@@ -639,11 +638,6 @@ func (h *Handler) PlayerUnlink(w http.ResponseWriter, r *http.Request) {
 // PlayerLinked mirrors GET /player/linked -> 200 [LinkedPlayer].
 func (h *Handler) PlayerLinked(w http.ResponseWriter, r *http.Request) {
 	h.authedNoBody(w, r, queuePlayerLinked, http.StatusOK)
-}
-
-// PlayerSetPrimary mirrors PATCH /player/linked/{player_id}/primary -> 200.
-func (h *Handler) PlayerSetPrimary(w http.ResponseWriter, r *http.Request) {
-	h.authedFields(w, r, queuePlayerSetPrimary, http.StatusOK, map[string]any{"player_id": r.PathValue("player_id")})
 }
 
 // authedFields handles a bearer-authenticated endpoint with no JSON request body,

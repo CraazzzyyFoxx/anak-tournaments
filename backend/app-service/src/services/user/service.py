@@ -1985,8 +1985,6 @@ class UserService(DisciplineQueries):
 
         Returns narrow `EncounterReadWithUserStats` objects — the tournament and
         team summaries are always populated (loaded via joinedload in the repo).
-        The `params.entities` query parameter is accepted for backward
-        compatibility but ignored: the shape is fixed by the narrow DTO.
         """
         user = await self.get(session, user_id, [])
         encounters, total = await self.encounters.get_user_encounters_paginated(

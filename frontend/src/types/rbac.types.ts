@@ -56,7 +56,6 @@ export interface AssignRolePayload {
 
 export interface AssignLinkedPlayerPayload {
   player_id: number;
-  is_primary: boolean;
 }
 
 export interface UpsertRolePayload {

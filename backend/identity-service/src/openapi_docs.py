@@ -318,8 +318,4 @@ DOCS: dict[str, dict] = {
         "summary": "List linked players",
         "description": "Permission: authenticated (active) user; self-service — only the caller's own link. Returns all game players linked to the active user.",
     },
-    "rpc.identity.player.set_primary": {
-        "summary": "Set primary player",
-        "description": "Permission: authenticated (active) user; self-service — 404 unless the player is the caller's own link. Marks a linked player as the active user's primary player and returns the updated link.",
-    },
 }

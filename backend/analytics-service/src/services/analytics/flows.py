@@ -12,7 +12,6 @@ from src.core.analytics_exports import analytics_exports, supports_analytics, to
 from src.core.config import settings
 from src.domain.ratings import (
     LINEAR,
-    OPEN_SKILL,
     OPENSKILL_LOOKBACK,
     POINTS,
     compute_linear_metrics,
@@ -321,19 +320,6 @@ class AnalyticsFlowsService:
             session,
             tournament_id,
             [POINTS],
-            workspace_id=workspace_id,
-        )
-
-    async def get_analytics_openskill(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-        workspace_id: int | None = None,
-    ) -> None:
-        await self.recalculate_analytics(
-            session,
-            tournament_id,
-            [OPEN_SKILL],
             workspace_id=workspace_id,
         )
 

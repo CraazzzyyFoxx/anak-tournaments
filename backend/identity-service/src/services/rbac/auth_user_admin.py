@@ -109,7 +109,7 @@ class AuthUserAdminService:
             ip_address=ip_address,
             user_agent=user_agent,
         )
-        await self._links.admin_link(session, user_id, data.player_id, data.is_primary)
+        await self._links.admin_link(session, user_id, data.player_id)
 
     async def remove_linked_player(
         self,
@@ -140,7 +140,7 @@ class AuthUserAdminService:
             ip_address=ip_address,
             user_agent=user_agent,
         )
-        await self._links.admin_unlink(session, user_id, player_id)
+        await self._links.admin_unlink(session, player_id)
 
     async def delete(
         self,

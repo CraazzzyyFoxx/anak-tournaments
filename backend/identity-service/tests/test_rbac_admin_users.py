@@ -50,10 +50,8 @@ def _role(
     )
 
 
-def _linked_player(player_id: int, name: str, *, is_primary: bool = True) -> SimpleNamespace:
-    """A ``players.user`` row as seen through ``AuthUser.player`` (single-link
-    model). ``is_primary`` is accepted for call-site compatibility with the
-    historical many-to-many fixture shape but is always True in practice."""
+def _linked_player(player_id: int, name: str) -> SimpleNamespace:
+    """A ``players.user`` row as seen through ``AuthUser.player`` (single-link model)."""
     now = datetime.now(UTC)
     return SimpleNamespace(
         id=player_id,
@@ -537,11 +535,10 @@ def test_assign_linked_player_to_auth_user_route_calls_admin_link_service(monkey
     user = _user(9, "grace@example.com", roles=[])
     session = _AdminQueueSession(results=[user])
 
-    async def fake_admin_link(link_session, auth_user_id, player_id, is_primary):
+    async def fake_admin_link(link_session, auth_user_id, player_id):
         assert link_session is session
         assert auth_user_id == 9
         assert player_id == 42
-        assert is_primary is False
         return SimpleNamespace()
 
     monkeypatch.setattr(players, "admin_link", fake_admin_link)
@@ -551,7 +548,7 @@ def test_assign_linked_player_to_auth_user_route_calls_admin_link_service(monkey
             session,
             _root_actor(),
             9,
-            SimpleNamespace(player_id=42, is_primary=False),
+            SimpleNamespace(player_id=42),
         )
     )
 
@@ -562,9 +559,8 @@ def test_remove_linked_player_from_auth_user_route_calls_admin_unlink_service(mo
     user = _user(9, "grace@example.com", roles=[])
     session = _AdminQueueSession(results=[user])
 
-    async def fake_admin_unlink(link_session, auth_user_id, player_id):
+    async def fake_admin_unlink(link_session, player_id):
         assert link_session is session
-        assert auth_user_id == 9
         assert player_id == 42
         return None
 

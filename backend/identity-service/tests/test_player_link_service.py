@@ -131,7 +131,7 @@ def test_link_player_requires_oauth_ownership_gate() -> None:
     session = _FakeSession()
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(service.link(session, CURRENT_USER, player_id=99, is_primary=True))
+        asyncio.run(service.link(session, CURRENT_USER, player_id=99))
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == NO_CONNECTION_DETAIL
@@ -171,7 +171,7 @@ def test_link_accepts_matching_oauth_identity(connection, handles) -> None:
     service = _service(connections=[connection], handles=handles, player=player)
     session = _FakeSession()
 
-    linked = asyncio.run(service.link(session, CURRENT_USER, player_id=99, is_primary=True))
+    linked = asyncio.run(service.link(session, CURRENT_USER, player_id=99))
 
     assert linked is player
     assert player.auth_user_id == CURRENT_USER.id
@@ -190,7 +190,7 @@ def test_link_rejects_when_no_identity_matches() -> None:
     session = _FakeSession()
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(service.link(session, CURRENT_USER, player_id=99, is_primary=True))
+        asyncio.run(service.link(session, CURRENT_USER, player_id=99))
 
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == NO_MATCH_DETAIL
@@ -210,7 +210,7 @@ def test_link_conflicts_when_player_owned_by_another_account() -> None:
     session = _FakeSession()
 
     with pytest.raises(HTTPException) as exc_info:
-        asyncio.run(service.link(session, CURRENT_USER, player_id=99, is_primary=True))
+        asyncio.run(service.link(session, CURRENT_USER, player_id=99))
 
     assert exc_info.value.status_code == 409
     assert exc_info.value.detail == "Player is already linked to another account"
@@ -227,7 +227,7 @@ def test_relink_to_same_account_is_idempotent() -> None:
         player=player,
     )
 
-    again = asyncio.run(service.link(_FakeSession(), CURRENT_USER, player_id=99, is_primary=True))
+    again = asyncio.run(service.link(_FakeSession(), CURRENT_USER, player_id=99))
 
     assert again.auth_user_id == CURRENT_USER.id
 
@@ -244,7 +244,7 @@ def test_link_autofills_baseline_member_role() -> None:
     autofill = AsyncMock()
 
     with patch.object(players_module, "assign_default_member_role_if_roleless", autofill):
-        asyncio.run(service.link(_FakeSession(), CURRENT_USER, player_id=99, is_primary=True))
+        asyncio.run(service.link(_FakeSession(), CURRENT_USER, player_id=99))
 
     granted = [call.kwargs for call in autofill.await_args_list]
     assert granted == [
@@ -456,10 +456,10 @@ def test_admin_link_and_unlink_round_trip(db_session) -> None:
         owner = await _make_auth_user(db_session, suffix)
         player = await _make_player(db_session, suffix)
 
-        linked = await players.admin_link(db_session, owner.id, player.id, is_primary=True)
+        linked = await players.admin_link(db_session, owner.id, player.id)
         linked_id = linked.auth_user_id
 
-        await players.admin_unlink(db_session, owner.id, player.id)
+        await players.admin_unlink(db_session, player.id)
         refreshed = await db_session.get(User, player.id)
         return owner.id, linked_id, refreshed.auth_user_id
 

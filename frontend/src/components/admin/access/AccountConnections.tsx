@@ -41,7 +41,7 @@ export function AccountLinkedPlayer({
 
   const link = useMutation({
     mutationFn: (playerId: number) =>
-      rbacService.assignLinkedPlayer(account.id, { player_id: playerId, is_primary: true }),
+      rbacService.assignLinkedPlayer(account.id, { player_id: playerId }),
     onSuccess: async () => {
       await invalidateAccount(queryClient);
       setPicked(null);

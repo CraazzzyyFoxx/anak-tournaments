@@ -991,20 +991,12 @@ class ChallongeMappingService:
         self.team_repo = team_repo
         self.sync_log = sync_log
 
-    async def discover_sources(
-        self,
-        session: AsyncSession,
-        tournament: models.Tournament,
-        *,
-        dry_run: bool = False,
-    ) -> list[_ImportSource]:
+    async def discover_sources(self, session: AsyncSession, tournament: models.Tournament) -> list[_ImportSource]:
         """Discover Challonge sources from the normalized ``challonge_source`` table.
 
-        Stage comes from ``ChallongeSource.stage``. ``dry_run`` is accepted for
-        signature compatibility; nothing is written here (the admin link
-        entry-point owns source creation).
+        Stage comes from ``ChallongeSource.stage``. Read-only: the admin link
+        entry-point owns source creation.
         """
-        del dry_run
         # Sorted by id: ``_resolve_export_target`` picks ``candidates[0]`` out of
         # this list, so a stable order is part of which Challonge source an
         # unmapped encounter is attributed to.
@@ -1871,7 +1863,7 @@ class ChallongeSyncService:
             if not tournament:
                 return {"job_id": job_id, "error": "Tournament not found"}
 
-            sources = await self.mapping.discover_sources(session, tournament, dry_run=dry_run)
+            sources = await self.mapping.discover_sources(session, tournament)
             if not sources:
                 return {"job_id": job_id, "error": "Tournament has no Challonge source"}
 

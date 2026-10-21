@@ -8,12 +8,10 @@ GPU compute is the expensive resource they must not reach. This drives the real
 - ``kind=compute`` in an unverified workspace → 403 ``workspace_not_verified``
   *and* no ``AnalyticsJob`` row created (the gate runs before the insert);
 - ``verified`` / ``trusted`` → unchanged pass-through;
-- ``train_ml`` is untouched by this gate (still superuser-only);
-- the deprecated ``train``/``infer`` publishers gate too (defense in depth).
+- ``train_ml`` is untouched by this gate (still superuser-only).
 
-The workspace read, the job insert and the outbox enqueue are the only DB touches on
-this path, so stubbing the repositories, ``create_analytics_job`` and
-``enqueue_outbox_event`` keeps this a pure unit test
+The workspace read and the job insert are the only DB touches on this path, so
+stubbing the repositories and ``create_analytics_job`` keeps this a pure unit test
 (same no-DB approach as ``test_analytics_route_permissions_app.py``).
 """
 
@@ -111,10 +109,6 @@ class AnalyticsGpuGateTests(TestCase):
         self.created: list[dict] = []
         self.tournaments = _FakeTournaments()
         self.charge = AsyncMock()
-        self.enqueued: list[tuple[object, str]] = []
-
-        async def _fake_enqueue(session, event, *, exchange, routing_key):
-            self.enqueued.append((event, routing_key))
 
         async def _fake_create(session, **kwargs):
             self.created.append(kwargs)
@@ -139,7 +133,6 @@ class AnalyticsGpuGateTests(TestCase):
             patch.object(core_jobs, "_workspaces", _FakeWorkspaces()),
             patch.object(core_jobs, "_tournaments", self.tournaments),
             patch.object(jobs_control, "create_analytics_job", _fake_create),
-            patch.object(jobs_control, "enqueue_outbox_event", _fake_enqueue),
             # The gate is a process-global configured at service startup, which
             # these tests never run; the slug/workspace pairing it is handed is
             # covered where quota itself is tested.
@@ -216,45 +209,16 @@ class AnalyticsGpuGateTests(TestCase):
         self.assertTrue(envelope["ok"], envelope)
         self.assertEqual([c["kind"] for c in self.created], ["train_ml"])
 
-    def test_deprecated_train_and_infer_gate_on_body_workspace_id(self) -> None:
-        for subject, payload in (
-            ("rpc.analytics.train", {"cutoff_tournament_id": 5, "workspace_id": 1}),
-            ("rpc.analytics.infer", {"tournament_id": 5, "workspace_id": 1}),
-        ):
-            with self.subTest(subject=subject):
-                envelope = self._call(subject, {"identity": _identity(global_update=True), "payload": payload})
-
-                self.assertFalse(envelope["ok"])
-                self.assertEqual(envelope["error"]["code"], "forbidden")
-                self.assertEqual(envelope["error"]["message"], "workspace_not_verified")
-                self.assertEqual(self.enqueued, [])
-
-    def test_deprecated_train_enqueues_for_a_trusted_workspace(self) -> None:
-        self.tournaments.owner = (3, "overwatch")
-        envelope = self._call(
-            "rpc.analytics.train",
-            {"identity": _identity(global_update=True), "payload": {"cutoff_tournament_id": 5, "workspace_id": 3}},
-        )
-
-        self.assertTrue(envelope["ok"], envelope)
-        self.assertEqual([key for _, key in self.enqueued], ["analytics_train"])
-
     def _assert_refused_before_admission(self, envelope: dict, message_part: str) -> None:
         self.assertFalse(envelope["ok"], envelope)
         self.assertEqual(envelope["error"]["code"], "unprocessable")
         self.assertIn(message_part, envelope["error"]["message"])
         self.assertEqual(self.created, [])
-        self.assertEqual(self.enqueued, [])
         self.charge.assert_not_awaited()
 
     def test_explicit_requests_for_a_discipline_without_analytics_are_422_before_admission_and_charging(self) -> None:
         self.tournaments.owner = (2, "lol")
         requests = (
-            (
-                "rpc.analytics.train",
-                {"identity": _identity(global_update=True), "payload": {"cutoff_tournament_id": 5}},
-            ),
-            ("rpc.analytics.infer", {"identity": _identity(global_update=True), "payload": {"tournament_id": 5}}),
             (
                 "rpc.analytics.create_job",
                 {
@@ -288,14 +252,20 @@ class AnalyticsGpuGateTests(TestCase):
 
     def test_a_tournament_outside_the_requested_workspace_scope_is_422(self) -> None:
         self.tournaments.owner = (2, "overwatch")
-        for subject, payload in (
-            ("rpc.analytics.train", {"cutoff_tournament_id": 5, "workspace_ids": [9]}),
-            ("rpc.analytics.train", {"cutoff_tournament_id": 5, "workspace_id": 3}),
-            ("rpc.analytics.infer", {"tournament_id": 5, "workspace_id": 3}),
-        ):
-            with self.subTest(subject=subject, payload=payload):
+        for training_workspace_ids in ([9], [3]):
+            with self.subTest(training_workspace_ids=training_workspace_ids):
                 self._assert_refused_before_admission(
-                    self._call(subject, {"identity": _identity(global_update=True), "payload": payload}),
+                    self._call(
+                        "rpc.analytics.create_job",
+                        {
+                            "identity": _identity(superuser=True, global_update=True),
+                            "payload": {
+                                "tournament_id": 5,
+                                "kind": "train_ml",
+                                "training_workspace_ids": training_workspace_ids,
+                            },
+                        },
+                    ),
                     "requested workspace scope",
                 )
 

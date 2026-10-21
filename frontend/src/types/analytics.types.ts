@@ -204,12 +204,6 @@ export interface MLArtifact {
   updated_at: string | null;
 }
 
-export interface JobAcceptedResponse {
-  message: string;
-  job: "train" | "infer";
-  correlation_id: string;
-}
-
 // ────────────────────────────────────────────────────────────────────────────
 // Unified analytics job — single pipeline replacing Recalculate/Train/Infer.
 // ────────────────────────────────────────────────────────────────────────────

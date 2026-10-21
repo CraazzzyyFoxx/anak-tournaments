@@ -874,28 +874,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/auth/player/linked/{player_id}/primary": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /**
-         * Set primary player
-         * @description Permission: authenticated (active) user; self-service — 404 unless the player is the caller's own link. Marks a linked player as the active user's primary player and returns the updated link.
-         *
-         *     RPC subject: `rpc.identity.player.set_primary`
-         */
-        patch: operations["patch__api_v1_auth_player_linked__player_id__primary"];
-        trace?: never;
-    };
     "/api/v1/auth/player/unlink/{player_id}": {
         parameters: {
             query?: never;
@@ -8996,52 +8974,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/analytics/infer": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Run inference
-         * @description Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML inference job for a tournament to the worker queue. Metered as `analytics.infer`: the call consumes quota against the caller's workspace/API-key limits and answers 429 `quota_exceeded` with a `Retry-After` header once they are spent.
-         *
-         *     RPC subject: `rpc.analytics.infer`
-         */
-        post: operations["post__api_v1_analytics_infer"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/analytics/openskill": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * OpenSkill (gone)
-         * @description Permission: global `analytics.update`. Deprecated OpenSkill v1 endpoint; validates tournament/workspace then always returns 410 gone, directing callers to run the unified analytics job.
-         *
-         *     Accepts arbitrary query parameters (pagination/filtering); see the service for the full list.
-         *
-         *     RPC subject: `rpc.analytics.openskill`
-         */
-        post: operations["post__api_v1_analytics_openskill"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/analytics/points": {
         parameters: {
             query?: never;
@@ -9102,28 +9034,6 @@ export interface paths {
          *     RPC subject: `rpc.analytics.shift`
          */
         post: operations["post__api_v1_analytics_shift"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/analytics/train": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Train model
-         * @description Permission: global `analytics.update`, and a verified or trusted workspace when the body carries a workspace_id. Dispatches a 202 ML training job to the worker queue. Metered as `analytics.train` — the most expensive operation on the platform, so its quota cost is the highest: the call answers 429 `quota_exceeded` with a `Retry-After` header once the caller's limits are spent.
-         *
-         *     RPC subject: `rpc.analytics.train`
-         */
-        post: operations["post__api_v1_analytics_train"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15196,7 +15106,7 @@ export interface components {
         "balancer.DraftPlayerStatus": BalancerDraftPlayerStatus;
         /**
          * DraftPoolCaptainInput
-         * @description A captain chosen from the balancer pool (by balancer.registration id).
+         * @description A captain chosen from the balancer pool (by registration.registration id).
          */
         "balancer.DraftPoolCaptainInput": {
             /**
@@ -16170,11 +16080,6 @@ export interface components {
          * @description Request to link player to auth user
          */
         "identity.PlayerLinkRequest": {
-            /**
-             * Is Primary
-             * @default true
-             */
-            is_primary: boolean;
             /** Player Id */
             player_id: number;
         };
@@ -20159,57 +20064,12 @@ export interface components {
              */
             verdict: AnalyticsAnomalyFeedbackBodyVerdict;
         };
-        /** InferRequestBody */
-        "analytics.InferRequestBody": {
-            /**
-             * Model Kinds
-             * @default null
-             */
-            model_kinds: string[] | null;
-            /** Tournament Id */
-            tournament_id: number;
-            /**
-             * Workspace Id
-             * @default null
-             */
-            workspace_id: number | null;
-        };
-        /** JobAcceptedResponse */
-        "analytics.JobAcceptedResponse": {
-            /** Correlation Id */
-            correlation_id: string;
-            /** Job */
-            job: string;
-            /** Message */
-            message: string;
-        };
         /** PlayerShiftUpdate */
         "analytics.PlayerShiftUpdate": {
             /** Player Id */
             player_id: number;
             /** Shift */
             shift: number;
-        };
-        /** TrainRequestBody */
-        "analytics.TrainRequestBody": {
-            /** Cutoff Tournament Id */
-            cutoff_tournament_id: number;
-            /**
-             * Model Kinds
-             * @default null
-             */
-            model_kinds: string[] | null;
-            /**
-             * Workspace Id
-             * @default null
-             */
-            workspace_id: number | null;
-            /**
-             * Workspace Ids
-             * @description Training data scope. None means all workspaces; a list limits the training sample to those workspace IDs.
-             * @default null
-             */
-            workspace_ids: number[] | null;
         };
         /**
          * AdminUserNotificationsRead
@@ -22238,11 +22098,6 @@ export interface components {
          * @description Schema for assigning a player account to an auth user from admin tools.
          */
         "identity.AuthUserPlayerLinkAssign": {
-            /**
-             * Is Primary
-             * @default true
-             */
-            is_primary: boolean;
             /** Player Id */
             player_id: number;
         };
@@ -31903,84 +31758,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["identity.LinkedPlayer"][];
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    patch__api_v1_auth_player_linked__player_id__primary: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                player_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -63915,162 +63692,6 @@ export interface operations {
             };
         };
     };
-    post__api_v1_analytics_infer: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["analytics.InferRequestBody"];
-            };
-        };
-        responses: {
-            /** @description Success */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["analytics.JobAcceptedResponse"];
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    post__api_v1_analytics_openskill: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>;
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     post__api_v1_analytics_points: {
         parameters: {
             query: {
@@ -64252,86 +63873,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["analytics.PlayerAnalytics"];
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    post__api_v1_analytics_train: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["analytics.TrainRequestBody"];
-            };
-        };
-        responses: {
-            /** @description Success */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["analytics.JobAcceptedResponse"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */

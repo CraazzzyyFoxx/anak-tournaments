@@ -127,10 +127,7 @@ export function PeopleBrowser({ workspaceId }: Readonly<{ workspaceId: number | 
       const person = await adminService.createUser({ name: input.name });
       if (input.authUserId == null) return { person, linkWarning: undefined as { name: string; detail: string } | undefined };
       try {
-        await rbacService.assignLinkedPlayer(input.authUserId, {
-          player_id: person.id,
-          is_primary: true
-        });
+        await rbacService.assignLinkedPlayer(input.authUserId, { player_id: person.id });
         return { person, linkWarning: undefined as { name: string; detail: string } | undefined };
       } catch (error) {
         const detail = error instanceof Error ? error.message : t("unknownError");

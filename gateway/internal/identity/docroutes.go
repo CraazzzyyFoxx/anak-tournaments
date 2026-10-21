@@ -62,7 +62,6 @@ var PublicDocRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/auth/player/link", Queue: "rpc.identity.player.link", Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/auth/player/unlink/{player_id}", Queue: "rpc.identity.player.unlink", Auth: edge.AuthRequired, Success: 204},
 	{Method: "GET", Pattern: "/api/v1/auth/player/linked", Queue: "rpc.identity.player.linked", Auth: edge.AuthRequired},
-	{Method: "PATCH", Pattern: "/api/v1/auth/player/linked/{player_id}/primary", Queue: "rpc.identity.player.set_primary", Auth: edge.AuthRequired},
 }
 
 // AdminDocRoutes documents the RBAC admin endpoints and the service-to-service

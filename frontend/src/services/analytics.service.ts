@@ -7,7 +7,6 @@ import {
   AnomalyFeedback,
   AnomalyFeedbackInput,
   Explanation,
-  JobAcceptedResponse,
   MatchQuality,
   MLArtifact,
   MLModelKind,
@@ -168,7 +167,7 @@ export default class analyticsService {
     ).then((response) => response.json());
   }
 
-  // ── v2 ML admin (dispatch + artifact registry) ──────────────────────────
+  // ── v2 ML artifact registry ─────────────────────────────────────────────
 
   static async listArtifacts(
     modelKind?: MLModelKind,
@@ -176,38 +175,6 @@ export default class analyticsService {
   ): Promise<MLArtifact[]> {
     return apiFetch("/api/v1/analytics/artifacts", {
       query: { model_kind: modelKind, active_only: activeOnly || undefined },
-    }).then((response) => response.json());
-  }
-
-  static async trainV2(
-    cutoffTournamentId: number,
-    modelKinds?: MLModelKind[],
-    workspaceId?: number | null,
-    workspaceIds?: number[] | null,
-  ): Promise<JobAcceptedResponse> {
-    return apiFetch("/api/v1/analytics/train", {
-      method: "POST",
-      body: {
-        cutoff_tournament_id: cutoffTournamentId,
-        ...(modelKinds?.length ? { model_kinds: modelKinds } : {}),
-        ...(workspaceId != null ? { workspace_id: workspaceId } : {}),
-        ...(workspaceIds !== undefined ? { workspace_ids: workspaceIds } : {}),
-      },
-    }).then((response) => response.json());
-  }
-
-  static async inferV2(
-    tournamentId: number,
-    modelKinds?: MLModelKind[],
-    workspaceId?: number | null,
-  ): Promise<JobAcceptedResponse> {
-    return apiFetch("/api/v1/analytics/infer", {
-      method: "POST",
-      body: {
-        tournament_id: tournamentId,
-        ...(modelKinds?.length ? { model_kinds: modelKinds } : {}),
-        ...(workspaceId != null ? { workspace_id: workspaceId } : {}),
-      },
     }).then((response) => response.json());
   }
 

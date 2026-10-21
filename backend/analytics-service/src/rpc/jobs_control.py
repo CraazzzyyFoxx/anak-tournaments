@@ -9,9 +9,8 @@ every other compute job). Wired from ``serve_rpc.py``.
 
 Auth: create_job / recalculate / points gate per
 ``_require_actor`` (compute → workspace-scoped ``analytics.update``; train_ml →
-superuser); the deprecated train/infer use a global ``analytics.update``.
-On top of the permission gate, every workspace-scoped GPU job (``kind=compute``
-and the deprecated train/infer) also requires the workspace to be verified or
+superuser). On top of the permission gate, every workspace-scoped GPU job
+(``kind=compute``) also requires the workspace to be verified or
 trusted — see ``shared.domain.workspace_tier``: self-service workspaces start
 ``unverified`` and must not burn GPU time (403 ``workspace_not_verified``).
 """
@@ -25,9 +24,6 @@ from faststream.rabbit.annotations import RabbitMessage
 from shared import quota
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.jobs import JobConflict
-from shared.messaging.config import ANALYTICS_INFER_QUEUE, ANALYTICS_TRAIN_QUEUE
-from shared.messaging.outbox import enqueue_outbox_event
-from shared.schemas.events import AnalyticsInferRequest, AnalyticsTrainRequest
 from src.core import db
 from src.core.jobs import (
     JOB_KIND_COMPUTE,
@@ -36,13 +32,7 @@ from src.core.jobs import (
     require_analytics_owner,
     require_verified_workspace,
 )
-from src.schemas.ml import (
-    AnalyticsJobCreate,
-    AnalyticsJobRow,
-    InferRequestBody,
-    JobAcceptedResponse,
-    TrainRequestBody,
-)
+from src.schemas.ml import AnalyticsJobCreate, AnalyticsJobRow
 from src.services.analytics.service import analytics_service
 
 from . import _common as c
@@ -189,62 +179,3 @@ def register(broker: Any, logger: Any) -> None:
             return AnalyticsJobRow.model_validate(job, from_attributes=True)
 
         return await c.envelope(logger, "points", op, session_factory=sf)
-
-    @broker.subscriber("rpc.analytics.train")
-    async def _train(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            user = c.actor(data)
-            c.require_permission(user, "analytics", "update")
-            body = TrainRequestBody.model_validate(c.payload(data))
-            await require_verified_workspace(session, body.workspace_id)
-            await require_analytics_owner(
-                session,
-                body.cutoff_tournament_id,
-                scope=body.workspace_ids
-                if body.workspace_ids is not None
-                else ([body.workspace_id] if body.workspace_id is not None else None),
-            )
-            # The costliest operation on the platform: a full model retrain over
-            # every workspace in scope. Charged rather than leased because this
-            # handler only enqueues to ANALYTICS_TRAIN_QUEUE and returns -- the
-            # compute lives in another process (``serve.py``), which is where a
-            # lease would have to be released, so a lease taken here would cover
-            # the enqueue and nothing else.
-            await quota.charge(user, "analytics.train", workspace_id=body.workspace_id)
-            event = AnalyticsTrainRequest(
-                cutoff_tournament_id=body.cutoff_tournament_id,
-                model_kinds=body.model_kinds,
-                workspace_id=body.workspace_id,
-                workspace_ids=body.workspace_ids,
-                source_service="analytics-svc",
-            )
-            await enqueue_outbox_event(session, event, exchange="", routing_key=ANALYTICS_TRAIN_QUEUE.name)
-            await session.commit()
-            return JobAcceptedResponse(message="Training job dispatched.", job="train", correlation_id=event.event_id)
-
-        return await c.envelope(logger, "train", op, session_factory=sf)
-
-    @broker.subscriber("rpc.analytics.infer")
-    async def _infer(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            user = c.actor(data)
-            c.require_permission(user, "analytics", "update")
-            body = InferRequestBody.model_validate(c.payload(data))
-            await require_verified_workspace(session, body.workspace_id)
-            await require_analytics_owner(
-                session,
-                body.tournament_id,
-                scope=[body.workspace_id] if body.workspace_id is not None else None,
-            )
-            await quota.charge(user, "analytics.infer", workspace_id=body.workspace_id)
-            event = AnalyticsInferRequest(
-                tournament_id=body.tournament_id,
-                model_kinds=body.model_kinds,
-                workspace_id=body.workspace_id,
-                source_service="analytics-svc",
-            )
-            await enqueue_outbox_event(session, event, exchange="", routing_key=ANALYTICS_INFER_QUEUE.name)
-            await session.commit()
-            return JobAcceptedResponse(message="Inference job dispatched.", job="infer", correlation_id=event.event_id)
-
-        return await c.envelope(logger, "infer", op, session_factory=sf)

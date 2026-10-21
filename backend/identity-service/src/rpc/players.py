@@ -44,12 +44,3 @@ def register(broker: Any, logger: Any) -> None:
             return [player.model_dump(mode="json") for player in linked]
 
         return await c.with_active_user(logger, data.get("access_token"), op)
-
-    @broker.subscriber("rpc.identity.player.set_primary")
-    async def _player_set_primary(data: dict, msg: RabbitMessage) -> dict:
-        data = data or {}
-
-        async def op(session: Any, user: Any) -> dict:
-            return await players.confirm_primary(session, user, c.require_int(data, "player_id"))
-
-        return await c.with_active_user(logger, data.get("access_token"), op)

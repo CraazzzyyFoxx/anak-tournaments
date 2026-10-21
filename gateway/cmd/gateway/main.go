@@ -260,7 +260,6 @@ func run() error {
 	mux.HandleFunc("POST /api/v1/auth/player/link", identityHandler.PlayerLink)
 	mux.HandleFunc("DELETE /api/v1/auth/player/unlink/{player_id}", identityHandler.PlayerUnlink)
 	mux.HandleFunc("GET /api/v1/auth/player/linked", identityHandler.PlayerLinked)
-	mux.HandleFunc("PATCH /api/v1/auth/player/linked/{player_id}/primary", identityHandler.PlayerSetPrimary)
 	// Current-user avatar (multipart -> base64 RPC body; the JSON path can't do it).
 	// The resolver validates the bearer token before the multipart body is parsed.
 	identityBinary := identity.NewBinary(identityHandler, resolver.Resolve)
