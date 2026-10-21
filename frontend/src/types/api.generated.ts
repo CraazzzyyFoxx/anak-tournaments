@@ -3293,7 +3293,7 @@ export interface paths {
         };
         /**
          * Map statistics
-         * @description Permission: public; no authentication required. Returns the path discipline's maps (404 `discipline_not_installed` for an unknown game) grouped by mode (the map's catalog parent; maps without one in a last null bucket), optionally workspace-scoped, most played first. A game is one of a completed series of a public, non-league tournament: the series' confirmed games with a map when it has any, else its parsed maps, so nothing counts twice. `share` is a map's games over its mode's; `avg_duration_s` averages the parsed maps (null when none).
+         * @description Permission: public; no authentication required. Returns the path discipline's maps (404 `discipline_not_installed` for an unknown game) grouped by the mode each game was played in (the game's or parsed map's own mode, not the map's catalog parent, so one map can sit under several modes; games without a mode in a last null bucket), optionally workspace-scoped, most played first. A game is one of a completed series of a public, non-league tournament: the series' confirmed games with a map when it has any, else its parsed maps, so nothing counts twice. `share` is a map's games over its mode's; `avg_duration_s` averages the parsed maps of that map and mode (null when none).
          *
          *     RPC subject: `rpc.app.statistics.maps`
          */
@@ -4173,7 +4173,7 @@ export interface paths {
         };
         /**
          * User encounters
-         * @description Permission: public; no authentication required. Returns a player's paginated encounters — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` — filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent.
+         * @description Permission: public; no authentication required. Returns a player's paginated encounters — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` — filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent. Each match carries its `map` and its own `mode` (null when none).
          *
          *     RPC subject: `rpc.app.users.encounters`
          */
@@ -4195,7 +4195,7 @@ export interface paths {
         };
         /**
          * User maps
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated, sortable per-map record (win/loss/draw/winrate), optionally workspace-scoped.
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated, sortable per-map record (win/loss/draw/winrate), optionally workspace-scoped. `mode_id` counts only the matches played in that mode (the match's own mode, not the map's catalog parent).
          *
          *     RPC subject: `rpc.app.users.maps`
          */
@@ -4217,7 +4217,7 @@ export interface paths {
         };
         /**
          * User maps summary
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns aggregate totals for a player's per-map record, optionally workspace-scoped.
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns aggregate totals for a player's per-map record, optionally workspace-scoped; `mode_id` filters by the match's own mode as in the per-map list.
          *
          *     RPC subject: `rpc.app.users.maps_summary`
          */
@@ -4371,7 +4371,7 @@ export interface paths {
         };
         /**
          * User tournament encounters
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's encounters (with per-match stats) within one tournament — the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI.
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's encounters (with per-match stats) within one tournament — the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI. Each match carries its `map` and its own `mode` (null when none).
          *
          *     RPC subject: `rpc.app.users.tournament_encounters`
          */
@@ -7942,7 +7942,7 @@ export interface paths {
         get: operations["get__api_v1_admin_tournaments__tournament_id__pick_ban_configs"];
         /**
          * Upsert pick-ban config
-         * @description Permission: workspace `match.update` on the tournament's workspace. Creates or replaces the pick-ban config for one (kind, tournament, stage or stage+round) cascade level after validating the ruleset document and the item pool. A ruleset with validation errors is a 422 whose `details.fields[0]` carries `code: "ruleset_invalid"` plus an `issues` array of `{path, code, severity, message}` — the same issue objects admin_pick_ban_rules_validate returns — so the constructor can highlight the offending fields. A hero config whose ruleset holds a `side_pick` step but whose pool is empty is a 422 `pool_required` (save the champion pool first: a pool-less room never opens, yet its side step would hold the result of every game); a pool item that is not a catalog row of the game of the tournament and of the catalog of the kind is a 422 `pool_item_not_in_catalog`.
+         * @description Permission: workspace `match.update` on the tournament's workspace. Creates or replaces the pick-ban config for one (kind, tournament, stage or stage+round) cascade level after validating the ruleset document and the item pool. A ruleset with validation errors is a 422 whose `details.fields[0]` carries `code: "ruleset_invalid"` plus an `issues` array of `{path, code, severity, message}` — the same issue objects admin_pick_ban_rules_validate returns — so the constructor can highlight the offending fields. A hero config whose ruleset holds a `side_pick` step but whose pool is empty is a 422 `pool_required` (save the champion pool first: a pool-less room never opens, yet its side step would hold the result of every game); a pool item that is not a catalog row of the game of the tournament and of the catalog of the kind is a 422 `pool_item_not_in_catalog`. A map config of a game that declares the `mode` kind may also name its modes in the flat `item_ids` (never in slots): ingested logs of another mode are then refused (`mode_not_in_pool`), maps are checked against the map items alone, and the room vetoes the map items only (a pool of only modes opens no room, like a rules template).
          *
          *     RPC subject: `rpc.tournament.admin_pick_ban_config_upsert`
          */
@@ -12764,6 +12764,13 @@ export interface components {
             map_index: number | null;
             /** Member Totals */
             member_totals?: components["schemas"]["app.NativeFact"][];
+            /** @default null */
+            mode: components["schemas"]["app.CatalogEntityRead"] | null;
+            /**
+             * Mode Id
+             * @default null
+             */
+            mode_id: number | null;
             /** Participants */
             participants: components["schemas"]["app.MatchParticipantRead"][];
             /** Played At */
@@ -16780,6 +16787,11 @@ export interface components {
             hint: components["schemas"]["stats.MatchHint"] | null;
             /** Map */
             map: string;
+            /**
+             * Mode
+             * @default null
+             */
+            mode: string | null;
             /** Participants */
             participants: components["schemas"]["stats.MatchParticipantDoc"][];
             /**
@@ -17461,6 +17473,13 @@ export interface components {
              * @default null
              */
             map_id: number | null;
+            /** @default null */
+            mode: components["schemas"]["tournament.CatalogEntityRead"] | null;
+            /**
+             * Mode Id
+             * @default null
+             */
+            mode_id: number | null;
             /** Position */
             position: number;
             /**
@@ -18153,6 +18172,13 @@ export interface components {
             map_id: number;
             /** Map Index */
             map_index: number | null;
+            /** @default null */
+            mode: components["schemas"]["tournament.CatalogEntityRead"] | null;
+            /**
+             * Mode Id
+             * @default null
+             */
+            mode_id: number | null;
             /** Participants */
             participants: components["schemas"]["tournament.MatchParticipantRead"][];
             /** Played At */
@@ -18195,6 +18221,13 @@ export interface components {
             map_id: number;
             /** Map Index */
             map_index: number | null;
+            /** @default null */
+            mode: components["schemas"]["tournament.CatalogEntityRead"] | null;
+            /**
+             * Mode Id
+             * @default null
+             */
+            mode_id: number | null;
             /** Participants */
             participants: components["schemas"]["tournament.MatchParticipantRead"][];
             /** Played At */
@@ -24301,6 +24334,13 @@ export interface components {
             map_id: number;
             /** Map Index */
             map_index: number | null;
+            /** @default null */
+            mode: components["schemas"]["tournament.CatalogEntityRead"] | null;
+            /**
+             * Mode Id
+             * @default null
+             */
+            mode_id: number | null;
             /** Participants */
             participants: components["schemas"]["tournament.MatchParticipantRead"][];
             /** Played At */
@@ -24352,6 +24392,13 @@ export interface components {
             map_id: number;
             /** Map Index */
             map_index: number | null;
+            /** @default null */
+            mode: components["schemas"]["tournament.CatalogEntityRead"] | null;
+            /**
+             * Mode Id
+             * @default null
+             */
+            mode_id: number | null;
             /** Participants */
             participants: components["schemas"]["tournament.MatchParticipantRead"][];
             /** Played At */
