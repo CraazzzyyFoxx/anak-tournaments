@@ -45,7 +45,7 @@ class RosterTeamFormat(db.TimeStampIntegerMixin):
         ),
         ForeignKeyConstraint(
             ["custom_game_id", "workspace_id", "discipline"],
-            ["balancer.custom_game.id", "balancer.custom_game.workspace_id", "balancer.custom_game.discipline"],
+            ["mix.custom_game.id", "mix.custom_game.workspace_id", "mix.custom_game.discipline"],
             ondelete="CASCADE",
             name="fk_team_format_custom_game",
         ),

@@ -16,7 +16,6 @@ structured 409 rather than letting an IntegrityError surface as a 500.
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import uuid
 from contextlib import ExitStack
@@ -34,16 +33,14 @@ from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-os.environ["DEBUG"] = "true"
-
 import pytest  # noqa: E402
 
 from shared.core import enums  # noqa: E402
 from shared.core.errors import ApiHTTPException, BaseAPIException  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, default_schema  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
-    BalancerRegistrationForm,
-    BalancerRegistrationFormTemplate,
+    RegistrationForm,
+    RegistrationFormTemplate,
 )
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
@@ -79,7 +76,7 @@ _FORM_IDENTITY_COLUMNS = frozenset(
 def _toggles(form: Any) -> dict[str, Any]:
     return {
         attr.key: getattr(form, attr.key)
-        for attr in sa.inspect(BalancerRegistrationForm).mapper.column_attrs
+        for attr in sa.inspect(RegistrationForm).mapper.column_attrs
         if attr.key not in _FORM_IDENTITY_COLUMNS
     }
 
@@ -252,9 +249,7 @@ def test_apply_bumps_the_form_version_and_leaves_the_template_untouched(db_sessi
             # Re-read the template from the database rather than trusting the
             # identity-mapped instance: the assertion is that the row did not move.
             template_after = await db_session.scalar(
-                sa.select(BalancerRegistrationFormTemplate.schema_json).where(
-                    BalancerRegistrationFormTemplate.id == template.id
-                )
+                sa.select(RegistrationFormTemplate.schema_json).where(RegistrationFormTemplate.id == template.id)
             )
             assert template_after == template_before
 
@@ -313,9 +308,7 @@ def test_save_from_form_snapshots_the_current_schema(db_session) -> None:
             assert "telegram" in _keys(edited.current_version.schema_json)
 
             after_edit = await db_session.scalar(
-                sa.select(BalancerRegistrationFormTemplate.schema_json).where(
-                    BalancerRegistrationFormTemplate.id == template.id
-                )
+                sa.select(RegistrationFormTemplate.schema_json).where(RegistrationFormTemplate.id == template.id)
             )
             return snapshot_keys, _keys(after_edit), edited.current_version.number
         finally:
@@ -463,8 +456,8 @@ def test_another_workspaces_template_is_invisible(db_session) -> None:
             assert [row.id for row in await template_service.list(db_session, workspace_id=other_ws)] == []
 
             survivor = await db_session.execute(
-                sa.select(BalancerRegistrationFormTemplate.name, BalancerRegistrationFormTemplate.schema_json).where(
-                    BalancerRegistrationFormTemplate.id == template.id
+                sa.select(RegistrationFormTemplate.name, RegistrationFormTemplate.schema_json).where(
+                    RegistrationFormTemplate.id == template.id
                 )
             )
             name, schema_json = survivor.one()
@@ -553,9 +546,7 @@ def test_a_templates_game_never_changes(db_session) -> None:
                     actor_user_id=None,
                 )
             stored = await db_session.scalar(
-                sa.select(BalancerRegistrationFormTemplate.discipline).where(
-                    BalancerRegistrationFormTemplate.id == template.id
-                )
+                sa.select(RegistrationFormTemplate.discipline).where(RegistrationFormTemplate.id == template.id)
             )
             return omitted.discipline, same.name, caught.value.status_code, list(caught.value.detail), stored
         finally:

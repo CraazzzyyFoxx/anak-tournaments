@@ -159,7 +159,7 @@ def _game(**overrides) -> SimpleNamespace:
 
 
 def _lobby(lobby_index: int = 0, **overrides) -> SimpleNamespace:
-    """One ``balancer.custom_game_lobby`` row: everything one match is about."""
+    """One ``mix.lobby`` row: everything one match is about."""
     fields = {
         "custom_game_id": 11,
         "lobby_index": lobby_index,
@@ -342,7 +342,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.team_names = MagicMock()
         self.team_names.mapping_for_game = AsyncMock(return_value={})
         self.team_names.set = AsyncMock()
-        # ``balancer.custom_game_lobby`` as a dict keyed by lobby_index: a fresh
+        # ``mix.lobby`` as a dict keyed by lobby_index: a fresh
         # mix has exactly one row, and a test that needs lobby B assigns
         # ``self.lobby_rows[1] = _lobby(1, ...)``.
         self.lobby_rows: dict[int, SimpleNamespace] = {0: _lobby(0)}

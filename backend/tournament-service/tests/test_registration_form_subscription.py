@@ -40,7 +40,7 @@ ANY_BOOSTY_OR_TWITCH = {
 
 
 class _FormRow:
-    """Stand-in for models.BalancerRegistrationForm (serializer reads attributes)."""
+    """Stand-in for models.RegistrationForm (serializer reads attributes)."""
 
     def __init__(self, **overrides):
         self.id = 1

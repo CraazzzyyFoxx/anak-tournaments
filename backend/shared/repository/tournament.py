@@ -121,8 +121,8 @@ class TournamentRepository(BaseRepository[models.Tournament]):
         """The tournament a balancer registration belongs to."""
         return await session.scalar(
             sa.select(models.Tournament)
-            .join(models.BalancerRegistration, models.BalancerRegistration.tournament_id == models.Tournament.id)
-            .where(models.BalancerRegistration.id == registration_id)
+            .join(models.Registration, models.Registration.tournament_id == models.Tournament.id)
+            .where(models.Registration.id == registration_id)
         )
 
 

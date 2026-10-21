@@ -15,7 +15,7 @@ CHAT_DOMAIN = "chat"
 class ChatRoomKind(StrEnum):
     #: ``ref_id`` is ``tournament.encounter.id`` -- the pre-game room.
     ENCOUNTER = "encounter"
-    #: ``ref_id`` is ``balancer.draft_session.id``, NOT the tournament. A session
+    #: ``ref_id`` is ``draft.session.id``, NOT the tournament. A session
     #: is the draft: re-seeding deletes one and creates another, and those are
     #: two different events with two different conversations.
     DRAFT = "draft"

@@ -13,7 +13,6 @@ The bulk team-format projection is patched so these serializer tests remain DB-f
 
 from __future__ import annotations
 
-import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,7 +27,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 from shared import models
 from shared.core import enums  # noqa: E402
@@ -107,7 +105,7 @@ class _LockProbeSession:
     async def scalar(self, statement: Any) -> Any:
         self.scalar_calls.append(statement)
         rendered = str(statement)
-        if "registration_team" in rendered:
+        if "registration.team" in rendered:
             return self.team_status
         return self.draft_status
 

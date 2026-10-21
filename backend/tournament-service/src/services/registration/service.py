@@ -14,7 +14,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared import models
-from shared.balancer_registration_statuses import get_status_metas_map
 from shared.balancer_subrole_catalog import resolve_subrole_catalog
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.core.errors import BaseAPIException as HTTPException
@@ -31,9 +30,10 @@ from shared.domain.forms import (
 )
 from shared.hero_catalog import HeroCatalog
 from shared.rbac import assign_workspace_system_role
+from shared.registration_statuses import get_status_metas_map
 from shared.repository import (
-    BalancerRegistrationRepository,
     CatalogRoleRepository,
+    RegistrationRepository,
     SocialAccountRepository,
     TournamentRepository,
     UserRepository,
@@ -94,7 +94,7 @@ _GAME_IDENTITY_CONFLICT = "This game handle already belongs to another player; a
 
 
 def _require_current_schema(
-    form: models.BalancerRegistrationForm,
+    form: models.RegistrationForm,
     submitted_version_id: int | None,
 ) -> FormSchema:
     """The form's CURRENT schema, refusing a submission aimed at another version.
@@ -129,7 +129,7 @@ class TeamPlacement:
     is_substitute: bool = False
 
 
-def _role_counts(registrations: Sequence[models.BalancerRegistration]) -> dict[str, int]:
+def _role_counts(registrations: Sequence[models.Registration]) -> dict[str, int]:
     """Primary role -> number of registrations declaring it. One bucket per row.
 
     The primary role, or the highest-priority one when nothing is flagged primary.
@@ -153,22 +153,22 @@ def _primary_role_select(tournament_id: int) -> sa.Subquery:
     """
     return (
         sa.select(
-            models.BalancerRegistrationRole.registration_id.label("registration_id"),
-            models.BalancerRegistrationRole.role.label("role"),
+            models.RegistrationRole.registration_id.label("registration_id"),
+            models.RegistrationRole.role.label("role"),
         )
         .join(
-            models.BalancerRegistration,
-            models.BalancerRegistration.id == models.BalancerRegistrationRole.registration_id,
+            models.Registration,
+            models.Registration.id == models.RegistrationRole.registration_id,
         )
         .where(
-            models.BalancerRegistration.tournament_id == tournament_id,
-            models.BalancerRegistration.deleted_at.is_(None),
+            models.Registration.tournament_id == tournament_id,
+            models.Registration.deleted_at.is_(None),
         )
-        .distinct(models.BalancerRegistrationRole.registration_id)
+        .distinct(models.RegistrationRole.registration_id)
         .order_by(
-            models.BalancerRegistrationRole.registration_id,
-            models.BalancerRegistrationRole.is_primary.desc(),
-            models.BalancerRegistrationRole.priority.asc(),
+            models.RegistrationRole.registration_id,
+            models.RegistrationRole.is_primary.desc(),
+            models.RegistrationRole.priority.asc(),
         )
         .subquery()
     )
@@ -180,7 +180,7 @@ class RegistrationService:
     def __init__(
         self,
         *,
-        registration_repo: BalancerRegistrationRepository = BalancerRegistrationRepository(),
+        registration_repo: RegistrationRepository = RegistrationRepository(),
         tournament_repo: TournamentRepository = TournamentRepository(),
         user_repo: UserRepository = UserRepository(),
         social_account_repo: SocialAccountRepository = SocialAccountRepository(),
@@ -193,7 +193,7 @@ class RegistrationService:
     async def _registration_changed(
         self,
         session: AsyncSession,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
     ) -> None:
         await emit(
             session,
@@ -209,25 +209,25 @@ class RegistrationService:
         session: AsyncSession,
         tournament_id: int,
         auth_user_id: int,
-    ) -> models.BalancerRegistration | None:
+    ) -> models.Registration | None:
         # Not ``get_active_for_user``: that repository method eager-loads only
         # ``roles``, and this read feeds ``_reg_to_read``, which needs the nested
         # hero catalog plus every loader in ``registration_read_loaders()``.
         result = await session.execute(
             self.registration_repo.select()
             .where(
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.workspace_member.has(
+                models.Registration.tournament_id == tournament_id,
+                models.Registration.workspace_member.has(
                     models.WorkspaceMember.player.has(models.User.auth_user_id == auth_user_id)
                 ),
-                models.BalancerRegistration.deleted_at.is_(None),
+                models.Registration.deleted_at.is_(None),
             )
             .options(
-                selectinload(models.BalancerRegistration.roles)
-                .selectinload(models.BalancerRegistrationRole.hero_entries)
-                .selectinload(models.BalancerRegistrationRoleEntity.entity)
+                selectinload(models.Registration.roles)
+                .selectinload(models.RegistrationRole.hero_entries)
+                .selectinload(models.RegistrationRoleEntity.entity)
             )
-            .options(selectinload(models.BalancerRegistration.tournament))
+            .options(selectinload(models.Registration.tournament))
             # _reg_to_read serializes user_id from workspace_member.player_id and the
             # team brief from registration_team; neither may lazy-load in async code.
             .options(*registration_read_loaders())
@@ -315,7 +315,7 @@ class RegistrationService:
     async def _anchor_registration_member(
         self,
         session: AsyncSession,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
         *,
         player_id: int,
         workspace_id: int | None,
@@ -357,10 +357,10 @@ class RegistrationService:
             collides = await self.registration_repo.exists(
                 session,
                 filters=[
-                    models.BalancerRegistration.tournament_id == registration.tournament_id,
-                    models.BalancerRegistration.workspace_member_id == member.id,
-                    models.BalancerRegistration.deleted_at.is_(None),
-                    models.BalancerRegistration.id != registration.id,
+                    models.Registration.tournament_id == registration.tournament_id,
+                    models.Registration.workspace_member_id == member.id,
+                    models.Registration.deleted_at.is_(None),
+                    models.Registration.id != registration.id,
                 ],
             )
             if collides:
@@ -380,7 +380,7 @@ class RegistrationService:
     async def ensure_player_identity(
         self,
         session: AsyncSession,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
         *,
         provider: str,
         auth_user_id: int | None = None,
@@ -418,7 +418,7 @@ class RegistrationService:
 
         ``auth_user_id`` is the *registering* account's auth identity, passed explicitly
         by self-service callers (``create_registration``); manual/sheet-sync callers have
-        no auth identity to offer and leave it ``None``. ``BalancerRegistration``
+        no auth identity to offer and leave it ``None``. ``Registration``
         has no ``auth_user_id`` column, so it cannot be read off the row.
 
         ``workspace_id`` is the registration's tournament's workspace when the
@@ -589,7 +589,7 @@ class RegistrationService:
         auto_approve: bool = False,
         auth_user: models.AuthUser | None = None,
         commit: bool = True,
-    ) -> models.BalancerRegistration:
+    ) -> models.Registration:
         """Create a self-service registration and auto-enroll the registrant.
 
         ``values`` is an already-validated answer document (see
@@ -618,7 +618,7 @@ class RegistrationService:
                 detail="Registration is not allowed for this user in this workspace",
             )
 
-        registration = models.BalancerRegistration(
+        registration = models.Registration(
             tournament_id=tournament_id,
             form_version_id=form_version_id,
             status="approved" if auto_approve else "pending",
@@ -693,8 +693,8 @@ class RegistrationService:
     async def _reload_for_read(
         self,
         session: AsyncSession,
-        registration: models.BalancerRegistration,
-    ) -> models.BalancerRegistration:
+        registration: models.Registration,
+    ) -> models.Registration:
         """Re-read a just-written row with every loader its read model needs.
 
         NOT ``session.refresh``: refresh re-runs the strategy each relationship
@@ -705,7 +705,7 @@ class RegistrationService:
         keep pointing at the version the row answered before.
         """
         await session.get(
-            models.BalancerRegistration,
+            models.Registration,
             registration.id,
             options=list(registration_read_loaders()),
             populate_existing=True,
@@ -715,14 +715,14 @@ class RegistrationService:
     async def update_registration(
         self,
         session: AsyncSession,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
         *,
         tournament: models.Tournament,
         values: Mapping[str, Any],
         schema: FormSchema,
         hero_catalog: HeroCatalog | None = None,
         form_version_id: int | None = None,
-    ) -> models.BalancerRegistration:
+    ) -> models.Registration:
         """Apply a validated PARTIAL answer document to an existing registration.
 
         The REGISTRANT's own edit, so it is gated by ``self_edit_policy``: the
@@ -790,19 +790,18 @@ class RegistrationService:
             if not handles:
                 continue
             filters: list[sa.ColumnElement[bool]] = [
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistration.identities.any(
+                models.Registration.tournament_id == tournament_id,
+                models.Registration.deleted_at.is_(None),
+                models.Registration.identities.any(
                     sa.and_(
-                        models.BalancerRegistrationIdentity.provider == provider,
-                        models.BalancerRegistrationIdentity.position == 0,
-                        models.BalancerRegistrationIdentity.handle_normalized
-                        == normalize_social_handle(provider, handles[0]),
+                        models.RegistrationIdentity.provider == provider,
+                        models.RegistrationIdentity.position == 0,
+                        models.RegistrationIdentity.handle_normalized == normalize_social_handle(provider, handles[0]),
                     )
                 ),
             ]
             if exclude_registration_id is not None:
-                filters.append(models.BalancerRegistration.id != exclude_registration_id)
+                filters.append(models.Registration.id != exclude_registration_id)
             if await self.registration_repo.exists(session, filters=filters):
                 raise HTTPException(
                     status_code=409, detail="A registration with this handle already exists in this tournament"
@@ -816,9 +815,9 @@ class RegistrationService:
         return await self.registration_repo.count(
             session,
             filters=[
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistration.status != "withdrawn",
+                models.Registration.tournament_id == tournament_id,
+                models.Registration.deleted_at.is_(None),
+                models.Registration.status != "withdrawn",
             ],
         )
 
@@ -831,20 +830,20 @@ class RegistrationService:
             return {}
         # Analytical: grouped aggregate over many tournaments in one round trip.
         result = await session.execute(
-            sa.select(models.BalancerRegistration.tournament_id, sa.func.count())
+            sa.select(models.Registration.tournament_id, sa.func.count())
             .where(
-                models.BalancerRegistration.tournament_id.in_(tournament_ids),
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistration.status != "withdrawn",
+                models.Registration.tournament_id.in_(tournament_ids),
+                models.Registration.deleted_at.is_(None),
+                models.Registration.status != "withdrawn",
             )
-            .group_by(models.BalancerRegistration.tournament_id)
+            .group_by(models.Registration.tournament_id)
         )
         return {row[0]: row[1] for row in result.all()}
 
     async def withdraw_registration(
         self,
         session: AsyncSession,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
     ) -> None:
         # Check-in is the point where the attendee list becomes load-bearing: the
         # balancer and the draft are run against it. Letting a participant drop
@@ -860,10 +859,10 @@ class RegistrationService:
     async def check_in_registration(
         self,
         session: AsyncSession,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
         *,
         checked_in_by: int | None,
-    ) -> models.BalancerRegistration:
+    ) -> models.Registration:
         if registration.status != "approved":
             raise HTTPException(status_code=409, detail="Registration must be approved before check-in")
 
@@ -996,7 +995,7 @@ class RegistrationService:
         session: AsyncSession,
         registrations: Sequence[Any],
         *,
-        form: models.BalancerRegistrationForm | None,
+        form: models.RegistrationForm | None,
     ) -> dict[int, AdmissionEvaluation]:
         """One admission evaluation per registration, for a whole list.
 
@@ -1032,7 +1031,7 @@ class RegistrationService:
         config = AdmissionConfig.from_form(form, subscription_rule=rule)
         return await resolve_admission(session, registrations, config=config, resolver=resolver)
 
-    async def queue_position(self, session: AsyncSession, reg: models.BalancerRegistration) -> QueuePlace:
+    async def queue_position(self, session: AsyncSession, reg: models.Registration) -> QueuePlace:
         """Where this entry sits in the queue, overall and inside its own role.
 
         Ordered by ``(submitted_at, id)`` — the list's own ``ORDER BY
@@ -1060,7 +1059,7 @@ class RegistrationService:
         mine = _primary_role_select(reg.tournament_id)
         role = await session.scalar(sa.select(mine.c.role).where(mine.c.registration_id == reg.id))
         by_row = _primary_role_select(reg.tournament_id)
-        ordered = sa.tuple_(models.BalancerRegistration.submitted_at, models.BalancerRegistration.id) <= sa.tuple_(
+        ordered = sa.tuple_(models.Registration.submitted_at, models.Registration.id) <= sa.tuple_(
             reg.submitted_at, reg.id
         )
         same_role = by_row.c.role == role
@@ -1071,13 +1070,13 @@ class RegistrationService:
                 sa.func.count().filter(sa.and_(same_role, ordered)),
                 sa.func.count().filter(same_role),
             )
-            .select_from(models.BalancerRegistration)
+            .select_from(models.Registration)
             # OUTER: a registration that declared no role is still one of the
             # entries, it just lands in no role bucket.
-            .outerjoin(by_row, by_row.c.registration_id == models.BalancerRegistration.id)
+            .outerjoin(by_row, by_row.c.registration_id == models.Registration.id)
             .where(
-                models.BalancerRegistration.tournament_id == reg.tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
+                models.Registration.tournament_id == reg.tournament_id,
+                models.Registration.deleted_at.is_(None),
             )
         )
         position, total, role_position, role_total = result.one()
@@ -1127,7 +1126,7 @@ class RegistrationService:
         ``get_status_metas_map`` is cashews-backed per workspace. That is safe
         because it caches the status *catalog*, not registrations, and all five
         catalog writes invalidate it after commit (see
-        ``shared.balancer_registration_statuses``). Never wrap this in
+        ``shared.registration_statuses``). Never wrap this in
         ``cache.disabling(...)``: it flips a *process-global* flag on the shared
         cashews backend and races with every concurrent request on this worker.
         """
@@ -1151,14 +1150,14 @@ class RegistrationService:
                 await session.scalars(
                     self.registration_repo.select()
                     .where(
-                        models.BalancerRegistration.tournament_id == tournament_id,
-                        models.BalancerRegistration.deleted_at.is_(None),
+                        models.Registration.tournament_id == tournament_id,
+                        models.Registration.deleted_at.is_(None),
                     )
                     # Roles only: no identity, no team, no history, no admission.
                     # ponytail: counted in Python over two light queries rather than
                     # one GROUP BY, so both paths share ``_role_counts`` and cannot
                     # drift. Push it into SQL if a field ever gets big enough to care.
-                    .options(selectinload(models.BalancerRegistration.roles))
+                    .options(selectinload(models.Registration.roles))
                 )
             )
             return RegistrationListResponse(
@@ -1174,20 +1173,20 @@ class RegistrationService:
             self.registration_repo.select()
             .where(
                 # tournament_id already pins this to a single workspace
-                # (BalancerRegistration has no denormalized workspace_id).
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
+                # (Registration has no denormalized workspace_id).
+                models.Registration.tournament_id == tournament_id,
+                models.Registration.deleted_at.is_(None),
             )
             .options(
-                selectinload(models.BalancerRegistration.roles)
-                .selectinload(models.BalancerRegistrationRole.hero_entries)
-                .selectinload(models.BalancerRegistrationRoleEntity.entity),
+                selectinload(models.Registration.roles)
+                .selectinload(models.RegistrationRole.hero_entries)
+                .selectinload(models.RegistrationRoleEntity.entity),
                 # Needed by _build_tournament_history and _reg_to_read below —
                 # the member is the registration's only identity anchor, and the team
                 # brief feeds the participants table's team column.
                 *registration_read_loaders(),
             )
-            .order_by(models.BalancerRegistration.submitted_at.asc())
+            .order_by(models.Registration.submitted_at.asc())
         )
         registrations = result.scalars().all()
         status_meta_map = await get_status_metas_map(session, workspace_id=workspace_id)

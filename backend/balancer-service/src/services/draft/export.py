@@ -20,7 +20,7 @@ from shared.core.enums import DraftPlayerStatus, DraftStatus
 from shared.domain.player_sub_roles import workspace_sub_role_slug
 from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
+from shared.models.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from shared.repository.draft import (
     DraftPickRepository,
     DraftPlayerRepository,

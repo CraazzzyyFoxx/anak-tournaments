@@ -109,7 +109,7 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
             "SELECT tm.workspace_member_id, tm.display_name_snapshot, tm.rank, cr.code, rm.busy, rm.rank_delta_applied"
             " FROM encounter.team_member tm LEFT JOIN encounter.team_member_role r ON r.team_member_id = tm.id"
             " LEFT JOIN catalog.role cr ON cr.id = r.role_id"
-            " JOIN balancer.custom_game_round_member rm ON rm.encounter_id = tm.encounter_id"
+            " JOIN mix.round_member rm ON rm.encounter_id = tm.encounter_id"
             " AND rm.workspace_member_id = tm.workspace_member_id WHERE tm.encounter_id = :id"
             " ORDER BY tm.workspace_member_id",
             id=encounter_id,
@@ -175,7 +175,7 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
             [
                 tuple(r)
                 for r in await self._rows(
-                    "SELECT workspace_member_id, busy FROM balancer.custom_game_round_member WHERE encounter_id = :id"
+                    "SELECT workspace_member_id, busy FROM mix.round_member WHERE encounter_id = :id"
                     " ORDER BY workspace_member_id",
                     id=encounter_id,
                 )
@@ -299,8 +299,8 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
             ("encounter.team_member", "encounter_id"),
             ("encounter.game", "encounter_id"),
             ("encounter.result_audit", "encounter_id"),
-            ("balancer.custom_game_round", "encounter_id"),
-            ("balancer.custom_game_round_member", "encounter_id"),
+            ("mix.round", "encounter_id"),
+            ("mix.round_member", "encounter_id"),
         ):
             [(count,)] = await self._rows(f"SELECT count(*) FROM {table} WHERE {column} = :id", id=encounter_id)
             self.assertEqual(0, count, table)

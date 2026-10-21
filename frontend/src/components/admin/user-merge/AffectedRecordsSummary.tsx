@@ -16,7 +16,7 @@ type AffectedRecordLabel =
   | "linkedAccount";
 const AFFECTED_RECORD_LABELS: Record<string, AffectedRecordLabel> = {
   "tournament.player.workspace_member_id": "tournamentRosterEntries",
-  "balancer.registration.workspace_member_id": "balancerRegistrations",
+  "registration.registration.workspace_member_id": "balancerRegistrations",
   "achievements.evaluation_result.workspace_member_id": "achievementResults",
   "achievements.override.workspace_member_id": "achievementOverrides",
   "players.user.auth_user_id": "linkedAccount"

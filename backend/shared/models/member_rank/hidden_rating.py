@@ -14,7 +14,7 @@ class MemberHiddenRating(db.TimeStampIntegerMixin):
     """The mix ranker's hidden ``(mu, sigma)`` of one member in one role.
 
     Derived data: it is a fold over the workspace's recorded mix rounds (``encounter.team_member`` /
-    ``balancer.custom_game_round*``; ``MixRankerService.rebuild``), kept incrementally by every recorded match
+    ``mix.round*``; ``MixRankerService.rebuild``), kept incrementally by every recorded match
     and rebuilt whenever that history or the workspace's hidden scale changes.
     Per workspace member, never per platform player: a host of another
     workspace must not be able to move it.

@@ -24,7 +24,7 @@ class HeroClass(StrEnum):
         """Draft/balancer/registration wire spelling: ``tank``/``damage``/``support``/``flex``.
 
         Identical to the member name -- kept as a named boundary because it is
-        the wire/storage contract (``BalancerRegistrationRole.role``,
+        the wire/storage contract (``RegistrationRole.role``,
         roster-slot projection keys, the Rust ``tournament_balancer``
         payload), not merely a Python detail.
         """

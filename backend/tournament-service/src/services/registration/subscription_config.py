@@ -235,7 +235,7 @@ class SubscriptionConfigService:
         where the blast radius matters most: toggles on, no rule row yet, which is exactly
         where an admin stands when they first open this card.
         """
-        form = models.BalancerRegistrationForm
+        form = models.RegistrationForm
         return (
             await session.scalar(
                 sa.select(sa.func.count())

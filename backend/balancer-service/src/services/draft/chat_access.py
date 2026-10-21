@@ -7,7 +7,7 @@ muted, are room policy and belong to ``ChatService``.
 
 The room is the SESSION, not the tournament: a re-seed is a different draft
 with a different conversation, so ``room.ref_id`` is a
-``balancer.draft_session.id``.
+``draft.session.id``.
 """
 
 from __future__ import annotations

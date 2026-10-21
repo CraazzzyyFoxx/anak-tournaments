@@ -84,10 +84,10 @@ flowchart TB
   end
 
   subgraph domain["Layer 4 — domain"]
-    REG["balancer.registration\nregistration_role.rank_value"]
+    REG["registration.registration\nregistration.role.rank_value"]
     TP["tournament.player"]
     ACH["achievements.*"]
-    DRAFT["balancer.draft_*"]
+    DRAFT["draft.*"]
     OW["overwatch_rank.rank_snapshot"]
   end
 
@@ -188,11 +188,11 @@ There are **no** `auth_user_id` and `role` columns. The role lives in `auth.user
 
 | Table | NULL? | Meaning |
 |---|---|---|
-| `balancer.registration.workspace_member_id` | yes | NULL = sheet/CSV without an identity, or a main+smurf collision |
+| `registration.registration.workspace_member_id` | yes | NULL = sheet/CSV without an identity, or a main+smurf collision |
 | `balancer.member_rank.workspace_member_id` | no | Workspace canon and the host's personal book |
-| `balancer.custom_game_player.workspace_member_id` | no | Mix lineup; carries no rank of its own |
+| `mix.player.workspace_member_id` | no | Mix lineup; carries no rank of its own |
 | `tournament.player.workspace_member_id` | no | A roster slot always belongs to a member |
-| `draft_team` / `draft_player` / `draft_pick` | — | Draft |
+| `draft.team` / `draft.player` / `draft.pick` | — | Draft |
 | `achievements.evaluation_result` / `override` | no | Achievements are scoped to a member, not to a global player |
 
 Created **idempotently** through `get_or_create_workspace_member` (`INSERT … ON CONFLICT DO NOTHING` on `uq_workspace_member_workspace_player`). Concurrent registrations do not catch `IntegrityError`.
@@ -524,7 +524,7 @@ flowchart LR
 `RegistrationService.create_registration` (`backend/tournament-service/src/services/registration/service.py`).
 
 1. Capability `registration.self_register` in this workspace. A deny → 403.
-2. Create the `balancer.registration` (the row carries no `auth_user_id` / `workspace_id`).
+2. Create the `registration.registration` (the row carries no `auth_user_id` / `workspace_id`).
 3. `ensure_player_identity(..., auth_user_id, workspace_id)`:
    - resolves the `players.user`;
    - `get_or_create_workspace_member`;
@@ -679,7 +679,7 @@ Two registrations or two tags for the same `player_id` in the same workspace con
 `UserMergeService` repoints references from source to target:
 
 - In each workspace, an existing target member survives; if none exists, the source member keeps its ID and changes `player_id`. A merge does not fabricate a replacement membership.
-- `tournament.player`, achievements, and `balancer.registration` move through `workspace_member_id`, not through the old `user_id`.
+- `tournament.player`, achievements, and `registration.registration` move through `workspace_member_id`, not through the old `user_id`.
 - Direct global references are the team captain and `stats.ingest_job.uploader_user_id`. Native observations use workspace-member identities, not legacy statistics/kill-feed user columns.
 - Before mutation, overlapping `stats.match_player` history is reported in preview and refused with HTTP 409 `stats_member_history_conflict`; facts are never summed or deduplicated. Disjoint history inserts target match-player rows, repoints facts and both event endpoints, then removes source match-player rows, preserving historical handles, roles, teams and values.
 - `UserMergeAudit.preview_snapshot_json.stats_evidence` preserves the original source/target global IDs, the complete retain/move member map, and stable stats audit IDs. An uploader-only merge has an empty member map and retains its global identity pair; it creates no membership. Match/member/job evidence is chunked to at most 100 owners and staged before the source-user deletion and transaction commit.

@@ -70,17 +70,17 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: E40
 
 from shared.core.enums import DraftPickStatus  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
-from shared.models.balancer.draft import DraftPick, DraftSession, DraftTeam  # noqa: E402
 from shared.models.catalog.entity import CatalogEntity  # noqa: E402
+from shared.models.draft import DraftPick, DraftSession, DraftTeam  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.platform.realtime import WorkspaceEvent  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
-    BalancerRegistration,
-    BalancerRegistrationForm,
-    BalancerRegistrationFormVersion,
-    BalancerRegistrationIdentity,
-    BalancerRegistrationRole,
-    BalancerRegistrationRoleEntity,
+    Registration,
+    RegistrationForm,
+    RegistrationFormVersion,
+    RegistrationIdentity,
+    RegistrationRole,
+    RegistrationRoleEntity,
 )
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
@@ -292,10 +292,10 @@ async def seed(session_factory: async_sessionmaker[AsyncSession], suffix: str) -
         await s.flush()
         await copy_for_tournament(s, tourn)
 
-        form = BalancerRegistrationForm(tournament_id=tourn.id, workspace_id=ws.id)
+        form = RegistrationForm(tournament_id=tourn.id, workspace_id=ws.id)
         s.add(form)
         await s.flush()
-        version = BalancerRegistrationFormVersion(form_id=form.id, number=1, schema_json=CUSTOM_FIELD_SCHEMA)
+        version = RegistrationFormVersion(form_id=form.id, number=1, schema_json=CUSTOM_FIELD_SCHEMA)
         s.add(version)
         await s.flush()
         form.current_version_id = version.id
@@ -314,7 +314,7 @@ async def seed(session_factory: async_sessionmaker[AsyncSession], suffix: str) -
         for i in range(total_seats):
             is_captain = i < TEAMS
             tag = f"P{suffix}-{i}#{1000 + i}"
-            reg = BalancerRegistration(
+            reg = Registration(
                 tournament_id=tourn.id,
                 display_name=f"Player {i}",
                 status="approved",
@@ -330,7 +330,7 @@ async def seed(session_factory: async_sessionmaker[AsyncSession], suffix: str) -
             lead = ROLES[i % 3]
             declared = [lead, *(role for role in ROLES if role != lead)][: 2 + (i % 2)]
             for priority, role in enumerate(declared):
-                row = BalancerRegistrationRole(
+                row = RegistrationRole(
                     registration_id=reg.id,
                     catalog_role=catalog_roles[role],
                     dimension_id=catalog_roles[role].dimension_id,
@@ -343,14 +343,14 @@ async def seed(session_factory: async_sessionmaker[AsyncSession], suffix: str) -
                 await s.flush()
                 for hero_priority in range(3):
                     s.add(
-                        BalancerRegistrationRoleEntity(
+                        RegistrationRoleEntity(
                             role_id=row.id,
                             entity_id=hero_ids[(i + hero_priority) % len(hero_ids)],
                             priority=hero_priority,
                         )
                     )
             s.add(
-                BalancerRegistrationIdentity(
+                RegistrationIdentity(
                     registration_id=reg.id,
                     provider="battlenet",
                     position=0,
@@ -359,7 +359,7 @@ async def seed(session_factory: async_sessionmaker[AsyncSession], suffix: str) -
                 )
             )
             s.add(
-                BalancerRegistrationIdentity(
+                RegistrationIdentity(
                     registration_id=reg.id,
                     provider="discord",
                     position=0,

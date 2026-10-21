@@ -15,7 +15,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models.balancer.draft import DraftAuditEvent, DraftSession
+from shared.models.draft import DraftAuditEvent, DraftSession
 from shared.repository.draft import DraftAuditEventRepository
 from shared.schemas.role import RoleRef
 from src import schemas

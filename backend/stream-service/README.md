@@ -31,7 +31,7 @@ and reads back an `{ok, data, error}` envelope.
   with the title, viewer count and thumbnail Twitch reported for each.
 - Deciding **which channels are pollable at all**. Official broadcasts come from
   `tournament.tournament_link` rows with `kind='stream'`. Participant channels come from
-  exactly two consented sources — a self-declared `balancer.registration.twitch_nick`
+  exactly two consented sources — a self-declared `registration.registration.twitch_nick`
   behind the per-tournament `stream_pov` checkbox, and an OAuth-verified
   `players.social_account` that is globally visible. Verified wins a login collision: it
   carries a `provider_user_id`, which survives a channel rename. A player's
@@ -101,7 +101,7 @@ Live state is **Redis-only**, five keys, all TTL'd:
 Postgres access is **read-only** apart from one write: `public.audit_log`, via
 `shared.services.audit.record_audit`, journalling the admin re-poll. Read-only tables:
 `tournament.tournament`, `tournament.tournament_link`, `tournament.team`,
-`tournament.player`, `balancer.registration`, `players.user`, `players.social_account`,
+`tournament.player`, `registration.registration`, `players.user`, `players.social_account`,
 `players.social_account_visibility`, `public.workspace_member`, and `public.settings` for
 the `stream.collection` config. The boundary rule — read freely through `shared`, write only
 what your service owns — is in [`../shared/README.md`](../shared/README.md);

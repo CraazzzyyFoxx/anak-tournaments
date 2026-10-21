@@ -6,13 +6,13 @@ import sqlalchemy as sa
 from sqlalchemy.orm.attributes import NO_VALUE
 
 from shared import models
-from shared.balancer_registration_statuses import (
+from shared.domain.forms import FormSchema, schema_from_form
+from shared.domain.roster import PlayerRoster, RosterRole
+from shared.registration_statuses import (
     StatusMeta,
     build_status_meta_from_model,
     build_unknown_status_meta,
 )
-from shared.domain.forms import FormSchema, schema_from_form
-from shared.domain.roster import PlayerRoster, RosterRole
 from src import schemas
 from src.schemas.admission import AdmissionRead
 from src.schemas.registration_form import RegistrationFormRead, RegistrationFormTemplateRead
@@ -28,7 +28,7 @@ def loaded_relationship_or_none(instance: object, attribute: str):
     return loaded_value
 
 
-def _role_top_characters(role: models.BalancerRegistrationRole) -> list[str]:
+def _role_top_characters(role: models.RegistrationRole) -> list[str]:
     """Ordered character slugs for a role, without triggering a lazy load.
 
     Returns ``[]`` when ``hero_entries`` was not eagerly loaded, so callers that
@@ -41,7 +41,7 @@ def _role_top_characters(role: models.BalancerRegistrationRole) -> list[str]:
 
 
 def serialize_registration_role(
-    role: models.BalancerRegistrationRole,
+    role: models.RegistrationRole,
     ow_rank_value: int | None = None,
     entry: RosterRole | None = None,
 ) -> schemas.BalancerRegistrationRoleRead:
@@ -68,7 +68,7 @@ def serialize_registration_role(
 
 
 def serialize_registration(
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     *,
     workspace_id: int,
     provider: str,
@@ -150,7 +150,7 @@ def serialize_registration(
 
 
 def serialize_registration_form(
-    form: models.BalancerRegistrationForm,
+    form: models.RegistrationForm,
     *,
     discipline: str,
     is_open: bool,
@@ -212,7 +212,7 @@ def serialize_registration_form(
 
 
 def serialize_registration_form_template(
-    template: models.BalancerRegistrationFormTemplate,
+    template: models.RegistrationFormTemplate,
 ) -> RegistrationFormTemplateRead:
     """A template is its questions and its name -- no toggles, no tournament.
 
@@ -232,7 +232,7 @@ def serialize_registration_form_template(
 
 
 def serialize_status(
-    status_row: models.BalancerRegistrationStatus,
+    status_row: models.RegistrationStatus,
 ) -> schemas.BalancerRegistrationStatusRead:
     is_override = status_row.kind == "builtin" and status_row.workspace_id is not None
     return schemas.BalancerRegistrationStatusRead(
@@ -260,7 +260,7 @@ def serialize_status(
 
 
 def serialize_feed(
-    feed: models.BalancerRegistrationGoogleSheetFeed,
+    feed: models.RegistrationGoogleSheetFeed,
 ) -> schemas.BalancerGoogleSheetFeedRead:
     return schemas.BalancerGoogleSheetFeedRead(
         id=feed.id,

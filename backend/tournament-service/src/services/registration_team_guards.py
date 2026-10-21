@@ -22,7 +22,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException
-from shared.models.registration.registration import BalancerRegistrationTeam
+from shared.models.registration.registration import RegistrationTeam
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,8 +50,8 @@ async def registered_team_status(session: AsyncSession, tournament_id: int) -> s
     boolean go through :func:`has_registered_teams`.
     """
     return await session.scalar(
-        select(BalancerRegistrationTeam.status)
-        .where(BalancerRegistrationTeam.tournament_id == tournament_id, teams_holding_slots_clause())
+        select(RegistrationTeam.status)
+        .where(RegistrationTeam.tournament_id == tournament_id, teams_holding_slots_clause())
         .limit(1)
     )
 
@@ -59,9 +59,9 @@ async def registered_team_status(session: AsyncSession, tournament_id: int) -> s
 def teams_holding_slots_clause() -> ColumnElement[bool]:
     """What "still holding roster slots" means, shared by the per-tournament and per-page reads."""
     return and_(
-        BalancerRegistrationTeam.deleted_at.is_(None),
-        BalancerRegistrationTeam.status.notin_(_RELEASED_TEAM_STATUSES),
-        BalancerRegistrationTeam.exported_team_id.is_(None),
+        RegistrationTeam.deleted_at.is_(None),
+        RegistrationTeam.status.notin_(_RELEASED_TEAM_STATUSES),
+        RegistrationTeam.exported_team_id.is_(None),
     )
 
 
@@ -79,9 +79,9 @@ async def registered_team_tournament_ids(session: AsyncSession, tournament_ids: 
     if not tournament_ids:
         return set()
     result = await session.scalars(
-        select(BalancerRegistrationTeam.tournament_id)
+        select(RegistrationTeam.tournament_id)
         .where(
-            BalancerRegistrationTeam.tournament_id.in_(tournament_ids),
+            RegistrationTeam.tournament_id.in_(tournament_ids),
             teams_holding_slots_clause(),
         )
         .distinct()

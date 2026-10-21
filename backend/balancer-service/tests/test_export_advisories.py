@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from shared.core.enums import DraftAutopickStrategy, DraftFormat, DraftPoolSource, DraftStatus
 from shared.domain.roster_shape import RosterShape
-from shared.models.balancer.draft import DraftSession
+from shared.models.draft import DraftSession
 from src import schemas
 from src.rpc import admin, binary, draft
 from src.services.team_export import ExportOutcome, MaterializationResult

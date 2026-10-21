@@ -19,7 +19,7 @@ from collections.abc import Collection, Mapping
 from shared.core.enums import DraftPickStatus, DraftPlayerStatus
 from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam
+from shared.models.draft import DraftPick, DraftPlayer, DraftTeam
 from src.domain.draft.entities import (
     DraftAssignment,
     DraftFeasibilityReport,

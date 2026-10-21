@@ -132,17 +132,17 @@ class GuardedUpdateTests(TestCase):
 
     def _consume_sql(self) -> str:
         statement = (
-            sa.update(models.BalancerRegistrationTeamInvite)
+            sa.update(models.RegistrationTeamInvite)
             .where(
-                models.BalancerRegistrationTeamInvite.id == 1,
-                models.BalancerRegistrationTeamInvite.state == teams.INVITE_PENDING,
+                models.RegistrationTeamInvite.id == 1,
+                models.RegistrationTeamInvite.state == teams.INVITE_PENDING,
                 sa.or_(
-                    models.BalancerRegistrationTeamInvite.expires_at.is_(None),
-                    models.BalancerRegistrationTeamInvite.expires_at > sa.func.now(),
+                    models.RegistrationTeamInvite.expires_at.is_(None),
+                    models.RegistrationTeamInvite.expires_at > sa.func.now(),
                 ),
             )
             .values(state=teams.INVITE_ACCEPTED)
-            .returning(models.BalancerRegistrationTeamInvite.id)
+            .returning(models.RegistrationTeamInvite.id)
         )
         return str(statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
 
@@ -150,7 +150,7 @@ class GuardedUpdateTests(TestCase):
         """A read-then-write would let two redemptions of one link both succeed.
         Asserted on the source because the race itself is not unit-testable.
 
-        The statement now lives in ``BalancerRegistrationTeamInviteRepository
+        The statement now lives in ``RegistrationTeamInviteRepository
         .consume_if_pending``, so the guard is asserted where it is written and
         the delegation where it is used -- both halves, neither dropped.
         """
@@ -252,8 +252,8 @@ class StatusDenormalizationTests(TestCase):
 
 
 class MutabilityGateTests(TestCase):
-    def _team(self, **kwargs: Any) -> models.BalancerRegistrationTeam:
-        team = models.BalancerRegistrationTeam(**kwargs)
+    def _team(self, **kwargs: Any) -> models.RegistrationTeam:
+        team = models.RegistrationTeam(**kwargs)
         return team
 
     def test_an_exported_team_is_frozen_by_its_export_link_not_its_status(self) -> None:
@@ -294,7 +294,7 @@ class OrganizerRejectionTests(TestCase):
         self.assertEqual("x" * 1000, request.reason)
 
     def test_rejection_reason_is_private_but_available_to_captain_and_organizer(self) -> None:
-        team = models.BalancerRegistrationTeam(
+        team = models.RegistrationTeam(
             id=1,
             tournament_id=2,
             name="Roster",
@@ -331,7 +331,7 @@ class CrossTournamentAuthorizationTests(IsolatedAsyncioTestCase):
     async def test_rejecting_a_team_from_another_tournament_is_refused(self) -> None:
         """The permission check upstream passes for tournament 1; without this
         assertion an organizer of tournament 1 could reject teams in tournament 2."""
-        team = models.BalancerRegistrationTeam(tournament_id=2, status=teams.TEAM_FORMING)
+        team = models.RegistrationTeam(tournament_id=2, status=teams.TEAM_FORMING)
         session = _SingleTeamSession(team)
         with self.assertRaises(ApiHTTPException) as caught:
             await teams.teams_service.reject_team(
@@ -465,12 +465,12 @@ class FreeAgentPredicateTests(TestCase):
     def _sql(self) -> str:
         import sqlalchemy as sa
 
-        from shared.models.registration.registration import BalancerRegistration
+        from shared.models.registration.registration import Registration
 
         # Compiles the SERVICE'S OWN clause rather than a hand-written copy of it.
         # A copy is what this test used to do, and it would have kept passing while
         # the service's filter drifted underneath it.
-        statement = sa.select(sa.func.count(BalancerRegistration.id)).where(*teams._free_agent_clause(1))
+        statement = sa.select(sa.func.count(Registration.id)).where(*teams._free_agent_clause(1))
         return str(statement.compile(compile_kwargs={"literal_binds": True}))
 
     def test_it_counts_only_registrations_with_no_team(self) -> None:
@@ -795,10 +795,10 @@ class InviteCapCounterTests(TestCase):
     def _sql(self, team: Any) -> str:
         import sqlalchemy as sa
 
-        conditions = [models.BalancerRegistrationTeamInvite.team_id == team.id]
+        conditions = [models.RegistrationTeamInvite.team_id == team.id]
         if team.invite_cap_reset_at is not None:
-            conditions.append(models.BalancerRegistrationTeamInvite.invited_at > team.invite_cap_reset_at)
-        statement = sa.select(sa.func.count(models.BalancerRegistrationTeamInvite.id)).where(*conditions)
+            conditions.append(models.RegistrationTeamInvite.invited_at > team.invite_cap_reset_at)
+        statement = sa.select(sa.func.count(models.RegistrationTeamInvite.id)).where(*conditions)
         return str(statement.compile(compile_kwargs={"literal_binds": True}))
 
     def test_the_check_and_the_display_share_one_counter(self) -> None:
@@ -912,7 +912,7 @@ class InviteHistoryTests(TestCase):
         source = self._source()
         history_query = _code_of(teams.teams_service.invite_repo.list_for_team)
 
-        self.assertNotIn(".where(models.BalancerRegistrationTeamInvite.state", source)
+        self.assertNotIn(".where(models.RegistrationTeamInvite.state", source)
         # The read the service delegates to filters on team alone -- no state
         # predicate at all, which is what lets a declined row still surface.
         self.assertNotIn("invite.state", history_query)
@@ -986,19 +986,19 @@ class IsTeamCaptainTests(IsolatedAsyncioTestCase):
     invites a captain's own row in that list may carry."""
 
     async def test_a_team_with_no_captain_is_never_captained(self) -> None:
-        team = models.BalancerRegistrationTeam(captain_registration_id=None)
+        team = models.RegistrationTeam(captain_registration_id=None)
 
         self.assertFalse(await teams.teams_service.is_team_captain(_CaptaincyScalarSession(42), team, auth_user_id=1))
 
     async def test_the_owning_account_is_the_captain(self) -> None:
-        team = models.BalancerRegistrationTeam(captain_registration_id=42)
+        team = models.RegistrationTeam(captain_registration_id=42)
 
         self.assertTrue(await teams.teams_service.is_team_captain(_CaptaincyScalarSession(42), team, auth_user_id=1))
 
     async def test_a_non_owning_account_is_not_the_captain(self) -> None:
         """The row exists (someone captains this team) but the query for THIS
         account's ownership came back empty — the case an ordinary teammate hits."""
-        team = models.BalancerRegistrationTeam(captain_registration_id=42)
+        team = models.RegistrationTeam(captain_registration_id=42)
 
         self.assertFalse(await teams.teams_service.is_team_captain(_CaptaincyScalarSession(None), team, auth_user_id=1))
 
@@ -1015,7 +1015,7 @@ class OrganizerAttachTests(TestCase):
         source = _code_of(teams.teams_service.attach_member_as_organizer)
 
         self.assertIn("handle_normalized", source)
-        self.assertIn("BalancerRegistration(", source)
+        self.assertIn("models.Registration(", source)
         self.assertIn("ensure_player_identity", source)
 
     def test_place_still_enforces_eligibility(self) -> None:

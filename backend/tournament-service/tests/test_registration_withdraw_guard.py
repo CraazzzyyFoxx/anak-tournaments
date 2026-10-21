@@ -37,8 +37,8 @@ class _RecordingSession:
         self.commits += 1
 
 
-def _registration(*, checked_in: bool) -> models.BalancerRegistration:
-    return models.BalancerRegistration(
+def _registration(*, checked_in: bool) -> models.Registration:
+    return models.Registration(
         id=1,
         tournament_id=7,
         status="approved",

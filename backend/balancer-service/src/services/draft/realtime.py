@@ -17,7 +17,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models.balancer.draft import DraftSession
+from shared.models.draft import DraftSession
 from shared.repository.realtime import WorkspaceEventRepository
 from shared.services.realtime import DomainEvent, Scope, emit
 

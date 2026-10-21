@@ -12,7 +12,10 @@ Every service shares one PostgreSQL database, and the domain boundaries are draw
 | `overwatch` | Game catalog — heroes, maps, game modes | app-service / stats-service |
 | `overwatch_rank` | Overwatch rank telemetry from OverFast | stats-service |
 | `matches` | Parsed match logs and derived statistics | stats-service |
-| `balancer` | Registration, balancing, live draft, member ranks | balancer-service |
+| `balancer` | Balancing runs and their teams, balancer settings, member ranks | balancer-service |
+| `registration` | Registration forms, statuses, applications, team registration | tournament-service |
+| `mix` | Workspace pickup mixes and their recorded rounds | balancer-service |
+| `draft` | The live draft | balancer-service |
 | `achievements` | Achievement rules, evaluations and manual overrides | stats-service / app-service |
 | `analytics` | Analytics signals and the ML model registry | analytics-service |
 | `log_processing` | Match-log upload and parse records | stats-service / discord-service |
@@ -20,7 +23,7 @@ Every service shares one PostgreSQL database, and the domain boundaries are draw
 | `subscriptions` | Subscription providers, requirements and verdicts | tournament-service / stats-service |
 | `quota` | Quota plans, operation costs and overrides | every service, via `shared.quota` |
 
-The `balancer` schema is wider than its name: it holds tournament applications, balancing results and member ranks alike. A model package name does not always match its schema either — the rank models write to `overwatch_rank`, the log-ingestion models to `log_processing`.
+Each schema holds one domain: tournament applications live in `registration`, mixes in `mix`, the live draft in `draft`, and `balancer` keeps balancing results and member ranks. A model package name does not always match its schema — the rank models write to `overwatch_rank`, the member-rank models to `balancer`.
 
 The hubs almost everything converges on: `public.workspace` — the tenant; `public.workspace_member` — a player's membership in one workspace; `players.user` — the player; `auth.user` — the login account; `tournament.tournament` — the root of stages, teams, encounters and registrations; `overwatch.hero` — referenced by statistics, registration preferences and achievements.
 
@@ -33,7 +36,7 @@ There is no single "user" entity. There are four layers that sometimes converge 
 | Login account | `auth.user` | Who can sign in, and what may this session do |
 | Player | `players.user` | Who is this person across tournaments, logs and statistics |
 | Workspace membership | `public.workspace_member` | Does this player exist **in this** community |
-| Ranks | `balancer.member_rank` and `registration_role.rank_value` | What SR does a member have in a role |
+| Ranks | `balancer.member_rank` and `registration.role.rank_value` | What SR does a member have in a role |
 
 Account and player are linked 1:0..1 through the unique nullable `players.user.auth_user_id`. An empty value means a **virtual** player: someone who arrived from a match log, a CSV import, or was added to a roster by an organizer, and who cannot sign in. The layers are separate because a player without an account is a normal state, while an account without a player is a hole — you cannot hang a workspace membership on it, which is why signup creates a bare player row immediately.
 

@@ -1,8 +1,8 @@
 """Reads of the mix rounds recorded on the encounter layer.
 
-A round is one ``encounter.encounter`` owned by a ``balancer.custom_game`` plus its ``balancer.custom_game_round`` row.
+A round is one ``encounter.encounter`` owned by a ``mix.custom_game`` plus its ``mix.round`` row.
 Who sat where is ``encounter.team_member`` (rated-dimension leaf in ``team_member_role``); what only
-the balancer reads per member -- busy next door, the frozen rank delta -- is ``balancer.custom_game_round_member``.
+the balancer reads per member -- busy next door, the frozen rank delta -- is ``mix.round_member``.
 """
 
 from __future__ import annotations

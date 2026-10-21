@@ -21,9 +21,9 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from shared.core import enums
-from shared.models.custom_game import CustomGame
 from shared.models.encounter import Encounter, ScoringRule
 from shared.models.identity.user import User
+from shared.models.mix import CustomGame
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember
 from shared.models.tournament.team import Team
 from shared.models.tournament.tournament import Tournament

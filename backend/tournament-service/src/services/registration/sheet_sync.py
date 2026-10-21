@@ -37,10 +37,10 @@ from shared.disciplines import DISCIPLINES, identity_provider
 from shared.domain.forms import FormSchema, default_schema, identity_key, schema_from_form
 from shared.domain.roster import FlexRoleMode, flex_role_mode_from_schema
 from shared.repository import (
-    BalancerRegistrationRepository,
     CatalogRoleRepository,
     GoogleSheetBindingRepository,
     GoogleSheetFeedRepository,
+    RegistrationRepository,
 )
 from shared.services.realtime import Resource, Scope, emit
 from shared.services.roster import roster_engine
@@ -110,7 +110,7 @@ async def fetch_google_sheet_rows(
 
 async def _resolve_header_keys(
     source_url: str,
-    feed: models.BalancerRegistrationGoogleSheetFeed | None,
+    feed: models.RegistrationGoogleSheetFeed | None,
 ) -> list[str] | None:
     """Header keys from a cached header row, else a best-effort live fetch.
 
@@ -180,7 +180,7 @@ def build_mapping_catalog(
 
 
 def apply_sheet_fields_to_registration(
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     parsed_fields: dict[str, Any],
     values: Mapping[str, Any],
     *,
@@ -223,7 +223,7 @@ def apply_sheet_fields_to_registration(
 
 @dataclass
 class SheetSyncResult:
-    feed: models.BalancerRegistrationGoogleSheetFeed
+    feed: models.RegistrationGoogleSheetFeed
     created: int
     updated: int
     withdrawn: int
@@ -238,7 +238,7 @@ class SheetSyncService:
         *,
         feed_repo: GoogleSheetFeedRepository = GoogleSheetFeedRepository(),
         binding_repo: GoogleSheetBindingRepository = GoogleSheetBindingRepository(),
-        registration_repo: BalancerRegistrationRepository = BalancerRegistrationRepository(),
+        registration_repo: RegistrationRepository = RegistrationRepository(),
         common: RegistrationCommonService = _common_service,
     ) -> None:
         self.feed_repo = feed_repo
@@ -268,14 +268,14 @@ class SheetSyncService:
         self,
         session: AsyncSession,
         tournament_id: int,
-    ) -> models.BalancerRegistrationGoogleSheetFeed | None:
+    ) -> models.RegistrationGoogleSheetFeed | None:
         return await self.feed_repo.get_by_tournament(session, tournament_id)
 
     async def require_google_sheet_feed(
         self,
         session: AsyncSession,
         tournament_id: int,
-    ) -> models.BalancerRegistrationGoogleSheetFeed:
+    ) -> models.RegistrationGoogleSheetFeed:
         feed = await self.get_google_sheet_feed(session, tournament_id)
         if feed is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Google Sheets feed not configured")
@@ -287,7 +287,7 @@ class SheetSyncService:
         tournament_id: int,
         *,
         source_url: str,
-        existing_feed: models.BalancerRegistrationGoogleSheetFeed | None,
+        existing_feed: models.RegistrationGoogleSheetFeed | None,
         mapping_config_json: dict[str, Any] | None,
         value_mapping_json: dict[str, Any] | None = None,
     ) -> None:
@@ -331,7 +331,7 @@ class SheetSyncService:
         auto_sync_interval_seconds: int,
         mapping_config_json: dict[str, Any] | None,
         value_mapping_json: dict[str, Any] | None,
-    ) -> models.BalancerRegistrationGoogleSheetFeed:
+    ) -> models.RegistrationGoogleSheetFeed:
         tournament = await self.common.ensure_tournament_exists(session, tournament_id)
         sheet_id, gid = extract_sheet_source(source_url)
         feed = await self.get_google_sheet_feed(session, tournament_id)
@@ -345,7 +345,7 @@ class SheetSyncService:
                 value_mapping_json=value_mapping_json,
             )
         if feed is None:
-            feed = models.BalancerRegistrationGoogleSheetFeed(
+            feed = models.RegistrationGoogleSheetFeed(
                 tournament_id=tournament.id,
                 source_url=source_url,
                 sheet_id=sheet_id,
@@ -380,7 +380,7 @@ class SheetSyncService:
         tournament_id: int,
         *,
         source_url: str | None = None,
-    ) -> tuple[models.BalancerRegistrationGoogleSheetFeed | None, list[str], dict[str, Any]]:
+    ) -> tuple[models.RegistrationGoogleSheetFeed | None, list[str], dict[str, Any]]:
         feed = await self.get_google_sheet_feed(session, tournament_id)
         url = source_url or (feed.source_url if feed else None)
         if not url:
@@ -515,21 +515,21 @@ class SheetSyncService:
         self,
         session: AsyncSession,
         tournament_id: int,
-        feed: models.BalancerRegistrationGoogleSheetFeed | None,
+        feed: models.RegistrationGoogleSheetFeed | None,
         provider: str,
     ) -> tuple[set[str], set[str]]:
         """Existing source-record keys (bound rows) and primary game handle keys."""
         handle_result = await session.execute(
-            sa.select(models.BalancerRegistrationIdentity.handle_normalized)
+            sa.select(models.RegistrationIdentity.handle_normalized)
             .join(
-                models.BalancerRegistration,
-                models.BalancerRegistration.id == models.BalancerRegistrationIdentity.registration_id,
+                models.Registration,
+                models.Registration.id == models.RegistrationIdentity.registration_id,
             )
             .where(
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistrationIdentity.provider == provider,
-                models.BalancerRegistrationIdentity.position == 0,
+                models.Registration.tournament_id == tournament_id,
+                models.Registration.deleted_at.is_(None),
+                models.RegistrationIdentity.provider == provider,
+                models.RegistrationIdentity.position == 0,
             )
         )
         handle_keys = set(handle_result.scalars().all())
@@ -541,12 +541,12 @@ class SheetSyncService:
     async def _list_auto_sync_feeds(
         self,
         session: AsyncSession,
-    ) -> list[models.BalancerRegistrationGoogleSheetFeed]:
+    ) -> list[models.RegistrationGoogleSheetFeed]:
         """Every feed with auto-sync on, oldest id first (the scheduler's sweep set)."""
         result = await session.execute(
             self.feed_repo.select()
-            .where(models.BalancerRegistrationGoogleSheetFeed.auto_sync_enabled.is_(True))
-            .order_by(models.BalancerRegistrationGoogleSheetFeed.id.asc())
+            .where(models.RegistrationGoogleSheetFeed.auto_sync_enabled.is_(True))
+            .order_by(models.RegistrationGoogleSheetFeed.id.asc())
         )
         return list(result.scalars().all())
 
@@ -666,18 +666,18 @@ class SheetSyncService:
                     session,
                     feed.id,
                     options=[
-                        selectinload(models.BalancerRegistrationGoogleSheetBinding.registration).selectinload(
-                            models.BalancerRegistration.roles
+                        selectinload(models.RegistrationGoogleSheetBinding.registration).selectinload(
+                            models.Registration.roles
                         ),
                         # Pre-warm the identity map so ensure_player_identity's member
                         # lookup below is query-free for already-anchored rows.
-                        selectinload(models.BalancerRegistrationGoogleSheetBinding.registration).selectinload(
-                            models.BalancerRegistration.workspace_member
+                        selectinload(models.RegistrationGoogleSheetBinding.registration).selectinload(
+                            models.Registration.workspace_member
                         ),
                         # ``answer_service.apply`` upserts identity rows in place;
                         # the relationship is never lazy-loadable in async code.
-                        selectinload(models.BalancerRegistrationGoogleSheetBinding.registration).selectinload(
-                            models.BalancerRegistration.identities
+                        selectinload(models.RegistrationGoogleSheetBinding.registration).selectinload(
+                            models.Registration.identities
                         ),
                     ],
                 )
@@ -690,19 +690,19 @@ class SheetSyncService:
             reuse_rows = await session.execute(
                 self.registration_repo.select()
                 .where(
-                    models.BalancerRegistration.tournament_id == tournament_id,
-                    models.BalancerRegistration.deleted_at.is_(None),
+                    models.Registration.tournament_id == tournament_id,
+                    models.Registration.deleted_at.is_(None),
                 )
                 .options(
-                    selectinload(models.BalancerRegistration.roles),
+                    selectinload(models.Registration.roles),
                     # The member is the registration's identity anchor; loading it
                     # here keeps ensure_player_identity's lookup query-free.
-                    selectinload(models.BalancerRegistration.workspace_member),
-                    selectinload(models.BalancerRegistration.identities),
+                    selectinload(models.Registration.workspace_member),
+                    selectinload(models.Registration.identities),
                 )
-                .order_by(models.BalancerRegistration.id.asc())
+                .order_by(models.Registration.id.asc())
             )
-            registrations_by_handle: dict[str, models.BalancerRegistration] = {}
+            registrations_by_handle: dict[str, models.Registration] = {}
             for reg_row in reuse_rows.scalars().all():
                 identity = reg_row.primary_game_identity(provider=provider)
                 if identity is not None:
@@ -733,7 +733,7 @@ class SheetSyncService:
             seen_keys: set[str] = set()
             # Rows whose roles the sync rewrote: their ready/incomplete verdict is
             # recomputed once, below, from the engine's rosters.
-            resync_status_by_id: dict[int, models.BalancerRegistration] = {}
+            resync_status_by_id: dict[int, models.Registration] = {}
 
             for source_record_key, (row_index, raw_row_json, parsed_fields) in parsed_rows.items():
                 # Seen BEFORE validation: a row the sheet still carries must not
@@ -765,7 +765,7 @@ class SheetSyncService:
                     # Sheet-sync-created registrations have no registering auth account;
                     # their workspace_member anchor is provisioned from the game handle by
                     # ensure_player_identity below.
-                    registration = models.BalancerRegistration(
+                    registration = models.Registration(
                         tournament_id=tournament_id,
                         form_version_id=form.current_version_id if form is not None else None,
                         display_name=parsed_fields.get("display_name"),
@@ -823,7 +823,7 @@ class SheetSyncService:
                     # Every column is set up front so the insert is one statement:
                     # the repository's create() flushes, and assigning after it would
                     # trade that INSERT for an INSERT plus an UPDATE per new row.
-                    binding = models.BalancerRegistrationGoogleSheetBinding(
+                    binding = models.RegistrationGoogleSheetBinding(
                         feed_id=feed.id,
                         registration_id=registration.id,
                         source_record_key=source_record_key,

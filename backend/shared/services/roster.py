@@ -21,7 +21,6 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from shared.balancer_registration_statuses import balancer_pool_included_clause
 from shared.core.social import display_social_handle
 from shared.disciplines import identity_provider, rated_role_codes
 from shared.division_grid import DivisionGrid
@@ -30,14 +29,15 @@ from shared.domain.player_sub_roles import workspace_sub_role_slug
 from shared.domain.roster import CharacterRef, PlayerRoster, RosterRole, flex_role_mode
 from shared.domain.roster_shape import RosterShape
 from shared.models.registration.registration import (
-    BalancerRegistration,
-    BalancerRegistrationForm,
-    BalancerRegistrationIdentity,
-    BalancerRegistrationRole,
-    BalancerRegistrationRoleEntity,
+    Registration,
+    RegistrationForm,
+    RegistrationIdentity,
+    RegistrationRole,
+    RegistrationRoleEntity,
 )
 from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament import Tournament
+from shared.registration_statuses import balancer_pool_included_clause
 from shared.repository import TournamentRepository
 from shared.schemas.identity import PlayerIdentityRead
 from shared.schemas.role import RoleRef
@@ -55,12 +55,12 @@ def registration_load_options() -> list[Any]:
     ``MissingGreenlet`` in async code).
     """
     return [
-        selectinload(BalancerRegistration.roles)
-        .selectinload(BalancerRegistrationRole.hero_entries)
-        .selectinload(BalancerRegistrationRoleEntity.entity),
-        selectinload(BalancerRegistration.workspace_member).selectinload(WorkspaceMember.player),
-        selectinload(BalancerRegistration.identities),
-        selectinload(BalancerRegistration.form_version),
+        selectinload(Registration.roles)
+        .selectinload(RegistrationRole.hero_entries)
+        .selectinload(RegistrationRoleEntity.entity),
+        selectinload(Registration.workspace_member).selectinload(WorkspaceMember.player),
+        selectinload(Registration.identities),
+        selectinload(Registration.form_version),
     ]
 
 
@@ -70,14 +70,14 @@ def _primary_tag_order(provider: str) -> sa.ScalarSelect[str]:
     Joining would multiply registrations that carry several handles.
     """
     return (
-        sa.select(BalancerRegistrationIdentity.handle_normalized)
+        sa.select(RegistrationIdentity.handle_normalized)
         .where(
-            BalancerRegistrationIdentity.registration_id == BalancerRegistration.id,
-            BalancerRegistrationIdentity.provider == provider,
-            BalancerRegistrationIdentity.position == 0,
+            RegistrationIdentity.registration_id == Registration.id,
+            RegistrationIdentity.provider == provider,
+            RegistrationIdentity.position == 0,
         )
         .limit(1)
-        .correlate(BalancerRegistration)
+        .correlate(Registration)
         .scalar_subquery()
     )
 
@@ -85,16 +85,16 @@ def _primary_tag_order(provider: str) -> sa.ScalarSelect[str]:
 def _pool_clauses(tournament_id: int) -> tuple[Any, ...]:
     """The balancer pool predicate, exactly as the panel defines it."""
     return (
-        BalancerRegistration.status == "approved",
-        BalancerRegistration.deleted_at.is_(None),
+        Registration.status == "approved",
+        Registration.deleted_at.is_(None),
         balancer_pool_included_clause(
-            BalancerRegistration.balancer_status,
+            Registration.balancer_status,
             sa.select(Tournament.workspace_id).where(Tournament.id == tournament_id).scalar_subquery(),
         ),
     )
 
 
-def _character_refs(role: BalancerRegistrationRole) -> tuple[CharacterRef, ...]:
+def _character_refs(role: RegistrationRole) -> tuple[CharacterRef, ...]:
     return tuple(
         CharacterRef(id=entry.entity.id, slug=entry.entity.slug, image_path=entry.entity.image_path)
         for entry in sorted(role.hero_entries or [], key=lambda entry: entry.priority)
@@ -133,19 +133,19 @@ class RosterEngine:
         if tournament is None:
             return {}
         query = (
-            sa.select(BalancerRegistration)
-            .where(BalancerRegistration.tournament_id == tournament_id)
+            sa.select(Registration)
+            .where(Registration.tournament_id == tournament_id)
             .options(*registration_load_options())
-            .order_by(_primary_tag_order(identity_provider(tournament.discipline)).asc(), BalancerRegistration.id.asc())
+            .order_by(_primary_tag_order(identity_provider(tournament.discipline)).asc(), Registration.id.asc())
         )
         if not include_deleted:
-            query = query.where(BalancerRegistration.deleted_at.is_(None))
+            query = query.where(Registration.deleted_at.is_(None))
         if pool_only:
             query = query.where(*_pool_clauses(tournament_id))
         if registration_ids is not None:
             if not registration_ids:
                 return {}
-            query = query.where(BalancerRegistration.id.in_(list(registration_ids)))
+            query = query.where(Registration.id.in_(list(registration_ids)))
 
         registrations = list(await session.scalars(query))
         return await self.resolve(
@@ -167,9 +167,9 @@ class RosterEngine:
         if not registration_ids:
             return set()
         rows = await session.scalars(
-            sa.select(BalancerRegistration.id).where(
-                BalancerRegistration.tournament_id == tournament_id,
-                BalancerRegistration.id.in_(list(registration_ids)),
+            sa.select(Registration.id).where(
+                Registration.tournament_id == tournament_id,
+                Registration.id.in_(list(registration_ids)),
                 *_pool_clauses(tournament_id),
             )
         )
@@ -178,11 +178,11 @@ class RosterEngine:
     async def resolve(
         self,
         session: AsyncSession,
-        registrations: Sequence[BalancerRegistration],
+        registrations: Sequence[Registration],
         *,
         workspace_id: int | None,
         tournament_id: int | None = None,
-        form: BalancerRegistrationForm | None = None,
+        form: RegistrationForm | None = None,
         grid: DivisionGrid | None = None,
         order: Sequence[RankScope] = TOURNAMENT_ORDER,
         author_user_id: int | None = None,
@@ -205,11 +205,11 @@ class RosterEngine:
             role_codes = role_codes or rated_role_codes(discipline)
         if form is None and tournament_id is not None:
             form = await session.scalar(
-                sa.select(BalancerRegistrationForm)
+                sa.select(RegistrationForm)
                 # ``flex_role_mode`` reads the schema off the current version,
                 # which is never lazy-loadable in async code.
-                .options(selectinload(BalancerRegistrationForm.current_version))
-                .where(BalancerRegistrationForm.tournament_id == tournament_id)
+                .options(selectinload(RegistrationForm.current_version))
+                .where(RegistrationForm.tournament_id == tournament_id)
             )
         mode = flex_role_mode(form)
         if grid is None:
@@ -235,8 +235,8 @@ class RosterEngine:
     # -- role set ------------------------------------------------------------
 
     def _declared_roles(
-        self, reg: BalancerRegistration, *, mode: str, role_codes: Sequence[str]
-    ) -> tuple[BalancerRegistrationRole | str, ...]:
+        self, reg: Registration, *, mode: str, role_codes: Sequence[str]
+    ) -> tuple[RegistrationRole | str, ...]:
         """The roles this registration declares, in priority order.
 
         ``optional``: the active rows, as written. ``all_roles``/``forced``: the
@@ -250,7 +250,7 @@ class RosterEngine:
         lead -- there is nobody's choice to stand in for.
         """
         rows = sorted(reg.roles or [], key=lambda row: (row.priority, row.id or 0))
-        by_role: dict[str, BalancerRegistrationRole] = {}
+        by_role: dict[str, RegistrationRole] = {}
         for row in rows:
             role = row.role
             if role not in role_codes or role in by_role:
@@ -268,9 +268,9 @@ class RosterEngine:
     async def _resolve_ranks(
         self,
         session: AsyncSession,
-        registrations: Sequence[BalancerRegistration],
+        registrations: Sequence[Registration],
         *,
-        declared: Mapping[int, tuple[BalancerRegistrationRole | str, ...]],
+        declared: Mapping[int, tuple[RegistrationRole | str, ...]],
         workspace_id: int | None,
         discipline: str,
         grid: DivisionGrid | None,
@@ -361,8 +361,8 @@ class RosterEngine:
 
     def _build(
         self,
-        reg: BalancerRegistration,
-        declared: tuple[BalancerRegistrationRole | str, ...],
+        reg: Registration,
+        declared: tuple[RegistrationRole | str, ...],
         resolved: Mapping[str, ResolvedRank],
         *,
         mode: str,

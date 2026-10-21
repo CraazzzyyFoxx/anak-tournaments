@@ -20,20 +20,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared import models
-from shared.balancer_registration_statuses import (
-    balancer_pool_excluded_clause,
-    balancer_pool_included_clause,
-    get_status_metas_map,
-)
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import identity_provider
 from shared.domain.forms import FormSchema, default_schema, schema_from_form
 from shared.domain.roster import flex_role_mode
 from shared.hero_catalog import HeroCatalog
+from shared.registration_statuses import (
+    balancer_pool_excluded_clause,
+    balancer_pool_included_clause,
+    get_status_metas_map,
+)
 from shared.repository import (
-    BalancerRegistrationRepository,
     CatalogRoleRepository,
+    RegistrationRepository,
     RegistrationStatusRepository,
     TournamentRepository,
 )
@@ -83,13 +83,13 @@ def _reject_auto_managed_status(balancer_status: str) -> None:
 def _registration_read_options() -> list[Any]:
     """Eager loads every admin serializer of a single registration needs."""
     return [
-        selectinload(models.BalancerRegistration.roles)
-        .selectinload(models.BalancerRegistrationRole.hero_entries)
-        .selectinload(models.BalancerRegistrationRoleEntity.entity),
-        selectinload(models.BalancerRegistration.reviewer),
-        selectinload(models.BalancerRegistration.checked_in_by_user),
-        selectinload(models.BalancerRegistration.google_sheet_binding),
-        selectinload(models.BalancerRegistration.tournament),
+        selectinload(models.Registration.roles)
+        .selectinload(models.RegistrationRole.hero_entries)
+        .selectinload(models.RegistrationRoleEntity.entity),
+        selectinload(models.Registration.reviewer),
+        selectinload(models.Registration.checked_in_by_user),
+        selectinload(models.Registration.google_sheet_binding),
+        selectinload(models.Registration.tournament),
         *registration_read_loaders(),
     ]
 
@@ -116,7 +116,7 @@ class RegistrationLifecycleService:
     def __init__(
         self,
         *,
-        registration_repo: BalancerRegistrationRepository = BalancerRegistrationRepository(),
+        registration_repo: RegistrationRepository = RegistrationRepository(),
         status_repo: RegistrationStatusRepository = RegistrationStatusRepository(),
         tournament_repo: TournamentRepository = TournamentRepository(),
         common: RegistrationCommonService = _common_service,
@@ -137,50 +137,50 @@ class RegistrationLifecycleService:
         inclusion_filter: str | None = None,
         source_filter: str | None = None,
         include_deleted: bool = False,
-    ) -> list[models.BalancerRegistration]:
+    ) -> list[models.Registration]:
         # Analytical: the admin table's filter matrix, including a correlated
         # workspace subquery for the balancer-pool clauses.
         query = (
             self.registration_repo.select()
-            .where(models.BalancerRegistration.tournament_id == tournament_id)
+            .where(models.Registration.tournament_id == tournament_id)
             .options(
-                selectinload(models.BalancerRegistration.roles)
-                .selectinload(models.BalancerRegistrationRole.hero_entries)
-                .selectinload(models.BalancerRegistrationRoleEntity.entity),
-                selectinload(models.BalancerRegistration.reviewer),
-                selectinload(models.BalancerRegistration.deleted_by_user),
-                selectinload(models.BalancerRegistration.checked_in_by_user),
-                selectinload(models.BalancerRegistration.google_sheet_binding).selectinload(
-                    models.BalancerRegistrationGoogleSheetBinding.feed
+                selectinload(models.Registration.roles)
+                .selectinload(models.RegistrationRole.hero_entries)
+                .selectinload(models.RegistrationRoleEntity.entity),
+                selectinload(models.Registration.reviewer),
+                selectinload(models.Registration.deleted_by_user),
+                selectinload(models.Registration.checked_in_by_user),
+                selectinload(models.Registration.google_sheet_binding).selectinload(
+                    models.RegistrationGoogleSheetBinding.feed
                 ),
                 # One row for every registration: its phase schedule is what
                 # ``submitted_late`` is measured against.
-                selectinload(models.BalancerRegistration.tournament),
+                selectinload(models.Registration.tournament),
                 # serialize_registration derives user_id from workspace_member.player_id
                 # and the team brief from registration_team; both must be eager.
                 *registration_read_loaders(),
             )
-            .order_by(models.BalancerRegistration.submitted_at.desc(), models.BalancerRegistration.id.desc())
+            .order_by(models.Registration.submitted_at.desc(), models.Registration.id.desc())
         )
         if not include_deleted:
-            query = query.where(models.BalancerRegistration.deleted_at.is_(None))
+            query = query.where(models.Registration.deleted_at.is_(None))
         if status_filter and status_filter != "all":
-            query = query.where(models.BalancerRegistration.status == status_filter)
+            query = query.where(models.Registration.status == status_filter)
         if inclusion_filter in ("reserve", "not_reserve"):
             # Separate axis from the pool clauses below: a reserve is a player's
             # declaration, not a balancer status, and "who agreed to sub in" is
             # unanswerable by eye at a few hundred rows.
-            query = query.where(models.BalancerRegistration.is_reserve.is_(inclusion_filter == "reserve"))
+            query = query.where(models.Registration.is_reserve.is_(inclusion_filter == "reserve"))
         if inclusion_filter in ("included", "excluded"):
             workspace_id_expr = (
                 sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id).scalar_subquery()
             )
             clause = balancer_pool_included_clause if inclusion_filter == "included" else balancer_pool_excluded_clause
-            query = query.where(clause(models.BalancerRegistration.balancer_status, workspace_id_expr))
+            query = query.where(clause(models.Registration.balancer_status, workspace_id_expr))
         if source_filter == "google_sheets":
-            query = query.where(models.BalancerRegistration.google_sheet_binding.has())
+            query = query.where(models.Registration.google_sheet_binding.has())
         elif source_filter == "manual":
-            query = query.where(~models.BalancerRegistration.google_sheet_binding.has())
+            query = query.where(~models.Registration.google_sheet_binding.has())
         result = await session.execute(query)
         return list(result.scalars().all())
 
@@ -240,7 +240,7 @@ class RegistrationLifecycleService:
             )
         return reads
 
-    async def get_registration_by_id(self, session: AsyncSession, registration_id: int) -> models.BalancerRegistration:
+    async def get_registration_by_id(self, session: AsyncSession, registration_id: int) -> models.Registration:
         registration = await self.registration_repo.get(session, registration_id, options=_registration_read_options())
         if registration is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registration not found")
@@ -268,7 +268,7 @@ class RegistrationLifecycleService:
         self,
         session: AsyncSession,
         *,
-        form: models.BalancerRegistrationForm | None,
+        form: models.RegistrationForm | None,
         answers: Mapping[str, Any],
         workspace_id: int,
         discipline: str,
@@ -318,7 +318,7 @@ class RegistrationLifecycleService:
         balancer_status_value: str | None = None,
         roles: list[dict[str, Any]],
         auth_user_id: int | None = None,
-    ) -> models.BalancerRegistration:
+    ) -> models.Registration:
         """An organizer-authored registration row.
 
         ``answers`` is the same flat document the public form submits; it is
@@ -353,7 +353,7 @@ class RegistrationLifecycleService:
 
         await self.registrations.ensure_unique_primary_game_handles(session, tournament_id=tournament_id, values=values)
 
-        registration = models.BalancerRegistration(
+        registration = models.Registration(
             tournament_id=tournament_id,
             form_version_id=form.current_version_id if form is not None else None,
             admin_notes=admin_notes,
@@ -419,7 +419,7 @@ class RegistrationLifecycleService:
         exclude_reason: str | None = None,
         pin: bool | None = None,
         clear_pin: bool = False,
-    ) -> models.BalancerRegistration:
+    ) -> models.Registration:
         """An organizer's edit of one registration.
 
         The questions travel as ``answers`` and go through the same validate/apply
@@ -540,7 +540,7 @@ class RegistrationLifecycleService:
         registration_id: int,
         *,
         reviewed_by: int | None,
-    ) -> models.BalancerRegistration:
+    ) -> models.Registration:
         registration = await self.get_registration_by_id(session, registration_id)
         registration.status = "approved"
         registration.reviewed_at = datetime.now(UTC)
@@ -560,7 +560,7 @@ class RegistrationLifecycleService:
         registration_id: int,
         *,
         reviewed_by: int | None,
-    ) -> models.BalancerRegistration:
+    ) -> models.Registration:
         registration = await self.get_registration_by_id(session, registration_id)
         registration.status = "rejected"
         registration.reviewed_at = datetime.now(UTC)
@@ -581,14 +581,14 @@ class RegistrationLifecycleService:
         result = await session.execute(
             self.registration_repo.select()
             .where(
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistration.id.in_(registration_ids),
-                models.BalancerRegistration.status == "pending",
+                models.Registration.tournament_id == tournament_id,
+                models.Registration.deleted_at.is_(None),
+                models.Registration.id.in_(registration_ids),
+                models.Registration.status == "pending",
             )
             # enqueue_registration_approved reads primary_handle() -> identities;
             # an unloaded collection raises MissingGreenlet on an async session.
-            .options(selectinload(models.BalancerRegistration.identities))
+            .options(selectinload(models.Registration.identities))
         )
         registrations = list(result.scalars().all())
         now = datetime.now(UTC)
@@ -604,7 +604,7 @@ class RegistrationLifecycleService:
         self,
         session: AsyncSession,
         registration_id: int,
-    ) -> models.BalancerRegistration:
+    ) -> models.Registration:
         """Put an approved registration into the pool, rating it from its resolved
         roster (`ready` if every declared role carries a rank, else `incomplete`).
         """
@@ -626,7 +626,7 @@ class RegistrationLifecycleService:
         self,
         session: AsyncSession,
         registration_id: int,
-    ) -> models.BalancerRegistration:
+    ) -> models.Registration:
         registration = await self.get_registration_by_id(session, registration_id)
         registration.status = "withdrawn"
         await self.common._register_registration_changed(session, registration)
@@ -638,7 +638,7 @@ class RegistrationLifecycleService:
         self,
         session: AsyncSession,
         registration_id: int,
-    ) -> models.BalancerRegistration:
+    ) -> models.Registration:
         registration = await self.get_registration_by_id(session, registration_id)
         registration.status = "approved"
         await self.common._register_registration_changed(session, registration)
@@ -652,7 +652,7 @@ class RegistrationLifecycleService:
         registration_id: int,
         *,
         deleted_by: int | None,
-    ) -> models.BalancerRegistration:
+    ) -> models.Registration:
         registration = await self.get_registration_by_id(session, registration_id)
         registration.deleted_at = datetime.now(UTC)
         registration.deleted_by = deleted_by
@@ -667,7 +667,7 @@ class RegistrationLifecycleService:
         *,
         balancer_status: str,
         exclude_reason: str | None = None,
-    ) -> models.BalancerRegistration:
+    ) -> models.Registration:
         """Explicitly pin a registration to a balancer status: `not_in_balancer`,
         `excluded` (with an optional `exclude_reason`), or a workspace custom
         slug. `ready`/`incomplete` are rejected -- those two are exclusively
@@ -699,7 +699,7 @@ class RegistrationLifecycleService:
         registration_id: int,
         *,
         checked_in_by: int | None,
-    ) -> models.BalancerRegistration:
+    ) -> models.Registration:
         """Admin check-in. Deliberately ungated by the CHECK_IN phase window --
         organizers check people in before the phase opens, after it closes, and
         during LIVE when someone shows up late. The window gate belongs to the
@@ -720,7 +720,7 @@ class RegistrationLifecycleService:
         self,
         session: AsyncSession,
         registration_id: int,
-    ) -> models.BalancerRegistration:
+    ) -> models.Registration:
         registration = await self.get_registration_by_id(session, registration_id)
         registration.checked_in = False
         registration.checked_in_at = None
@@ -750,10 +750,10 @@ class RegistrationLifecycleService:
         result = await session.execute(
             self.registration_repo.select()
             .where(
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistration.id.in_(registration_ids),
-                models.BalancerRegistration.status == "approved",
+                models.Registration.tournament_id == tournament_id,
+                models.Registration.deleted_at.is_(None),
+                models.Registration.id.in_(registration_ids),
+                models.Registration.status == "approved",
             )
             # The engine reads roles, their heroes and the member anchor; none of
             # them may lazy-load on an async session.
@@ -795,12 +795,12 @@ class RegistrationLifecycleService:
             value=balancer_status,
         )
         query = self.registration_repo.select().where(
-            models.BalancerRegistration.tournament_id == tournament_id,
-            models.BalancerRegistration.deleted_at.is_(None),
-            models.BalancerRegistration.id.in_(registration_ids),
+            models.Registration.tournament_id == tournament_id,
+            models.Registration.deleted_at.is_(None),
+            models.Registration.id.in_(registration_ids),
         )
         if balancer_status != NOT_ADDED_BALANCER_STATUS:
-            query = query.where(models.BalancerRegistration.status == "approved")
+            query = query.where(models.Registration.status == "approved")
         result = await session.execute(query)
         registrations = list(result.scalars().all())
         for registration in registrations:

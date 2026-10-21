@@ -7,8 +7,8 @@ import os
 import sqlalchemy as sa
 from sqlalchemy.exc import DBAPIError
 
-from shared.models.custom_game import CustomGame, CustomGameRound, CustomGameRoundMember
 from shared.models.encounter import ScoringRule
+from shared.models.mix import CustomGame, CustomGameRound, CustomGameRoundMember
 from shared.models.tenancy.workspace import Workspace
 from shared.tests.encounter_writer_case import WINS_END, EncounterWriterCase
 
@@ -75,14 +75,14 @@ class CustomGameRoundConstraintTests(EncounterWriterCase):
 
     async def test_a_busy_member_carries_no_rank_delta(self) -> None:
         await self._rejected(
-            "INSERT INTO balancer.custom_game_round_member (encounter_id, workspace_member_id, busy, rank_delta_applied)"
+            "INSERT INTO mix.round_member (encounter_id, workspace_member_id, busy, rank_delta_applied)"
             " VALUES (:mix, :m0, true, 5)",
             "ck_custom_game_round_member_busy",
         )
 
     async def test_a_round_sits_in_one_of_six_lobbies(self) -> None:
         await self._rejected(
-            "UPDATE balancer.custom_game_round SET lobby_index = 6 WHERE encounter_id = :mix",
+            "UPDATE mix.round SET lobby_index = 6 WHERE encounter_id = :mix",
             "ck_custom_game_round_lobby_index",
         )
 
@@ -98,7 +98,7 @@ class CustomGameRoundConstraintTests(EncounterWriterCase):
             await s.execute(sa.delete(CustomGame).where(CustomGame.id == self.ids["cg"]))
             await s.commit()
         self.assertEqual(0, await self._scalar("SELECT count(*) FROM encounter.encounter WHERE id = :mix"))
-        for table in ("encounter.team", "balancer.custom_game_round", "balancer.custom_game_round_member"):
+        for table in ("encounter.team", "mix.round", "mix.round_member"):
             self.assertEqual(0, await self._scalar(f"SELECT count(*) FROM {table} WHERE encounter_id = :mix"))
 
     async def test_host_is_a_result_source_of_the_encounter_and_of_a_game(self) -> None:
@@ -126,7 +126,7 @@ class CustomGameRoundConstraintTests(EncounterWriterCase):
     async def test_a_mix_rule_belongs_to_the_mix_workspace(self) -> None:
         foreign_rule, _foreign = await self._foreign_workspace()
         await self._rejected(
-            "UPDATE balancer.custom_game SET scoring_rule_id = :foreign_rule WHERE id = :cg",
+            "UPDATE mix.custom_game SET scoring_rule_id = :foreign_rule WHERE id = :cg",
             "fk_custom_game_scoring_rule",
             foreign_rule=foreign_rule,
         )
@@ -134,13 +134,11 @@ class CustomGameRoundConstraintTests(EncounterWriterCase):
     async def test_six_lobbies_name_twelve_teams(self) -> None:
         async with self.Session() as s:
             await s.execute(
-                sa.text(
-                    "INSERT INTO balancer.custom_game_team_name (custom_game_id, team_index, name) VALUES (:cg, 11, 'L')"
-                ),
+                sa.text("INSERT INTO mix.team_name (custom_game_id, team_index, name) VALUES (:cg, 11, 'L')"),
                 self.ids,
             )
             await s.commit()
         await self._rejected(
-            "INSERT INTO balancer.custom_game_team_name (custom_game_id, team_index, name) VALUES (:cg, 12, 'M')",
+            "INSERT INTO mix.team_name (custom_game_id, team_index, name) VALUES (:cg, 12, 'M')",
             "ck_custom_game_team_name_index",
         )

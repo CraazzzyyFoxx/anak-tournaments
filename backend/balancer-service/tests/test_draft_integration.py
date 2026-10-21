@@ -38,14 +38,14 @@ from shared.core.enums import (  # noqa: E402
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
 from shared.domain.team_format import FormatDimension, FormatRule, TeamFormat  # noqa: E402
-from shared.models.balancer.draft import DraftPick  # noqa: E402
 from shared.models.catalog import CatalogRole  # noqa: E402
+from shared.models.draft import DraftPick  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.platform.realtime import WorkspaceEvent  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
-    BalancerRegistration,
-    BalancerRegistrationIdentity,
-    BalancerRegistrationRole,
+    Registration,
+    RegistrationIdentity,
+    RegistrationRole,
 )
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
@@ -199,7 +199,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await self.engine.dispose()
             return
         async with self.Session() as s:
-            from shared.models.balancer.draft import DraftSession
+            from shared.models.draft import DraftSession
 
             ids = (
                 await s.scalars(sa.select(DraftSession.id).where(DraftSession.tournament_id == self.tournament_id))
@@ -228,13 +228,13 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
         primary: str | None = None,
         workspace_member_id: int | None = None,
     ) -> int:
-        """One approved, in-pool ``balancer.registration`` with its role rows.
+        """One approved, in-pool ``registration.registration`` with its role rows.
 
         ``ranks`` is ``{slot_code: rank}`` in priority order; a ``None`` rank
         leaves the role DECLARED but unranked, which is what makes it unplayable
         and the registration unseatable.
         """
-        reg = BalancerRegistration(
+        reg = Registration(
             tournament_id=self.tournament_id,
             display_name=tag,
             status="approved",
@@ -244,7 +244,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
         s.add(reg)
         await s.flush()
         s.add(
-            BalancerRegistrationIdentity(
+            RegistrationIdentity(
                 registration_id=reg.id,
                 provider="battlenet",
                 position=0,
@@ -256,7 +256,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
         catalog_roles = await CatalogRoleRepository().rated_rows(s, discipline="overwatch", workspace_id=None)
         for priority, (role, rank) in enumerate(ranks.items()):
             s.add(
-                BalancerRegistrationRole(
+                RegistrationRole(
                     registration_id=reg.id,
                     catalog_role=catalog_roles[role],
                     dimension_id=catalog_roles[role].dimension_id,
@@ -309,12 +309,12 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
     async def _provision_export_identities(self, session) -> None:
         rows = (
             await session.execute(
-                sa.select(BalancerRegistration.workspace_member_id, BalancerRegistrationIdentity.handle)
+                sa.select(Registration.workspace_member_id, RegistrationIdentity.handle)
                 .join(
-                    BalancerRegistrationIdentity,
-                    BalancerRegistrationIdentity.registration_id == BalancerRegistration.id,
+                    RegistrationIdentity,
+                    RegistrationIdentity.registration_id == Registration.id,
                 )
-                .where(BalancerRegistration.tournament_id == self.tournament_id)
+                .where(Registration.tournament_id == self.tournament_id)
             )
         ).all()
         for member_id, tag in rows:
@@ -709,7 +709,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await lifecycle.lifecycle_service.delete_session(s, draft)
             await s.commit()
 
-            from shared.models.balancer.draft import DraftPlayer, DraftSession, DraftTeam
+            from shared.models.draft import DraftPlayer, DraftSession, DraftTeam
 
             for model in (DraftSession, DraftTeam, DraftPlayer, DraftPick):
                 column = DraftSession.id if model is DraftSession else model.session_id
@@ -737,7 +737,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await lifecycle.lifecycle_service.delete_session(s, draft)
             await s.commit()
 
-            from shared.models.balancer.draft import DraftSession
+            from shared.models.draft import DraftSession
 
             self.assertIsNone(await s.get(DraftSession, draft_id))
 
@@ -866,7 +866,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             self.assertEqual(len(teams), 3)
 
     async def _build_balancer_pool(self, s, n: int) -> list[int]:
-        """Create n approved, in-pool BalancerRegistration rows (with roles). Returns ids."""
+        """Create n approved, in-pool Registration rows (with roles). Returns ids."""
         roles = ["tank", "damage", "support"]
         return [
             await self._registration(s, tag=f"Pool{self._suffix}-{i}#1", ranks={roles[i % 3]: 3000 + i * 25})
@@ -920,13 +920,13 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             captain = next(p for p in players if p.status == DraftPlayerStatus.PICKED.value)
             available = next(p for p in players if p.status == DraftPlayerStatus.AVAILABLE.value)
             await s.execute(
-                sa.update(BalancerRegistration)
-                .where(BalancerRegistration.id == available.registration_id)
+                sa.update(Registration)
+                .where(Registration.id == available.registration_id)
                 .values(balancer_status="excluded")
             )
             await s.execute(
-                sa.update(BalancerRegistration)
-                .where(BalancerRegistration.id == captain.registration_id)
+                sa.update(Registration)
+                .where(Registration.id == captain.registration_id)
                 .values(deleted_at=datetime.now(UTC))
             )
             await s.commit()

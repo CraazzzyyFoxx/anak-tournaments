@@ -150,7 +150,7 @@ class RegistrationIdentityTests(IsolatedAsyncioTestCase):
     async def test_sheet_without_game_identity_persists_and_reloads(self) -> None:
         async with self.Session() as s:
             s.add(
-                models.BalancerRegistrationGoogleSheetFeed(
+                models.RegistrationGoogleSheetFeed(
                     tournament_id=self.tournament_id,
                     source_url="http://sheet.example/optional",
                     sheet_id="optional",
@@ -253,19 +253,19 @@ class RegistrationIdentityTests(IsolatedAsyncioTestCase):
             await save_tournament_format(
                 s, tournament, TeamFormat(discipline=discipline, name="Open two", starter_min=2, starter_max=2)
             )
-            team = models.BalancerRegistrationTeam(
+            team = models.RegistrationTeam(
                 tournament_id=tournament.id,
                 workspace_id=self.workspace_id,
                 name="Identity",
                 name_normalized="identity",
                 status="forming",
             )
-            wrong_provider = models.BalancerRegistration(
+            wrong_provider = models.Registration(
                 tournament_id=tournament.id,
                 display_name=handle,
                 status="approved",
                 identities=[
-                    models.BalancerRegistrationIdentity(
+                    models.RegistrationIdentity(
                         provider=other_provider,
                         position=0,
                         handle=handle,

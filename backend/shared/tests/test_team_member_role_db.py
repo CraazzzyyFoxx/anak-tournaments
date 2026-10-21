@@ -205,9 +205,9 @@ class TeamMemberRoleTests(IsolatedAsyncioTestCase):
                 rank=2000,
                 assignments=[models.PlayerRole(dimension_id=leaf.dimension_id, role_id=leaf.id)],
             )
-            registration = models.BalancerRegistration(
+            registration = models.Registration(
                 tournament_id=self.tournament_id,
-                roles=[models.BalancerRegistrationRole(dimension_id=leaf.dimension_id, role_id=leaf.id)],
+                roles=[models.RegistrationRole(dimension_id=leaf.dimension_id, role_id=leaf.id)],
             )
             team_format = models.RosterTeamFormat(
                 workspace_id=self.workspace_id,
@@ -243,7 +243,7 @@ class TeamMemberRoleTests(IsolatedAsyncioTestCase):
             for assignment in (
                 models.EncounterTeamMemberRole,
                 models.PlayerRole,
-                models.BalancerRegistrationRole,
+                models.RegistrationRole,
                 models.RosterFormatRoleRule,
             ):
                 assert (

@@ -11,11 +11,14 @@ CREATE SCHEMA IF NOT EXISTS analytics;
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE SCHEMA IF NOT EXISTS balancer;
 CREATE SCHEMA IF NOT EXISTS catalog;
+CREATE SCHEMA IF NOT EXISTS draft;
 CREATE SCHEMA IF NOT EXISTS encounter;
+CREATE SCHEMA IF NOT EXISTS mix;
 CREATE SCHEMA IF NOT EXISTS overwatch_rank;
 CREATE SCHEMA IF NOT EXISTS players;
 CREATE SCHEMA IF NOT EXISTS quota;
 CREATE SCHEMA IF NOT EXISTS realtime;
+CREATE SCHEMA IF NOT EXISTS registration;
 CREATE SCHEMA IF NOT EXISTS roster;
 CREATE SCHEMA IF NOT EXISTS stats;
 CREATE SCHEMA IF NOT EXISTS subscriptions;
@@ -642,286 +645,6 @@ CREATE TABLE balancer.balance_variant (
 
 CREATE INDEX ix_balancer_balance_variant_balance_id ON balancer.balance_variant (balance_id);
 
-CREATE TABLE balancer.custom_game (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	workspace_id BIGINT NOT NULL,
-	host_user_id BIGINT,
-	name VARCHAR(255) NOT NULL,
-	status VARCHAR(16) DEFAULT 'draft' NOT NULL,
-	lobby_count INTEGER DEFAULT '1' NOT NULL,
-	self_signup VARCHAR(16) DEFAULT 'closed' NOT NULL,
-	self_role_edit BOOLEAN DEFAULT 'false' NOT NULL,
-	general_voice_channel_id BIGINT,
-	discipline VARCHAR(32) DEFAULT 'overwatch' NOT NULL,
-	scoring_rule_id BIGINT NOT NULL,
-	PRIMARY KEY (id),
-	CONSTRAINT ck_custom_game_status CHECK (status IN ('draft', 'balanced', 'completed', 'cancelled')),
-	CONSTRAINT ck_custom_game_self_signup CHECK (self_signup IN ('closed', 'pool', 'benched')),
-	CONSTRAINT ck_custom_game_lobby_count CHECK (lobby_count BETWEEN 1 AND 6),
-	CONSTRAINT uq_custom_game_owner_key UNIQUE (id, workspace_id, discipline),
-	CONSTRAINT fk_custom_game_scoring_rule FOREIGN KEY(scoring_rule_id, workspace_id) REFERENCES encounter.scoring_rule (id, workspace_id) DEFERRABLE INITIALLY DEFERRED,
-	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
-	FOREIGN KEY(host_user_id) REFERENCES auth."user" (id) ON DELETE SET NULL,
-	CONSTRAINT fk_custom_game_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code)
-);
-
-CREATE INDEX ix_balancer_custom_game_host_user_id ON balancer.custom_game (host_user_id);
-
-CREATE INDEX ix_balancer_custom_game_workspace_id ON balancer.custom_game (workspace_id);
-
-CREATE TABLE balancer.custom_game_co_host (
-	custom_game_id BIGINT NOT NULL,
-	user_id BIGINT NOT NULL,
-	PRIMARY KEY (custom_game_id, user_id),
-	FOREIGN KEY(custom_game_id) REFERENCES balancer.custom_game (id) ON DELETE CASCADE,
-	FOREIGN KEY(user_id) REFERENCES auth."user" (id) ON DELETE CASCADE
-);
-
-CREATE TABLE balancer.custom_game_lobby (
-	custom_game_id BIGINT NOT NULL,
-	lobby_index INTEGER NOT NULL,
-	selected_variant_index INTEGER DEFAULT '0' NOT NULL,
-	balance_result_json JSONB,
-	balance_result_version INTEGER DEFAULT '1' NOT NULL,
-	next_map_id BIGINT,
-	next_map_kind VARCHAR(16) DEFAULT 'map' NOT NULL,
-	balanced_at TIMESTAMP WITH TIME ZONE,
-	team1_voice_channel_id BIGINT,
-	team2_voice_channel_id BIGINT,
-	PRIMARY KEY (custom_game_id, lobby_index),
-	CONSTRAINT ck_custom_game_lobby_index CHECK (lobby_index BETWEEN 0 AND 5),
-	CONSTRAINT ck_custom_game_lobby_next_map_kind CHECK (next_map_kind = 'map'),
-	CONSTRAINT fk_custom_game_lobby_next_map FOREIGN KEY(next_map_id, next_map_kind) REFERENCES catalog.entity (id, kind) ON DELETE SET NULL (next_map_id),
-	FOREIGN KEY(custom_game_id) REFERENCES balancer.custom_game (id) ON DELETE CASCADE
-);
-
-CREATE TABLE balancer.custom_game_player (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	custom_game_id BIGINT NOT NULL,
-	workspace_member_id BIGINT NOT NULL,
-	sort_order INTEGER DEFAULT '0' NOT NULL,
-	participation VARCHAR(16) DEFAULT 'pool' NOT NULL,
-	role_selection_mode VARCHAR(16) DEFAULT 'all_ranked' NOT NULL,
-	is_flex BOOLEAN DEFAULT 'false' NOT NULL,
-	lobby_pin INTEGER,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_custom_game_player_member UNIQUE (custom_game_id, workspace_member_id),
-	CONSTRAINT ck_custom_game_player_participation CHECK (participation IN ('must_play', 'pool', 'benched')),
-	CONSTRAINT ck_custom_game_player_role_selection_mode CHECK (role_selection_mode IN ('all_ranked', 'explicit')),
-	CONSTRAINT ck_custom_game_player_lobby_pin CHECK (lobby_pin BETWEEN 0 AND 5),
-	FOREIGN KEY(custom_game_id) REFERENCES balancer.custom_game (id) ON DELETE CASCADE,
-	FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_balancer_custom_game_player_custom_game_id ON balancer.custom_game_player (custom_game_id);
-
-CREATE INDEX ix_balancer_custom_game_player_workspace_member_id ON balancer.custom_game_player (workspace_member_id);
-
-CREATE TABLE balancer.custom_game_player_role (
-	custom_game_player_id BIGINT NOT NULL,
-	dimension_id BIGINT NOT NULL,
-	role_id BIGINT NOT NULL,
-	priority INTEGER NOT NULL,
-	PRIMARY KEY (custom_game_player_id, role_id),
-	CONSTRAINT uq_custom_game_player_role_priority UNIQUE (custom_game_player_id, priority),
-	CONSTRAINT ck_custom_game_player_role_priority CHECK (priority > 0),
-	CONSTRAINT fk_custom_game_player_role_role FOREIGN KEY(role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
-	FOREIGN KEY(custom_game_player_id) REFERENCES balancer.custom_game_player (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_balancer_custom_game_player_role_role_id ON balancer.custom_game_player_role (role_id);
-
-CREATE TABLE balancer.custom_game_round (
-	encounter_id BIGINT NOT NULL,
-	lobby_index INTEGER NOT NULL,
-	points_per_win_applied INTEGER,
-	PRIMARY KEY (encounter_id),
-	CONSTRAINT ck_custom_game_round_lobby_index CHECK (lobby_index BETWEEN 0 AND 5),
-	CONSTRAINT fk_custom_game_round_encounter FOREIGN KEY(encounter_id) REFERENCES encounter.encounter (id) ON DELETE CASCADE
-);
-
-CREATE TABLE balancer.custom_game_round_member (
-	encounter_id BIGINT NOT NULL,
-	workspace_member_id BIGINT NOT NULL,
-	busy BOOLEAN NOT NULL,
-	rank_delta_applied INTEGER,
-	PRIMARY KEY (encounter_id, workspace_member_id),
-	CONSTRAINT ck_custom_game_round_member_busy CHECK (NOT busy OR rank_delta_applied IS NULL),
-	CONSTRAINT fk_custom_game_round_member_round FOREIGN KEY(encounter_id) REFERENCES balancer.custom_game_round (encounter_id) ON DELETE CASCADE,
-	CONSTRAINT fk_custom_game_round_member_workspace_member FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) DEFERRABLE INITIALLY DEFERRED
-);
-
-CREATE INDEX ix_custom_game_round_member_workspace_member_id ON balancer.custom_game_round_member (workspace_member_id);
-
-CREATE TABLE balancer.custom_game_team_name (
-	custom_game_id BIGINT NOT NULL,
-	team_index INTEGER NOT NULL,
-	name VARCHAR(60) NOT NULL,
-	PRIMARY KEY (custom_game_id, team_index),
-	CONSTRAINT ck_custom_game_team_name_index CHECK (team_index BETWEEN 0 AND 11),
-	FOREIGN KEY(custom_game_id) REFERENCES balancer.custom_game (id) ON DELETE CASCADE
-);
-
-CREATE TABLE balancer.draft_audit_event (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	session_id BIGINT NOT NULL,
-	actor_auth_user_id BIGINT,
-	action VARCHAR(64) NOT NULL,
-	entity_type VARCHAR(64) NOT NULL,
-	entity_id BIGINT NOT NULL,
-	reason TEXT NOT NULL,
-	before_json JSON NOT NULL,
-	after_json JSON NOT NULL,
-	PRIMARY KEY (id),
-	FOREIGN KEY(session_id) REFERENCES balancer.draft_session (id) ON DELETE CASCADE,
-	FOREIGN KEY(actor_auth_user_id) REFERENCES auth."user" (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_balancer_draft_audit_event_actor_auth_user_id ON balancer.draft_audit_event (actor_auth_user_id);
-
-CREATE INDEX ix_draft_audit_session_created ON balancer.draft_audit_event (session_id, created_at);
-
-CREATE TABLE balancer.draft_pick (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	session_id BIGINT NOT NULL,
-	overall_no INTEGER NOT NULL,
-	round_no INTEGER NOT NULL,
-	pick_in_round INTEGER NOT NULL,
-	draft_team_id BIGINT NOT NULL,
-	dimension_id BIGINT,
-	target_role_id BIGINT,
-	target_rank_value INTEGER,
-	status VARCHAR(16) DEFAULT 'upcoming' NOT NULL,
-	picked_player_id BIGINT,
-	picked_by_workspace_member_id BIGINT,
-	is_autopick BOOLEAN DEFAULT 'false' NOT NULL,
-	is_admin_override BOOLEAN DEFAULT 'false' NOT NULL,
-	clock_started_at TIMESTAMP WITH TIME ZONE,
-	clock_expires_at TIMESTAMP WITH TIME ZONE,
-	clock_remaining_ms INTEGER,
-	overtime_started_at TIMESTAMP WITH TIME ZONE,
-	version INTEGER DEFAULT '0' NOT NULL,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_draft_pick_session_overall UNIQUE (session_id, overall_no),
-	CONSTRAINT fk_draft_pick_target_role FOREIGN KEY(target_role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
-	FOREIGN KEY(session_id) REFERENCES balancer.draft_session (id) ON DELETE CASCADE,
-	FOREIGN KEY(draft_team_id) REFERENCES balancer.draft_team (id) ON DELETE CASCADE,
-	FOREIGN KEY(picked_player_id) REFERENCES balancer.draft_player (id) ON DELETE SET NULL,
-	FOREIGN KEY(picked_by_workspace_member_id) REFERENCES workspace_member (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_balancer_draft_pick_draft_team_id ON balancer.draft_pick (draft_team_id);
-
-CREATE INDEX ix_balancer_draft_pick_picked_player_id ON balancer.draft_pick (picked_player_id);
-
-CREATE INDEX ix_balancer_draft_pick_target_role_id ON balancer.draft_pick (target_role_id);
-
-CREATE INDEX ix_draft_pick_session_status ON balancer.draft_pick (session_id, status);
-
-CREATE TABLE balancer.draft_player (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	session_id BIGINT NOT NULL,
-	registration_id BIGINT NOT NULL,
-	workspace_member_id BIGINT,
-	status VARCHAR(16) DEFAULT 'available' NOT NULL,
-	is_captain BOOLEAN DEFAULT 'false' NOT NULL,
-	drafted_by_team_id BIGINT,
-	dimension_id BIGINT,
-	captain_role_id BIGINT,
-	version INTEGER DEFAULT '0' NOT NULL,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_draft_player_session_registration UNIQUE (session_id, registration_id),
-	CONSTRAINT fk_draft_player_captain_role FOREIGN KEY(captain_role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
-	FOREIGN KEY(session_id) REFERENCES balancer.draft_session (id) ON DELETE CASCADE,
-	FOREIGN KEY(registration_id) REFERENCES balancer.registration (id) ON DELETE RESTRICT,
-	FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) ON DELETE SET NULL,
-	FOREIGN KEY(drafted_by_team_id) REFERENCES balancer.draft_team (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_balancer_draft_player_captain_role_id ON balancer.draft_player (captain_role_id);
-
-CREATE INDEX ix_balancer_draft_player_drafted_by_team_id ON balancer.draft_player (drafted_by_team_id);
-
-CREATE INDEX ix_balancer_draft_player_registration_id ON balancer.draft_player (registration_id);
-
-CREATE INDEX ix_balancer_draft_player_workspace_member_id ON balancer.draft_player (workspace_member_id);
-
-CREATE INDEX ix_draft_player_session_status ON balancer.draft_player (session_id, status);
-
-CREATE TABLE balancer.draft_session (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	tournament_id BIGINT NOT NULL,
-	workspace_id BIGINT NOT NULL,
-	status VARCHAR(16) DEFAULT 'setup' NOT NULL,
-	blocked_reason VARCHAR(64),
-	format VARCHAR(16) DEFAULT 'snake' NOT NULL,
-	rounds INTEGER DEFAULT '4' NOT NULL,
-	pick_time_seconds INTEGER DEFAULT '45' NOT NULL,
-	overtime_seconds INTEGER DEFAULT '0' NOT NULL,
-	current_pick_id BIGINT,
-	pool_source VARCHAR(32) DEFAULT 'balancer_balance' NOT NULL,
-	source_balance_id BIGINT,
-	autopick_strategy VARCHAR(16) DEFAULT 'best_fit' NOT NULL,
-	allow_admin_override BOOLEAN DEFAULT 'true' NOT NULL,
-	exported_at TIMESTAMP WITH TIME ZONE,
-	export_status VARCHAR(32),
-	settings_json JSON DEFAULT '{}' NOT NULL,
-	version INTEGER DEFAULT '0' NOT NULL,
-	PRIMARY KEY (id),
-	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE,
-	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
-	FOREIGN KEY(source_balance_id) REFERENCES balancer.balance (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_balancer_draft_session_source_balance_id ON balancer.draft_session (source_balance_id);
-
-CREATE INDEX ix_balancer_draft_session_workspace_id ON balancer.draft_session (workspace_id);
-
-CREATE INDEX ix_draft_session_status_created ON balancer.draft_session (status, created_at);
-
-CREATE INDEX ix_draft_session_tournament_status ON balancer.draft_session (tournament_id, status);
-
-CREATE UNIQUE INDEX uq_draft_session_active_tournament ON balancer.draft_session (tournament_id) WHERE status IN ('setup','ready','live','paused');
-
-CREATE TABLE balancer.draft_team (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	session_id BIGINT NOT NULL,
-	captain_workspace_member_id BIGINT,
-	captain_auth_user_id BIGINT,
-	name VARCHAR(255) NOT NULL,
-	draft_position INTEGER NOT NULL,
-	exported_team_id BIGINT,
-	pick_queue JSONB DEFAULT '[]' NOT NULL,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_draft_team_session_position UNIQUE (session_id, draft_position),
-	FOREIGN KEY(session_id) REFERENCES balancer.draft_session (id) ON DELETE CASCADE,
-	FOREIGN KEY(captain_workspace_member_id) REFERENCES workspace_member (id) ON DELETE SET NULL,
-	FOREIGN KEY(captain_auth_user_id) REFERENCES auth."user" (id) ON DELETE SET NULL,
-	FOREIGN KEY(exported_team_id) REFERENCES tournament.team (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_balancer_draft_team_captain_auth_user_id ON balancer.draft_team (captain_auth_user_id);
-
-CREATE INDEX ix_balancer_draft_team_captain_workspace_member_id ON balancer.draft_team (captain_workspace_member_id);
-
-CREATE INDEX ix_balancer_draft_team_exported_team_id ON balancer.draft_team (exported_team_id);
-
-CREATE INDEX ix_balancer_draft_team_session_id ON balancer.draft_team (session_id);
-
 CREATE TABLE balancer.member_hidden_rating (
 	id BIGSERIAL NOT NULL,
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
@@ -971,344 +694,6 @@ CREATE INDEX ix_balancer_member_rank_workspace_member_id ON balancer.member_rank
 CREATE UNIQUE INDEX uq_member_rank_author_role ON balancer.member_rank (workspace_id, author_user_id, workspace_member_id, role_id) WHERE author_user_id IS NOT NULL;
 
 CREATE UNIQUE INDEX uq_member_rank_canon_role ON balancer.member_rank (workspace_id, workspace_member_id, role_id) WHERE author_user_id IS NULL;
-
-CREATE TABLE balancer.registration (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	tournament_id BIGINT NOT NULL,
-	workspace_member_id BIGINT,
-	display_name VARCHAR(255),
-	battle_tag VARCHAR(255),
-	battle_tag_normalized VARCHAR(255),
-	smurf_tags_json JSON,
-	stream_pov BOOLEAN DEFAULT 'false' NOT NULL,
-	is_reserve BOOLEAN DEFAULT 'false' NOT NULL,
-	form_version_id BIGINT,
-	public_notes TEXT,
-	organizer_notes TEXT,
-	exclude_reason VARCHAR(64),
-	admin_notes TEXT,
-	custom_fields_json JSON,
-	status VARCHAR(32) DEFAULT 'pending' NOT NULL,
-	balancer_status VARCHAR(32) DEFAULT 'not_in_balancer' NOT NULL,
-	checked_in BOOLEAN DEFAULT 'false' NOT NULL,
-	checked_in_at TIMESTAMP WITH TIME ZONE,
-	checked_in_by BIGINT,
-	submitted_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	reviewed_at TIMESTAMP WITH TIME ZONE,
-	reviewed_by BIGINT,
-	deleted_at TIMESTAMP WITH TIME ZONE,
-	deleted_by BIGINT,
-	balancer_profile_overridden_at TIMESTAMP WITH TIME ZONE,
-	registration_team_id BIGINT,
-	team_slot_code VARCHAR(16),
-	is_substitute BOOLEAN DEFAULT 'false' NOT NULL,
-	is_team_manager BOOLEAN DEFAULT 'false' NOT NULL,
-	PRIMARY KEY (id),
-	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE,
-	FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) ON DELETE SET NULL,
-	FOREIGN KEY(form_version_id) REFERENCES balancer.registration_form_version (id) ON DELETE SET NULL,
-	FOREIGN KEY(checked_in_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
-	FOREIGN KEY(reviewed_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
-	FOREIGN KEY(deleted_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
-	FOREIGN KEY(registration_team_id) REFERENCES balancer.registration_team (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_balancer_registration_form_version_id ON balancer.registration (form_version_id);
-
-CREATE INDEX ix_balancer_registration_registration_team_id ON balancer.registration (registration_team_id);
-
-CREATE INDEX ix_balancer_registration_tournament_balancer_status ON balancer.registration (tournament_id, status, balancer_status) WHERE deleted_at IS NULL;
-
-CREATE INDEX ix_balancer_registration_tournament_id ON balancer.registration (tournament_id);
-
-CREATE INDEX ix_balancer_registration_workspace_member_id ON balancer.registration (workspace_member_id);
-
-CREATE UNIQUE INDEX uq_balancer_registration_tournament_tag_active ON balancer.registration (tournament_id, battle_tag_normalized) WHERE battle_tag_normalized IS NOT NULL AND deleted_at IS NULL;
-
-CREATE UNIQUE INDEX uq_balancer_registration_user ON balancer.registration (tournament_id, workspace_member_id) WHERE deleted_at IS NULL;
-
-CREATE TABLE balancer.registration_form (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	tournament_id BIGINT NOT NULL,
-	workspace_id BIGINT NOT NULL,
-	is_open BOOLEAN DEFAULT 'false' NOT NULL,
-	auto_approve BOOLEAN DEFAULT 'false' NOT NULL,
-	current_version_id BIGINT,
-	require_open_profile BOOLEAN DEFAULT 'false' NOT NULL,
-	open_profile_scope VARCHAR(8) DEFAULT 'main' NOT NULL,
-	show_ranks BOOLEAN DEFAULT 'false' NOT NULL,
-	hide_registrations BOOLEAN DEFAULT 'false' NOT NULL,
-	max_participants INTEGER,
-	max_substitutes INTEGER DEFAULT '0' NOT NULL,
-	require_subscription BOOLEAN DEFAULT 'false' NOT NULL,
-	subscription_stage VARCHAR(16) DEFAULT 'check_in' NOT NULL,
-	subscription_scope VARCHAR(16) DEFAULT 'player' NOT NULL,
-	team_rank_min INTEGER,
-	team_rank_max INTEGER,
-	team_max_rank_spread INTEGER,
-	team_unique_identity BOOLEAN DEFAULT 'false' NOT NULL,
-	team_require_discord_guild BOOLEAN DEFAULT 'false' NOT NULL,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_balancer_registration_form_tournament UNIQUE (tournament_id),
-	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE,
-	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
-	FOREIGN KEY(current_version_id) REFERENCES balancer.registration_form_version (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_balancer_registration_form_tournament_id ON balancer.registration_form (tournament_id);
-
-CREATE INDEX ix_balancer_registration_form_workspace_id ON balancer.registration_form (workspace_id);
-
-CREATE TABLE balancer.registration_form_template (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	workspace_id BIGINT NOT NULL,
-	discipline VARCHAR(32) NOT NULL,
-	name VARCHAR(64) NOT NULL,
-	schema_json JSON NOT NULL,
-	created_by BIGINT,
-	PRIMARY KEY (id),
-	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
-	CONSTRAINT fk_registration_form_template_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code),
-	FOREIGN KEY(created_by) REFERENCES auth."user" (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_balancer_registration_form_template_workspace_id ON balancer.registration_form_template (workspace_id);
-
-CREATE UNIQUE INDEX uq_balancer_registration_form_template_name ON balancer.registration_form_template (workspace_id, lower(name));
-
-CREATE TABLE balancer.registration_form_version (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	form_id BIGINT NOT NULL,
-	number INTEGER NOT NULL,
-	schema_json JSON NOT NULL,
-	created_by BIGINT,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_balancer_registration_form_version_number UNIQUE (form_id, number),
-	FOREIGN KEY(form_id) REFERENCES balancer.registration_form (id) ON DELETE CASCADE,
-	FOREIGN KEY(created_by) REFERENCES auth."user" (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_balancer_registration_form_version_form_id ON balancer.registration_form_version (form_id);
-
-CREATE TABLE balancer.registration_google_sheet_binding (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	feed_id BIGINT NOT NULL,
-	registration_id BIGINT NOT NULL,
-	source_record_key VARCHAR(255) NOT NULL,
-	raw_row_json JSON,
-	parsed_fields_json JSON,
-	row_hash VARCHAR(128),
-	last_seen_at TIMESTAMP WITH TIME ZONE,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_balancer_registration_google_sheet_binding_key UNIQUE (feed_id, source_record_key),
-	CONSTRAINT uq_balancer_registration_google_sheet_binding_registration UNIQUE (registration_id),
-	FOREIGN KEY(feed_id) REFERENCES balancer.registration_google_sheet_feed (id) ON DELETE CASCADE,
-	FOREIGN KEY(registration_id) REFERENCES balancer.registration (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_balancer_registration_google_sheet_binding_feed_id ON balancer.registration_google_sheet_binding (feed_id);
-
-CREATE INDEX ix_balancer_registration_google_sheet_binding_registration_id ON balancer.registration_google_sheet_binding (registration_id);
-
-CREATE TABLE balancer.registration_google_sheet_feed (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	tournament_id BIGINT NOT NULL,
-	source_url TEXT NOT NULL,
-	sheet_id VARCHAR(255) NOT NULL,
-	gid VARCHAR(64),
-	title VARCHAR(255),
-	auto_sync_enabled BOOLEAN DEFAULT 'false' NOT NULL,
-	auto_sync_interval_seconds INTEGER DEFAULT '300' NOT NULL,
-	header_row_json JSON,
-	mapping_config_json JSON,
-	value_mapping_json JSON,
-	last_synced_at TIMESTAMP WITH TIME ZONE,
-	last_sync_status VARCHAR(32),
-	last_error TEXT,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_balancer_registration_google_sheet_feed_tournament UNIQUE (tournament_id),
-	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_balancer_registration_google_sheet_feed_tournament_id ON balancer.registration_google_sheet_feed (tournament_id);
-
-CREATE TABLE balancer.registration_identity (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	registration_id BIGINT NOT NULL,
-	provider VARCHAR(32) NOT NULL,
-	position INTEGER DEFAULT '0' NOT NULL,
-	handle VARCHAR(255) NOT NULL,
-	handle_normalized VARCHAR(255) NOT NULL,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_balancer_registration_identity_position UNIQUE (registration_id, provider, position) DEFERRABLE INITIALLY DEFERRED,
-	CONSTRAINT uq_balancer_registration_identity_handle UNIQUE (registration_id, provider, handle_normalized) DEFERRABLE INITIALLY DEFERRED,
-	FOREIGN KEY(registration_id) REFERENCES balancer.registration (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_balancer_registration_identity_handle ON balancer.registration_identity (provider, handle_normalized);
-
-CREATE INDEX ix_balancer_registration_identity_registration_id ON balancer.registration_identity (registration_id);
-
-CREATE TABLE balancer.registration_role (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	registration_id BIGINT NOT NULL,
-	dimension_id BIGINT NOT NULL,
-	role_id BIGINT NOT NULL,
-	is_primary BOOLEAN DEFAULT 'false' NOT NULL,
-	priority INTEGER DEFAULT '0' NOT NULL,
-	rank_value INTEGER,
-	is_active BOOLEAN DEFAULT 'true' NOT NULL,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_registration_role_role UNIQUE (registration_id, role_id),
-	CONSTRAINT fk_registration_role_role FOREIGN KEY(role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
-	FOREIGN KEY(registration_id) REFERENCES balancer.registration (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_balancer_registration_role_registration_id ON balancer.registration_role (registration_id);
-
-CREATE INDEX ix_balancer_registration_role_role_id ON balancer.registration_role (role_id);
-
-CREATE TABLE balancer.registration_role_entity (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	role_id BIGINT NOT NULL,
-	entity_id BIGINT NOT NULL,
-	entity_kind VARCHAR(16) DEFAULT 'character' NOT NULL,
-	priority INTEGER NOT NULL,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_reg_role_entity_role_priority UNIQUE (role_id, priority) DEFERRABLE INITIALLY DEFERRED,
-	CONSTRAINT uq_reg_role_entity_role_entity UNIQUE (role_id, entity_id) DEFERRABLE INITIALLY DEFERRED,
-	CONSTRAINT ck_registration_role_entity_kind CHECK (entity_kind = 'character'),
-	CONSTRAINT fk_registration_role_entity_entity FOREIGN KEY(entity_id, entity_kind) REFERENCES catalog.entity (id, kind) ON DELETE CASCADE,
-	FOREIGN KEY(role_id) REFERENCES balancer.registration_role (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_balancer_registration_role_entity_role_id ON balancer.registration_role_entity (role_id);
-
-CREATE TABLE balancer.registration_status (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	workspace_id BIGINT,
-	scope VARCHAR(32) NOT NULL,
-	slug VARCHAR(32) NOT NULL,
-	kind VARCHAR(16) DEFAULT 'custom' NOT NULL,
-	icon_slug VARCHAR(128),
-	icon_color VARCHAR(32),
-	name VARCHAR(64) NOT NULL,
-	description TEXT,
-	excludes_from_balancer BOOLEAN DEFAULT 'false' NOT NULL,
-	excludes_from_ready BOOLEAN DEFAULT 'false' NOT NULL,
-	PRIMARY KEY (id),
-	CONSTRAINT uq_balancer_registration_status_workspace_scope_slug UNIQUE (workspace_id, scope, slug, kind),
-	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_balancer_registration_status_workspace_id ON balancer.registration_status (workspace_id);
-
-CREATE INDEX ix_balancer_registration_status_workspace_scope ON balancer.registration_status (workspace_id, scope);
-
-CREATE TABLE balancer.registration_team (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	tournament_id BIGINT NOT NULL,
-	workspace_id BIGINT NOT NULL,
-	name VARCHAR(255) NOT NULL,
-	name_normalized VARCHAR(255) NOT NULL,
-	image_url VARCHAR(255),
-	captain_registration_id BIGINT,
-	status VARCHAR(16) DEFAULT 'forming' NOT NULL,
-	exported_team_id BIGINT,
-	exported_at TIMESTAMP WITH TIME ZONE,
-	export_status VARCHAR(32),
-	export_error TEXT,
-	deleted_at TIMESTAMP WITH TIME ZONE,
-	deleted_by BIGINT,
-	invite_cap_reset_at TIMESTAMP WITH TIME ZONE,
-	invite_cap_reset_by BIGINT,
-	admission VARCHAR(16) DEFAULT 'pending' NOT NULL,
-	rejection_reason TEXT,
-	organizer_notes TEXT,
-	roster_locked_at TIMESTAMP WITH TIME ZONE,
-	roster_locked_by BIGINT,
-	subscription_covered_at TIMESTAMP WITH TIME ZONE,
-	subscription_covered_by BIGINT,
-	subscription_provider VARCHAR(32),
-	subscription_tier_rank INTEGER,
-	subscription_expires_at TIMESTAMP WITH TIME ZONE,
-	PRIMARY KEY (id),
-	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE,
-	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
-	FOREIGN KEY(exported_team_id) REFERENCES tournament.team (id) ON DELETE SET NULL,
-	FOREIGN KEY(deleted_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
-	FOREIGN KEY(invite_cap_reset_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
-	FOREIGN KEY(roster_locked_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
-	FOREIGN KEY(subscription_covered_by) REFERENCES auth."user" (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_balancer_registration_team_captain_registration_id ON balancer.registration_team (captain_registration_id);
-
-CREATE INDEX ix_balancer_registration_team_exported_team_id ON balancer.registration_team (exported_team_id);
-
-CREATE INDEX ix_balancer_registration_team_tournament_id ON balancer.registration_team (tournament_id);
-
-CREATE INDEX ix_balancer_registration_team_tournament_status ON balancer.registration_team (tournament_id, status) WHERE deleted_at IS NULL;
-
-CREATE INDEX ix_balancer_registration_team_workspace_id ON balancer.registration_team (workspace_id);
-
-CREATE UNIQUE INDEX uq_balancer_registration_team_name_active ON balancer.registration_team (tournament_id, name_normalized) WHERE deleted_at IS NULL;
-
-CREATE TABLE balancer.registration_team_invite (
-	id BIGSERIAL NOT NULL,
-	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	updated_at TIMESTAMP WITH TIME ZONE,
-	team_id BIGINT NOT NULL,
-	slot_code VARCHAR(16) NOT NULL,
-	is_substitute BOOLEAN DEFAULT 'false' NOT NULL,
-	target_auth_user_id BIGINT,
-	token_sha256 VARCHAR(64),
-	expires_at TIMESTAMP WITH TIME ZONE,
-	state VARCHAR(16) DEFAULT 'pending' NOT NULL,
-	invited_by BIGINT,
-	invited_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
-	revoked_by BIGINT,
-	revoked_at TIMESTAMP WITH TIME ZONE,
-	revoked_by_organizer BOOLEAN DEFAULT 'false' NOT NULL,
-	accepted_at TIMESTAMP WITH TIME ZONE,
-	accepted_registration_id BIGINT,
-	PRIMARY KEY (id),
-	FOREIGN KEY(team_id) REFERENCES balancer.registration_team (id) ON DELETE CASCADE,
-	FOREIGN KEY(target_auth_user_id) REFERENCES auth."user" (id) ON DELETE SET NULL,
-	FOREIGN KEY(invited_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
-	FOREIGN KEY(revoked_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
-	FOREIGN KEY(accepted_registration_id) REFERENCES balancer.registration (id) ON DELETE SET NULL
-);
-
-CREATE INDEX ix_balancer_registration_team_invite_target_auth_user_id ON balancer.registration_team_invite (target_auth_user_id);
-
-CREATE INDEX ix_balancer_registration_team_invite_team_id ON balancer.registration_team_invite (team_id);
-
-CREATE INDEX ix_balancer_registration_team_invite_team_state ON balancer.registration_team_invite (team_id, state);
-
-CREATE UNIQUE INDEX uq_balancer_registration_team_invite_token ON balancer.registration_team_invite (token_sha256) WHERE token_sha256 IS NOT NULL;
 
 CREATE TABLE balancer.team (
 	id BIGSERIAL NOT NULL,
@@ -1517,6 +902,162 @@ CREATE TABLE catalog.role_dimension (
 
 CREATE UNIQUE INDEX uq_role_dimension_rated ON catalog.role_dimension (discipline) WHERE rated;
 
+CREATE TABLE draft.audit_event (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	session_id BIGINT NOT NULL,
+	actor_auth_user_id BIGINT,
+	action VARCHAR(64) NOT NULL,
+	entity_type VARCHAR(64) NOT NULL,
+	entity_id BIGINT NOT NULL,
+	reason TEXT NOT NULL,
+	before_json JSON NOT NULL,
+	after_json JSON NOT NULL,
+	PRIMARY KEY (id),
+	FOREIGN KEY(session_id) REFERENCES draft.session (id) ON DELETE CASCADE,
+	FOREIGN KEY(actor_auth_user_id) REFERENCES auth."user" (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_draft_audit_event_actor_auth_user_id ON draft.audit_event (actor_auth_user_id);
+
+CREATE INDEX ix_draft_audit_session_created ON draft.audit_event (session_id, created_at);
+
+CREATE TABLE draft.pick (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	session_id BIGINT NOT NULL,
+	overall_no INTEGER NOT NULL,
+	round_no INTEGER NOT NULL,
+	pick_in_round INTEGER NOT NULL,
+	draft_team_id BIGINT NOT NULL,
+	dimension_id BIGINT,
+	target_role_id BIGINT,
+	target_rank_value INTEGER,
+	status VARCHAR(16) DEFAULT 'upcoming' NOT NULL,
+	picked_player_id BIGINT,
+	picked_by_workspace_member_id BIGINT,
+	is_autopick BOOLEAN DEFAULT 'false' NOT NULL,
+	is_admin_override BOOLEAN DEFAULT 'false' NOT NULL,
+	clock_started_at TIMESTAMP WITH TIME ZONE,
+	clock_expires_at TIMESTAMP WITH TIME ZONE,
+	clock_remaining_ms INTEGER,
+	overtime_started_at TIMESTAMP WITH TIME ZONE,
+	version INTEGER DEFAULT '0' NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_draft_pick_session_overall UNIQUE (session_id, overall_no),
+	CONSTRAINT fk_draft_pick_target_role FOREIGN KEY(target_role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
+	FOREIGN KEY(session_id) REFERENCES draft.session (id) ON DELETE CASCADE,
+	FOREIGN KEY(draft_team_id) REFERENCES draft.team (id) ON DELETE CASCADE,
+	FOREIGN KEY(picked_player_id) REFERENCES draft.player (id) ON DELETE SET NULL,
+	FOREIGN KEY(picked_by_workspace_member_id) REFERENCES workspace_member (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_draft_pick_draft_team_id ON draft.pick (draft_team_id);
+
+CREATE INDEX ix_draft_pick_picked_player_id ON draft.pick (picked_player_id);
+
+CREATE INDEX ix_draft_pick_session_status ON draft.pick (session_id, status);
+
+CREATE INDEX ix_draft_pick_target_role_id ON draft.pick (target_role_id);
+
+CREATE TABLE draft.player (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	session_id BIGINT NOT NULL,
+	registration_id BIGINT NOT NULL,
+	workspace_member_id BIGINT,
+	status VARCHAR(16) DEFAULT 'available' NOT NULL,
+	is_captain BOOLEAN DEFAULT 'false' NOT NULL,
+	drafted_by_team_id BIGINT,
+	dimension_id BIGINT,
+	captain_role_id BIGINT,
+	version INTEGER DEFAULT '0' NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_draft_player_session_registration UNIQUE (session_id, registration_id),
+	CONSTRAINT fk_draft_player_captain_role FOREIGN KEY(captain_role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
+	FOREIGN KEY(session_id) REFERENCES draft.session (id) ON DELETE CASCADE,
+	FOREIGN KEY(registration_id) REFERENCES registration.registration (id) ON DELETE RESTRICT,
+	FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) ON DELETE SET NULL,
+	FOREIGN KEY(drafted_by_team_id) REFERENCES draft.team (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_draft_player_captain_role_id ON draft.player (captain_role_id);
+
+CREATE INDEX ix_draft_player_drafted_by_team_id ON draft.player (drafted_by_team_id);
+
+CREATE INDEX ix_draft_player_registration_id ON draft.player (registration_id);
+
+CREATE INDEX ix_draft_player_session_status ON draft.player (session_id, status);
+
+CREATE INDEX ix_draft_player_workspace_member_id ON draft.player (workspace_member_id);
+
+CREATE TABLE draft.session (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	tournament_id BIGINT NOT NULL,
+	workspace_id BIGINT NOT NULL,
+	status VARCHAR(16) DEFAULT 'setup' NOT NULL,
+	blocked_reason VARCHAR(64),
+	format VARCHAR(16) DEFAULT 'snake' NOT NULL,
+	rounds INTEGER DEFAULT '4' NOT NULL,
+	pick_time_seconds INTEGER DEFAULT '45' NOT NULL,
+	overtime_seconds INTEGER DEFAULT '0' NOT NULL,
+	current_pick_id BIGINT,
+	pool_source VARCHAR(32) DEFAULT 'balancer_balance' NOT NULL,
+	source_balance_id BIGINT,
+	autopick_strategy VARCHAR(16) DEFAULT 'best_fit' NOT NULL,
+	allow_admin_override BOOLEAN DEFAULT 'true' NOT NULL,
+	exported_at TIMESTAMP WITH TIME ZONE,
+	export_status VARCHAR(32),
+	settings_json JSON DEFAULT '{}' NOT NULL,
+	version INTEGER DEFAULT '0' NOT NULL,
+	PRIMARY KEY (id),
+	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE,
+	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
+	FOREIGN KEY(source_balance_id) REFERENCES balancer.balance (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_draft_session_source_balance_id ON draft.session (source_balance_id);
+
+CREATE INDEX ix_draft_session_status_created ON draft.session (status, created_at);
+
+CREATE INDEX ix_draft_session_tournament_status ON draft.session (tournament_id, status);
+
+CREATE INDEX ix_draft_session_workspace_id ON draft.session (workspace_id);
+
+CREATE UNIQUE INDEX uq_draft_session_active_tournament ON draft.session (tournament_id) WHERE status IN ('setup','ready','live','paused');
+
+CREATE TABLE draft.team (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	session_id BIGINT NOT NULL,
+	captain_workspace_member_id BIGINT,
+	captain_auth_user_id BIGINT,
+	name VARCHAR(255) NOT NULL,
+	draft_position INTEGER NOT NULL,
+	exported_team_id BIGINT,
+	pick_queue JSONB DEFAULT '[]' NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_draft_team_session_position UNIQUE (session_id, draft_position),
+	FOREIGN KEY(session_id) REFERENCES draft.session (id) ON DELETE CASCADE,
+	FOREIGN KEY(captain_workspace_member_id) REFERENCES workspace_member (id) ON DELETE SET NULL,
+	FOREIGN KEY(captain_auth_user_id) REFERENCES auth."user" (id) ON DELETE SET NULL,
+	FOREIGN KEY(exported_team_id) REFERENCES tournament.team (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_draft_team_captain_auth_user_id ON draft.team (captain_auth_user_id);
+
+CREATE INDEX ix_draft_team_captain_workspace_member_id ON draft.team (captain_workspace_member_id);
+
+CREATE INDEX ix_draft_team_exported_team_id ON draft.team (exported_team_id);
+
+CREATE INDEX ix_draft_team_session_id ON draft.team (session_id);
+
 CREATE TABLE encounter.encounter (
 	id BIGSERIAL NOT NULL,
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
@@ -1542,7 +1083,7 @@ CREATE TABLE encounter.encounter (
 	PRIMARY KEY (id),
 	CONSTRAINT uq_encounter_id_tournament UNIQUE (id, tournament_id),
 	CONSTRAINT fk_encounter_owner FOREIGN KEY(tournament_id, workspace_id, discipline) REFERENCES tournament.tournament (id, workspace_id, discipline) ON DELETE CASCADE,
-	CONSTRAINT fk_encounter_custom_game FOREIGN KEY(custom_game_id, workspace_id, discipline) REFERENCES balancer.custom_game (id, workspace_id, discipline) ON DELETE CASCADE,
+	CONSTRAINT fk_encounter_custom_game FOREIGN KEY(custom_game_id, workspace_id, discipline) REFERENCES mix.custom_game (id, workspace_id, discipline) ON DELETE CASCADE,
 	CONSTRAINT ck_encounter_owner CHECK (num_nonnulls(tournament_id, custom_game_id) = 1),
 	CONSTRAINT fk_encounter_scoring_rule FOREIGN KEY(scoring_rule_id, workspace_id) REFERENCES encounter.scoring_rule (id, workspace_id) DEFERRABLE INITIALLY DEFERRED,
 	CONSTRAINT ck_encounter_best_of CHECK (best_of >= 1),
@@ -1908,6 +1449,130 @@ CREATE TABLE encounter.team_report_result (
 	CONSTRAINT ck_report_result_wins CHECK (wins IS NULL OR wins >= 0)
 );
 
+CREATE TABLE mix.co_host (
+	custom_game_id BIGINT NOT NULL,
+	user_id BIGINT NOT NULL,
+	PRIMARY KEY (custom_game_id, user_id),
+	FOREIGN KEY(custom_game_id) REFERENCES mix.custom_game (id) ON DELETE CASCADE,
+	FOREIGN KEY(user_id) REFERENCES auth."user" (id) ON DELETE CASCADE
+);
+
+CREATE TABLE mix.custom_game (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	workspace_id BIGINT NOT NULL,
+	host_user_id BIGINT,
+	name VARCHAR(255) NOT NULL,
+	status VARCHAR(16) DEFAULT 'draft' NOT NULL,
+	lobby_count INTEGER DEFAULT '1' NOT NULL,
+	self_signup VARCHAR(16) DEFAULT 'closed' NOT NULL,
+	self_role_edit BOOLEAN DEFAULT 'false' NOT NULL,
+	general_voice_channel_id BIGINT,
+	discipline VARCHAR(32) DEFAULT 'overwatch' NOT NULL,
+	scoring_rule_id BIGINT NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT ck_custom_game_status CHECK (status IN ('draft', 'balanced', 'completed', 'cancelled')),
+	CONSTRAINT ck_custom_game_self_signup CHECK (self_signup IN ('closed', 'pool', 'benched')),
+	CONSTRAINT ck_custom_game_lobby_count CHECK (lobby_count BETWEEN 1 AND 6),
+	CONSTRAINT uq_custom_game_owner_key UNIQUE (id, workspace_id, discipline),
+	CONSTRAINT fk_custom_game_scoring_rule FOREIGN KEY(scoring_rule_id, workspace_id) REFERENCES encounter.scoring_rule (id, workspace_id) DEFERRABLE INITIALLY DEFERRED,
+	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
+	FOREIGN KEY(host_user_id) REFERENCES auth."user" (id) ON DELETE SET NULL,
+	CONSTRAINT fk_custom_game_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code)
+);
+
+CREATE INDEX ix_mix_custom_game_host_user_id ON mix.custom_game (host_user_id);
+
+CREATE INDEX ix_mix_custom_game_workspace_id ON mix.custom_game (workspace_id);
+
+CREATE TABLE mix.lobby (
+	custom_game_id BIGINT NOT NULL,
+	lobby_index INTEGER NOT NULL,
+	selected_variant_index INTEGER DEFAULT '0' NOT NULL,
+	balance_result_json JSONB,
+	balance_result_version INTEGER DEFAULT '1' NOT NULL,
+	next_map_id BIGINT,
+	next_map_kind VARCHAR(16) DEFAULT 'map' NOT NULL,
+	balanced_at TIMESTAMP WITH TIME ZONE,
+	team1_voice_channel_id BIGINT,
+	team2_voice_channel_id BIGINT,
+	PRIMARY KEY (custom_game_id, lobby_index),
+	CONSTRAINT ck_custom_game_lobby_index CHECK (lobby_index BETWEEN 0 AND 5),
+	CONSTRAINT ck_custom_game_lobby_next_map_kind CHECK (next_map_kind = 'map'),
+	CONSTRAINT fk_custom_game_lobby_next_map FOREIGN KEY(next_map_id, next_map_kind) REFERENCES catalog.entity (id, kind) ON DELETE SET NULL (next_map_id),
+	FOREIGN KEY(custom_game_id) REFERENCES mix.custom_game (id) ON DELETE CASCADE
+);
+
+CREATE TABLE mix.player (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	custom_game_id BIGINT NOT NULL,
+	workspace_member_id BIGINT NOT NULL,
+	sort_order INTEGER DEFAULT '0' NOT NULL,
+	participation VARCHAR(16) DEFAULT 'pool' NOT NULL,
+	role_selection_mode VARCHAR(16) DEFAULT 'all_ranked' NOT NULL,
+	is_flex BOOLEAN DEFAULT 'false' NOT NULL,
+	lobby_pin INTEGER,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_custom_game_player_member UNIQUE (custom_game_id, workspace_member_id),
+	CONSTRAINT ck_custom_game_player_participation CHECK (participation IN ('must_play', 'pool', 'benched')),
+	CONSTRAINT ck_custom_game_player_role_selection_mode CHECK (role_selection_mode IN ('all_ranked', 'explicit')),
+	CONSTRAINT ck_custom_game_player_lobby_pin CHECK (lobby_pin BETWEEN 0 AND 5),
+	FOREIGN KEY(custom_game_id) REFERENCES mix.custom_game (id) ON DELETE CASCADE,
+	FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_mix_player_custom_game_id ON mix.player (custom_game_id);
+
+CREATE INDEX ix_mix_player_workspace_member_id ON mix.player (workspace_member_id);
+
+CREATE TABLE mix.player_role (
+	custom_game_player_id BIGINT NOT NULL,
+	dimension_id BIGINT NOT NULL,
+	role_id BIGINT NOT NULL,
+	priority INTEGER NOT NULL,
+	PRIMARY KEY (custom_game_player_id, role_id),
+	CONSTRAINT uq_custom_game_player_role_priority UNIQUE (custom_game_player_id, priority),
+	CONSTRAINT ck_custom_game_player_role_priority CHECK (priority > 0),
+	CONSTRAINT fk_custom_game_player_role_role FOREIGN KEY(role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
+	FOREIGN KEY(custom_game_player_id) REFERENCES mix.player (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_mix_player_role_role_id ON mix.player_role (role_id);
+
+CREATE TABLE mix.round (
+	encounter_id BIGINT NOT NULL,
+	lobby_index INTEGER NOT NULL,
+	points_per_win_applied INTEGER,
+	PRIMARY KEY (encounter_id),
+	CONSTRAINT ck_custom_game_round_lobby_index CHECK (lobby_index BETWEEN 0 AND 5),
+	CONSTRAINT fk_custom_game_round_encounter FOREIGN KEY(encounter_id) REFERENCES encounter.encounter (id) ON DELETE CASCADE
+);
+
+CREATE TABLE mix.round_member (
+	encounter_id BIGINT NOT NULL,
+	workspace_member_id BIGINT NOT NULL,
+	busy BOOLEAN NOT NULL,
+	rank_delta_applied INTEGER,
+	PRIMARY KEY (encounter_id, workspace_member_id),
+	CONSTRAINT ck_custom_game_round_member_busy CHECK (NOT busy OR rank_delta_applied IS NULL),
+	CONSTRAINT fk_custom_game_round_member_round FOREIGN KEY(encounter_id) REFERENCES mix.round (encounter_id) ON DELETE CASCADE,
+	CONSTRAINT fk_custom_game_round_member_workspace_member FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE INDEX ix_custom_game_round_member_workspace_member_id ON mix.round_member (workspace_member_id);
+
+CREATE TABLE mix.team_name (
+	custom_game_id BIGINT NOT NULL,
+	team_index INTEGER NOT NULL,
+	name VARCHAR(60) NOT NULL,
+	PRIMARY KEY (custom_game_id, team_index),
+	CONSTRAINT ck_custom_game_team_name_index CHECK (team_index BETWEEN 0 AND 11),
+	FOREIGN KEY(custom_game_id) REFERENCES mix.custom_game (id) ON DELETE CASCADE
+);
+
 CREATE TABLE overwatch_rank.battle_tag_state (
 	id BIGSERIAL NOT NULL,
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
@@ -2163,6 +1828,7 @@ CREATE TABLE discord_message (
 	discord_channel_id BIGINT,
 	message_id BIGINT,
 	error TEXT,
+	payload_json JSON,
 	card_json JSON,
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
 	updated_at TIMESTAMP WITH TIME ZONE,
@@ -2585,6 +2251,344 @@ CREATE INDEX ix_realtime_workspace_event_tournament_id ON realtime.workspace_eve
 
 CREATE INDEX ix_realtime_workspace_event_workspace_id ON realtime.workspace_event (workspace_id);
 
+CREATE TABLE registration.form (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	tournament_id BIGINT NOT NULL,
+	workspace_id BIGINT NOT NULL,
+	is_open BOOLEAN DEFAULT 'false' NOT NULL,
+	auto_approve BOOLEAN DEFAULT 'false' NOT NULL,
+	current_version_id BIGINT,
+	require_open_profile BOOLEAN DEFAULT 'false' NOT NULL,
+	open_profile_scope VARCHAR(8) DEFAULT 'main' NOT NULL,
+	show_ranks BOOLEAN DEFAULT 'false' NOT NULL,
+	hide_registrations BOOLEAN DEFAULT 'false' NOT NULL,
+	max_participants INTEGER,
+	max_substitutes INTEGER DEFAULT '0' NOT NULL,
+	require_subscription BOOLEAN DEFAULT 'false' NOT NULL,
+	subscription_stage VARCHAR(16) DEFAULT 'check_in' NOT NULL,
+	subscription_scope VARCHAR(16) DEFAULT 'player' NOT NULL,
+	team_rank_min INTEGER,
+	team_rank_max INTEGER,
+	team_max_rank_spread INTEGER,
+	team_unique_identity BOOLEAN DEFAULT 'false' NOT NULL,
+	team_require_discord_guild BOOLEAN DEFAULT 'false' NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_registration_form_tournament UNIQUE (tournament_id),
+	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE,
+	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
+	FOREIGN KEY(current_version_id) REFERENCES registration.form_version (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_registration_form_tournament_id ON registration.form (tournament_id);
+
+CREATE INDEX ix_registration_form_workspace_id ON registration.form (workspace_id);
+
+CREATE TABLE registration.form_template (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	workspace_id BIGINT NOT NULL,
+	discipline VARCHAR(32) NOT NULL,
+	name VARCHAR(64) NOT NULL,
+	schema_json JSON NOT NULL,
+	created_by BIGINT,
+	PRIMARY KEY (id),
+	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
+	CONSTRAINT fk_registration_form_template_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code),
+	FOREIGN KEY(created_by) REFERENCES auth."user" (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_registration_form_template_workspace_id ON registration.form_template (workspace_id);
+
+CREATE UNIQUE INDEX uq_registration_form_template_name ON registration.form_template (workspace_id, lower(name));
+
+CREATE TABLE registration.form_version (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	form_id BIGINT NOT NULL,
+	number INTEGER NOT NULL,
+	schema_json JSON NOT NULL,
+	created_by BIGINT,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_registration_form_version_number UNIQUE (form_id, number),
+	FOREIGN KEY(form_id) REFERENCES registration.form (id) ON DELETE CASCADE,
+	FOREIGN KEY(created_by) REFERENCES auth."user" (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_registration_form_version_form_id ON registration.form_version (form_id);
+
+CREATE TABLE registration.google_sheet_binding (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	feed_id BIGINT NOT NULL,
+	registration_id BIGINT NOT NULL,
+	source_record_key VARCHAR(255) NOT NULL,
+	raw_row_json JSON,
+	parsed_fields_json JSON,
+	row_hash VARCHAR(128),
+	last_seen_at TIMESTAMP WITH TIME ZONE,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_registration_google_sheet_binding_key UNIQUE (feed_id, source_record_key),
+	CONSTRAINT uq_registration_google_sheet_binding_registration UNIQUE (registration_id),
+	FOREIGN KEY(feed_id) REFERENCES registration.google_sheet_feed (id) ON DELETE CASCADE,
+	FOREIGN KEY(registration_id) REFERENCES registration.registration (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_registration_google_sheet_binding_feed_id ON registration.google_sheet_binding (feed_id);
+
+CREATE INDEX ix_registration_google_sheet_binding_registration_id ON registration.google_sheet_binding (registration_id);
+
+CREATE TABLE registration.google_sheet_feed (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	tournament_id BIGINT NOT NULL,
+	source_url TEXT NOT NULL,
+	sheet_id VARCHAR(255) NOT NULL,
+	gid VARCHAR(64),
+	title VARCHAR(255),
+	auto_sync_enabled BOOLEAN DEFAULT 'false' NOT NULL,
+	auto_sync_interval_seconds INTEGER DEFAULT '300' NOT NULL,
+	header_row_json JSON,
+	mapping_config_json JSON,
+	value_mapping_json JSON,
+	last_synced_at TIMESTAMP WITH TIME ZONE,
+	last_sync_status VARCHAR(32),
+	last_error TEXT,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_registration_google_sheet_feed_tournament UNIQUE (tournament_id),
+	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_registration_google_sheet_feed_tournament_id ON registration.google_sheet_feed (tournament_id);
+
+CREATE TABLE registration.identity (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	registration_id BIGINT NOT NULL,
+	provider VARCHAR(32) NOT NULL,
+	position INTEGER DEFAULT '0' NOT NULL,
+	handle VARCHAR(255) NOT NULL,
+	handle_normalized VARCHAR(255) NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_registration_identity_position UNIQUE (registration_id, provider, position) DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT uq_registration_identity_handle UNIQUE (registration_id, provider, handle_normalized) DEFERRABLE INITIALLY DEFERRED,
+	FOREIGN KEY(registration_id) REFERENCES registration.registration (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_registration_identity_handle ON registration.identity (provider, handle_normalized);
+
+CREATE INDEX ix_registration_identity_registration_id ON registration.identity (registration_id);
+
+CREATE TABLE registration.registration (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	tournament_id BIGINT NOT NULL,
+	workspace_member_id BIGINT,
+	display_name VARCHAR(255),
+	battle_tag VARCHAR(255),
+	battle_tag_normalized VARCHAR(255),
+	smurf_tags_json JSON,
+	stream_pov BOOLEAN DEFAULT 'false' NOT NULL,
+	is_reserve BOOLEAN DEFAULT 'false' NOT NULL,
+	form_version_id BIGINT,
+	public_notes TEXT,
+	organizer_notes TEXT,
+	exclude_reason VARCHAR(64),
+	admin_notes TEXT,
+	custom_fields_json JSON,
+	status VARCHAR(32) DEFAULT 'pending' NOT NULL,
+	balancer_status VARCHAR(32) DEFAULT 'not_in_balancer' NOT NULL,
+	checked_in BOOLEAN DEFAULT 'false' NOT NULL,
+	checked_in_at TIMESTAMP WITH TIME ZONE,
+	checked_in_by BIGINT,
+	submitted_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	reviewed_at TIMESTAMP WITH TIME ZONE,
+	reviewed_by BIGINT,
+	deleted_at TIMESTAMP WITH TIME ZONE,
+	deleted_by BIGINT,
+	balancer_profile_overridden_at TIMESTAMP WITH TIME ZONE,
+	registration_team_id BIGINT,
+	team_slot_code VARCHAR(16),
+	is_substitute BOOLEAN DEFAULT 'false' NOT NULL,
+	is_team_manager BOOLEAN DEFAULT 'false' NOT NULL,
+	PRIMARY KEY (id),
+	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE,
+	FOREIGN KEY(workspace_member_id) REFERENCES workspace_member (id) ON DELETE SET NULL,
+	FOREIGN KEY(form_version_id) REFERENCES registration.form_version (id) ON DELETE SET NULL,
+	FOREIGN KEY(checked_in_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
+	FOREIGN KEY(reviewed_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
+	FOREIGN KEY(deleted_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
+	FOREIGN KEY(registration_team_id) REFERENCES registration.team (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_registration_registration_form_version_id ON registration.registration (form_version_id);
+
+CREATE INDEX ix_registration_registration_registration_team_id ON registration.registration (registration_team_id);
+
+CREATE INDEX ix_registration_registration_tournament_id ON registration.registration (tournament_id);
+
+CREATE INDEX ix_registration_registration_workspace_member_id ON registration.registration (workspace_member_id);
+
+CREATE INDEX ix_registration_tournament_balancer_status ON registration.registration (tournament_id, status, balancer_status) WHERE deleted_at IS NULL;
+
+CREATE UNIQUE INDEX uq_registration_tournament_tag_active ON registration.registration (tournament_id, battle_tag_normalized) WHERE battle_tag_normalized IS NOT NULL AND deleted_at IS NULL;
+
+CREATE UNIQUE INDEX uq_registration_user ON registration.registration (tournament_id, workspace_member_id) WHERE deleted_at IS NULL;
+
+CREATE TABLE registration.role (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	registration_id BIGINT NOT NULL,
+	dimension_id BIGINT NOT NULL,
+	role_id BIGINT NOT NULL,
+	is_primary BOOLEAN DEFAULT 'false' NOT NULL,
+	priority INTEGER DEFAULT '0' NOT NULL,
+	rank_value INTEGER,
+	is_active BOOLEAN DEFAULT 'true' NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_registration_role_role UNIQUE (registration_id, role_id),
+	CONSTRAINT fk_registration_role_role FOREIGN KEY(role_id, dimension_id) REFERENCES catalog.role (id, dimension_id) DEFERRABLE INITIALLY DEFERRED,
+	FOREIGN KEY(registration_id) REFERENCES registration.registration (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_registration_role_registration_id ON registration.role (registration_id);
+
+CREATE INDEX ix_registration_role_role_id ON registration.role (role_id);
+
+CREATE TABLE registration.role_entity (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	role_id BIGINT NOT NULL,
+	entity_id BIGINT NOT NULL,
+	entity_kind VARCHAR(16) DEFAULT 'character' NOT NULL,
+	priority INTEGER NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_reg_role_entity_role_priority UNIQUE (role_id, priority) DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT uq_reg_role_entity_role_entity UNIQUE (role_id, entity_id) DEFERRABLE INITIALLY DEFERRED,
+	CONSTRAINT ck_registration_role_entity_kind CHECK (entity_kind = 'character'),
+	CONSTRAINT fk_registration_role_entity_entity FOREIGN KEY(entity_id, entity_kind) REFERENCES catalog.entity (id, kind) ON DELETE CASCADE,
+	FOREIGN KEY(role_id) REFERENCES registration.role (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_registration_role_entity_role_id ON registration.role_entity (role_id);
+
+CREATE TABLE registration.status (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	workspace_id BIGINT,
+	scope VARCHAR(32) NOT NULL,
+	slug VARCHAR(32) NOT NULL,
+	kind VARCHAR(16) DEFAULT 'custom' NOT NULL,
+	icon_slug VARCHAR(128),
+	icon_color VARCHAR(32),
+	name VARCHAR(64) NOT NULL,
+	description TEXT,
+	excludes_from_balancer BOOLEAN DEFAULT 'false' NOT NULL,
+	excludes_from_ready BOOLEAN DEFAULT 'false' NOT NULL,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_registration_status_workspace_scope_slug UNIQUE (workspace_id, scope, slug, kind),
+	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_registration_status_workspace_id ON registration.status (workspace_id);
+
+CREATE INDEX ix_registration_status_workspace_scope ON registration.status (workspace_id, scope);
+
+CREATE TABLE registration.team (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	tournament_id BIGINT NOT NULL,
+	workspace_id BIGINT NOT NULL,
+	name VARCHAR(255) NOT NULL,
+	name_normalized VARCHAR(255) NOT NULL,
+	image_url VARCHAR(255),
+	captain_registration_id BIGINT,
+	status VARCHAR(16) DEFAULT 'forming' NOT NULL,
+	exported_team_id BIGINT,
+	exported_at TIMESTAMP WITH TIME ZONE,
+	export_status VARCHAR(32),
+	export_error TEXT,
+	deleted_at TIMESTAMP WITH TIME ZONE,
+	deleted_by BIGINT,
+	invite_cap_reset_at TIMESTAMP WITH TIME ZONE,
+	invite_cap_reset_by BIGINT,
+	admission VARCHAR(16) DEFAULT 'pending' NOT NULL,
+	rejection_reason TEXT,
+	organizer_notes TEXT,
+	roster_locked_at TIMESTAMP WITH TIME ZONE,
+	roster_locked_by BIGINT,
+	subscription_covered_at TIMESTAMP WITH TIME ZONE,
+	subscription_covered_by BIGINT,
+	subscription_provider VARCHAR(32),
+	subscription_tier_rank INTEGER,
+	subscription_expires_at TIMESTAMP WITH TIME ZONE,
+	PRIMARY KEY (id),
+	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE,
+	FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
+	FOREIGN KEY(exported_team_id) REFERENCES tournament.team (id) ON DELETE SET NULL,
+	FOREIGN KEY(deleted_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
+	FOREIGN KEY(invite_cap_reset_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
+	FOREIGN KEY(roster_locked_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
+	FOREIGN KEY(subscription_covered_by) REFERENCES auth."user" (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_registration_team_captain_registration_id ON registration.team (captain_registration_id);
+
+CREATE INDEX ix_registration_team_exported_team_id ON registration.team (exported_team_id);
+
+CREATE INDEX ix_registration_team_tournament_id ON registration.team (tournament_id);
+
+CREATE INDEX ix_registration_team_tournament_status ON registration.team (tournament_id, status) WHERE deleted_at IS NULL;
+
+CREATE INDEX ix_registration_team_workspace_id ON registration.team (workspace_id);
+
+CREATE UNIQUE INDEX uq_registration_team_name_active ON registration.team (tournament_id, name_normalized) WHERE deleted_at IS NULL;
+
+CREATE TABLE registration.team_invite (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	team_id BIGINT NOT NULL,
+	slot_code VARCHAR(16) NOT NULL,
+	is_substitute BOOLEAN DEFAULT 'false' NOT NULL,
+	target_auth_user_id BIGINT,
+	token_sha256 VARCHAR(64),
+	expires_at TIMESTAMP WITH TIME ZONE,
+	state VARCHAR(16) DEFAULT 'pending' NOT NULL,
+	invited_by BIGINT,
+	invited_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	revoked_by BIGINT,
+	revoked_at TIMESTAMP WITH TIME ZONE,
+	revoked_by_organizer BOOLEAN DEFAULT 'false' NOT NULL,
+	accepted_at TIMESTAMP WITH TIME ZONE,
+	accepted_registration_id BIGINT,
+	PRIMARY KEY (id),
+	FOREIGN KEY(team_id) REFERENCES registration.team (id) ON DELETE CASCADE,
+	FOREIGN KEY(target_auth_user_id) REFERENCES auth."user" (id) ON DELETE SET NULL,
+	FOREIGN KEY(invited_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
+	FOREIGN KEY(revoked_by) REFERENCES auth."user" (id) ON DELETE SET NULL,
+	FOREIGN KEY(accepted_registration_id) REFERENCES registration.registration (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_registration_team_invite_target_auth_user_id ON registration.team_invite (target_auth_user_id);
+
+CREATE INDEX ix_registration_team_invite_team_id ON registration.team_invite (team_id);
+
+CREATE INDEX ix_registration_team_invite_team_state ON registration.team_invite (team_id, state);
+
+CREATE UNIQUE INDEX uq_registration_team_invite_token ON registration.team_invite (token_sha256) WHERE token_sha256 IS NOT NULL;
+
 CREATE TABLE roster.format_role_rule (
 	team_format_id BIGINT NOT NULL,
 	dimension_id BIGINT NOT NULL,
@@ -2625,7 +2629,7 @@ CREATE TABLE roster.team_format (
 	CONSTRAINT uq_team_format_tournament UNIQUE (tournament_id),
 	CONSTRAINT uq_team_format_custom_game UNIQUE (custom_game_id),
 	CONSTRAINT fk_team_format_tournament FOREIGN KEY(tournament_id, workspace_id, discipline) REFERENCES tournament.tournament (id, workspace_id, discipline) ON DELETE CASCADE,
-	CONSTRAINT fk_team_format_custom_game FOREIGN KEY(custom_game_id, workspace_id, discipline) REFERENCES balancer.custom_game (id, workspace_id, discipline) ON DELETE CASCADE,
+	CONSTRAINT fk_team_format_custom_game FOREIGN KEY(custom_game_id, workspace_id, discipline) REFERENCES mix.custom_game (id, workspace_id, discipline) ON DELETE CASCADE,
 	CONSTRAINT fk_team_format_workspace FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
 	CONSTRAINT fk_team_format_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code)
 );
@@ -2654,6 +2658,7 @@ CREATE TABLE stats.discord_channel (
 	channel_id BIGINT NOT NULL,
 	channel_name VARCHAR(100),
 	is_active BOOLEAN NOT NULL,
+	last_scanned_message_id BIGINT,
 	PRIMARY KEY (id),
 	UNIQUE (tournament_id),
 	FOREIGN KEY(tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE

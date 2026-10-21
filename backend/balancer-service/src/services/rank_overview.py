@@ -446,8 +446,8 @@ def _branches(
         out.append(select.where(value.is_not(None)))
 
     if "registration" in wanted:
-        registration = models.BalancerRegistration
-        role_row = models.BalancerRegistrationRole
+        registration = models.Registration
+        role_row = models.RegistrationRole
         tournament = models.Tournament
         out.append(
             sa.select(

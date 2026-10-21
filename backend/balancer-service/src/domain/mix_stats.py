@@ -2,7 +2,7 @@
 
 Pure domain algorithm: no I/O, no ORM, no async. The caller (custom game
 service) reads one row per recorded seat -- ``encounter.team_member`` joined
-to its own team, the other team and the round (``balancer.custom_game_round``) --
+to its own team, the other team and the round (``mix.round``) --
 turns each into a :class:`SeatOutcome` via :func:`outcome_for`, and hands the
 whole list to :func:`aggregate_mix_stats`.
 

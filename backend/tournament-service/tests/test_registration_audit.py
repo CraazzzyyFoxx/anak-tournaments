@@ -16,7 +16,6 @@ three properties that made the gap invisible:
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from functools import partial
 from pathlib import Path
@@ -31,13 +30,12 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 registration_admin = importlib.import_module("src.rpc.registration_admin")
 helpers = importlib.import_module("src.rpc._helpers")
 audit = importlib.import_module("src.services.registration.audit")
 
-from shared.models.registration.registration import BalancerRegistration  # noqa: E402
+from shared.models.registration.registration import Registration  # noqa: E402
 
 WORKSPACE_ID = 1
 REGISTRATION_ID = 55
@@ -138,7 +136,7 @@ def _registration(**overrides: Any) -> SimpleNamespace:
     base.update(overrides)
     registration = SimpleNamespace(**base)
     # The model's own algorithm, run against the stub's rows.
-    registration.primary_game_identity = partial(BalancerRegistration.primary_game_identity, registration)
+    registration.primary_game_identity = partial(Registration.primary_game_identity, registration)
     return registration
 
 

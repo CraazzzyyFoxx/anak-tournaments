@@ -87,8 +87,8 @@ BLOCK_RE = re.compile(
 def package_of_module(module: str) -> str:
     """``shared.models.tournament.pick_ban`` -> ``tournament``.
 
-    Models that live directly in ``shared.models`` (``custom_game``)
-    are their own group, named after the module.
+    A model module directly in ``shared.models`` (none today) would be its own
+    group, named after the module.
     """
     tail = module.removeprefix("shared.models.")
     return tail.split(".", 1)[0]

@@ -12,7 +12,7 @@ from uuid import uuid4
 from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.models.balancer.draft import DraftSession
+from shared.models.draft import DraftSession
 from shared.repository.draft import (
     DraftPickRepository,
     DraftPlayerRepository,

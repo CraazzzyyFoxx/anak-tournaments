@@ -60,8 +60,8 @@ class SubscriptionCollectionService:
                 models.WorkspaceSubscriptionRequirement.requirement_json,
             )
             .join(
-                models.BalancerRegistrationForm,
-                models.Tournament.id == models.BalancerRegistrationForm.tournament_id,
+                models.RegistrationForm,
+                models.Tournament.id == models.RegistrationForm.tournament_id,
             )
             .join(
                 models.WorkspaceSubscriptionRequirement,
@@ -72,7 +72,7 @@ class SubscriptionCollectionService:
             )
             .where(
                 models.Tournament.is_finished.is_(False),
-                models.BalancerRegistrationForm.require_subscription.is_(True),
+                models.RegistrationForm.require_subscription.is_(True),
                 # Openness is the REGISTRATION schedule window, not a form flag.
                 registration_open_clause(),
             )
@@ -104,16 +104,16 @@ class SubscriptionCollectionService:
         """Get all auth_user_ids for registered participants in a tournament."""
         stmt = (
             sa.select(models.User.auth_user_id)
-            .select_from(models.BalancerRegistration)
+            .select_from(models.Registration)
             .join(
                 models.WorkspaceMember,
-                models.BalancerRegistration.workspace_member_id == models.WorkspaceMember.id,
+                models.Registration.workspace_member_id == models.WorkspaceMember.id,
             )
             .join(models.User, models.WorkspaceMember.player_id == models.User.id)
             .where(
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistration.status != "withdrawn",
+                models.Registration.tournament_id == tournament_id,
+                models.Registration.deleted_at.is_(None),
+                models.Registration.status != "withdrawn",
                 models.User.auth_user_id.isnot(None),
             )
             .distinct()

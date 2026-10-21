@@ -36,7 +36,7 @@ WIDTH = 16
 
 
 def _form_ddl() -> str:
-    table = models.BalancerRegistrationForm.__table__
+    table = models.RegistrationForm.__table__
     return str(CreateTable(table).compile(dialect=postgresql.dialect()))
 
 
@@ -52,11 +52,11 @@ class TestTheEnum:
 
 class TestTheModel:
     def test_the_column_exists_and_is_not_nullable(self):
-        column = models.BalancerRegistrationForm.__table__.columns[COLUMN]
+        column = models.RegistrationForm.__table__.columns[COLUMN]
         assert column.nullable is False
 
     def test_the_column_is_a_string_of_the_migrated_width(self):
-        column = models.BalancerRegistrationForm.__table__.columns[COLUMN]
+        column = models.RegistrationForm.__table__.columns[COLUMN]
         assert isinstance(column.type, sa.String)
         assert column.type.length == WIDTH
 
@@ -64,7 +64,7 @@ class TestTheModel:
         """``default`` covers an ORM insert, ``server_default`` a raw one and the
         migration's own backfill. Disagreeing would make a form's stage depend on
         which code path created it."""
-        column = models.BalancerRegistrationForm.__table__.columns[COLUMN]
+        column = models.RegistrationForm.__table__.columns[COLUMN]
         assert column.default.arg == DEFAULT
         assert DEFAULT in str(column.server_default.arg)
 

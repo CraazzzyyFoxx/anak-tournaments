@@ -5,7 +5,7 @@ A single PostgreSQL database shared by every Python service in the monorepo. The
 **Postgres schemas**, which double as domain boundaries. A package name does not always match a
 schema name — `ranks/` writes to `overwatch_rank`; native parsed observations, ingestion jobs,
 baselines and Discord channels live in `stats/`. `catalog/` writes only to `catalog`, while
-`custom_game` and `registration` write into `balancer`.
+`member_rank` writes into `balancer`.
 
 > **Every entity diagram in this document is generated** from `Base.metadata` by
 > `backend/scripts/export_erd.py`, one diagram per model package. The prose around them is
@@ -13,7 +13,7 @@ baselines and Discord channels live in `stats/`. `catalog/` writes only to `cata
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`discordmsg03`** (123 revisions in `backend/migrations/versions/`).
+Alembic head: **`schemasplit01`** (125 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -38,7 +38,7 @@ Alembic head: **`discordmsg03`** (123 revisions in `backend/migrations/versions/
   on a bare player; `players.favorite_player` is the one deliberate exception, because a
   favourite belongs to an account and follows it across workspaces.
 - Self-references and cycles are real edges, not drawing artefacts:
-  `balancer.draft_session.current_pick_id` ↔ `balancer.draft_pick.session_id` (declared with
+  `draft.session.current_pick_id` ↔ `draft.pick.session_id` (declared with
   `use_alter`), `public.division_grid_version.created_from_version_id`,
   `public.division_grid.source_grid_id`, `tournament.player.related_player_id`.
 - Only tables in `Base.metadata` are drawn. `stats.mv_entity_global_stats` is a materialized
@@ -65,7 +65,10 @@ Alembic head: **`discordmsg03`** (123 revisions in `backend/migrations/versions/
 | `roster` | Workspace team-format templates, tournament-owned copies and frozen mix formats with dimension modes and role quotas | tournament-service / balancer-service / app-service |
 | `overwatch_rank` | Overwatch rank telemetry from OverFast | stats-service |
 | `stats` | Native parsed matches, observed participants/facts/events, ingestion jobs, baselines and Discord channels | stats-service / analytics-service / app-service / discord-service |
-| `balancer` | Registration, balancing, live draft, member ranks | balancer-service |
+| `balancer` | Balancing runs and their teams, balancer configs, member ranks | balancer-service |
+| `registration` | Registration forms, statuses, applications, identities, roles, team registration, Google Sheets import | tournament-service |
+| `mix` | Workspace pickup mixes: lineup, lobbies, co-hosts, recorded rounds | balancer-service |
+| `draft` | Live draft: sessions, captains' teams, the pool, picks, private audit trail | balancer-service |
 | `achievements` | Achievement rules, evaluations and overrides | stats-service / app-service |
 | `analytics` | Analytics signals and ML model registry | analytics-service |
 | `matches`, `log_processing` | Retained legacy statistics/ingestion transfer source; no runtime ORM or service access after P4 | — (release-gated removal) |
@@ -121,10 +124,10 @@ flowchart TB
     end
 
     subgraph TEAMBUILD["Team formation"]
-        REG["balancer.registration*<br/>(applications, teams)"]
+        REG["registration<br/>(applications, teams)"]
         BAL["balancer<br/>(balance, member_rank)"]
-        DRAFT["balancer.draft_*<br/>(live draft)"]
-        MIX["balancer.custom_game*<br/>(mixes, mix rounds)"]
+        DRAFT["draft<br/>(live draft)"]
+        MIX["mix<br/>(mixes, mix rounds)"]
     end
 
     subgraph INSIGHT["Post-processing"]
@@ -188,7 +191,7 @@ flowchart TB
     LOG --> PLAYERS
 ```
 
-Two edges the map does not draw, because the schema no longer has them: `balancer` does not
+Two edges the map does not draw, because the schema no longer has them: `registration` does not
 reference `players` (registration identity goes through `workspace_member`), and `analytics`
 reads match data only through `tournament.player` and `encounter.encounter`, never through
 `matches` directly. `encounter` and `tournament` reference each other: an encounter points at
@@ -714,7 +717,7 @@ A tournament can edit its copy; a mix freezes its format at creation, with an ex
 precedence over a clone's format, then the workspace default, then the module preset.
 `flex` is only the projected open-slot key, never a catalog role or a quota rule.
 Migrated and preset formats set substitute bounds to zero; registration benches still use
-`registration_form.max_substitutes`, and current validation applies to starters only.
+`registration.form.max_substitutes`, and current validation applies to starters only.
 Hard constraints cover every active dimension. Only the tournament/MOO solver has a sub-role
 collision term gated by `recommended_max <= 1`; other recommendations and all mix recommendations
 are post-solve advisories and equal-objective tie-breakers.
@@ -761,14 +764,14 @@ erDiagram
         int player_max_assignments "nullable"
     }
 
-    BALANCER_CUSTOM_GAME |o--o| ROSTER_TEAM_FORMAT : "custom_game_id"
-    BALANCER_CUSTOM_GAME ||--o{ ROSTER_TEAM_FORMAT : "discipline"
-    BALANCER_CUSTOM_GAME ||--o{ ROSTER_TEAM_FORMAT : "workspace_id"
     CATALOG_DISCIPLINE ||--o{ ROSTER_TEAM_FORMAT : "discipline"
     CATALOG_ROLE ||--o{ ROSTER_FORMAT_ROLE_RULE : "dimension_id"
     CATALOG_ROLE ||--o| ROSTER_FORMAT_ROLE_RULE : "role_id"
     CATALOG_ROLE_DIMENSION ||--o{ ROSTER_TEAM_FORMAT_DIMENSION : "discipline"
     CATALOG_ROLE_DIMENSION ||--o| ROSTER_TEAM_FORMAT_DIMENSION : "dimension_id"
+    MIX_CUSTOM_GAME |o--o| ROSTER_TEAM_FORMAT : "custom_game_id"
+    MIX_CUSTOM_GAME ||--o{ ROSTER_TEAM_FORMAT : "discipline"
+    MIX_CUSTOM_GAME ||--o{ ROSTER_TEAM_FORMAT : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ ROSTER_TEAM_FORMAT : "workspace_id"
     ROSTER_TEAM_FORMAT ||--o{ ROSTER_TEAM_FORMAT_DIMENSION : "discipline"
     ROSTER_TEAM_FORMAT ||--o| ROSTER_TEAM_FORMAT_DIMENSION : "team_format_id"
@@ -1504,8 +1507,8 @@ its result: `result_status`,
 exists) and `result_version`. There is no `format`, no home/away and no bracket position — a duel
 is `slot_count = 2`, and the bracket position is a `tournament.bracket_encounter` row that mix
 rounds and scrims simply do not have. A mix round is a Bo1 encounter with source `host`; what only
-the balancer reads about it is in `balancer.custom_game_round` and `balancer.custom_game_round_member` (see
-[custom_game](#custom_game--balancer)).
+the balancer reads about it is in `mix.round` and `mix.round_member` (see
+[mix](#mix--mix)).
 
 A participation is append-only: replacing the occupant of a slot writes a new `team` row and
 sets the old one `active = false`, and nothing reactivates it. `team_id` is the source
@@ -1755,9 +1758,6 @@ erDiagram
     }
 
     AUTH_USER |o--o{ ENCOUNTER_ROOM_EVENT : "actor_auth_user_id"
-    BALANCER_CUSTOM_GAME |o--o{ ENCOUNTER_ENCOUNTER : "custom_game_id"
-    BALANCER_CUSTOM_GAME ||--o{ ENCOUNTER_ENCOUNTER : "discipline"
-    BALANCER_CUSTOM_GAME ||--o{ ENCOUNTER_ENCOUNTER : "workspace_id"
     CATALOG_ENTITY |o--o{ ENCOUNTER_GAME : "map_id"
     CATALOG_ENTITY ||--o{ ENCOUNTER_GAME : "map_kind"
     CATALOG_ROLE ||--o{ ENCOUNTER_TEAM_MEMBER_ROLE : "dimension_id"
@@ -1818,6 +1818,9 @@ erDiagram
     ENCOUNTER_TEAM_MEMBER ||--o| ENCOUNTER_TEAM_MEMBER_ROLE : "team_member_id"
     ENCOUNTER_TEAM_REPORT ||--o{ ENCOUNTER_TEAM_REPORT_RESULT : "encounter_id"
     ENCOUNTER_TEAM_REPORT ||--o| ENCOUNTER_TEAM_REPORT_RESULT : "report_id"
+    MIX_CUSTOM_GAME |o--o{ ENCOUNTER_ENCOUNTER : "custom_game_id"
+    MIX_CUSTOM_GAME ||--o{ ENCOUNTER_ENCOUNTER : "discipline"
+    MIX_CUSTOM_GAME ||--o{ ENCOUNTER_ENCOUNTER : "workspace_id"
     PLAYERS_USER |o--o{ ENCOUNTER_GAME_CLAIM : "reporter_user_id"
     PLAYERS_USER |o--o{ ENCOUNTER_READINESS : "ready_user_id"
     PLAYERS_USER |o--o{ ENCOUNTER_RESULT_AUDIT : "actor_user_id"
@@ -1849,29 +1852,29 @@ Composite unique keys:
 - `ENCOUNTER_TEAM_REPORT` unique on (`id`, `encounter_id`)
 <!-- /ERD:auto -->
 
-## registration — `balancer`
+## registration — `registration`
 
 Registration forms and their fields, player and team applications, roles and top-hero
 preferences, team invites, and the Google Sheets import binding.
 
 `registration` is the application. `workspace_member_id` is its only identity anchor and is
 nullable, because a form can be submitted before membership exists; the earlier `user_id` column
-was dropped rather than kept alongside. The registrant's accounts live in `registration_identity`,
+was dropped rather than kept alongside. The registrant's accounts live in `identity`,
 one row per handle: `position` 0 is a provider's primary, Battle.net smurfs follow at 1..n.
 Live entries are deduplicated per tournament on the primary handle of each game provider (checked
 in the application, since the handles sit in that child table), and deletion is soft
 (`deleted_at` / `deleted_by`), which both preserves the audit and frees the handle for reuse.
 `battle_tag`, `battle_tag_normalized` and `smurf_tags_json` are legacy columns with no reader or
-writer, kept only until their gated drop. Role preferences and top heroes are normalized into
-`registration_role` and `registration_role_hero` — a hero is unique both per priority and per
+writer, kept only until their gated drop. Role preferences and top characters are normalized into
+`role` and `role_entity` — a character is unique both per priority and per
 role, so a top-three cannot contain the same hero twice or two heroes in one slot.
 
-`registration_status` is a per-workspace catalog (`workspace_id = NULL` for built-in rows) whose
+`status` is a per-workspace catalog (`workspace_id = NULL` for built-in rows) whose
 entries carry behaviour, not just a label: `excludes_from_balancer` and `excludes_from_ready`
 mean an organizer can add a status without a code change.
 
-Team registration adds `registration_team` (with an exported-team link back into `tournament`)
-and `registration_team_invite`, which stores only `token_sha256` and keeps the full lifecycle on
+Team registration adds `team` (with an exported-team link back into `tournament`)
+and `team_invite`, which stores only `token_sha256` and keeps the full lifecycle on
 the row — invited, revoked, revoked by organizer, accepted, and which registration accepted it.
 The Google Sheets import is a feed per tournament and a binding per row, unique on
 `(feed_id, source_record_key)` with a `row_hash`, so a re-sync only touches rows that changed.
@@ -1879,7 +1882,90 @@ The Google Sheets import is a feed per tournament and a binding per row, unique 
 <!-- ERD:auto registration -->
 ```mermaid
 erDiagram
-    BALANCER_REGISTRATION {
+    REGISTRATION_FORM {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK,UK
+        bigint workspace_id FK
+        boolean is_open
+        boolean auto_approve
+        bigint current_version_id FK "nullable"
+        boolean require_open_profile
+        varchar(8) open_profile_scope
+        boolean show_ranks
+        boolean hide_registrations
+        int max_participants "nullable"
+        int max_substitutes
+        boolean require_subscription
+        varchar(16) subscription_stage
+        varchar(16) subscription_scope
+        int team_rank_min "nullable"
+        int team_rank_max "nullable"
+        int team_max_rank_spread "nullable"
+        boolean team_unique_identity
+        boolean team_require_discord_guild
+    }
+    REGISTRATION_FORM_TEMPLATE {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        varchar(32) discipline FK
+        varchar(64) name
+        json schema_json
+        bigint created_by FK "nullable"
+    }
+    REGISTRATION_FORM_VERSION {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint form_id FK
+        int number
+        json schema_json
+        bigint created_by FK "nullable"
+    }
+    REGISTRATION_GOOGLE_SHEET_BINDING {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint feed_id FK
+        bigint registration_id FK,UK
+        varchar(255) source_record_key
+        json raw_row_json "nullable"
+        json parsed_fields_json "nullable"
+        varchar(128) row_hash "nullable"
+        timestamptz last_seen_at "nullable"
+    }
+    REGISTRATION_GOOGLE_SHEET_FEED {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK,UK
+        text source_url
+        varchar(255) sheet_id
+        varchar(64) gid "nullable"
+        varchar(255) title "nullable"
+        boolean auto_sync_enabled
+        int auto_sync_interval_seconds
+        json header_row_json "nullable"
+        json mapping_config_json "nullable"
+        json value_mapping_json "nullable"
+        timestamptz last_synced_at "nullable"
+        varchar(32) last_sync_status "nullable"
+        text last_error "nullable"
+    }
+    REGISTRATION_IDENTITY {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint registration_id FK
+        varchar(32) provider
+        int position
+        varchar(255) handle
+        varchar(255) handle_normalized
+    }
+    REGISTRATION_REGISTRATION {
         bigint id PK
         timestamptz created_at
         timestamptz updated_at "nullable"
@@ -1913,90 +1999,7 @@ erDiagram
         boolean is_substitute
         boolean is_team_manager
     }
-    BALANCER_REGISTRATION_FORM {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint tournament_id FK,UK
-        bigint workspace_id FK
-        boolean is_open
-        boolean auto_approve
-        bigint current_version_id FK "nullable"
-        boolean require_open_profile
-        varchar(8) open_profile_scope
-        boolean show_ranks
-        boolean hide_registrations
-        int max_participants "nullable"
-        int max_substitutes
-        boolean require_subscription
-        varchar(16) subscription_stage
-        varchar(16) subscription_scope
-        int team_rank_min "nullable"
-        int team_rank_max "nullable"
-        int team_max_rank_spread "nullable"
-        boolean team_unique_identity
-        boolean team_require_discord_guild
-    }
-    BALANCER_REGISTRATION_FORM_TEMPLATE {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint workspace_id FK
-        varchar(32) discipline FK
-        varchar(64) name
-        json schema_json
-        bigint created_by FK "nullable"
-    }
-    BALANCER_REGISTRATION_FORM_VERSION {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint form_id FK
-        int number
-        json schema_json
-        bigint created_by FK "nullable"
-    }
-    BALANCER_REGISTRATION_GOOGLE_SHEET_BINDING {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint feed_id FK
-        bigint registration_id FK,UK
-        varchar(255) source_record_key
-        json raw_row_json "nullable"
-        json parsed_fields_json "nullable"
-        varchar(128) row_hash "nullable"
-        timestamptz last_seen_at "nullable"
-    }
-    BALANCER_REGISTRATION_GOOGLE_SHEET_FEED {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint tournament_id FK,UK
-        text source_url
-        varchar(255) sheet_id
-        varchar(64) gid "nullable"
-        varchar(255) title "nullable"
-        boolean auto_sync_enabled
-        int auto_sync_interval_seconds
-        json header_row_json "nullable"
-        json mapping_config_json "nullable"
-        json value_mapping_json "nullable"
-        timestamptz last_synced_at "nullable"
-        varchar(32) last_sync_status "nullable"
-        text last_error "nullable"
-    }
-    BALANCER_REGISTRATION_IDENTITY {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint registration_id FK
-        varchar(32) provider
-        int position
-        varchar(255) handle
-        varchar(255) handle_normalized
-    }
-    BALANCER_REGISTRATION_ROLE {
+    REGISTRATION_ROLE {
         bigint id PK
         timestamptz created_at
         timestamptz updated_at "nullable"
@@ -2008,7 +2011,7 @@ erDiagram
         int rank_value "nullable"
         boolean is_active
     }
-    BALANCER_REGISTRATION_ROLE_ENTITY {
+    REGISTRATION_ROLE_ENTITY {
         bigint id PK
         timestamptz created_at
         timestamptz updated_at "nullable"
@@ -2017,7 +2020,7 @@ erDiagram
         varchar(16) entity_kind FK
         int priority
     }
-    BALANCER_REGISTRATION_STATUS {
+    REGISTRATION_STATUS {
         bigint id PK
         timestamptz created_at
         timestamptz updated_at "nullable"
@@ -2032,7 +2035,7 @@ erDiagram
         boolean excludes_from_balancer
         boolean excludes_from_ready
     }
-    BALANCER_REGISTRATION_TEAM {
+    REGISTRATION_TEAM {
         bigint id PK
         timestamptz created_at
         timestamptz updated_at "nullable"
@@ -2062,7 +2065,7 @@ erDiagram
         int subscription_tier_rank "nullable"
         timestamptz subscription_expires_at "nullable"
     }
-    BALANCER_REGISTRATION_TEAM_INVITE {
+    REGISTRATION_TEAM_INVITE {
         bigint id PK
         timestamptz created_at
         timestamptz updated_at "nullable"
@@ -2082,63 +2085,63 @@ erDiagram
         bigint accepted_registration_id FK "nullable"
     }
 
-    AUTH_USER |o--o{ BALANCER_REGISTRATION : "checked_in_by"
-    AUTH_USER |o--o{ BALANCER_REGISTRATION : "deleted_by"
-    AUTH_USER |o--o{ BALANCER_REGISTRATION : "reviewed_by"
-    AUTH_USER |o--o{ BALANCER_REGISTRATION_FORM_TEMPLATE : "created_by"
-    AUTH_USER |o--o{ BALANCER_REGISTRATION_FORM_VERSION : "created_by"
-    AUTH_USER |o--o{ BALANCER_REGISTRATION_TEAM : "deleted_by"
-    AUTH_USER |o--o{ BALANCER_REGISTRATION_TEAM : "invite_cap_reset_by"
-    AUTH_USER |o--o{ BALANCER_REGISTRATION_TEAM : "roster_locked_by"
-    AUTH_USER |o--o{ BALANCER_REGISTRATION_TEAM : "subscription_covered_by"
-    AUTH_USER |o--o{ BALANCER_REGISTRATION_TEAM_INVITE : "invited_by"
-    AUTH_USER |o--o{ BALANCER_REGISTRATION_TEAM_INVITE : "revoked_by"
-    AUTH_USER |o--o{ BALANCER_REGISTRATION_TEAM_INVITE : "target_auth_user_id"
-    BALANCER_REGISTRATION |o--o{ BALANCER_REGISTRATION_TEAM : "captain_registration_id"
-    BALANCER_REGISTRATION |o--o{ BALANCER_REGISTRATION_TEAM_INVITE : "accepted_registration_id"
-    BALANCER_REGISTRATION ||--o{ BALANCER_REGISTRATION_IDENTITY : "registration_id"
-    BALANCER_REGISTRATION ||--o{ BALANCER_REGISTRATION_ROLE : "registration_id"
-    BALANCER_REGISTRATION ||--o| BALANCER_REGISTRATION_GOOGLE_SHEET_BINDING : "registration_id"
-    BALANCER_REGISTRATION_FORM ||--o{ BALANCER_REGISTRATION_FORM_VERSION : "form_id"
-    BALANCER_REGISTRATION_FORM_VERSION |o--o{ BALANCER_REGISTRATION : "form_version_id"
-    BALANCER_REGISTRATION_FORM_VERSION |o--o{ BALANCER_REGISTRATION_FORM : "current_version_id"
-    BALANCER_REGISTRATION_GOOGLE_SHEET_FEED ||--o{ BALANCER_REGISTRATION_GOOGLE_SHEET_BINDING : "feed_id"
-    BALANCER_REGISTRATION_ROLE ||--o{ BALANCER_REGISTRATION_ROLE_ENTITY : "role_id"
-    BALANCER_REGISTRATION_TEAM |o--o{ BALANCER_REGISTRATION : "registration_team_id"
-    BALANCER_REGISTRATION_TEAM ||--o{ BALANCER_REGISTRATION_TEAM_INVITE : "team_id"
-    CATALOG_DISCIPLINE ||--o{ BALANCER_REGISTRATION_FORM_TEMPLATE : "discipline"
-    CATALOG_ENTITY ||--o{ BALANCER_REGISTRATION_ROLE_ENTITY : "entity_id"
-    CATALOG_ENTITY ||--o{ BALANCER_REGISTRATION_ROLE_ENTITY : "entity_kind"
-    CATALOG_ROLE ||--o{ BALANCER_REGISTRATION_ROLE : "dimension_id"
-    CATALOG_ROLE ||--o{ BALANCER_REGISTRATION_ROLE : "role_id"
-    PUBLIC_WORKSPACE |o--o{ BALANCER_REGISTRATION_STATUS : "workspace_id"
-    PUBLIC_WORKSPACE ||--o{ BALANCER_REGISTRATION_FORM : "workspace_id"
-    PUBLIC_WORKSPACE ||--o{ BALANCER_REGISTRATION_FORM_TEMPLATE : "workspace_id"
-    PUBLIC_WORKSPACE ||--o{ BALANCER_REGISTRATION_TEAM : "workspace_id"
-    PUBLIC_WORKSPACE_MEMBER |o--o{ BALANCER_REGISTRATION : "workspace_member_id"
-    TOURNAMENT_TEAM |o--o{ BALANCER_REGISTRATION_TEAM : "exported_team_id"
-    TOURNAMENT_TOURNAMENT ||--o{ BALANCER_REGISTRATION : "tournament_id"
-    TOURNAMENT_TOURNAMENT ||--o{ BALANCER_REGISTRATION_TEAM : "tournament_id"
-    TOURNAMENT_TOURNAMENT ||--o| BALANCER_REGISTRATION_FORM : "tournament_id"
-    TOURNAMENT_TOURNAMENT ||--o| BALANCER_REGISTRATION_GOOGLE_SHEET_FEED : "tournament_id"
+    AUTH_USER |o--o{ REGISTRATION_FORM_TEMPLATE : "created_by"
+    AUTH_USER |o--o{ REGISTRATION_FORM_VERSION : "created_by"
+    AUTH_USER |o--o{ REGISTRATION_REGISTRATION : "checked_in_by"
+    AUTH_USER |o--o{ REGISTRATION_REGISTRATION : "deleted_by"
+    AUTH_USER |o--o{ REGISTRATION_REGISTRATION : "reviewed_by"
+    AUTH_USER |o--o{ REGISTRATION_TEAM : "deleted_by"
+    AUTH_USER |o--o{ REGISTRATION_TEAM : "invite_cap_reset_by"
+    AUTH_USER |o--o{ REGISTRATION_TEAM : "roster_locked_by"
+    AUTH_USER |o--o{ REGISTRATION_TEAM : "subscription_covered_by"
+    AUTH_USER |o--o{ REGISTRATION_TEAM_INVITE : "invited_by"
+    AUTH_USER |o--o{ REGISTRATION_TEAM_INVITE : "revoked_by"
+    AUTH_USER |o--o{ REGISTRATION_TEAM_INVITE : "target_auth_user_id"
+    CATALOG_DISCIPLINE ||--o{ REGISTRATION_FORM_TEMPLATE : "discipline"
+    CATALOG_ENTITY ||--o{ REGISTRATION_ROLE_ENTITY : "entity_id"
+    CATALOG_ENTITY ||--o{ REGISTRATION_ROLE_ENTITY : "entity_kind"
+    CATALOG_ROLE ||--o{ REGISTRATION_ROLE : "dimension_id"
+    CATALOG_ROLE ||--o{ REGISTRATION_ROLE : "role_id"
+    PUBLIC_WORKSPACE |o--o{ REGISTRATION_STATUS : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ REGISTRATION_FORM : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ REGISTRATION_FORM_TEMPLATE : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ REGISTRATION_TEAM : "workspace_id"
+    PUBLIC_WORKSPACE_MEMBER |o--o{ REGISTRATION_REGISTRATION : "workspace_member_id"
+    REGISTRATION_FORM ||--o{ REGISTRATION_FORM_VERSION : "form_id"
+    REGISTRATION_FORM_VERSION |o--o{ REGISTRATION_FORM : "current_version_id"
+    REGISTRATION_FORM_VERSION |o--o{ REGISTRATION_REGISTRATION : "form_version_id"
+    REGISTRATION_GOOGLE_SHEET_FEED ||--o{ REGISTRATION_GOOGLE_SHEET_BINDING : "feed_id"
+    REGISTRATION_REGISTRATION |o--o{ REGISTRATION_TEAM : "captain_registration_id"
+    REGISTRATION_REGISTRATION |o--o{ REGISTRATION_TEAM_INVITE : "accepted_registration_id"
+    REGISTRATION_REGISTRATION ||--o{ REGISTRATION_IDENTITY : "registration_id"
+    REGISTRATION_REGISTRATION ||--o{ REGISTRATION_ROLE : "registration_id"
+    REGISTRATION_REGISTRATION ||--o| REGISTRATION_GOOGLE_SHEET_BINDING : "registration_id"
+    REGISTRATION_ROLE ||--o{ REGISTRATION_ROLE_ENTITY : "role_id"
+    REGISTRATION_TEAM |o--o{ REGISTRATION_REGISTRATION : "registration_team_id"
+    REGISTRATION_TEAM ||--o{ REGISTRATION_TEAM_INVITE : "team_id"
+    TOURNAMENT_TEAM |o--o{ REGISTRATION_TEAM : "exported_team_id"
+    TOURNAMENT_TOURNAMENT ||--o{ REGISTRATION_REGISTRATION : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ REGISTRATION_TEAM : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o| REGISTRATION_FORM : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o| REGISTRATION_GOOGLE_SHEET_FEED : "tournament_id"
 ```
 
 Composite unique keys:
 
-- `BALANCER_REGISTRATION_FORM_VERSION` unique on (`form_id`, `number`)
-- `BALANCER_REGISTRATION_GOOGLE_SHEET_BINDING` unique on (`feed_id`, `source_record_key`)
-- `BALANCER_REGISTRATION_IDENTITY` unique on (`registration_id`, `provider`, `handle_normalized`)
-- `BALANCER_REGISTRATION_IDENTITY` unique on (`registration_id`, `provider`, `position`)
-- `BALANCER_REGISTRATION_ROLE` unique on (`registration_id`, `role_id`)
-- `BALANCER_REGISTRATION_ROLE_ENTITY` unique on (`role_id`, `entity_id`)
-- `BALANCER_REGISTRATION_ROLE_ENTITY` unique on (`role_id`, `priority`)
-- `BALANCER_REGISTRATION_STATUS` unique on (`workspace_id`, `scope`, `slug`, `kind`)
+- `REGISTRATION_FORM_VERSION` unique on (`form_id`, `number`)
+- `REGISTRATION_GOOGLE_SHEET_BINDING` unique on (`feed_id`, `source_record_key`)
+- `REGISTRATION_IDENTITY` unique on (`registration_id`, `provider`, `handle_normalized`)
+- `REGISTRATION_IDENTITY` unique on (`registration_id`, `provider`, `position`)
+- `REGISTRATION_ROLE` unique on (`registration_id`, `role_id`)
+- `REGISTRATION_ROLE_ENTITY` unique on (`role_id`, `entity_id`)
+- `REGISTRATION_ROLE_ENTITY` unique on (`role_id`, `priority`)
+- `REGISTRATION_STATUS` unique on (`workspace_id`, `scope`, `slug`, `kind`)
 <!-- /ERD:auto -->
 
 ## balancer — `balancer`
 
-Balancing runs and their resulting teams, and the live snake draft: sessions, captains, the
-player pool, the pick sequence, and the audit trail.
+Balancing runs and their resulting teams, and the balancer's configuration. The live draft that
+can start from a saved balance is its own schema, [draft](#draft--draft).
 
 There is at most one `balance` per tournament. The chosen result is stored twice on purpose: as
 `result_json` for replay, and normalized into `balance_variant` → `team` → `team_slot` for
@@ -2146,18 +2149,6 @@ querying. A slot identifies its player by normalized battle tag rather than by m
 because the balancer works on the registration snapshot as it was submitted. `exported_team_id`
 is the boundary where balancing output becomes tournament truth — until it is set, nothing in
 `tournament` has been touched.
-
-The draft is a snake draft with a server-authoritative clock: one session per tournament, its
-pool taken either from a saved balance (`source_balance_id`) or built directly, and `version`
-columns on the session and on each pick as the optimistic lock. Session and pick reference each
-other (`current_pick_id` ↔ `session_id`), which is why the FK is declared with `use_alter`.
-
-`draft_player` is unique on `(session_id, registration_id)`: a pool entry *is* a registration,
-so roles, ranks and top heroes are read from the registration tables instead of being copied
-into draft-local child tables, which is what the earlier model did. Captain, drafted player and
-pick actor all resolve through `workspace_member`; `captain_auth_user_id` exists separately only
-as the "this is me" signal for the live UI. `draft_audit_event` is the append-only trail of what
-the session did and who caused it.
 
 Configuration exists at two levels — `workspace_config` as the default and `tournament_config`
 as the override — each unique on its scope.
@@ -2192,90 +2183,6 @@ erDiagram
         float objective_score "nullable"
         json statistics_json "nullable"
         boolean is_selected
-    }
-    BALANCER_DRAFT_AUDIT_EVENT {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint session_id FK
-        bigint actor_auth_user_id FK "nullable"
-        varchar(64) action
-        varchar(64) entity_type
-        bigint entity_id
-        text reason
-        json before_json
-        json after_json
-    }
-    BALANCER_DRAFT_PICK {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint session_id FK
-        int overall_no
-        int round_no
-        int pick_in_round
-        bigint draft_team_id FK
-        bigint dimension_id FK "nullable"
-        bigint target_role_id FK "nullable"
-        int target_rank_value "nullable"
-        varchar(16) status
-        bigint picked_player_id FK "nullable"
-        bigint picked_by_workspace_member_id FK "nullable"
-        boolean is_autopick
-        boolean is_admin_override
-        timestamptz clock_started_at "nullable"
-        timestamptz clock_expires_at "nullable"
-        int clock_remaining_ms "nullable"
-        timestamptz overtime_started_at "nullable"
-        int version
-    }
-    BALANCER_DRAFT_PLAYER {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint session_id FK
-        bigint registration_id FK
-        bigint workspace_member_id FK "nullable"
-        varchar(16) status
-        boolean is_captain
-        bigint drafted_by_team_id FK "nullable"
-        bigint dimension_id FK "nullable"
-        bigint captain_role_id FK "nullable"
-        int version
-    }
-    BALANCER_DRAFT_SESSION {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint tournament_id FK
-        bigint workspace_id FK
-        varchar(16) status
-        varchar(64) blocked_reason "nullable"
-        varchar(16) format
-        int rounds
-        int pick_time_seconds
-        int overtime_seconds
-        bigint current_pick_id FK "nullable"
-        varchar(32) pool_source
-        bigint source_balance_id FK "nullable"
-        varchar(16) autopick_strategy
-        boolean allow_admin_override
-        timestamptz exported_at "nullable"
-        varchar(32) export_status "nullable"
-        json settings_json
-        int version
-    }
-    BALANCER_DRAFT_TEAM {
-        bigint id PK
-        timestamptz created_at
-        timestamptz updated_at "nullable"
-        bigint session_id FK
-        bigint captain_workspace_member_id FK "nullable"
-        bigint captain_auth_user_id FK "nullable"
-        varchar(255) name
-        int draft_position
-        bigint exported_team_id FK "nullable"
-        jsonb pick_queue
     }
     BALANCER_TEAM {
         bigint id PK
@@ -2333,41 +2240,19 @@ erDiagram
     }
 
     AUTH_USER |o--o{ BALANCER_BALANCE : "saved_by"
-    AUTH_USER |o--o{ BALANCER_DRAFT_AUDIT_EVENT : "actor_auth_user_id"
-    AUTH_USER |o--o{ BALANCER_DRAFT_TEAM : "captain_auth_user_id"
     AUTH_USER |o--o{ BALANCER_TOURNAMENT_CONFIG : "updated_by"
     AUTH_USER |o--o{ BALANCER_WORKSPACE_CONFIG : "updated_by"
     AUTH_USER ||--o| BALANCER_USER_CONFIG : "user_id"
-    BALANCER_BALANCE |o--o{ BALANCER_DRAFT_SESSION : "source_balance_id"
     BALANCER_BALANCE ||--o{ BALANCER_BALANCE_VARIANT : "balance_id"
     BALANCER_BALANCE ||--o{ BALANCER_TEAM : "balance_id"
     BALANCER_BALANCE_VARIANT |o--o{ BALANCER_TEAM : "variant_id"
-    BALANCER_DRAFT_PICK |o--o{ BALANCER_DRAFT_SESSION : "current_pick_id"
-    BALANCER_DRAFT_PLAYER |o--o{ BALANCER_DRAFT_PICK : "picked_player_id"
-    BALANCER_DRAFT_SESSION ||--o{ BALANCER_DRAFT_AUDIT_EVENT : "session_id"
-    BALANCER_DRAFT_SESSION ||--o{ BALANCER_DRAFT_PICK : "session_id"
-    BALANCER_DRAFT_SESSION ||--o{ BALANCER_DRAFT_PLAYER : "session_id"
-    BALANCER_DRAFT_SESSION ||--o{ BALANCER_DRAFT_TEAM : "session_id"
-    BALANCER_DRAFT_TEAM |o--o{ BALANCER_DRAFT_PLAYER : "drafted_by_team_id"
-    BALANCER_DRAFT_TEAM ||--o{ BALANCER_DRAFT_PICK : "draft_team_id"
-    BALANCER_REGISTRATION ||--o{ BALANCER_DRAFT_PLAYER : "registration_id"
     BALANCER_TEAM ||--o{ BALANCER_TEAM_SLOT : "team_id"
-    CATALOG_ROLE |o--o{ BALANCER_DRAFT_PICK : "dimension_id"
-    CATALOG_ROLE |o--o{ BALANCER_DRAFT_PICK : "target_role_id"
-    CATALOG_ROLE |o--o{ BALANCER_DRAFT_PLAYER : "captain_role_id"
-    CATALOG_ROLE |o--o{ BALANCER_DRAFT_PLAYER : "dimension_id"
     CATALOG_ROLE |o--o{ BALANCER_TEAM_SLOT : "dimension_id"
     CATALOG_ROLE |o--o{ BALANCER_TEAM_SLOT : "role_id"
     PUBLIC_WORKSPACE |o--o{ BALANCER_BALANCE : "workspace_id"
-    PUBLIC_WORKSPACE ||--o{ BALANCER_DRAFT_SESSION : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ BALANCER_TOURNAMENT_CONFIG : "workspace_id"
     PUBLIC_WORKSPACE ||--o| BALANCER_WORKSPACE_CONFIG : "workspace_id"
-    PUBLIC_WORKSPACE_MEMBER |o--o{ BALANCER_DRAFT_PICK : "picked_by_workspace_member_id"
-    PUBLIC_WORKSPACE_MEMBER |o--o{ BALANCER_DRAFT_PLAYER : "workspace_member_id"
-    PUBLIC_WORKSPACE_MEMBER |o--o{ BALANCER_DRAFT_TEAM : "captain_workspace_member_id"
-    TOURNAMENT_TEAM |o--o{ BALANCER_DRAFT_TEAM : "exported_team_id"
     TOURNAMENT_TEAM |o--o{ BALANCER_TEAM : "exported_team_id"
-    TOURNAMENT_TOURNAMENT ||--o{ BALANCER_DRAFT_SESSION : "tournament_id"
     TOURNAMENT_TOURNAMENT ||--o| BALANCER_BALANCE : "tournament_id"
     TOURNAMENT_TOURNAMENT ||--o| BALANCER_TOURNAMENT_CONFIG : "tournament_id"
 ```
@@ -2375,12 +2260,145 @@ erDiagram
 Composite unique keys:
 
 - `BALANCER_BALANCE_VARIANT` unique on (`balance_id`, `variant_number`)
-- `BALANCER_DRAFT_PICK` unique on (`session_id`, `overall_no`)
-- `BALANCER_DRAFT_PLAYER` unique on (`session_id`, `registration_id`)
-- `BALANCER_DRAFT_TEAM` unique on (`session_id`, `draft_position`)
 <!-- /ERD:auto -->
 
-## custom_game — `balancer`
+## draft — `draft`
+
+The live snake draft: sessions, captains' teams, the player pool, the pick sequence, and the
+audit trail.
+
+The draft has a server-authoritative clock: one session per tournament, its
+pool taken either from a saved balance (`source_balance_id`) or built directly, and `version`
+columns on the session and on each pick as the optimistic lock. Session and pick reference each
+other (`current_pick_id` ↔ `session_id`), which is why the FK is declared with `use_alter`.
+
+`player` is unique on `(session_id, registration_id)`: a pool entry *is* a registration,
+so roles, ranks and top heroes are read from the registration tables instead of being copied
+into draft-local child tables, which is what the earlier model did. Captain, drafted player and
+pick actor all resolve through `workspace_member`; `captain_auth_user_id` exists separately only
+as the "this is me" signal for the live UI. `audit_event` is the append-only trail of what
+the session did and who caused it.
+
+<!-- ERD:auto draft -->
+```mermaid
+erDiagram
+    DRAFT_AUDIT_EVENT {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint session_id FK
+        bigint actor_auth_user_id FK "nullable"
+        varchar(64) action
+        varchar(64) entity_type
+        bigint entity_id
+        text reason
+        json before_json
+        json after_json
+    }
+    DRAFT_PICK {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint session_id FK
+        int overall_no
+        int round_no
+        int pick_in_round
+        bigint draft_team_id FK
+        bigint dimension_id FK "nullable"
+        bigint target_role_id FK "nullable"
+        int target_rank_value "nullable"
+        varchar(16) status
+        bigint picked_player_id FK "nullable"
+        bigint picked_by_workspace_member_id FK "nullable"
+        boolean is_autopick
+        boolean is_admin_override
+        timestamptz clock_started_at "nullable"
+        timestamptz clock_expires_at "nullable"
+        int clock_remaining_ms "nullable"
+        timestamptz overtime_started_at "nullable"
+        int version
+    }
+    DRAFT_PLAYER {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint session_id FK
+        bigint registration_id FK
+        bigint workspace_member_id FK "nullable"
+        varchar(16) status
+        boolean is_captain
+        bigint drafted_by_team_id FK "nullable"
+        bigint dimension_id FK "nullable"
+        bigint captain_role_id FK "nullable"
+        int version
+    }
+    DRAFT_SESSION {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint tournament_id FK
+        bigint workspace_id FK
+        varchar(16) status
+        varchar(64) blocked_reason "nullable"
+        varchar(16) format
+        int rounds
+        int pick_time_seconds
+        int overtime_seconds
+        bigint current_pick_id FK "nullable"
+        varchar(32) pool_source
+        bigint source_balance_id FK "nullable"
+        varchar(16) autopick_strategy
+        boolean allow_admin_override
+        timestamptz exported_at "nullable"
+        varchar(32) export_status "nullable"
+        json settings_json
+        int version
+    }
+    DRAFT_TEAM {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint session_id FK
+        bigint captain_workspace_member_id FK "nullable"
+        bigint captain_auth_user_id FK "nullable"
+        varchar(255) name
+        int draft_position
+        bigint exported_team_id FK "nullable"
+        jsonb pick_queue
+    }
+
+    AUTH_USER |o--o{ DRAFT_AUDIT_EVENT : "actor_auth_user_id"
+    AUTH_USER |o--o{ DRAFT_TEAM : "captain_auth_user_id"
+    BALANCER_BALANCE |o--o{ DRAFT_SESSION : "source_balance_id"
+    CATALOG_ROLE |o--o{ DRAFT_PICK : "dimension_id"
+    CATALOG_ROLE |o--o{ DRAFT_PICK : "target_role_id"
+    CATALOG_ROLE |o--o{ DRAFT_PLAYER : "captain_role_id"
+    CATALOG_ROLE |o--o{ DRAFT_PLAYER : "dimension_id"
+    DRAFT_PICK |o--o{ DRAFT_SESSION : "current_pick_id"
+    DRAFT_PLAYER |o--o{ DRAFT_PICK : "picked_player_id"
+    DRAFT_SESSION ||--o{ DRAFT_AUDIT_EVENT : "session_id"
+    DRAFT_SESSION ||--o{ DRAFT_PICK : "session_id"
+    DRAFT_SESSION ||--o{ DRAFT_PLAYER : "session_id"
+    DRAFT_SESSION ||--o{ DRAFT_TEAM : "session_id"
+    DRAFT_TEAM |o--o{ DRAFT_PLAYER : "drafted_by_team_id"
+    DRAFT_TEAM ||--o{ DRAFT_PICK : "draft_team_id"
+    PUBLIC_WORKSPACE ||--o{ DRAFT_SESSION : "workspace_id"
+    PUBLIC_WORKSPACE_MEMBER |o--o{ DRAFT_PICK : "picked_by_workspace_member_id"
+    PUBLIC_WORKSPACE_MEMBER |o--o{ DRAFT_PLAYER : "workspace_member_id"
+    PUBLIC_WORKSPACE_MEMBER |o--o{ DRAFT_TEAM : "captain_workspace_member_id"
+    REGISTRATION_REGISTRATION ||--o{ DRAFT_PLAYER : "registration_id"
+    TOURNAMENT_TEAM |o--o{ DRAFT_TEAM : "exported_team_id"
+    TOURNAMENT_TOURNAMENT ||--o{ DRAFT_SESSION : "tournament_id"
+```
+
+Composite unique keys:
+
+- `DRAFT_PICK` unique on (`session_id`, `overall_no`)
+- `DRAFT_PLAYER` unique on (`session_id`, `registration_id`)
+- `DRAFT_TEAM` unique on (`session_id`, `draft_position`)
+<!-- /ERD:auto -->
+
+## mix — `mix`
 
 Workspace custom games ("mixes"): the game, its host and co-hosts, the lineup, per-player role
 and must-play constraints. Each mix owns a frozen team format in `roster.team_format`.
@@ -2389,19 +2407,23 @@ Host and co-hosts are accounts (`auth.user`), while the lineup is workspace memb
 an act, playing is a membership. `participation` separates a player who must be in the game from
 the pool that fills the remaining slots and from the benched. Team slots are projected from the mix's
 format; solver weights and rating knobs belong to the host's `balancer.user_config`. Per-lobby balance
-results remain versioned JSON on `custom_game_lobby`, so a re-balance is a new version rather than an
+results remain versioned JSON on `lobby`, so a re-balance is a new version rather than an
 in-place overwrite. The child tables use composite primary keys rather than surrogate ids.
 
 Recorded rounds of a mix are not stored here: each is an `encounter.encounter` owned by the game
-(`custom_game_id`), and `custom_game_round` / `custom_game_round_member` hold only the balancer's own facts about
+(`custom_game_id`), and `round` / `round_member` hold only the balancer's own facts about
 it — the lobby it was played in, the points-per-win it applied, and per member whether they were
 seated (with the rank delta frozen at record time) or busy in another lobby. `discipline` and
 `scoring_rule_id` on the game give those encounters their game and their `wins` rule.
 
-<!-- ERD:auto custom_game -->
+<!-- ERD:auto mix -->
 ```mermaid
 erDiagram
-    BALANCER_CUSTOM_GAME {
+    MIX_CO_HOST {
+        bigint custom_game_id PK,FK
+        bigint user_id PK,FK
+    }
+    MIX_CUSTOM_GAME {
         bigint id PK
         timestamptz created_at
         timestamptz updated_at "nullable"
@@ -2416,11 +2438,7 @@ erDiagram
         varchar(32) discipline FK
         bigint scoring_rule_id FK
     }
-    BALANCER_CUSTOM_GAME_CO_HOST {
-        bigint custom_game_id PK,FK
-        bigint user_id PK,FK
-    }
-    BALANCER_CUSTOM_GAME_LOBBY {
+    MIX_LOBBY {
         bigint custom_game_id PK,FK
         int lobby_index PK
         int selected_variant_index
@@ -2432,7 +2450,7 @@ erDiagram
         bigint team1_voice_channel_id "nullable"
         bigint team2_voice_channel_id "nullable"
     }
-    BALANCER_CUSTOM_GAME_PLAYER {
+    MIX_PLAYER {
         bigint id PK
         timestamptz created_at
         timestamptz updated_at "nullable"
@@ -2444,55 +2462,55 @@ erDiagram
         boolean is_flex
         int lobby_pin "nullable"
     }
-    BALANCER_CUSTOM_GAME_PLAYER_ROLE {
+    MIX_PLAYER_ROLE {
         bigint custom_game_player_id PK,FK
         bigint dimension_id FK
         bigint role_id PK,FK
         int priority
     }
-    BALANCER_CUSTOM_GAME_ROUND {
+    MIX_ROUND {
         bigint encounter_id PK,FK
         int lobby_index
         int points_per_win_applied "nullable"
     }
-    BALANCER_CUSTOM_GAME_ROUND_MEMBER {
+    MIX_ROUND_MEMBER {
         bigint encounter_id PK,FK
         bigint workspace_member_id PK,FK
         boolean busy
         int rank_delta_applied "nullable"
     }
-    BALANCER_CUSTOM_GAME_TEAM_NAME {
+    MIX_TEAM_NAME {
         bigint custom_game_id PK,FK
         int team_index PK
         varchar(60) name
     }
 
-    AUTH_USER |o--o{ BALANCER_CUSTOM_GAME : "host_user_id"
-    AUTH_USER ||--o| BALANCER_CUSTOM_GAME_CO_HOST : "user_id"
-    BALANCER_CUSTOM_GAME ||--o{ BALANCER_CUSTOM_GAME_PLAYER : "custom_game_id"
-    BALANCER_CUSTOM_GAME ||--o| BALANCER_CUSTOM_GAME_CO_HOST : "custom_game_id"
-    BALANCER_CUSTOM_GAME ||--o| BALANCER_CUSTOM_GAME_LOBBY : "custom_game_id"
-    BALANCER_CUSTOM_GAME ||--o| BALANCER_CUSTOM_GAME_TEAM_NAME : "custom_game_id"
-    BALANCER_CUSTOM_GAME_PLAYER ||--o| BALANCER_CUSTOM_GAME_PLAYER_ROLE : "custom_game_player_id"
-    BALANCER_CUSTOM_GAME_ROUND ||--o| BALANCER_CUSTOM_GAME_ROUND_MEMBER : "encounter_id"
-    CATALOG_DISCIPLINE ||--o{ BALANCER_CUSTOM_GAME : "discipline"
-    CATALOG_ENTITY |o--o{ BALANCER_CUSTOM_GAME_LOBBY : "next_map_id"
-    CATALOG_ENTITY ||--o{ BALANCER_CUSTOM_GAME_LOBBY : "next_map_kind"
-    CATALOG_ROLE ||--o{ BALANCER_CUSTOM_GAME_PLAYER_ROLE : "dimension_id"
-    CATALOG_ROLE ||--o| BALANCER_CUSTOM_GAME_PLAYER_ROLE : "role_id"
-    ENCOUNTER_ENCOUNTER ||--o| BALANCER_CUSTOM_GAME_ROUND : "encounter_id"
-    ENCOUNTER_SCORING_RULE ||--o{ BALANCER_CUSTOM_GAME : "scoring_rule_id"
-    ENCOUNTER_SCORING_RULE ||--o{ BALANCER_CUSTOM_GAME : "workspace_id"
-    PUBLIC_WORKSPACE ||--o{ BALANCER_CUSTOM_GAME : "workspace_id"
-    PUBLIC_WORKSPACE_MEMBER ||--o{ BALANCER_CUSTOM_GAME_PLAYER : "workspace_member_id"
-    PUBLIC_WORKSPACE_MEMBER ||--o| BALANCER_CUSTOM_GAME_ROUND_MEMBER : "workspace_member_id"
+    AUTH_USER |o--o{ MIX_CUSTOM_GAME : "host_user_id"
+    AUTH_USER ||--o| MIX_CO_HOST : "user_id"
+    CATALOG_DISCIPLINE ||--o{ MIX_CUSTOM_GAME : "discipline"
+    CATALOG_ENTITY |o--o{ MIX_LOBBY : "next_map_id"
+    CATALOG_ENTITY ||--o{ MIX_LOBBY : "next_map_kind"
+    CATALOG_ROLE ||--o{ MIX_PLAYER_ROLE : "dimension_id"
+    CATALOG_ROLE ||--o| MIX_PLAYER_ROLE : "role_id"
+    ENCOUNTER_ENCOUNTER ||--o| MIX_ROUND : "encounter_id"
+    ENCOUNTER_SCORING_RULE ||--o{ MIX_CUSTOM_GAME : "scoring_rule_id"
+    ENCOUNTER_SCORING_RULE ||--o{ MIX_CUSTOM_GAME : "workspace_id"
+    MIX_CUSTOM_GAME ||--o{ MIX_PLAYER : "custom_game_id"
+    MIX_CUSTOM_GAME ||--o| MIX_CO_HOST : "custom_game_id"
+    MIX_CUSTOM_GAME ||--o| MIX_LOBBY : "custom_game_id"
+    MIX_CUSTOM_GAME ||--o| MIX_TEAM_NAME : "custom_game_id"
+    MIX_PLAYER ||--o| MIX_PLAYER_ROLE : "custom_game_player_id"
+    MIX_ROUND ||--o| MIX_ROUND_MEMBER : "encounter_id"
+    PUBLIC_WORKSPACE ||--o{ MIX_CUSTOM_GAME : "workspace_id"
+    PUBLIC_WORKSPACE_MEMBER ||--o{ MIX_PLAYER : "workspace_member_id"
+    PUBLIC_WORKSPACE_MEMBER ||--o| MIX_ROUND_MEMBER : "workspace_member_id"
 ```
 
 Composite unique keys:
 
-- `BALANCER_CUSTOM_GAME` unique on (`id`, `workspace_id`, `discipline`)
-- `BALANCER_CUSTOM_GAME_PLAYER` unique on (`custom_game_id`, `workspace_member_id`)
-- `BALANCER_CUSTOM_GAME_PLAYER_ROLE` unique on (`custom_game_player_id`, `priority`)
+- `MIX_CUSTOM_GAME` unique on (`id`, `workspace_id`, `discipline`)
+- `MIX_PLAYER` unique on (`custom_game_id`, `workspace_member_id`)
+- `MIX_PLAYER_ROLE` unique on (`custom_game_player_id`, `priority`)
 <!-- /ERD:auto -->
 
 ## stats — `stats`
@@ -3048,7 +3066,7 @@ check on. The Discord guild snowflake is not stored in `config_json` — it is i
 
 The eligibility rule lives on the workspace, not on the registration form: one `requirement` row
 is shared by every tournament in the workspace, and the per-tournament decision is the
-`require_subscription` toggle on `balancer.registration_form`. It is a table rather than a column
+`require_subscription` toggle on `registration.form`. It is a table rather than a column
 because presets were intended from the start — more rows plus a nullable FK on the form is a
 purely additive change, while a column on `workspace` would have needed a data migration.
 `(workspace_id, name)` is unique, with a partial unique index pinning a single default row.
@@ -3516,3 +3534,10 @@ the top of this document is the only revision claim here.
   Discord message. `discordmsg03` adds `public.discord_message.payload_json` (what the publisher
   claims a row with; `card_json` became the bot's own last render) and
   `stats.discord_channel.last_scanned_message_id` (where a rescan resumes). Additive only.
+- **`balancer` split by domain.** `balancer` kept the balancer itself (balances and their teams,
+  the three config scopes, member ranks); registration moved to `registration`, pickup mixes to
+  `mix`, the live draft to `draft`, and every table dropped the prefix its schema now states
+  (`balancer.registration_form` → `registration.form`, `balancer.custom_game_player` →
+  `mix.player`, `balancer.draft_session` → `draft.session`). `ALTER TABLE … SET SCHEMA` and
+  renames only: ids, rows and foreign keys are untouched; index, constraint and sequence names
+  follow the new names.

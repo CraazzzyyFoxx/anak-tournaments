@@ -9,7 +9,8 @@ resolution and ``configure_mappers()`` keep working against the single shared
 from .achievements import *
 from .analytics import *
 from .balancer import *
-from .custom_game import *
+from .draft import *
+from .mix import *
 from .catalog import *
 from .division_grid import *
 from .encounter import *

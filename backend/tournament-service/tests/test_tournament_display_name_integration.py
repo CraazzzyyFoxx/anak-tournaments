@@ -27,16 +27,16 @@ from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.identity.social import SocialAccount  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
-    BalancerRegistration,
-    BalancerRegistrationIdentity,
+    Registration,
+    RegistrationIdentity,
 )
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
 from shared.services.tournament.display_name import tournament_display_name  # noqa: E402
 
 
-def _identity(provider: str, handle: str) -> BalancerRegistrationIdentity:
-    return BalancerRegistrationIdentity(
+def _identity(provider: str, handle: str) -> RegistrationIdentity:
+    return RegistrationIdentity(
         provider=provider,
         position=0,
         handle=handle,
@@ -84,13 +84,13 @@ def test_registered_tag_then_linked_game_handle_then_site_name(db_session, disci
         db_session.add_all(
             [
                 # Registered for THIS tournament on a smurf.
-                BalancerRegistration(
+                Registration(
                     tournament_id=this.id,
                     workspace_member_id=member.id,
                     identities=[_identity("battlenet", "Smurf#2222"), _identity("riot", "Smurf Riot#KR2")],
                 ),
                 # A withdrawn entry elsewhere names nobody.
-                BalancerRegistration(
+                Registration(
                     tournament_id=other.id,
                     workspace_member_id=member.id,
                     identities=[_identity("battlenet", "Old#3333"), _identity("riot", "Old Riot#KR3")],

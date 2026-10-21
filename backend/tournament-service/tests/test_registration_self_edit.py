@@ -84,8 +84,8 @@ def _tournament(*, ends_in: timedelta | None = timedelta(days=1)) -> models.Tour
     return tournament
 
 
-def _identity(handle: str, *, provider: str = "battlenet", position: int = 0) -> models.BalancerRegistrationIdentity:
-    return models.BalancerRegistrationIdentity(
+def _identity(handle: str, *, provider: str = "battlenet", position: int = 0) -> models.RegistrationIdentity:
+    return models.RegistrationIdentity(
         provider=provider,
         position=position,
         handle=handle,
@@ -93,7 +93,7 @@ def _identity(handle: str, *, provider: str = "battlenet", position: int = 0) ->
     )
 
 
-def _registration(**kwargs: Any) -> models.BalancerRegistration:
+def _registration(**kwargs: Any) -> models.Registration:
     defaults: dict[str, Any] = {
         "id": 1,
         "tournament_id": 7,
@@ -103,7 +103,7 @@ def _registration(**kwargs: Any) -> models.BalancerRegistration:
         "identities": [_identity("Player#1234")],
         "public_notes": "hi",
     }
-    return models.BalancerRegistration(**{**defaults, **kwargs})
+    return models.Registration(**{**defaults, **kwargs})
 
 
 class PolicyTests(TestCase):
@@ -249,7 +249,7 @@ async def _no_rosters(*_args: Any, **_kwargs: Any) -> dict:
 
 
 class WritePathTests(IsolatedAsyncioTestCase):
-    async def _update(self, registration: models.BalancerRegistration, values: dict[str, Any], schema: FormSchema):
+    async def _update(self, registration: models.Registration, values: dict[str, Any], schema: FormSchema):
         return await reg_service.registration_service.update_registration(
             _RecordingSession(),
             registration,

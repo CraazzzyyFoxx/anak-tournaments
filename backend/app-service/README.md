@@ -230,7 +230,7 @@ the same transaction. Played-member deletion remains refused. Match-log download
 `StatsMatch` → `IngestJob.raw_ref` and game → encounter tournament, authorize visibility before
 fetching that actual S3 key, and use the filename only for display.
 
-**Other reads:** `tournament`, native `stats`, `balancer`, `auth` (for the acting identity and its
+**Other reads:** `tournament`, native `stats`, `balancer`, `registration`, `mix`, `draft`, `auth` (for the acting identity and its
 roles), and `catalog.entity_legacy` for old-id lookups. No runtime access to legacy `matches`,
 `log_processing` or `overwatch` tables remains.
 
@@ -261,19 +261,11 @@ Behaviour-changing settings:
 - `POSTGRES_*` and the `DB_POOL_*` knobs. Set `DB_PGBOUNCER=true` **before** scaling replicas — each
   process opens up to `DB_POOL_SIZE + DB_MAX_OVERFLOW` server connections.
 - `S3_ACCESS_KEY` / `S3_SECRET_KEY` / `S3_ENDPOINT_URL` / `S3_BUCKET_NAME` / `S3_PUBLIC_URL`.
-- `AUTH_SERVICE_URL` — token validation; production overrides it to the gateway
-  (`http://gateway:8080/api/auth`).
-- `PROJECT_URL` — required, used to build absolute URLs.
-- Cache TTLs, all defaulting to 300s except one: `users_cache_ttl`, `tournaments_cache_ttl`,
-  `heroes_cache_ttl`, `maps_cache_ttl`, `gamemodes_cache_ttl`, `statistics_cache_ttl`,
-  `teams_cache_ttl`, `encounters_cache_ttl`, `achievements_cache_ttl`, and `user_profile_cache_ttl`
+- Cache TTLs: `users_cache_ttl` and `achievements_cache_ttl` (300s), and `user_profile_cache_ttl`
   (60s). The profile TTL is short on purpose — identity-service avatar/name edits have no
   cross-service invalidation hook, so that TTL is the only bound on their staleness.
 - `WORKER_METRICS_PORT`, `TRACING_ENABLED`, `OTLP_ENDPOINT`, `OTEL_TRACES_SAMPLER*`, `SENTRY_*`,
   `LOG_LEVEL`, `JSON_LOGGING`.
-
-`PORT=8000` in `app.env`/`app.env.example` is vestigial — nothing in the worker reads it, and the
-process listens on no HTTP port.
 
 ## Running
 

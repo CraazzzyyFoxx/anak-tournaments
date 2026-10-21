@@ -23,7 +23,7 @@ from shared.core.enums import (  # noqa: E402
     DraftStatus,
 )
 from shared.domain.roster_shape import RosterShape  # noqa: E402
-from shared.models.balancer.draft import DraftSession  # noqa: E402
+from shared.models.draft import DraftSession  # noqa: E402
 from shared.schemas.roster_slots import RosterShapeRead  # noqa: E402
 from src import schemas  # noqa: E402
 from src.domain.draft import rules  # noqa: E402

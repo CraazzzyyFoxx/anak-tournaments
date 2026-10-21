@@ -42,7 +42,7 @@ def _slot_role(slot_code: str | None, shape: Any) -> str | None:
     return slot_code
 
 
-def _identity_keys(registration: models.BalancerRegistration, discord_ids: Sequence[str]) -> set[str]:
+def _identity_keys(registration: models.Registration, discord_ids: Sequence[str]) -> set[str]:
     keys: set[str] = set()
     nick = next(
         (
@@ -62,7 +62,7 @@ def _identity_keys(registration: models.BalancerRegistration, discord_ids: Seque
 
 async def _discord_ids_by_registration(
     session: AsyncSession,
-    registrations: Sequence[models.BalancerRegistration],
+    registrations: Sequence[models.Registration],
 ) -> dict[int, list[str]]:
     member_ids = [r.workspace_member_id for r in registrations if r.workspace_member_id]
     if not member_ids:
@@ -102,17 +102,17 @@ async def _taken_identity_keys(
 ) -> set[str]:
     others = list(
         await session.scalars(
-            sa.select(models.BalancerRegistration)
+            sa.select(models.Registration)
             .where(
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.registration_team_id.is_not(None),
-                models.BalancerRegistration.registration_team_id != exclude_team_id,
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistration.status.notin_(_SLOT_RELEASING),
+                models.Registration.tournament_id == tournament_id,
+                models.Registration.registration_team_id.is_not(None),
+                models.Registration.registration_team_id != exclude_team_id,
+                models.Registration.deleted_at.is_(None),
+                models.Registration.status.notin_(_SLOT_RELEASING),
             )
             # ``_identity_keys`` reads the Discord handle off the identity rows,
             # which are never lazy-loadable in async code.
-            .options(selectinload(models.BalancerRegistration.identities))
+            .options(selectinload(models.Registration.identities))
         )
     )
     discord_ids = await _discord_ids_by_registration(session, others)
@@ -123,7 +123,7 @@ async def _taken_identity_keys(
 
 
 def _starter_ranks(
-    members: Sequence[models.BalancerRegistration],
+    members: Sequence[models.Registration],
     rosters: dict[int, PlayerRoster],
     shape: Any,
 ) -> list[StarterRank]:
@@ -141,7 +141,7 @@ def _starter_ranks(
 
 
 async def _discord_signals(
-    members: Sequence[models.BalancerRegistration],
+    members: Sequence[models.Registration],
     discord_ids: dict[int, list[str]],
     *,
     guild_id: str | None,
@@ -185,10 +185,10 @@ class TeamEligibilityService:
     async def evaluate(
         self,
         session: AsyncSession,
-        team: models.BalancerRegistrationTeam,
-        members: Sequence[models.BalancerRegistration],
+        team: models.RegistrationTeam,
+        members: Sequence[models.Registration],
         *,
-        form: models.BalancerRegistrationForm | None,
+        form: models.RegistrationForm | None,
         shape: Any,
         workspace: models.Workspace | None,
         discord: DiscordClient,
@@ -204,8 +204,8 @@ class TeamEligibilityService:
         if ranked and members:
             loaded = list(
                 await session.scalars(
-                    sa.select(models.BalancerRegistration)
-                    .where(models.BalancerRegistration.id.in_([m.id for m in members]))
+                    sa.select(models.Registration)
+                    .where(models.Registration.id.in_([m.id for m in members]))
                     .options(*registration_load_options())
                 )
             )

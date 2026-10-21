@@ -21,7 +21,7 @@ from shared.core.enums import (
 from shared.core.errors import ApiHTTPException
 from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
+from shared.models.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from src.domain.draft.entities import (
     DraftFeasibilityReport,
     DraftFeasibilityState,

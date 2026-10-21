@@ -40,7 +40,7 @@ def role_value(role: Any, key: str, default: Any = None) -> Any:
     """One submitted role row's field.
 
     Rows arrive as dicts from the answer pipeline; ``serializers.py`` reads the
-    same shape off ORM ``BalancerRegistrationRole`` objects through
+    same shape off ORM ``RegistrationRole`` objects through
     ``is_flex_submission``, so attribute rows are read too.
     """
     if isinstance(role, Mapping):

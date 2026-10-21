@@ -283,7 +283,7 @@ mixes balance on the **effective rating**. The idea and its specification are
   rank beside it as `players[uuid].open_ratings`.
 - **After a match** the open rating moves by the match's impulse on the hidden projection plus a pull
   towards the hidden rating, never against the result. The applied amount is frozen per seat in
-  `balancer.custom_game_round_member.rank_delta_applied`; undo gives back exactly that.
+  `mix.round_member.rank_delta_applied`; undo gives back exactly that.
 - **The hidden book is derived** — a fold over the workspace's recorded mix rounds by role ID.
   Undo, a change of `rating_min`/`rating_max`/`rating_avg`/`sigma_init`, and the admin's *Recalculate
   hidden ratings* (`admin.workspace_ranker_rebuild`, beside *Ranker settings*) replay it from scratch;
@@ -298,19 +298,18 @@ mixes balance on the **effective rating**. The idea and its specification are
 One PostgreSQL database, one SQLAlchemy metadata in `backend/shared/`; this service ships no
 migrations of its own — there is a single Alembic project at `backend/migrations/`.
 
-Writes, all in the `balancer` schema unless noted:
+Writes, in the `balancer`, `mix` and `draft` schemas unless noted:
 
-- `balance`, `balance_variant`, `team`, `team_slot` — the saved balancing run and its normalized
+- `balancer.balance`, `balance_variant`, `team`, `team_slot` — the saved balancing run and its normalized
   result. `exported_team_id` is the boundary where balancer output becomes tournament truth.
-- `draft_session`, `draft_team`, `draft_player`, `draft_pick`, `draft_audit_event` — the live draft.
-- `workspace_config`, `tournament_config`, `user_config` — the three balancer config scopes: the
+- `draft.session`, `team`, `player`, `pick`, `audit_event` — the live draft.
+- `balancer.workspace_config`, `tournament_config`, `user_config` — the three balancer config scopes: the
   workspace's (including the mix ranker's knobs), one tournament's, and one account's own mix
   settings (solver knobs, points per win, rating mode); roster rules belong to each mix's frozen format.
-- `custom_game`, `custom_game_co_host`, `custom_game_player`, `custom_game_player_role`,
-  `custom_game_team_name` — mixes.
-- `member_rank` — both rank layers.
-- `member_hidden_rating` — the mix ranker's hidden ratings (derived; rebuildable from the recorded rounds).
-- `custom_game_round`, `custom_game_round_member` — what only the balancer reads about a recorded round: its lobby,
+- `mix.custom_game`, `co_host`, `lobby`, `player`, `player_role`, `team_name` — mixes.
+- `balancer.member_rank` — both rank layers.
+- `balancer.member_hidden_rating` — the mix ranker's hidden ratings (derived; rebuildable from the recorded rounds).
+- `mix.round`, `round_member` — what only the balancer reads about a recorded round: its lobby,
   the points-per-win applied, and per member the frozen `rank_delta_applied` or "busy in another lobby".
 - `encounter.encounter`, `encounter.team` (two participations), `encounter.team_member` (+
   `team_member_role (team_member_id, dimension_id, role_id)` for leaf assignments), `encounter.game` (one confirmed game),
@@ -320,13 +319,14 @@ Writes, all in the `balancer` schema unless noted:
   durable trace of a played mix game.
 - `roster.team_format`, `team_format_dimension`, `format_role_rule` — the mix-owned format copy.
 
-Reads only: `balancer.registration*` (tournament-service owns those writes — a draft pool entry *is*
+Reads only: the `registration` schema (tournament-service owns those writes — a draft pool entry *is*
 a registration, which is why roles, ranks and top heroes are never copied into draft-local tables),
 the `tournament` schema, `public.workspace` / `public.workspace_member`, and `auth.user`.
 
 Entity diagrams: [`../../docs/database_erd.md`](../../docs/database_erd.md) —
 [`balancer`](../../docs/database_erd.md#balancer--balancer),
-[`custom_game`](../../docs/database_erd.md#custom_game--balancer),
+[`draft`](../../docs/database_erd.md#draft--draft),
+[`mix`](../../docs/database_erd.md#mix--mix),
 [`member_rank`](../../docs/database_erd.md#member_rank--balancer),
 [`encounter`](../../docs/database_erd.md#encounter--encounter).
 
@@ -358,12 +358,10 @@ No external APIs, no S3, no outbound `proxy` egress.
 - `RPC_PREFETCH_COUNT` (default 16) — QoS on the RPC channel. The job channel is fixed at 2.
 - `WORKER_METRICS_PORT` — Prometheus scrape port.
 - `REDIS_URL`, `RABBITMQ_URL`, `POSTGRES_*` — inherited from `common.env`.
-- `AUTH_SERVICE_URL` — overridden in production to route token validation through the gateway.
 
 Balancer algorithm parameters are *not* environment configuration. Defaults, limits and presets live
 in `src/services/balancer/config/` and are served by `rpc.balancer.config`; persisted overrides live
-in `balancer.workspace_config` / `balancer.tournament_config`. `PORT=8003` in `balancer.env` is
-vestigial — nothing binds it.
+in `balancer.workspace_config` / `balancer.tournament_config`.
 
 ## Running
 

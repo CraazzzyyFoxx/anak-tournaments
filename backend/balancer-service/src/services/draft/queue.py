@@ -18,7 +18,7 @@ from collections.abc import Sequence
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import DraftPlayerStatus, DraftStatus
-from shared.models.balancer.draft import DraftSession, DraftTeam
+from shared.models.draft import DraftSession, DraftTeam
 from shared.repository.draft import DraftPickRepository
 from shared.schemas.role import RoleRef
 from src import schemas

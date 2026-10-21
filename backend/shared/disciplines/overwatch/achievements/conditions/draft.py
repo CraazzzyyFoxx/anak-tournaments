@@ -24,7 +24,7 @@ from .stat_threshold import OPERATORS
     grain=AchievementGrain.user_tournament,
     description="Where the player landed in a live draft",
     optional=("autopick", "op", "role", "value"),
-    depends_on=("balancer.draft_pick", "tournament.player"),
+    depends_on=("draft.pick", "tournament.player"),
 )
 async def execute_draft_pick(
     session: AsyncSession,

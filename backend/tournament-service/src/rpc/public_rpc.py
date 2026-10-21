@@ -29,11 +29,11 @@ from faststream.rabbit import Channel
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared import models
-from shared.balancer_registration_statuses import get_status_metas_map
 from shared.core.enums import PickBanKind, SubscriptionCollectionSource
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import identity_provider
 from shared.domain.forms import schema_from_form
+from shared.registration_statuses import get_status_metas_map
 from shared.rpc.identity import rehydrate_user
 from shared.services.chat import (
     HISTORY_DEFAULT,
@@ -136,9 +136,9 @@ async def _require_tournament(session: Any, tournament_id: int) -> models.Tourna
 
 async def _me_read_context(
     session: Any,
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     tournament_id: int,
-    form: models.BalancerRegistrationForm | None,
+    form: models.RegistrationForm | None,
 ) -> tuple[SelfEditPolicy | None, bool]:
     """``(edit rights, signed up late)`` for the caller's own registration read.
 

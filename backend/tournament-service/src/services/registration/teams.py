@@ -3,7 +3,7 @@
 Three properties shape every method here.
 
 **One registration per player, always.** A team member's registration is an
-ordinary :class:`BalancerRegistration` row with three extra columns set, so every
+ordinary :class:`Registration` row with three extra columns set, so every
 existing gate (self-register capability, subscription, open profile, verified
 identity), every count and every reader keeps working untouched. That is why the
 captain and invitee flows delegate to
@@ -42,9 +42,9 @@ from shared.domain.invite_token import generate_invite_token, hash_invite_token
 from shared.domain.roster_shape import RosterShape, RosterShapeError
 from shared.domain.team_roster import RosterMember, RosterOccupancy
 from shared.repository import (
-    BalancerRegistrationRepository,
-    BalancerRegistrationTeamInviteRepository,
-    BalancerRegistrationTeamRepository,
+    RegistrationRepository,
+    RegistrationTeamInviteRepository,
+    RegistrationTeamRepository,
     TournamentRepository,
 )
 from shared.services.notifications import notify
@@ -117,7 +117,7 @@ def _fail(status_code: int, code: str, msg: str) -> ApiHTTPException:
     return ApiHTTPException(status_code=status_code, detail=[ApiExc(msg=msg, code=code)])
 
 
-def _assert_mutable(team: models.BalancerRegistrationTeam) -> None:
+def _assert_mutable(team: models.RegistrationTeam) -> None:
     if team.exported_team_id is not None:
         raise _fail(409, "team_already_exported", "This team has already been exported to the tournament")
     if team.status not in _MUTABLE_TEAM_STATUSES:
@@ -128,7 +128,7 @@ def _status_for(occupancy: RosterOccupancy) -> str:
     return TEAM_COMPLETE if occupancy.is_complete else TEAM_FORMING
 
 
-def _apply_occupancy_status(team: models.BalancerRegistrationTeam, occupancy: RosterOccupancy) -> None:
+def _apply_occupancy_status(team: models.RegistrationTeam, occupancy: RosterOccupancy) -> None:
     """Write forming/complete from occupancy, never over a terminal status.
 
     Admission is a separate column. Occupancy must not clobber rejected/disbanded,
@@ -170,12 +170,12 @@ def _owned_by(auth_user_id: int) -> sa.ColumnElement[bool]:
     ``get_registration`` uses; spelled once here so the team flows cannot drift
     from it.
     """
-    return models.BalancerRegistration.workspace_member.has(
+    return models.Registration.workspace_member.has(
         models.WorkspaceMember.player.has(models.User.auth_user_id == auth_user_id)
     )
 
 
-def _diagnose_dead_invite(invite: models.BalancerRegistrationTeamInvite) -> ApiHTTPException:
+def _diagnose_dead_invite(invite: models.RegistrationTeamInvite) -> ApiHTTPException:
     """Turn a rowcount-0 guard result into a distinct machine code.
 
     Called only *after* the guarded ``UPDATE`` has already decided, so this read
@@ -198,7 +198,7 @@ def _diagnose_dead_invite(invite: models.BalancerRegistrationTeamInvite) -> ApiH
 
 
 def _withdraw_invite(
-    invite: models.BalancerRegistrationTeamInvite,
+    invite: models.RegistrationTeamInvite,
     *,
     by: models.AuthUser,
     by_organizer: bool,
@@ -243,10 +243,10 @@ def _free_agent_clause(tournament_id: int) -> list[sa.ColumnElement[bool]]:
     uses: they released their slot and are not waiting for anything.
     """
     return [
-        models.BalancerRegistration.tournament_id == tournament_id,
-        models.BalancerRegistration.registration_team_id.is_(None),
-        models.BalancerRegistration.deleted_at.is_(None),
-        models.BalancerRegistration.status.notin_(_SLOT_RELEASING_STATUSES),
+        models.Registration.tournament_id == tournament_id,
+        models.Registration.registration_team_id.is_(None),
+        models.Registration.deleted_at.is_(None),
+        models.Registration.status.notin_(_SLOT_RELEASING_STATUSES),
     ]
 
 
@@ -256,9 +256,9 @@ class RegistrationTeamService:
     def __init__(
         self,
         *,
-        team_repo: BalancerRegistrationTeamRepository = BalancerRegistrationTeamRepository(),
-        invite_repo: BalancerRegistrationTeamInviteRepository = BalancerRegistrationTeamInviteRepository(),
-        registration_repo: BalancerRegistrationRepository = BalancerRegistrationRepository(),
+        team_repo: RegistrationTeamRepository = RegistrationTeamRepository(),
+        invite_repo: RegistrationTeamInviteRepository = RegistrationTeamInviteRepository(),
+        registration_repo: RegistrationRepository = RegistrationRepository(),
         tournament_repo: TournamentRepository = TournamentRepository(),
         registrations: RegistrationService = registration_service,
     ) -> None:
@@ -270,7 +270,7 @@ class RegistrationTeamService:
 
     # ── loading ──────────────────────────────────────────────────────────────
 
-    async def _lock_team(self, session: AsyncSession, team_id: int) -> models.BalancerRegistrationTeam:
+    async def _lock_team(self, session: AsyncSession, team_id: int) -> models.RegistrationTeam:
         """Load a team holding its row lock, or reject.
 
         The lock is the serialization point for every roster decision below; taking it
@@ -298,30 +298,28 @@ class RegistrationTeamService:
         # Single-column scalar projection off the form, not a row fetch.
         return (
             await session.scalar(
-                sa.select(models.BalancerRegistrationForm.max_substitutes).where(
-                    models.BalancerRegistrationForm.tournament_id == tournament_id
+                sa.select(models.RegistrationForm.max_substitutes).where(
+                    models.RegistrationForm.tournament_id == tournament_id
                 )
             )
             or 0
         )
 
-    async def _roster_members(self, session: AsyncSession, team_id: int) -> list[models.BalancerRegistration]:
+    async def _roster_members(self, session: AsyncSession, team_id: int) -> list[models.Registration]:
         result = await session.scalars(
             self.registration_repo.select()
             .where(
-                models.BalancerRegistration.registration_team_id == team_id,
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistration.status.notin_(_SLOT_RELEASING_STATUSES),
+                models.Registration.registration_team_id == team_id,
+                models.Registration.deleted_at.is_(None),
+                models.Registration.status.notin_(_SLOT_RELEASING_STATUSES),
             )
             # The team eligibility rules read each member's Discord handle off
             # the identity rows, never lazy-loadable in async code.
-            .options(selectinload(models.BalancerRegistration.identities))
+            .options(selectinload(models.Registration.identities))
         )
         return list(result)
 
-    async def _pending_invites(
-        self, session: AsyncSession, team_id: int
-    ) -> list[models.BalancerRegistrationTeamInvite]:
+    async def _pending_invites(self, session: AsyncSession, team_id: int) -> list[models.RegistrationTeamInvite]:
         """Live invites only: an expired one reserves nothing, so its slot is
         offerable again without an explicit revoke."""
         return list(await self.invite_repo.list_pending(session, team_id, pending_state=INVITE_PENDING))
@@ -329,7 +327,7 @@ class RegistrationTeamService:
     async def _occupancy(
         self,
         session: AsyncSession,
-        team: models.BalancerRegistrationTeam,
+        team: models.RegistrationTeam,
         shape: RosterShape,
         *,
         max_substitutes: int,
@@ -368,7 +366,7 @@ class RegistrationTeamService:
         name: str,
         slot_code: str,
         body: RegistrationSubmit,
-    ) -> tuple[models.BalancerRegistrationTeam, RegistrationRead]:
+    ) -> tuple[models.RegistrationTeam, RegistrationRead]:
         """Register a new team, with the caller as captain occupying one slot.
 
         The captain is a member like any other: they take a real slot and
@@ -389,7 +387,7 @@ class RegistrationTeamService:
         shape = await self._resolve_shape(session, tournament)
         max_substitutes = await self._max_substitutes(session, tournament_id)
 
-        team = models.BalancerRegistrationTeam(
+        team = models.RegistrationTeam(
             tournament_id=tournament_id,
             workspace_id=tournament.workspace_id,
             name=cleaned_name,
@@ -445,7 +443,7 @@ class RegistrationTeamService:
     async def is_team_captain(
         self,
         session: AsyncSession,
-        team: models.BalancerRegistrationTeam,
+        team: models.RegistrationTeam,
         auth_user_id: int,
     ) -> bool:
         """Does this account captain this team?
@@ -456,8 +454,8 @@ class RegistrationTeamService:
         if team.captain_registration_id is None:
             return False
         is_captain = await session.scalar(
-            sa.select(models.BalancerRegistration.id).where(
-                models.BalancerRegistration.id == team.captain_registration_id,
+            sa.select(models.Registration.id).where(
+                models.Registration.id == team.captain_registration_id,
                 _owned_by(auth_user_id),
             )
         )
@@ -466,7 +464,7 @@ class RegistrationTeamService:
     async def _assert_captain(
         self,
         session: AsyncSession,
-        team: models.BalancerRegistrationTeam,
+        team: models.RegistrationTeam,
         auth_user: models.AuthUser,
     ) -> None:
         """Only the captain edits a roster."""
@@ -482,7 +480,7 @@ class RegistrationTeamService:
         team_id: int,
         auth_user: models.AuthUser,
         image_url: str | None,
-    ) -> models.BalancerRegistrationTeam:
+    ) -> models.RegistrationTeam:
         """Set (or clear, with ``None``) a registered team's crest.
 
         Captain-gated rather than workspace-permission-gated — the deliberate
@@ -517,7 +515,7 @@ class RegistrationTeamService:
         *,
         team_id: int,
         auth_user: models.AuthUser,
-    ) -> models.BalancerRegistrationTeam:
+    ) -> models.RegistrationTeam:
         """Captaincy alone, with no mutability rule and no row lock.
 
         Separate from :meth:`assert_may_edit_team` because reading is not editing: a
@@ -577,10 +575,10 @@ class RegistrationTeamService:
         registration = await session.scalar(
             self.registration_repo.select()
             .where(
-                models.BalancerRegistration.id == registration_id,
-                models.BalancerRegistration.deleted_at.is_(None),
+                models.Registration.id == registration_id,
+                models.Registration.deleted_at.is_(None),
             )
-            .options(selectinload(models.BalancerRegistration.workspace_member))
+            .options(selectinload(models.Registration.workspace_member))
         )
         if registration is None or registration.tournament_id != tournament_id:
             # Deliberately 404 rather than 403: confirming that a registration exists
@@ -611,7 +609,7 @@ class RegistrationTeamService:
         is_substitute: bool = False,
         target_registration_id: int | None = None,
         ttl: timedelta | None = DEFAULT_INVITE_TTL,
-    ) -> tuple[models.BalancerRegistrationTeamInvite, str | None]:
+    ) -> tuple[models.RegistrationTeamInvite, str | None]:
         """Offer one roster slot. Returns the invite and, for a link invite, the raw
         token — which is shown exactly once and never stored.
 
@@ -670,7 +668,7 @@ class RegistrationTeamService:
 
         invite = await self.invite_repo.create(
             session,
-            models.BalancerRegistrationTeamInvite(
+            models.RegistrationTeamInvite(
                 team_id=team.id,
                 slot_code=slot_code,
                 is_substitute=is_substitute,
@@ -707,7 +705,7 @@ class RegistrationTeamService:
     async def count_invites_against_cap(
         self,
         session: AsyncSession,
-        team: models.BalancerRegistrationTeam,
+        team: models.RegistrationTeam,
     ) -> int:
         """How many invites count toward this team's cumulative ceiling.
 
@@ -721,9 +719,9 @@ class RegistrationTeamService:
         slot rule. ``invite_cap_reset_at`` moves the floor rather than zeroing a
         counter, so the rows behind a forgiven cap remain readable.
         """
-        conditions: list[sa.ColumnElement[bool]] = [models.BalancerRegistrationTeamInvite.team_id == team.id]
+        conditions: list[sa.ColumnElement[bool]] = [models.RegistrationTeamInvite.team_id == team.id]
         if team.invite_cap_reset_at is not None:
-            conditions.append(models.BalancerRegistrationTeamInvite.invited_at > team.invite_cap_reset_at)
+            conditions.append(models.RegistrationTeamInvite.invited_at > team.invite_cap_reset_at)
         return await self.invite_repo.count(session, filters=conditions)
 
     async def revoke_invite(
@@ -870,7 +868,7 @@ class RegistrationTeamService:
         auth_user: models.AuthUser,
         token: str | None,
         invite_id: int | None,
-    ) -> models.BalancerRegistrationTeamInvite:
+    ) -> models.RegistrationTeamInvite:
         """Find the invite being redeemed, by token or by id.
 
         Token lookup is by *hash*, which the partial unique index serves as a single
@@ -914,14 +912,8 @@ class RegistrationTeamService:
             self.invite_repo.select()
             # See `_normalize_invite_token`'s docstring for why stripping whitespace
             # here is safe: a real token never contains any.
-            .where(
-                models.BalancerRegistrationTeamInvite.token_sha256 == hash_invite_token(_normalize_invite_token(token))
-            )
-            .options(
-                selectinload(models.BalancerRegistrationTeamInvite.team).selectinload(
-                    models.BalancerRegistrationTeam.tournament
-                )
-            )
+            .where(models.RegistrationTeamInvite.token_sha256 == hash_invite_token(_normalize_invite_token(token)))
+            .options(selectinload(models.RegistrationTeamInvite.team).selectinload(models.RegistrationTeam.tournament))
         )
         if invite is None:
             raise _fail(404, "invite_not_found", "Invite not found")
@@ -977,10 +969,10 @@ class RegistrationTeamService:
             sa.select(models.User.auth_user_id)
             .join(models.WorkspaceMember, models.WorkspaceMember.player_id == models.User.id)
             .join(
-                models.BalancerRegistration,
-                models.BalancerRegistration.workspace_member_id == models.WorkspaceMember.id,
+                models.Registration,
+                models.Registration.workspace_member_id == models.WorkspaceMember.id,
             )
-            .where(models.BalancerRegistration.id == captain_registration_id)
+            .where(models.Registration.id == captain_registration_id)
         )
         if captain_auth_user_id is None:
             return
@@ -1008,7 +1000,7 @@ class RegistrationTeamService:
         body: RegistrationSubmit | None,
         token: str | None = None,
         invite_id: int | None = None,
-    ) -> tuple[models.BalancerRegistrationTeam, int]:
+    ) -> tuple[models.RegistrationTeam, int]:
         """Redeem an invite: take the offered slot, registering if necessary.
 
         Returns the team and the id of the registration now holding the slot.
@@ -1145,11 +1137,11 @@ class RegistrationTeamService:
         team_row = (
             await session.execute(
                 sa.select(
-                    models.BalancerRegistrationTeam.name,
-                    models.BalancerRegistrationTeam.captain_registration_id,
-                    models.BalancerRegistrationTeam.tournament_id,
-                    models.BalancerRegistrationTeam.workspace_id,
-                ).where(models.BalancerRegistrationTeam.id == invite.team_id)
+                    models.RegistrationTeam.name,
+                    models.RegistrationTeam.captain_registration_id,
+                    models.RegistrationTeam.tournament_id,
+                    models.RegistrationTeam.workspace_id,
+                ).where(models.RegistrationTeam.id == invite.team_id)
             )
         ).one_or_none()
         if team_row is not None:
@@ -1182,8 +1174,8 @@ class RegistrationTeamService:
     async def _release_member(
         self,
         session: AsyncSession,
-        team: models.BalancerRegistrationTeam,
-        registration: models.BalancerRegistration,
+        team: models.RegistrationTeam,
+        registration: models.Registration,
         shape: RosterShape,
         *,
         max_substitutes: int,
@@ -1229,10 +1221,10 @@ class RegistrationTeamService:
             sa.select(models.User.auth_user_id)
             .join(models.WorkspaceMember, models.WorkspaceMember.player_id == models.User.id)
             .join(
-                models.BalancerRegistration,
-                models.BalancerRegistration.workspace_member_id == models.WorkspaceMember.id,
+                models.Registration,
+                models.Registration.workspace_member_id == models.WorkspaceMember.id,
             )
-            .where(models.BalancerRegistration.id == registration.id)
+            .where(models.Registration.id == registration.id)
         )
         shape = await self._resolve_shape(session, tournament)
         await self._release_member(
@@ -1275,7 +1267,7 @@ class RegistrationTeamService:
 
         registration = await session.scalar(
             self.registration_repo.select().where(
-                models.BalancerRegistration.registration_team_id == team.id,
+                models.Registration.registration_team_id == team.id,
                 _owned_by(auth_user.id),
             )
         )
@@ -1403,10 +1395,10 @@ class RegistrationTeamService:
             self.registration_repo.select()
             .where(*_free_agent_clause(tournament_id))
             .options(
-                selectinload(models.BalancerRegistration.roles),
-                selectinload(models.BalancerRegistration.identities),
+                selectinload(models.Registration.roles),
+                selectinload(models.Registration.identities),
             )
-            .order_by(models.BalancerRegistration.submitted_at.asc())
+            .order_by(models.Registration.submitted_at.asc())
         )
         return [
             RegistrationFreeAgentRead(
@@ -1428,7 +1420,7 @@ class RegistrationTeamService:
         tournament_id: int,
         include_terminal: bool = False,
         include_terminal_for_auth_user_id: int | None = None,
-    ) -> list[tuple[models.BalancerRegistrationTeam, RosterOccupancy]]:
+    ) -> list[tuple[models.RegistrationTeam, RosterOccupancy]]:
         """Every registered team with its live occupancy — the organizer's answer to
         "who is incomplete, and what are they missing?".
 
@@ -1442,28 +1434,26 @@ class RegistrationTeamService:
         shape = await self._resolve_shape(session, tournament)
         max_substitutes = await self._max_substitutes(session, tournament_id)
 
-        conditions = [models.BalancerRegistrationTeam.tournament_id == tournament_id]
+        conditions = [models.RegistrationTeam.tournament_id == tournament_id]
         if not include_terminal:
             visible = sa.and_(
-                models.BalancerRegistrationTeam.deleted_at.is_(None),
-                models.BalancerRegistrationTeam.status.in_(sorted(_MUTABLE_TEAM_STATUSES)),
+                models.RegistrationTeam.deleted_at.is_(None),
+                models.RegistrationTeam.status.in_(sorted(_MUTABLE_TEAM_STATUSES)),
             )
             if include_terminal_for_auth_user_id is not None:
                 # Captain identity survives returning the roster to the solo pool.
                 visible = sa.or_(
                     visible,
                     sa.and_(
-                        models.BalancerRegistrationTeam.status == TEAM_REJECTED,
-                        models.BalancerRegistrationTeam.captain_registration_id.in_(
-                            sa.select(models.BalancerRegistration.id).where(
-                                _owned_by(include_terminal_for_auth_user_id)
-                            )
+                        models.RegistrationTeam.status == TEAM_REJECTED,
+                        models.RegistrationTeam.captain_registration_id.in_(
+                            sa.select(models.Registration.id).where(_owned_by(include_terminal_for_auth_user_id))
                         ),
                     ),
                 )
             conditions.append(visible)
         result = await session.scalars(
-            self.team_repo.select().where(*conditions).order_by(models.BalancerRegistrationTeam.name_normalized)
+            self.team_repo.select().where(*conditions).order_by(models.RegistrationTeam.name_normalized)
         )
         return [
             (team, await self._occupancy(session, team, shape, max_substitutes=max_substitutes))
@@ -1479,7 +1469,7 @@ class RegistrationTeamService:
         auth_user: models.AuthUser,
         reason: str,
         withdraw_members: bool = False,
-    ) -> models.BalancerRegistrationTeam:
+    ) -> models.RegistrationTeam:
         """Organizer refuses a team — the counterpart of rejecting a registration.
 
         ``tournament_id`` is required and asserted, not decorative: the caller's
@@ -1550,7 +1540,7 @@ class RegistrationTeamService:
     async def describe_team(
         self,
         session: AsyncSession,
-        team: models.BalancerRegistrationTeam,
+        team: models.RegistrationTeam,
         *,
         include_invites: bool = False,
         include_staff: bool = False,
@@ -1601,9 +1591,7 @@ class RegistrationTeamService:
         eligibility_issues = []
         if include_invites:
             form = await session.scalar(
-                sa.select(models.BalancerRegistrationForm).where(
-                    models.BalancerRegistrationForm.tournament_id == team.tournament_id
-                )
+                sa.select(models.RegistrationForm).where(models.RegistrationForm.tournament_id == team.tournament_id)
             )
             workspace = await session.scalar(
                 sa.select(models.Workspace).where(models.Workspace.id == team.workspace_id)
@@ -1669,24 +1657,24 @@ class RegistrationTeamService:
             return {}
         # Analytical: a two-column projection across a member -> player join.
         rows = await session.execute(
-            sa.select(models.User.auth_user_id, models.BalancerRegistrationIdentity.handle)
+            sa.select(models.User.auth_user_id, models.RegistrationIdentity.handle)
             # Neither projected column is the left side: name the registration
             # explicitly, or the first join has two candidate FROMs to start from.
-            .select_from(models.BalancerRegistration)
+            .select_from(models.Registration)
             .join(
                 models.WorkspaceMember,
-                models.WorkspaceMember.id == models.BalancerRegistration.workspace_member_id,
+                models.WorkspaceMember.id == models.Registration.workspace_member_id,
             )
             .join(models.User, models.User.id == models.WorkspaceMember.player_id)
             .join(
-                models.BalancerRegistrationIdentity,
-                models.BalancerRegistrationIdentity.registration_id == models.BalancerRegistration.id,
+                models.RegistrationIdentity,
+                models.RegistrationIdentity.registration_id == models.Registration.id,
             )
             .where(
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistrationIdentity.provider == provider,
-                models.BalancerRegistrationIdentity.position == 0,
+                models.Registration.tournament_id == tournament_id,
+                models.Registration.deleted_at.is_(None),
+                models.RegistrationIdentity.provider == provider,
+                models.RegistrationIdentity.position == 0,
                 models.User.auth_user_id.in_(sorted(auth_user_ids)),
             )
         )
@@ -1718,32 +1706,32 @@ class RegistrationTeamService:
         rows = await session.scalars(
             self.invite_repo.select()
             .join(
-                models.BalancerRegistrationTeam,
-                models.BalancerRegistrationTeam.id == models.BalancerRegistrationTeamInvite.team_id,
+                models.RegistrationTeam,
+                models.RegistrationTeam.id == models.RegistrationTeamInvite.team_id,
             )
             .where(
-                models.BalancerRegistrationTeam.tournament_id == tournament_id,
-                models.BalancerRegistrationTeam.deleted_at.is_(None),
-                models.BalancerRegistrationTeam.status.in_(sorted(_MUTABLE_TEAM_STATUSES)),
-                models.BalancerRegistrationTeam.exported_team_id.is_(None),
-                models.BalancerRegistrationTeam.roster_locked_at.is_(None),
+                models.RegistrationTeam.tournament_id == tournament_id,
+                models.RegistrationTeam.deleted_at.is_(None),
+                models.RegistrationTeam.status.in_(sorted(_MUTABLE_TEAM_STATUSES)),
+                models.RegistrationTeam.exported_team_id.is_(None),
+                models.RegistrationTeam.roster_locked_at.is_(None),
                 ~sa.exists(
-                    sa.select(models.BalancerRegistration.id).where(
-                        models.BalancerRegistration.tournament_id == tournament_id,
-                        models.BalancerRegistration.deleted_at.is_(None),
-                        models.BalancerRegistration.status.in_(sorted(_SLOT_RELEASING_STATUSES)),
+                    sa.select(models.Registration.id).where(
+                        models.Registration.tournament_id == tournament_id,
+                        models.Registration.deleted_at.is_(None),
+                        models.Registration.status.in_(sorted(_SLOT_RELEASING_STATUSES)),
                         _owned_by(auth_user.id),
                     )
                 ),
-                models.BalancerRegistrationTeamInvite.target_auth_user_id == auth_user.id,
-                models.BalancerRegistrationTeamInvite.state == INVITE_PENDING,
+                models.RegistrationTeamInvite.target_auth_user_id == auth_user.id,
+                models.RegistrationTeamInvite.state == INVITE_PENDING,
                 sa.or_(
-                    models.BalancerRegistrationTeamInvite.expires_at.is_(None),
-                    models.BalancerRegistrationTeamInvite.expires_at > datetime.now(UTC),
+                    models.RegistrationTeamInvite.expires_at.is_(None),
+                    models.RegistrationTeamInvite.expires_at > datetime.now(UTC),
                 ),
             )
-            .options(selectinload(models.BalancerRegistrationTeamInvite.team))
-            .order_by(models.BalancerRegistrationTeamInvite.invited_at.asc())
+            .options(selectinload(models.RegistrationTeamInvite.team))
+            .order_by(models.RegistrationTeamInvite.invited_at.asc())
         )
         invites = list(rows)
         if not invites:

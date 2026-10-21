@@ -45,6 +45,9 @@ _GATEWAY_COLUMN_DEPENDENCIES: tuple[tuple[str | None, str, str], ...] = (
     ("encounter", "team", "encounter_id"),
     ("encounter", "team", "active"),
     ("encounter", "team", "team_id"),
+    ("draft", "team", "session_id"),
+    ("draft", "team", "captain_auth_user_id"),
+    ("draft", "session", "tournament_id"),
 )
 
 
@@ -107,3 +110,14 @@ class GatewayRawSQLMatchesModelsTests(TestCase):
         normalized = " ".join(hidden.split())
         self.assertIn("t.is_hidden OR w.is_hidden", normalized, msg=normalized)
         self.assertIn("JOIN workspace w ON w.id = t.workspace_id", normalized, msg=normalized)
+
+    def test_draft_room_lookups_read_the_draft_schema(self) -> None:
+        """The WS draft-room ACL reads the ``draft`` schema (moved out of ``balancer`` by schemasplit01)."""
+        for const, table in (
+            ("isDraftSessionCaptainSQL", "draft.team"),
+            ("draftSessionTournamentSQL", "draft.session"),
+        ):
+            with self.subTest(query=const):
+                query = " ".join(self.sql.split(const, 1)[1].split("`", 2)[1].split())
+                self.assertIn(f"FROM {table} ", query, msg=query)
+                self._table(*table.split("."))

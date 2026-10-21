@@ -8,7 +8,6 @@ error. A cancelled/completed session must not block the change.
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import uuid
 from pathlib import Path
@@ -20,23 +19,13 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
-def _ensure_test_env() -> None:
-    env = {
-        "DEBUG": "true",
-    }
-    for key, value in env.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
-
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 from shared.core import enums  # noqa: E402
 from shared.core.errors import BaseAPIException  # noqa: E402
-from shared.models.balancer.draft import DraftSession  # noqa: E402
+from shared.models.draft import DraftSession  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
 from shared.testing import real_db_sessionmaker as _db_sessions  # noqa: E402

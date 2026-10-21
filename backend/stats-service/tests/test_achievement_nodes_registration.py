@@ -1,8 +1,8 @@
 """Node regressions for the registration- and draft-derived condition leaves.
 
 These three nodes read rows nothing else in the engine touches
-(``balancer.registration``, ``tournament.tournament_phase_schedule`` and the
-``balancer.draft_*`` family), and each of them has a way of awarding the wrong
+(``registration.registration``, ``tournament.tournament_phase_schedule`` and the
+``draft.*`` family), and each of them has a way of awarding the wrong
 person: a sheet-imported registration has no player identity at all, a
 tournament may simply never have had a registration phase, and a draft's
 captain is a different person from everyone they picked.
@@ -74,7 +74,7 @@ class _RegistrationFixture(_scrim._Fixture):
     ) -> int:
         registration_id = self._id()
         self.insert(
-            models.BalancerRegistration.__table__,
+            models.Registration.__table__,
             id=registration_id,
             tournament_id=tournament_id,
             workspace_member_id=member_id,

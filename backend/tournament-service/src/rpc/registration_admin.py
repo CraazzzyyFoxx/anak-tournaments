@@ -43,9 +43,9 @@ from typing import Any, NamedTuple
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared import models
-from shared.balancer_registration_statuses import get_status_metas_map
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import DISCIPLINES, identity_provider
+from shared.registration_statuses import get_status_metas_map
 from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
 from shared.schemas.discipline_filter import DisciplineFilterQuery

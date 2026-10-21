@@ -23,7 +23,6 @@ Design: docs/superpowers/specs/2026-08-04-forced-flex-max-rank-design.md
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -36,14 +35,13 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 from shared.division_grid import DEFAULT_GRID  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
 from shared.domain.roster import PlayerRoster  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
-    BalancerRegistration,
-    BalancerRegistrationRole,
+    Registration,
+    RegistrationRole,
 )
 from shared.services.roster import roster_engine  # noqa: E402
 from shared.testing.roles import registration_role  # noqa: E402
@@ -69,7 +67,7 @@ def _role(
     is_active: bool = True,
     rank_value: int | None = None,
     subrole: str | None = None,
-) -> BalancerRegistrationRole:
+) -> RegistrationRole:
     return registration_role(
         role=role,
         priority=priority,
@@ -80,7 +78,7 @@ def _role(
     )
 
 
-def _resolve(roles: list[BalancerRegistrationRole], *, mode: str | None = None) -> PlayerRoster:
+def _resolve(roles: list[RegistrationRole], *, mode: str | None = None) -> PlayerRoster:
     """Resolve one registration through the engine, with no database behind it.
 
     ``workspace_id=None`` means there is no canon and no Overwatch snapshot to
@@ -88,7 +86,7 @@ def _resolve(roles: list[BalancerRegistrationRole], *, mode: str | None = None) 
     which is exactly what these fixtures are about. ``form``/``grid`` are passed
     so the engine never reaches for a session.
     """
-    registration = BalancerRegistration(id=1, tournament_id=1)
+    registration = Registration(id=1, tournament_id=1)
     registration.roles = roles
     rosters = asyncio.run(
         roster_engine.resolve(

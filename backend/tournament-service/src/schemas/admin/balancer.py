@@ -379,7 +379,7 @@ class StatusMetaRead(BaseModel):
     name: str
     description: str | None = None
     # Whether a registration currently holding this status counts as part of
-    # the balancer pool -- see shared.balancer_registration_statuses.StatusMeta.
+    # the balancer pool -- see shared.registration_statuses.StatusMeta.
     excludes_from_balancer: bool = False
     # Whether a registration currently holding this status is blocked from
     # counting as "ready", independent of excludes_from_balancer.

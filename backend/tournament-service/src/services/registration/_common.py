@@ -18,12 +18,12 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
-from shared.balancer_registration_statuses import get_builtin_status_values, is_balancer_status_excluded
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.division_grid import DivisionGrid, load_runtime_grid
 from shared.domain.roster import FlexRoleMode, PlayerRoster
 from shared.hero_catalog import DEFAULT_MAX_TOP_HEROES, HeroCatalog, build_hero_entries
+from shared.registration_statuses import get_builtin_status_values, is_balancer_status_excluded
 from shared.repository import RegistrationFormRepository, TournamentRepository
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import (
@@ -51,7 +51,7 @@ EXCLUDED_BALANCER_STATUS = "excluded"
 
 def _role_row(
     catalog_roles: Mapping[str, models.CatalogRole], role: str | RoleRef | dict, subrole: str | None
-) -> models.BalancerRegistrationRole | None:
+) -> models.RegistrationRole | None:
     """Form pairs use the shared resolver; API refs identify a scoped leaf, never trust parent."""
     if isinstance(role, (RoleRef, dict)):
         ref = role if isinstance(role, RoleRef) else RoleRef.model_validate(role)
@@ -72,16 +72,16 @@ def _role_row(
                 return None
     if leaf is None:
         return None
-    return models.BalancerRegistrationRole(catalog_role=leaf, dimension_id=leaf.dimension_id)
+    return models.RegistrationRole(catalog_role=leaf, dimension_id=leaf.dimension_id)
 
 
 def apply_all_roles(
-    entries: list[models.BalancerRegistrationRole],
+    entries: list[models.RegistrationRole],
     *,
     catalog_roles: Mapping[str, models.CatalogRole],
     role_codes: Sequence[str],
     force_primary: bool,
-) -> list[models.BalancerRegistrationRole]:
+) -> list[models.RegistrationRole]:
     """Backfill the discipline's role set, optionally forcing every role primary.
 
     Both non-optional modes need the SET normalized, whichever path produced the
@@ -105,7 +105,7 @@ def apply_all_roles(
     present = {entry.role for entry in entries}
     result = list(entries)
     result.extend(
-        models.BalancerRegistrationRole(
+        models.RegistrationRole(
             catalog_role=catalog_roles[role_code], dimension_id=catalog_roles[role_code].dimension_id
         )
         for role_code in role_codes
@@ -126,7 +126,7 @@ def build_registration_roles(
     hero_catalog: HeroCatalog | None = None,
     max_heroes: int | None = None,
     mode: FlexRoleMode = "optional",
-) -> list[models.BalancerRegistrationRole]:
+) -> list[models.RegistrationRole]:
     """Build normalized role entries from a submitted ``roles`` answer.
 
     Filters to the discipline's top-level roles, de-duplicates, resolves form
@@ -140,7 +140,7 @@ def build_registration_roles(
     as ``registration_role_entity`` rows.
     """
     resolved_max = max_heroes if max_heroes and max_heroes > 0 else DEFAULT_MAX_TOP_HEROES
-    entries: list[models.BalancerRegistrationRole] = []
+    entries: list[models.RegistrationRole] = []
     seen: set[str] = set()
     for role in roles or []:
         entry = _role_row(catalog_roles, role_value(role, "role"), role_value(role, "subrole"))
@@ -164,7 +164,7 @@ def build_registration_roles(
 
 
 def replace_registration_roles(
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     roles: list[dict[str, Any]],
     *,
     catalog_roles: Mapping[str, models.CatalogRole],
@@ -176,7 +176,7 @@ def replace_registration_roles(
         code for code, row in catalog_roles.items() if row.parent_role_id is None and row.workspace_id is None
     )
     existing_by_role = {existing.role: existing for existing in registration.roles}
-    next_roles: list[models.BalancerRegistrationRole] = []
+    next_roles: list[models.RegistrationRole] = []
     seen_roles: set[str] = set()
 
     for index, role in enumerate(sorted(roles, key=lambda item: item.get("priority", DEFAULT_SORT_PRIORITY_SENTINEL))):
@@ -216,7 +216,7 @@ def replace_registration_roles(
 
 async def resolve_roster(
     session: AsyncSession,
-    registration: models.BalancerRegistration | Any,
+    registration: models.Registration | Any,
 ) -> PlayerRoster | None:
     """The resolved roster of ONE registration, straight from the engine.
 
@@ -245,7 +245,7 @@ def included_balancer_status(roster: PlayerRoster | None) -> str:
 
 
 def sync_included_balancer_status(
-    registration: models.BalancerRegistration | Any,
+    registration: models.Registration | Any,
     roster: PlayerRoster | None,
 ) -> None:
     """Recompute `ready`/`incomplete` from the resolved roster -- the only two
@@ -263,7 +263,7 @@ def sync_included_balancer_status(
 
 
 def is_included_in_balancer(
-    registration: models.BalancerRegistration | Any,
+    registration: models.Registration | Any,
     status_meta_map: dict[str, dict[str, Any]] | None = None,
 ) -> bool:
     """Whether `registration` currently counts as part of the balancer pool.
@@ -300,7 +300,7 @@ class RegistrationCommonService:
     async def _register_registration_changed(
         self,
         session: AsyncSession,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
     ) -> None:
         await emit(
             session,
@@ -338,7 +338,7 @@ class RegistrationCommonService:
         self,
         session: AsyncSession,
         tournament_id: int,
-    ) -> models.BalancerRegistrationForm | None:
+    ) -> models.RegistrationForm | None:
         """The form WITH its current schema version eager-loaded.
 
         Delegated so there is one definition of "a usable form": every reader

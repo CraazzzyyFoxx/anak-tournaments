@@ -9,7 +9,7 @@ registration; a role granted ``team.create`` could delete one. This pins the
 resource each subject now authorizes against, so the RBAC grid the catalog
 describes matches what the handlers actually check.
 
-Only ``regteam_*`` (operates on ``BalancerRegistrationTeam``, a real team
+Only ``regteam_*`` (operates on ``RegistrationTeam``, a real team
 entity) keeps the ``team`` resource -- that mapping was already correct.
 """
 

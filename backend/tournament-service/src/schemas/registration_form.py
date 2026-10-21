@@ -38,7 +38,7 @@ class RegistrationFormRead(BaseModel):
     open_profile_scope: str = "main"
     show_ranks: bool = False
     #: Collapses the public participants list to an aggregate. See
-    #: ``BalancerRegistrationForm.hide_registrations`` -- enforced in the read model.
+    #: ``RegistrationForm.hide_registrations`` -- enforced in the read model.
     hide_registrations: bool = False
     #: Advisory capacity, never enforced. ``None`` means "not announced".
     max_participants: int | None = Field(default=None, ge=0)
@@ -51,7 +51,7 @@ class RegistrationFormRead(BaseModel):
     # column on the form mapper. The caller passes the resolved blob in.
     subscription_requirement_json: dict[str, Any] = Field(default_factory=dict)
     #: Bench size for team registration. Zero disables substitutes. Not a starter
-    #: slot -- see ``BalancerRegistrationForm.max_substitutes``.
+    #: slot -- see ``RegistrationForm.max_substitutes``.
     max_substitutes: int = Field(default=0, ge=0)
     #: ``player`` (default) keeps the per-entrant subscription gate. ``team`` is
     #: "the captain pays": a stamp on the registered team covers the roster.

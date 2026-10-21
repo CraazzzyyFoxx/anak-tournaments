@@ -22,11 +22,11 @@ from shared import models
 from shared.core.enums import DraftFormat, DraftPickStatus, DraftPlayerStatus, DraftStatus
 from shared.core.errors import ApiHTTPException
 from shared.domain.roster_shape import RosterShape
-from shared.models.balancer.draft import DraftPick
+from shared.models.draft import DraftPick
 from shared.models.registration.registration import (
-    BalancerRegistration,
-    BalancerRegistrationIdentity,
-    BalancerRegistrationRole,
+    Registration,
+    RegistrationIdentity,
+    RegistrationRole,
 )
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament import Tournament
@@ -81,7 +81,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
             await self.engine.dispose()
             return
         async with self.Session() as s:
-            from shared.models.balancer.draft import DraftSession
+            from shared.models.draft import DraftSession
 
             ids = (
                 await s.scalars(sa.select(DraftSession.id).where(DraftSession.tournament_id == self.tournament_id))
@@ -96,8 +96,8 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
         await self.engine.dispose()
 
     async def _registration(self, s, *, tag: str, ranks: dict[str, int | None]) -> int:
-        """One approved, in-pool ``balancer.registration`` with its role rows."""
-        reg = BalancerRegistration(
+        """One approved, in-pool ``registration.registration`` with its role rows."""
+        reg = Registration(
             tournament_id=self.tournament_id,
             display_name=tag,
             status="approved",
@@ -106,7 +106,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
         s.add(reg)
         await s.flush()
         s.add(
-            BalancerRegistrationIdentity(
+            RegistrationIdentity(
                 registration_id=reg.id,
                 provider="battlenet",
                 position=0,
@@ -117,7 +117,7 @@ class DraftCustomRulesTests(IsolatedAsyncioTestCase):
         catalog_roles = await CatalogRoleRepository().rated_rows(s, discipline="overwatch", workspace_id=None)
         for priority, (role, rank) in enumerate(ranks.items()):
             s.add(
-                BalancerRegistrationRole(
+                RegistrationRole(
                     registration_id=reg.id,
                     catalog_role=catalog_roles[role],
                     dimension_id=catalog_roles[role].dimension_id,

@@ -37,11 +37,11 @@ from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.domain.team_format import FormatDimension, FormatRule, TeamFormat  # noqa: E402
 from shared.models.identity.user import User  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
-    BalancerRegistration,
-    BalancerRegistrationForm,
-    BalancerRegistrationIdentity,
-    BalancerRegistrationRole,
-    BalancerRegistrationTeam,
+    Registration,
+    RegistrationForm,
+    RegistrationIdentity,
+    RegistrationRole,
+    RegistrationTeam,
 )
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.models.tournament.tournament import Tournament  # noqa: E402
@@ -93,7 +93,7 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
             )
 
             session.add(
-                BalancerRegistrationForm(
+                RegistrationForm(
                     tournament_id=tournament.id,
                     workspace_id=workspace.id,
                     # One bench place, so the substitute assertions have something
@@ -125,7 +125,7 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
             await session.execute(sa.delete(models.Player).where(models.Player.tournament_id == self.tournament_id))
             await session.execute(sa.delete(models.Team).where(models.Team.tournament_id == self.tournament_id))
             await session.execute(
-                sa.delete(BalancerRegistrationTeam).where(BalancerRegistrationTeam.tournament_id == self.tournament_id)
+                sa.delete(RegistrationTeam).where(RegistrationTeam.tournament_id == self.tournament_id)
             )
             await session.execute(sa.delete(Tournament).where(Tournament.id == self.tournament_id))
             await session.execute(sa.delete(WorkspaceMember).where(WorkspaceMember.workspace_id == self.workspace_id))
@@ -143,9 +143,9 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
         name: str,
         status: str,
         roster: list[tuple[int, str, int, bool]],
-    ) -> BalancerRegistrationTeam:
+    ) -> RegistrationTeam:
         """``roster`` = (member index, slot code, rank, is_substitute)."""
-        team = BalancerRegistrationTeam(
+        team = RegistrationTeam(
             tournament_id=self.tournament_id,
             workspace_id=self.workspace_id,
             name=name,
@@ -161,7 +161,7 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
         )
         for member_index, slot_code, rank, is_substitute in roster:
             tag = f"m{member_index}-{self.suffix}#1111"
-            registration = BalancerRegistration(
+            registration = Registration(
                 tournament_id=self.tournament_id,
                 workspace_member_id=self.member_ids[member_index],
                 display_name=f"m{member_index}-{self.suffix}",
@@ -173,7 +173,7 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
             session.add(registration)
             await session.flush()
             session.add(
-                BalancerRegistrationIdentity(
+                RegistrationIdentity(
                     registration_id=registration.id,
                     provider="battlenet",
                     position=0,
@@ -182,7 +182,7 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
                 )
             )
             session.add(
-                BalancerRegistrationRole(
+                RegistrationRole(
                     registration_id=registration.id,
                     catalog_role=catalog_roles[slot_code],
                     dimension_id=catalog_roles[slot_code].dimension_id,
@@ -197,7 +197,7 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
         await session.commit()
         return team
 
-    async def _complete_team(self, name: str = "Alpha") -> BalancerRegistrationTeam:
+    async def _complete_team(self, name: str = "Alpha") -> RegistrationTeam:
         async with self.Session() as session:
             return await self._seed_team(
                 session,
@@ -289,9 +289,7 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
             await registered_teams_service.export_registered(session, self.tournament_id, actor_user_id=1)
 
         async with self.Session() as session:
-            fresh = await session.scalar(
-                sa.select(BalancerRegistrationTeam).where(BalancerRegistrationTeam.id == source.id)
-            )
+            fresh = await session.scalar(sa.select(RegistrationTeam).where(RegistrationTeam.id == source.id))
         assert fresh is not None
         team, _players = await self._exported()
         assert team is not None
@@ -343,10 +341,10 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
         source = await self._complete_team()
         async with self.Session() as session:
             await session.execute(
-                sa.update(BalancerRegistration)
+                sa.update(Registration)
                 .where(
-                    BalancerRegistration.registration_team_id == source.id,
-                    BalancerRegistration.team_slot_code == "tank",
+                    Registration.registration_team_id == source.id,
+                    Registration.team_slot_code == "tank",
                 )
                 .values(status="withdrawn")
             )
@@ -361,6 +359,6 @@ class RegisteredExportIntegrationTests(IsolatedAsyncioTestCase):
         team, players = await self._exported()
         assert team is None and players == []
         async with self.Session() as session:
-            failed = await session.get(BalancerRegistrationTeam, source.id)
+            failed = await session.get(RegistrationTeam, source.id)
             assert failed.export_status == "failed"
             assert "team_format_violation" in failed.export_error

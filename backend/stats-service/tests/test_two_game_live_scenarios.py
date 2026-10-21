@@ -1518,7 +1518,7 @@ def tournament_registration(live: Live, ids: dict[str, Any]) -> None:
         invariant(live, f"{game}_registrations", len(rows))
 
     lol_event = ids["events"][f"{LOL}:bal"]
-    count = live.s("SELECT count(*) FROM balancer.registration WHERE tournament_id=%s", lol_event["tournament_id"])
+    count = live.s("SELECT count(*) FROM registration.registration WHERE tournament_id=%s", lol_event["tournament_id"])
     # A child role of B's (a real B sub-role of ``top``) is not A's to use.
     child = call(
         live,
@@ -1565,7 +1565,8 @@ def tournament_registration(live: Live, ids: dict[str, Any]) -> None:
             {"scenario": _SCENARIO[0], "request": request, "status": 422, "code": code_of(response), "family": family},
         )
     assert (
-        live.s("SELECT count(*) FROM balancer.registration WHERE tournament_id=%s", lol_event["tournament_id"]) == count
+        live.s("SELECT count(*) FROM registration.registration WHERE tournament_id=%s", lol_event["tournament_id"])
+        == count
     )
     # A malformed Riot ID is refused at its field; nothing is written.
     malformed = call(
@@ -1579,7 +1580,8 @@ def tournament_registration(live: Live, ids: dict[str, Any]) -> None:
     )
     refused(malformed, 422, code="invalid_format")
     assert (
-        live.s("SELECT count(*) FROM balancer.registration WHERE tournament_id=%s", lol_event["tournament_id"]) == count
+        live.s("SELECT count(*) FROM registration.registration WHERE tournament_id=%s", lol_event["tournament_id"])
+        == count
     )
     live.stack.evidence.append(
         "unsupported_requests", {"scenario": _SCENARIO[0], "request": "malformed riot", "code": code_of(malformed)}
@@ -1672,7 +1674,7 @@ def identity_journeys(live: Live, ids: dict[str, Any]) -> None:
                 "SELECT user_id, role_id FROM auth.user_roles WHERE user_id = ANY(%s) ORDER BY 1, 2", accounts
             ),
             "registrations": live.s(
-                "SELECT count(*) FROM balancer.registration WHERE tournament_id=%s", lol_event["tournament_id"]
+                "SELECT count(*) FROM registration.registration WHERE tournament_id=%s", lol_event["tournament_id"]
             ),
         }
 
@@ -2210,7 +2212,7 @@ def frozen_mix(live: Live, ids: dict[str, Any]) -> None:
         )
         # The OW roster again with one B member added: the same non-disclosing 404 as an unknown member, the roster
         # untouched.
-        roster = "SELECT * FROM balancer.custom_game_player WHERE custom_game_id=%s ORDER BY id"
+        roster = "SELECT * FROM mix.player WHERE custom_game_id=%s ORDER BY id"
         kept = live.q(roster, ids["mixes"][OW])
         current = [row["workspace_member_id"] for row in _mix_detail(live, ids, ids["mixes"][OW])["players"]]
         foreign = call(
@@ -2243,7 +2245,7 @@ def frozen_mix(live: Live, ids: dict[str, Any]) -> None:
         ).json()
         call(live, ids, "root", "PATCH", "/api/v1/workspaces/{id}", {"disciplines_enabled": [OW]}, expect=200, id=b)
         try:
-            mixes = live.s("SELECT count(*) FROM balancer.custom_game WHERE workspace_id=%s", b)
+            mixes = live.s("SELECT count(*) FROM mix.custom_game WHERE workspace_id=%s", b)
             refused(
                 call(
                     live,
@@ -2257,7 +2259,7 @@ def frozen_mix(live: Live, ids: dict[str, Any]) -> None:
                 422,
                 contains="discipline_not_enabled",
             )
-            assert live.s("SELECT count(*) FROM balancer.custom_game WHERE workspace_id=%s", b) == mixes
+            assert live.s("SELECT count(*) FROM mix.custom_game WHERE workspace_id=%s", b) == mixes
         finally:
             call(
                 live,

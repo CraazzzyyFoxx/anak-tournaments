@@ -16,12 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared import models
-from shared.balancer_registration_statuses import build_unknown_status_meta
 from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid
 from shared.domain.forms import RolesParams, schema_from_form, schema_from_version
 from shared.domain.roster import PlayerRoster
 from shared.hero_catalog import HeroCatalog, resolve_hero_catalog
+from shared.registration_statuses import build_unknown_status_meta
 from shared.schemas.role import RoleRef
 from shared.services.division_grid.access import (
     get_effective_division_grid_version_ids,
@@ -105,8 +105,8 @@ def registration_read_loaders() -> tuple[Any, ...]:
     """
     return (
         *registration_load_options(),
-        selectinload(models.BalancerRegistration.registration_team),
-        selectinload(models.BalancerRegistration.tournament),
+        selectinload(models.Registration.registration_team),
+        selectinload(models.Registration.tournament),
     )
 
 
@@ -126,10 +126,10 @@ def _http_exception(status_code: int, detail: str) -> Exception:
     return HTTPException(status_code=status_code, detail=detail)
 
 
-def _registration_player_id(reg: models.BalancerRegistration) -> int | None:
+def _registration_player_id(reg: models.Registration) -> int | None:
     """The registration's domain player id via its workspace_member anchor.
 
-    Callers MUST eager-load ``BalancerRegistration.workspace_member``
+    Callers MUST eager-load ``Registration.workspace_member``
     (``selectinload``) — accessing an unloaded relationship here would
     lazy-load outside the request's greenlet and raise ``MissingGreenlet``.
     """
@@ -148,7 +148,7 @@ async def _resolve_tournament_workspace(session: AsyncSession, tournament_id: in
 
 async def _resolve_top_heroes_config(
     session: AsyncSession,
-    form: models.BalancerRegistrationForm,
+    form: models.RegistrationForm,
     *,
     discipline: str,
 ) -> tuple[HeroCatalog | None, int | None]:
@@ -174,7 +174,7 @@ _ALWAYS_PUBLIC = frozenset({"reserve"})
 
 
 def registration_public_keys(
-    form: models.BalancerRegistrationForm | None,
+    form: models.RegistrationForm | None,
 ) -> Callable[[Any], frozenset[str]]:
     """A ``registration -> answer keys an anonymous reader may see`` function.
 
@@ -235,7 +235,7 @@ class QueuePlace:
 
 
 def _reg_to_read(
-    reg: models.BalancerRegistration,
+    reg: models.Registration,
     *,
     workspace_id: int,
     #: The owning tournament's identity provider (``identity_provider(discipline)``):
@@ -395,7 +395,7 @@ async def _public_rosters(session: AsyncSession, registrations: Sequence[Any]) -
 
 async def _build_tournament_history(
     session: AsyncSession,
-    registrations: list[models.BalancerRegistration],
+    registrations: list[models.Registration],
     current_tournament_id: int,
     workspace_id: int,
 ) -> tuple[
@@ -411,7 +411,7 @@ async def _build_tournament_history(
     The player id (players.user.id) is resolved via workspace_member ->
     player_id, the registration's only identity anchor.
 
-    Callers must eager-load ``BalancerRegistration.workspace_member`` for the
+    Callers must eager-load ``Registration.workspace_member`` for the
     resolution to see anything (a lazy load here would run outside the
     request's greenlet).
 

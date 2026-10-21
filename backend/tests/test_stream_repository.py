@@ -162,7 +162,7 @@ class ParticipantVisibilityTests(IsolatedAsyncioTestCase):
         """Batched across every active tournament, not one query per tournament."""
         sql = await self._verified_sql()
 
-        self.assertIn("balancer.registration.tournament_id IN", sql)
+        self.assertIn("registration.registration.tournament_id IN", sql)
 
 
 class ParticipantSelfDeclaredTests(IsolatedAsyncioTestCase):
@@ -178,22 +178,22 @@ class ParticipantSelfDeclaredTests(IsolatedAsyncioTestCase):
     async def test_requires_the_explicit_stream_pov_opt_in(self) -> None:
         sql = await self._self_declared_sql()
 
-        self.assertIn("balancer.registration.stream_pov IS true", sql)
+        self.assertIn("registration.registration.stream_pov IS true", sql)
 
     async def test_the_channel_comes_from_the_twitch_identity_answer(self) -> None:
         """An inner join on the provider: no identity row, no declared channel."""
         stmt = await self._self_declared_stmt()
         compiled = stmt.compile(dialect=postgresql.dialect())
 
-        self.assertIn("JOIN balancer.registration_identity ON", str(compiled))
-        self.assertIn("balancer.registration_identity.provider =", str(compiled))
+        self.assertIn("JOIN registration.identity ON", str(compiled))
+        self.assertIn("registration.identity.provider =", str(compiled))
         self.assertIn("twitch", compiled.params.values())
 
     async def test_excludes_withdrawn_and_deleted_registrations(self) -> None:
         sql = await self._self_declared_sql()
 
-        self.assertIn("balancer.registration.deleted_at IS NULL", sql)
-        self.assertIn("balancer.registration.status =", sql)
+        self.assertIn("registration.registration.deleted_at IS NULL", sql)
+        self.assertIn("registration.registration.status =", sql)
 
     async def test_player_identity_comes_through_workspace_member(self) -> None:
         sql = await self._self_declared_sql()
@@ -221,7 +221,7 @@ class StreamVetoCollectionGateTests(IsolatedAsyncioTestCase):
         await StreamTargetRepository().list_self_declared_channels(session, [7])
         self_declared = _compiled(session.statements[0])
 
-        self.assertIn("balancer.registration.stream_pov IS true", self_declared)
+        self.assertIn("registration.registration.stream_pov IS true", self_declared)
         self.assertIn(self.VETO, self_declared)
 
     async def test_the_self_declared_source_joins_user_to_reach_the_flag(self) -> None:

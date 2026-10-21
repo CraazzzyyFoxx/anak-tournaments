@@ -23,7 +23,6 @@ best-effort clean up afterwards rather than relying purely on rollback.
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -34,16 +33,6 @@ import sqlalchemy as sa
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-
-def _ensure_test_env() -> None:
-    env = {
-        "DEBUG": "true",
-    }
-    for key, value in env.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -224,7 +213,7 @@ def test_workspace_scoped_self_register_deny_returns_403() -> None:
 
                 async with session_maker() as session:
                     registration_count = await session.scalar(
-                        sa.text("select count(*) from balancer.registration where tournament_id = :tid"),
+                        sa.text("select count(*) from registration.registration where tournament_id = :tid"),
                         {"tid": tournament_id},
                     )
                 return raised, registration_count

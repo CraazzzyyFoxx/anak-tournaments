@@ -55,7 +55,7 @@ OWNERSHIP = {
     models.Workspace.__table__: ("owner_id",),
     models.CustomGame.__table__: ("host_user_id",),
     models.DraftTeam.__table__: ("captain_auth_user_id",),
-    models.BalancerRegistrationTeamInvite.__table__: ("target_auth_user_id",),
+    models.RegistrationTeamInvite.__table__: ("target_auth_user_id",),
     models.SubscriptionCheckLog.__table__: ("auth_user_id",),
     models.Notification.__table__: ("recipient_auth_user_id",),
 }

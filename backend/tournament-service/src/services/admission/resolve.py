@@ -77,14 +77,14 @@ async def load_auth_user_ids(session: AsyncSession, registrations: Sequence[Any]
     if not reg_ids:
         return {}
     rows = await session.execute(
-        sa.select(models.BalancerRegistration.id, models.User.auth_user_id)
-        .select_from(models.BalancerRegistration)
+        sa.select(models.Registration.id, models.User.auth_user_id)
+        .select_from(models.Registration)
         .join(
             models.WorkspaceMember,
-            models.BalancerRegistration.workspace_member_id == models.WorkspaceMember.id,
+            models.Registration.workspace_member_id == models.WorkspaceMember.id,
         )
         .join(models.User, models.WorkspaceMember.player_id == models.User.id)
-        .where(models.BalancerRegistration.id.in_(reg_ids))
+        .where(models.Registration.id.in_(reg_ids))
     )
     # `.tuples()` is what makes this a real 2-tuple: without it a `Row` is not an
     # `Iterable[tuple[...]]` and `dict()` does not type-check.
@@ -113,16 +113,14 @@ async def _team_stamp_is_current(session: AsyncSession, registration: Any) -> bo
         getter = getattr(session, "get", None)
         if callable(getter):
             try:
-                team = await getter(models.BalancerRegistrationTeam, team_id)
+                team = await getter(models.RegistrationTeam, team_id)
             except TypeError:
                 team = None
         if team is None:
             scalar = getattr(session, "scalar", None)
             if callable(scalar):
                 try:
-                    team = await scalar(
-                        sa.select(models.BalancerRegistrationTeam).where(models.BalancerRegistrationTeam.id == team_id)
-                    )
+                    team = await scalar(sa.select(models.RegistrationTeam).where(models.RegistrationTeam.id == team_id))
                 except TypeError:
                     team = None
     return bool(team) and team_subscription_is_current(team)

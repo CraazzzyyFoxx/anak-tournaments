@@ -88,16 +88,16 @@ const (
 		  AND et.team_id IS NOT NULL
 		  AND u.auth_user_id = $2
 	)`
-	// The draft room's participants. balancer.draft_team carries the captain's
+	// The draft room's participants. draft.team carries the captain's
 	// AUTH id directly (captain_auth_user_id), so this needs no players."user"
 	// bridge, unlike isEncounterCaptainSQL above; a session has one row per team
-	// and ix_balancer_draft_team_captain_auth_user_id covers the predicate.
+	// and ix_draft_team_captain_auth_user_id covers the predicate.
 	isDraftSessionCaptainSQL = `SELECT EXISTS(
 		SELECT 1
-		FROM balancer.draft_team
+		FROM draft.team
 		WHERE session_id = $1 AND captain_auth_user_id = $2
 	)`
-	draftSessionTournamentSQL = `SELECT tournament_id FROM balancer.draft_session WHERE id = $1`
+	draftSessionTournamentSQL = `SELECT tournament_id FROM draft.session WHERE id = $1`
 	// Per-room chat settings (default schema, table chat_room_settings). The row
 	// is lazily materialized, so "no row" is not "no such room": it means the
 	// room still runs on its kind's default — see roomSpectatorReadDefault.

@@ -85,9 +85,9 @@ class TestCustomGameModel:
         assert "team_index" not in columns
 
     def test_repeating_groups_have_relational_models(self):
-        assert models.CustomGameCoHost.__table__.schema == "balancer"
-        assert models.CustomGamePlayerRole.__table__.schema == "balancer"
-        assert models.CustomGameTeamName.__table__.schema == "balancer"
+        assert models.CustomGameCoHost.__table__.schema == "mix"
+        assert models.CustomGamePlayerRole.__table__.schema == "mix"
+        assert models.CustomGameTeamName.__table__.schema == "mix"
         assert not hasattr(models, "CustomGameRoleSlot")
 
     def test_co_host_grant_addresses_a_login_not_a_roster_row(self):

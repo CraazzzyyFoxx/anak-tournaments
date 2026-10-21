@@ -225,7 +225,7 @@ class RepointAchievementOverrideWorkspaceMembersTests(IsolatedAsyncioTestCase):
 
 
 class RepointRegistrationWorkspaceMembersTests(IsolatedAsyncioTestCase):
-    """``balancer.registration.workspace_member_id`` is ``ON DELETE SET NULL``:
+    """``registration.registration.workspace_member_id`` is ``ON DELETE SET NULL``:
     a registration still anchored on the source's ``workspace_member`` would
     otherwise be silently nulled out once the source ``User`` row is deleted
     (the ``workspace_member`` cascades). Mirrors ``_repoint_player_workspace_members``,

@@ -25,7 +25,7 @@ from shared.core.enums import (
     DraftStatus,
 )
 from shared.domain.roster_shape import RosterShape
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
+from shared.models.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from shared.repository.draft import DraftPickRepository, DraftPlayerRepository, DraftTeamRepository
 from shared.repository.workspace import get_or_create_workspace_member
 from src.domain.draft import ranks as domain_ranks

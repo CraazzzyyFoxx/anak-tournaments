@@ -341,10 +341,10 @@ project at [`../migrations/`](../migrations/).
   `result.py`.
 - **`catalog.role`** — workspace sub-role administration; module roles are projected at app startup.
 - **`roster`** — tournament-owned `team_format`, `team_format_dimension` and `format_role_rule`.
-- **`balancer`** — the registration side of the tournament domain: `registration`, `registration_role`,
-  `registration_role_entity`, `registration_form`, `registration_status`, `registration_team`,
-  `registration_team_invite`, `registration_google_sheet_feed` / `_binding`. Balancing itself
-  (`balancer.*` team-building tables) belongs to `balancer-service`.
+- **`registration`** — the registration side of the tournament domain: `registration`, `role`,
+  `role_entity`, `form`, `form_version`, `form_template`, `status`, `team`, `team_invite`,
+  `identity`, `google_sheet_feed` / `_binding`. Balancing itself (`balancer`, `mix`, `draft`)
+  belongs to `balancer-service`.
 - **`subscriptions`** — `provider_config` and `requirement` through the admin RPCs, plus the
   `entitlement` and `check_log` rows the admission gate writes as it resolves verdicts.
 - **`public`** — division grids and their versions/mappings/import jobs, plus `event_outbox` (written
@@ -360,7 +360,7 @@ ontology), `matches` (parsed match rows surfaced by the admin match reads). Lega
 
 Entity diagrams: [tournament](../../docs/database_erd.md#tournament--tournament-casual),
 [encounter](../../docs/database_erd.md#encounter--encounter),
-[registration](../../docs/database_erd.md#registration--balancer),
+[registration](../../docs/database_erd.md#registration--registration),
 [division_grid](../../docs/database_erd.md#division_grid--public),
 [subscriptions](../../docs/database_erd.md#subscriptions--subscriptions),
 [platform](../../docs/database_erd.md#platform--public-realtime).
@@ -393,8 +393,6 @@ actually change behaviour:
 | `WORKER_METRICS_PORT` | Prometheus scrape port (9103 in both environments) |
 | `RPC_PREFETCH_COUNT` | QoS on the RPC channel; the compute channel is fixed at 4 |
 | `REDIS_URL`, `RABBITMQ_URL` | Transport endpoints |
-
-`PORT=8004` in the env example is vestigial — nothing binds it.
 
 ## Running
 

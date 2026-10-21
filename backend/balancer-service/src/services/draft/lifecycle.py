@@ -30,7 +30,7 @@ from shared.core.enums import (
 from shared.core.errors import BaseAPIException
 from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import RosterShape
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
+from shared.models.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from shared.repository.draft import (
     DraftPickRepository,
     DraftPlayerRepository,
@@ -546,7 +546,7 @@ class DraftLifecycleService:
     ) -> DraftSession:
         """Seed a draft from the balancer registration pool.
 
-        ``captain_registration_ids`` are ``balancer.registration`` ids chosen as
+        ``captain_registration_ids`` are ``registration.registration`` ids chosen as
         captains; ``captain_order`` decides seat order (WEAKEST_FIRST seats the
         lowest-rated captain at position 1). ``captain_roles`` pins a captain to
         one of their roles (absent = their lead role). Every other in-pool

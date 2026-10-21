@@ -102,7 +102,7 @@ class DraftSessionCreateRequest(BaseModel):
 
 
 class DraftPoolCaptainInput(BaseModel):
-    """A captain chosen from the balancer pool (by balancer.registration id)."""
+    """A captain chosen from the balancer pool (by registration.registration id)."""
 
     registration_id: int
     name: str | None = None

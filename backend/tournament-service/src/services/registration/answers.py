@@ -290,7 +290,7 @@ class RegistrationAnswerService:
 
     def apply(
         self,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
         values: Mapping[str, Any],
         *,
         schema: FormSchema,
@@ -323,7 +323,7 @@ class RegistrationAnswerService:
 
     def _apply_identities(
         self,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
         values: Mapping[str, Any],
         *,
         schema: FormSchema,
@@ -338,7 +338,7 @@ class RegistrationAnswerService:
         targets still read it. The positional/handle uniques are DEFERRED, so a
         swap mid-rewrite is fine.
         """
-        rows_by_provider: dict[str, list[models.BalancerRegistrationIdentity]] = {}
+        rows_by_provider: dict[str, list[models.RegistrationIdentity]] = {}
         for row in registration.identities:
             rows_by_provider.setdefault(row.provider, []).append(row)
         for provider in IDENTITY_PROVIDERS:
@@ -354,7 +354,7 @@ class RegistrationAnswerService:
                     rows[position].handle_normalized = normalized
                 else:
                     registration.identities.append(
-                        models.BalancerRegistrationIdentity(
+                        models.RegistrationIdentity(
                             provider=provider,
                             position=position,
                             handle=handle,
@@ -366,7 +366,7 @@ class RegistrationAnswerService:
 
     def _apply_roles(
         self,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
         roles: list[Any],
         *,
         schema: FormSchema,
@@ -394,7 +394,7 @@ class RegistrationAnswerService:
             mode=flex_role_mode_from_schema(schema),
         )
         existing = {row.role: row for row in registration.roles}
-        merged: list[models.BalancerRegistrationRole] = []
+        merged: list[models.RegistrationRole] = []
         for entry in entries:
             row = existing.get(entry.role)
             if row is None:
@@ -417,7 +417,7 @@ class RegistrationAnswerService:
         # the delete-orphan cascade rather than being detached from the list.
         registration.roles[:] = merged
 
-    def answers_of(self, registration: models.BalancerRegistration) -> dict[str, Any]:
+    def answers_of(self, registration: models.Registration) -> dict[str, Any]:
         """The flat answer document a registration reads back as.
 
         Every ``identity_<provider>`` answer is a list of handles, primary first

@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from shared.models.balancer.balance import BalancerBalance
     from shared.models.catalog import CatalogRole
     from shared.models.identity.auth_user import AuthUser
-    from shared.models.registration.registration import BalancerRegistration
+    from shared.models.registration.registration import Registration
     from shared.models.tenancy.workspace import Workspace, WorkspaceMember
     from shared.models.tournament.tournament import Tournament
 
@@ -42,7 +42,7 @@ __all__ = (
 
 
 class DraftSession(db.TimeStampIntegerMixin):
-    __tablename__ = "draft_session"
+    __tablename__ = "session"
     __table_args__ = (
         # One active draft per tournament — a CANCELLED/COMPLETED draft may
         # coexist with a new one, but only one in-flight session is allowed.
@@ -54,7 +54,7 @@ class DraftSession(db.TimeStampIntegerMixin):
         ),
         Index("ix_draft_session_tournament_status", "tournament_id", "status"),
         Index("ix_draft_session_status_created", "status", "created_at"),
-        {"schema": "balancer"},
+        {"schema": "draft"},
     )
 
     # tournament_id index is provided by ix_draft_session_tournament_status +
@@ -69,9 +69,9 @@ class DraftSession(db.TimeStampIntegerMixin):
     # Grace period granted once, after the main pick clock runs out, before the
     # autopick fires. 0 (the default) keeps the old behaviour: expiry autopicks.
     overtime_seconds: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
-    # Circular FK with draft_pick — created with use_alter so DDL ordering works.
+    # Circular FK with draft.pick — created with use_alter so DDL ordering works.
     current_pick_id: Mapped[int | None] = mapped_column(
-        ForeignKey("balancer.draft_pick.id", ondelete="SET NULL", use_alter=True, name="fk_draft_session_current_pick"),
+        ForeignKey("draft.pick.id", ondelete="SET NULL", use_alter=True, name="fk_draft_session_current_pick"),
         nullable=True,
     )
     pool_source: Mapped[str] = mapped_column(
@@ -108,13 +108,13 @@ class DraftSession(db.TimeStampIntegerMixin):
 
 
 class DraftTeam(db.TimeStampIntegerMixin):
-    __tablename__ = "draft_team"
+    __tablename__ = "team"
     __table_args__ = (
         UniqueConstraint("session_id", "draft_position", name="uq_draft_team_session_position"),
-        {"schema": "balancer"},
+        {"schema": "draft"},
     )
 
-    session_id: Mapped[int] = mapped_column(ForeignKey("balancer.draft_session.id", ondelete="CASCADE"), index=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("draft.session.id", ondelete="CASCADE"), index=True)
     # Captain's domain identity, anchored on workspace_member (dbarch03 dropped
     # the legacy captain_user_id -> players.user.id column). The player id is
     # reached via captain_member.player_id; readers must eager-load
@@ -173,7 +173,7 @@ class DraftPlayer(db.TimeStampIntegerMixin):
     data.
     """
 
-    __tablename__ = "draft_player"
+    __tablename__ = "player"
     __table_args__ = (
         UniqueConstraint("session_id", "registration_id", name="uq_draft_player_session_registration"),
         Index("ix_draft_player_session_status", "session_id", "status"),
@@ -184,16 +184,16 @@ class DraftPlayer(db.TimeStampIntegerMixin):
             deferrable=True,
             initially="DEFERRED",
         ),
-        {"schema": "balancer"},
+        {"schema": "draft"},
     )
 
     # session_id index is provided by ix_draft_player_session_status (leftmost prefix).
-    session_id: Mapped[int] = mapped_column(ForeignKey("balancer.draft_session.id", ondelete="CASCADE"))
+    session_id: Mapped[int] = mapped_column(ForeignKey("draft.session.id", ondelete="CASCADE"))
     # THE anchor. RESTRICT because a registration is soft-deleted: a hard delete
     # would be somebody erasing a row a draft depends on, and refusing beats
     # silently dropping draft history.
     registration_id: Mapped[int] = mapped_column(
-        ForeignKey("balancer.registration.id", ondelete="RESTRICT"), nullable=False, index=True
+        ForeignKey("registration.registration.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     # Kept alongside the registration (which also carries it) because the draft's
     # own ACL and audit rows join on the member: captain identity, picked_by, and
@@ -204,7 +204,7 @@ class DraftPlayer(db.TimeStampIntegerMixin):
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="available", default="available")
     is_captain: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
     drafted_by_team_id: Mapped[int | None] = mapped_column(
-        ForeignKey("balancer.draft_team.id", ondelete="SET NULL"), nullable=True, index=True
+        ForeignKey("draft.team.id", ondelete="SET NULL"), nullable=True, index=True
     )
     #: A top-level rated role pinned at seed time; None resolves the captain's lead role live.
     dimension_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
@@ -222,7 +222,7 @@ class DraftPlayer(db.TimeStampIntegerMixin):
     version: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
 
     session: Mapped[DraftSession] = relationship(back_populates="players")
-    registration: Mapped[BalancerRegistration] = relationship()
+    registration: Mapped[Registration] = relationship()
     member: Mapped[WorkspaceMember | None] = relationship()
     drafted_by_team: Mapped[DraftTeam | None] = relationship(foreign_keys=[drafted_by_team_id], overlaps="roster")
 
@@ -239,14 +239,14 @@ class DraftPlayer(db.TimeStampIntegerMixin):
 class DraftAuditEvent(db.TimeStampIntegerMixin):
     """Private organizer audit trail for exceptional draft mutations."""
 
-    __tablename__ = "draft_audit_event"
+    __tablename__ = "audit_event"
     __table_args__ = (
         Index("ix_draft_audit_session_created", "session_id", "created_at"),
-        {"schema": "balancer"},
+        {"schema": "draft"},
     )
 
     session_id: Mapped[int] = mapped_column(
-        ForeignKey("balancer.draft_session.id", ondelete="CASCADE"),
+        ForeignKey("draft.session.id", ondelete="CASCADE"),
         nullable=False,
     )
     actor_auth_user_id: Mapped[int | None] = mapped_column(
@@ -266,7 +266,7 @@ class DraftAuditEvent(db.TimeStampIntegerMixin):
 
 
 class DraftPick(db.TimeStampIntegerMixin):
-    __tablename__ = "draft_pick"
+    __tablename__ = "pick"
     __table_args__ = (
         # (session_id, overall_no) unique constraint also serves as the
         # session+order lookup index — no separate ix needed.
@@ -279,14 +279,14 @@ class DraftPick(db.TimeStampIntegerMixin):
             deferrable=True,
             initially="DEFERRED",
         ),
-        {"schema": "balancer"},
+        {"schema": "draft"},
     )
 
-    session_id: Mapped[int] = mapped_column(ForeignKey("balancer.draft_session.id", ondelete="CASCADE"))
+    session_id: Mapped[int] = mapped_column(ForeignKey("draft.session.id", ondelete="CASCADE"))
     overall_no: Mapped[int] = mapped_column(Integer(), nullable=False)
     round_no: Mapped[int] = mapped_column(Integer(), nullable=False)
     pick_in_round: Mapped[int] = mapped_column(Integer(), nullable=False)
-    draft_team_id: Mapped[int] = mapped_column(ForeignKey("balancer.draft_team.id", ondelete="CASCADE"), index=True)
+    draft_team_id: Mapped[int] = mapped_column(ForeignKey("draft.team.id", ondelete="CASCADE"), index=True)
     dimension_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     target_role_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True, index=True)
     target_role_row: Mapped[CatalogRole | None] = relationship(
@@ -304,7 +304,7 @@ class DraftPick(db.TimeStampIntegerMixin):
     target_rank_value: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="upcoming", default="upcoming")
     picked_player_id: Mapped[int | None] = mapped_column(
-        ForeignKey("balancer.draft_player.id", ondelete="SET NULL"), nullable=True, index=True
+        ForeignKey("draft.player.id", ondelete="SET NULL"), nullable=True, index=True
     )
     # The acting captain's domain identity, anchored on workspace_member
     # (dbarch03 dropped the legacy picked_by_user_id column). Nullable —

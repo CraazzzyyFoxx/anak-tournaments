@@ -25,7 +25,7 @@ from shared.core.social import SocialProvider
 from shared.disciplines import discipline
 from shared.division_grid import DivisionGrid, normalize_native_ranks_to_grid
 from shared.repository import (
-    BalancerRegistrationRepository,
+    RegistrationRepository,
     SocialAccountRepository,
     TournamentRepository,
 )
@@ -73,7 +73,7 @@ async def native_ranks_by_registration(
     )
 
 
-def primary_identity_key(registration: models.BalancerRegistration, *, provider: str | None) -> str | None:
+def primary_identity_key(registration: models.Registration, *, provider: str | None) -> str | None:
     """The normalized position-zero handle of the owner's provider, never another game's."""
     return next(
         (row.handle_normalized for row in registration.identities if row.provider == provider and row.position == 0),
@@ -88,14 +88,14 @@ def _primary_battlenet_order() -> sa.ScalarSelect[str]:
     battlenet identity rows, and joining them would multiply the result.
     """
     return (
-        sa.select(models.BalancerRegistrationIdentity.handle_normalized)
+        sa.select(models.RegistrationIdentity.handle_normalized)
         .where(
-            models.BalancerRegistrationIdentity.registration_id == models.BalancerRegistration.id,
-            models.BalancerRegistrationIdentity.provider == SocialProvider.BATTLENET,
-            models.BalancerRegistrationIdentity.position == 0,
+            models.RegistrationIdentity.registration_id == models.Registration.id,
+            models.RegistrationIdentity.provider == SocialProvider.BATTLENET,
+            models.RegistrationIdentity.position == 0,
         )
         .limit(1)
-        .correlate(models.BalancerRegistration)
+        .correlate(models.Registration)
         .scalar_subquery()
     )
 
@@ -354,7 +354,7 @@ class RankSourcesService:
         self,
         *,
         tournament_repo: TournamentRepository = TournamentRepository(),
-        registration_repo: BalancerRegistrationRepository = BalancerRegistrationRepository(),
+        registration_repo: RegistrationRepository = RegistrationRepository(),
         social_repo: SocialAccountRepository = SocialAccountRepository(),
     ) -> None:
         self.tournament_repo = tournament_repo
@@ -425,22 +425,22 @@ class RankSourcesService:
         stmt = (
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),
-                models.BalancerRegistrationRole.role,
-                models.BalancerRegistrationRole.rank_value,
+                models.RegistrationRole.role,
+                models.RegistrationRole.rank_value,
                 models.Tournament.division_grid_version_id,
             )
-            .select_from(models.BalancerRegistration)
+            .select_from(models.Registration)
             .join(
                 models.WorkspaceMember,
-                models.WorkspaceMember.id == models.BalancerRegistration.workspace_member_id,
+                models.WorkspaceMember.id == models.Registration.workspace_member_id,
             )
             .join(
-                models.BalancerRegistrationRole,
-                models.BalancerRegistrationRole.registration_id == models.BalancerRegistration.id,
+                models.RegistrationRole,
+                models.RegistrationRole.registration_id == models.Registration.id,
             )
             .join(
                 models.Tournament,
-                models.Tournament.id == models.BalancerRegistration.tournament_id,
+                models.Tournament.id == models.Registration.tournament_id,
             )
             .where(
                 models.WorkspaceMember.player_id.in_(user_ids),
@@ -450,20 +450,20 @@ class RankSourcesService:
                 .where(models.Tournament.id == current_tournament_id)
                 .correlate(None)
                 .scalar_subquery(),
-                models.BalancerRegistration.tournament_id != current_tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
-                models.BalancerRegistrationRole.is_active.is_(True),
-                models.BalancerRegistrationRole.rank_value.is_not(None),
+                models.Registration.tournament_id != current_tournament_id,
+                models.Registration.deleted_at.is_(None),
+                models.RegistrationRole.is_active.is_(True),
+                models.RegistrationRole.rank_value.is_not(None),
             )
             .order_by(
                 models.WorkspaceMember.player_id,
-                models.BalancerRegistrationRole.role,
+                models.RegistrationRole.role,
                 models.Tournament.start_date.desc().nulls_last(),
                 models.Tournament.id.desc(),
             )
         )
         if allowed_tournament_ids is not None:
-            stmt = stmt.where(models.BalancerRegistration.tournament_id.in_(allowed_tournament_ids))
+            stmt = stmt.where(models.Registration.tournament_id.in_(allowed_tournament_ids))
 
         rows = (await session.execute(stmt)).all()
 
@@ -572,35 +572,35 @@ class RankSourcesService:
                 sa.select(
                     models.Tournament.id.label("tournament_id"),
                     models.Tournament.name.label("tournament_name"),
-                    models.BalancerRegistrationRole.role,
-                    models.BalancerRegistrationRole.subrole,
+                    models.RegistrationRole.role,
+                    models.RegistrationRole.subrole,
                     models.Tournament.discipline,
-                    models.BalancerRegistrationRole.rank_value,
+                    models.RegistrationRole.rank_value,
                 )
-                .select_from(models.BalancerRegistrationRole)
+                .select_from(models.RegistrationRole)
                 .join(
-                    models.BalancerRegistration,
-                    models.BalancerRegistration.id == models.BalancerRegistrationRole.registration_id,
+                    models.Registration,
+                    models.Registration.id == models.RegistrationRole.registration_id,
                 )
                 .join(
                     models.Tournament,
-                    models.Tournament.id == models.BalancerRegistration.tournament_id,
+                    models.Tournament.id == models.Registration.tournament_id,
                 )
                 .join(
                     models.WorkspaceMember,
-                    models.WorkspaceMember.id == models.BalancerRegistration.workspace_member_id,
+                    models.WorkspaceMember.id == models.Registration.workspace_member_id,
                 )
                 .where(
                     models.WorkspaceMember.player_id == user_id,
                     models.Tournament.workspace_id == workspace_id,
                     models.Tournament.discipline == discipline_code,
-                    models.BalancerRegistration.deleted_at.is_(None),
-                    models.BalancerRegistrationRole.is_active.is_(True),
-                    models.BalancerRegistrationRole.rank_value.is_not(None),
+                    models.Registration.deleted_at.is_(None),
+                    models.RegistrationRole.is_active.is_(True),
+                    models.RegistrationRole.rank_value.is_not(None),
                 )
                 .order_by(
                     models.Tournament.start_date.desc().nulls_last(),
-                    models.BalancerRegistration.tournament_id.desc(),
+                    models.Registration.tournament_id.desc(),
                 )
             )
         ).all()
@@ -620,12 +620,12 @@ class RankSourcesService:
         session: AsyncSession,
         tournament_id: int,
         registration_ids: list[int] | None,
-    ) -> list[models.BalancerRegistration]:
+    ) -> list[models.Registration]:
         query = (
             self.registration_repo.select()
             .where(
-                models.BalancerRegistration.tournament_id == tournament_id,
-                models.BalancerRegistration.deleted_at.is_(None),
+                models.Registration.tournament_id == tournament_id,
+                models.Registration.deleted_at.is_(None),
             )
             # These rows go to the roster engine for their role set and ranks; it
             # reads roles, their heroes and the member anchor, none of which may
@@ -633,20 +633,20 @@ class RankSourcesService:
             .options(*registration_load_options())
             .order_by(
                 _primary_battlenet_order().asc().nullslast(),
-                models.BalancerRegistration.id.asc(),
+                models.Registration.id.asc(),
             )
         )
         if registration_ids is not None:
             if not registration_ids:
                 return []
-            query = query.where(models.BalancerRegistration.id.in_(registration_ids))
+            query = query.where(models.Registration.id.in_(registration_ids))
         result = await session.execute(query)
         return list(result.scalars().all())
 
     async def _load_primary_accounts_by_key(
         self,
         session: AsyncSession,
-        registrations: list[models.BalancerRegistration],
+        registrations: list[models.Registration],
         *,
         provider: str | None,
     ) -> dict[str, models.SocialAccount]:

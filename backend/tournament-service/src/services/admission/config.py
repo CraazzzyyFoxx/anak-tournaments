@@ -63,7 +63,7 @@ class AdmissionConfig:
         *,
         subscription_rule: SubscriptionRequirement | None = None,
     ) -> AdmissionConfig:
-        """Project a ``BalancerRegistrationForm`` (or a stub) into a config.
+        """Project a ``RegistrationForm`` (or a stub) into a config.
 
         ``form is None`` yields the all-off config: a tournament with no
         registration form has nothing to submit against, so it also has no

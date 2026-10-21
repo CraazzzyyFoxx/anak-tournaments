@@ -19,7 +19,7 @@ from types import SimpleNamespace
 # Importing the read model instantiates the service Settings(); this file used
 # to rely on whichever sibling test module happened to be collected first.
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402
-from shared.models.registration.registration import BalancerRegistration  # noqa: E402
+from shared.models.registration.registration import Registration  # noqa: E402
 from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from src.schemas.registration_build import _reg_to_read  # noqa: E402
 
@@ -85,7 +85,7 @@ def _reg_stub(extra: tuple[SimpleNamespace, ...] = ()) -> SimpleNamespace:
         reviewed_at=None,
     )
     # The model's own algorithm, run against the stub's rows.
-    stub.primary_game_identity = partial(BalancerRegistration.primary_game_identity, stub)
+    stub.primary_game_identity = partial(Registration.primary_game_identity, stub)
     return stub
 
 

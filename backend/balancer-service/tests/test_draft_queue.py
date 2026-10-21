@@ -19,7 +19,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
-from shared.models.balancer.draft import DraftTeam  # noqa: E402
+from shared.models.draft import DraftTeam  # noqa: E402
 from src.domain.draft import fit  # noqa: E402
 from src.domain.draft.entities import DraftSnapshot, FitResult  # noqa: E402
 from src.services.draft.selection import selection_service  # noqa: E402

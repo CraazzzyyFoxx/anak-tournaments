@@ -16,7 +16,6 @@ Design: docs/superpowers/specs/2026-08-04-forced-flex-max-rank-design.md
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -24,8 +23,6 @@ from typing import Any
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
-
-os.environ["DEBUG"] = "true"
 
 
 _common = importlib.import_module("src.services.registration._common")
@@ -171,7 +168,7 @@ class TestWritePathsHonourForcedFlex:
         assert damage.subrole == "damage_hitscan"
 
     def test_admin_path_forced(self) -> None:
-        registration = _common.models.BalancerRegistration()
+        registration = _common.models.Registration()
         registration.roles = []
 
         _common.replace_registration_roles(
@@ -186,7 +183,7 @@ class TestWritePathsHonourForcedFlex:
 
     def test_admin_path_preserves_rank_and_is_active(self) -> None:
         """The rank policy is derived at read time; the row keeps what it was given."""
-        registration = _common.models.BalancerRegistration()
+        registration = _common.models.Registration()
         registration.roles = []
 
         _common.replace_registration_roles(
@@ -202,7 +199,7 @@ class TestWritePathsHonourForcedFlex:
         assert [e.rank_value for e in registration.roles if e.role != "support"] == [None, None]
 
     def test_admin_path_optional_is_unchanged(self) -> None:
-        registration = _common.models.BalancerRegistration()
+        registration = _common.models.Registration()
         registration.roles = []
 
         _common.replace_registration_roles(
@@ -214,7 +211,7 @@ class TestWritePathsHonourForcedFlex:
 
     def test_admin_path_reuses_existing_rows(self) -> None:
         """Re-syncing must not orphan the row a rank was already attached to."""
-        registration = _common.models.BalancerRegistration()
+        registration = _common.models.Registration()
         existing = registration_role(role="damage", rank_value=4100)
         registration.roles = [existing]
 
@@ -259,7 +256,7 @@ class TestApplyAllRolesWithoutForcing:
         assert not any(entry.is_primary for entry in result)
 
     def test_write_path_all_roles_keeps_one_primary(self) -> None:
-        registration = _common.models.BalancerRegistration()
+        registration = _common.models.Registration()
         registration.roles = []
 
         _common.replace_registration_roles(
@@ -273,7 +270,7 @@ class TestApplyAllRolesWithoutForcing:
         assert [entry.role for entry in registration.roles if entry.is_primary] == ["tank"]
 
     def test_write_path_forced_still_promotes_everything(self) -> None:
-        registration = _common.models.BalancerRegistration()
+        registration = _common.models.Registration()
         registration.roles = []
 
         _common.replace_registration_roles(

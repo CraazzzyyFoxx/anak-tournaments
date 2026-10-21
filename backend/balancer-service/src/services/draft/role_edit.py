@@ -1,6 +1,6 @@
 """Admin-only emergency role additions during a live draft.
 
-The write lands on the REGISTRATION (``balancer.registration_role``), not on a
+The write lands on the REGISTRATION (``registration.role``), not on a
 draft-local copy: the balancer is the only writer of roles and ranks, so the
 draft board, the pool verdict and the balance job all see the edit at once and
 cannot disagree about it. The draft's own contribution is the guard (may this
@@ -18,11 +18,11 @@ import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.domain.roster import PlayerRoster
-from shared.models.balancer.draft import DraftAuditEvent, DraftPlayer, DraftSession
-from shared.models.registration.registration import BalancerRegistrationRole
+from shared.models.draft import DraftAuditEvent, DraftPlayer, DraftSession
+from shared.models.registration.registration import RegistrationRole
 from shared.repository import CatalogRoleRepository
 from shared.repository.draft import DraftAuditEventRepository, DraftPlayerRepository
-from shared.repository.registration import BalancerRegistrationRoleRepository
+from shared.repository.registration import RegistrationRoleRepository
 from shared.repository.tournament import TournamentRepository
 from shared.schemas.role import RoleRef
 from src import schemas
@@ -60,7 +60,7 @@ class DraftRoleEditService:
         *,
         players_repo: DraftPlayerRepository = DraftPlayerRepository(),
         audit_repo: DraftAuditEventRepository = DraftAuditEventRepository(),
-        roles_repo: BalancerRegistrationRoleRepository = BalancerRegistrationRoleRepository(),
+        roles_repo: RegistrationRoleRepository = RegistrationRoleRepository(),
         tournaments_repo: TournamentRepository = TournamentRepository(),
         feasibility: DraftFeasibilityService = feasibility_service,
         rosters: DraftRosterService = draft_rosters,
@@ -134,7 +134,7 @@ class DraftRoleEditService:
         leaf = catalog_roles[role]
         await self.roles_repo.create(
             session,
-            BalancerRegistrationRole(
+            RegistrationRole(
                 registration_id=registration_id,
                 catalog_role=leaf,
                 dimension_id=leaf.dimension_id,

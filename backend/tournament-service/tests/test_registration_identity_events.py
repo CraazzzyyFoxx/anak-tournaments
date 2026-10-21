@@ -45,10 +45,10 @@ class RegistrationIdentityEventsTests(IsolatedAsyncioTestCase):
         )
         self.session.add(tournament)
         await self.session.flush()
-        registration = models.BalancerRegistration(
+        registration = models.Registration(
             tournament_id=tournament.id,
             identities=[
-                models.BalancerRegistrationIdentity(
+                models.RegistrationIdentity(
                     provider=provider,
                     position=position,
                     handle=handle,

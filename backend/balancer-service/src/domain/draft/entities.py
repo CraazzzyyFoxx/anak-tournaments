@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from shared.domain.roster import PlayerRoster
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam
+from shared.models.draft import DraftPick, DraftPlayer, DraftTeam
 
 __all__ = (
     "AutopickChoice",

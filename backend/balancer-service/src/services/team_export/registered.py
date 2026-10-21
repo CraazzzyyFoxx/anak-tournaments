@@ -37,9 +37,9 @@ from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape
 from shared.domain.team_subscription import SUBSCRIPTION_SCOPE_TEAM, team_subscription_is_current
 from shared.models.registration.registration import (
-    BalancerRegistration,
-    BalancerRegistrationForm,
-    BalancerRegistrationTeam,
+    Registration,
+    RegistrationForm,
+    RegistrationTeam,
 )
 from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament import Tournament
@@ -77,7 +77,7 @@ class RegisteredExportPayload:
     prior_team_ids: list[int] = field(default_factory=list)
     skipped: list[SkippedTeam] = field(default_factory=list)
     #: The source rows, for the finalize/unlink hooks to stamp.
-    source_teams: list[BalancerRegistrationTeam] = field(default_factory=list)
+    source_teams: list[RegistrationTeam] = field(default_factory=list)
 
 
 def _slot_role(slot_code: str | None, shape: RosterShape) -> str | None:
@@ -122,15 +122,13 @@ async def build_registered_export(
     payload = RegisteredExportPayload()
 
     conditions = [
-        BalancerRegistrationTeam.tournament_id == tournament_id,
-        BalancerRegistrationTeam.deleted_at.is_(None),
+        RegistrationTeam.tournament_id == tournament_id,
+        RegistrationTeam.deleted_at.is_(None),
     ]
     if team_ids is not None:
-        conditions.append(BalancerRegistrationTeam.id.in_(list(team_ids)))
+        conditions.append(RegistrationTeam.id.in_(list(team_ids)))
     teams = list(
-        await session.scalars(
-            sa.select(BalancerRegistrationTeam).where(*conditions).order_by(BalancerRegistrationTeam.name_normalized)
-        )
+        await session.scalars(sa.select(RegistrationTeam).where(*conditions).order_by(RegistrationTeam.name_normalized))
     )
     if not teams:
         return payload
@@ -140,24 +138,22 @@ async def build_registered_export(
     # round-trips, and a lazy load under async raises ``MissingGreenlet``.
     registrations = list(
         await session.scalars(
-            sa.select(BalancerRegistration)
+            sa.select(Registration)
             .where(
-                BalancerRegistration.registration_team_id.in_([team.id for team in teams]),
-                BalancerRegistration.deleted_at.is_(None),
-                BalancerRegistration.status.notin_(_RELEASED_STATUSES),
+                Registration.registration_team_id.in_([team.id for team in teams]),
+                Registration.deleted_at.is_(None),
+                Registration.status.notin_(_RELEASED_STATUSES),
             )
             .options(*registration_load_options())
         )
     )
     workspace_id = await session.scalar(sa.select(Tournament.workspace_id).where(Tournament.id == tournament_id))
-    form = await session.scalar(
-        sa.select(BalancerRegistrationForm).where(BalancerRegistrationForm.tournament_id == tournament_id)
-    )
+    form = await session.scalar(sa.select(RegistrationForm).where(RegistrationForm.tournament_id == tournament_id))
     team_scope = getattr(form, "subscription_scope", None) or "player"
     rosters = await roster_engine.resolve(
         session, registrations, workspace_id=workspace_id, tournament_id=tournament_id
     )
-    members_by_team: dict[int, list[BalancerRegistration]] = {}
+    members_by_team: dict[int, list[Registration]] = {}
     for registration in registrations:
         members_by_team.setdefault(registration.registration_team_id or 0, []).append(registration)
 
@@ -168,9 +164,9 @@ async def build_registered_export(
     if captain_registration_ids:
         rows = (
             await session.execute(
-                sa.select(BalancerRegistration.id, WorkspaceMember.player_id)
-                .join(WorkspaceMember, WorkspaceMember.id == BalancerRegistration.workspace_member_id)
-                .where(BalancerRegistration.id.in_(captain_registration_ids))
+                sa.select(Registration.id, WorkspaceMember.player_id)
+                .join(WorkspaceMember, WorkspaceMember.id == Registration.workspace_member_id)
+                .where(Registration.id.in_(captain_registration_ids))
             )
         ).all()
         captain_player_by_registration = dict(rows)

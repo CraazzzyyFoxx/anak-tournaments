@@ -41,14 +41,14 @@ class StatusMeta(TypedDict):
     # Whether a registration currently holding this status counts as part of
     # the balancer pool. Hardcoded for every builtin status (True only for
     # not_in_balancer/excluded) and workspace-configurable for custom
-    # balancer-scope statuses (see BalancerRegistrationStatus.excludes_from_balancer).
+    # balancer-scope statuses (see RegistrationStatus.excludes_from_balancer).
     # Meaningless for registration-scope statuses -- always False there.
     excludes_from_balancer: bool
     # Whether a registration currently holding this status is blocked from
     # counting as "ready" (Ready lane/tab, run-balance eligibility),
     # independent of excludes_from_balancer. Always False for builtins;
     # workspace-configurable for custom balancer-scope statuses (see
-    # BalancerRegistrationStatus.excludes_from_ready).
+    # RegistrationStatus.excludes_from_ready).
     excludes_from_ready: bool
 
 
@@ -294,11 +294,11 @@ def balancer_pool_excluded_clause(
     custom_excluded_exists = (
         sa.select(sa.literal(1))
         .where(
-            models.BalancerRegistrationStatus.scope == "balancer",
-            models.BalancerRegistrationStatus.kind == "custom",
-            models.BalancerRegistrationStatus.workspace_id == workspace_id_col,
-            models.BalancerRegistrationStatus.slug == balancer_status_col,
-            models.BalancerRegistrationStatus.excludes_from_balancer.is_(True),
+            models.RegistrationStatus.scope == "balancer",
+            models.RegistrationStatus.kind == "custom",
+            models.RegistrationStatus.workspace_id == workspace_id_col,
+            models.RegistrationStatus.slug == balancer_status_col,
+            models.RegistrationStatus.excludes_from_balancer.is_(True),
         )
         .exists()
     )
@@ -311,7 +311,7 @@ def balancer_pool_included_clause(balancer_status_col: Any, workspace_id_col: An
 
 
 def build_status_meta_from_model(
-    status: models.BalancerRegistrationStatus,
+    status: models.RegistrationStatus,
 ) -> StatusMeta:
     is_builtin = status.kind == "builtin"
     is_override = is_builtin and status.workspace_id is not None
@@ -355,21 +355,21 @@ async def list_workspace_status_rows(
     session: AsyncSession,
     workspace_id: int,
     scope: StatusScope | None = None,
-) -> list[models.BalancerRegistrationStatus]:
-    query = sa.select(models.BalancerRegistrationStatus).where(
+) -> list[models.RegistrationStatus]:
+    query = sa.select(models.RegistrationStatus).where(
         sa.or_(
-            models.BalancerRegistrationStatus.workspace_id == workspace_id,
-            models.BalancerRegistrationStatus.workspace_id.is_(None),
+            models.RegistrationStatus.workspace_id == workspace_id,
+            models.RegistrationStatus.workspace_id.is_(None),
         )
     )
     if scope is not None:
-        query = query.where(models.BalancerRegistrationStatus.scope == scope)
+        query = query.where(models.RegistrationStatus.scope == scope)
     query = query.order_by(
-        models.BalancerRegistrationStatus.scope.asc(),
-        sa.case((models.BalancerRegistrationStatus.workspace_id.is_(None), 0), else_=1).asc(),
-        models.BalancerRegistrationStatus.kind.asc(),
-        models.BalancerRegistrationStatus.name.asc(),
-        models.BalancerRegistrationStatus.id.asc(),
+        models.RegistrationStatus.scope.asc(),
+        sa.case((models.RegistrationStatus.workspace_id.is_(None), 0), else_=1).asc(),
+        models.RegistrationStatus.kind.asc(),
+        models.RegistrationStatus.name.asc(),
+        models.RegistrationStatus.id.asc(),
     )
     result = await session.execute(query)
     return list(result.scalars().all())
@@ -379,17 +379,17 @@ async def list_custom_statuses(
     session: AsyncSession,
     workspace_id: int,
     scope: StatusScope | None = None,
-) -> list[models.BalancerRegistrationStatus]:
-    query = sa.select(models.BalancerRegistrationStatus).where(
-        models.BalancerRegistrationStatus.workspace_id == workspace_id,
-        models.BalancerRegistrationStatus.kind == "custom",
+) -> list[models.RegistrationStatus]:
+    query = sa.select(models.RegistrationStatus).where(
+        models.RegistrationStatus.workspace_id == workspace_id,
+        models.RegistrationStatus.kind == "custom",
     )
     if scope is not None:
-        query = query.where(models.BalancerRegistrationStatus.scope == scope)
+        query = query.where(models.RegistrationStatus.scope == scope)
     query = query.order_by(
-        models.BalancerRegistrationStatus.scope.asc(),
-        models.BalancerRegistrationStatus.name.asc(),
-        models.BalancerRegistrationStatus.id.asc(),
+        models.RegistrationStatus.scope.asc(),
+        models.RegistrationStatus.name.asc(),
+        models.RegistrationStatus.id.asc(),
     )
     result = await session.execute(query)
     return list(result.scalars().all())
@@ -403,10 +403,10 @@ async def get_status_meta(
     value: str,
 ) -> StatusMeta:
     workspace_result = await session.execute(
-        sa.select(models.BalancerRegistrationStatus).where(
-            models.BalancerRegistrationStatus.workspace_id == workspace_id,
-            models.BalancerRegistrationStatus.scope == scope,
-            models.BalancerRegistrationStatus.slug == value,
+        sa.select(models.RegistrationStatus).where(
+            models.RegistrationStatus.workspace_id == workspace_id,
+            models.RegistrationStatus.scope == scope,
+            models.RegistrationStatus.slug == value,
         )
     )
     workspace_status = workspace_result.scalar_one_or_none()
@@ -414,11 +414,11 @@ async def get_status_meta(
         return build_status_meta_from_model(workspace_status)
 
     builtin_result = await session.execute(
-        sa.select(models.BalancerRegistrationStatus).where(
-            models.BalancerRegistrationStatus.workspace_id.is_(None),
-            models.BalancerRegistrationStatus.kind == "builtin",
-            models.BalancerRegistrationStatus.scope == scope,
-            models.BalancerRegistrationStatus.slug == value,
+        sa.select(models.RegistrationStatus).where(
+            models.RegistrationStatus.workspace_id.is_(None),
+            models.RegistrationStatus.kind == "builtin",
+            models.RegistrationStatus.scope == scope,
+            models.RegistrationStatus.slug == value,
         )
     )
     builtin_status = builtin_result.scalar_one_or_none()

@@ -77,7 +77,7 @@ class RegistrationFormTemplateService:
         *,
         workspace_id: int,
         discipline: str | None = None,
-    ) -> Sequence[models.BalancerRegistrationFormTemplate]:
+    ) -> Sequence[models.RegistrationFormTemplate]:
         return await self.template_repo.list_for_workspace(session, workspace_id, discipline=discipline)
 
     async def create(
@@ -87,7 +87,7 @@ class RegistrationFormTemplateService:
         workspace_id: int,
         body: RegistrationFormTemplateUpsert,
         actor_user_id: int | None,
-    ) -> models.BalancerRegistrationFormTemplate:
+    ) -> models.RegistrationFormTemplate:
         """Store a new named schema. Commits internally."""
         name = _clean_name(body.name)
         if body.discipline is None:
@@ -102,7 +102,7 @@ class RegistrationFormTemplateService:
             raise _fail(status.HTTP_404_NOT_FOUND, "workspace_not_found", "Workspace not found")
         assert_discipline_enabled(workspace, body.discipline)
         await self._ensure_name_free(session, workspace_id=workspace_id, name=name)
-        template = models.BalancerRegistrationFormTemplate(
+        template = models.RegistrationFormTemplate(
             workspace_id=workspace_id,
             discipline=body.discipline,
             name=name,
@@ -126,7 +126,7 @@ class RegistrationFormTemplateService:
         template_id: int,
         body: RegistrationFormTemplateUpsert,
         actor_user_id: int | None,
-    ) -> models.BalancerRegistrationFormTemplate:
+    ) -> models.RegistrationFormTemplate:
         """Rename and/or replace a template's questions. Commits internally.
 
         ``actor_user_id`` is taken for symmetry with :meth:`create`; the row
@@ -168,7 +168,7 @@ class RegistrationFormTemplateService:
         tournament_id: int,
         template_id: int,
         actor_user_id: int | None,
-    ) -> models.BalancerRegistrationForm:
+    ) -> models.RegistrationForm:
         """Copy a template's questions onto a tournament's form. Commits internally.
 
         A plain schema save: ``apply_schema`` dedupes on canonical JSON, so
@@ -209,7 +209,7 @@ class RegistrationFormTemplateService:
         tournament_id: int,
         name: str,
         actor_user_id: int | None,
-    ) -> models.BalancerRegistrationFormTemplate:
+    ) -> models.RegistrationFormTemplate:
         """Snapshot a tournament form's CURRENT questions under a new name.
 
         A snapshot, not a link: the template keeps what the form asked at this
@@ -244,7 +244,7 @@ class RegistrationFormTemplateService:
         session: AsyncSession,
         workspace_id: int,
         template_id: int,
-    ) -> models.BalancerRegistrationFormTemplate:
+    ) -> models.RegistrationFormTemplate:
         """The template, scoped to the workspace the caller was authorized against
         -- a bare id lookup would let one workspace edit another's."""
         template = await self.template_repo.get_for_workspace(session, workspace_id, template_id)
@@ -261,9 +261,9 @@ class RegistrationFormTemplateService:
         excluding: int | None = None,
     ) -> None:
         clashing = await session.scalar(
-            sa.select(models.BalancerRegistrationFormTemplate.id).where(
-                models.BalancerRegistrationFormTemplate.workspace_id == workspace_id,
-                sa.func.lower(models.BalancerRegistrationFormTemplate.name) == name.lower(),
+            sa.select(models.RegistrationFormTemplate.id).where(
+                models.RegistrationFormTemplate.workspace_id == workspace_id,
+                sa.func.lower(models.RegistrationFormTemplate.name) == name.lower(),
             )
         )
         if clashing is not None and clashing != excluding:

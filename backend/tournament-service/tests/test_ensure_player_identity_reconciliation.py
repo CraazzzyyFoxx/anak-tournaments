@@ -17,7 +17,6 @@ The narrower precedence/wiring behaviour is covered without a DB in
 """
 
 import asyncio
-import os
 import sys
 import uuid
 from pathlib import Path
@@ -26,16 +25,6 @@ from types import SimpleNamespace
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-
-def _ensure_test_env() -> None:
-    env = {
-        "DEBUG": "true",
-    }
-    for key, value in env.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -100,7 +89,7 @@ def _registration(
     riot: list[str] | None = None,
     discord: str | None = None,
 ):
-    # BalancerRegistration no longer carries auth_user_id or user_id (identity is
+    # Registration no longer carries auth_user_id or user_id (identity is
     # anchored via workspace_member_id — dbarch02); ensure_player_identity takes
     # the registering account's auth_user_id as an explicit keyword argument
     # instead of reading it off the row. tournament_id=None makes the member

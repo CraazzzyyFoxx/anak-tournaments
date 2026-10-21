@@ -2,7 +2,7 @@
 
 One set of tables serves every live room. A room is addressed by the pair
 ``(room_kind, room_ref_id)`` -- ``('encounter', encounter.id)`` for the pre-game
-room, ``('draft', balancer.draft_session.id)`` for a draft -- so a second room
+room, ``('draft', draft.session.id)`` for a draft -- so a second room
 kind costs a resolver in its owning service and nothing here. The pair is not a
 foreign key for the reason stated on each table below.
 """

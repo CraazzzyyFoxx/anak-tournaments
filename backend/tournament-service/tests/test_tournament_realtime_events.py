@@ -14,7 +14,6 @@ publication contract is covered by ``backend/tests/test_realtime_emit.py``.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,7 +24,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 recalculation_events = importlib.import_module("src.services.tournament.recalculation_events")
 tournament_events = importlib.import_module("src.services.tournament.events")
@@ -59,7 +57,7 @@ class TournamentProducerResourceTests(IsolatedAsyncioTestCase):
         self.assertEqual(_staged_resources(session, Scope.tournament(42)), {Resource.TOURNAMENT_ENCOUNTERS})
 
     async def test_registration_decision_stales_registrations_and_names_the_row(self) -> None:
-        # BalancerRegistration has no denormalized workspace_id column —
+        # Registration has no denormalized workspace_id column —
         # enqueue_registration_approved derives it via a tournament lookup, and
         # the event's user_id likewise comes from the workspace_member anchor.
         session = _fake_session(scalar=AsyncMock(return_value=3))

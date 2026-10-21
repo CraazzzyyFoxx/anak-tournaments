@@ -11,7 +11,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from shared.core import http_status as status
 from shared.core.enums import DraftStatus
 from shared.core.errors import BaseAPIException
-from shared.models.balancer.draft import DraftSession
+from shared.models.draft import DraftSession
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession

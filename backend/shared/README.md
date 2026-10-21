@@ -49,7 +49,7 @@ System overview (processes, RabbitMQ, gateway, deployment):
   the dependency direction and couples the kernel to one service's deployment. A shared module that
   needs one service's settings *is* that service's module; the second consumer calls it over RPC.
 - **A service's settings object, read implicitly.** Per-service inputs (a Redis URL, a feature flag,
-  a TTL) arrive as arguments or as plain constants. `balancer_registration_statuses.py` spells this
+  a TTL) arrive as arguments or as plain constants. `registration_statuses.py` spells this
   out: its cache TTL is a hardcoded constant precisely because `shared` may not read any single
   service's config.
 - **HTTP framework code.** Nothing here imports FastAPI. `shared.core.errors.BaseAPIException`
@@ -86,7 +86,7 @@ System overview (processes, RabbitMQ, gateway, deployment):
 Five flat modules sit at the package root and predate the subpackage split:
 `division_grid.py` and `hero_catalog.py` (runtime catalogs), `catalog_aliases.py` (alias
 normalization shared by three admin writers and the alias-attach RPC),
-`balancer_registration_statuses.py` (the workspace status-meta map, cached), and
+`registration_statuses.py` (the workspace status-meta map, cached), and
 `balancer_subrole_catalog.py` — which is explicitly a one-line facade over
 `PlayerSubRoleService.catalog_for_workspace`, kept so callers do not move. New code of this shape
 goes into `services/` or `domain/`, not the root.

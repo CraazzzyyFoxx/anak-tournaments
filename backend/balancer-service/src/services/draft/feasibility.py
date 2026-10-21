@@ -21,7 +21,7 @@ from shared.core.enums import DraftAutopickStrategy, DraftPlayerStatus, DraftSta
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import DISCIPLINES
 from shared.domain.roster_shape import RosterShape
-from shared.models.balancer.draft import DraftPick, DraftSession
+from shared.models.draft import DraftPick, DraftSession
 from shared.repository.balance import BalancerTournamentConfigRepository
 from shared.repository.draft import DraftPickRepository, DraftPlayerRepository, DraftTeamRepository
 from shared.services.team_format import tournament_slot_shape

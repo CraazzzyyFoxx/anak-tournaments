@@ -40,8 +40,8 @@ from shared.domain.team_format import TeamFormat  # noqa: E402
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.platform.outbox import EventOutbox  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
-    BalancerRegistrationForm,
-    BalancerRegistrationFormVersion,
+    RegistrationForm,
+    RegistrationFormVersion,
 )
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
@@ -109,10 +109,10 @@ async def _seed(session: Any, *, discipline: str) -> SimpleNamespace:
         )
     )
 
-    form = BalancerRegistrationForm(tournament_id=tournament.id, workspace_id=workspace.id)
+    form = RegistrationForm(tournament_id=tournament.id, workspace_id=workspace.id)
     session.add(form)
     await session.flush()
-    version = BalancerRegistrationFormVersion(form_id=form.id, number=1, schema_json=SCHEMA.model_dump(mode="json"))
+    version = RegistrationFormVersion(form_id=form.id, number=1, schema_json=SCHEMA.model_dump(mode="json"))
     form.current_version = version
     await session.flush()
 
@@ -208,12 +208,10 @@ def test_every_receiver_names_the_owning_games_handle(db_session, discipline: st
 
             registration = (
                 await db_session.execute(
-                    sa.select(models.BalancerRegistration)
-                    .where(models.BalancerRegistration.id == captain_read.id)
+                    sa.select(models.Registration)
+                    .where(models.Registration.id == captain_read.id)
                     .options(
-                        selectinload(models.BalancerRegistration.workspace_member).selectinload(
-                            models.WorkspaceMember.player
-                        )
+                        selectinload(models.Registration.workspace_member).selectinload(models.WorkspaceMember.player)
                     )
                 )
             ).scalar_one()
@@ -281,8 +279,8 @@ def test_a_typed_handle_cannot_take_another_players_account(db_session) -> None:
             owners = await social_identity_service.find_player_id_by_handle(db_session, provider=RIOT, username=riot_id)
             registrations = await db_session.scalar(
                 sa.select(sa.func.count())
-                .select_from(models.BalancerRegistration)
-                .where(models.BalancerRegistration.tournament_id == seeded.tournament_id)
+                .select_from(models.Registration)
+                .where(models.Registration.tournament_id == seeded.tournament_id)
             )
             return {
                 "status": refused.value.status_code,

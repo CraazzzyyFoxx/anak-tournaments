@@ -61,7 +61,7 @@ _ANSWER_FIELDS: dict[str, str] = {
 _EMPTY_IS_NULL = frozenset({"custom_fields_json"})
 
 
-def label(registration: models.BalancerRegistration, *, provider: str) -> str | None:
+def label(registration: models.Registration, *, provider: str) -> str | None:
     """Snapshot name for the row, so the feed stays readable after a delete.
 
     ``provider`` is the owning tournament's identity provider: the handle named is
@@ -76,7 +76,7 @@ def _role_key(value: Any) -> dict[str, str]:
     return RoleRef.model_validate(value).model_dump(exclude={"parent"})
 
 
-def role_snapshot(registration: models.BalancerRegistration) -> list[dict[str, Any]]:
+def role_snapshot(registration: models.Registration) -> list[dict[str, Any]]:
     """The role fields the balancer actually reads, ordered so two images compare."""
     return sorted(
         (
@@ -140,7 +140,7 @@ def _requested_value(attr: str, value: Any) -> Any:
 
 
 def profile_changes(
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     requested: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Before/after images narrowed to the fields this request really changes.

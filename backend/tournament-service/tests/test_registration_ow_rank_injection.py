@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 
@@ -11,7 +10,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 models = importlib.import_module("shared.models")
 serializers = importlib.import_module("src.services.registration.serializers")
@@ -79,12 +77,12 @@ def test_single_role_registration_is_not_flex() -> None:
     """Flex needs MORE than one role, every one primary. The admin table used to
     call every single-role registration flex (its predicate had no ``len > 1``),
     and the roster's ``is_full_flex`` is now the one answer when there is one."""
-    registration = models.BalancerRegistration(
+    registration = models.Registration(
         id=1,
         tournament_id=7,
         display_name="Player",
         identities=[
-            models.BalancerRegistrationIdentity(
+            models.RegistrationIdentity(
                 provider=SocialProvider.BATTLENET,
                 position=0,
                 handle="Player#1234",

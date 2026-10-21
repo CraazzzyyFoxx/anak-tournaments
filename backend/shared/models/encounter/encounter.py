@@ -89,7 +89,7 @@ class Encounter(db.TimeStampIntegerMixin):
         # The pickup-mix owner: same workspace and discipline as the mix.
         ForeignKeyConstraint(
             ["custom_game_id", "workspace_id", "discipline"],
-            ["balancer.custom_game.id", "balancer.custom_game.workspace_id", "balancer.custom_game.discipline"],
+            ["mix.custom_game.id", "mix.custom_game.workspace_id", "mix.custom_game.discipline"],
             ondelete="CASCADE",
             name="fk_encounter_custom_game",
         ),

@@ -38,7 +38,7 @@ from shared.core.enums import (  # noqa: E402
     DraftStatus,
 )
 from shared.core.errors import ApiHTTPException  # noqa: E402
-from shared.models.balancer.draft import DraftPick, DraftSession  # noqa: E402
+from shared.models.draft import DraftPick, DraftSession  # noqa: E402
 from src.domain.draft.entities import DraftResult  # noqa: E402
 from src.services.draft import clock as draft_clock  # noqa: E402
 from src.services.draft import realtime as draft_rt  # noqa: E402

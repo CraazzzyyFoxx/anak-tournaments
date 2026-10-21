@@ -27,7 +27,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -44,14 +43,13 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 from shared.core.enums import HERO_TYPE_CLASSES  # noqa: E402
 from shared.division_grid import DEFAULT_GRID  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
 from shared.domain.roster import PlayerRoster  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
-    BalancerRegistration,
+    Registration,
 )
 from shared.services.roster import roster_engine  # noqa: E402
 from shared.testing.roles import registration_role  # noqa: E402
@@ -75,7 +73,7 @@ def _flex_form(mode: str) -> SimpleNamespace:
 
 
 def _resolve(case: dict[str, Any], mode: str) -> PlayerRoster:
-    registration = BalancerRegistration(id=1, tournament_id=1)
+    registration = Registration(id=1, tournament_id=1)
     registration.roles = [
         registration_role(
             role=spec["role"],

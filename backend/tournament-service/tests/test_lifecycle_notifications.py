@@ -60,7 +60,7 @@ TABLE_NAMES = (
     "workspace",
     "players.user",
     "workspace_member",
-    "balancer.registration",
+    "registration.registration",
     "stats.match",
     "tournament.tournament",
     "tournament.tournament_phase_schedule",
@@ -226,10 +226,10 @@ class _Fixture:
         status: str = "approved",
         checked_in: bool = False,
         deleted_at: datetime | None = None,
-    ) -> models.BalancerRegistration:
+    ) -> models.Registration:
         """A registration row. No identities: the check-in reminders address
         accounts, and never read a handle."""
-        registration = models.BalancerRegistration(
+        registration = models.Registration(
             tournament_id=TOURNAMENT_ID,
             workspace_member_id=member.id,
             status=status,

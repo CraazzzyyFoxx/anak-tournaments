@@ -1442,7 +1442,7 @@
       "remove_when": "achievement category is migrated to 'character'"
     },
     {
-      "path": "backend/shared/models/custom_game.py",
+      "path": "backend/shared/models/mix/custom_game.py",
       "rule": "discipline-code",
       "token": "overwatch",
       "context": "default=\"overwatch\",",
@@ -1452,7 +1452,7 @@
       "remove_when": "identifier is migrated with its data/URL"
     },
     {
-      "path": "backend/shared/models/custom_game.py",
+      "path": "backend/shared/models/mix/custom_game.py",
       "rule": "discipline-code",
       "token": "overwatch",
       "context": "server_default=\"overwatch\",",

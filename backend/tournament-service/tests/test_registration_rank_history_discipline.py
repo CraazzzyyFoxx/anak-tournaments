@@ -61,9 +61,9 @@ async def _seed(session: Any) -> SimpleNamespace:
         session.add(tournament)
         await session.flush()
         support = await roles.resolve(session, discipline=discipline, workspace_id=None, dimension=None, code="support")
-        registration = models.BalancerRegistration(tournament_id=tournament.id, workspace_member_id=member.id)
+        registration = models.Registration(tournament_id=tournament.id, workspace_member_id=member.id)
         registration.roles = [
-            models.BalancerRegistrationRole(
+            models.RegistrationRole(
                 catalog_role=support, dimension_id=support.dimension_id, priority=0, rank_value=rank
             )
         ]

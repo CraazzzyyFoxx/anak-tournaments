@@ -202,6 +202,6 @@ def schema_from_version(version: Any) -> FormSchema | None:
 
 
 def schema_from_form(form: Any) -> FormSchema | None:
-    """The current schema of a ``BalancerRegistrationForm`` (or any object with
+    """The current schema of a ``RegistrationForm`` (or any object with
     ``current_version.schema_json``); ``None`` when there is no form/version."""
     return schema_from_version(getattr(form, "current_version", None) if form is not None else None)

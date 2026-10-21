@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core.errors import ApiExc, ApiHTTPException
-from shared.repository import BalancerRegistrationTeamRepository, TournamentRepository
+from shared.repository import RegistrationTeamRepository, TournamentRepository
 from shared.services.balancer_realtime import BALANCER_TEAMS_CHANGED
 from shared.services.team_format import tournament_slot_shape
 from src.services.balancer.realtime import emit_balancer_data, stage_export_invalidation
@@ -52,7 +52,7 @@ class RegisteredTeamsService:
         self,
         *,
         tournaments: TournamentRepository = TournamentRepository(),
-        registration_teams: BalancerRegistrationTeamRepository = BalancerRegistrationTeamRepository(),
+        registration_teams: RegistrationTeamRepository = RegistrationTeamRepository(),
     ) -> None:
         self.tournaments = tournaments
         self.registration_teams = registration_teams

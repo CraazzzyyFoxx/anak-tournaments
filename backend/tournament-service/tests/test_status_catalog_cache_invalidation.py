@@ -1,6 +1,6 @@
 """Every status-catalog write must invalidate the cached status-metas map.
 
-get_status_metas_map (shared.balancer_registration_statuses) is now cached per
+get_status_metas_map (shared.registration_statuses) is now cached per
 workspace (see that module's docstring) -- so a write here that forgets to
 invalidate would serve a stale status name/icon/color for up to the cache TTL
 after an organizer edits it. One test per write path pins the call.

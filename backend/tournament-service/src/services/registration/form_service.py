@@ -81,7 +81,7 @@ class RegistrationFormService:
         self,
         session: AsyncSession,
         tournament_id: int,
-    ) -> models.BalancerRegistrationForm | None:
+    ) -> models.RegistrationForm | None:
         """The tournament's form with ``current_version`` eager-loaded.
 
         Eager on purpose: ``current_version`` is never lazy-loadable in async
@@ -89,11 +89,11 @@ class RegistrationFormService:
         """
         return await self.form_repo.get_by(
             session,
-            options=[selectinload(models.BalancerRegistrationForm.current_version)],
+            options=[selectinload(models.RegistrationForm.current_version)],
             tournament_id=tournament_id,
         )
 
-    def schema_of(self, form: models.BalancerRegistrationForm) -> FormSchema:
+    def schema_of(self, form: models.RegistrationForm) -> FormSchema:
         """The form's current schema.
 
         A form with no version is a bug rather than a state to render around:
@@ -108,11 +108,11 @@ class RegistrationFormService:
     async def apply_schema(
         self,
         session: AsyncSession,
-        form: models.BalancerRegistrationForm,
+        form: models.RegistrationForm,
         schema: FormSchema,
         *,
         actor_user_id: int | None,
-    ) -> models.BalancerRegistrationFormVersion:
+    ) -> models.RegistrationFormVersion:
         """Point ``form`` at a version holding ``schema``, appending one if needed.
 
         Dedupe is on canonical JSON, and the STORED side is re-validated through
@@ -127,7 +127,7 @@ class RegistrationFormService:
         ):
             return current
 
-        version = models.BalancerRegistrationFormVersion(
+        version = models.RegistrationFormVersion(
             form_id=form.id,
             number=await self.version_repo.latest_number(session, form.id) + 1,
             schema_json=schema.model_dump(mode="json"),
@@ -144,11 +144,11 @@ class RegistrationFormService:
     async def save_schema(
         self,
         session: AsyncSession,
-        form: models.BalancerRegistrationForm,
+        form: models.RegistrationForm,
         schema: FormSchema,
         *,
         actor_user_id: int | None,
-    ) -> models.BalancerRegistrationForm:
+    ) -> models.RegistrationForm:
         """Persist ``schema`` on ``form`` and hand back the reloaded row. Commits.
 
         The whole tail of a schema save, shared by the form upsert and by
@@ -181,7 +181,7 @@ class RegistrationFormService:
         *,
         workspace_id: int,
         actor_user_id: int | None,
-    ) -> models.BalancerRegistrationForm:
+    ) -> models.RegistrationForm:
         """Create-or-update the tournament's form. Commits internally.
 
         ``workspace_id`` is the tournament's already-resolved workspace (the RPC
@@ -194,7 +194,7 @@ class RegistrationFormService:
         form = await self.get_form(session, tournament_id)
 
         if form is None:
-            form = models.BalancerRegistrationForm(
+            form = models.RegistrationForm(
                 tournament_id=tournament_id,
                 workspace_id=workspace_id,
                 auto_approve=body.auto_approve,
@@ -236,7 +236,7 @@ class RegistrationFormService:
     async def stale_count(
         self,
         session: AsyncSession,
-        form: models.BalancerRegistrationForm,
+        form: models.RegistrationForm,
     ) -> int:
         """Live registrations answering something other than the current version.
 
@@ -246,10 +246,10 @@ class RegistrationFormService:
         """
         return (
             await session.scalar(
-                sa.select(sa.func.count(models.BalancerRegistration.id)).where(
-                    models.BalancerRegistration.tournament_id == form.tournament_id,
-                    models.BalancerRegistration.deleted_at.is_(None),
-                    models.BalancerRegistration.form_version_id.is_distinct_from(form.current_version_id),
+                sa.select(sa.func.count(models.Registration.id)).where(
+                    models.Registration.tournament_id == form.tournament_id,
+                    models.Registration.deleted_at.is_(None),
+                    models.Registration.form_version_id.is_distinct_from(form.current_version_id),
                 )
             )
             or 0

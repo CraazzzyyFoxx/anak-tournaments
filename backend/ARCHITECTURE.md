@@ -384,7 +384,7 @@ gone). Readers are bound to the request's discipline (`UserService.of(code)`,
 an empty row under a borrowed label. The per-user maps read filters by `mode_id` and expands
 `parent` / `character_stats`. Class and color live in a character's `attrs`.
 
-Registration picks live in `balancer.registration_role_entity` with `entity_id`,
+Registration picks live in `registration.role_entity` with `entity_id`,
 `entity_kind="character"` and an `entity` relationship; the collection remains
 `hero_entries`. Its character-kind FK cascades on deletion and its two deferred
 uniques still allow replacing or reordering a pick list in one commit.

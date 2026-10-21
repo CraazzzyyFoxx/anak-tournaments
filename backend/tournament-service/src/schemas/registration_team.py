@@ -375,7 +375,7 @@ class RegistrationTeamInviteHistoryResponse(BaseModel):
 
 
 def serialize_registration_team(
-    team: models.BalancerRegistrationTeam,
+    team: models.RegistrationTeam,
     occupancy: RosterOccupancy,
     *,
     members: list[RegistrationTeamMemberRead] | None = None,
@@ -420,7 +420,7 @@ def serialize_registration_team(
 
 
 def serialize_invite(
-    invite: models.BalancerRegistrationTeamInvite,
+    invite: models.RegistrationTeamInvite,
     *,
     target_handle: str | None = None,
 ) -> RegistrationTeamInviteRead:

@@ -40,7 +40,7 @@ _MEMBERS = (7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
 
 
 class _Games:
-    """``balancer.custom_game`` as a dict, ids handed out on insert."""
+    """``mix.custom_game`` as a dict, ids handed out on insert."""
 
     def __init__(self) -> None:
         self.rows: dict[int, Any] = {}
@@ -131,7 +131,7 @@ class _TeamNames:
 
 
 class _Lobbies:
-    """``balancer.custom_game_lobby`` as a dict keyed by (game id, lobby index)."""
+    """``mix.lobby`` as a dict keyed by (game id, lobby index)."""
 
     def __init__(self) -> None:
         self.rows: dict[tuple[int, int], Any] = {}

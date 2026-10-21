@@ -14,8 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core import enums
-from shared.models.custom_game import CustomGame, CustomGameRound, CustomGameRoundMember
 from shared.models.encounter import Encounter, EncounterTeam, EncounterTeamMember, ScoringRule
+from shared.models.mix import CustomGame, CustomGameRound, CustomGameRoundMember
 from shared.testing.db import create_test_async_engine, ensure_test_postgres
 from src import schemas
 from src.services.admin.user_merge import UserMergeService

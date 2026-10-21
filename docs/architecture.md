@@ -138,7 +138,7 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
   (re-resolve a Boosty entitlement). `backend/tests/test_messaging_config.py` fails on a queue
   nobody consumes or a DLQ nobody declares.
 - **Long jobs.** Durable queues decouple minutes-long compute: `balancer_jobs`,
-  `analytics_job` / `analytics_train` / `analytics_infer`. Status/results live in Redis
+  `analytics_job`. Status/results live in Redis
   (balancer) or the `AnalyticsJob` table (analytics).
 - **Realtime.** Workers publish to Redis topics (`tournament:{id}:bracket`,
   `encounter:{id}:map-veto`, `tournament:{id}:balancer`, `workspace:{id}:analytics_jobs`,
@@ -213,7 +213,7 @@ Details: [P6 release note](./releases/2026-10-18-multi-game-p6-achievements-anal
 All services share **one PostgreSQL database** with **one SQLAlchemy metadata** defined in
 `backend/shared/core/db.py`. Domain boundaries are **Postgres schemas**: `auth`, `players`,
 `public`, `tournament`, `encounter`, `catalog`, `roster`, `stats`, `overwatch_rank`,
-`balancer`, `achievements`, `analytics`, `realtime`. Retained migration-only schemas include
+`balancer`, `registration`, `mix`, `draft`, `achievements`, `analytics`, `realtime`. Retained migration-only schemas include
 `matches` and `log_processing` (statistics cutover source), `overwatch` (old catalog, gated
 `discipline02`) and `casual` (old mix history, gated `mixround02`); services do not use them.
 Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
@@ -231,8 +231,8 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   one `encounter.encounter` whatever its owner or format: a duel is `slot_count = 2`, a lobby is
   N, and the API returns `teams[]` with slot numbers, never home/away. An encounter has exactly
   one owner — a tournament (`tournament_id`) or a pickup mix (`custom_game_id`, a recorded mix
-  round with result source `host`; its balancer facts are `balancer.custom_game_round` and
-  `balancer.custom_game_round_member`). Tournament code reads tournament-owned encounters only, through
+  round with result source `host`; its balancer facts are `mix.round` and
+  `mix.round_member`). Tournament code reads tournament-owned encounters only, through
   `EncounterRepository`. Each seat is an
   append-only participation (`encounter.team`) with a roster snapshot; games, per-participation
   game results, game claims, series reports, the result journal, the scoring rule and the
@@ -326,13 +326,13 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   [P5 release guide](./releases/2026-10-15-multi-game-p5-ingest.md).
 - **Registration form schema.** What a tournament asks its registrants is one document:
   a versioned `FormSchema` of ordered sections of typed fields, modelled in
-  `backend/shared/domain/forms/`. `balancer.registration_form_version` keeps append-only
+  `backend/shared/domain/forms/`. `registration.form_version` keeps append-only
   snapshots, so a form edited after registrations exist does not orphan the answers
   already given — each registration records the version it answered. A schema is reusable
-  across a workspace's tournaments through `balancer.registration_form_template`. Answers
+  across a workspace's tournaments through `registration.form_template`. Answers
   are validated server-side in one place and stored typed: built-in fields in their own
-  registration columns and `balancer.registration_identity` rows, organizer-defined fields
-  in `registration.custom_fields_json`. Every field declares its visibility, which is what
+  registration columns and `registration.identity` rows, organizer-defined fields
+  in `registration.registration.custom_fields_json`. Every field declares its visibility, which is what
   keeps organizer-only answers off the public roster.
   The module's provider chooses the default identity field, roster/chat handle and parser matching.
   `TournamentRead.identity_provider` is computed from discipline; backend `default_schema(provider)`
@@ -342,7 +342,7 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   initialized before flush and persisted reads still eagerly loaded. P7 owns primary-identity
   reconciliation, provider-explicit workspace upsert and the complete generic identity wire/UI rename;
   P8 consumes those contracts.
-- **Registration role ontology (P2).** `balancer.registration_role` stores a rated
+- **Registration role ontology (P2).** `registration.role` stores a rated
   `catalog.role` leaf through `(role_id, dimension_id)`, unique per registration
   and leaf. Its top-level role and qualified sub-role code are derived, never
   written to the legacy columns. Registration API roles use `RoleRef`
@@ -350,7 +350,7 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   retain `{role, subrole?, is_primary, top_heroes?}` with an unprefixed sub-role
   slug. Both writers resolve against the tournament discipline and owning
   workspace. The roster engine uses module role codes rather than Overwatch enums.
-- **Mix role preferences (P2).** `balancer.custom_game_player_role` stores ordered
+- **Mix role preferences (P2).** `mix.player_role` stores ordered
   `(role_id, dimension_id)` references, restricted to module roles of the mix's
   rated dimension. Host and self-service `roles` inputs and outputs now use
   `RoleRef[]`, not strings (for example, `[{"dimension":"player_role","role":"tank"}]`).

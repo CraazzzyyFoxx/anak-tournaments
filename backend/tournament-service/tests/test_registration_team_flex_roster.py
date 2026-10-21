@@ -41,8 +41,8 @@ from shared.domain.team_format import TeamFormat  # noqa: E402
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.platform.outbox import EventOutbox  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
-    BalancerRegistrationForm,
-    BalancerRegistrationFormVersion,
+    RegistrationForm,
+    RegistrationFormVersion,
 )
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
@@ -95,10 +95,10 @@ async def _seed(session: Any) -> SimpleNamespace:
         )
     )
 
-    form = BalancerRegistrationForm(tournament_id=tournament.id, workspace_id=workspace.id)
+    form = RegistrationForm(tournament_id=tournament.id, workspace_id=workspace.id)
     session.add(form)
     await session.flush()
-    version = BalancerRegistrationFormVersion(form_id=form.id, number=1, schema_json=SCHEMA.model_dump(mode="json"))
+    version = RegistrationFormVersion(form_id=form.id, number=1, schema_json=SCHEMA.model_dump(mode="json"))
     form.current_version = version
     await session.flush()
 
@@ -146,12 +146,12 @@ def _submit(seeded: SimpleNamespace, battle_tag: str) -> RegistrationSubmit:
 
 async def _slots_held(session: Any, team_id: int) -> list[str]:
     result = await session.scalars(
-        sa.select(models.BalancerRegistration.team_slot_code)
+        sa.select(models.Registration.team_slot_code)
         .where(
-            models.BalancerRegistration.registration_team_id == team_id,
-            models.BalancerRegistration.deleted_at.is_(None),
+            models.Registration.registration_team_id == team_id,
+            models.Registration.deleted_at.is_(None),
         )
-        .order_by(models.BalancerRegistration.id)
+        .order_by(models.Registration.id)
     )
     return list(result)
 

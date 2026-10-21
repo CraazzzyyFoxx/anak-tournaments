@@ -66,10 +66,10 @@ class RosterIdentityTests(IsolatedAsyncioTestCase):
                     {"battlenet": ["Zulu#1234"], "riot": ["Alpha Riot#KR1"]},
                     {"battlenet" if code == "lol" else "riot": ["Other#1234"]},
                 ):
-                    registration = models.BalancerRegistration(
+                    registration = models.Registration(
                         tournament_id=tournament.id,
                         identities=[
-                            models.BalancerRegistrationIdentity(
+                            models.RegistrationIdentity(
                                 provider=provider,
                                 position=position,
                                 handle=handle,

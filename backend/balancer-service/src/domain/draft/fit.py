@@ -14,7 +14,7 @@ from collections.abc import Iterable, Mapping, Sequence
 
 from shared.core.enums import DraftAutopickStrategy
 from shared.domain.roster import PlayerRoster
-from shared.models.balancer.draft import DraftPlayer
+from shared.models.draft import DraftPlayer
 from src.domain.draft.entities import FitConfig, FitPlayer, FitResult
 
 __all__ = (

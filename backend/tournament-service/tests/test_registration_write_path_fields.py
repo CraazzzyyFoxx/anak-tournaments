@@ -156,7 +156,7 @@ def _wp_patches():
     )
 
 
-def _roster_of(registration: models.BalancerRegistration) -> PlayerRoster:
+def _roster_of(registration: models.Registration) -> PlayerRoster:
     """What the engine would answer for a row with no tenancy behind it: the
     registration's own layer only, over the roles it declares active."""
     return PlayerRoster(
@@ -190,7 +190,7 @@ async def _noop(*_args: Any, **_kwargs: Any) -> None:
 
 
 class TestPublicCreatePersistsEveryAnswer(IsolatedAsyncioTestCase):
-    async def _create(self, answers: dict[str, Any]) -> models.BalancerRegistration:
+    async def _create(self, answers: dict[str, Any]) -> models.Registration:
         session = _RecordingSession()
         patches = _wp_patches()
         with (
@@ -257,12 +257,12 @@ class TestPublicCreatePersistsEveryAnswer(IsolatedAsyncioTestCase):
 
 
 class TestSelfUpdateAppliesAnswers(IsolatedAsyncioTestCase):
-    def _registration(self, **kwargs: Any) -> models.BalancerRegistration:
-        return models.BalancerRegistration(id=1, tournament_id=7, status="pending", **kwargs)
+    def _registration(self, **kwargs: Any) -> models.Registration:
+        return models.Registration(id=1, tournament_id=7, status="pending", **kwargs)
 
     async def _update(
         self,
-        registration: models.BalancerRegistration,
+        registration: models.Registration,
         values: dict[str, Any],
         *,
         ensure_player_identity: Any = _noop,
@@ -337,7 +337,7 @@ class TestSelfUpdateAppliesAnswers(IsolatedAsyncioTestCase):
 
     async def test_a_settled_registration_cannot_be_edited(self) -> None:
         """``approved`` is editable now; ``withdrawn`` is over."""
-        registration = models.BalancerRegistration(id=1, tournament_id=7, status="withdrawn")
+        registration = models.Registration(id=1, tournament_id=7, status="withdrawn")
 
         with self.assertRaises(HTTPException) as caught:
             await self._update(registration, {"identity_battlenet": ["Player#1234"]})
@@ -366,9 +366,7 @@ _DEFAULT_FORM = object()
 
 
 class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
-    async def _create(
-        self, *, form: Any = _DEFAULT_FORM, **overrides: Any
-    ) -> tuple[models.BalancerRegistration, list[str]]:
+    async def _create(self, *, form: Any = _DEFAULT_FORM, **overrides: Any) -> tuple[models.Registration, list[str]]:
         session = _RecordingSession()
         events: list[str] = []
 
@@ -476,7 +474,7 @@ class TestManualCreateHonorsTheEditor(IsolatedAsyncioTestCase):
 
 
 class TestAdminProfileUpdateAnswers(IsolatedAsyncioTestCase):
-    async def _update(self, registration: models.BalancerRegistration, **overrides: Any) -> None:
+    async def _update(self, registration: models.Registration, **overrides: Any) -> None:
         payload: dict[str, Any] = {
             "display_name": None,
             "admin_notes": None,
@@ -508,8 +506,8 @@ class TestAdminProfileUpdateAnswers(IsolatedAsyncioTestCase):
                 _RecordingSession(), registration.id, **payload
             )
 
-    def _registration(self, **kwargs: Any) -> models.BalancerRegistration:
-        registration = models.BalancerRegistration(id=1, tournament_id=7, status="approved", **kwargs)
+    def _registration(self, **kwargs: Any) -> models.Registration:
+        registration = models.Registration(id=1, tournament_id=7, status="approved", **kwargs)
         registration.tournament = mock.Mock(workspace_id=1, discipline="overwatch")
         return registration
 
@@ -532,7 +530,7 @@ class TestAdminProfileUpdateAnswers(IsolatedAsyncioTestCase):
     async def test_a_blank_identity_answer_deletes_its_row(self) -> None:
         registration = self._registration()
         registration.identities.append(
-            models.BalancerRegistrationIdentity(provider="discord", position=0, handle="old", handle_normalized="old")
+            models.RegistrationIdentity(provider="discord", position=0, handle="old", handle_normalized="old")
         )
 
         await self._update(registration, answers={"identity_discord": []})
@@ -547,7 +545,7 @@ class TestAdminProfileUpdateAutoManagedBalancerStatus(IsolatedAsyncioTestCase):
     not 400, the way an explicit ``set_balancer_status`` pin correctly does.
     """
 
-    async def _update(self, registration: models.BalancerRegistration, **overrides: Any) -> None:
+    async def _update(self, registration: models.Registration, **overrides: Any) -> None:
         payload: dict[str, Any] = {
             "display_name": None,
             "admin_notes": None,
@@ -578,8 +576,8 @@ class TestAdminProfileUpdateAutoManagedBalancerStatus(IsolatedAsyncioTestCase):
                 _RecordingSession(), registration.id, **payload
             )
 
-    def _registration(self, **kwargs: Any) -> models.BalancerRegistration:
-        registration = models.BalancerRegistration(id=1, tournament_id=7, status="approved", **kwargs)
+    def _registration(self, **kwargs: Any) -> models.Registration:
+        registration = models.Registration(id=1, tournament_id=7, status="approved", **kwargs)
         registration.tournament = mock.Mock(workspace_id=1, discipline="overwatch")
         return registration
 

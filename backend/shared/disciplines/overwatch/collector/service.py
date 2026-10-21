@@ -161,9 +161,9 @@ class RankStateService:
             registered_normalized = set(
                 (
                     await session.scalars(
-                        sa.select(models.BalancerRegistrationIdentity.handle_normalized).where(
-                            models.BalancerRegistrationIdentity.registration_id == registration_id,
-                            models.BalancerRegistrationIdentity.provider == SocialProvider.BATTLENET,
+                        sa.select(models.RegistrationIdentity.handle_normalized).where(
+                            models.RegistrationIdentity.registration_id == registration_id,
+                            models.RegistrationIdentity.provider == SocialProvider.BATTLENET,
                         )
                     )
                 ).all()
@@ -190,7 +190,7 @@ class RankStateService:
         ``extra_accounts`` of each registrant's *other* battle.net accounts.
         Tournaments that are ``completed``/``archived`` are excluded.
         """
-        reg = models.BalancerRegistration
+        reg = models.Registration
         tournament = models.Tournament
         acc = models.SocialAccount
 
@@ -200,7 +200,7 @@ class RankStateService:
         # battlenet identity rows, so that join is a LEFT JOIN too: a
         # registration with no battlenet handle still contributes its player.
         member = models.WorkspaceMember
-        identity = models.BalancerRegistrationIdentity
+        identity = models.RegistrationIdentity
         rows = (
             await session.execute(
                 sa.select(member.player_id, identity.handle_normalized)

@@ -31,7 +31,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import normalize_social_handle
 from shared.messaging.config import WORKSPACE_MEMBER_CHANGED_QUEUE
 from shared.messaging.outbox import enqueue_outbox_event
-from shared.models.custom_game import CustomGameRoundMember
+from shared.models.mix import CustomGameRoundMember
 from shared.repository import SocialAccountRepository, UserMergeAuditRepository, get_or_create_workspace_member
 from shared.repository.stats import StatsMatchRepository
 from shared.schemas.events import WorkspaceMemberChangedEvent
@@ -46,7 +46,7 @@ __all__ = ("UserMergeService", "merges")
 PLAYER_WORKSPACE_MEMBER_REFERENCE_KEY = "tournament.player.workspace_member_id"
 EVALUATION_RESULT_MEMBER_REFERENCE_KEY = "achievements.evaluation_result.workspace_member_id"
 OVERRIDE_MEMBER_REFERENCE_KEY = "achievements.override.workspace_member_id"
-REGISTRATION_MEMBER_REFERENCE_KEY = "balancer.registration.workspace_member_id"
+REGISTRATION_MEMBER_REFERENCE_KEY = "registration.registration.workspace_member_id"
 
 # Generic player-id columns, one set-based UPDATE each. References keyed by
 # ``workspace_member_id`` (roster, evaluation_result, override, registration)
@@ -578,7 +578,7 @@ class UserMergeService:
             session, models.AchievementOverride, source_user_id
         )
         counts[REGISTRATION_MEMBER_REFERENCE_KEY] = await self._count_workspace_member_rows_for_source(
-            session, models.BalancerRegistration, source_user_id
+            session, models.Registration, source_user_id
         )
         for reference_key, model, column_name in REFERENCE_CONFIG:
             column = getattr(model, column_name)
@@ -823,7 +823,7 @@ class UserMergeService:
         participation, or both active in the same encounter) is dropped, since
         it is the same person twice. The now seat-free source row is the one
         duplicate-identity row the user delete cascades away. The same holds for
-        ``balancer.custom_game_round_member`` rows (one per round and member).
+        ``mix.round_member`` rows (one per round and member).
         """
         source_rows = (
             await session.execute(
@@ -1082,7 +1082,7 @@ class UserMergeService:
         source_user_id: int,
         target_user_id: int,
     ) -> int:
-        """Move every ``balancer.registration`` row anchored on ``source_user_id``'s
+        """Move every ``registration.registration`` row anchored on ``source_user_id``'s
         ``workspace_member`` onto the target's ``workspace_member`` and return the
         number of rows moved.
 
@@ -1092,7 +1092,7 @@ class UserMergeService:
         member-anchored (``workspace_member_id IS NULL`` -- sheet-import rows) are
         excluded by the join and are correctly left untouched/NULL.
 
-        ``balancer.registration.workspace_member_id`` has a live unique constraint
+        ``registration.registration.workspace_member_id`` has a live unique constraint
         on ``(tournament_id, workspace_member_id)``, so a row is skipped (left
         pointed at the source's member) if the target already has a live
         registration in that same tournament -- repointing it would collide. Such
@@ -1106,7 +1106,7 @@ class UserMergeService:
         member at most one live row per tournament, and soft-deleted rows are
         outside the partial index.
         """
-        registration = models.BalancerRegistration
+        registration = models.Registration
         rows = (
             await session.execute(
                 select(

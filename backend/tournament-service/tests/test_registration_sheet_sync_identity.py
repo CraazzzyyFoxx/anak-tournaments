@@ -1,6 +1,6 @@
 """Tests for player-identity resolution during Google Sheets registration sync.
 
-The bug: ``sync_google_sheet_feed`` created/updated ``BalancerRegistration`` rows
+The bug: ``sync_google_sheet_feed`` created/updated ``Registration`` rows
 without resolving the player identity (unlike the web form's
 ``create_registration``, which calls ``ensure_player_identity``). Without an
 identity anchor the OW-rank lookup finds nothing and the balancer rank-delta UI
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import os
 import sys
 import uuid
 from pathlib import Path
@@ -31,8 +30,6 @@ from sqlalchemy.orm import selectinload
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
-
-os.environ["DEBUG"] = "true"
 
 # Patch targets must be the module that OWNS ``sync_google_sheet_feed`` (sheet_sync),
 # not the ``admin`` facade (which no longer exists). Since the service became a
@@ -49,9 +46,9 @@ from shared.core import enums  # noqa: E402
 from shared.core.social import SocialProvider, normalize_social_handle  # noqa: E402
 from shared.domain.forms import FormField, FormSchema, FormSection  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
-    BalancerRegistrationForm,
-    BalancerRegistrationFormVersion,
-    BalancerRegistrationGoogleSheetFeed,
+    RegistrationForm,
+    RegistrationFormVersion,
+    RegistrationGoogleSheetFeed,
 )
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
@@ -61,8 +58,8 @@ _WORKSPACE_ID = 1
 _MEMBER_ID = 501
 
 
-def _identity_row(provider: str, handle: str, position: int = 0) -> models.BalancerRegistrationIdentity:
-    return models.BalancerRegistrationIdentity(
+def _identity_row(provider: str, handle: str, position: int = 0) -> models.RegistrationIdentity:
+    return models.RegistrationIdentity(
         provider=provider,
         position=position,
         handle=handle,
@@ -74,7 +71,7 @@ def _reg_stub(
     handle: str | None,
     *,
     workspace_member_id: int | None = None,
-    extra_identities: list[models.BalancerRegistrationIdentity] | None = None,
+    extra_identities: list[models.RegistrationIdentity] | None = None,
 ) -> SimpleNamespace:
     """A registration stub mirroring the ORM row: no user_id column (dropped
     by dbarch02); identity is the ``workspace_member_id`` anchor, and the
@@ -433,15 +430,15 @@ async def _seed_feed(
     if discipline == "lol":
         tournament.division_grid_version_id = await seed_lol_grid(session, workspace_id=workspace.id, suffix=suffix)
         await session.flush()
-    form = BalancerRegistrationForm(tournament_id=tournament.id, workspace_id=workspace.id)
+    form = RegistrationForm(tournament_id=tournament.id, workspace_id=workspace.id)
     session.add(form)
     await session.flush()
-    form.current_version = BalancerRegistrationFormVersion(
+    form.current_version = RegistrationFormVersion(
         form_id=form.id, number=1, schema_json=schema.model_dump(mode="json")
     )
     await session.flush()
     session.add(
-        BalancerRegistrationGoogleSheetFeed(
+        RegistrationGoogleSheetFeed(
             tournament_id=tournament.id,
             source_url="http://sheet.example/atomic",
             sheet_id="sheet-atomic",
@@ -485,9 +482,9 @@ def test_a_row_whose_answers_do_not_validate_is_skipped_whole(db_session, monkey
         rows = (
             (
                 await db_session.execute(
-                    sa.select(models.BalancerRegistration)
-                    .where(models.BalancerRegistration.tournament_id == seeded["tournament_id"])
-                    .options(selectinload(models.BalancerRegistration.identities))
+                    sa.select(models.Registration)
+                    .where(models.Registration.tournament_id == seeded["tournament_id"])
+                    .options(selectinload(models.Registration.identities))
                 )
             )
             .unique()
@@ -551,14 +548,12 @@ def test_a_lol_sheet_row_is_keyed_named_and_anchored_by_the_riot_id(db_session, 
         registration = (
             (
                 await db_session.execute(
-                    sa.select(models.BalancerRegistration)
-                    .where(models.BalancerRegistration.tournament_id == seeded["tournament_id"])
+                    sa.select(models.Registration)
+                    .where(models.Registration.tournament_id == seeded["tournament_id"])
                     .options(
-                        selectinload(models.BalancerRegistration.identities),
-                        selectinload(models.BalancerRegistration.workspace_member).selectinload(
-                            models.WorkspaceMember.player
-                        ),
-                        selectinload(models.BalancerRegistration.google_sheet_binding),
+                        selectinload(models.Registration.identities),
+                        selectinload(models.Registration.workspace_member).selectinload(models.WorkspaceMember.player),
+                        selectinload(models.Registration.google_sheet_binding),
                     )
                 )
             )
@@ -611,8 +606,8 @@ def test_a_lol_row_with_only_a_battletag_is_not_identified_by_it(db_session, mon
         assert result.created == 0
         count = await db_session.scalar(
             sa.select(sa.func.count())
-            .select_from(models.BalancerRegistration)
-            .where(models.BalancerRegistration.tournament_id == seeded["tournament_id"])
+            .select_from(models.Registration)
+            .where(models.Registration.tournament_id == seeded["tournament_id"])
         )
         assert count == 0
         assert (
@@ -653,13 +648,12 @@ def test_the_suggested_lol_mapping_keeps_riot_ids_that_differ_only_by_a_space_ap
         assert (again.created, again.updated) == (0, 2)
         keys = (
             await db_session.scalars(
-                sa.select(models.BalancerRegistrationGoogleSheetBinding.source_record_key)
+                sa.select(models.RegistrationGoogleSheetBinding.source_record_key)
                 .join(
-                    models.BalancerRegistrationGoogleSheetFeed,
-                    models.BalancerRegistrationGoogleSheetFeed.id
-                    == models.BalancerRegistrationGoogleSheetBinding.feed_id,
+                    models.RegistrationGoogleSheetFeed,
+                    models.RegistrationGoogleSheetFeed.id == models.RegistrationGoogleSheetBinding.feed_id,
                 )
-                .where(models.BalancerRegistrationGoogleSheetFeed.tournament_id == seeded["tournament_id"])
+                .where(models.RegistrationGoogleSheetFeed.tournament_id == seeded["tournament_id"])
             )
         ).all()
         assert sorted(keys) == ["foo bar#123", "foobar#123"]

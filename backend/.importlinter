@@ -11,7 +11,6 @@ type = forbidden
 allow_indirect_imports = True
 source_modules =
     shared.balancer
-    shared.balancer_registration_statuses
     shared.balancer_subrole_catalog
     shared.catalog_aliases
     shared.catalog_sync
@@ -26,6 +25,7 @@ source_modules =
     shared.observability
     shared.quota
     shared.rbac
+    shared.registration_statuses
     shared.repository
     shared.rpc
     shared.schemas

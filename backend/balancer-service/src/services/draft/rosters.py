@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.enums import DraftPlayerStatus
 from shared.domain.roster import PlayerRoster
-from shared.models.balancer.draft import DraftPlayer, DraftSession
+from shared.models.draft import DraftPlayer, DraftSession
 from shared.services.roster import RosterEngine, roster_engine
 
 __all__ = ("DraftRosterService", "draft_rosters")

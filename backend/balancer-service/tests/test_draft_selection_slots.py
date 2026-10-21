@@ -30,8 +30,8 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 from shared.core.enums import DraftPickStatus, DraftPlayerStatus  # noqa: E402
 from shared.domain.roster import PlayerRoster  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam  # noqa: E402
 from shared.models.catalog import CatalogRole  # noqa: E402
+from shared.models.draft import DraftPick, DraftPlayer, DraftTeam  # noqa: E402
 from src.domain.draft import (
     feasibility,  # noqa: E402
     rules,  # noqa: E402

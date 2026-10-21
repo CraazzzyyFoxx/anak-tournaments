@@ -142,7 +142,7 @@ async def enqueue_tournament_recalculation(
 
 
 async def get_registration_workspace_id(session: AsyncSession, tournament_id: int) -> int:
-    # BalancerRegistration has no denormalized workspace_id column — derive it via
+    # Registration has no denormalized workspace_id column — derive it via
     # the owning tournament (registrations are always tournament-scoped).
     workspace_id = await session.scalar(
         sa.select(models.Tournament.workspace_id).where(models.Tournament.id == tournament_id)
@@ -153,7 +153,7 @@ async def get_registration_workspace_id(session: AsyncSession, tournament_id: in
 
 async def registration_identity(
     session: AsyncSession,
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
 ) -> PlayerIdentityRead | None:
     """The registration's primary handle for its tournament's identity provider, as the events carry it.
 
@@ -176,7 +176,7 @@ async def registration_identity(
 
 async def get_registration_player_id(
     session: AsyncSession,
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
 ) -> int | None:
     """The registration's domain player id (players.user.id), via its member.
 
@@ -193,7 +193,7 @@ async def get_registration_player_id(
 
 async def _notify_registration_decision(
     session: AsyncSession,
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     player_id: int | None,
     *,
     kind: str,
@@ -250,7 +250,7 @@ async def _notify_registration_decision(
 
 async def enqueue_registration_approved(
     session: AsyncSession,
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
 ) -> None:
     workspace_id = await get_registration_workspace_id(session, registration.tournament_id)
     player_id = await get_registration_player_id(session, registration)
@@ -282,7 +282,7 @@ async def enqueue_registration_approved(
 
 async def notify_registration_rejected(
     session: AsyncSession,
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
 ) -> None:
     """Tell the registrant and the open pages; no domain event, nothing consumes a rejection."""
     workspace_id = await get_registration_workspace_id(session, registration.tournament_id)
@@ -302,7 +302,7 @@ async def notify_registration_rejected(
 
 async def enqueue_registration_rank_check(
     session: AsyncSession,
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
 ) -> None:
     """Ask the discipline's rank collector to re-fetch the registrant's accounts (the profile check)."""
     await enqueue_outbox_event(

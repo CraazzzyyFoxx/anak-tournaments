@@ -27,7 +27,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 import sqlalchemy as sa  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
@@ -367,7 +366,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             )
             s.add(tournament)
             await s.flush()
-            registration = models.BalancerRegistration(
+            registration = models.Registration(
                 tournament_id=tournament.id, workspace_member_id=member.id, display_name="Parity"
             )
             s.add(registration)
@@ -377,7 +376,7 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             )
             tank = catalog_roles["tank"]
             s.add(
-                models.BalancerRegistrationRole(
+                models.RegistrationRole(
                     registration_id=registration.id, catalog_role=tank, dimension_id=tank.dimension_id, rank_value=2200
                 )
             )

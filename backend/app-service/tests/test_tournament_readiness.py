@@ -20,9 +20,9 @@ from shared.core import enums
 from shared.models.catalog.role import CatalogRole, RoleDimension
 from shared.models.encounter import ScoringRule
 from shared.models.registration.registration import (
-    BalancerRegistration,
-    BalancerRegistrationForm,
-    BalancerRegistrationRole,
+    Registration,
+    RegistrationForm,
+    RegistrationRole,
 )
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament import Stage, Tournament, TournamentPhaseSchedule
@@ -58,16 +58,14 @@ def seeded(db):
     db.add(rule)
     db.flush()
     db.add(Stage(tournament_id=t.id, name="Groups", stage_type=enums.StageType.ROUND_ROBIN, scoring_rule_id=rule.id))
-    db.add(BalancerRegistrationForm(tournament_id=t.id, workspace_id=ws.id, is_open=True))
+    db.add(RegistrationForm(tournament_id=t.id, workspace_id=ws.id, is_open=True))
     regs = [
-        BalancerRegistration(
-            tournament_id=t.id, display_name="a", status="approved", checked_in=True, balancer_status="ready"
-        ),
-        BalancerRegistration(
+        Registration(tournament_id=t.id, display_name="a", status="approved", checked_in=True, balancer_status="ready"),
+        Registration(
             tournament_id=t.id, display_name="b", status="approved", checked_in=True, balancer_status="incomplete"
         ),
-        BalancerRegistration(tournament_id=t.id, display_name="c", status="approved"),
-        BalancerRegistration(tournament_id=t.id, display_name="d", status="pending"),
+        Registration(tournament_id=t.id, display_name="c", status="approved"),
+        Registration(tournament_id=t.id, display_name="d", status="pending"),
     ]
     db.add_all(regs)
     db.flush()
@@ -88,7 +86,7 @@ def seeded(db):
     for registration, code, rank in ((regs[0], "tank", 2500), (regs[1], "damage", None), (regs[3], "support", 1800)):
         leaf = catalog_roles[code]
         db.add(
-            BalancerRegistrationRole(
+            RegistrationRole(
                 registration_id=registration.id,
                 catalog_role=leaf,
                 dimension_id=leaf.dimension_id,

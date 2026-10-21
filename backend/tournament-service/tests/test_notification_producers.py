@@ -91,14 +91,14 @@ TABLE_NAMES = (
     "workspace",
     "players.user",
     "workspace_member",
-    "balancer.registration",
-    "balancer.registration_role",
+    "registration.registration",
+    "registration.role",
     "catalog.role",
     "catalog.role_dimension",
-    "balancer.registration_identity",
-    "balancer.registration_form",
-    "balancer.registration_team",
-    "balancer.registration_team_invite",
+    "registration.identity",
+    "registration.form",
+    "registration.team",
+    "registration.team_invite",
     # RBAC, for the one producer that resolves its recipients from permissions
     # rather than from a roster (``encounter.dispute_review``).
     "auth.roles",
@@ -258,12 +258,12 @@ class _Fixture:
         status: str = "approved",
         team_id: int | None = None,
         slot_code: str | None = None,
-    ) -> models.BalancerRegistration:
-        registration = models.BalancerRegistration(
+    ) -> models.Registration:
+        registration = models.Registration(
             tournament_id=TOURNAMENT_ID,
             workspace_member_id=member.id,
             identities=[
-                models.BalancerRegistrationIdentity(
+                models.RegistrationIdentity(
                     provider=SocialProvider.BATTLENET,
                     position=0,
                     handle=battle_tag,
@@ -279,8 +279,8 @@ class _Fixture:
         self.session.flush()
         return registration
 
-    def team(self, name: str) -> models.BalancerRegistrationTeam:
-        team = models.BalancerRegistrationTeam(
+    def team(self, name: str) -> models.RegistrationTeam:
+        team = models.RegistrationTeam(
             workspace_id=WORKSPACE_ID,
             tournament_id=TOURNAMENT_ID,
             name=name,
@@ -293,12 +293,12 @@ class _Fixture:
 
     def invite(
         self,
-        team: models.BalancerRegistrationTeam,
+        team: models.RegistrationTeam,
         *,
         slot_code: str,
         target_auth_user_id: int | None,
-    ) -> models.BalancerRegistrationTeamInvite:
-        invite = models.BalancerRegistrationTeamInvite(
+    ) -> models.RegistrationTeamInvite:
+        invite = models.RegistrationTeamInvite(
             team_id=team.id,
             slot_code=slot_code,
             is_substitute=False,
@@ -567,9 +567,7 @@ class RegistrationDecisionTests(_ProducerTestCase):
         self.assertEqual(
             "approved",
             self.fx.session.scalar(
-                sa.select(models.BalancerRegistration.status).where(
-                    models.BalancerRegistration.id == shadow_registration.id
-                )
+                sa.select(models.Registration.status).where(models.Registration.id == shadow_registration.id)
             ),
         )
 
@@ -807,11 +805,11 @@ class RegistrationDecisionQueryBudgetTests(_ProducerTestCase):
         self.fx.session.flush()
         self.fx.session.expire_all()
         registration = self.fx.session.scalar(
-            sa.select(models.BalancerRegistration)
-            .where(models.BalancerRegistration.id == registration_id)
+            sa.select(models.Registration)
+            .where(models.Registration.id == registration_id)
             .options(
-                selectinload(models.BalancerRegistration.tournament),
-                selectinload(models.BalancerRegistration.workspace_member).selectinload(models.WorkspaceMember.player),
+                selectinload(models.Registration.tournament),
+                selectinload(models.Registration.workspace_member).selectinload(models.WorkspaceMember.player),
             )
         )
         registration.status = "approved"
@@ -917,9 +915,9 @@ class TeamRosterOutcomeTests(_ProducerTestCase):
         self.assertEqual({CAPTAIN_AUTH, MATE_AUTH}, {row.recipient_auth_user_id for row in rows})
         self.assertEqual("Duplicate roster", rows[0].payload_json["reason"])
         self.fx.session.expire_all()
-        rejected = self.fx.session.get(models.BalancerRegistrationTeam, self.team.id)
+        rejected = self.fx.session.get(models.RegistrationTeam, self.team.id)
         self.assertEqual("Duplicate roster", rejected.rejection_reason)
-        members = list(self.fx.session.scalars(sa.select(models.BalancerRegistration)))
+        members = list(self.fx.session.scalars(sa.select(models.Registration)))
         self.assertEqual({"approved"}, {member.status for member in members})
         self.assertTrue(all(member.registration_team_id is None for member in members))
         self.assertTrue(all(member.team_slot_code is None and not member.is_substitute for member in members))
@@ -943,7 +941,7 @@ class TeamRosterOutcomeTests(_ProducerTestCase):
             withdraw_members=True,
         )
         self.fx.session.expire_all()
-        members = list(self.fx.session.scalars(sa.select(models.BalancerRegistration)))
+        members = list(self.fx.session.scalars(sa.select(models.Registration)))
         self.assertEqual({"withdrawn"}, {member.status for member in members})
         self.assertEqual({self.team.id}, {member.registration_team_id for member in members})
         self.assertEqual(teams_module.INVITE_REVOKED, invite.state)
@@ -959,7 +957,7 @@ class TargetedInviteAvailabilityTests(_ProducerTestCase):
         )
         self.fx.session.add(self.window)
         self.fx.session.add(
-            models.BalancerRegistrationForm(tournament_id=TOURNAMENT_ID, workspace_id=WORKSPACE_ID, max_substitutes=1)
+            models.RegistrationForm(tournament_id=TOURNAMENT_ID, workspace_id=WORKSPACE_ID, max_substitutes=1)
         )
         shape = patch.object(
             teams_module.RegistrationTeamService,

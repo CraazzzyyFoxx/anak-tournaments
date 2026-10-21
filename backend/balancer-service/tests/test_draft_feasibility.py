@@ -20,8 +20,8 @@ from shared.core.enums import (  # noqa: E402
     DraftPlayerStatus,
 )
 from shared.domain.roster_shape import RosterShape  # noqa: E402
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftTeam  # noqa: E402
 from shared.models.catalog import CatalogRole  # noqa: E402
+from shared.models.draft import DraftPick, DraftPlayer, DraftTeam  # noqa: E402
 from src.domain.draft import rules  # noqa: E402
 from tests.factories import roster  # noqa: E402
 

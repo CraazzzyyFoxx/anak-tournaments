@@ -20,7 +20,7 @@ from faststream.rabbit import RabbitMessage
 from redis.asyncio import Redis
 
 from shared.core.enums import DraftStatus
-from shared.models.balancer.draft import DraftSession, DraftTeam
+from shared.models.draft import DraftSession, DraftTeam
 from shared.rpc.common import optional_actor
 from shared.rpc.identity import ensure_workspace_permission
 from shared.schemas.role import RoleRef

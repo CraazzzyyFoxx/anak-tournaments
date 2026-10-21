@@ -72,7 +72,7 @@ class CustomGame(db.TimeStampIntegerMixin):
             initially="DEFERRED",
         ),
         # (no per-mix points_per_win check: the knob is the host's, see above)
-        {"schema": "balancer"},
+        {"schema": "mix"},
     )
 
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
@@ -82,7 +82,7 @@ class CustomGame(db.TimeStampIntegerMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft", server_default="draft")
     # How many lobbies this mix runs at once (1..``MAX_LOBBIES``). There are
-    # exactly this many ``custom_game_lobby`` rows: everything about one played
+    # exactly this many ``mix.lobby`` rows: everything about one played
     # match -- the matchup, the pager, the rolled map -- is a fact about a
     # lobby, not about the mix, so two lobbies never fight over one column.
     lobby_count: Mapped[int] = mapped_column(Integer(), nullable=False, default=1, server_default="1")
@@ -118,12 +118,10 @@ class CustomGameCoHost(db.Base):
     roster, so ``workspace_member`` is the wrong anchor and cannot be an FK here.
     """
 
-    __tablename__ = "custom_game_co_host"
-    __table_args__ = ({"schema": "balancer"},)
+    __tablename__ = "co_host"
+    __table_args__ = ({"schema": "mix"},)
 
-    custom_game_id: Mapped[int] = mapped_column(
-        ForeignKey("balancer.custom_game.id", ondelete="CASCADE"), primary_key=True
-    )
+    custom_game_id: Mapped[int] = mapped_column(ForeignKey("mix.custom_game.id", ondelete="CASCADE"), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("auth.user.id", ondelete="CASCADE"), primary_key=True)
 
 
@@ -141,7 +139,7 @@ class CustomGameLobby(db.Base):
     match history alone.
     """
 
-    __tablename__ = "custom_game_lobby"
+    __tablename__ = "lobby"
     __table_args__ = (
         CheckConstraint(f"lobby_index BETWEEN 0 AND {MAX_LOBBIES - 1}", name="ck_custom_game_lobby_index"),
         CheckConstraint("next_map_kind = 'map'", name="ck_custom_game_lobby_next_map_kind"),
@@ -151,12 +149,10 @@ class CustomGameLobby(db.Base):
             ondelete="SET NULL (next_map_id)",
             name="fk_custom_game_lobby_next_map",
         ),
-        {"schema": "balancer"},
+        {"schema": "mix"},
     )
 
-    custom_game_id: Mapped[int] = mapped_column(
-        ForeignKey("balancer.custom_game.id", ondelete="CASCADE"), primary_key=True
-    )
+    custom_game_id: Mapped[int] = mapped_column(ForeignKey("mix.custom_game.id", ondelete="CASCADE"), primary_key=True)
     lobby_index: Mapped[int] = mapped_column(Integer(), primary_key=True)
     # Which stored balance option this lobby is showing. Host-driven: the pager
     # is the host's, and every other viewer renders whatever it points at.
@@ -177,7 +173,7 @@ class CustomGameLobby(db.Base):
 class CustomGamePlayer(db.TimeStampIntegerMixin):
     """One workspace member's current lineup state in a mix."""
 
-    __tablename__ = "custom_game_player"
+    __tablename__ = "player"
     __table_args__ = (
         UniqueConstraint("custom_game_id", "workspace_member_id", name="uq_custom_game_player_member"),
         CheckConstraint(
@@ -189,10 +185,10 @@ class CustomGamePlayer(db.TimeStampIntegerMixin):
             name="ck_custom_game_player_role_selection_mode",
         ),
         CheckConstraint(f"lobby_pin BETWEEN 0 AND {MAX_LOBBIES - 1}", name="ck_custom_game_player_lobby_pin"),
-        {"schema": "balancer"},
+        {"schema": "mix"},
     )
 
-    custom_game_id: Mapped[int] = mapped_column(ForeignKey("balancer.custom_game.id", ondelete="CASCADE"), index=True)
+    custom_game_id: Mapped[int] = mapped_column(ForeignKey("mix.custom_game.id", ondelete="CASCADE"), index=True)
     workspace_member_id: Mapped[int] = mapped_column(ForeignKey("workspace_member.id", ondelete="CASCADE"), index=True)
     sort_order: Mapped[int] = mapped_column(Integer(), nullable=False, default=0, server_default="0")
     participation: Mapped[str] = mapped_column(String(16), nullable=False, default="pool", server_default="pool")
@@ -208,7 +204,7 @@ class CustomGamePlayer(db.TimeStampIntegerMixin):
 class CustomGamePlayerRole(db.Base):
     """A mix player's ordered preferences: module roles of the mix's rated dimension."""
 
-    __tablename__ = "custom_game_player_role"
+    __tablename__ = "player_role"
     __table_args__ = (
         UniqueConstraint(
             "custom_game_player_id",
@@ -223,11 +219,11 @@ class CustomGamePlayerRole(db.Base):
             deferrable=True,
             initially="DEFERRED",
         ),
-        {"schema": "balancer"},
+        {"schema": "mix"},
     )
 
     custom_game_player_id: Mapped[int] = mapped_column(
-        ForeignKey("balancer.custom_game_player.id", ondelete="CASCADE"), primary_key=True
+        ForeignKey("mix.player.id", ondelete="CASCADE"), primary_key=True
     )
     dimension_id: Mapped[int] = mapped_column(BigInteger())
     role_id: Mapped[int] = mapped_column(BigInteger(), primary_key=True, autoincrement=False, index=True)
@@ -243,15 +239,13 @@ class CustomGamePlayerRole(db.Base):
 
 
 class CustomGameTeamName(db.Base):
-    __tablename__ = "custom_game_team_name"
+    __tablename__ = "team_name"
     __table_args__ = (
         CheckConstraint(f"team_index BETWEEN 0 AND {2 * MAX_LOBBIES - 1}", name="ck_custom_game_team_name_index"),
-        {"schema": "balancer"},
+        {"schema": "mix"},
     )
 
-    custom_game_id: Mapped[int] = mapped_column(
-        ForeignKey("balancer.custom_game.id", ondelete="CASCADE"), primary_key=True
-    )
+    custom_game_id: Mapped[int] = mapped_column(ForeignKey("mix.custom_game.id", ondelete="CASCADE"), primary_key=True)
     team_index: Mapped[int] = mapped_column(Integer(), primary_key=True)
     name: Mapped[str] = mapped_column(String(60), nullable=False)
 
@@ -259,10 +253,10 @@ class CustomGameTeamName(db.Base):
 class CustomGameRound(db.Base):
     """Balancer-only facts of one recorded mix round. The round itself is ``encounter.encounter``."""
 
-    __tablename__ = "custom_game_round"
+    __tablename__ = "round"
     __table_args__ = (
         CheckConstraint(f"lobby_index BETWEEN 0 AND {MAX_LOBBIES - 1}", name="ck_custom_game_round_lobby_index"),
-        {"schema": "balancer"},
+        {"schema": "mix"},
     )
 
     encounter_id: Mapped[int] = mapped_column(
@@ -285,17 +279,15 @@ class CustomGameRoundMember(db.Base):
     Who sat on which seat is ``encounter.team_member`` only. The writer never stores a member both busy and seated.
     """
 
-    __tablename__ = "custom_game_round_member"
+    __tablename__ = "round_member"
     __table_args__ = (
         CheckConstraint("NOT busy OR rank_delta_applied IS NULL", name="ck_custom_game_round_member_busy"),
         Index("ix_custom_game_round_member_workspace_member_id", "workspace_member_id"),
-        {"schema": "balancer"},
+        {"schema": "mix"},
     )
 
     encounter_id: Mapped[int] = mapped_column(
-        ForeignKey(
-            "balancer.custom_game_round.encounter_id", ondelete="CASCADE", name="fk_custom_game_round_member_round"
-        ),
+        ForeignKey("mix.round.encounter_id", ondelete="CASCADE", name="fk_custom_game_round_member_round"),
         primary_key=True,
     )
     # NO ACTION, deferred: the anchor rule of ``encounter.team_member``.

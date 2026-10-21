@@ -271,10 +271,10 @@ class SubscriptionAdminService:
         ``service.find_tournaments_requiring_subscriptions``: a workspace with no rule
         holds nobody to anything, so there is nothing to re-check.
         """
-        reg = models.BalancerRegistration
+        reg = models.Registration
         member = models.WorkspaceMember
         player = models.User
-        form = models.BalancerRegistrationForm
+        form = models.RegistrationForm
         req = models.WorkspaceSubscriptionRequirement
         rows = (
             await session.execute(

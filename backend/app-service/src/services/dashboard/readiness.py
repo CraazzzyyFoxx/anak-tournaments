@@ -8,7 +8,7 @@ draft fields — a missing group yields ``None`` so the checklist renders
 "no-access" instead of zeros.
 
 ``registrations_ranked`` counts SAVED rank data on registration roles
-(``BalancerRegistrationRole.rank_value``), never an autofill preview.
+(``RegistrationRole.rank_value``), never an autofill preview.
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import enums
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.models.balancer.draft import DraftSession
+from shared.models.draft import DraftSession
 from shared.repository import TournamentRepository
 from shared.services.registration_window import registration_open_clause
 from src.schemas import TournamentReadiness
@@ -162,13 +162,13 @@ class ReadinessService:
         open, saved balance and latest draft status are scalar subqueries here like
         the counters, so this group costs one round trip.
         """
-        reg = models.BalancerRegistration
+        reg = models.Registration
         active = (reg.tournament_id == tournament_id, reg.deleted_at.is_(None))
         reg_pending = sa.select(sa.func.count(reg.id)).where(*active, reg.status == "pending")
         reg_approved = sa.select(sa.func.count(reg.id)).where(*active, reg.status == "approved")
         reg_checked_in = sa.select(sa.func.count(reg.id)).where(*active, reg.checked_in.is_(True))
         # Saved rank data only: >=1 role row with a stored rank_value.
-        role = models.BalancerRegistrationRole
+        role = models.RegistrationRole
         reg_ranked = sa.select(sa.func.count(sa.distinct(role.registration_id))).where(
             role.rank_value.is_not(None),
             role.registration_id.in_(sa.select(reg.id).where(*active).scalar_subquery()),
@@ -181,8 +181,8 @@ class ReadinessService:
         # as unconfigured.
         form_configured = (
             sa.select(sa.literal(1))
-            .select_from(models.BalancerRegistrationForm)
-            .where(models.BalancerRegistrationForm.tournament_id == tournament_id)
+            .select_from(models.RegistrationForm)
+            .where(models.RegistrationForm.tournament_id == tournament_id)
             .limit(1)
         )
         registration_open = sa.select(registration_open_clause()).where(models.Tournament.id == tournament_id)

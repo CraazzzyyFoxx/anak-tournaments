@@ -51,14 +51,12 @@ class RegistrationRoleTests(IsolatedAsyncioTestCase):
             s.add(tournament)
             await s.flush()
             self.rows = await roles.rated_rows(s, discipline="overwatch", workspace_id=workspace.id)
-            registration = models.BalancerRegistration(tournament_id=tournament.id)
+            registration = models.Registration(tournament_id=tournament.id)
             registration.roles = [
-                models.BalancerRegistrationRole(
+                models.RegistrationRole(
                     catalog_role=self.rows["support_main_heal"], dimension_id=support.dimension_id, priority=0
                 ),
-                models.BalancerRegistrationRole(
-                    catalog_role=self.rows["tank"], dimension_id=support.dimension_id, priority=1
-                ),
+                models.RegistrationRole(catalog_role=self.rows["tank"], dimension_id=support.dimension_id, priority=1),
             ]
             s.add(registration)
             await s.commit()
@@ -82,7 +80,7 @@ class RegistrationRoleTests(IsolatedAsyncioTestCase):
         assert "support_main_heal" not in module
 
     async def test_role_and_subrole_read_the_leaf_in_python_and_sql(self) -> None:
-        role = models.BalancerRegistrationRole
+        role = models.RegistrationRole
         async with self.Session() as s:
             loaded = (
                 await s.scalars(

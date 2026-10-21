@@ -26,18 +26,18 @@ async def tournament_display_name(session: AsyncSession, *, auth_user: models.Au
     )
     provider = identity_provider(discipline)
     registered = (
-        sa.select(models.BalancerRegistrationIdentity.handle)
+        sa.select(models.RegistrationIdentity.handle)
         .join(
-            models.BalancerRegistration,
-            models.BalancerRegistration.id == models.BalancerRegistrationIdentity.registration_id,
+            models.Registration,
+            models.Registration.id == models.RegistrationIdentity.registration_id,
         )
-        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.BalancerRegistration.workspace_member_id)
+        .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Registration.workspace_member_id)
         .join(models.User, models.User.id == models.WorkspaceMember.player_id)
         .where(
-            models.BalancerRegistration.tournament_id == tournament_id,
-            models.BalancerRegistration.deleted_at.is_(None),
-            models.BalancerRegistrationIdentity.provider == provider,
-            models.BalancerRegistrationIdentity.position == 0,
+            models.Registration.tournament_id == tournament_id,
+            models.Registration.deleted_at.is_(None),
+            models.RegistrationIdentity.provider == provider,
+            models.RegistrationIdentity.position == 0,
             models.User.auth_user_id == auth_user.id,
         )
         .limit(1)

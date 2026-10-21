@@ -236,7 +236,7 @@ Strategies: `best_fit` (default), `best_available`, `role_need`. Fit is delibera
 `MixStatus`: draft / balanced / completed / cancelled. Participation: `must_play` / `pool` / `benched`.
 
 **Lobbies.** A mix runs `lobby_count` lobbies (1..6, CHECK). Every per-match fact lives on
-`balancer.custom_game_lobby` keyed `(custom_game_id, lobby_index)` (0..5): `balance_result_json`,
+`mix.lobby` keyed `(custom_game_id, lobby_index)` (0..5): `balance_result_json`,
 `balance_result_version`, `selected_variant_index`, `next_map_id`, `balanced_at`. The mix itself
 carries none of them. Team names stay in `CustomGameTeamName` at the global index
 `lobby_index * 2 + team` (A: 0-1, B: 2-3, …, F: 10-11).

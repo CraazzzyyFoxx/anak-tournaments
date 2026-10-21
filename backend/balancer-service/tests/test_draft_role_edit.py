@@ -1,7 +1,7 @@
 """Admin-only emergency role additions.
 
 After ``draftreg1`` the write lands on the REGISTRATION
-(``balancer.registration_role``), not on a draft-local roles snapshot: the
+(``registration.role``), not on a draft-local roles snapshot: the
 balancer is the only writer of roles and ranks, so the board, the pool verdict
 and the balance job all see the edit at once. What the draft still owns is the
 guard, the before/after feasibility preview and the private audit row.
@@ -26,8 +26,8 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 
 from shared.core.enums import DraftStatus  # noqa: E402
-from shared.models.balancer.draft import DraftAuditEvent, DraftPlayer, DraftSession  # noqa: E402
-from shared.models.registration.registration import BalancerRegistrationRole  # noqa: E402
+from shared.models.draft import DraftAuditEvent, DraftPlayer, DraftSession  # noqa: E402
+from shared.models.registration.registration import RegistrationRole  # noqa: E402
 from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
 from src.domain.draft import entities as feasibility  # noqa: E402
 from src.domain.draft import rules  # noqa: E402
@@ -197,7 +197,7 @@ class _FakeSession:
     ``max(priority)`` for the next one.
     """
 
-    def __init__(self, existing: BalancerRegistrationRole | None = None, max_priority: int = 2) -> None:
+    def __init__(self, existing: RegistrationRole | None = None, max_priority: int = 2) -> None:
         self._scalars: list = (
             [existing]
             if existing is not None
@@ -276,8 +276,8 @@ def test_apply_role_edit_writes_the_registration_bumps_the_seat_and_audits() -> 
         )
     )
 
-    # The role landed on balancer.registration_role -- NOT on a draft snapshot.
-    added = [row for row in session.added if isinstance(row, BalancerRegistrationRole)]
+    # The role landed on registration.role -- NOT on a draft snapshot.
+    added = [row for row in session.added if isinstance(row, RegistrationRole)]
     assert len(added) == 1
     assert (added[0].registration_id, added[0].role, added[0].rank_value) == (120, "support", 2750)
     assert added[0].is_active is True
@@ -303,7 +303,7 @@ def test_apply_role_edit_writes_the_registration_bumps_the_seat_and_audits() -> 
 def test_apply_role_edit_reactivates_an_existing_inactive_registration_role() -> None:
     # The common case: a sheet import created the row and its rank did not
     # parse, so it sits there inactive. Inserting a second row would violate
-    # uq_balancer_registration_role, and leaving is_active=False would keep the
+    # uq_registration_role_role, and leaving is_active=False would keep the
     # role unplayable -- the edit has to flip both fields on the row that exists.
     existing = registration_role(
         registration_id=120,
@@ -334,4 +334,4 @@ def test_apply_role_edit_reactivates_an_existing_inactive_registration_role() ->
     assert existing.rank_value == 2750
     assert existing.is_active is True
     # No second row for the same (registration, role).
-    assert [row for row in session.added if isinstance(row, BalancerRegistrationRole)] == []
+    assert [row for row in session.added if isinstance(row, RegistrationRole)] == []

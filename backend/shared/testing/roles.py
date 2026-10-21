@@ -43,7 +43,7 @@ def rated_catalog(
     return rows
 
 
-def registration_role(*, role: str, subrole: str | None = None, **values) -> models.BalancerRegistrationRole:
+def registration_role(*, role: str, subrole: str | None = None, **values) -> models.RegistrationRole:
     rows = rated_catalog(sub_roles={role: (subrole,)} if subrole else None)
     leaf = rows[workspace_sub_role_code(role, subrole) if subrole else role]
-    return models.BalancerRegistrationRole(catalog_role=leaf, dimension_id=leaf.dimension_id, **values)
+    return models.RegistrationRole(catalog_role=leaf, dimension_id=leaf.dimension_id, **values)

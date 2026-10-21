@@ -21,14 +21,14 @@ from .stat_threshold import OPERATORS
 
 #: event -> (registration timestamp, the phase whose ``starts_at`` it is measured against)
 _EVENTS: dict[str, tuple[Any, TournamentStatus]] = {
-    "signup": (models.BalancerRegistration.submitted_at, TournamentStatus.REGISTRATION),
-    "check_in": (models.BalancerRegistration.checked_in_at, TournamentStatus.CHECK_IN),
+    "signup": (models.Registration.submitted_at, TournamentStatus.REGISTRATION),
+    "check_in": (models.Registration.checked_in_at, TournamentStatus.CHECK_IN),
 }
 
 _FLAGS: dict[str, Any] = {
-    "substitute": models.BalancerRegistration.is_substitute,
-    "team_manager": models.BalancerRegistration.is_team_manager,
-    "checked_in": models.BalancerRegistration.checked_in,
+    "substitute": models.Registration.is_substitute,
+    "team_manager": models.Registration.is_team_manager,
+    "checked_in": models.Registration.checked_in,
 }
 
 
@@ -37,7 +37,7 @@ _FLAGS: dict[str, Any] = {
     grain=AchievementGrain.user_tournament,
     description="How early or late the player signed up or checked in",
     required=("event", "op", "value"),
-    depends_on=("balancer.registration", "tournament.player"),
+    depends_on=("registration.registration", "tournament.player"),
 )
 async def execute_registration_timing(
     session: AsyncSession,
@@ -55,28 +55,28 @@ async def execute_registration_timing(
     query = (
         sa.select(
             models.WorkspaceMember.player_id,
-            models.BalancerRegistration.tournament_id,
+            models.Registration.tournament_id,
             stamp_column,
             models.TournamentPhaseSchedule.starts_at,
         )
-        .select_from(models.BalancerRegistration)
+        .select_from(models.Registration)
         # Inner joins by design: a registration with no member has no player
         # identity, and a tournament with no schedule row for this phase has
         # nothing to measure against. Neither is a failed threshold.
         .join(
             models.WorkspaceMember,
-            models.WorkspaceMember.id == models.BalancerRegistration.workspace_member_id,
+            models.WorkspaceMember.id == models.Registration.workspace_member_id,
         )
-        .join(models.Tournament, models.Tournament.id == models.BalancerRegistration.tournament_id)
+        .join(models.Tournament, models.Tournament.id == models.Registration.tournament_id)
         .join(
             models.TournamentPhaseSchedule,
             sa.and_(
-                models.TournamentPhaseSchedule.tournament_id == models.BalancerRegistration.tournament_id,
+                models.TournamentPhaseSchedule.tournament_id == models.Registration.tournament_id,
                 models.TournamentPhaseSchedule.status == phase,
             ),
         )
         .where(
-            models.BalancerRegistration.deleted_at.is_(None),
+            models.Registration.deleted_at.is_(None),
             stamp_column.is_not(None),
             sa.and_(
                 models.Tournament.workspace_id == context.workspace_id,
@@ -85,7 +85,7 @@ async def execute_registration_timing(
         )
     )
     if context.tournament:
-        query = query.where(models.BalancerRegistration.tournament_id == context.tournament.id)
+        query = query.where(models.Registration.tournament_id == context.tournament.id)
 
     # The delta is computed in Python: no portable SQL epoch extraction spans
     # PostgreSQL and the SQLite test harness, and a tournament's registration
@@ -109,7 +109,7 @@ async def execute_registration_timing(
     description="A property of how the player entered the tournament",
     required=("flag",),
     optional=("value",),
-    depends_on=("balancer.registration", "tournament.player"),
+    depends_on=("registration.registration", "tournament.player"),
 )
 async def execute_registration_flag(
     session: AsyncSession,
@@ -123,16 +123,16 @@ async def execute_registration_flag(
     query = (
         sa.select(
             models.WorkspaceMember.player_id,
-            models.BalancerRegistration.tournament_id,
+            models.Registration.tournament_id,
         )
-        .select_from(models.BalancerRegistration)
+        .select_from(models.Registration)
         .join(
             models.WorkspaceMember,
-            models.WorkspaceMember.id == models.BalancerRegistration.workspace_member_id,
+            models.WorkspaceMember.id == models.Registration.workspace_member_id,
         )
-        .join(models.Tournament, models.Tournament.id == models.BalancerRegistration.tournament_id)
+        .join(models.Tournament, models.Tournament.id == models.Registration.tournament_id)
         .where(
-            models.BalancerRegistration.deleted_at.is_(None),
+            models.Registration.deleted_at.is_(None),
             _FLAGS[flag] == value,
             sa.and_(
                 models.Tournament.workspace_id == context.workspace_id,
@@ -141,7 +141,7 @@ async def execute_registration_flag(
         )
     )
     if context.tournament:
-        query = query.where(models.BalancerRegistration.tournament_id == context.tournament.id)
+        query = query.where(models.Registration.tournament_id == context.tournament.id)
 
     result = await session.execute(query)
     keys: ResultSet = set()

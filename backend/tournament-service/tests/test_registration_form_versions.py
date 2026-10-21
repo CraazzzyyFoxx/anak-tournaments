@@ -37,7 +37,7 @@ from shared.domain.forms import (  # noqa: E402
     FormSection,
     default_schema,
 )
-from shared.models.registration.registration import BalancerRegistration  # noqa: E402
+from shared.models.registration.registration import Registration  # noqa: E402
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament  # noqa: E402
 from src.schemas.registration_form import RegistrationFormUpsert  # noqa: E402
@@ -293,19 +293,19 @@ def test_stale_count_counts_live_registrations_on_older_versions(db_session) -> 
             version_one = form.current_version_id
             db_session.add_all(
                 [
-                    BalancerRegistration(
+                    Registration(
                         tournament_id=tournament_id,
                         display_name="live-a",
                         status="approved",
                         form_version_id=version_one,
                     ),
-                    BalancerRegistration(
+                    Registration(
                         tournament_id=tournament_id,
                         display_name="live-b",
                         status="approved",
                         form_version_id=version_one,
                     ),
-                    BalancerRegistration(
+                    Registration(
                         tournament_id=tournament_id,
                         display_name="withdrawn",
                         status="approved",

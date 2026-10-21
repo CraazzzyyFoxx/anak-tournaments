@@ -53,7 +53,7 @@ class SelfEditPolicy:
 
 
 def submitted_late(
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     tournament: models.Tournament,
 ) -> bool:
     """Whether this row was signed up AFTER the registration window's ``ends_at``.
@@ -76,7 +76,7 @@ def submitted_late(
 
 
 def _floor(
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     tournament: models.Tournament,
 ) -> frozenset[str]:
     """Keys the organizer cannot open, and why.
@@ -101,7 +101,7 @@ def _floor(
     return frozenset(locked)
 
 
-def _answered_keys(registration: models.BalancerRegistration) -> frozenset[str]:
+def _answered_keys(registration: models.Registration) -> frozenset[str]:
     """The questions this row has an answer for.
 
     ``answers_of`` covers the answer COLUMNS, the identity rows and the custom
@@ -120,7 +120,7 @@ def _answered_keys(registration: models.BalancerRegistration) -> frozenset[str]:
 
 
 def self_edit_policy(
-    registration: models.BalancerRegistration,
+    registration: models.Registration,
     tournament: models.Tournament,
     schema: FormSchema,
     *,

@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, patch
 
 from cashews import cache
 
-from shared import balancer_registration_statuses as statuses
+from shared import registration_statuses as statuses
 
 
 class _CacheTestBase(IsolatedAsyncioTestCase):

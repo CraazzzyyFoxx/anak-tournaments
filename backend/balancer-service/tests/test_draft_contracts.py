@@ -32,7 +32,7 @@ from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from shared.schemas.role import RoleRef  # noqa: E402
 
 DEFAULT_ROSTER_SHAPE = RosterShape(entries=(("tank", 1), ("damage", 2), ("support", 2)))
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam  # noqa: E402
+from shared.models.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam  # noqa: E402
 from src import (  # noqa: E402
     openapi_docs,
     openapi_schemas,

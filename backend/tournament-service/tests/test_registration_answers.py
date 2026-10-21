@@ -41,8 +41,8 @@ from shared.hero_catalog import HeroCatalogEntry, resolve_hero_catalog  # noqa: 
 from shared.models.identity.auth_user import AuthUser  # noqa: E402
 from shared.models.identity.social import SocialAccount  # noqa: E402
 from shared.models.registration.registration import (  # noqa: E402
-    BalancerRegistrationForm,
-    BalancerRegistrationFormVersion,
+    RegistrationForm,
+    RegistrationFormVersion,
 )
 from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Tournament, TournamentPhaseSchedule  # noqa: E402
@@ -344,8 +344,8 @@ def test_a_blank_answer_survives_validation_as_an_explicit_clear() -> None:
 # ── apply: the one writer ───────────────────────────────────────────────────
 
 
-def _registration(**kwargs: Any) -> models.BalancerRegistration:
-    return models.BalancerRegistration(id=1, tournament_id=7, status="pending", **kwargs)
+def _registration(**kwargs: Any) -> models.Registration:
+    return models.Registration(id=1, tournament_id=7, status="pending", **kwargs)
 
 
 def test_role_update_preserves_rank_value_on_surviving_roles() -> None:
@@ -377,7 +377,7 @@ def test_role_update_preserves_rank_value_on_surviving_roles() -> None:
 
 def test_a_role_edit_does_not_leave_a_parentless_role_row_in_the_session() -> None:
     """The surviving row is handed the freshly built hero entries, and those were
-    built on a THROWAWAY ``BalancerRegistrationRole``. Handing over that row's live
+    built on a THROWAWAY ``RegistrationRole``. Handing over that row's live
     collection drags the throwaway into the session through the backref: a second
     role row with no ``registration_id``, so the next flush dies on the NOT NULL
     constraint. Every self-edit of a form with the top-heroes ask switched on was
@@ -407,7 +407,7 @@ def test_a_role_edit_does_not_leave_a_parentless_role_row_in_the_session() -> No
         hero_catalog=catalog,
     )
 
-    pending_roles = [row for row in session.new if isinstance(row, models.BalancerRegistrationRole)]
+    pending_roles = [row for row in session.new if isinstance(row, models.RegistrationRole)]
     assert [row for row in pending_roles if row not in registration.roles] == []
     assert [entry.entity_id for entry in registration.roles[0].hero_entries] == [11]
 
@@ -517,10 +517,10 @@ async def _seed(session: Any, *, schema: FormSchema) -> dict[str, Any]:
         )
     )
 
-    form = BalancerRegistrationForm(tournament_id=tournament.id, workspace_id=workspace.id)
+    form = RegistrationForm(tournament_id=tournament.id, workspace_id=workspace.id)
     session.add(form)
     await session.flush()
-    version = BalancerRegistrationFormVersion(form_id=form.id, number=1, schema_json=schema.model_dump(mode="json"))
+    version = RegistrationFormVersion(form_id=form.id, number=1, schema_json=schema.model_dump(mode="json"))
     form.current_version = version
     await session.flush()
 
@@ -565,11 +565,11 @@ def test_public_submit_validates_against_the_current_version_and_stamps_it(db_se
                 ),
             )
             row = await db_session.scalar(
-                sa.select(models.BalancerRegistration)
-                .where(models.BalancerRegistration.id == read.id)
+                sa.select(models.Registration)
+                .where(models.Registration.id == read.id)
                 .options(
-                    sa.orm.selectinload(models.BalancerRegistration.identities),
-                    sa.orm.selectinload(models.BalancerRegistration.roles),
+                    sa.orm.selectinload(models.Registration.identities),
+                    sa.orm.selectinload(models.Registration.roles),
                 )
             )
             return read, _row_image(row, seeded["version_id"])
@@ -734,8 +734,8 @@ def test_a_gated_identity_is_refused_end_to_end(db_session) -> None:
             await db_session.rollback()
             written = await db_session.scalar(
                 sa.select(sa.func.count())
-                .select_from(models.BalancerRegistration)
-                .where(models.BalancerRegistration.tournament_id == seeded["tournament_id"])
+                .select_from(models.Registration)
+                .where(models.Registration.tournament_id == seeded["tournament_id"])
             )
             return caught.value, int(written)
         finally:
@@ -876,46 +876,44 @@ def test_a_role_top_hero_list_survives_being_replaced_in_place(db_session) -> No
             rows = (
                 await db_session.execute(
                     sa.select(
-                        models.BalancerRegistrationRoleEntity.id,
-                        models.BalancerRegistrationRoleEntity.role_id,
-                        models.BalancerRegistrationRoleEntity.entity_id,
-                        models.BalancerRegistrationRoleEntity.priority,
+                        models.RegistrationRoleEntity.id,
+                        models.RegistrationRoleEntity.role_id,
+                        models.RegistrationRoleEntity.entity_id,
+                        models.RegistrationRoleEntity.priority,
                     )
                     .join(
-                        models.BalancerRegistrationRole,
-                        models.BalancerRegistrationRole.id == models.BalancerRegistrationRoleEntity.role_id,
+                        models.RegistrationRole,
+                        models.RegistrationRole.id == models.RegistrationRoleEntity.role_id,
                     )
-                    .where(models.BalancerRegistrationRole.registration_id == registration.id)
-                    .order_by(models.BalancerRegistrationRoleEntity.priority)
+                    .where(models.RegistrationRole.registration_id == registration.id)
+                    .order_by(models.RegistrationRoleEntity.priority)
                 )
             ).all()
             replaced = rows[0]
             await db_session.execute(
-                sa.insert(models.BalancerRegistrationRoleEntity).values(
+                sa.insert(models.RegistrationRoleEntity).values(
                     role_id=replaced.role_id, entity_id=replaced.entity_id, priority=replaced.priority
                 )
             )
             await db_session.execute(
-                sa.delete(models.BalancerRegistrationRoleEntity).where(
-                    models.BalancerRegistrationRoleEntity.id == replaced.id
-                )
+                sa.delete(models.RegistrationRoleEntity).where(models.RegistrationRoleEntity.id == replaced.id)
             )
             await db_session.commit()
             return [
                 (slug, priority)
                 for slug, priority in (
                     await db_session.execute(
-                        sa.select(models.CatalogEntity.slug, models.BalancerRegistrationRoleEntity.priority)
+                        sa.select(models.CatalogEntity.slug, models.RegistrationRoleEntity.priority)
                         .join(
-                            models.BalancerRegistrationRoleEntity,
-                            models.BalancerRegistrationRoleEntity.entity_id == models.CatalogEntity.id,
+                            models.RegistrationRoleEntity,
+                            models.RegistrationRoleEntity.entity_id == models.CatalogEntity.id,
                         )
                         .join(
-                            models.BalancerRegistrationRole,
-                            models.BalancerRegistrationRole.id == models.BalancerRegistrationRoleEntity.role_id,
+                            models.RegistrationRole,
+                            models.RegistrationRole.id == models.RegistrationRoleEntity.role_id,
                         )
-                        .where(models.BalancerRegistrationRole.registration_id == registration.id)
-                        .order_by(models.BalancerRegistrationRoleEntity.priority)
+                        .where(models.RegistrationRole.registration_id == registration.id)
+                        .order_by(models.RegistrationRoleEntity.priority)
                     )
                 ).all()
             ]
@@ -941,15 +939,15 @@ def test_the_player_sheet_patch_round_trips_a_roles_character_picks(db_session) 
                 await db_session.scalars(
                     sa.select(models.CatalogEntity.slug)
                     .join(
-                        models.BalancerRegistrationRoleEntity,
-                        models.BalancerRegistrationRoleEntity.entity_id == models.CatalogEntity.id,
+                        models.RegistrationRoleEntity,
+                        models.RegistrationRoleEntity.entity_id == models.CatalogEntity.id,
                     )
                     .join(
-                        models.BalancerRegistrationRole,
-                        models.BalancerRegistrationRole.id == models.BalancerRegistrationRoleEntity.role_id,
+                        models.RegistrationRole,
+                        models.RegistrationRole.id == models.RegistrationRoleEntity.role_id,
                     )
-                    .where(models.BalancerRegistrationRole.registration_id == registration_id)
-                    .order_by(models.BalancerRegistrationRoleEntity.priority)
+                    .where(models.RegistrationRole.registration_id == registration_id)
+                    .order_by(models.RegistrationRoleEntity.priority)
                 )
             ).all()
         )
@@ -1078,24 +1076,24 @@ def test_an_organizer_save_without_roles_keeps_the_role_set_while_an_empty_list_
             async def state() -> tuple:
                 ranks = (
                     await db_session.execute(
-                        sa.select(models.BalancerRegistrationRole.rank_value)
-                        .where(models.BalancerRegistrationRole.registration_id == registration.id)
-                        .order_by(models.BalancerRegistrationRole.priority)
+                        sa.select(models.RegistrationRole.rank_value)
+                        .where(models.RegistrationRole.registration_id == registration.id)
+                        .order_by(models.RegistrationRole.priority)
                     )
                 ).scalars()
                 picks = (
                     await db_session.scalars(
                         sa.select(models.CatalogEntity.slug)
                         .join(
-                            models.BalancerRegistrationRoleEntity,
-                            models.BalancerRegistrationRoleEntity.entity_id == models.CatalogEntity.id,
+                            models.RegistrationRoleEntity,
+                            models.RegistrationRoleEntity.entity_id == models.CatalogEntity.id,
                         )
                         .join(
-                            models.BalancerRegistrationRole,
-                            models.BalancerRegistrationRole.id == models.BalancerRegistrationRoleEntity.role_id,
+                            models.RegistrationRole,
+                            models.RegistrationRole.id == models.RegistrationRoleEntity.role_id,
                         )
-                        .where(models.BalancerRegistrationRole.registration_id == registration.id)
-                        .order_by(models.BalancerRegistrationRoleEntity.priority)
+                        .where(models.RegistrationRole.registration_id == registration.id)
+                        .order_by(models.RegistrationRoleEntity.priority)
                     )
                 ).all()
                 return tuple(ranks), tuple(picks)
@@ -1224,23 +1222,23 @@ def test_an_edit_that_changes_the_role_set_keeps_its_overlapping_picks(db_sessio
                 for role, priority, slug in (
                     await db_session.execute(
                         sa.select(
-                            models.BalancerRegistrationRole.role,
-                            models.BalancerRegistrationRoleEntity.priority,
+                            models.RegistrationRole.role,
+                            models.RegistrationRoleEntity.priority,
                             models.CatalogEntity.slug,
                         )
-                        .select_from(models.BalancerRegistrationRole)
+                        .select_from(models.RegistrationRole)
                         .join(
-                            models.BalancerRegistrationRoleEntity,
-                            models.BalancerRegistrationRoleEntity.role_id == models.BalancerRegistrationRole.id,
+                            models.RegistrationRoleEntity,
+                            models.RegistrationRoleEntity.role_id == models.RegistrationRole.id,
                         )
                         .join(
                             models.CatalogEntity,
-                            models.CatalogEntity.id == models.BalancerRegistrationRoleEntity.entity_id,
+                            models.CatalogEntity.id == models.RegistrationRoleEntity.entity_id,
                         )
-                        .where(models.BalancerRegistrationRole.registration_id == registration.id)
+                        .where(models.RegistrationRole.registration_id == registration.id)
                         .order_by(
-                            models.BalancerRegistrationRole.priority,
-                            models.BalancerRegistrationRoleEntity.priority,
+                            models.RegistrationRole.priority,
+                            models.RegistrationRoleEntity.priority,
                         )
                     )
                 ).all()

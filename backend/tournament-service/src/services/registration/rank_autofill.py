@@ -17,9 +17,9 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
-from shared.balancer_registration_statuses import is_balancer_status_excluded
 from shared.disciplines import discipline
 from shared.domain.roster import PlayerRoster
+from shared.registration_statuses import is_balancer_status_excluded
 from shared.schemas.identity import PlayerIdentityRead
 from shared.services.roster import roster_engine
 from src.services.registration._common import (
@@ -98,7 +98,7 @@ def _rank_snapshot_payload(snapshot: models.UserRankSnapshot | _RankData | Any |
 
 
 def build_registration_rank_autofill_plan(
-    registration: models.BalancerRegistration | Any,
+    registration: models.Registration | Any,
     rank_snapshots_by_role: dict[str, models.UserRankSnapshot | Any],
     *,
     roster: PlayerRoster | None,
@@ -242,7 +242,7 @@ def _roles_ranked_after_updates(
 
 
 def _rank_autofill_balancer_addition(
-    registration: models.BalancerRegistration | Any,
+    registration: models.Registration | Any,
     updates: list[tuple[Any, Any]],
     *,
     add_to_balancer: bool,

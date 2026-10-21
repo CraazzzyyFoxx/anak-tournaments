@@ -15,8 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared.disciplines import DISCIPLINES
-from shared.models.balancer.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from shared.models.catalog import CatalogRole
+from shared.models.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
 from shared.models.tournament import Tournament
 from shared.repository import CatalogRoleRepository
 from shared.repository.tournament import TournamentRepository

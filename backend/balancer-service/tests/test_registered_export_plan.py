@@ -72,7 +72,7 @@ def _tournament() -> models.Tournament:
 
 
 def _payload_with_one_team() -> RegisteredExportPayload:
-    source = models.BalancerRegistrationTeam(tournament_id=7, name="Alpha", status="complete")
+    source = models.RegistrationTeam(tournament_id=7, name="Alpha", status="complete")
     source.id = 11
     return RegisteredExportPayload(
         teams=[MaterializationTeam(balancer_name="Alpha")],

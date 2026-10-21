@@ -81,8 +81,8 @@ class DashboardService:
         tournaments_registration_open = (
             sa.select(sa.func.count(models.Tournament.id))
             .join(
-                models.BalancerRegistrationForm,
-                models.BalancerRegistrationForm.tournament_id == models.Tournament.id,
+                models.RegistrationForm,
+                models.RegistrationForm.tournament_id == models.Tournament.id,
             )
             .where(registration_open_clause(), *ws_filters)
         )
