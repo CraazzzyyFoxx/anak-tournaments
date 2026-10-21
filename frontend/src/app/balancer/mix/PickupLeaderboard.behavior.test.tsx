@@ -1,36 +1,41 @@
 // @vitest-environment happy-dom
 
 import { NextIntlClientProvider } from "next-intl";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import messages from "@/i18n/messages/en.json";
-import type { MixMemberStats } from "@/services/custom-game.service";
 
-import { PickupLeaderboard } from "./PickupLeaderboard";
+import { PickupLeaderboard, PickupRatingTable } from "./PickupLeaderboard";
+import type { RatedPlayer, StatsPeriodKey } from "./pickup-stats";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function member(overrides: Partial<MixMemberStats> = {}): MixMemberStats {
+function player(index: number, overrides: Partial<RatedPlayer> = {}): RatedPlayer {
   return {
-    workspace_member_id: 1,
-    display_name: "Aria",
-    identity: { provider: "battlenet", handle: "Aria#1111" },
+    key: `p:${index}`,
+    playerId: index,
+    name: `Player${index}#${1000 + index}`,
     games: 20,
-    wins: 12,
-    losses: 8,
+    wins: 40 - index,
+    losses: index - 20,
     draws: 0,
-    win_rate: 0.6,
-    streak: 3,
-    last_played_at: "2026-01-05T20:00:00Z",
-    by_role: { tank: { games: 20, wins: 12, losses: 8, draws: 0 } },
+    winRate: (40 - index) / 20,
+    streak: 0,
+    streakOpen: false,
+    form: [],
+    lastPlayedAt: null,
+    byRole: null,
     ...overrides
   };
 }
+
+const board = (count: number) =>
+  Array.from({ length: count }, (_, index) => player(index + 1, { wins: 30 - index, games: 40, winRate: 0.5 }));
 
 const mounts: { root: Root; container: HTMLDivElement }[] = [];
 
@@ -41,38 +46,19 @@ afterEach(() => {
   }
 });
 
-async function mount(
-  members: MixMemberStats[],
-  props: {
-    loading?: boolean;
-    error?: boolean;
-    period?: "all" | "30d" | "7d";
-    onPeriodChange?: (p: "all" | "30d" | "7d") => void;
-    onRetry?: () => void;
-  } = {}
-) {
+async function mount(node: ReactNode) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
   mounts.push({ root, container });
-  const onRetry = props.onRetry ?? vi.fn();
-  const onPeriodChange = props.onPeriodChange ?? vi.fn();
-
   await act(async () => {
     root.render(
       <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
-        <PickupLeaderboard
-          members={members}
-          loading={props.loading ?? false}
-          error={props.error ?? false}
-          onRetry={onRetry}
-          period={props.period ?? "all"}
-          onPeriodChange={onPeriodChange}
-        />
+        {node}
       </NextIntlClientProvider>
     );
   });
-  return { container, onRetry, onPeriodChange };
+  return container;
 }
 
 async function click(node: Element | null | undefined) {
@@ -82,120 +68,118 @@ async function click(node: Element | null | undefined) {
   });
 }
 
-function rows(scope: ParentNode) {
-  return [...scope.querySelectorAll("tbody tr")];
+function props(ranked: RatedPlayer[], overrides: { viewer?: RatedPlayer | null; period?: StatsPeriodKey; error?: boolean } = {}) {
+  return {
+    ranked,
+    viewer: overrides.viewer ?? null,
+    loading: false,
+    error: overrides.error ?? false,
+    onRetry: vi.fn(),
+    period: overrides.period ?? ("all" as StatsPeriodKey),
+    onPeriodChange: vi.fn(),
+    allCommunities: false,
+    ontology: null
+  };
 }
 
-/** Radix Select: the trigger opens on pointerdown, and the listbox is portalled
- *  out of the container, so options are looked up on the document. */
-async function pickPeriod(container: HTMLElement, label: string) {
-  const trigger = container.querySelector<HTMLElement>('button[role="combobox"]');
-  if (!trigger) throw new Error("no period select rendered");
-  await act(async () => {
-    trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
-    trigger.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-  const option = [...document.body.querySelectorAll<HTMLElement>('[role="option"]')].find(
-    (el) => (el.textContent ?? "").trim() === label
-  );
-  if (!option) throw new Error(`no period option matching ${label}`);
-  await act(async () => {
-    option.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }));
-    option.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  });
-}
+const rows = (scope: ParentNode) => [...scope.querySelectorAll("tbody tr")].map((row) => row.textContent ?? "");
+const button = (scope: ParentNode, label: string) =>
+  [...scope.querySelectorAll("button")].find((node) => node.textContent?.trim() === label);
 
 describe("PickupLeaderboard", () => {
-  it("ranks rows in the order given, showing rank, name, wins, and win rate", async () => {
-    const { container } = await mount([
-      member({ workspace_member_id: 1, display_name: "Aria", wins: 12, win_rate: 0.6 }),
-      member({
-        workspace_member_id: 2,
-        display_name: "Bex",
-        wins: 9,
-        losses: 9,
-        draws: 2,
-        games: 20,
-        win_rate: 0.45
-      })
-    ]);
+  it("shows the top ten in order, each with rank, name, wins of games and win rate", async () => {
+    const container = await mount(<PickupLeaderboard {...props(board(12))} fullHref="/balancer/mix?view=rating" />);
 
-    const [first, second] = rows(container);
-    expect(first.textContent).toContain("1");
-    expect(first.textContent).toContain("Aria");
-    expect(first.textContent).toContain("12");
-    expect(first.textContent).toContain("60%");
-
-    expect(second.textContent).toContain("2");
-    expect(second.textContent).toContain("Bex");
-    expect(second.textContent).toContain("9");
-    expect(second.textContent).toContain("45%");
+    const shown = rows(container);
+    expect(shown).toHaveLength(10);
+    expect(shown[0]).toContain("01");
+    expect(shown[0]).toContain("Player1#1001");
+    expect(shown[0]).toContain("30/40");
+    expect(shown[0]).toContain("50%");
+    expect(shown[9]).toContain("Player10");
+    expect(container.querySelector('a[href="/balancer/mix?view=rating"]')?.textContent).toContain("Full leaderboard");
   });
 
-  it("falls back to the battletag or raw member id when display name is not set", async () => {
-    const { container: tagContainer } = await mount([
-      member({ display_name: null, identity: { provider: "battlenet", handle: "Aria#1111" } })
-    ]);
-    expect(tagContainer.textContent).toContain("Aria#1111");
+  it("pins the reader's own row under the top ten, with their rank", async () => {
+    const ranked = board(14);
+    const container = await mount(<PickupLeaderboard {...props(ranked, { viewer: ranked[12] })} fullHref="#" />);
 
-    const { container: idContainer } = await mount([
-      member({ display_name: null, identity: null, workspace_member_id: 42 })
-    ]);
-    expect(idContainer.textContent).toContain("#42");
+    const shown = rows(container);
+    expect(shown).toHaveLength(11);
+    expect(shown[10]).toContain("13");
+    expect(shown[10]).toContain("Player13");
+    expect(shown[10]).toContain("You");
   });
 
-  it("reads every number off the row itself, with nothing to expand", async () => {
-    const { container } = await mount([
-      member({ wins: 10, losses: 5, draws: 1, games: 16, win_rate: 0.63, streak: 3 })
-    ]);
+  it("marks the reader in place inside the top ten instead of repeating them", async () => {
+    const ranked = board(12);
+    const container = await mount(<PickupLeaderboard {...props(ranked, { viewer: ranked[2] })} fullHref="#" />);
 
-    const [row] = rows(container);
-    expect(container.querySelector("details")).toBeNull();
-    expect(row.textContent).toContain("16");
-    expect(row.textContent).toContain("10");
-    expect(row.textContent).toContain("63%");
-    expect(row.textContent).toContain("W3");
-    expect(row.querySelector('[role="img"]')?.getAttribute("aria-label")).toBe("3 consecutive wins");
-
-    const broken = await mount([member({ streak: 0 })]);
-    expect(rows(broken.container)[0].textContent).not.toContain("W");
+    const shown = rows(container);
+    expect(shown).toHaveLength(10);
+    expect(shown[2]).toContain("You");
   });
 
-  it("reports period changes through the accessible select", async () => {
-    const onPeriodChange = vi.fn();
-    const { container } = await mount([member()], { period: "all", onPeriodChange });
+  it("tells an unranked reader how many matches they still need", async () => {
+    const viewer = player(99, { games: 2, wins: 1 });
+    const container = await mount(<PickupLeaderboard {...props(board(3), { viewer })} fullHref="#" />);
 
-    const trigger = container.querySelector('button[role="combobox"]');
-    expect(trigger?.getAttribute("aria-label")).toBe("Results period");
-    expect(trigger?.textContent).toContain("All time");
-
-    await pickPeriod(container, "Last 7 days");
-    expect(onPeriodChange).toHaveBeenCalledWith("7d");
+    expect(rows(container)).toHaveLength(4);
+    expect(container.textContent).toContain("You have 2 of the 3 matches needed to be ranked.");
   });
 
-  it("explains an empty board and allows resetting to all time when filtered", async () => {
-    const onPeriodChange = vi.fn();
-    const { container } = await mount([], { period: "30d", onPeriodChange });
+  it("reports a period change from the segmented control", async () => {
+    const shared = props(board(3));
+    const container = await mount(<PickupLeaderboard {...shared} fullHref="#" />);
+
+    expect(container.querySelector('[role="radiogroup"]')?.getAttribute("aria-label")).toBe("Results period");
+    await click(container.querySelector('[role="radio"]:last-child'));
+    expect(shared.onPeriodChange).toHaveBeenCalledWith("7d");
+  });
+
+  it("explains an empty board and resets a narrowed period to all time", async () => {
+    const shared = props([], { period: "30d" });
+    const container = await mount(<PickupLeaderboard {...shared} fullHref="#" />);
 
     expect(container.textContent).toContain("No qualifying players in this period");
-    const allTimeButton = [...container.querySelectorAll("button")].find((btn) =>
-      btn.textContent?.includes("Show all time")
-    );
-    expect(allTimeButton).toBeDefined();
-    await click(allTimeButton);
-    expect(onPeriodChange).toHaveBeenCalledWith("all");
+    await click(button(container, "Show all time"));
+    expect(shared.onPeriodChange).toHaveBeenCalledWith("all");
   });
 
   it("offers a retry when the record fails to load", async () => {
-    const onRetry = vi.fn();
-    const { container } = await mount([], { error: true, onRetry });
+    const shared = props([], { error: true });
+    const container = await mount(<PickupLeaderboard {...shared} fullHref="#" />);
 
-    const retryBtn = [...container.querySelectorAll("button")].find((btn) =>
-      btn.textContent?.includes("Retry")
+    await click(button(container, "Retry"));
+    expect(shared.onRetry).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("PickupRatingTable", () => {
+  it("pages a long board and finds a player by name without renumbering them", async () => {
+    const container = await mount(<PickupRatingTable {...props(board(60))} />);
+    expect(rows(container)).toHaveLength(50);
+
+    const search = container.querySelector<HTMLInputElement>('input[type="search"]');
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(search, "player57");
+      search?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    const found = rows(container);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toContain("57");
+    expect(found[0]).toContain("Player57#1057");
+  });
+
+  it("names a streak for screen readers, and says when it may run past the form window", async () => {
+    const container = await mount(
+      <PickupRatingTable {...props([player(1, { streak: 3 }), player(2, { streak: -10, streakOpen: true })])} />
     );
-    expect(retryBtn).toBeDefined();
-    await click(retryBtn);
 
-    expect(onRetry).toHaveBeenCalledTimes(1);
+    const labels = [...container.querySelectorAll('[role="img"]')].map((node) => node.getAttribute("aria-label"));
+    expect(labels).toEqual(["3 consecutive wins", "10 consecutive losses"]);
+    expect(rows(container)[1]).toContain("L10+");
   });
 });

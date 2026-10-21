@@ -19,6 +19,12 @@ import { notify } from "@/lib/notify";
 
 import { usePickupMix } from "./usePickupMix";
 
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean;
+}
+
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
 const updateRoster = vi.fn();
 const updatePlayer = vi.fn();
 const setParticipation = vi.fn();
@@ -42,11 +48,12 @@ vi.mock("@/services/custom-game.service", () => ({
   customGameKeys: {
     all: (workspaceId: number) => ["custom-games", workspaceId],
     lists: (workspaceId: number) => ["custom-games", workspaceId, "list"],
-    list: (workspaceId: number, discipline: string | null = null) => [
+    list: (workspaceId: number, discipline: string | null = null, filter: { status?: string } = {}) => [
       "custom-games",
       workspaceId,
       "list",
       discipline ?? "all",
+      filter.status ?? "all",
     ],
     one: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId],
     matches: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId, "matches"],
@@ -234,7 +241,7 @@ beforeEach(() => {
   document.body.innerHTML = "";
   vi.clearAllMocks();
   realtimeCalls.length = 0;
-  listGames.mockResolvedValue([game()]);
+  listGames.mockResolvedValue({ items: [game()], next_before_id: null });
   getGame.mockResolvedValue(game({ players: [] }));
   updateRoster.mockResolvedValue(game({ players: [] }));
   listMatches.mockResolvedValue([]);
@@ -261,7 +268,7 @@ beforeEach(() => {
 
 describe("usePickupMix", () => {
   it("keeps the route game pinned when the workspace list contains a different mix", async () => {
-    listGames.mockResolvedValue([game({ id: 99 })]);
+    listGames.mockResolvedValue({ items: [game({ id: 99 })], next_before_id: null });
     const { setRoster } = await mount();
     expect(getGame).toHaveBeenCalledWith(GAME_ID, WORKSPACE_ID);
     expect(listMatches).toHaveBeenCalledWith(WORKSPACE_ID, GAME_ID);

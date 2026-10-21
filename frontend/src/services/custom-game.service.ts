@@ -140,7 +140,7 @@ export type CustomGameLobby = {
    * would overwrite it asks first. Detail reads only.
    */
   lineup_recorded?: boolean;
-  /** How many matches this lobby has recorded. Detail reads only. */
+  /** How many matches this lobby has recorded. Both reads: the directory names the game a lobby is on. */
   matches_count?: number;
 };
 
@@ -209,6 +209,40 @@ export type CustomGame = {
    */
   discord_posts?: CustomGameDiscordPost[];
   players?: CustomGamePlayer[];
+};
+
+/** A map a mix has played, as the directory row previews it. */
+export type MixMapPreview = { name: string; image_path: string | null };
+
+/** A directory row: the mix plus the activity columns only the list read computes. */
+export type CustomGameListItem = CustomGame & {
+  /** Distinct members seated across the mix's recorded rounds. */
+  players_count: number;
+  /** Rows on the mix's current roster -- who signed up, seated or not. */
+  roster_count: number;
+  /** Distinct maps played, most recently played first, at most 4. */
+  maps: MixMapPreview[];
+  /** Every distinct map played; `maps_count - maps.length` is the "+N" past the previews. */
+  maps_count: number;
+};
+
+/** `open` = draft or balanced; `history` = completed or cancelled. */
+export type MixListStatus = "open" | "history";
+
+export type MixListFilter = {
+  status?: MixListStatus;
+  /** Substring of the mix name or the host's name; empty = no filter. */
+  q?: string;
+  /** 1..100, server default 30. */
+  limit?: number;
+  /** Keyset cursor: only mixes with a smaller id. */
+  before_id?: number | null;
+};
+
+/** One page of the directory, newest first. `next_before_id` is the cursor for the next page, `null` on the last. */
+export type MixListPage = {
+  items: CustomGameListItem[];
+  next_before_id: number | null;
 };
 
 /** One voice channel of the workspace's mix category, with the bot's gaps on it. */
@@ -418,6 +452,11 @@ export type MixMemberStats = {
   /** The run from the newest match: `+n` consecutive wins, `-n` losses, 0 after a draw. */
   streak: number;
   last_played_at: string | null;
+  /** The global player behind the membership -- what joins one person's records across communities. `null` once the
+   *  member can no longer be resolved. */
+  player_id: number | null;
+  /** The newest results, newest first, at most 10. */
+  form: MixFormEntry[];
   /**
    * Only roles with games played -- a seat with no role counts in the totals and in no bucket. `null` across games:
    * role codes of different games are different roles.
@@ -425,10 +464,20 @@ export type MixMemberStats = {
   by_role: Record<string, MixRoleTally> | null;
 };
 
-/** `since` echoes back the window the server parsed, so a reader can tell it from all time. */
+export type MixOutcome = "win" | "loss" | "draw";
+
+/** One recorded seat's result. `match_id` orders seats recorded in the same second. */
+export type MixFormEntry = { outcome: MixOutcome; match_id: number; played_at: string };
+
+/**
+ * `since` echoes back the window the server parsed, so a reader can tell it from all time. `mixes` and `matches`
+ * count the mixes and rounds with a recorded result inside that window.
+ */
 export type MixStatsResponse = {
   since: string | null;
   members: MixMemberStats[];
+  mixes: number;
+  matches: number;
 };
 
 export const customGameKeys = {
@@ -436,9 +485,18 @@ export const customGameKeys = {
   all: (workspaceId: number) => ["custom-games", workspaceId] as const,
   /** Every directory list of a workspace, whatever game it was filtered to; not a prefix of any one mix's reads. */
   lists: (workspaceId: number) => ["custom-games", workspaceId, "list"] as const,
-  /** The directory list of one game (`null` = every game the workspace runs): a game's rows never serve another's. */
-  list: (workspaceId: number, discipline: string | null = null) =>
-    ["custom-games", workspaceId, "list", discipline ?? "all"] as const,
+  /** One directory read: a game (`null` = every game the workspace runs) and a filter page -- never served for another. */
+  list: (workspaceId: number, discipline: string | null = null, filter: MixListFilter = {}) =>
+    [
+      "custom-games",
+      workspaceId,
+      "list",
+      discipline ?? "all",
+      filter.status ?? "all",
+      filter.q ?? "",
+      filter.limit ?? null,
+      filter.before_id ?? null,
+    ] as const,
   one: (workspaceId: number, gameId: number) => ["custom-games", workspaceId, gameId] as const,
   byId: (gameId: number, workspaceId: number | null) =>
     ["custom-game-entity", gameId, workspaceId] as const,
@@ -470,11 +528,23 @@ export const customGameKeys = {
 };
 
 export const customGameService = {
-  /** `discipline` narrows the directory to one game; omitted lists every game of the workspace. */
-  list(workspaceId: number, discipline?: string | null, opts?: { signal?: AbortSignal }): Promise<CustomGame[]> {
+  /** One page of the directory, newest first. `discipline` narrows it to one game; omitted lists every game. */
+  list(
+    workspaceId: number,
+    discipline?: string | null,
+    filter: MixListFilter = {},
+    opts?: { signal?: AbortSignal },
+  ): Promise<MixListPage> {
     return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games`, {
       skipWorkspace: true,
-      query: { discipline: discipline ?? undefined },
+      // `apiFetch` drops undefined/null values, so an unset filter sends nothing.
+      query: {
+        discipline: discipline ?? undefined,
+        status: filter.status,
+        q: filter.q || undefined,
+        limit: filter.limit,
+        before_id: filter.before_id ?? undefined,
+      },
       signal: opts?.signal,
     }).then((r) => r.json());
   },

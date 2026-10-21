@@ -1,4 +1,10 @@
-import type { CustomGameStatus } from "@/services/custom-game.service";
+import type { MixListFilter } from "@/services/custom-game.service";
+
+/**
+ * Every open mix of a workspace in one page: the directory's "now" block and the mix page's voice panel read the
+ * same cache entry. Open mixes are few (each one has a host running it), so one page of the ceiling covers them.
+ */
+export const OPEN_MIXES: MixListFilter = { status: "open", limit: 100 };
 
 /** How many lobbies one mix may run at once -- the server's own CHECK ceiling. */
 export const MAX_LOBBIES = 6;
@@ -59,16 +65,3 @@ export const TEAM_ACCENTS = [
 export function teamAccent(teamIndex: number) {
   return TEAM_ACCENTS[teamIndex % TEAM_ACCENTS.length];
 }
-
-/**
- * Status tone for a mix. Only `completed`/`cancelled` are terminal, so those are
- * the two that read as "done" rather than as a stage in progress.
- */
-export const MIX_STATUS_CLASS: Record<CustomGameStatus, string> = {
-  draft: "border-[color:var(--aqt-border-2)] bg-white/[0.03] text-[color:var(--aqt-fg-muted)]",
-  balanced:
-    "border-[color:color-mix(in_srgb,var(--aqt-teal)_35%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_12%,transparent)] text-[color:var(--aqt-teal)]",
-  completed:
-    "border-[color:color-mix(in_srgb,var(--aqt-emerald)_32%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-emerald)_10%,transparent)] text-[color:var(--aqt-emerald)]",
-  cancelled: "border-[color:var(--aqt-border-2)] bg-white/[0.02] text-[color:var(--aqt-fg-faint)]",
-};

@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 //
 // The mix directory is a directory surface: it shows every game under `?discipline=all` and one game under a
-// concrete choice, and the list, the scoreboard and the creation form all follow that one resolved choice.
-// Pinned here: the requested game reaches the list read (and is part of its key, so a game's rows never serve
-// another's), an invalid choice makes no read at all, and creating a mix names its game.
+// concrete choice, and the open mixes, the history, the scoreboard and the creation form all follow that one resolved
+// choice. Pinned here: the requested game reaches every list read (and is part of its key, so a game's rows never
+// serve another's), an invalid choice makes no read at all, creating a mix names its game, and `?view=rating` swaps
+// the directory for the full scoreboard.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -14,7 +15,12 @@ import en from "@/i18n/messages/en.json";
 import { navigation } from "@/test/url-navigation";
 import { disciplineServiceMock } from "@/test/discipline-metadata";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type { CustomGame } from "@/services/custom-game.service";
+import type {
+  CustomGameListItem,
+  MixListFilter,
+  MixListPage,
+  MixMemberStats
+} from "@/services/custom-game.service";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -41,7 +47,7 @@ vi.mock("@/services/custom-game.service", async (importOriginal) => {
 
 import BalancerPickupListPage from "./page";
 
-function mix(id: number, discipline: string, name: string): CustomGame {
+function mix(id: number, discipline: string, name: string): CustomGameListItem {
   return {
     id,
     workspace_id: 1,
@@ -59,8 +65,12 @@ function mix(id: number, discipline: string, name: string): CustomGame {
     self_role_edit: false,
     roster_shape: null,
     matches_count: 0,
-    last_match_at: null
-  } as unknown as CustomGame;
+    last_match_at: null,
+    players_count: 0,
+    roster_count: 4,
+    maps: [],
+    maps_count: 0
+  } as unknown as CustomGameListItem;
 }
 
 const OW_MIX = mix(1, "overwatch", "Overwatch night");
@@ -98,10 +108,17 @@ async function settle() {
 }
 
 beforeEach(() => {
-  mocks.list.mockReset().mockImplementation(async (_workspaceId: number, discipline: string | null) =>
-    [OW_MIX, LOL_MIX].filter((game) => discipline === null || game.discipline === discipline)
-  );
-  mocks.stats.mockReset().mockResolvedValue({ since: null, members: [] });
+  mocks.list
+    .mockReset()
+    .mockImplementation(async (_workspaceId: number, discipline: string | null, filter: MixListFilter) => ({
+      items: [OW_MIX, LOL_MIX].filter(
+        (game) =>
+          (discipline === null || game.discipline === discipline) &&
+          (filter.status === "open") === (game.status === "draft" || game.status === "balanced")
+      ),
+      next_before_id: null
+    }));
+  mocks.stats.mockReset().mockResolvedValue({ since: null, members: [], mixes: 0, matches: 0 });
   mocks.create.mockReset().mockResolvedValue(LOL_MIX);
   useWorkspaceStore.setState({
     currentWorkspaceId: 1,
@@ -123,14 +140,16 @@ afterEach(() => {
 });
 
 const rows = (container: ParentNode) => [...container.querySelectorAll("li a")].map((link) => link.textContent ?? "");
+const lists = () => mocks.list.mock.calls.map((call) => [call[0], call[1], call[2].status]);
 
 describe("mix directory browsing game", () => {
   it("lists every game under all games and marks each row's game", async () => {
     const container = await mountPage("/balancer/mix?discipline=all");
 
-    expect(mocks.list).toHaveBeenCalledTimes(1);
-    expect(mocks.list.mock.calls[0][0]).toBe(1);
-    expect(mocks.list.mock.calls[0][1]).toBeNull();
+    expect(lists()).toEqual([
+      [1, null, "open"],
+      [1, null, "history"]
+    ]);
     expect(mocks.stats.mock.calls.map((call) => call[2])).toEqual([undefined]);
     const text = rows(container).join("|");
     expect(text).toContain("Overwatch night");
@@ -141,14 +160,17 @@ describe("mix directory browsing game", () => {
   it("narrows the list and the scoreboard to the chosen game", async () => {
     const container = await mountPage("/balancer/mix?discipline=lol");
 
-    expect(mocks.list.mock.calls.map((call) => [call[0], call[1]])).toEqual([[1, "lol"]]);
+    expect(lists()).toEqual([
+      [1, "lol", "open"],
+      [1, "lol", "history"]
+    ]);
     expect(mocks.stats.mock.calls.map((call) => call[2])).toEqual(["lol"]);
     expect(rows(container).join("|")).toContain("Rift night");
     expect(rows(container).join("|")).not.toContain("Overwatch night");
   });
 
   it("never shows the previous game's rows for the next one", async () => {
-    const pending = Promise.withResolvers<CustomGame[]>();
+    const pending = Promise.withResolvers<MixListPage>();
     const container = await mountPage("/balancer/mix?discipline=overwatch");
     expect(rows(container).join("|")).toContain("Overwatch night");
 
@@ -160,7 +182,7 @@ describe("mix directory browsing game", () => {
     expect(rows(container).join("|")).not.toContain("Overwatch night");
     expect(container.querySelector('[role="status"]')?.textContent).toContain("Loading");
 
-    await act(async () => pending.resolve([LOL_MIX]));
+    await act(async () => pending.resolve({ items: [LOL_MIX], next_before_id: null }));
     await settle();
     expect(rows(container).join("|")).toContain("Rift night");
   });
@@ -196,9 +218,38 @@ describe("mix directory browsing game", () => {
     useWorkspaceStore.setState({ gameScope: "lol" });
     const container = await mountPage("/balancer/mix");
 
-    expect(mocks.list.mock.calls.map((call) => [call[0], call[1]])).toEqual([[1, "lol"]]);
+    expect(lists()).toEqual([
+      [1, "lol", "open"],
+      [1, "lol", "history"]
+    ]);
     expect(navigation.replaces).toEqual([]);
     expect(rows(container).join("|")).toContain("Rift night");
     expect(rows(container).join("|")).not.toContain("League of Legends");
+  });
+
+  it("swaps the directory for the full scoreboard under ?view=rating", async () => {
+    const aria: MixMemberStats = {
+      workspace_member_id: 3,
+      display_name: "Aria",
+      identity: null,
+      games: 9,
+      wins: 6,
+      losses: 3,
+      draws: 0,
+      win_rate: 6 / 9,
+      streak: 2,
+      last_played_at: null,
+      player_id: 30,
+      form: [],
+      by_role: null
+    };
+    mocks.stats.mockResolvedValue({ since: null, members: [aria], mixes: 2, matches: 9 });
+    const container = await mountPage("/balancer/mix?view=rating");
+
+    expect(container.querySelector('[aria-current="page"]')?.textContent).toBe("Leaderboard");
+    expect([...container.querySelectorAll("tbody tr")].map((row) => row.textContent)).toEqual([
+      expect.stringContaining("Aria")
+    ]);
+    expect(container.querySelector('input[placeholder="Mix or host"]')).toBeNull();
   });
 });

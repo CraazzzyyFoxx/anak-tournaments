@@ -70,7 +70,7 @@ export function MatchHistoryList({
 }
 
 /** Two-letter fallback for a map with no thumbnail yet, same rule `MapRow` uses. */
-function mapInitials(name: string): string {
+export function mapInitials(name: string): string {
   return name
     .split(/\s+/)
     .map((word) => word[0])

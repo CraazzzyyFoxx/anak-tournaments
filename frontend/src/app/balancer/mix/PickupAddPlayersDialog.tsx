@@ -107,12 +107,20 @@ export function PickupAddPlayersDialog({
         />
         <header className="flex shrink-0 items-baseline gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-5 py-3.5 pr-12">
           <DialogTitle className={cn(CARD_TITLE_CLASS, "tracking-label")}>Add players</DialogTitle>
-          <DialogDescription className={cn(CAPTION_CLASS, "min-w-0 truncate")}>
-            {picker.workspaceTotal == null
-              ? "Loading the workspace roster\u2026"
-              : `${picker.workspaceTotal} in this workspace \u00B7 ${
+          {/* A div, not the default <p>: the loading skeleton is a block element. */}
+          <DialogDescription asChild className={cn(CAPTION_CLASS, "min-w-0 truncate")}>
+            <div>
+              {picker.workspaceTotal == null ? (
+                <span role="status">
+                  <span className="sr-only">Loading the workspace roster{"\u2026"}</span>
+                  <Skeleton aria-hidden className="h-4 w-80 max-w-full" />
+                </span>
+              ) : (
+                `${picker.workspaceTotal} in this workspace \u00B7 ${
                   canEditRanks ? "your ranks decide" : "the host's ranks decide"
-                }, workspace ranks fill the gaps`}
+                }, workspace ranks fill the gaps`
+              )}
+            </div>
           </DialogDescription>
         </header>
 

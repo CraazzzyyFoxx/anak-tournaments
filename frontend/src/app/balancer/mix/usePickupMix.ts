@@ -17,6 +17,7 @@ import {
   type MixVoicePatch,
 } from "@/services/custom-game.service";
 
+import { OPEN_MIXES } from "@/app/balancer/mix/pickup-chrome";
 import {
   computeRotationHintPatches,
   participationEntries,
@@ -81,11 +82,13 @@ export function usePickupMix(
   const queryClient = useQueryClient();
   const tVoiceError = useTranslations("mixes.voice.errors");
 
-  // Every game of the workspace on purpose: the voice panel names the channels this workspace's OTHER mixes already
-  // took, and voice channels are shared across games.
+  // Every open mix of the workspace, whatever its game: the voice panel names the channels this workspace's OTHER
+  // open mixes already took, and voice channels are shared across games. The same page the directory's "now" block
+  // reads, so the two share one cache entry.
   const gamesQuery = useQuery({
-    queryKey: customGameKeys.list(workspaceId),
-    queryFn: ({ signal }) => customGameService.list(workspaceId, null, { signal }),
+    queryKey: customGameKeys.list(workspaceId, null, OPEN_MIXES),
+    queryFn: ({ signal }) => customGameService.list(workspaceId, null, OPEN_MIXES, { signal }),
+    select: (page) => page.items,
   });
 
   const selectedGameId = pickedGameId;

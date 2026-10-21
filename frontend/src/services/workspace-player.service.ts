@@ -71,7 +71,7 @@ export type WorkspacePlayerListParams = {
 export const CURRENT_RANK_LAYERS = [
   "canon",
   "author",
-  "ow",
+  "native",
   "hidden",
   "effective_tournament",
   "effective_mix",
@@ -120,9 +120,9 @@ export type RankOverviewRow = {
   delta: number | null;
   /** `author` only: the author's number minus canon, or null when canon is unset. */
   canon_diff: number | null;
-  /** `ow` only, native ladder naming (e.g. "gold" 3). */
-  ow_division: string | null;
-  ow_tier: number | null;
+  /** `native` only, the game's ladder naming (e.g. "gold" 3). */
+  native_division: string | null;
+  native_tier: number | null;
   context: RankOverviewContext | null;
   /** Null for the computed `effective_*` layers, which have no source timestamp. */
   at: string | null;

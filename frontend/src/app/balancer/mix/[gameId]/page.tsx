@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { CustomGame } from "@/services/custom-game.service";
 import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
 
@@ -77,7 +78,18 @@ export default function BalancerPickupMixPage() {
     );
   }
   if (!entityQuery.data) {
-    return <div role="status" className="py-12 text-center text-muted-foreground">{t("loading")}</div>;
+    // Detail-shaped: the lineup column beside header, lobby tabs and teams.
+    return (
+      <div role="status" className="flex flex-col gap-5 xl:flex-row xl:items-start">
+        <span className="sr-only">{t("loading")}</span>
+        <Skeleton aria-hidden className="h-96 w-full rounded-xl xl:w-[568px] xl:shrink-0" />
+        <div aria-hidden className="mx-auto flex w-full min-w-0 max-w-[1180px] flex-1 flex-col gap-5">
+          <Skeleton className="h-20 w-full rounded-xl" />
+          <Skeleton className="h-9 w-64 rounded-lg" />
+          <Skeleton className="h-64 w-full rounded-xl" />
+        </div>
+      </div>
+    );
   }
   return <PickupMixDetail key={entityQuery.data.id} initialGame={entityQuery.data} />;
 }
