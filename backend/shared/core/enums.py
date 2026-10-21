@@ -66,7 +66,7 @@ class RankDivision(StrEnum):
 
     Stored as a plain string in the DB so future Blizzard additions don't
     require a migration; this enum documents the known values and powers the
-    default rank mapping.
+    ladder's division+tier -> rank_value table.
     """
 
     bronze = "bronze"

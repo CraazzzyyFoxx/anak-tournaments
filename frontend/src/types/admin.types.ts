@@ -39,17 +39,6 @@ export interface RankCollectionConfig {
   max_per_tick: number | null;
 }
 
-export interface RankMappingEntry {
-  division: string;
-  tier: number;
-  rank_value: number;
-}
-
-export interface RankMappingConfig {
-  version: string;
-  entries: RankMappingEntry[];
-}
-
 // ─── Rank collection status / manual trigger (parser admin) ────────────────────
 
 export interface RankCollectionStatusRow {

@@ -7,6 +7,7 @@ boundary.
 
 from __future__ import annotations
 
+import functools
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -21,8 +22,7 @@ __all__ = (
     "RankFetchResult",
     "RankSeriesState",
     "changed_ranks",
-    "RankLookup",
-    "build_default_lookup",
+    "RANK_MAPPING_VERSION",
     "map_division_tier_to_rank_value",
     "Granularity",
     "resolve_date_range",
@@ -98,24 +98,26 @@ def changed_ranks(
     ]
 
 
-# Lookup key: (division_lowercase, tier) -> rank_value.
-RankLookup = dict[tuple[str, int], int]
+#: Identity of the division+tier -> rank_value table below, stamped on every snapshot as ``mapping_version``. Bumped
+#: whenever the ladder is rebased: a bare ``rank_value`` is ambiguous across versions (2500 was Platinum 5 under v1,
+#: Emerald 5 under v2), so the stamp is what makes a backfill possible.
+RANK_MAPPING_VERSION = "ow2-default-v2"
 
 
-def build_default_lookup() -> RankLookup:
-    """The default division+tier -> rank_value table, read off the Overwatch module's native ladder."""
+@functools.cache
+def _ladder_values() -> dict[tuple[str, int], int]:
     return {(tier.native_division, tier.native_tier): tier.rank_min for tier in discipline("overwatch").native_ladder}
 
 
-def map_division_tier_to_rank_value(
-    division: str | None,
-    tier: int | None,
-    lookup: RankLookup,
-) -> int | None:
-    """Resolve a native division+tier to an integer rank_value, or ``None``."""
+def map_division_tier_to_rank_value(division: str | None, tier: int | None) -> int | None:
+    """A native division+tier's ``rank_value`` on the Overwatch ladder, or ``None``.
+
+    Fixed by the ladder, never configured: each workspace places this value on its own divisions through its grid's
+    native ranges, at read time.
+    """
     if not division or tier is None:
         return None
-    return lookup.get((division.lower(), int(tier)))
+    return _ladder_values().get((division.lower(), int(tier)))
 
 
 Granularity = Literal["raw", "daily", "hourly"]

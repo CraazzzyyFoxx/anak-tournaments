@@ -4,10 +4,10 @@
  * The ladder is written down once, in `backend/shared/disciplines/overwatch/ladder.py`. This
  * module holds NO ladder facts and NO rank arithmetic — it is a typed accessor
  * over `ow-ladder.generated.json`, which `backend/scripts/export_ow_ladder.py`
- * emits with everything already resolved: the 45 tiers and the full native
- * division+tier → rank_value table.
+ * emits with everything already resolved: the 45 tiers and the native division
+ * names.
  *
- * Why an artifact and not a fetch: the collector rank mapping and the OverFast
+ * Why an artifact and not a fetch: the default division grid and the OverFast
  * rank history resolve OW-scale values synchronously during SSR and the first
  * client render. An API round-trip cannot fill that window.
  *
@@ -55,13 +55,3 @@ export const TIER_NUMBERS: readonly number[] = Array.from(
   { length: TIERS_PER_DIVISION },
   (_, index) => index + 1
 );
-
-const OW_RANK_VALUES: Record<string, number> = generated.ow_rank_values;
-
-/**
- * `rank_value` for a native OverFast division + tier, or `null` for a division
- * the ladder does not carry.
- */
-export function owRankValue(division: string, tier: number): number | null {
-  return OW_RANK_VALUES[`${division.toLowerCase()}-${tier}`] ?? null;
-}

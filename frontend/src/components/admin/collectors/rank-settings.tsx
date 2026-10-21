@@ -38,7 +38,7 @@ const read = (stored: Partial<RankCollectionConfig> | undefined) => ({ ...DEFAUL
  * question each knob answers: whose ranks, how often, how hard the upstream is
  * hit, and when an account is given up on. min/max are the backend's own bounds
  * (`RankCollectionConfig` in `shared/schemas/settings.py`): past them it answers
- * 422 with nothing this form can show. The rank mapping is its own slot.
+ * 422 with nothing this form can show.
  */
 export function RankSettingsPanel({ discipline }: Readonly<{ discipline: string }>) {
   const t = useTranslations("collectors.settings.rank");

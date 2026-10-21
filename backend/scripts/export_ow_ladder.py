@@ -14,8 +14,8 @@ byte-compares it, so a ladder change that skips this script fails CI
 (.github/workflows/lint-backend.yml). Nothing about the ladder is written twice,
 so there is nothing left to drift.
 
-Everything DERIVED is exported -- the 45 resolved tiers and the full native
-division+tier -> rank_value table -- so ``ow-ladder.ts`` performs lookups only.
+Everything DERIVED is exported -- the 45 resolved tiers and the native division
+names -- so ``ow-ladder.ts`` performs lookups only.
 Re-deriving tier offsets or the open-ended top in TypeScript is exactly the
 duplication this replaces.
 
@@ -46,8 +46,7 @@ def build_document() -> dict:
         "tiers_per_division": ow_ladder.TIERS_PER_DIVISION,
         "tier_span": ow_ladder.TIER_SPAN,
         "division_icon_base": ow_ladder.DIVISION_ICON_BASE,
-        # Native OverFast division names, highest first. The admin rank-mapping
-        # grid lists these, so it cannot offer a division the parser rejects.
+        # Native OverFast division names, highest first.
         "ow_divisions_desc": [division.ow_division.value for division in ow_ladder.LADDER],
         "tiers": [
             {
@@ -60,14 +59,6 @@ def build_document() -> dict:
             }
             for tier in ow_ladder.iter_tiers()
         ],
-        # "{ow_division}-{tier}" -> rank_value, i.e. the parser's
-        # ``build_default_lookup`` flattened. Exported so the admin mapping grid
-        # does no rank arithmetic of its own.
-        "ow_rank_values": {
-            f"{division.ow_division.value}-{tier}": ow_ladder.tier_rank_min(division.base, tier)
-            for division in ow_ladder.LADDER
-            for tier in range(1, ow_ladder.TIERS_PER_DIVISION + 1)
-        },
     }
 
 

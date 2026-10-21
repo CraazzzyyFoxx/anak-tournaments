@@ -23,7 +23,7 @@ from shared.observability.broker import require_broker
 from shared.schemas.events import FetchRankEvent, RegistrationApprovedEvent
 from shared.services.settings_provider import settings_provider
 
-from . import mapping, runtime, service
+from . import runtime, service
 from .client import OverFastError, OverFastRankClient, OverFastRateLimited
 from .settings import settings
 
@@ -208,8 +208,6 @@ async def process_fetch_rank(
                 )
                 return
 
-            lookup, version = await mapping.get_rank_mapping(session)
-
         # The OverFast call runs with no DB transaction open. A session held
         # across this await sits idle-in-transaction for the call's full
         # duration; a slow/timed-out upstream response can outlast the server's
@@ -248,8 +246,6 @@ async def process_fetch_rank(
                 battle_tag=event.battle_tag,
                 source=event.source,
                 result=result,
-                lookup=lookup,
-                mapping_version=version,
                 config=cfg,
             )
             await service.log_fetch(

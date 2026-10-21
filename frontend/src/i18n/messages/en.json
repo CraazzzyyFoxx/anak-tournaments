@@ -8155,7 +8155,6 @@
     "views": {
       "status": "Status",
       "settings": "Settings",
-      "mapping": "Mapping",
       "rankAria": "Rank collector views",
       "subscriptionsAria": "Subscription collector views",
       "streamsAria": "Stream collector views"
@@ -8221,12 +8220,6 @@
         "batch": "Batch size",
         "batchHint": "Channels per Helix call. 100 is Twitch's own ceiling for GET /streams, so a larger value cannot be honoured."
       }
-    },
-    "mapping": {
-      "description": "Which division of the Overwatch ladder each OverFast rank lands on. The division's lower bound is stored; each workspace resolves it against its own grid.",
-      "reset": "Reset to OW2 defaults",
-      "selectAria": "Ladder division for {rank}",
-      "selectPlaceholder": "Select division"
     },
     "hub": {
       "title": "Collectors",

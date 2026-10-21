@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 from shared.core import enums
 from shared.disciplines.overwatch.collector import service as service_mod
@@ -143,22 +143,15 @@ class RecordResultTests(IsolatedAsyncioTestCase):
 
     async def _record(self, ranks: list[ParsedRank], latest: dict) -> int:
         self.svc._latest_series_states = AsyncMock(return_value=latest)
-        with patch.object(
-            service_mod.mapping,
-            "map_division_tier_to_rank_value",
-            side_effect=lambda division, tier, lookup: _value(division, tier),
-        ):
-            return await self.svc.record_result(
-                AsyncMock(),
-                social_account_id=7,
-                battle_tag="Name#1234",
-                source="scheduled",
-                result=RankFetchResult(status=enums.RankCollectionStatus.ok, ranks=ranks),
-                lookup={},
-                mapping_version="v2",
-                config=self.config,
-                now=self.now,
-            )
+        return await self.svc.record_result(
+            AsyncMock(),
+            social_account_id=7,
+            battle_tag="Name#1234",
+            source="scheduled",
+            result=RankFetchResult(status=enums.RankCollectionStatus.ok, ranks=ranks),
+            config=self.config,
+            now=self.now,
+        )
 
     async def test_unchanged_poll_writes_no_snapshot_but_records_success(self) -> None:
         written = await self._record([_rank("tank", "diamond", 3)], {(PC, "tank"): _stored("diamond", 3)})

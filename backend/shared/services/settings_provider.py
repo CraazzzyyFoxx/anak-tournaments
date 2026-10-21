@@ -19,13 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.repository import SettingsRepository
 from shared.schemas.settings import (
     SETTINGS_KEY_RANK_COLLECTION,
-    SETTINGS_KEY_RANK_MAPPING,
     SETTINGS_KEY_SCRIM,
     SETTINGS_KEY_STREAM_COLLECTION,
     SETTINGS_KEY_SUBSCRIPTION_COLLECTION,
     SETTINGS_KEY_WORKSPACE_CREATION,
     RankCollectionConfig,
-    RankMappingConfig,
     ScrimConfig,
     StreamCollectionConfig,
     SubscriptionCollectionConfig,
@@ -85,9 +83,6 @@ class SettingsProvider:
 
     async def get_rank_collection_config(self, session: AsyncSession) -> RankCollectionConfig:
         return await self._typed(session, SETTINGS_KEY_RANK_COLLECTION, RankCollectionConfig)
-
-    async def get_rank_mapping_config(self, session: AsyncSession) -> RankMappingConfig:
-        return await self._typed(session, SETTINGS_KEY_RANK_MAPPING, RankMappingConfig)
 
     async def get_subscription_collection_config(self, session: AsyncSession) -> SubscriptionCollectionConfig:
         return await self._typed(session, SETTINGS_KEY_SUBSCRIPTION_COLLECTION, SubscriptionCollectionConfig)

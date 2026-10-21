@@ -39,7 +39,7 @@ jobs:
       # The OW ladder is written down once in shared/disciplines/overwatch/ladder.py;
       # the Overwatch frontend module reads a generated artifact
       # (frontend/src/disciplines/overwatch/ladder/ow-ladder.generated.json) because the
-      # collector rank mapping must resolve synchronously during SSR.
+      # default grid and the OverFast rank history must resolve synchronously during SSR.
       # Without this gate a rebase of the ladder ships a frontend that renders the
       # previous one.
       - name: OW ladder artifact is up to date

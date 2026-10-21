@@ -10,7 +10,7 @@ class Settings(db.TimeStampIntegerMixin):
     """Key-namespaced global settings backed by a JSON blob.
 
     One row per logical config section (dotted ``key`` such as
-    ``parser.rank_collection`` or ``parser.rank_mapping``) so new settings can
+    ``parser.rank_collection`` or ``tournament.scrim``) so new settings can
     be added without a migration and each section is independently editable and
     cacheable. Lives in the ``public`` schema (no ``__table_args__`` schema),
     matching :class:`shared.models.tenancy.workspace.Workspace`.

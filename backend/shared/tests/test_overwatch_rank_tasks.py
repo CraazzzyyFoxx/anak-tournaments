@@ -90,7 +90,6 @@ class ProcessFetchTests(IsolatedAsyncioTestCase):
                 "get_rank_collection_config",
                 AsyncMock(return_value=RankCollectionConfig()),
             ),
-            patch.object(tasks.mapping, "get_rank_mapping", AsyncMock(return_value=({}, "v1"))),
             patch.object(tasks.service, "record_result", AsyncMock(return_value=3)) as rec,
             patch.object(tasks.service, "log_fetch", AsyncMock()),
         ):
@@ -136,7 +135,6 @@ class ProcessFetchTests(IsolatedAsyncioTestCase):
                 "get_rank_collection_config",
                 AsyncMock(return_value=RankCollectionConfig(rate_limit_per_minute=1)),
             ),
-            patch.object(tasks.mapping, "get_rank_mapping", AsyncMock(return_value=({}, "v1"))),
             patch.object(tasks.service, "record_result", AsyncMock(return_value=1)),
             patch.object(tasks.service, "log_fetch", AsyncMock()),
             patch.object(tasks.service, "defer_tag", AsyncMock()) as defer,
@@ -175,7 +173,6 @@ class ProcessFetchTests(IsolatedAsyncioTestCase):
                 "get_rank_collection_config",
                 AsyncMock(return_value=RankCollectionConfig()),
             ),
-            patch.object(tasks.mapping, "get_rank_mapping", AsyncMock(return_value=({}, "v1"))),
             patch.object(tasks.service, "record_failure", AsyncMock()) as fail,
             patch.object(tasks.service, "log_fetch", AsyncMock()),
         ):
@@ -207,7 +204,6 @@ class ProcessFetchTests(IsolatedAsyncioTestCase):
                 "get_rank_collection_config",
                 AsyncMock(return_value=RankCollectionConfig()),
             ),
-            patch.object(tasks.mapping, "get_rank_mapping", AsyncMock(return_value=({}, "v1"))),
             patch.object(tasks.service, "record_failure", AsyncMock()) as fail,
             patch.object(tasks.service, "log_fetch", AsyncMock()) as log_fetch,
         ):

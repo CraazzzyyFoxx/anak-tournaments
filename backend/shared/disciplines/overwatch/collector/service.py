@@ -28,9 +28,15 @@ from shared.repository.ranks import jittered_interval as _jittered_interval
 from shared.repository.ranks import workspace_account_ids as workspace_account_ids  # the ``service.<name>`` seam
 from shared.schemas.settings import RankCollectionConfig
 
-from . import mapping
 from .client import INVALID_BATTLE_TAG_ERROR
-from .domain import RankFetchResult, RankSeriesState, battle_tag_to_slug, changed_ranks
+from .domain import (
+    RANK_MAPPING_VERSION,
+    RankFetchResult,
+    RankSeriesState,
+    battle_tag_to_slug,
+    changed_ranks,
+    map_division_tier_to_rank_value,
+)
 
 # Multipliers applied to the base interval for non-error terminal states so we
 # poll quiet accounts less often.
@@ -423,8 +429,6 @@ class RankStateService:
         battle_tag: str,
         source: str,
         result: RankFetchResult,
-        lookup: mapping.RankLookup,
-        mapping_version: str,
         config: RankCollectionConfig,
         now: datetime | None = None,
     ) -> int:
@@ -447,8 +451,7 @@ class RankStateService:
             if user_id is not None:
                 latest = await self._latest_series_states(session, social_account_id)
                 observed = [
-                    (parsed, mapping.map_division_tier_to_rank_value(parsed.division, parsed.tier, lookup))
-                    for parsed in result.ranks
+                    (parsed, map_division_tier_to_rank_value(parsed.division, parsed.tier)) for parsed in result.ranks
                 ]
                 snapshots = [
                     models.UserRankSnapshot(
@@ -462,7 +465,7 @@ class RankStateService:
                         tier=parsed.tier,
                         season=parsed.season,
                         rank_value=rank_value,
-                        mapping_version=mapping_version,
+                        mapping_version=RANK_MAPPING_VERSION,
                         is_ranked=parsed.is_ranked,
                         captured_at=now,
                         source=source,

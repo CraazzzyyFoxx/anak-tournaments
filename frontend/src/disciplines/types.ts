@@ -195,8 +195,6 @@ export type SlotProps = {
     /** Replaces the lobby-setup hint; `null` drops it (it only applies before a map is played). */
     hint?: string | null;
   };
-  /** The collector's rank-value mapping panel (`native_rank_collection` disciplines only); slice 6a's addition to §7. */
-  rankMapping: Record<string, never>;
 };
 
 export type DisciplineSlot = keyof SlotProps;
@@ -218,7 +216,7 @@ export type ProfileSlot =
   | "characterCompareSummary";
 export type MatchSlot = "matchStats" | "seriesStats" | "matchRowBadge" | "matchCharacters";
 export type PregameSlot = "pregameCharacterBans";
-export type AdminSlot = "nativeRankEditor" | "rankMapping";
+export type AdminSlot = "nativeRankEditor";
 export type AnalyticsSlot = "analytics";
 
 /** One module's lazy renderers for the slots of family `S`. */

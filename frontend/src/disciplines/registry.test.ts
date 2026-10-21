@@ -33,7 +33,7 @@ describe("slot-family loaders", () => {
     expect(loadRankUI("overwatch")).toBe(loadRankUI("overwatch"));
     expect(await slotsOf(loadRankUI)).toEqual(["rankHistory"]);
     expect(await slotsOf(loadPregameUI)).toEqual(["pregameCharacterBans"]);
-    expect(await slotsOf(loadAdminUI)).toEqual(["nativeRankEditor", "rankMapping"]);
+    expect(await slotsOf(loadAdminUI)).toEqual(["nativeRankEditor"]);
     expect(await slotsOf(loadProfileUI)).toEqual([
       "characterCompare",
       "characterCompareSummary",

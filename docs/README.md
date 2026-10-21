@@ -78,6 +78,7 @@ Procedures for an operator. Commands are meant to be run verbatim.
 | [`releases/2026-10-21-backend-cleanup.md`](./releases/2026-10-21-backend-cleanup.md) | Shipping the backend cleanup: the `balancer` → `registration` / `mix` / `draft` schema split (`schemasplit01`, one-SHA deploy), removed analytics/identity endpoints and queues (`quota0003`), settings no longer read, the gated legacy storage drop (`legacy01`) and its runbook |
 | [`releases/2026-10-21-riot-lol.md`](./releases/2026-10-21-riot-lol.md) | Shipping Riot Sign-On and LoL native ranks: the shared `rank` schema (`rank01`, import-job key rewrite), Riot env and the RSO client, the LoL collector (off by default; dev keys expire in 24 h, PUUIDs re-resolve per key), rank wire renames and the `/game-accounts` route, operator steps |
 | [`releases/2026-10-21-deadlock.md`](./releases/2026-10-21-deadlock.md) | Shipping Deadlock and Steam sign-in: the `deadlock` module (deadlock-api catalog, 66-tier ladder, batched rank collector, on by default), Steam OpenID login/link and handle formats, the Discord + Steam mix requirement, generic match import by external id (`stats.match_fetch`, `deadlock01`), operator steps and the live smoke |
+| [`releases/2026-10-21-rank-mapping-removal.md`](./releases/2026-10-21-rank-mapping-removal.md) | Removing the Overwatch rank mapping: `parser.rank_mapping` and the collector's Mapping tab gone, ranks always valued on the ladder, `owmapdrop01` recomputes overridden snapshots, collapses repeats and drops the setting |
 
 ## Designs, plans and reviews
 
