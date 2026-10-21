@@ -3,7 +3,7 @@
 import Image from "@/components/ui/image";
 import { UserMapRead } from "@/types/user.types";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
-import CharacterCard from "@/components/profile/CharacterCard";
+import CharacterCard, { CharacterMapStats } from "@/components/profile/CharacterCard";
 import ProfileWidget from "@/components/profile/ProfileWidget";
 import { AvatarStack } from "@/components/ui/avatar";
 import { winrateColor } from "@/lib/colors";
@@ -48,8 +48,12 @@ const MapRow = ({ row, discipline, axis }: { row: UserMapRead; discipline: strin
                   axis={axis}
                   discipline={discipline}
                   slot="characterPopover"
-                  props={{ entity: hs.character, mapStats: hs }}
-                  fallback={<CharacterCard entity={hs.character} mapStats={hs} />}
+                  props={{ entity: hs.character, mapStats: hs, mapCharacters: characterStats, mapWinRate: row.win_rate }}
+                  fallback={
+                    <CharacterCard entity={hs.character}>
+                      <CharacterMapStats stats={hs} characters={characterStats} mapWinRate={row.win_rate} />
+                    </CharacterCard>
+                  }
                 />
               }
             />

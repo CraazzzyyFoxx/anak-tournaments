@@ -20,6 +20,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
 import { SITE_NAME } from "@/config/site";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { useNotifications, type UseNotificationsResult } from "@/hooks/useNotifications";
 import { type Formatter } from "@/lib/datetime";
 import { useFormatter } from "@/lib/datetime/client";
@@ -158,6 +159,7 @@ function Panel({
   const t = useTranslations();
   const locale = useLocale();
   const format = useFormatter();
+  const now = useMinuteClock();
   // The settings deep link stays on the page the reader is on, the way the
   // OAuth return link does, rather than bouncing home.
   const pathname = usePathname();
@@ -367,6 +369,7 @@ function Panel({
                 tenantWorkspaceId={tenantWorkspaceId}
                 locale={locale}
                 format={format}
+                now={now}
               />
             ))}
           </ol>
@@ -461,6 +464,7 @@ interface RowProps {
   tenantWorkspaceId: number | null;
   locale: string;
   format: Formatter;
+  now: number | null;
 }
 
 function Row({
@@ -478,7 +482,8 @@ function Row({
   workspace,
   tenantWorkspaceId,
   locale,
-  format
+  format,
+  now
 }: Readonly<RowProps>) {
   const t = useTranslations();
   const [Icon, tone] = KIND_VISUAL[item.kind] ?? KIND_FALLBACK;
@@ -605,7 +610,7 @@ function Row({
               </>
             ) : null)}
           <time dateTime={item.published_at} title={absolute}>
-            {format.relativeTime(published)}
+            {now === null ? absolute : format.relativeTime(published, now)}
           </time>
         </div>
         <NotificationActions

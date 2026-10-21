@@ -145,18 +145,19 @@ export default function AnalyticsBoard({
     router.push(`${pathname}?${next.toString()}`);
   };
 
-  const algorithmPicker = (
+  const algorithmPicker = algorithmsQuery.isPending ? (
+    <div role="status" className={styles.cPickAlgorithm}>
+      <span className="sr-only">{t("analytics.briefing.loadingAlgorithms")}</span>
+      <Skeleton aria-hidden className="h-8 w-full" />
+    </div>
+  ) : (
     <TooltipSelect
       tooltip={t("analytics.briefing.algorithm")}
       value={activeAlgorithm ? String(activeAlgorithm.id) : ""}
       placeholder={
-        algorithmsQuery.isPending
-          ? t("analytics.briefing.loadingAlgorithms")
-          : algorithmsQuery.isError
-            ? t("analytics.briefing.errorAlgorithms")
-            : t("analytics.briefing.selectAlgorithm")
+        algorithmsQuery.isError ? t("analytics.briefing.errorAlgorithms") : t("analytics.briefing.selectAlgorithm")
       }
-      disabled={algorithmsQuery.isPending || algorithmsQuery.isError}
+      disabled={algorithmsQuery.isError}
       className={styles.cPickAlgorithm}
       onValueChange={pushAlgorithm}
     >

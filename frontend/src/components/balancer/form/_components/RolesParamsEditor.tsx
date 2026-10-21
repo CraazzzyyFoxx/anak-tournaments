@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
@@ -232,11 +233,19 @@ export function RolesParamsEditor({
                     </button>
                   );
                 })}
-                {options.length === 0 && (
-                  <span className="text-xs text-muted-foreground">
-                    {catalogLoading ? tSub("loading") : tSub("emptyRole", { role: roleLabel })}
-                  </span>
-                )}
+                {options.length === 0 &&
+                  (catalogLoading ? (
+                    <div role="status" className="flex gap-1.5">
+                      <span className="sr-only">{tSub("loading")}</span>
+                      {[0, 1, 2].map((chip) => (
+                        <Skeleton key={chip} aria-hidden className="h-[26px] w-16" />
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      {tSub("emptyRole", { role: roleLabel })}
+                    </span>
+                  ))}
               </div>
             </div>
           );

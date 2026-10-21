@@ -158,6 +158,19 @@ export function DraftHistoryPanel({ tournamentId, onSessionDeleted }: Readonly<D
                   </div>
                   <p className="mt-0.5 text-caption tabular-nums text-muted-foreground">{meta}</p>
                 </div>
+                {/* Exporting is what a finished draft is for, so it sits on the row. */}
+                {session.status === "completed" && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0"
+                    disabled={pending}
+                    onClick={() => exportMutation.mutate(session.id)}
+                  >
+                    {t("actions.export")}
+                  </Button>
+                )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -178,31 +191,28 @@ export function DraftHistoryPanel({ tournamentId, onSessionDeleted }: Readonly<D
                       </Link>
                     </DropdownMenuItem>
                     {session.status === "completed" && (
-                      <>
-                        <DropdownMenuItem
-                          disabled={pending}
-                          onSelect={() => exportMutation.mutate(session.id)}
-                        >
-                          {t("actions.export")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          disabled={pending}
-                          title={t("actions.exportRanksHint")}
-                          onSelect={() => exportRanksMutation.mutate(session.id)}
-                        >
-                          {t("actions.exportRanks")}
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                    {!inFlight && (
                       <DropdownMenuItem
                         disabled={pending}
-                        className="text-danger focus:text-danger"
-                        onSelect={() => setPendingDelete(session)}
+                        title={t("actions.exportRanksHint")}
+                        onSelect={() => exportRanksMutation.mutate(session.id)}
                       >
-                        {t("history.delete", { id: session.id })}
+                        {t("actions.exportRanks")}
                       </DropdownMenuItem>
                     )}
+                    <DropdownMenuItem
+                      disabled={pending || inFlight}
+                      className="text-danger focus:text-danger"
+                      onSelect={() => setPendingDelete(session)}
+                    >
+                      <span>
+                        {t("history.delete", { id: session.id })}
+                        {inFlight && (
+                          <span className="block text-caption text-muted-foreground">
+                            {t("history.cancelFirst")}
+                          </span>
+                        )}
+                      </span>
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </li>

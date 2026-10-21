@@ -432,7 +432,7 @@ describe("RegistrationTeamsBrowser", () => {
     expect(buttonWithText(scope, "Add selected teams")).toBeUndefined();
   });
 
-  it("reports the export and every skipped team, with its reason, in the toast", async () => {
+  it("reports the export and every skipped team, with its reason, in a dismissible alert", async () => {
     exportRegistered.mockResolvedValue({
       removed_teams: 0,
       imported_teams: 1,
@@ -445,9 +445,17 @@ describe("RegistrationTeamsBrowser", () => {
     await click(buttonWithText(scope, "Add selected teams"));
     await click(buttonWithText(confirmDialog()!, "Add selected teams"));
 
-    expect(notifySuccess).toHaveBeenCalledWith("1 team added.", {
-      description: "Skipped: Team Gamma: roster incomplete"
-    });
+    const report = [...scope.querySelectorAll("[role='status']")].find((node) =>
+      node.textContent?.includes("Teams added")
+    );
+    expect(report?.textContent).toContain("Teams added: 1.");
+    expect(report?.textContent).toContain("Team Gamma: roster incomplete");
+    // One report per result: the alert, not a toast beside it.
+    expect(notifySuccess).not.toHaveBeenCalled();
+    expect(notifyInfo).not.toHaveBeenCalled();
+
+    await click(scope.querySelector("button[aria-label='Dismiss the export result']"));
+    expect(scope.textContent).not.toContain("Team Gamma: roster incomplete");
   });
 
   it("refuses to reject a team without a reason its captain can read", async () => {

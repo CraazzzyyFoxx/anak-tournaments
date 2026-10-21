@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { useFormatter } from "@/lib/datetime/client";
 import adminService from "@/services/admin.service";
@@ -232,9 +233,19 @@ export function PregameRoomHistory({
           className="mt-2 max-h-[280px] overflow-y-auto rounded-[10px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)]"
         >
           {history.isPending ? (
-            <p className="px-3.5 py-2 text-sm text-[color:var(--aqt-fg-muted)]">
-              {t("history.loading")}
-            </p>
+            <div role="status">
+              <span className="sr-only">{t("history.loading")}</span>
+              {[0, 1, 2].map((row) => (
+                <div
+                  key={row}
+                  aria-hidden
+                  className="flex items-center gap-3 border-b border-[color:var(--aqt-border)] px-3.5 py-2.5 last:border-b-0"
+                >
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 flex-1" />
+                </div>
+              ))}
+            </div>
           ) : history.isError ? (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-2">
               <p className="text-sm text-[color:var(--aqt-rose-text)]">{t("history.error")}</p>

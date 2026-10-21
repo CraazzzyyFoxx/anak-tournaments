@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { AlertTriangle, CheckCircle2, Link2Off, ShieldAlert, XCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -51,6 +52,9 @@ export function DraftPoolStep({
 }: Readonly<DraftPoolStepProps>) {
   const t = useTranslations("draftAdmin");
   const slotLabel = useSlotLabel(ontology);
+  // Max is disabled while locked or already following the maximum; these lines say why.
+  const maxHintId = useId();
+  const lockedHintId = useId();
   const percent = readiness.requiredPlayers
     ? Math.min(100, Math.round((readiness.actualPlayers / readiness.requiredPlayers) * 100))
     : 0;
@@ -88,19 +92,24 @@ export function DraftPoolStep({
                 onValueChange={(next) => onTeamCountChange(next ?? MIN_DRAFT_TEAM_COUNT)}
                 className="w-20 tabular-nums"
               />
-              {!locked && pinned && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => onTeamCountChange(null)}
-                >
-                  {t("teamCountMax")}
-                </Button>
-              )}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={locked || !pinned}
+                aria-describedby={locked ? `${maxHintId} ${lockedHintId}` : maxHintId}
+                onClick={() => onTeamCountChange(null)}
+              >
+                {t("teamCountMax")}
+              </Button>
             </div>
-            <p className="text-xs tabular-nums text-muted-foreground">
+            <p id={maxHintId} className="text-xs tabular-nums text-muted-foreground">
               {t("teamCountMaxHint", { count: maxTeamCount })}
             </p>
+            {locked && (
+              <p id={lockedHintId} className="text-xs text-muted-foreground">
+                {t("teamCountLocked")}
+              </p>
+            )}
           </div>
         </div>
         <Progress value={percent} className="mt-4 h-2" aria-label={t("poolPlayers")} />

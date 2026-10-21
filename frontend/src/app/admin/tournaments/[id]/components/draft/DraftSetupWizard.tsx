@@ -535,6 +535,9 @@ export function DraftSetupWizard({
               tournamentId={tournamentId}
               session={session}
               feasibility={committedFeasibility ?? feasibilityQuery.data ?? null}
+              // A retry in flight reads as "Checking…" again, not as the stale error.
+              feasibilityFailed={feasibilityQuery.isError && !feasibilityQuery.isFetching}
+              onRetryFeasibility={() => void feasibilityQuery.refetch()}
               pending={pending}
               onStart={() => startMutation.mutate()}
               onReseed={() => {

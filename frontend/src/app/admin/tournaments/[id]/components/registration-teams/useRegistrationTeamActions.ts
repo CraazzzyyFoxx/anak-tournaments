@@ -9,9 +9,10 @@ import { translateRegistrationTeamError } from "@/lib/registration/team-errors";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-keys";
 import registrationTeamService from "@/services/registration-team.service";
-import type { RegistrationTeam } from "@/types/registration-team.types";
-
-import { EXPORT_SKIP_CODES } from "./model";
+import type {
+  RegistrationTeam,
+  RegistrationTeamExportResult
+} from "@/types/registration-team.types";
 
 /**
  * Every read and write the organizer's teams browser performs, in one place.
@@ -54,6 +55,10 @@ export interface RegistrationTeamActions {
   actionError: string | null;
   setActionError: (message: string | null) => void;
   reportError: (error: unknown) => void;
+  /** The last export's report (added, replaced, skipped with reasons): kept on
+   *  the page until dismissed, because a skipped team needs a fix, not a toast. */
+  exportResult: RegistrationTeamExportResult | null;
+  dismissExportResult: () => void;
   /** Any write in flight. One flag, because every control on the screen is
    *  disabled by any of them. */
   busy: boolean;
@@ -109,6 +114,7 @@ export function useRegistrationTeamActions({
   const queryClient = useQueryClient();
 
   const [actionError, setActionError] = useState<string | null>(null);
+  const [exportResult, setExportResult] = useState<RegistrationTeamExportResult | null>(null);
   const [notesDraft, setNotesDraft] = useState<Record<number, string>>({});
 
   const teamsQuery = useQuery({
@@ -147,21 +153,8 @@ export function useRegistrationTeamActions({
       // public pages read.
       invalidateTournamentWorkspace(queryClient, tournamentId, workspaceId);
 
+      setExportResult(result);
       closeConfirm();
-      // The toast is the whole report: which teams were skipped, and why.
-      const names = result.skipped
-        .map((item) => {
-          const code = EXPORT_SKIP_CODES.find((known) => known === item.code);
-          return `${item.name}: ${code ? t(`admin.skipReason.${code}`) : t("admin.actionFailed")}`;
-        })
-        .join(", ");
-      const description = names ? t("admin.exportSkipped", { names }) : undefined;
-
-      if (result.imported_teams === 0) {
-        notify.info(t("admin.exportNothing"), { description });
-        return;
-      }
-      notify.success(t("admin.exportSuccess", { count: result.imported_teams }), { description });
     },
     onError: reportError
   });
@@ -297,6 +290,8 @@ export function useRegistrationTeamActions({
     actionError,
     setActionError,
     reportError,
+    exportResult,
+    dismissExportResult: () => setExportResult(null),
     busy:
       rejectMutation.isPending ||
       exportMutation.isPending ||

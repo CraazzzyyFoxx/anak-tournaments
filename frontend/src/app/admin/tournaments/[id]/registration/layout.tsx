@@ -2,18 +2,10 @@
 
 import type { ReactNode } from "react";
 import { useEffect } from "react";
-import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useHubTournamentQuery } from "../hubQueries";
 import { REGISTRATION_SUB_TABS, type RegistrationSubTab } from "../tab-guards";
@@ -26,10 +18,10 @@ function isRegistrationSubTab(value: string): value is RegistrationSubTab {
 
 /**
  * Sub-tab bar of the Registration hub tab: the two views of who entered
- * (entries, teams). The tools that act on entries (Sheets feed, rank autofill)
- * keep their routes but sit in a "Tools" menu beside the bar; the questionnaire
- * builder is configuration and lives in Settings › Registration (`form`
- * redirects there).
+ * (entries, teams) and the tools that act on entries (Sheets feed, rank
+ * autofill), each a routed tab. The questionnaire builder is configuration
+ * and lives in Settings › Registration (`form` redirects there), so it has no
+ * tab here.
  *
  * Navigation only: no queries beyond the tournament the guard needs (already
  * in cache from the shell), and no realtime — the hub shell owns that.
@@ -82,7 +74,9 @@ export default function RegistrationLayout({ children }: Readonly<{ children: Re
       label: t("tabs.teams"),
       href: `${basePath}/teams`,
       hidden: teamsOffered !== true
-    }
+    },
+    { key: "feed", label: t("tabs.feed"), href: `${basePath}/feed` },
+    { key: "rank-autofill", label: t("tabs.rankAutofill"), href: `${basePath}/rank-autofill` }
   ];
 
   // Held back until permissions resolve, so a legitimate visitor never sees the
@@ -91,28 +85,7 @@ export default function RegistrationLayout({ children }: Readonly<{ children: Re
 
   return (
     <div className="space-y-4">
-      <div className="flex items-end gap-2">
-        <div className="min-w-0 flex-1">
-          <LinkTabs items={items} activeKey={active} level={2} ariaLabel={t("ariaLabel")} />
-        </div>
-        {allowed && active !== "teams" ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button type="button" variant="outline" size="sm" className="ml-auto">
-                {t("tools")}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild>
-                <Link href={`${basePath}/feed`}>{t("tabs.feed")}</Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href={`${basePath}/rank-autofill`}>{t("tabs.rankAutofill")}</Link>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-      </div>
+      <LinkTabs items={items} activeKey={active} level={2} ariaLabel={t("ariaLabel")} />
       {allowed && known ? children : null}
     </div>
   );

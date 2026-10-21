@@ -41,12 +41,18 @@ export default function TeamsRosterPage() {
     return tabError(teamsQuery.refetch);
   }
 
+  const workspaceId = tournament.workspace_id;
+  const canManageTeams = (
+    ["team.create", "team.update", "team.delete", "player.create", "player.update", "player.delete"] as const
+  ).some((permission) => canAccessPermission(permission, workspaceId));
+
   return (
     <TournamentTeamsTab
       tournamentId={tournamentId}
       teams={teamsQuery.data?.results ?? []}
       hasChallongeSource={hasChallongeSource(tournament, stagesQuery.data ?? [])}
-      canImportTeams={canAccessPermission("team.create", tournament.workspace_id)}
+      canImportTeams={canAccessPermission("team.create", workspaceId)}
+      canManageTeams={canManageTeams}
     />
   );
 }

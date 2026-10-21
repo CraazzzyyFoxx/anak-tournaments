@@ -123,22 +123,21 @@ export function ChallongeIntegrationSection({
   const teamMappingHref = `/admin/tournaments/${tournamentId}/teams/roster?challongeSync=1`;
 
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className={EYEBROW_CLASS}>{t("title")}</h3>
-        {/* The only genuinely linkable Challonge target on this card. Sync-log
-            rows carry match/participant ids, which have no public URL. */}
-        {hasChallongeSource && bracketUrl ? (
-          <a
-            href={bracketUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-          >
-            {t("openBracket")}
-          </a>
-        ) : null}
-      </div>
+    // A `div`, untitled: the settings page and its group already name this
+    // block, and a "Challonge" heading inside them said it a third time.
+    <div className="flex flex-col gap-4">
+      {/* The only genuinely linkable Challonge target on this card. Sync-log
+          rows carry match/participant ids, which have no public URL. */}
+      {hasChallongeSource && bracketUrl ? (
+        <a
+          href={bracketUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="self-end text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        >
+          {t("openBracket")}
+        </a>
+      ) : null}
 
       <div>
         <Label htmlFor="settings-challonge" className="text-xs">
@@ -251,6 +250,6 @@ export function ChallongeIntegrationSection({
           )}
         </div>
       ) : null}
-    </section>
+    </div>
   );
 }

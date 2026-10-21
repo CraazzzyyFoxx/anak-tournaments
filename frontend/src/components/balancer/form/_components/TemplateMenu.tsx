@@ -28,7 +28,7 @@ import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import registrationFormTemplatesService from "@/services/registration-form-templates.service";
 import type { FormSchema } from "@/types/forms.types";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { balancerQueryKeys } from "@/lib/balancer/query-keys";
 
 export const registrationFormTemplatesKey = (workspaceId: number) =>
@@ -127,10 +127,12 @@ export function TemplateMenu({
           </DialogHeader>
 
           {listQuery.isLoading ? (
-            <output className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
-              <Spinner />
-              {t("loading")}
-            </output>
+            <div role="status" className="grid gap-1.5">
+              <span className="sr-only">{t("loading")}</span>
+              {[0, 1, 2].map((row) => (
+                <Skeleton key={row} aria-hidden className="h-14 w-full rounded-lg" />
+              ))}
+            </div>
           ) : templates.length === 0 ? (
             <EmptyNote title={t("emptyTitle")}>{t("emptyHint")}</EmptyNote>
           ) : (

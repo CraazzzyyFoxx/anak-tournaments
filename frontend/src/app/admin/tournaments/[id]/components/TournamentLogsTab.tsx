@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { DataTable } from "@/components/data-table";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters, type FilterDef } from "@/components/kit/useFilters";
@@ -223,6 +224,22 @@ export function TournamentLogsTab({
   return (
     <TooltipProvider>
       <div className="flex flex-col gap-3">
+        {/* N failed -> Show failed (§15): the failures are the work on this tab. */}
+        {stats && stats.failed > 0 && statusFilter !== "failed" ? (
+          <Alert role="status">
+            <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+              <span>{t("failedToProcess", { count: stats.failed })}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0"
+                onClick={() => filters.set("status", "failed")}
+              >
+                {t("showFailed")}
+              </Button>
+            </AlertDescription>
+          </Alert>
+        ) : null}
         <DataTable<LogProcessingRecord>
           columns={columns}
           getRowId={(record) => String(record.id)}

@@ -13,16 +13,10 @@ import {
   type DragStartEvent
 } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
-import { ArrowUpRight, CheckCircle2, MoreHorizontal, Plus, Trash2, X } from "lucide-react";
+import { ArrowUpRight, CheckCircle2, Pencil, Plus, Trash2, X } from "lucide-react";
 
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
 import { InlineEditText } from "@/components/kit/InlineEditText";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger
-} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -45,6 +39,7 @@ import {
 } from "@/lib/bracket/projection";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 
 import { AddStageItemForm } from "./stage-items/AddStageItemForm";
 import { inputLabel, listOf, seedOrder, SeedList, SeedSlotRow, type SeedLists } from "./stage-items/SeedSlots";
@@ -349,6 +344,10 @@ export function StageItemsSection({
                           );
                           const isEditing = editingInputId === input.id;
                           const canSwapAssignedTeams = input.team_id != null;
+                          const changeTeamLabel = t(
+                            input.input_type === "tentative" ? "overrideTeam" : "changeTeam",
+                            { seed, name: item.name }
+                          );
 
                           return (
                             <SeedSlotRow
@@ -424,41 +423,31 @@ export function StageItemsSection({
                                       {t("tentative")}
                                     </span>
                                   ) : null}
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button
-                                        size="icon"
-                                        variant="ghost"
-                                        className="size-7 shrink-0"
-                                        aria-label={t("slotActions", { seed, name: item.name })}
-                                        title={t("slotActions", { seed, name: item.name })}
-                                      >
-                                        <MoreHorizontal className="size-4" aria-hidden />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem
-                                        onSelect={() => {
-                                          setEditingInputId(input.id);
-                                          setEditingInputTeamDraft(input.team_id?.toString() ?? "");
-                                        }}
-                                      >
-                                        {t(
-                                          input.input_type === "tentative"
-                                            ? "overrideTeam"
-                                            : "changeTeam"
-                                        )}
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem
-                                        className="text-danger focus:text-danger"
-                                        onSelect={() =>
-                                          onRequestRemoveInput(input, `${label} (#${seed})`)
-                                        }
-                                      >
-                                        {t("removeSlot")}
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="size-8 shrink-0"
+                                    aria-label={changeTeamLabel}
+                                    title={changeTeamLabel}
+                                    onClick={() => {
+                                      setEditingInputId(input.id);
+                                      setEditingInputTeamDraft(input.team_id?.toString() ?? "");
+                                    }}
+                                  >
+                                    <Pencil className="size-3.5" aria-hidden />
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="size-8 shrink-0 text-danger hover:text-danger"
+                                    aria-label={t("removeSlot", { seed, name: item.name })}
+                                    title={t("removeSlot", { seed, name: item.name })}
+                                    onClick={() =>
+                                      onRequestRemoveInput(input, `${label} (#${seed})`)
+                                    }
+                                  >
+                                    <Trash2 className="size-3.5" aria-hidden />
+                                  </Button>
                                 </>
                               ) : null}
                             </SeedSlotRow>
@@ -473,22 +462,29 @@ export function StageItemsSection({
                   </SeedList>
 
                   <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                    <TeamCombobox
-                      teams={teams}
-                      value={teamDrafts[item.id] ? Number(teamDrafts[item.id]) : null}
-                      onSelect={(team) =>
-                        setTeamDrafts((current) => ({
-                          ...current,
-                          [item.id]: team ? String(team.id) : ""
-                        }))
-                      }
-                                      placeholder={isTeamsLoading ? t("loadingTeams") : t("selectTeam")}
-                      allowClear={false}
-                      disabled={isTeamsLoading || teams.length === 0}
-                      isTeamDisabled={(team) => assignedTeamIds.has(team.id)}
-                      triggerAriaLabel={t("teamToAdd", { name: item.name })}
-                      triggerClassName="h-9"
-                    />
+                    {isTeamsLoading ? (
+                      <div role="status">
+                        <span className="sr-only">{t("loadingTeams")}</span>
+                        <Skeleton aria-hidden className="h-9 w-full" />
+                      </div>
+                    ) : (
+                      <TeamCombobox
+                        teams={teams}
+                        value={teamDrafts[item.id] ? Number(teamDrafts[item.id]) : null}
+                        onSelect={(team) =>
+                          setTeamDrafts((current) => ({
+                            ...current,
+                            [item.id]: team ? String(team.id) : ""
+                          }))
+                        }
+                        placeholder={t("selectTeam")}
+                        allowClear={false}
+                        disabled={teams.length === 0}
+                        isTeamDisabled={(team) => assignedTeamIds.has(team.id)}
+                        triggerAriaLabel={t("teamToAdd", { name: item.name })}
+                        triggerClassName="h-9"
+                      />
+                    )}
                     <Button
                       size="sm"
                       variant="outline"

@@ -269,6 +269,30 @@
   cursor: pointer;
 }
 
+/* Phone toolbar: the chips scroll on their own line, search and Columns share
+   the next. Every control is 40px; the 32px desktop row is under the touch
+   minimum. `> button` is the Columns popover trigger. */
+@media (max-width: 639px) {
+  .aqt-tn .filters .aqt-filter-chip,
+  .aqt-tn .filters .filter-search input,
+  .aqt-tn .filters .filter-sort,
+  .aqt-tn .filters > button {
+    height: 40px;
+  }
+
+  .aqt-tn .filter-search {
+    min-width: 0;
+    max-width: none;
+    margin-left: 0;
+  }
+
+  /* The input itself stays at 16px so iOS Safari does not zoom on focus; the
+     placeholder takes the chips' size so the idle bar reads in one type size. */
+  .aqt-tn .filter-search input::placeholder {
+    font-size: var(--text-caption);
+  }
+}
+
 /* ── Section heading ── */
 .aqt-tn .section-head {
   display: flex;

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { MoreHorizontal, Plus } from "lucide-react";
+import { MoreHorizontal, Play, Plus } from "lucide-react";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { EvaluationRunSummary } from "@/components/admin/achievements/EvaluationRunSummary";
@@ -21,7 +21,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { GameScopeGate } from "@/components/workspace/GameScopeGate";
 import { useGameScope } from "@/hooks/useGameScope";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -42,10 +41,7 @@ import { useAchievementRuleForm } from "./_hooks/useAchievementRuleForm";
 /** The one confirmation the page can ask for, with its subject. */
 type Confirmation = { kind: "delete"; rule: AchievementRule } | { kind: "reset" };
 
-/**
- * A per-game bulk action (spec §7.1). Without a filtered game it is disabled and says why: on hover, and in its
- * accessible name, since a disabled menu item takes no focus.
- */
+/** A per-game bulk action (spec §7.1). Without a filtered game it is disabled and says why on a second line. */
 function PerGameItem({
   game,
   onSelect,
@@ -54,32 +50,24 @@ function PerGameItem({
   children,
 }: Readonly<{ game: string | null; onSelect: () => void; disabled?: boolean; className?: string; children: ReactNode }>) {
   const t = useTranslations("common.discipline");
-  if (game !== null) {
-    return (
-      <DropdownMenuItem onSelect={onSelect} disabled={disabled} className={className}>
-        {children}
-      </DropdownMenuItem>
-    );
-  }
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div>
-          <DropdownMenuItem disabled className={className}>
-            {children}
-            <span className="sr-only"> — {t("pickGameAction")}</span>
-          </DropdownMenuItem>
-        </div>
-      </TooltipTrigger>
-      <TooltipContent side="left">{t("pickGameAction")}</TooltipContent>
-    </Tooltip>
+    <DropdownMenuItem onSelect={onSelect} disabled={disabled || game === null} className={className}>
+      {game === null ? (
+        <span>
+          {children}
+          <span className="block text-caption text-muted-foreground">{t("pickGameAction")}</span>
+        </span>
+      ) : (
+        children
+      )}
+    </DropdownMenuItem>
   );
 }
 
 /**
- * The workspace's achievement rules: a multi page (spec §6.10). The "Game" chip narrows them to one game; without it
- * every game's rules with a "Game" column, and the bulk actions that act on one game's rules wait for a game; a row
- * acts in its own game.
+ * The workspace's achievement rules: a multi page (spec §6.10). The game select in the filter bar narrows them to
+ * one game; without it every game's rules with a "Game" column, and the bulk actions that act on one game's rules
+ * wait for a game; a row acts in its own game.
  */
 export default function AchievementsPage() {
   const t = useTranslations("adminAchievements");
@@ -88,9 +76,10 @@ export default function AchievementsPage() {
   const workspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const tGame = useTranslations("common.discipline");
   const scope = useGameScope({ axis: workspaceId ?? "all" });
-  // The chip writes `?discipline=`, which the scope reads back. `null`: every game; a code: that game's rules only.
+  // The select writes `?discipline=`, which the scope reads back. `null`: every game; a code: that game's rules only.
   const game = scope.game;
-  const gameDefs = gameFilterDefs(scope.games, tGame("column"));
+  const gameDefs = gameFilterDefs(scope.games, tGame("column"), undefined, tGame("all"));
+  const evaluateReasonId = useId();
   const filters = useFilters(gameDefs);
   const games = (scope.games ?? []).filter((entry) => entry.enabled);
   const showGame = scope.resolution !== null && showsGameMarks(scope.resolution, scope.games ?? []);
@@ -178,14 +167,33 @@ export default function AchievementsPage() {
       <AdminPageHeader
         title={t("common.achievements")}
         actions={
-          resolved ? (
-            <>
-              {canCreate && (
-                <Button onClick={form.openCreate}>
-                  <Plus className="mr-2 h-4 w-4" aria-hidden />
-                  {t("list.create")}
+          <>
+            {resolved && (
+              <>
+                {game === null && (
+                  <p id={evaluateReasonId} className="text-caption text-muted-foreground">
+                    {tGame("pickGameAction")}
+                  </p>
+                )}
+                <Button
+                  variant="outline"
+                  disabled={game === null}
+                  aria-describedby={game === null ? evaluateReasonId : undefined}
+                  onClick={() => game && openEvaluate(new Set(), game)}
+                >
+                  <Play className="mr-2 h-4 w-4" aria-hidden />
+                  {t("list.evaluate")}
                 </Button>
-              )}
+              </>
+            )}
+            {/* A new rule picks its game in the form: only a workspace with no game yet has nowhere to file it. */}
+            {canCreate && (
+              <Button onClick={form.openCreate} disabled={createGame === null}>
+                <Plus className="mr-2 h-4 w-4" aria-hidden />
+                {t("list.create")}
+              </Button>
+            )}
+            {resolved && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -198,10 +206,6 @@ export default function AchievementsPage() {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <PerGameItem game={game} onSelect={() => game && openEvaluate(new Set(), game)}>
-                    {t("list.evaluate")}
-                  </PerGameItem>
-                  <DropdownMenuSeparator />
                   <PerGameItem game={game} onSelect={() => void actions.exportRules()}>
                     {t("list.exportJson")}
                   </PerGameItem>
@@ -226,8 +230,8 @@ export default function AchievementsPage() {
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
-            </>
-          ) : undefined
+            )}
+          </>
         }
       />
 
@@ -246,6 +250,11 @@ export default function AchievementsPage() {
               />
             )}
 
+            {/* Pending from the moment a row's Test starts; it brings itself into view. */}
+            {(actions.testMutation.isPending || actions.testResult) && (
+              <DryRunResultPanel result={actions.testResult} onDismiss={actions.dismissTestResult} />
+            )}
+
             <AchievementsTable
               workspaceId={workspaceId}
               discipline={game}
@@ -262,10 +271,6 @@ export default function AchievementsPage() {
                 onDelete: (rule) => setConfirmation({ kind: "delete", rule }),
               }}
             />
-
-            {actions.testResult && (
-              <DryRunResultPanel result={actions.testResult} onDismiss={actions.dismissTestResult} />
-            )}
 
             {/* Manual overrides are read one game at a time: the card waits for a filtered game. */}
             {game !== null && overrides && overrides.length > 0 && (

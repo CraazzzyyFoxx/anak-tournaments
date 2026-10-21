@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation } from "@tanstack/react-query";
-import { Lock } from "lucide-react";
+import { Lock, LockOpen, RotateCcw } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EmptyNote } from "@/components/kit/EmptyNote";
@@ -119,6 +119,7 @@ function ArrangeCard({
   const t = useTranslations("adminTournaments.arrange");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
+  const noPinsId = useId();
 
   // The dropped order is shown while the recalculation runs and until the
   // refetched rows carry it. Keyed on the rows themselves, not the array
@@ -176,16 +177,25 @@ function ArrangeCard({
         <CardTitle asChild>
           <h3 className="min-w-0 truncate text-sm">{table.title}</h3>
         </CardTitle>
-        {canUpdate && hasPins ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={busy}
-            onClick={() => setConfirmClear(true)}
-          >
-            {t("clearPins")}
-          </Button>
+        {canUpdate ? (
+          <div className="flex shrink-0 items-center gap-2">
+            {hasPins ? null : (
+              <span id={noPinsId} className="text-caption text-muted-foreground">
+                {t("noPins")}
+              </span>
+            )}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={busy || !hasPins}
+              aria-describedby={hasPins ? undefined : noPinsId}
+              onClick={() => setConfirmClear(true)}
+            >
+              <RotateCcw aria-hidden className="size-4" />
+              {t("clearPins")}
+            </Button>
+          </div>
         ) : null}
       </CardHeader>
       <CardContent>
@@ -296,8 +306,15 @@ function ArrangeRow({
       <span className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
         {t("pointsValue", { points: row.points.toFixed(1) })}
       </span>
-      {/* The pin and its undo are one control: the lock IS the unpin button. */}
-      {pinned && canUpdate ? (
+      {pinned ? (
+        <span className="flex shrink-0 items-center" title={t("pinnedPlace")}>
+          <Lock aria-hidden className="size-3.5" />
+          <span className="sr-only">{t("pinnedPlace")}</span>
+        </span>
+      ) : (
+        <span aria-hidden className="size-3.5 shrink-0" />
+      )}
+      {canUpdate && pinned ? (
         <Button
           type="button"
           variant="ghost"
@@ -308,16 +325,11 @@ function ArrangeRow({
           disabled={disabled}
           onClick={onUnpin}
         >
-          <Lock aria-hidden />
+          <LockOpen aria-hidden />
         </Button>
-      ) : pinned ? (
-        <span className="flex size-7 shrink-0 items-center justify-center" title={t("pinnedPlace")}>
-          <Lock aria-hidden className="size-3.5" />
-          <span className="sr-only">{t("pinnedPlace")}</span>
-        </span>
-      ) : (
+      ) : canUpdate ? (
         <span aria-hidden className="size-7 shrink-0" />
-      )}
+      ) : null}
     </div>
   );
 }

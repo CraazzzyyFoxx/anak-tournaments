@@ -9,18 +9,24 @@ import { BalancerShell } from "@/app/balancer/components/BalancerShell";
 import { useToolContext } from "@/app/balancer/useToolContext";
 import { Footer } from "@/components/Footer";
 import Header from "@/components/Header";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { adminEntryPermissions } from "@/lib/auth/admin-permissions";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { Workspace } from "@/types/workspace.types";
 
+// Shell-shaped: a top-bar strip over one content area, so the frame doesn't jump when it lands.
 function LoadingState() {
   return (
-    <div className="flex h-screen w-full items-center justify-center">
-      <div className="text-center">
-        <Spinner className="size-8" />
-        <p className="mt-4 text-muted-foreground">Loading…</p>
+    <div role="status" className="flex h-screen w-full flex-col">
+      <span className="sr-only">Loading…</span>
+      <div aria-hidden className="flex h-12 shrink-0 items-center gap-3 border-b border-border/50 px-4 md:px-5">
+        <Skeleton className="h-4 w-28" />
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="ml-auto h-8 w-28" />
+      </div>
+      <div aria-hidden className="flex flex-1 p-3 md:p-4">
+        <Skeleton className="flex-1 rounded-xl" />
       </div>
     </div>
   );

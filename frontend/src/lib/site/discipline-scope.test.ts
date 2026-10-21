@@ -105,7 +105,7 @@ describe("pageClassOf", () => {
     );
   });
 
-  it("classifies game-neutral pages, creation flows and unknown routes as none", () => {
+  it("classifies game-neutral pages and unknown routes as none", () => {
     expectClass(
       [
         "/admin",
@@ -113,7 +113,6 @@ describe("pageClassOf", () => {
         "/admin/members",
         "/admin/settings",
         "/admin/settings/general",
-        "/admin/tournaments/new",
         "/privacy",
         "/terms",
         "/docs/dev/schema",

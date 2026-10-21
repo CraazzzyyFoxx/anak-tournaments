@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleOff } from "lucide-react";
@@ -67,6 +67,8 @@ export function AchievementImportDialog({
 }>) {
   const t = useTranslations("adminAchievements");
   const tc = useTranslations("common");
+  const tGame = useTranslations("common.discipline");
+  const workspaceReasonId = useId();
   const queryClient = useQueryClient();
   const [source, setSource] = useState<ImportSource>(discipline === null ? "file" : "workspace");
   const [file, setFile] = useState<File | null>(null);
@@ -153,17 +155,30 @@ export function AchievementImportDialog({
           </div>
         ) : (
           <div className="space-y-4">
-            <ToggleGroup
-              type="single"
-              variant="pill"
-              size="sm"
-              aria-label={t("import.source")}
-              value={source}
-              onValueChange={(next) => setSource(next as ImportSource)}
-            >
-              <ToggleGroupItem value="workspace" disabled={discipline === null}>{t("import.fromWorkspace")}</ToggleGroupItem>
-              <ToggleGroupItem value="file">{t("import.fromFile")}</ToggleGroupItem>
-            </ToggleGroup>
+            <div className="space-y-1">
+              <ToggleGroup
+                type="single"
+                variant="pill"
+                size="sm"
+                aria-label={t("import.source")}
+                value={source}
+                onValueChange={(next) => setSource(next as ImportSource)}
+              >
+                <ToggleGroupItem
+                  value="workspace"
+                  disabled={discipline === null}
+                  aria-describedby={discipline === null ? workspaceReasonId : undefined}
+                >
+                  {t("import.fromWorkspace")}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="file">{t("import.fromFile")}</ToggleGroupItem>
+              </ToggleGroup>
+              {discipline === null && (
+                <p id={workspaceReasonId} className="text-caption text-muted-foreground">
+                  {tGame("pickGameAction")}
+                </p>
+              )}
+            </div>
 
             {source === "file" ? (
               <div className="space-y-2">

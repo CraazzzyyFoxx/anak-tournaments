@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
+import { X } from "lucide-react";
 
 import { DataTable } from "@/components/data-table";
 import { BulkBar } from "@/components/kit/BulkBar";
@@ -19,7 +20,7 @@ import { getRegistrationTeamStatus } from "@/lib/registration/team-tone";
 import { cn } from "@/lib/utils";
 import type { RegistrationTeam } from "@/types/registration-team.types";
 
-import { isExportEligible, type PendingConfirm } from "./registration-teams/model";
+import { EXPORT_SKIP_CODES, isExportEligible, type PendingConfirm } from "./registration-teams/model";
 import { PlaceMemberDialog } from "./registration-teams/PlaceMemberDialog";
 import { RenameTeamDialog } from "./registration-teams/RenameTeamDialog";
 import { TeamConfirmDialog } from "./registration-teams/TeamConfirmDialog";
@@ -202,6 +203,48 @@ export function RegistrationTeamsBrowser({
             <p className="text-caption text-warning">
               {t("admin.unassigned", { count: actions.unassignedPlayers })}
             </p>
+          )}
+
+          {/* The export's report stays until dismissed: a skipped team names the
+              fix it needs, which a toast would expire before it was read. */}
+          {actions.exportResult && (
+            <Alert role="status">
+              <AlertDescription className="flex items-start justify-between gap-2">
+                <div className="space-y-2">
+                  <p>
+                    {t("admin.exportResult", {
+                      imported: actions.exportResult.imported_teams,
+                      removed: actions.exportResult.removed_teams,
+                      players: actions.exportResult.created_players,
+                      skipped: actions.exportResult.skipped.length
+                    })}
+                  </p>
+                  {actions.exportResult.skipped.length > 0 && (
+                    <ul className="list-inside list-disc">
+                      {actions.exportResult.skipped.map((item) => {
+                        const code = EXPORT_SKIP_CODES.find((known) => known === item.code);
+                        return (
+                          <li key={item.team_id}>
+                            {item.name}: {code ? t(`admin.skipReason.${code}`) : t("admin.actionFailed")}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="shrink-0"
+                  aria-label={t("admin.exportResultDismiss")}
+                  title={t("admin.exportResultDismiss")}
+                  onClick={actions.dismissExportResult}
+                >
+                  <X aria-hidden />
+                </Button>
+              </AlertDescription>
+            </Alert>
           )}
 
           {actions.isError ? (

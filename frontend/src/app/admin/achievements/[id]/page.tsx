@@ -96,7 +96,8 @@ export default function AchievementDetailPage() {
         rule={rule}
         canUpdate={canUpdate}
         canDelete={canDelete}
-        isBusy={evaluateMutation.isPending || testMutation.isPending}
+        isTesting={testMutation.isPending}
+        isEvaluating={evaluateMutation.isPending}
         onTest={() => testMutation.mutate(undefined)}
         onEvaluate={() => evaluateMutation.mutate(undefined)}
         onToggle={() => toggleMutation.mutate(!rule.enabled)}

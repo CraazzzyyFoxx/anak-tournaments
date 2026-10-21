@@ -78,9 +78,10 @@ export function DraftSessionDashboard({
       board={terminalSession ? null : board}
       rosterShape={rosterShape}
       // Past sessions sit under the step rail (F5 ·4), collapsed: they are
-      // context for the session being set up, not a competing surface.
+      // context for the session being set up, not a competing surface. Open
+      // after a completed draft, whose Export to teams is the next step.
       aside={
-        <Collapsible>
+        <Collapsible defaultOpen={session?.status === "completed"}>
           <CollapsibleTrigger asChild>
             <Button variant="ghost" size="sm" className="w-full justify-between">
               {t("history.title")}

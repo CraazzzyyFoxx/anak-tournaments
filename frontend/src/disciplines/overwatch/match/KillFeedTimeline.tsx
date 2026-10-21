@@ -7,6 +7,7 @@ import type { MatchEvents } from "@/types/killfeed.types";
 import type { MatchWithStats } from "@/types/encounter.types";
 import encounterService from "@/services/encounter.service";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import { Skeleton } from "@/components/ui/skeleton";
 import { readTimeline, type TimelineKill, type TimelineMark } from "./timeline";
 import type { OwTeam } from "./view";
 
@@ -326,8 +327,11 @@ const KillFeedTimeline = ({ matchId, members, home, away }: KillFeedTimelineProp
       </div>
 
       {status === "loading" ? (
-        <div className="py-8 text-center text-caption text-[color:var(--aqt-fg-dim)]">
-          {t("matches.timeline.loading")}
+        <div role="status" className="flex flex-col gap-2">
+          <span className="sr-only">{t("matches.timeline.loading")}</span>
+          {[0, 1, 2, 3].map((row) => (
+            <Skeleton key={row} aria-hidden className="h-5 w-full" />
+          ))}
         </div>
       ) : null}
       {status === "error" ? (

@@ -69,8 +69,6 @@ const SINGLE_PATHS: readonly string[] = [
   "/users/compare",
   "/users/heroes-compare"
 ];
-/** Creation flows are not a class (spec §5): they carry their own game field. */
-const NONE_PATHS: readonly string[] = ["/admin/tournaments/new"];
 const MULTI_PATHS: readonly string[] = [
   "/",
   "/tournaments",
@@ -112,7 +110,6 @@ export function pageClassOf(pathname: string): PageClass {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
   if (PLATFORM_ROOTS.some((root) => path === root || path.startsWith(`${root}/`))) return "platform";
   if (SINGLE_PATHS.includes(path)) return "single";
-  if (NONE_PATHS.includes(path)) return "none";
   if (MULTI_PATHS.includes(path)) return "multi";
   if (OWNER_PATHS.includes(path) || OWNER_PREFIXES.some((prefix) => path.startsWith(prefix))) return "owner";
   if (MULTI_PREFIXES.some((prefix) => path.startsWith(prefix))) return "multi";

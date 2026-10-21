@@ -134,6 +134,8 @@ export function useAchievementRuleActions({
 
   const testMutation = useMutation({
     mutationFn: (ruleId: number) => adminService.testAchievementRule(workspaceId!, ruleId),
+    // A new run replaces the last result: the panel shows it pending, not the previous rule's sample.
+    onMutate: () => setTestResult(null),
     onSuccess: (data) =>
       setTestResult({ slug: data.rule_slug, count: data.qualifying_count, sample: data.sample }),
   });

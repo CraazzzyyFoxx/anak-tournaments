@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
@@ -13,19 +13,23 @@ import { useDraftMutations } from "@/hooks/useDraftData";
 interface LifecycleControlsProps {
   tournamentId: number;
   board: DraftBoard;
+  /** The server refuses to resume while no feasible role assignment remains. */
+  resumeBlocked?: boolean;
 }
 
 type ConfirmedAction = Extract<DraftLifecycleAction, "rollback" | "cancel" | "export"> | "autopick";
 
 /**
- * The lifecycle actions that END or REWIND a session, each behind a confirm.
+ * The control room's lifecycle actions: pause and resume fire at once (both
+ * are reversible); the ones that END or REWIND a session sit behind a confirm.
  *
- * Pause, resume, extra time and override are not here: they steer a pick in
- * flight and belong to the admin dock inside the draft room, where the board
- * they act on is visible.
+ * Extra time and override steer a pick in flight and stay in the draft room's
+ * admin dock, where the board they act on is visible.
  */
-export function LifecycleControls({ tournamentId, board }: Readonly<LifecycleControlsProps>) {
+export function LifecycleControls({ tournamentId, board, resumeBlocked = false }: Readonly<LifecycleControlsProps>) {
   const t = useTranslations("draftAdmin.controlRoom");
+  const tDraft = useTranslations("draftAdmin");
+  const resumeReasonId = useId();
   const mutations = useDraftMutations(tournamentId);
   const [confirmedAction, setConfirmedAction] = useState<ConfirmedAction | null>(null);
   const session = board.session;
@@ -33,6 +37,17 @@ export function LifecycleControls({ tournamentId, board }: Readonly<LifecycleCon
   const resolvedCount = board.picks.filter((pick) =>
     ["completed", "autopicked", "skipped"].includes(pick.status)
   ).length;
+
+  const toggleClock = () => {
+    const action = session.status === "paused" ? "resume" : "pause";
+    mutations.lifecycle.mutate(
+      { sessionId: session.id, action },
+      {
+        onSuccess: () => notify.success(tDraft("lifecycleSuccess", { action: tDraft(`actions.${action}`) })),
+        onError: (error) => notify.apiError(error)
+      }
+    );
+  };
 
   const runConfirmed = () => {
     const action = confirmedAction;
@@ -72,6 +87,20 @@ export function LifecycleControls({ tournamentId, board }: Readonly<LifecycleCon
   return (
     <>
       <div className="flex flex-wrap gap-2">
+        {session.status === "live" && (
+          <Button variant="outline" disabled={mutations.lifecycle.isPending} onClick={toggleClock}>
+            {tDraft("actions.pause")}
+          </Button>
+        )}
+        {session.status === "paused" && (
+          <Button
+            disabled={resumeBlocked || mutations.lifecycle.isPending}
+            aria-describedby={resumeBlocked ? resumeReasonId : undefined}
+            onClick={toggleClock}
+          >
+            {tDraft("actions.resume")}
+          </Button>
+        )}
         {session.status === "live" && currentPick && (
           <Button variant="outline" onClick={() => setConfirmedAction("autopick")}>
             {t("actions.autopick")}
@@ -89,6 +118,11 @@ export function LifecycleControls({ tournamentId, board }: Readonly<LifecycleCon
         )}
         {session.status === "completed" && (
           <Button onClick={() => setConfirmedAction("export")}>{t("actions.export")}</Button>
+        )}
+        {session.status === "paused" && resumeBlocked && (
+          <p id={resumeReasonId} className="basis-full text-caption text-muted-foreground">
+            {t("resumeBlocked")}
+          </p>
         )}
       </div>
 

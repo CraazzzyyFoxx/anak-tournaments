@@ -41,7 +41,7 @@ import type { RealtimeConnectionState } from "@/types/realtime.types";
 import type { Tournament } from "@/types/tournament.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
-import { slotCodeOrder, type RoleOntology } from "@/lib/roster/ontology";
+import { slotCodeOrder, type LadderedOntology } from "@/lib/roster/ontology";
 
 import { AdminStrip } from "./AdminStrip";
 import styles from "./DraftRoom.module.css";
@@ -66,8 +66,8 @@ interface DraftWorkspaceProps {
   onViewParamsChange: (patch: Partial<DraftViewParams>) => void;
   mutations: DraftMutations;
   divisionGrid: DivisionGrid;
-  /** The session owner's role dictionary (`null` while it loads): names, glyphs, colours and order of every role. */
-  ontology: RoleOntology | null;
+  /** The session owner's role dictionary and native ladder (`null` while it loads): names, glyphs, colours and order of every role. */
+  ontology: LadderedOntology | null;
   onlineCaptainIds: ReadonlySet<number>;
 }
 

@@ -16,6 +16,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { useInvalidation } from "@/hooks/useInvalidation";
+import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { notify } from "@/lib/notify";
@@ -76,6 +77,7 @@ function StageRow({ name, stage }: Readonly<{ name: string; stage: AnalyticsJobP
 export default function MLAdminToolbar({ tournamentId, workspaceId }: Readonly<MLAdminToolbarProps>) {
   const t = useTranslations();
   const format = useFormatter();
+  const now = useMinuteClock();
 
   const trainScopeDescription = (scope: TrainScope, selectedCount: number): string => {
     if (scope === "all") return t("analytics.job.sampleAll");
@@ -372,17 +374,18 @@ export default function MLAdminToolbar({ tournamentId, workspaceId }: Readonly<M
               {liveJob.status}
             </span>
             <span className="text-muted-foreground">
-              {liveJob.finished_at
-                ? t("analytics.job.finishedRelative", {
-                    relative: format.relativeTime(new Date(liveJob.finished_at))
-                  })
-                : liveJob.started_at
-                  ? t("analytics.job.startedRelative", {
-                      relative: format.relativeTime(new Date(liveJob.started_at))
+              {now !== null &&
+                (liveJob.finished_at
+                  ? t("analytics.job.finishedRelative", {
+                      relative: format.relativeTime(new Date(liveJob.finished_at), now)
                     })
-                  : t("analytics.job.createdRelative", {
-                      relative: format.relativeTime(new Date(liveJob.created_at))
-                    })}
+                  : liveJob.started_at
+                    ? t("analytics.job.startedRelative", {
+                        relative: format.relativeTime(new Date(liveJob.started_at), now)
+                      })
+                    : t("analytics.job.createdRelative", {
+                        relative: format.relativeTime(new Date(liveJob.created_at), now)
+                      }))}
             </span>
           </header>
 

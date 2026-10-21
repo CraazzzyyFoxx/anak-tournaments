@@ -178,9 +178,12 @@ describe("StandingsArrangeBoard", () => {
     expect(setStandingPins).toHaveBeenCalledWith(5, { stage_item_id: 9, pins: [] });
   });
 
-  it("offers no clear when nothing in the table is pinned", async () => {
+  it("disables clear, with the reason beside it, when nothing in the table is pinned", async () => {
     await mount(board([standing(1, 1), standing(2, 2)]));
-    expect(() => button("Clear pins")).toThrow();
+    const clear = button("Clear pins");
+    expect(clear.disabled).toBe(true);
+    const reason = document.getElementById(clear.getAttribute("aria-describedby") ?? "");
+    expect(reason?.textContent).toBe(en.adminTournaments.arrange.noPins);
   });
 
   it("is read-only without the update permission", async () => {

@@ -331,7 +331,7 @@ function UrgentCard({
       meta.push(
         t("urgent.until", { time: format.dateTime(closes, { dateStyle: "medium", timeStyle: "short" }) })
       );
-      meta.push(format.relativeTime(closes));
+      if (minute != null) meta.push(format.relativeTime(closes, minute));
     }
   } else if (typeof slotCode === "string") {
     // An unknown code from a newer server renders as itself: the label is

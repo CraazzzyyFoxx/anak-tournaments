@@ -4,6 +4,7 @@ import React from "react";
 
 import type { Tournament } from "@/types/tournament.types";
 import { SelectContent, SelectGroup, SelectItem } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipSelect } from "@/components/ui/tooltip-select";
 import { useTranslations } from "next-intl";
 import styles from "@/app/(site)/tournaments/analytics/components/Analytics.module.css";
@@ -34,30 +35,33 @@ export default function AnalyticsPicker({
 
   return (
     <div className={styles.cPickerRow}>
-      <TooltipSelect
-        tooltip={t("analytics.briefing.tournament")}
-        value={tournamentId == null ? "" : tournamentId.toString()}
-        placeholder={
-          loadingTournaments
-            ? t("analytics.briefing.loadingTournaments")
-            : isErrorTournaments
-              ? t("analytics.briefing.errorTournaments")
-              : t("analytics.briefing.selectTournament")
-        }
-        disabled={loadingTournaments || isErrorTournaments}
-        className={styles.cPickTournament}
-        onValueChange={onTournamentChange}
-      >
-        <SelectContent className="max-h-[min(var(--radix-select-content-available-height),20rem)]">
-          <SelectGroup>
-            {tournaments.map((item) => (
-              <SelectItem key={item.id} value={item.id.toString()}>
-                {item.name}
-              </SelectItem>
-            ))}
-          </SelectGroup>
-        </SelectContent>
-      </TooltipSelect>
+      {loadingTournaments ? (
+        <div role="status" className={styles.cPickTournament}>
+          <span className="sr-only">{t("analytics.briefing.loadingTournaments")}</span>
+          <Skeleton aria-hidden className="h-8 w-full" />
+        </div>
+      ) : (
+        <TooltipSelect
+          tooltip={t("analytics.briefing.tournament")}
+          value={tournamentId == null ? "" : tournamentId.toString()}
+          placeholder={
+            isErrorTournaments ? t("analytics.briefing.errorTournaments") : t("analytics.briefing.selectTournament")
+          }
+          disabled={isErrorTournaments}
+          className={styles.cPickTournament}
+          onValueChange={onTournamentChange}
+        >
+          <SelectContent className="max-h-[min(var(--radix-select-content-available-height),20rem)]">
+            <SelectGroup>
+              {tournaments.map((item) => (
+                <SelectItem key={item.id} value={item.id.toString()}>
+                  {item.name}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
+        </TooltipSelect>
+      )}
       {controls}
     </div>
   );

@@ -16,6 +16,8 @@ interface TournamentTeamsTabProps {
   hasChallongeSource: boolean;
   /** `team.create`: the Challonge sync and the balancer both write teams. */
   canImportTeams: boolean;
+  /** Any team or player write: the teams workspace is where rosters are edited. */
+  canManageTeams: boolean;
 }
 
 /** Teams › Roster (T2): the tournament's teams; a row opens the team page. */
@@ -23,7 +25,8 @@ export function TournamentTeamsTab({
   tournamentId,
   teams,
   hasChallongeSource,
-  canImportTeams
+  canImportTeams,
+  canManageTeams
 }: Readonly<TournamentTeamsTabProps>) {
   const t = useTranslations("adminTournament.teams");
   const router = useRouter();
@@ -50,6 +53,11 @@ export function TournamentTeamsTab({
             <Button asChild variant="outline" size="sm">
               {/* D30/A-O2: the sole UI entry to the balancer tool after the shell removal (v3.1). */}
               <Link href={`/balancer?tournament=${tournamentId}`}>{t("openBalancer")}</Link>
+            </Button>
+          ) : null}
+          {canManageTeams ? (
+            <Button asChild size="sm">
+              <Link href={`/admin/teams?tournament=${tournamentId}`}>{t("manage")}</Link>
             </Button>
           ) : null}
         </>

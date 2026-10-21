@@ -16,15 +16,16 @@ import { Spinner } from "@/components/ui/spinner";
 import type { AchievementRule } from "@/types/admin.types";
 
 /**
- * The rule's hub header: name, slug, a pill only when the rule is disabled,
- * Edit as the one primary action and everything else in the menu. The menu
- * trigger turns into a spinner while a test or an evaluation is running.
+ * The rule's hub header: name, slug, a pill only when the rule is disabled.
+ * The two per-rule tasks (test, run) sit beside Edit, the primary action, and
+ * say so while they run; enabling and deletion are in the menu.
  */
 export function AchievementDetailHeader({
   rule,
   canUpdate,
   canDelete,
-  isBusy,
+  isTesting,
+  isEvaluating,
   onTest,
   onEvaluate,
   onToggle,
@@ -34,7 +35,8 @@ export function AchievementDetailHeader({
   rule: AchievementRule;
   canUpdate: boolean;
   canDelete: boolean;
-  isBusy: boolean;
+  isTesting: boolean;
+  isEvaluating: boolean;
   onTest: () => void;
   onEvaluate: () => void;
   onToggle: () => void;
@@ -50,36 +52,42 @@ export function AchievementDetailHeader({
       meta={[<span key="slug" className="font-mono text-caption">{rule.slug}</span>]}
       actions={
         <>
+          <Button variant="outline" onClick={onTest} disabled={isTesting}>
+            {isTesting && <Spinner />}
+            {isTesting ? t("common.testing") : t("detail.testConditions")}
+          </Button>
+          <Button variant="outline" onClick={onEvaluate} disabled={isEvaluating}>
+            {isEvaluating && <Spinner />}
+            {isEvaluating ? t("common.evaluating") : t("detail.runEvaluation")}
+          </Button>
           {canUpdate && <Button onClick={onEdit}>{t("detail.editAchievement")}</Button>}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="outline"
-                size="icon"
-                aria-label={t("common.moreActions")}
-                title={t("common.moreActions")}
-              >
-                {isBusy ? <Spinner /> : <MoreHorizontal className="h-4 w-4" aria-hidden />}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onTest}>{t("detail.testConditions")}</DropdownMenuItem>
-              <DropdownMenuItem onSelect={onEvaluate}>{t("detail.runEvaluation")}</DropdownMenuItem>
-              {canUpdate && (
-                <DropdownMenuItem onSelect={onToggle}>
-                  {rule.enabled ? t("detail.disableAchievement") : t("detail.enableAchievement")}
-                </DropdownMenuItem>
-              )}
-              {canDelete && (
-                <>
-                  <DropdownMenuSeparator />
+          {(canUpdate || canDelete) && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label={t("common.moreActions")}
+                  title={t("common.moreActions")}
+                >
+                  <MoreHorizontal className="h-4 w-4" aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {canUpdate && (
+                  <DropdownMenuItem onSelect={onToggle}>
+                    {rule.enabled ? t("detail.disableAchievement") : t("detail.enableAchievement")}
+                  </DropdownMenuItem>
+                )}
+                {canUpdate && canDelete && <DropdownMenuSeparator />}
+                {canDelete && (
                   <DropdownMenuItem onSelect={onDelete} className="text-danger focus:text-danger">
                     {t("detail.deleteAchievement")}
                   </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </>
       }
     />

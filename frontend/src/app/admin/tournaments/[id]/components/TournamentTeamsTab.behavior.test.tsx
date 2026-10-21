@@ -100,6 +100,7 @@ async function mount() {
           teams={[] as Team[]}
           hasChallongeSource
           canImportTeams
+          canManageTeams
         />
       </QueryClientProvider>
     );

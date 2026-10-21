@@ -38,10 +38,11 @@ const CONNECTION_TONE: Record<string, Tone> = {
  * The organizer's control page for a live draft.
  *
  * Running the draft happens in the draft room itself (`/draft/{id}`), which
- * carries the admin dock: pause, resume, extra time, autopick and override sit
- * beside the board they act on. What stays here is what the room is NOT: the
- * session's state at a glance, feasibility, the destructive lifecycle actions
- * that end or rewind the session, and the tournament's draft history.
+ * carries the admin dock: extra time, autopick and override sit beside the
+ * board they act on. What stays here: the session's state at a glance,
+ * feasibility, pause/resume (the system-pause copy sends the admin here to
+ * resume), the lifecycle actions that end or rewind the session, and the
+ * tournament's draft history.
  */
 export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlRoomProps>) {
   const t = useTranslations("draftAdmin.controlRoom");
@@ -106,15 +107,19 @@ export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlR
                 />
               </div>
             </div>
-            {/* The primary action of this page is leaving it: everything that
-                steers a live pick lives in the room's admin dock. */}
-            <Button asChild size="lg">
+            {/* Leaving for the room is the primary action while live; while
+                paused, Resume below is the next step and takes the lead. */}
+            <Button asChild size="lg" variant={session.status === "paused" ? "outline" : "default"}>
               <Link href={`/draft/${tournamentId}`} target="_blank" rel="noreferrer">
                 {t("openBoard")}
                 <ArrowUpRight className="ml-2 h-4 w-4" aria-hidden />
               </Link>
             </Button>
-            <LifecycleControls tournamentId={tournamentId} board={board} />
+            <LifecycleControls
+              tournamentId={tournamentId}
+              board={board}
+              resumeBlocked={feasibility?.is_feasible === false}
+            />
           </div>
         </div>
       </HeroFrame>

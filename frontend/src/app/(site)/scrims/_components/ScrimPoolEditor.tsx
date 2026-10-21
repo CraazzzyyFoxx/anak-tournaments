@@ -28,7 +28,7 @@ import {
   type PickBanDraft,
   type PickBanValidationIssue
 } from "@/lib/tournament/pick-ban-config";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 
 /**
@@ -183,10 +183,12 @@ function ItemPicker({
         aria-describedby={`${ids}-hint`}
       />
       {isLoading ? (
-        <p className="text-muted-foreground flex items-center gap-2 text-xs">
-          <Spinner className="size-3.5" />
-          {loadingLabel}
-        </p>
+        <div role="status" className="flex flex-wrap gap-2 rounded-lg border p-2">
+          <span className="sr-only">{loadingLabel}</span>
+          {[0, 1, 2, 3].map((chip) => (
+            <Skeleton key={chip} aria-hidden className="h-8 w-20" />
+          ))}
+        </div>
       ) : visible.length === 0 ? (
         <p className="text-muted-foreground text-xs">{emptyLabel}</p>
       ) : (

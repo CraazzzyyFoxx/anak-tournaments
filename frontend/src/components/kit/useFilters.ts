@@ -15,7 +15,17 @@ export interface FilterOption {
 }
 
 export type FilterDef = (
-  | { key: string; label: string; kind: "single"; options: FilterOption[] }
+  | {
+      key: string;
+      label: string;
+      kind: "single";
+      options: FilterOption[];
+      /**
+       * Drawn as an always-visible select in the bar instead of behind "+ Filter", with `allLabel`
+       * for no value. For the one filter a page's actions depend on (the game on per-game pages).
+       */
+      inline?: { allLabel: string };
+    }
   | { key: string; label: string; kind: "multi"; options: FilterOption[] }
   /** Boolean chip: present in the URL as `1`, absent otherwise. */
   | { key: string; label: string; kind: "toggle" }

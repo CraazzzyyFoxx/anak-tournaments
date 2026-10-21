@@ -10,6 +10,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import analyticsService from "@/services/analytics.service";
@@ -80,7 +81,12 @@ export default function ExplanationPopover({
       </PopoverTrigger>
       <PopoverContent className="w-80" align="end">
         {isLoading && (
-          <p className="text-sm text-muted-foreground">{t("analytics.explanation.loading")}</p>
+          <div role="status" className="space-y-2">
+            <span className="sr-only">{t("analytics.explanation.loading")}</span>
+            {[0, 1, 2].map((row) => (
+              <Skeleton key={row} aria-hidden className="h-4 w-full" />
+            ))}
+          </div>
         )}
         {isError && (
           <p className="text-sm text-muted-foreground">

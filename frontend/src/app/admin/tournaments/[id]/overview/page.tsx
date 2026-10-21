@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { NextActionHero } from "@/components/kit/NextActionHero";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import adminService from "@/services/admin.service";
 import { getTournamentWorkspaceQueryKeys } from "@/lib/tournament/workspace-query-keys";
 import { tabError, tabFallback, useHubStagesQuery, useHubTournamentQuery } from "../hubQueries";
@@ -47,6 +50,8 @@ export default function OverviewTabPage() {
         hasChallongeSource: hasChallongeSource(tournament, stagesQuery.data ?? [])
       }, checklistT)
     : [];
+  const draftStatus = readiness?.draft_session_status;
+  const draftRunning = draftStatus === "live" || draftStatus === "paused";
 
   // F3 ·3: the one thing worth doing next. Same `buildChecklist` the list
   // below renders — ranked, not a second data source, so the hero and the
@@ -70,6 +75,17 @@ export default function OverviewTabPage() {
         />
       ) : null}
       <PhaseStepper tournament={tournament} />
+      {/* Draft live -> Open draft board (§15): the shortest path to the work. */}
+      {draftRunning ? (
+        <Alert role="status">
+          <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+            <span>{t("teamDraft", { status: draftStatus })}</span>
+            <Button asChild size="sm" variant="outline" className="shrink-0">
+              <Link href={`/admin/tournaments/${tournamentId}/teams/draft`}>{t("openDraftBoard")}</Link>
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {readinessQuery.isError ? (
         tabError(readinessQuery.refetch)
       ) : (

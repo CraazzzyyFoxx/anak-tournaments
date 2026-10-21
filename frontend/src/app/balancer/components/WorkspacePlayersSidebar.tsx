@@ -365,7 +365,14 @@ export function WorkspacePlayersSidebar({
             Players
           </div>
           <div className="mt-1 text-sm tabular-nums text-[color:var(--aqt-fg-muted)]">
-            {total == null ? "Loading\u2026" : `${total} ${total === 1 ? "player" : "players"}`}
+            {total == null ? (
+              <div role="status">
+                <span className="sr-only">{"Loading\u2026"}</span>
+                <Skeleton aria-hidden className="my-0.5 h-4 w-16" />
+              </div>
+            ) : (
+              `${total} ${total === 1 ? "player" : "players"}`
+            )}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">

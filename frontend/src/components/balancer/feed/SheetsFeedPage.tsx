@@ -16,7 +16,7 @@ import type {
   AdminGoogleSheetFeedUpsertInput,
   MappingPreviewResponseV2
 } from "@/types/balancer-admin.types";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 
 import { ColumnMappingTab } from "./_components/ColumnMappingTab";
 import { PreviewTab } from "./_components/PreviewTab";
@@ -250,10 +250,13 @@ export default function SheetsFeedPage({ tournamentId }: Readonly<{ tournamentId
   }
 
   if (catalogQuery.isLoading || feedQuery.isLoading || !catalogQuery.data || !mapping.isHydrated) {
+    // One card per section below (source, columns, values, preview).
     return (
-      <div className="flex flex-1 items-center justify-center py-16 text-sm text-muted-foreground">
-        <Spinner className="mr-2" />
-        {t("loading.mapping")}
+      <div role="status" className="flex flex-col gap-4">
+        <span className="sr-only">{t("loading.mapping")}</span>
+        {[0, 1, 2, 3].map((section) => (
+          <Skeleton key={section} aria-hidden className="h-48 w-full rounded-xl" />
+        ))}
       </div>
     );
   }

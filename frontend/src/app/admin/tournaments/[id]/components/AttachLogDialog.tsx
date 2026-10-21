@@ -15,6 +15,7 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import SearchableImageSelect from "@/components/ui/searchable-image-select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { useBracketRoundLabel, type BracketRoundLabelFormatter } from "@/hooks/useBracketRoundLabel";
 import { UNKNOWN_ROUND_SHAPE } from "@/lib/bracket/round-name";
@@ -208,7 +209,10 @@ export function AttachLogDialog({
           triggerClassName="h-9"
         />
         {encounterId !== undefined && loading ? (
-          <p role="status" className="text-sm text-muted-foreground">{t("loadingGames")}</p>
+          <div role="status">
+            <span className="sr-only">{t("loadingGames")}</span>
+            <Skeleton aria-hidden className="h-4 w-32" />
+          </div>
         ) : loadFailed ? (
           <div role="alert" className="space-y-2 text-sm text-danger">
             <p>{t("gamesLoadFailed")}</p>

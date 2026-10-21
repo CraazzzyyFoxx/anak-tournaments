@@ -26,7 +26,7 @@ import {
 import { playerRoles, rosterRoleForPlayer } from "@/lib/draft/workspace-model";
 import { notify } from "@/lib/notify";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
-import type { RoleOntology } from "@/lib/roster/ontology";
+import type { LadderedOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DraftAutopickPreview, DraftBoard, DraftPlayer, DraftRole } from "@/types/draft.types";
 import type { RealtimeConnectionState } from "@/types/realtime.types";
@@ -61,8 +61,8 @@ interface PickIslandProps {
   autopickPreview: DraftAutopickPreview | null;
   queue: QueueControls | null;
   divisionGrid: DivisionGrid;
-  /** The session owner's role dictionary: names and glyphs of every role on the card. */
-  ontology: RoleOntology | null;
+  /** The session owner's role dictionary and native ladder: names and glyphs of every role on the card, crests on its answers. */
+  ontology: LadderedOntology | null;
   /** After a successful pick/override: clear selection and card. */
   onPicked: () => void;
 }
@@ -296,7 +296,7 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
             <TabsContent value="info" className={VIEW_PANEL}>
               {tiles}
               <div className="border-t border-[color:var(--aqt-border)]">
-                <RegistrationSection player={player} />
+                <RegistrationSection player={player} ontology={ontology} />
               </div>
             </TabsContent>
             <TabsContent value="stats" className={VIEW_PANEL}>

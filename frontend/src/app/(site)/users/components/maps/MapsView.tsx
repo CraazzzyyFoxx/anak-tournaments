@@ -12,6 +12,7 @@ import { CardSurface, ProfileStat } from "@/components/profile/atoms";
 import MapRow from "@/app/(site)/users/components/maps/MapRow";
 import MapsFilters from "@/app/(site)/users/components/maps/MapsFilters";
 import { DataPagination } from "@/components/ui/data-pagination";
+import { Skeleton } from "@/components/ui/skeleton";
 import { winrateColor } from "@/lib/colors";
 import { userQueryKeys } from "@/lib/users/query-keys";
 import type { StatsScope } from "@/lib/site/stats-scope";
@@ -265,9 +266,23 @@ const MapsView = ({ userId, scope, discipline, axis }: Props) => {
           <MapRow key={row.map.id} row={row} discipline={discipline} axis={axis} />
         ))}
         {pageMaps.length === 0 ? (
-          <div className="py-10 text-center text-[color:var(--aqt-fg-dim)]">
-            {mapsQuery.isLoading ? t("common.loading") : t("users.maps.noMaps")}
-          </div>
+          mapsQuery.isLoading ? (
+            <div role="status">
+              <span className="sr-only">{t("common.loading")}</span>
+              {[0, 1, 2, 3, 4].map((row) => (
+                <div
+                  key={row}
+                  aria-hidden
+                  className="flex items-center gap-3.5 border-b border-[color:var(--aqt-border)] px-[18px] py-[11px] last:border-b-0"
+                >
+                  <Skeleton className="h-8 w-14" />
+                  <Skeleton className="h-4 flex-1" />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-10 text-center text-[color:var(--aqt-fg-dim)]">{t("users.maps.noMaps")}</div>
+          )
         ) : null}
 
         {/* Pagination footer */}

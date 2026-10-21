@@ -41,4 +41,6 @@ export const achievementQueryKeys = {
     ["admin", "overrides", workspaceId, ruleId] as const,
   overridesAll: (workspaceId: KeyPart, discipline: KeyPart) =>
     ["admin", "overrides", workspaceId, "all", discipline] as const,
+  /** The workspace's 50 latest evaluation runs, every game's. */
+  evaluationRuns: (workspaceId: KeyPart) => ["admin", "achievement-evaluation-runs", workspaceId] as const,
 };

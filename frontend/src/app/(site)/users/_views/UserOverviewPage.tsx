@@ -1,5 +1,5 @@
 import { Suspense, cache } from "react";
-import type { CharacterSummary, CharacterWithUserStats, User, UserMapRead, UserProfile } from "@/types/user.types";
+import type { CharacterSummary, CharacterWithUserStats, User, UserProfile } from "@/types/user.types";
 import { AchievementRarity } from "@/types/achievement.types";
 import userService from "@/services/user.service";
 import disciplineService from "@/services/discipline.service";
@@ -45,9 +45,6 @@ const getTournaments = cache((userId: number, scope: StatsScope, discipline: str
 );
 const getCharacters = cache((userId: number, scope: StatsScope, discipline: string) =>
   userService.getUserCharacters(userId, discipline, { scope }).catch(() => null)
-);
-const getMaps = cache((userId: number, scope: StatsScope, discipline: string) =>
-  userService.getUserMaps(userId, discipline, { perPage: -1, minCount: 1, scope }).catch(() => null)
 );
 
 export const UserOverviewPageSkeleton = () => {
@@ -107,37 +104,24 @@ const CareerListSection = async ({ user, profile, scope, discipline }: SectionPr
 );
 
 /**
- * What the overview's character cards read: each character's stats without its per-stat best-match records (they
- * would ride the RSC payload once per row), and per-character game counts summed over the player's maps (`null`
- * without map data).
+ * What the overview's character cards read: each character without its per-stat best-match records (they would ride
+ * the RSC payload once per stat per row); the game record and the one career-best `record` stay.
  */
-const characterCards = (characters: CharacterWithUserStats[], maps: UserMapRead[]) => {
-  const games: Record<number, number> = {};
-  for (const map of maps) {
-    for (const row of map.character_stats ?? []) games[row.character.id] = (games[row.character.id] ?? 0) + row.games;
-  }
-  return {
-    characters: characters.map<CharacterSummary>(({ character, stats }) => ({
-      character,
-      stats: stats.map(({ name, overall, avg_10, avg_10_all }) => ({ name, overall, avg_10, avg_10_all }))
-    })),
-    games: maps.length > 0 ? games : null
-  };
-};
+const characterCards = (characters: CharacterWithUserStats[]): CharacterSummary[] =>
+  characters.map(({ stats, ...character }) => ({
+    ...character,
+    stats: stats.map(({ name, overall, avg_10, avg_10_all }) => ({ name, overall, avg_10, avg_10_all }))
+  }));
 
 const TopHeroesSection = async ({ user, userSlug, scope, discipline, axis }: SectionProps & { userSlug: string }) => {
-  const [charactersRes, mapsRes] = await Promise.all([
-    getCharacters(user.id, scope, discipline),
-    getMaps(user.id, scope, discipline)
-  ]);
-  const { characters, games } = characterCards(charactersRes?.results ?? [], mapsRes?.results ?? []);
+  const characters = characterCards((await getCharacters(user.id, scope, discipline))?.results ?? []);
   if (characters.length === 0) return null;
   return (
     <ProfileWidget
       axis={axis}
       discipline={discipline}
       slot="topCharacters"
-      props={{ characters, games, userSlug }}
+      props={{ characters, userSlug }}
       fallback={<CharacterStatsTable axis={axis} discipline={discipline} characters={characters} limit={8} />}
     />
   );
@@ -177,14 +161,8 @@ const RoleSplitSection = async ({
   discipline,
   axis
 }: SectionProps & { profile: UserProfile }) => {
-  const [charactersRes, mapsRes] = await Promise.all([
-    getCharacters(user.id, scope, discipline),
-    getMaps(user.id, scope, discipline)
-  ]);
-  const { characters, games } = characterCards(charactersRes?.results ?? [], mapsRes?.results ?? []);
-  return (
-    <OverviewRoleSplit profile={profile} discipline={discipline} axis={axis} characters={characters} games={games} />
-  );
+  const characters = characterCards((await getCharacters(user.id, scope, discipline))?.results ?? []);
+  return <OverviewRoleSplit profile={profile} discipline={discipline} axis={axis} characters={characters} />;
 };
 
 const AchievementsSection = async ({
@@ -217,8 +195,7 @@ const TeammatesSection = async ({ user, scope, discipline }: SectionProps) => {
 /**
  * Overview tab. Every section fetches behind its own Suspense boundary so the
  * tab paints at the pace of the fastest read instead of the slowest — the
- * career-wide teammates and maps reads are unbounded and used to gate the
- * whole grid.
+ * career-wide teammates read is unbounded and used to gate the whole grid.
  */
 const UserOverviewPage = ({ profile, tournamentId, user, scope, discipline, axis }: OverviewPageProps) => {
   const userSlug = getPlayerSlug(user.name);

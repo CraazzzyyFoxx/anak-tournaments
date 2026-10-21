@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { useFormatter } from "@/lib/datetime/client";
 import type { RoleOntology } from "@/lib/roster/ontology";
@@ -74,7 +75,19 @@ export function DraftJournal({ id, board, entries, ontology, isLoading, isError,
         className="max-h-[220px] overflow-y-auto rounded-[10px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)]"
       >
         {isLoading ? (
-          <p className="px-3.5 py-2 text-body text-[color:var(--aqt-fg-muted)]">{t("shell.journal.loading")}</p>
+          <div role="status">
+            <span className="sr-only">{t("shell.journal.loading")}</span>
+            {[0, 1, 2].map((row) => (
+              <div
+                key={row}
+                aria-hidden
+                className="flex items-center gap-3 border-b border-[color:var(--aqt-border)] px-3.5 py-2.5 last:border-b-0"
+              >
+                <Skeleton className="h-4 w-14" />
+                <Skeleton className="h-4 flex-1" />
+              </div>
+            ))}
+          </div>
         ) : isError ? (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-2">
             <p className="text-body text-[color:var(--aqt-rose-text)]">{t("shell.journal.error")}</p>

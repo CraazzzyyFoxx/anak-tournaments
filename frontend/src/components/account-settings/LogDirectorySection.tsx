@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { FolderOpen } from "lucide-react";
 import { AutoUploadStatus } from "@/components/logs/AutoUploadStatus";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { directoryErrorCode } from "@/lib/logs/browser-directory";
 import { useLogDirectory } from "@/lib/logs/use-log-directory";
@@ -35,9 +36,16 @@ export function LogDirectorySection() {
       <SettingsGroup title={t("title")} description={t("hint")}>
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] py-1.5 pl-3 pr-1.5">
           <FolderOpen className="size-4 shrink-0 text-[color:var(--aqt-fg-muted)]" aria-hidden />
-          <p className="min-w-0 flex-1 truncate text-sm text-[color:var(--aqt-fg)]" role="status">
-            {directory.isLoading ? t("loading") : directory.handle?.name ?? t("none")}
-          </p>
+          <div className="min-w-0 flex-1 truncate text-sm text-[color:var(--aqt-fg)]" role="status">
+            {directory.isLoading ? (
+              <>
+                <span className="sr-only">{t("loading")}</span>
+                <Skeleton aria-hidden className="h-4 w-32" />
+              </>
+            ) : (
+              directory.handle?.name ?? t("none")
+            )}
+          </div>
           <Button type="button" size="sm" variant="outline" disabled={busy || directory.isLoading} onClick={() => void run(directory.select)}>
             {directory.handle ? t("replace") : t("select")}
           </Button>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
-import { ChevronLeft, Plus, X } from "lucide-react";
+import { Check, ChevronLeft, Plus, X } from "lucide-react";
 import { useDebounce } from "use-debounce";
 
 import {
@@ -14,6 +14,7 @@ import {
   CommandList
 } from "@/components/ui/command";
 import { FilterChip } from "@/components/ui/filter-chip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SearchField } from "@/components/ui/search-field";
 import {
@@ -45,6 +46,11 @@ function optionLabel(def: FilterDef, value: string): string {
   }
   return value;
 }
+
+/** The "no value" item of an inline select: Radix forbids an empty item value. */
+const INLINE_ALL = "__all__";
+
+type InlineDef = Extract<FilterDef, { kind: "single" }> & { inline: { allLabel: string } };
 
 /**
  * The one filter surface for the admin panel: search + removable chips + a
@@ -78,13 +84,19 @@ export function FilterBar({
    * A filter is offered only when it is a choice: a toggle, a search, or a
    * list with two or more options. An option nobody holds is not offered.
    */
-  const available = defs
+  const offered = defs
     .map((def) =>
       def.kind === "single" || def.kind === "multi"
         ? { ...def, options: def.options.filter((option) => option.count !== 0) }
         : def
     )
     .filter((def) => def.kind === "toggle" || def.kind === "entity" || def.options.length > 1);
+  // An inline filter is its own select, so it is neither a chip nor a "+ Filter" entry.
+  const inline = offered.filter(
+    (def): def is InlineDef => def.kind === "single" && def.inline !== undefined
+  );
+  const inlineKeys = new Set(inline.map((def) => def.key));
+  const available = offered.filter((def) => !inlineKeys.has(def.key));
   const picker = available.find((def) => def.key === pickerKey) ?? null;
 
   useEffect(() => {
@@ -115,6 +127,7 @@ export function FilterBar({
   // stay removable even when its filter has no second option to offer.
   const chips: ActiveChip[] = [];
   for (const def of defs) {
+    if (inlineKeys.has(def.key)) continue;
     const value = filters.values[def.key];
     if (!isFilterActive(value)) continue;
 
@@ -146,20 +159,31 @@ export function FilterBar({
 
   const selectOption = (def: FilterDef, option: FilterOption) => {
     if (def.kind === "multi") {
+      // The picker stays open: every option shows whether it is on, and a
+      // click flips just that one.
       const current = filters.values[def.key];
       const list = Array.isArray(current) ? current : [];
-      write(def, list.includes(option.value) ? list : [...list, option.value]);
-    } else {
-      if (def.kind === "entity") {
-        setEntityLabels((previous) => ({
-          ...previous,
-          [`${def.key}:${option.value}`]: option.label
-        }));
-      }
-      write(def, option.value);
+      write(
+        def,
+        list.includes(option.value)
+          ? list.filter((value) => value !== option.value)
+          : [...list, option.value]
+      );
+      return;
     }
+    if (def.kind === "entity") {
+      setEntityLabels((previous) => ({
+        ...previous,
+        [`${def.key}:${option.value}`]: option.label
+      }));
+    }
+    write(def, option.value);
     closePicker();
   };
+
+  const pickerValue = picker ? filters.values[picker.key] : undefined;
+  const isPicked = (option: FilterOption) =>
+    Array.isArray(pickerValue) && pickerValue.includes(option.value);
 
   /** Options for the second popover level. A `toggle` never reaches it. */
   const pickerOptions: FilterOption[] =
@@ -180,6 +204,32 @@ export function FilterBar({
           onValueChange={search.onChange}
         />
       ) : null}
+
+      {inline.map((def) => {
+        const value = filters.values[def.key];
+        return (
+          <Select
+            key={def.key}
+            value={typeof value === "string" && value !== "" ? value : INLINE_ALL}
+            onValueChange={(next) => write(def, next === INLINE_ALL ? null : next)}
+          >
+            <SelectTrigger size="sm" aria-label={def.label} className="w-auto min-w-36 gap-2">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={INLINE_ALL}>{def.inline.allLabel}</SelectItem>
+              {def.options.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  <span className="flex items-center gap-2">
+                    {option.icon}
+                    {option.label}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        );
+      })}
 
       <div role="group" aria-label={t("activeFilters")} className="flex flex-wrap items-center gap-2">
 
@@ -259,6 +309,12 @@ export function FilterBar({
                         value={option.label}
                         onSelect={() => selectOption(picker, option)}
                       >
+                        {picker.kind === "multi" ? (
+                          <Check
+                            aria-hidden
+                            className={cn("size-4", isPicked(option) ? "opacity-100" : "opacity-0")}
+                          />
+                        ) : null}
                         {option.icon}
                         <span className="truncate">{option.label}</span>
                         {option.count !== undefined ? (

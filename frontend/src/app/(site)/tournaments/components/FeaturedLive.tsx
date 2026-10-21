@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
+import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { ArrowRight, Users } from "lucide-react";
 
 import TeamName from "@/components/TeamName";
@@ -21,6 +22,7 @@ const FeaturedTournamentCard = ({
 }) => {
   const t = useTranslations();
   const format = useFormatter();
+  const now = useMinuteClock();
   const { tournament, current, encounters } = group;
   const [seatOne, seatTwo] = duelSeats(current.teams);
 
@@ -130,7 +132,7 @@ const FeaturedTournamentCard = ({
         <div className="left">
           <span className="lead-team">
             {t("tournamentsList.featured.started", {
-              time: current.started_at ? format.relativeTime(new Date(current.started_at)) : "—"
+              time: current.started_at && now !== null ? format.relativeTime(new Date(current.started_at), now) : "—"
             })}
           </span>
         </div>

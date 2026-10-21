@@ -16,7 +16,7 @@ import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { useFormatter } from "@/lib/datetime/client";
 import { formatAdmissionReason, type AdmissionTranslator } from "@/lib/registration/admission";
 import { getSubroleLabel } from "@/lib/roster/roles";
-import { findRole, type RoleOntology } from "@/lib/roster/ontology";
+import { findRole, type LadderedOntology, type RoleOntology } from "@/lib/roster/ontology";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { FormField } from "@/types/forms.types";
 import type { SubroleCatalog } from "@/types/registration.types";
@@ -75,8 +75,8 @@ export default function RegistrationInspectorBody({
 }: Readonly<{
   registration: AdminRegistration;
   discipline: string;
-  /** The tournament owner's role dictionary: role names and glyphs. `null` while it loads. */
-  ontology: RoleOntology | null;
+  /** The tournament owner's role dictionary and native ladder: role names, glyphs, answer crests. `null` while it loads. */
+  ontology: LadderedOntology | null;
   catalog?: SubroleCatalog;
   schemaFields: FormField[];
   /** Whether the tournament's schema has actually been read. While it has not,
@@ -139,7 +139,7 @@ export default function RegistrationInspectorBody({
                   {field.label || builtinAnswerLabel(field.key, i18n) || field.key}
                 </dt>
                 <dd className="mt-0.5 text-foreground">
-                  <AnswerValue value={registration.answers?.[field.key]} kind={field.kind} />
+                  <AnswerValue value={registration.answers?.[field.key]} kind={field.kind} ontology={ontology} />
                 </dd>
               </div>
             ))}
@@ -154,7 +154,7 @@ export default function RegistrationInspectorBody({
                   ) : null}
                 </dt>
                 <dd className="mt-0.5 text-foreground">
-                  <AnswerValue value={value} />
+                  <AnswerValue value={value} ontology={ontology} />
                 </dd>
               </div>
             ))}
