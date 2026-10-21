@@ -21,7 +21,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from shared.core import http_status as status
 from shared.core.enums import (
@@ -44,6 +46,7 @@ from shared.domain.encounter_scoring import (
 from shared.domain.encounter_scoring import (
     normalize_game_lines as _normalize_game_lines,
 )
+from shared.models.catalog.entity import CatalogEntity
 from shared.models.encounter.encounter import Encounter
 from shared.models.encounter.game import EncounterGame, EncounterGameTeam
 from shared.models.encounter.pick_ban import PickBanEntry
@@ -103,6 +106,19 @@ class GameResultIn:
     score: int | None = None
     placement: int | None = None
     column_values: Mapping[str, float] = field(default_factory=dict)
+
+
+async def map_mode(session: AsyncSession, map_id: int | None) -> int | None:
+    """The catalog mode ``map_id`` belongs to: its parent when that parent is a ``mode``, else ``None``."""
+    if map_id is None:
+        return None
+    mode = aliased(CatalogEntity, name="mode")
+    return await session.scalar(
+        select(mode.id)
+        .select_from(CatalogEntity)
+        .join(mode, mode.id == CatalogEntity.parent_id)
+        .where(CatalogEntity.id == map_id, mode.kind == "mode")
+    )
 
 
 def _line(result: GameResultIn) -> GameLine:
@@ -248,7 +264,8 @@ class EncounterGameService:
 
         The ``game_team`` rows are written WITH the game: they are "who is in
         this game", and a position without them could collect a claim naming a
-        participation the composite FK would then refuse.
+        participation the composite FK would then refuse. A named map brings its
+        catalog mode (:func:`map_mode`).
         """
         game = await self.game_repo.create(
             session,
@@ -256,6 +273,7 @@ class EncounterGameService:
                 encounter_id=encounter.id,
                 position=position,
                 map_id=map_id,
+                mode_id=await map_mode(session, map_id),
                 state=state,
             ),
         )
@@ -271,6 +289,22 @@ class EncounterGameService:
             ],
         )
         return game
+
+    @staticmethod
+    async def name_map(session: AsyncSession, game: EncounterGame, map_id: int) -> None:
+        """Point ``game`` at ``map_id`` and keep its mode in step.
+
+        A map whose catalog parent is a mode decides the mode. A parentless map
+        (Deadlock's Midtown hosts several modes) keeps the game's mode only while
+        the map stays the same; another map clears it, so a mode never outlives
+        the map it came with (an accepted log fills it again).
+        """
+        mode_id = await map_mode(session, map_id)
+        if mode_id is not None:
+            game.mode_id = mode_id
+        elif map_id != game.map_id:
+            game.mode_id = None
+        game.map_id = map_id
 
     async def ensure_next_game(self, session: AsyncSession, encounter: Encounter) -> EncounterGame | None:
         """The position that should be played right now, opening one if the card
@@ -327,7 +361,7 @@ class EncounterGameService:
                 )
                 games.append(game)
             else:
-                game.map_id = entry.item_id
+                await self.name_map(session, game, entry.item_id)
                 if game.state == EncounterGameState.PLANNED and position not in blocked_positions:
                     game.state = EncounterGameState.AWAITING_RESULT
         if stale:
@@ -508,7 +542,7 @@ class EncounterGameService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail=[ApiExc(code="map_locked", msg="A captain already reported this map; it cannot be changed")],
             )
-        game.map_id = map_id
+        await self.name_map(session, game, map_id)
         if game.state == EncounterGameState.PLANNED:
             game.state = EncounterGameState.AWAITING_RESULT
         await session.flush()

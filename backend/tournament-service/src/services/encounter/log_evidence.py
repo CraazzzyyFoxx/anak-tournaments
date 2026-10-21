@@ -26,7 +26,8 @@ Outcomes (``apply_match_evidence`` returns exactly one; the first seven are jour
 ``owner_policy_refused``  mix, scrim, an unpublished (preview) bracket, or an extra participant whose rank/role
                           the roster rules cannot establish or that contradicts the roster
 ``result_locked``         the game is cancelled/confirmed, or the encounter already has a decided result
-``stale_basis``           the game changed since the document was bound (result version or team set)
+``stale_basis``           the game changed since the document was bound (result version, team set, or a map or mode
+                          that now contradicts the observed one: ``game_map_changed``)
 ``result_incomplete``     placements/mandatory organizer inputs do not decide the game, or settlement refuses the
                           result (``bracket_tie``: rolled back in a savepoint); stats stays done
 ``applied_roster_only``   valid extras were seated but the result was refused; the receipt's reason is the result
@@ -259,7 +260,8 @@ async def _record(
     Settlement can still refuse a result that passed validation (an elimination encounter that would end level
     raises ``bracket_tie``). The no-draw rule stays the settlement's; here the tentative result, version bump and
     cascade are rolled back and the refusal is journaled instead of dead-lettering valid evidence. A game that names
-    no map or mode yet takes the observation's with the result (the binding already refused a contradicting one).
+    no map or mode yet takes the observation's with the result (a contradicting one was refused under the game lock,
+    ``game_map_changed``).
     """
     try:
         async with session.begin_nested():
@@ -350,7 +352,15 @@ def _game_refusal(encounter: Encounter, game: EncounterGame, event: MatchIngeste
         return _Refusal(RESULT_LOCKED, "encounter_decided")
     if event.basis_game_result_version != (game.result_version or 0):
         return _Refusal(STALE_BASIS, "basis_version")
+    # A captain may name another map between the binding and this delivery without a result-version step: a map or
+    # mode known on both sides must still agree, under the game lock, before either may fill the other's gap.
+    if _contradicts(game.map_id, event.map_id) or _contradicts(game.mode_id, event.mode_id):
+        return _Refusal(STALE_BASIS, "game_map_changed")
     return None
+
+
+def _contradicts(current: int | None, observed: int | None) -> bool:
+    return current is not None and observed is not None and current != observed
 
 
 def _team_set_refusal(seats: list[EncounterTeam], event: MatchIngestedEvent) -> _Refusal | None:
