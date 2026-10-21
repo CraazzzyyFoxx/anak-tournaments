@@ -14,16 +14,6 @@ class Settings(BaseServiceSettings):
     # No default: a missing RABBITMQ_URL must fail at startup rather than fall
     # back to insecure ``guest:guest`` credentials.
     rabbitmq_url: str
-    # Same bot token discord-service runs on: the Discord pickers ask that
-    # service first and only reach Discord's REST API themselves when it is down.
-    discord_token: str | None = None
-
-    # Absolute base of the public site, used to build the links notification
-    # DMs and channel posts carry (``PUBLIC_SITE_URL``). Platform zone only:
-    # the frontend mirrors the same value as ``NEXT_PUBLIC_SITE_URL``, and
-    # links to a workspace's subdomain or custom domain are out of scope.
-    public_site_url: str = "http://localhost:3000"
-
     # Cache TTLs
     # ``users_cache_ttl`` covers the *tournament-derived* /users/* read caches
     # (tournaments, tournament_stats, heroes, encounters, maps, teammates,

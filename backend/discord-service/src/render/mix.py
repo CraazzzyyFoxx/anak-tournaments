@@ -1,20 +1,20 @@
 """What the Discord messages of a pickup mix say: the signup card and the lineup card.
 
-Pure domain: no I/O, no ORM, no async. The caller (custom game service) resolves
-the mix name, its roster, the next map with its gamemode, the team-name
-overrides and the Discord ids to ping, then hands them here; discord-service
-owns the transport and this owns the words.
+Pure text assembly: no I/O, no ORM, no async. :mod:`src.render` asks
+balancer-service for the mix's view (``rpc.balancer.custom.discord_view``) --
+its name, roster, next map, team names, the Discord ids to ping -- and hands
+the pieces here.
 
 Both cards are Components V2 ``DiscordCard``s and both are Russian: a channel
 has no per-reader locale, unlike the ephemeral replies the bot renders per user.
-Emoji are written as ``:owt_<name>:`` shortcodes (``shared.domain.discord_ui``)
-which the bot swaps for its uploaded application emoji.
+Emoji are written as ``:owt_<name>:`` shortcodes (:mod:`src.ui`) which the bot
+swaps for its uploaded application emoji.
 
-The signup card is LIVE: the message the platform posted it as is a
-``discord_message`` row (``subject='mix:<id>'``, ``slot='signup'``) and every
-mutation that changes something it shows -- a count, a name, who is benched --
-announces itself, after which the projector
-(``src.services.mix_discord_projector``) re-renders this card into that same
+The signup card is LIVE: the message it was posted as is a ``discord_message``
+row (``subject='mix:<id>'``, ``slot='signup'``) and every mutation that changes
+something it shows -- a count, a name, who is benched -- announces itself
+(``pickup_mix.changed``), after which the projector
+(:mod:`src.services.mix_projector`) re-renders this card into that same
 message. It is built from current state every time rather than once at post
 time.
 """
@@ -29,12 +29,10 @@ from typing import Any
 from urllib.parse import urljoin
 
 from shared.division_grid import DEFAULT_GRID
-from shared.domain.discord_ui import BLUE, ROLE_EMOJI, SHORTCODE, TEAL, division_emoji, emoji
 from shared.domain.mix_lobby import LOBBY_LETTERS
-from shared.schemas.events import DiscordActionButton, DiscordCard, DiscordLinkButton
-from src.domain.balancer.result_serializer import seat_rating
-from src.domain.balancer.role_naming import role_slot_code
-from src.domain.mix_lineup_image import LineupPicture, LineupSeat, LineupTeam
+from src.render.card import DiscordActionButton, DiscordCard, DiscordLinkButton
+from src.render.mix_lineup_image import LineupPicture, LineupSeat, LineupTeam
+from src.ui import BLUE, ROLE_EMOJI, SHORTCODE, TEAL, division_emoji, emoji
 
 __all__ = ("SignupPlayer", "lineup_card", "lineup_picture", "signup_card")
 
@@ -69,7 +67,7 @@ class SignupPlayer:
 
 #: Everything Discord markdown gives a meaning to; a backslash before ASCII
 #: punctuation is always consumed, so over-escaping is invisible to the reader.
-#: Same rule app-service renders notification cards with.
+#: Same rule :mod:`src.render.notifications` escapes with.
 _MARKDOWN = re.compile(r"([\\*_~`|>\[\]<#-])")
 
 
@@ -217,10 +215,12 @@ def signup_card(
 
 
 def _picture_seat(bucket: str, uuid: str, player: Mapping[str, Any], board_url: str) -> LineupSeat:
-    rating = int(seat_rating(player, bucket))
+    # A lobby document's player carries one rating per role bucket (``Tank``, ``Damage``...).
+    ratings = player.get("ratings")
+    rating = int(ratings.get(bucket, 0)) if isinstance(ratings, Mapping) else 0
     icon = DEFAULT_GRID.resolve_division(rating).icon_url
     return LineupSeat(
-        role=role_slot_code(bucket),
+        role=bucket.strip().lower(),
         name=str(player.get("name") or f"#{uuid}"),
         rating=rating,
         # The ladder's badges are site-relative (``/divisions/<slug>.png``), served by the site itself.

@@ -113,7 +113,7 @@ The worker subscribes to `rpc.balancer.*` and consumes one durable job queue. Me
 | `rpc.balancer.teams.*` / `admin.teams_import` | Team roster import from an uploaded file, and export of a tournament's registered teams |
 | `rpc.balancer.jobs.*` | Async balancing: `create` (uploaded roster), `create_for_tournament` (the tournament's own pool, nothing uploaded), `status`, `result` |
 | `rpc.balancer.draft.*` | Board and session reads, feasibility/suggestions/pick options, admin lifecycle, pick actions, export |
-| `rpc.balancer.custom.*` | Mix lifecycle, lineup, host/co-host grants, role mask, balance, seat swaps, outcomes, rotation, Discord posts (`post_signup`, `post_discord`, `delete_discord_post`), the player's own seat (`self_*`, including `self_current` — the newest open mix of a workspace, for the bot's `/mix`) |
+| `rpc.balancer.custom.*` | Mix lifecycle, lineup, host/co-host grants, role mask, balance, seat swaps, outcomes, rotation, Discord posts (`post_signup`, `post_discord`, `delete_discord_post`), the bot's render input (`discord_view`, internal), the player's own seat (`self_*`, including `self_current` — the newest open mix of a workspace, for the bot's `/mix`) |
 | `rpc.balancer.players.*` | Workspace roster page, rank writes per layer, ranking-author list |
 | `rpc.balancer.ranks.list` | Read-only admin overview: every rank value of every workspace member, one flat row per value |
 
@@ -124,20 +124,35 @@ generated documentation; the subject list above is the complete one.
 
 **Queues consumed.** `balancer_jobs` (durable, `x-message-ttl` 15 min, dead-lettered to `dlx` →
 `balancer_jobs.dlq`, declared on startup), on its own channel with `prefetch_count=2` so a
-multi-minute solve cannot stall the RPC channel. And `pickup_mix_changed` (dead-lettered to
-`pickup_mix_changed.dlq`, declared on startup), on its own channel with `prefetch_count=4`: the
-Discord-card projector, below. The bot reports nothing back here — every Discord message this
-service sends is a `discord_message` row claimed in the transaction that decides to send it, and
-discord-service writes the outcome (the ids, or Discord's refusal) onto that same row.
+multi-minute solve cannot stall the RPC channel. The bot reports nothing back here — every Discord
+message this service sends is a `discord_message` row claimed in the transaction that decides to
+send it, and discord-service writes the outcome (the ids, or Discord's refusal) onto that same row.
 
-**Discord messages.** A mix's messages are filed under subject `mix:<id>`: the signup card in slot
-`signup`, one row per posted lineup in slot `lineup:<lobby>:<match>`. The single-mix read returns
-them as `discord_posts` (id, slot, kind, status, jump url, error, created_at) — a `pending` older
-than the `discord_commands` TTL reads `lost`, and `deleted` rows are left out. `post_signup` claims
-the new card and marks the mix's previous live one for deletion in the same transaction, so the
-channel never holds two cards counting two rosters. `delete_discord_post` is the host's undo for one
-message; `hard_delete` deletes every message of the mix; `close` and `cancel` delete nothing — the
-signup card refreshes into its finished state and the lineups stay as history.
+**Discord messages.** This service never renders a card, calls Discord or holds a bot token; it
+claims rows and answers what discord-service asks. A mix's messages are filed under subject
+`mix:<id>`: the signup card in slot `signup` (kind `mix.signup`), one row per posted lineup in slot
+`lineup:<lobby>:<match>` (kind `mix.lineup`). The single-mix read returns them as `discord_posts`
+(id, slot, kind, status, jump url, error, created_at) — a `pending` older than the
+`discord_commands` TTL reads `lost`, and `deleted` rows are left out. `post_signup` claims the new
+card and marks the mix's previous live one for deletion in the same transaction, so the channel
+never holds two cards counting two rosters. `post_discord` claims the lineup row for the lobby's
+next match. `delete_discord_post` is the host's undo for one message; `hard_delete` deletes every
+message of the mix; `close` and `cancel` delete nothing — the signup card refreshes into its
+finished state and the lineups stay as history.
+
+**`rpc.balancer.custom.discord_view`** (internal: no gateway route, no identity; discord-service is
+the only caller) is the render input. Request `{custom_game_id, lineups: [{lobby_index,
+match_number}]}`; reply: the mix's id, workspace, status and board url; `signup` (mix name, host,
+signup mode, status, lobby count, `updated_at`, and the roster as `{name, role, benched, rank}` at
+the ranks the balancer balances with); and one entry per requested lineup — the lobby's shown
+option (`variant`, `players`, `team_names`), next map and its art, points per win, lobby letter,
+the seated players' Discord ids (`mention_user_ids`) and the voice-button target. A lineup is
+`current: false` once its match is recorded, when its lobby or shown option is gone, or when the
+mix is finished — the bot then leaves that card as it is. Unknown mix → `not_found`.
+
+Rendering (the cards, the lineup picture, its fonts and art) and the projection that keeps live
+cards in step with the board live in discord-service: it consumes the `pickup_mix_changed` facts
+this service emits and re-renders from `discord_view`.
 
 **Events published to the broker.** `BalancerJobEvent` onto `balancer_jobs`, which this same
 worker consumes — job creation and job execution are one process, split by a queue rather than by a
@@ -148,33 +163,11 @@ announces nothing:
 - `PickupMixChangedEvent` onto `pickup_mix_changed`, from `emit_pickup_mix_changed` — every mix
   mutation emits it (`custom.*`, the `self_*` seat actions, and `players.upsert`/`players.set_ranks`
   with no mix id, because a renamed player or a corrected rank shows on every mix of the workspace).
-  It carries no state, only where to look.
-- `DiscordCommandEvent` onto `discord_commands` for the mix's Discord surface, every one naming its
-  row by `message_ref`: `custom.post_signup` (the delete of the previous card, then the new one),
-  `custom.post_discord` (the lineup card with its picture as `attachment://lineup-<digest>.png`,
-  seated players mentioned with `allow_mentions=True`), `custom.delete_discord_post` and
-  `custom.hard_delete` (deletes).
-
-No handler edits a live card. `src/services/mix_discord_projector.py` consumes
-`pickup_mix_changed` and re-renders from the committed state (`src/domain/mix_discord.py`): the
-newest live `signup` row of the named mix, or of every mix of the workspace when the event names
-none; and, for an event naming a mix, each lobby's newest live lineup card whose match is not
-recorded yet. It locks that `discord_message` row, writes the card onto it (`card_json`) and queues
-an `edit_message` command carrying no card — the bot coalesces edits by `message_ref` and reads the
-row's card at flush. The lock, not the queue, is what orders concurrent renders: the one that reads
-the roster last writes and queues last, so a burst of Join clicks converges on the newest roster.
-
-**Lineup picture.** The lineup card shows the matchup as a 1200×630 PNG drawn here with Pillow
-(`src/domain/mix_lineup_image.py`) from the stored balance, in the mix board's own look: the next
-map's art behind one card with both teams around a VS seam, a tile per seat (role, rank badge, name,
-rating), team averages and the gap between them. The map art comes by the URL the database holds
-(`map.image_path`); the rank badge is the Overwatch 2 ladder tier the seat's rating lands in — the
-board's own `OW_REFERENCE_GRID`, never a workspace's tournament grid — served by the site at
-`PUBLIC_SITE_URL/divisions/<slug>.png`. Both are fetched with a 3 s timeout and an hour's in-memory cache; one that
-fails to load is left out and the post still goes. Fonts (Onest, Inter — the site's faces) and the
-role glyphs are copies in `assets/lineup`. The file name hashes everything drawn, so a card that
-would look the same is skipped without drawing, and a card whose text changed but whose picture did
-not is edited without re-uploading it.
+  It carries no state, only where to look; discord-service consumes it.
+- `DiscordCommandEvent` (`send` / `delete`, naming the row by `message_ref`, no card) onto
+  `discord_commands`: `custom.post_signup` (the delete of the previous card, then the new one),
+  `custom.post_discord` (the new lineup), `custom.delete_discord_post` and `custom.hard_delete`
+  (deletes).
 
 **Realtime topics** (published to Redis, relayed to clients by the gateway):
 
@@ -340,13 +333,16 @@ Entity diagrams: [`../../docs/database_erd.md`](../../docs/database_erd.md) —
 ## Dependencies
 
 - **PostgreSQL** — everything durable listed above.
-- **RabbitMQ** — the `rpc.balancer.*` request/reply surface, the `balancer_jobs` work queue and the
-  `pickup_mix_changed` projection queue.
+- **RabbitMQ** — the `rpc.balancer.*` request/reply surface and the `balancer_jobs` work queue;
+  `pickup_mix_changed` and `discord_commands` are published (outbox), never consumed here.
 - **Redis** — four distinct roles: job store (metadata, payload, event log, result), draft clock
   locks and control pub/sub, realtime event fan-out, and the shared quota gate's counters and
   lease sets (`backend/shared/quota/`, its own client off the same `REDIS_URL`).
 - **Identity** — not called. The gateway injects the resolved identity into the RPC message and the
   worker rehydrates an `AuthUser` from it; permission checks are local.
+- **discord-service** — over RPC only (`shared.services.discord_client.DiscordClient`): the guild's
+  channels when a workspace admin sets the mix channel / voice category / general voices, the
+  category's voices for a mix's voice picker, and voice moves.
 
 No external APIs, no S3, no outbound `proxy` egress.
 

@@ -1,12 +1,12 @@
 """The matchup picture a lineup card shows: a 1200x630 PNG drawn here, from the stored lineup.
 
-``mix_discord.lineup_picture`` decides what the picture says; this module lays
+:func:`src.render.mix.lineup_picture` decides what the picture says; this module lays
 it out in the site's own look -- the mix board's matchup card (one panel, two
 team columns around a VS seam, a tile per seat with role, rank badge, name and
 rating) over the next map's art.
 
 Pictures come by URL: the map's art as the database holds it (``image_path``)
-and the OW2 ladder's rank badge, served by the site (``mix_discord``). The
+and the OW2 ladder's rank badge, served by the site (:mod:`src.render.mix`). The
 caller fetches them (``LineupPicture.image_urls``) and hands the bytes to
 :func:`render_png`; one missing from them is simply left out of the picture,
 the post still goes. Fonts (Onest for headings, Inter for the rest -- the

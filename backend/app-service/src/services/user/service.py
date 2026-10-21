@@ -51,6 +51,13 @@ tournament_stats = [
     enums.LogStatsName.Performance,
 ]
 
+# The stat a character's career-best game (``CharacterWithUserStats.record``) is judged by, per ``attrs["class"]``.
+_CHARACTER_RECORD_STAT: dict[str, enums.LogStatsName] = {
+    "tank": enums.LogStatsName.DamageBlocked,
+    "damage": enums.LogStatsName.HeroDamageDealt,
+    "support": enums.LogStatsName.HealingDealt,
+}
+
 
 _METRIC_DIRECTION_MAP: dict[str, bool] = {
     key: higher_is_better for key, _label, higher_is_better in COMPARE_METRIC_DEFINITIONS
@@ -1425,7 +1432,7 @@ class UserService(DisciplineQueries):
                     maps=hero_maps,
                     maps_won=hero_maps_won,
                 )
-                for hero, hero_maps, hero_maps_won in hero_rows
+                for hero, hero_maps, hero_maps_won, _lost, _drawn in hero_rows
             ],
             recent_tournaments=list(recent.values()),
         )
@@ -1784,7 +1791,7 @@ class UserService(DisciplineQueries):
 
     @cache(
         ttl=config.settings.users_cache_ttl,
-        key="backend:user_characters:{id}:{self.discipline}:{workspace_id}:{tournament_id}:{stats_key}:{params.page}:{params.per_page}",
+        key="backend:user_characters:v2:{id}:{self.discipline}:{workspace_id}:{tournament_id}:{stats_key}:{params.page}:{params.per_page}",
         lock=True,
     )
     async def _get_heroes_cached(
@@ -1798,7 +1805,8 @@ class UserService(DisciplineQueries):
         workspace_id: int | None = None,
     ) -> pagination.Paginated[schemas.CharacterWithUserStats]:
         """Paginated hero statistics for a user, each stat paired with the global
-        per-hero comparison values.
+        per-hero comparison values, plus the user's game record, every player's
+        win rate and the user's career-best game per hero.
         """
         del stats_key  # participates in the cache key only
         user = await self.get(session, id, [])
@@ -1851,6 +1859,14 @@ class UserService(DisciplineQueries):
                 )
                 stats_by_hero[hero_id][name].avg_10_all = round(value_avg_10, 2)
 
+        records = {
+            hero.id: (games, won, lost, drawn)
+            for hero, games, won, lost, drawn in await self.encounters.get_user_hero_records(
+                session, user.id, workspace_id=workspace_id, tournament_id=tournament_id
+            )
+        }
+        win_rates_all = await self._get_hero_win_rates_all(session)
+
         for hero_id, stats in stats_by_hero.items():
             # Gate on playtime, not eliminations: zero eliminations is a valid support pick.
             playtime_stat = stats.get(enums.LogStatsName.HeroTimePlayed)
@@ -1863,10 +1879,27 @@ class UserService(DisciplineQueries):
                 if not hero_stats:
                     continue
 
+            games, win, loss, draw = records.get(hero_id, (0, 0, 0, 0))
+            record_stat = _CHARACTER_RECORD_STAT.get(cache_hero[hero_id].attrs.get("class"))
+            best = stats[record_stat].best if record_stat is not None and record_stat in stats else None
             payload.append(
                 schemas.CharacterWithUserStats(
                     character=cache_hero[hero_id],
                     stats=hero_stats,
+                    games=games,
+                    win=win,
+                    loss=loss,
+                    draw=draw,
+                    win_rate_all=win_rates_all.get(hero_id),
+                    record=None
+                    if record_stat is None or best is None or best.value <= 0
+                    else schemas.CharacterRecord(
+                        stat=record_stat,
+                        value=best.value,
+                        encounter_id=best.encounter_id,
+                        map_name=best.map_name,
+                        tournament_name=best.tournament_name,
+                    ),
                 )
             )
 
@@ -1876,6 +1909,19 @@ class UserService(DisciplineQueries):
             total=len(payload),
             results=params.paginate_data(payload),
         )
+
+    @cache(
+        ttl=config.settings.users_cache_ttl,
+        key="backend:hero_win_rates_all:{self.discipline}",
+        lock=True,
+    )
+    async def _get_hero_win_rates_all(self, session: AsyncSession) -> dict[int, float]:
+        """Every player's ``win / games`` per hero over the whole discipline (the
+        population of ``avg_10_all``), shared by every user's characters read."""
+        return {
+            hero.id: round(won / games, 4)
+            for hero, games, won, _lost, _drawn in await self.encounters.get_user_hero_records(session, None)
+        }
 
     @cache(
         ttl=config.settings.users_cache_ttl,

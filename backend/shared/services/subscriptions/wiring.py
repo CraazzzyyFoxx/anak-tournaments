@@ -55,7 +55,6 @@ def build_store(session: AsyncSession) -> EntitlementStore:
 def build_strategies(
     session: AsyncSession,
     *,
-    discord_bot_token: str | None = None,
     twitch_client_id: str | None = None,
     broker: Any | None = None,
     proxy: str | None = None,
@@ -65,14 +64,15 @@ def build_strategies(
     Keys are the entitlement providers stored in ``provider_config.provider``
     (``boosty``/``twitch``), not the mechanism that answers: Boosty's tier comes
     from Discord roles, which is an implementation detail recorded in the
-    verdict's ``source``.
+    verdict's ``source``. Discord is asked through ``broker`` (discord-service
+    holds the only bot token); ``proxy`` is Twitch's egress.
 
     A provider with no credentials is still registered: its strategy resolves to
-    ``unknown`` (fail open) with a reason, which is strictly better than the
-    resolver reporting ``no_strategy_for_provider`` and hiding the real cause.
+    ``unknown`` with a reason, which is strictly better than the resolver
+    reporting ``no_strategy_for_provider`` and hiding the real cause.
     """
     return {
-        SocialProvider.BOOSTY: BoostyDiscordStrategy(session, bot_token=discord_bot_token, broker=broker, proxy=proxy),
+        SocialProvider.BOOSTY: BoostyDiscordStrategy(session, broker=broker),
         SocialProvider.TWITCH: TwitchSubscriptionStrategy(session, client_id=twitch_client_id, proxy=proxy),
     }
 
@@ -80,20 +80,13 @@ def build_strategies(
 def build_resolver(
     session: AsyncSession,
     *,
-    discord_bot_token: str | None = None,
     twitch_client_id: str | None = None,
     broker: Any | None = None,
     proxy: str | None = None,
 ) -> SubscriptionResolver:
     return SubscriptionResolver(
         store=build_store(session),
-        strategies=build_strategies(
-            session,
-            discord_bot_token=discord_bot_token,
-            twitch_client_id=twitch_client_id,
-            broker=broker,
-            proxy=proxy,
-        ),
+        strategies=build_strategies(session, twitch_client_id=twitch_client_id, broker=broker, proxy=proxy),
         # Every real resolver records history: the collector needs it for the admin
         # tab, and the registration/check-in gates are exactly the checks an
         # organizer later asks "why was this player refused?" about.

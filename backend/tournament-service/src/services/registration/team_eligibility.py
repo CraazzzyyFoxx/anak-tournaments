@@ -2,9 +2,9 @@
 
 The pure rules live in ``shared.domain.team_eligibility``. This module gathers
 the facts those rules need. Discord membership goes through ``DiscordClient``
-(discord-service first, REST fallback), the same door the subscription resolver
-uses. No bot and no token means fail-closed (``unreachable``), matching the
-flag's "must be in the guild" reading.
+(an RPC to discord-service), the same door the subscription resolver uses. A bot
+that cannot be asked means fail-closed (``unreachable``), matching the flag's
+"must be in the guild" reading.
 """
 
 from __future__ import annotations
@@ -28,8 +28,8 @@ from shared.domain.team_eligibility import (
     evaluate_unique_identity,
 )
 from shared.services.discord_client import DiscordClient
+from shared.services.discord_errors import DiscordError, MemberNotFound
 from shared.services.roster import RosterEngine, registration_load_options, roster_engine
-from shared.services.subscriptions.providers.discord_role import DiscordError, MemberNotFound
 
 __all__ = ("TeamEligibilityService", "team_eligibility")
 
@@ -152,7 +152,10 @@ async def _discord_signals(
         return {r.id: None for r in members}
 
     # One batch to discord-service; the per-member reads below hit its memo.
-    await discord.prefetch(guild_id, [snowflake for ids in discord_ids.values() for snowflake in ids])
+    try:
+        await discord.prefetch(guild_id, [snowflake for ids in discord_ids.values() for snowflake in ids])
+    except DiscordError:
+        return {r.id: "unreachable" if discord_ids.get(r.id) else "not_linked" for r in members}
 
     signals: dict[int, str | None] = {}
     for registration in members:

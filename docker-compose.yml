@@ -129,7 +129,7 @@ services:
 
   # stats-service (formerly parser-service) is two headless FastStream processes from one image:
   # stats-svc serves the typed RPC domains (match-log, canonical ingest, OverFast rank admin,
-  # achievement engine + rules admin, metadata sync, settings, discord-channel) behind the gateway;
+  # achievement engine + rules admin, metadata sync, settings) behind the gateway;
   # stats-worker runs every consumer and schedule (stats.ingest.<discipline>, achievements, rank
   # collection, reaper, retention, subscription collection). The bot uploads logs over RabbitMQ; the
   # SSE log monitor moved to the gateway WS hub.

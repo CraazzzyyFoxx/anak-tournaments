@@ -11,8 +11,8 @@ from unittest import TestCase
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from shared.division_grid import DEFAULT_GRID  # noqa: E402
-from shared.domain.discord_ui import EMOJI, division_emoji  # noqa: E402
 from src.tools.emoji_sync import _collect, badge_name  # noqa: E402
+from src.ui import EMOJI, division_emoji  # noqa: E402
 
 
 class BadgeNameTests(TestCase):

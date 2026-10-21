@@ -25,6 +25,10 @@ _HTTP_LIMITS = httpx.Limits(max_keepalive_connections=20, max_connections=100)
 _HTTP_TIMEOUT = httpx.Timeout(30.0)
 
 
+class OAuthTokenRejected(Exception):
+    """The provider refused a stored user access token (revoked, or expired early): only a re-link fixes it."""
+
+
 def _raise_provider_call_error(exc: BaseException, *, provider_label: str, error_detail: str) -> None:
     if isinstance(exc, HTTPException):
         raise exc
@@ -161,15 +165,18 @@ class DiscordOAuthProvider(OAuthProviderBase):
         belongs to. Requires the ``guilds`` scope. No privileged Discord intent
         needed -- this is the OAuth-user-token endpoint, not the bot-side
         member/role list. Used to prove workspace Discord-guild ownership
-        (``rpc.identity.oauth.discord_guilds``); combine with
+        (``rpc.identity.oauth_discord_guilds``); combine with
         ``has_manage_guild`` below, or the raw ``owner`` flag, to decide
-        administration rights.
+        administration rights. A 401 is ``OAuthTokenRejected``: the stored
+        token is dead and only a re-link revives it.
         """
         headers = {"Authorization": f"Bearer {access_token}"}
 
         try:
             response = await self.http.client().get(f"{settings.DISCORD_API_URL}/users/@me/guilds", headers=headers)
 
+            if response.status_code == status.HTTP_401_UNAUTHORIZED:
+                raise OAuthTokenRejected("Discord rejected the stored access token")
             if response.status_code != 200:
                 logger.warning(
                     "Discord guild list request failed",
@@ -178,6 +185,8 @@ class DiscordOAuthProvider(OAuthProviderBase):
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to get Discord guild list")
 
             return response.json()
+        except OAuthTokenRejected:
+            raise
         except Exception as exc:
             _raise_provider_call_error(exc, provider_label="Discord", error_detail="Failed to get Discord guild list")
 

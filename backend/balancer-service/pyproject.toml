@@ -15,7 +15,6 @@ dependencies = [
      "bcrypt>=4.2.1",
      "cachetools>=6.2.3",
      "cashews>=7.4.0",
-     "discord-py>=2.6.4",
      "faststream[rabbit,cli]>=0.6.7",
      "httpx>=0.28.1",
      "loguru>=0.7.3",
@@ -43,7 +42,6 @@ dependencies = [
      "opentelemetry-exporter-otlp>=1.27.0",
      "uvloop; platform_system == 'Linux'",
      "shared",
-     "pillow>=12.3.0",
 ]
 
 [tool.ty.environment]

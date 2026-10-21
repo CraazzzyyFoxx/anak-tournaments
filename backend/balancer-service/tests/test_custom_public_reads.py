@@ -6,7 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 BALANCER_SERVICE_ROOT = REPO_BACKEND_ROOT / "balancer-service"
@@ -42,6 +42,46 @@ def _message(**fields) -> SimpleNamespace:
 def _no_messages():
     """No mix in these tests has posted anything to Discord."""
     return patch.object(discord_messages.repository, "for_subject", AsyncMock(return_value=[]))
+
+
+def _list_row(**fields) -> SimpleNamespace:
+    """One ``custom_game`` row as the list reads it."""
+    return SimpleNamespace(
+        **{
+            "id": 3,
+            "workspace_id": 7,
+            "discipline": "lol",
+            "host_user_id": 5,
+            "name": "Friday mix",
+            "status": "balanced",
+            "lobby_count": 1,
+            "self_signup": "pool",
+            "self_role_edit": True,
+            "general_voice_channel_id": None,
+            "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+            **fields,
+        }
+    )
+
+
+def _list_service(rows: list[Any], *, next_before_id: int | None = None) -> MagicMock:
+    """A service whose list returns ``rows`` and whose every grouped per-row read is empty."""
+    service = MagicMock()
+    service.list = AsyncMock(return_value=(rows, next_before_id))
+    service.hosts = AsyncMock(return_value={})
+    service.workspace_discord_channel_id = AsyncMock(return_value=None)
+    for owner, read in (
+        (service.mix_rounds, "activity_for_games"),
+        (service.mix_rounds, "lobby_activity_for_games"),
+        (service.mix_rounds, "player_counts_for_games"),
+        (service.mix_rounds, "maps_for_games"),
+        (service.roster, "counts_for_games"),
+        (service.team_names, "mapping_for_games"),
+        (service.lobbies, "list_for_games"),
+        (service.host_prefs, "points_per_win_by_user"),
+    ):
+        setattr(owner, read, AsyncMock(return_value={}))
+    return service
 
 
 class _Broker:
@@ -87,42 +127,23 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
             return await self.broker.ops[subject](data, None)
 
     async def test_listing_and_scoring_a_workspace_mixes_needs_no_identity(self) -> None:
-        service = MagicMock()
-        service.list = AsyncMock(return_value=[])
-        service.hosts = AsyncMock(return_value={})
-        service.mix_rounds.activity_for_games = AsyncMock(return_value={})
-        service.team_names.mapping_for_games = AsyncMock(return_value={})
-        service.workspace_discord_channel_id = AsyncMock(return_value=None)
-        service.host_prefs.points_per_win_by_user = AsyncMock(return_value={})
-        service.lobbies.list_for_games = AsyncMock(return_value={})
-        service.mix_stats = AsyncMock(return_value=[])
+        service = _list_service([])
+        service.mix_stats = AsyncMock(return_value={"members": [], "mixes": 0, "matches": 0})
 
         with patch.object(custom, "custom_game_service", service):
             listed = await self._call("rpc.balancer.custom.list", {"workspace_id": 7})
             scored = await self._call("rpc.balancer.custom.stats", {"workspace_id": 7})
 
         self.assertTrue(listed["ok"], listed)
-        self.assertEqual([], listed["data"])
+        self.assertEqual({"items": [], "next_before_id": None}, listed["data"])
         self.assertTrue(scored["ok"], scored)
-        self.assertEqual({"since": None, "members": []}, scored["data"])
+        self.assertEqual({"since": None, "members": [], "mixes": 0, "matches": 0}, scored["data"])
 
     async def test_list_rows_leave_the_solver_document_out(self) -> None:
         """The list never touches a lobby's ``balance_result_json``: the column is
         deferred with ``raiseload`` there, and it is megabytes per balanced mix.
         The lobby row below has no such attribute, so any read of it fails the call."""
-        row = SimpleNamespace(
-            id=3,
-            workspace_id=7,
-            discipline="lol",
-            host_user_id=5,
-            name="Friday mix",
-            status="balanced",
-            lobby_count=1,
-            self_signup="pool",
-            self_role_edit=True,
-            general_voice_channel_id=None,
-            created_at=datetime(2026, 1, 1, tzinfo=UTC),
-        )
+        row = _list_row()
         lobby = SimpleNamespace(
             custom_game_id=3,
             lobby_index=0,
@@ -132,20 +153,17 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
             team1_voice_channel_id=None,
             team2_voice_channel_id=None,
         )
-        service = MagicMock()
-        service.list = AsyncMock(return_value=[row])
+        service = _list_service([row])
         service.hosts = AsyncMock(return_value={5: "Host"})
-        service.mix_rounds.activity_for_games = AsyncMock(return_value={})
         service.team_names.mapping_for_games = AsyncMock(return_value={3: {1: "Ravens"}})
         service.lobbies.list_for_games = AsyncMock(return_value={3: [lobby]})
-        service.workspace_discord_channel_id = AsyncMock(return_value=None)
         service.host_prefs.points_per_win_by_user = AsyncMock(return_value={5: 25})
 
         with patch.object(custom, "custom_game_service", service):
             listed = await self._call("rpc.balancer.custom.list", {"workspace_id": 7})
 
         self.assertTrue(listed["ok"], listed)
-        [item] = listed["data"]
+        [item] = listed["data"]["items"]
         # The owner game travels with every row: the board loads that game's metadata, never another's.
         self.assertEqual("lol", item["discipline"])
         self.assertNotIn("balance_result", item)
@@ -165,10 +183,71 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
                     "balanced_at": None,
                     "team1_voice_channel_id": None,
                     "team2_voice_channel_id": None,
+                    # Counted by the list too, so a row can say what each lobby has played.
+                    "matches_count": 0,
                 }
             ],
             item["lobbies"],
         )
+
+    async def test_a_list_page_carries_the_cursor_counts_and_newest_maps(self) -> None:
+        newer, older = _list_row(id=9), _list_row(id=8)
+        lobbies = [
+            SimpleNamespace(
+                custom_game_id=9,
+                lobby_index=index,
+                selected_variant_index=0,
+                next_map_id=None,
+                balanced_at=None,
+                team1_voice_channel_id=None,
+                team2_voice_channel_id=None,
+            )
+            for index in (0, 1)
+        ]
+        played = [(f"Map {n}", f"maps/{n}.png") for n in range(6)]
+        service = _list_service([newer, older], next_before_id=8)
+        service.lobbies.list_for_games = AsyncMock(return_value={9: lobbies})
+        service.mix_rounds.lobby_activity_for_games = AsyncMock(
+            return_value={9: {1: (3, datetime(2026, 1, 1, 22, 0, tzinfo=UTC))}}
+        )
+        service.mix_rounds.player_counts_for_games = AsyncMock(return_value={9: 11})
+        service.mix_rounds.maps_for_games = AsyncMock(return_value={9: played})
+        service.roster.counts_for_games = AsyncMock(return_value={9: 14, 8: 2})
+
+        with patch.object(custom, "custom_game_service", service):
+            listed = await self._call(
+                "rpc.balancer.custom.list",
+                {
+                    "workspace_id": 7,
+                    "query": {"status": ["open"], "q": ["  fri  "], "limit": ["2"], "before_id": ["10"]},
+                },
+            )
+
+        self.assertTrue(listed["ok"], listed)
+        service.list.assert_awaited_once_with(
+            ANY, workspace_id=7, discipline=None, status="open", search="fri", before_id=10, limit=2
+        )
+        self.assertEqual(8, listed["data"]["next_before_id"])
+        first, second = listed["data"]["items"]
+        self.assertEqual((11, 14), (first["players_count"], first["roster_count"]))
+        # Newest first and capped at four; the count still says six were played.
+        self.assertEqual([{"name": name, "image_path": path} for name, path in played[:4]], first["maps"])
+        self.assertEqual(6, first["maps_count"])
+        self.assertEqual([0, 3], [lobby["matches_count"] for lobby in first["lobbies"]])
+        # A mix nothing was recorded in counts zeros, not missing keys.
+        self.assertEqual(
+            (0, 2, [], 0), (second["players_count"], second["roster_count"], second["maps"], second["maps_count"])
+        )
+
+    async def test_a_list_query_outside_the_contract_is_unprocessable(self) -> None:
+        service = _list_service([])
+        bad_queries = ({"status": ["closed"]}, {"limit": ["0"]}, {"limit": ["101"]}, {"discipline": ["starcraft"]})
+        with patch.object(custom, "custom_game_service", service):
+            for query in bad_queries:
+                listed = await self._call("rpc.balancer.custom.list", {"workspace_id": 7, "query": query})
+                self.assertFalse(listed["ok"], query)
+                self.assertEqual("unprocessable", listed["error"]["code"], query)
+        service.list.assert_not_awaited()
 
     async def test_detail_read_says_where_every_player_sits_and_what_each_lobby_shows(self) -> None:
         """The board never derives lobby membership itself: the server reads it

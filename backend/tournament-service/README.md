@@ -375,8 +375,9 @@ Entity diagrams: [tournament](../../docs/database_erd.md#tournament--tournament-
 - **S3** — team logos, tournament covers/logos, registered-team crests.
 - **Challonge API** — bracket import/export and the auto-sync pull, via the outbound `proxy` container.
 - **Google Sheets** — registration feeds fetched as CSV exports over HTTPS.
-- **Discord API / Twitch API** — subscription-entitlement verification in the admission gate, via the
-  outbound `proxy` container.
+- **discord-service** (RabbitMQ RPC) — Discord roles for Boosty entitlements and team guild
+  membership; this service holds no bot token. An outage refuses (`provider_unavailable`).
+- **Twitch API** — Twitch entitlement verification, via the outbound `proxy` container.
 
 ## Configuration
 
@@ -388,7 +389,7 @@ actually change behaviour:
 | `CHALLONGE_API_KEY`, `CHALLONGE_USERNAME` | HTTP Basic credentials. Missing → Challonge answers 401, surfaced as `challonge_error`; the auto-sync job no-ops with a single warning |
 | `CHALLONGE_AUTO_SYNC_ENABLED` | Kill switch for the background Challonge pull |
 | `CHALLONGE_AUTO_SYNC_INTERVAL_MINUTES` | Interval of that pull (default 5) |
-| `DISCORD_TOKEN`, `TWITCH_CLIENT_ID` | Subscription-entitlement providers. **Missing does not fail loudly**: the provider resolves `unknown`, `unknown` fails open, and a subscription-gated tournament admits everybody |
+| `TWITCH_CLIENT_ID` | Twitch entitlement provider. **Missing does not fail loudly**: Twitch resolves `unknown` (`twitch_client_not_configured`), which fails open, and a Twitch-gated tournament admits everybody |
 | `WORKER_METRICS_PORT` | Prometheus scrape port (9103 in both environments) |
 | `RPC_PREFETCH_COUNT` | QoS on the RPC channel; the compute channel is fixed at 4 |
 | `REDIS_URL`, `RABBITMQ_URL` | Transport endpoints |

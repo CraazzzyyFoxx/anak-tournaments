@@ -56,7 +56,7 @@ from src.core.cache import RedisStore
 from src.core.config import Settings, settings
 from src.services.auth import AuthenticationService, auth
 from src.services.oauth_accounts import OAuthAccountService, oauth_accounts
-from src.services.oauth_providers import OAuthProviderRegistry, has_manage_guild, oauth_providers
+from src.services.oauth_providers import OAuthProviderRegistry, OAuthTokenRejected, has_manage_guild, oauth_providers
 from src.services.oauth_state import OAuthStateCodec, StatePayload, oauth_state
 from src.services.tickets import LINK_TICKETS, SSO_TICKETS, TicketStore, guard_digest
 
@@ -337,30 +337,31 @@ class OAuthFlowService:
             for conn in conns
         ]
 
-    async def discord_guilds(self, session: AsyncSession, *, auth_user_id: int) -> list[dict[str, Any]]:
-        """Guilds ``auth_user_id`` administers on Discord, live and uncached.
+    async def discord_guilds(self, session: AsyncSession, *, auth_user_id: int) -> dict[str, Any]:
+        """Guilds ``auth_user_id`` is in on Discord, live and uncached: ``{"guilds", "relink_required"}``.
 
-        No DB write. Used by ``rpc.app.workspaces.discord_guild_verify`` to prove
-        ownership before a workspace can claim a Discord guild id.
+        No DB write. Used by app-service to prove guild administration before a
+        workspace can claim a Discord guild id, and to fill the guild picker.
 
-        A missing connection, a missing access token, or an expired one all
-        degrade to an empty list rather than an error -- no refresh-token
-        exchange exists for any provider in this codebase yet, so a stale
-        token cannot be silently revived, and surfacing Discord's raw 401
-        would tell the caller nothing actionable a re-link doesn't already say.
+        Asks with the first linked Discord account whose stored token is present
+        and unexpired (a user may link several). None usable, or Discord refusing
+        that token, answers ``relink_required`` with no guilds: no refresh-token
+        exchange exists for any provider here, so only a re-link revives it.
         """
+        now = datetime.now(UTC)
         conns = await self.connections.list_by_user_providers(session, auth_user_id=auth_user_id, providers=["discord"])
-        if not conns:
-            return []
-        conn = conns[0]
-        if not conn.access_token:
-            return []
-        if conn.token_expires_at is not None and conn.token_expires_at <= datetime.now(UTC):
-            return []
+        conn = next(
+            (c for c in conns if c.access_token and (c.token_expires_at is None or c.token_expires_at > now)),
+            None,
+        )
+        if conn is None:
+            return {"guilds": [], "relink_required": True}
 
-        provider = self.providers.get("discord")
-        raw_guilds = await provider.get_user_guilds(conn.access_token)
-        return [
+        try:
+            raw_guilds = await self.providers.get("discord").get_user_guilds(conn.access_token)
+        except OAuthTokenRejected:
+            return {"guilds": [], "relink_required": True}
+        guilds = [
             {
                 "guild_id": str(g["id"]),
                 "name": g.get("name"),
@@ -370,6 +371,7 @@ class OAuthFlowService:
             }
             for g in raw_guilds
         ]
+        return {"guilds": guilds, "relink_required": False}
 
     async def unlink(
         self,

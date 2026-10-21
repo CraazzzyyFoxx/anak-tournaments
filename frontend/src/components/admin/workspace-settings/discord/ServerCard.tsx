@@ -112,7 +112,7 @@ export function ServerCard({
   const botMissing = info !== undefined && !info.connected && !info.error;
 
   return (
-    <SettingGroup title={t("server")} immediate>
+    <SettingGroup id="server" title={t("server")} immediate>
       <div className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
         <div className="flex min-w-0 items-center gap-3">
           <GuildMark name={name} src={icon} size="lg" />

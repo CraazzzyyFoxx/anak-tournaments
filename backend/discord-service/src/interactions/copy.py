@@ -14,14 +14,15 @@ import discord
 from discord.utils import escape_markdown
 
 from shared.disciplines import DISCIPLINES
-from shared.domain.discord_ui import ROLE_EMOJI, division_emoji, emoji
 from shared.domain.mix_lobby import LOBBY_LETTERS, MAX_LOBBIES
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
+from src.ui import ROLE_EMOJI, division_emoji, emoji
 
 OW_ROLE_DIMENSION = DISCIPLINES["overwatch"].rated_dimension.code
 
 __all__ = (
     "LINK_BLOCKERS",
+    "Locale",
     "MIX_BLOCKERS",
     "VOICE_REFUSALS",
     "error_text",
@@ -66,6 +67,19 @@ _TEXT: dict[Locale, dict[str, str]] = {
         "mix_setup": "Настроить роли",
         "mix_none": "Сейчас нет открытого микса.",
         "open_profile": "Открыть профиль",
+        # A log-upload reply (``src.feedback``); the emoji and the error ride outside.
+        "log_awaiting_link": "{filename} — загружен; администратору нужно привязать лог к игре и повторить обработку",
+        "log_processing_failed": "{filename} — загружен, но обработка завершилась ошибкой",
+        "log_upload_failed": "{filename} — не удалось загрузить или поставить в обработку",
+        # The ``/mix`` command group (``src.cogs.interactions``).
+        "slash_mix": "Микс",
+        "slash_seat": "Моё место в текущем миксе",
+        "slash_move": "Развести игроков по войсам команд",
+        "slash_return": "Вернуть всех из войсов команд в общий",
+        "slash_mix_option": "Микс, который вы ведёте",
+        "slash_lobby_option": "Какое лобби",
+        "slash_all_lobbies": "Все лобби",
+        "slash_lobby": "Лобби {letter}",
     },
     "en": {
         "not_linked": "### Discord isn't linked\n1. Open your profile on the site\n2. Link Discord",
@@ -87,6 +101,17 @@ _TEXT: dict[Locale, dict[str, str]] = {
         "mix_setup": "Edit roles",
         "mix_none": "No mix is open right now.",
         "open_profile": "Open profile",
+        "log_awaiting_link": "{filename} — uploaded; an admin needs to link the log to a game and process it again",
+        "log_processing_failed": "{filename} — uploaded, but processing failed",
+        "log_upload_failed": "{filename} — could not be uploaded or queued for processing",
+        "slash_mix": "Mix",
+        "slash_seat": "My seat in the current mix",
+        "slash_move": "Move players into their team voice channels",
+        "slash_return": "Move everyone from the team voice channels back to the general one",
+        "slash_mix_option": "A mix you host",
+        "slash_lobby_option": "Which lobby",
+        "slash_all_lobbies": "All lobbies",
+        "slash_lobby": "Lobby {letter}",
     },
 }
 

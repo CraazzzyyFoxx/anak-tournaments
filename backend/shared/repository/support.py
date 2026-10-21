@@ -216,19 +216,22 @@ class DiscordChannelRepository(BaseRepository[models.TournamentDiscordChannel]):
     ) -> models.TournamentDiscordChannel | None:
         return await self.get_by(session, tournament_id=tournament_id)
 
-    async def list_channel_ids_for_tournament(
-        self,
-        session: AsyncSession,
-        tournament_id: int,
-    ) -> Sequence[int]:
-        """Active channel ids configured for a tournament (0 or 1: unique per tournament)."""
+    async def set_last_scanned(self, session: AsyncSession, channel_id: int, message_id: int) -> bool:
+        """Raise the channel's rescan cursor to ``message_id``; ``False`` when it already sits there or past.
+
+        Guarded in SQL, so a slow history walk finishing after a live message
+        never drags the cursor back.
+        """
+        model = models.TournamentDiscordChannel
         result = await session.execute(
-            sa.select(models.TournamentDiscordChannel.channel_id).where(
-                models.TournamentDiscordChannel.tournament_id == tournament_id,
-                models.TournamentDiscordChannel.is_active,
+            sa.update(model)
+            .where(
+                model.channel_id == channel_id,
+                sa.or_(model.last_scanned_message_id.is_(None), model.last_scanned_message_id < message_id),
             )
+            .values(last_scanned_message_id=message_id)
         )
-        return result.scalars().all()
+        return result.rowcount > 0
 
     async def list_active_with_tournament(
         self,

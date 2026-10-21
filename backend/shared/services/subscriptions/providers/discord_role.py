@@ -17,14 +17,13 @@ branch.
 
 Discord access notes:
 
-- ``GET /guilds/{guild}/members/{user}`` needs NO privileged intent. Do not use
-  the *list* endpoint, which does.
-- A missing bot token of OUR own is ``DiscordNotConfigured``, never a 403: it
-  resolves ``bot_not_configured`` so a service deployed without ``DISCORD_TOKEN``
-  does not report a perfectly good guild as unreachable.
-- Rate limits bucket per ``guild_id``, so the guild's role list is fetched at
-  most once per resolver instance (one batch) and only when it is actually
-  needed.
+- Every read goes through discord-service (``shared.services.discord_client``),
+  which answers from discord.py's guild cache; a missing broker in the calling
+  process is ``DiscordNotConfigured``, never a 403, so it resolves
+  ``bot_not_configured`` instead of reporting a perfectly good guild as
+  unreachable.
+- The guild's role list is fetched at most once per resolver instance (one
+  batch) and only when it is actually needed.
 - Without the ``GUILD_MEMBERS`` intent there are no ``GUILD_MEMBER_UPDATE``
   events, so this is strictly pull-based: verdicts carry a TTL.
 """
@@ -36,6 +35,13 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any, Final
 
+from shared.services.discord_errors import (
+    DiscordError,
+    DiscordForbidden,
+    DiscordNotConfigured,
+    DiscordUnavailable,
+    MemberNotFound,
+)
 from shared.services.subscriptions.discord_roles import parse_role_tiers, resolve_role_tier
 from shared.services.subscriptions.types import (
     SubscriptionSource,
@@ -43,45 +49,12 @@ from shared.services.subscriptions.types import (
     SubscriptionVerdict,
 )
 
-__all__ = (
-    "DEFAULT_TTL_SECONDS",
-    "DiscordForbidden",
-    "DiscordNotConfigured",
-    "DiscordRoleResolver",
-    "DiscordUnavailable",
-    "MemberNotFound",
-)
+__all__ = ("DEFAULT_TTL_SECONDS", "DiscordRoleResolver")
 
 DEFAULT_TTL_SECONDS: Final = 15 * 60
 
 MemberRolesFetcher = Callable[[str, str], Awaitable[list[str]]]
 GuildRolesFetcher = Callable[[str], Awaitable[set[str]]]
-
-
-class DiscordError(Exception):
-    """Base for the outcomes the resolver distinguishes."""
-
-
-class MemberNotFound(DiscordError):
-    """404 -- the user is not a member of the guild, so not subscribed."""
-
-
-class DiscordForbidden(DiscordError):
-    """403 -- the bot cannot see the guild. Organizer misconfiguration."""
-
-
-class DiscordNotConfigured(DiscordError):
-    """Our own bot token is missing, so no request was ever made.
-
-    Deliberately distinct from ``DiscordForbidden``: a 403 means the guild really
-    is unreachable, while this means we never asked. Reporting it as
-    ``guild_not_accessible`` would point the operator at a guild id that is fine
-    instead of at the missing credential.
-    """
-
-
-class DiscordUnavailable(DiscordError):
-    """5xx / timeout / transport failure."""
 
 
 class DiscordRoleResolver:

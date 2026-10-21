@@ -191,7 +191,9 @@ and have SELECT on its native sources; ordinary readers need only SELECT on the 
 ### Outbound RPC
 
 `rpc.identity.oauth_discord_guilds` (identity-service), to confirm the caller administers the Discord
-guild they are claiming for a workspace.
+guild they are claiming for a workspace. `discord_guild_channels` (discord-service, via the RPC-only
+`shared.services.discord_client.DiscordClient`), to check a workspace's notification channel belongs
+to its own guild.
 
 ## Data owned
 
@@ -242,6 +244,7 @@ roles), and `catalog.entity_legacy` for old-id lookups. No runtime access to leg
 - **RabbitMQ** — RPC transport and the `tournament_changed` consumer.
 - **S3 / MinIO** — workspace icons, platform assets, match-log objects.
 - **identity-service** — over RPC, for Discord guild verification.
+- **discord-service** — over RPC, for the notification-channel check.
 
 No outbound calls to third-party APIs, so no `proxy` egress. (The compose block still declares
 `depends_on: proxy` — startup ordering only.)
@@ -261,9 +264,6 @@ Behaviour-changing settings:
 - `AUTH_SERVICE_URL` — token validation; production overrides it to the gateway
   (`http://gateway:8080/api/auth`).
 - `PROJECT_URL` — required, used to build absolute URLs.
-- `PUBLIC_SITE_URL` — absolute base of the public site (default `http://localhost:3000`), used to
-  build the deep links notification DMs and channel posts carry. The frontend mirrors the same
-  value as `NEXT_PUBLIC_SITE_URL`.
 - Cache TTLs, all defaulting to 300s except one: `users_cache_ttl`, `tournaments_cache_ttl`,
   `heroes_cache_ttl`, `maps_cache_ttl`, `gamemodes_cache_ttl`, `statistics_cache_ttl`,
   `teams_cache_ttl`, `encounters_cache_ttl`, `achievements_cache_ttl`, and `user_profile_cache_ttl`

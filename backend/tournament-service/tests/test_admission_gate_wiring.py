@@ -79,8 +79,9 @@ def _verdict(state: str, tier: int | None = None, *, reason: str | None = None) 
 
 ACTIVE_2 = _verdict(SubscriptionState.ACTIVE, 2)
 INACTIVE = _verdict(SubscriptionState.INACTIVE, reason="not_subscribed")
-#: An outage, which is the case that must never refuse anybody.
-UNKNOWN = _verdict(SubscriptionState.UNKNOWN, reason="provider_unavailable")
+#: The organizer's misconfiguration, which must never refuse anybody. (An outage --
+#: ``provider_unavailable`` -- refuses; ``test_admission_subscription`` pins that.)
+UNKNOWN = _verdict(SubscriptionState.UNKNOWN, reason="guild_not_configured")
 
 
 # --------------------------------------------------------------------------- #
@@ -313,8 +314,8 @@ class TestClosedProfileRefusesCheckIn(_GateCase):
 
 
 class TestSubscriptionFailsOpenAtCheckIn(_GateCase):
-    """Only a CONFIRMED refusal blocks -- the invariant whose regression cost is
-    ejecting a paying subscriber from a live check-in."""
+    """A rule the organizer left unanswerable does not block -- the invariant whose
+    regression cost is ejecting a paying subscriber from a live check-in."""
 
     async def test_undetermined_does_not_raise(self):
         evaluation, resolver, _session = await self.gate(

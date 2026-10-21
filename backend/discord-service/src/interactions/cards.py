@@ -18,12 +18,12 @@ from typing import Any
 
 import discord
 
-from shared.domain.discord_ui import EMOJI, ROLE_EMOJI
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
-from shared.schemas.events import DiscordActionButton, DiscordButton, DiscordCard
 from src.interactions import copy
 from src.interactions.actions import ALL_ROLES, NO_ROLE, custom_id, parse_custom_id
 from src.interactions.emoji import registry
+from src.render.card import DiscordActionButton, DiscordButton, DiscordCard
+from src.ui import EMOJI, ROLE_EMOJI
 
 __all__ = ("card_view", "modal_fields", "seat_modal", "settle")
 

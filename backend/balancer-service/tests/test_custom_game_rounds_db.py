@@ -16,7 +16,7 @@ import sqlalchemy as sa  # noqa: E402
 from shared import models  # noqa: E402
 from shared.disciplines import DISCIPLINES  # noqa: E402
 from shared.domain.custom_game_round import winner_slot  # noqa: E402
-from shared.repository import CatalogRoleRepository, CustomGameRoundRepository  # noqa: E402
+from shared.repository import CatalogRoleRepository, CustomGamePlayerRepository, CustomGameRoundRepository  # noqa: E402
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
 from src.services.mix_rounds import MixRoundDraft, MixRoundSeat, record_mix_round  # noqa: E402
 
@@ -211,6 +211,60 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
             self.assertEqual(3, (await self.rounds.activity_for_games(s, [self.cg.id]))[self.cg.id][0])
             self.assertIsNone(await self.rounds.get_for_game(s, self.cg.id + 1000, first))
             self.assertEqual(first, (await self.rounds.get_for_game(s, self.cg.id, first)).encounter_id)
+
+    async def test_the_list_reads_group_lobbies_seats_maps_and_roster_per_mix(self) -> None:
+        tag = f"cgr-{self.ids['ws']}"
+        async with self.Session() as s:
+            oasis, ilios = (
+                models.CatalogEntity(
+                    discipline="overwatch",
+                    kind="map",
+                    slug=f"{tag}-{name}",
+                    name=f"{tag} {name}",
+                    image_path=f"{name}.png",
+                )
+                for name in ("oasis", "ilios")
+            )
+            s.add_all([oasis, ilios])
+            s.add_all(
+                [
+                    models.CustomGamePlayer(custom_game_id=self.cg.id, workspace_member_id=self.ids[f"m{i}"])
+                    for i in range(4)
+                ]
+            )
+            await s.commit()
+        # The game rows hold the maps (RESTRICT): they go with the workspace in asyncTearDown, the maps after it.
+        self.addAsyncCleanup(self._drop_maps, [oasis.id, ilios.id])
+
+        await self._record(replace(self._draft(lobby=0), map_id=oasis.id))
+        await self._record(replace(self._draft(lobby=0, busy=frozenset({self.ids["m3"]})), map_id=ilios.id))
+        await self._record(replace(self._draft(lobby=1), map_id=oasis.id))
+        await self._record(self._draft(lobby=1))  # no map rolled
+        async with self.Session() as s:
+            lobbies = await self.rounds.lobby_activity_for_games(s, [self.cg.id, self.cg.id + 1000])
+            self.assertEqual(
+                {self.cg.id: {0: 2, 1: 2}}, {g: {k: v[0] for k, v in by.items()} for g, by in lobbies.items()}
+            )
+            # m0, m1, m2 sat; m3 was only ever busy next door.
+            self.assertEqual({self.cg.id: 3}, await self.rounds.player_counts_for_games(s, [self.cg.id]))
+            # Distinct maps, the most recently played first -- not first-played, not alphabetical.
+            self.assertEqual(
+                {self.cg.id: [(oasis.name, "oasis.png"), (ilios.name, "ilios.png")]},
+                await self.rounds.maps_for_games(s, [self.cg.id]),
+            )
+            self.assertEqual({self.cg.id: 4}, await CustomGamePlayerRepository().counts_for_games(s, [self.cg.id]))
+            for read in (
+                self.rounds.lobby_activity_for_games,
+                self.rounds.player_counts_for_games,
+                self.rounds.maps_for_games,
+            ):
+                self.assertEqual({}, await read(s, []))
+
+    async def _drop_maps(self, map_ids: list[int]) -> None:
+        async with self.Session() as s:
+            await s.execute(sa.delete(models.CatalogEntity).where(models.CatalogEntity.id.in_(map_ids)))
+            await s.commit()
+        await self.engine.dispose()
 
     async def test_seat_rows_carry_both_sides_of_the_result(self) -> None:
         encounter_id = await self._record(self._draft(deltas=(5, None)))

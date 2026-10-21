@@ -9,6 +9,7 @@ Runs under stdlib unittest -- there is no pytest-asyncio here.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest import IsolatedAsyncioTestCase
@@ -41,6 +42,11 @@ def _verdict(state: str, tier: int | None = None, source: str = "test") -> Subsc
         expires_at=NOW + timedelta(seconds=SUBSCRIPTION_TTL_SECONDS),
         evidence={},
     )
+
+
+def _outage() -> SubscriptionVerdict:
+    """What a strategy files when its transport failed (``OUTAGE_REASONS``)."""
+    return replace(_verdict(SubscriptionState.UNKNOWN), evidence={"reason": "provider_unavailable"})
 
 
 def _stored(
@@ -463,8 +469,8 @@ class TestEvaluateRequirement(IsolatedAsyncioTestCase):
         )
         assert outcomes[1][0] is Outcome.SATISFIED
 
-    async def test_any_mode_with_refusal_and_outage_does_not_block(self):
-        """The headline regression: an unconfigured Twitch must not turn a
+    async def test_any_mode_with_refusal_and_unconfigured_provider_does_not_block(self):
+        """An unconfigured Twitch is the organizer's problem: it must not turn a
         Boosty refusal into a hard block."""
         outcomes = await self._evaluate(
             {"mode": "any", "requirements": [{"provider": "boosty"}, {"provider": "twitch"}]},
@@ -474,7 +480,39 @@ class TestEvaluateRequirement(IsolatedAsyncioTestCase):
         outcome, verdicts = outcomes[1]
         assert outcome is Outcome.UNDETERMINED
         assert outcome.blocks_admission is False
-        assert verdicts["twitch"].state == SubscriptionState.UNKNOWN
+        assert verdicts["twitch"].evidence["reason"] == "provider_not_configured"
+
+    async def test_any_mode_with_refusal_and_outage_blocks(self):
+        """Twitch did not answer, Boosty said no: nothing confirmed the patron."""
+        outcomes = await self._evaluate(
+            {"mode": "any", "requirements": [{"provider": "boosty"}, {"provider": "twitch"}]},
+            configs={
+                "boosty": _enabled("boosty"),
+                "twitch": _enabled("twitch", {"broadcaster_id": "1"}),
+            },
+            strategies={
+                "boosty": _FakeStrategy(default=_verdict(SubscriptionState.INACTIVE)),
+                "twitch": _FakeStrategy(default=_outage()),
+            },
+        )
+        outcome, verdicts = outcomes[1]
+        assert outcome is Outcome.REFUSED
+        assert outcome.blocks_admission is True
+        assert verdicts["twitch"].evidence["reason"] == "provider_unavailable"
+
+    async def test_any_mode_with_satisfied_and_outage_passes(self):
+        outcomes = await self._evaluate(
+            {"mode": "any", "requirements": [{"provider": "boosty"}, {"provider": "twitch"}]},
+            configs={
+                "boosty": _enabled("boosty"),
+                "twitch": _enabled("twitch", {"broadcaster_id": "1"}),
+            },
+            strategies={
+                "boosty": _FakeStrategy(default=_outage()),
+                "twitch": _FakeStrategy(default=_verdict(SubscriptionState.ACTIVE, 1)),
+            },
+        )
+        assert outcomes[1][0] is Outcome.SATISFIED
 
     async def test_all_mode_blocks_on_one_refusal(self):
         outcomes = await self._evaluate(

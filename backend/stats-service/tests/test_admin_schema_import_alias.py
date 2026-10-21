@@ -1,13 +1,13 @@
 """Live admin schemas are reachable only through the top-level facade
 ``from src import schemas``.
 
-``src/schemas/__init__.py`` flattens the six admin submodules that have real
-consumers (``achievement_rule``, ``discord_channel``, ``logs``,
-``rank_collection``, ``settings``, ``subscription_collection``) onto the
-top-level facade, so e.g. ``schemas.DiscordChannelRead`` resolves through the
-same import as any public schema. Importing ``src.schemas.admin`` (or one of
-those six submodules) directly anywhere outside the schemas package itself
-reintroduces a second, narrower ``schemas``-shaped name and is banned.
+``src/schemas/__init__.py`` flattens the five admin submodules that have real
+consumers (``achievement_rule``, ``logs``, ``rank_collection``, ``settings``,
+``subscription_collection``) onto the top-level facade, so e.g.
+``schemas.SettingRead`` resolves through the same import as any public schema.
+Importing ``src.schemas.admin`` (or one of those five submodules) directly
+anywhere outside the schemas package itself reintroduces a second, narrower
+``schemas``-shaped name and is banned.
 
 ``src/schemas/admin/{tournament,stage,standing,player_sub_role}.py``
 are a separate matter: confirmed dead code (zero consumers anywhere in this

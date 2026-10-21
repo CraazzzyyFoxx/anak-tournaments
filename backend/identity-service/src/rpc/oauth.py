@@ -187,11 +187,12 @@ def register(broker: Any, logger: Any) -> None:
 
     @broker.subscriber("rpc.identity.oauth_discord_guilds", channel=_PROVIDER_CHANNEL)
     async def _oauth_discord_guilds(data: dict, msg: RabbitMessage) -> dict:
-        """Guilds the given ``auth_user_id`` administers on Discord.
+        """Guilds the given ``auth_user_id`` is in on Discord: ``{"guilds", "relink_required"}``.
 
         Internal, service-to-service only (no gateway route) -- called by
-        ``rpc.app.workspaces.discord_guild_verify`` to prove ownership before a
-        workspace can claim a guild id.
+        app-service to prove guild administration before a workspace can claim
+        a guild id, and to fill the guild picker. ``relink_required`` means no
+        linked Discord account holds a token Discord still accepts.
         Trusted broker traffic, so the caller passes ``auth_user_id`` directly
         rather than a bearer token, same trust boundary as every other
         internal-only subject in this stack.
@@ -202,7 +203,6 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> dict:
             if not auth_user_id:
                 raise HTTPException(status_code=422, detail="auth_user_id is required")
-            guilds = await oauth.discord_guilds(session, auth_user_id=int(auth_user_id))
-            return {"guilds": guilds}
+            return await oauth.discord_guilds(session, auth_user_id=int(auth_user_id))
 
         return await c.envelope_session(logger, "oauth_discord_guilds", op)

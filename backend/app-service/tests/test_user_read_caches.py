@@ -72,14 +72,14 @@ class UserCacheInvalidationTests(_CacheTestBase):
             self.assertEqual(1, await cache.get(f"backend:{prefix}:6:x"))
 
     async def test_invalidate_user_caches_routes_every_pattern(self) -> None:
-        await cache.set("backend:user_characters:9:x", 1)
+        await cache.set("backend:user_characters:v2:9:x", 1)
         await cache.set("backend:user_matches_summary:9:x", 1)
         await cache.set("backend:user_compare:v3:9:x", 1)
 
         # Must not raise NotConfiguredError and must clear the subject's keys.
         await user_cache.invalidate_user_caches(9)
 
-        self.assertIsNone(await cache.get("backend:user_characters:9:x"))
+        self.assertIsNone(await cache.get("backend:user_characters:v2:9:x"))
         self.assertIsNone(await cache.get("backend:user_matches_summary:9:x"))
         self.assertIsNone(await cache.get("backend:user_compare:v3:9:x"))
 
@@ -106,21 +106,26 @@ class CharactersCacheTests(_CacheTestBase):
             get_statistics_by_heroes=compute,
             get_statistics_by_heroes_all_values=AsyncMock(return_value=[]),
         )
-        return get_user, svc, compute
+        records = patch.object(users.encounters, "get_user_hero_records", AsyncMock(return_value=[]))
+        return get_user, svc, compute, records
 
     async def test_repeat_request_is_served_from_cache(self) -> None:
-        get_user, svc, compute = self._patch_deps()
+        get_user, svc, compute, records = self._patch_deps()
         params = pagination.PaginationParams(page=1, per_page=10)
         stats = [enums.LogStatsName.Deaths, enums.LogStatsName.Eliminations]
-        with get_user, svc:
+        with get_user, svc, records:
             await users.get_heroes(object(), 101, params, stats, workspace_id=1)
             await users.get_heroes(object(), 101, params, stats, workspace_id=1)
+            stored = [key async for key in cache.scan("backend:user_characters*")]
         compute.assert_awaited_once()
+        # Versioned (rows gained fields), still in the ``{prefix}:{user_id}:*`` shape user_cache_patterns() globs.
+        self.assertTrue(stored)
+        self.assertTrue(all(key.startswith("backend:user_characters:v2:101:") for key in stored), stored)
 
     async def test_stats_order_and_duplicates_share_one_key(self) -> None:
-        get_user, svc, compute = self._patch_deps()
+        get_user, svc, compute, records = self._patch_deps()
         params = pagination.PaginationParams(page=1, per_page=10)
-        with get_user, svc:
+        with get_user, svc, records:
             await users.get_heroes(
                 object(),
                 101,
@@ -138,9 +143,9 @@ class CharactersCacheTests(_CacheTestBase):
         compute.assert_awaited_once()
 
     async def test_pagination_is_part_of_the_key(self) -> None:
-        get_user, svc, compute = self._patch_deps()
+        get_user, svc, compute, records = self._patch_deps()
         stats = [enums.LogStatsName.Deaths]
-        with get_user, svc:
+        with get_user, svc, records:
             await users.get_heroes(
                 object(), 101, pagination.PaginationParams(page=1, per_page=10), stats, workspace_id=1
             )

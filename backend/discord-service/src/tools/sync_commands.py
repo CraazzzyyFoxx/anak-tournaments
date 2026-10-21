@@ -19,7 +19,7 @@ import asyncio
 import discord
 
 from src.bot import LogCollectorBot
-from src.cogs.interactions import InteractionsCog
+from src.cogs.interactions import InteractionsCog, SlashTranslator
 from src.core.config import Settings
 
 
@@ -29,6 +29,8 @@ async def sync(guild_id: int | None) -> list[str]:
     try:
         await bot.login(settings.discord_token)
         await bot.add_cog(InteractionsCog(bot))
+        # The descriptions are Russian; the translator adds every other client language.
+        await bot.tree.set_translator(SlashTranslator())
         guild = discord.Object(id=guild_id) if guild_id is not None else None
         if guild is not None:
             # A guild sync publishes a *copy* of the global tree, which is why

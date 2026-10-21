@@ -2251,7 +2251,7 @@
       "summary": "Get user by name"
     },
     "rpc.app.users.characters": {
-      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated per-character stats in the required `discipline` for the requested stat names, optionally scoped to a tournament and workspace; rejects invalid stat values with 422.",
+      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated per-character stats in the required `discipline` for the requested stat names, optionally scoped to a tournament and workspace; rejects invalid stat values with 422. Each row also carries the player's scoped map record on the character (`games`/`win`/`loss`/`draw`; a draw is a game, not a win), every player's discipline-wide `win_rate_all` (unscoped, like `avg_10_all`) and the player's career-best game (`record`) in the stat the character's class is judged by.",
       "query_params": [
         {
           "name": "page",
@@ -3802,14 +3802,6 @@
       },
       "summary": "Create workspace"
     },
-    "rpc.app.workspaces.discord_channels": {
-      "description": "Permission: workspace `workspace.update`. Returns text channels of the workspace's linked Discord server with names and categories.",
-      "summary": "List workspace Discord channels"
-    },
-    "rpc.app.workspaces.discord_guild": {
-      "description": "Permission: workspace `workspace.update`. Returns connection status, server name, icon URL, member count, and Discord owner of the workspace's linked Discord server.",
-      "summary": "Workspace Discord server status"
-    },
     "rpc.app.workspaces.discord_guild_clear": {
       "description": "Permission: workspace `workspace.update`, deliberately not Discord administration -- so an organiser can leave a server they were kicked from. Clears the workspace's Discord guild claim (guild id, verified_at, verified_by). 404 if workspace missing. Idempotent when nothing is bound.",
       "response": {
@@ -3819,7 +3811,7 @@
       "summary": "Unbind a Discord guild"
     },
     "rpc.app.workspaces.discord_guild_verify": {
-      "description": "Permission: workspace `workspace.update`, and the caller must additionally administer the Discord guild (owner or MANAGE_GUILD, proven through identity-service). Binds the guild to the workspace, stamping verified_at/verified_by; 404 if workspace missing, 403 if the caller does not administer the guild, 409 if another workspace already claims it, 503 if identity-service is unreachable.",
+      "description": "Permission: workspace `workspace.update`, and the caller must additionally administer the Discord guild (owner or MANAGE_GUILD, proven through identity-service). Binds the guild to the workspace, stamping verified_at/verified_by; 404 if workspace missing, 403 `discord_relink_required` when the caller's Discord connection has no usable OAuth token (re-link Discord), 403 `discord_guild_not_administered` if the caller does not administer the guild, 409 if another workspace already claims it, 503 if identity-service is unreachable.",
       "request": {
         "array": false,
         "ref": "app.WorkspaceDiscordGuildVerify"
@@ -3829,10 +3821,6 @@
         "ref": "app.WorkspaceRead"
       },
       "summary": "Verify and bind a Discord guild"
-    },
-    "rpc.app.workspaces.discord_roles": {
-      "description": "Permission: workspace `workspace.update`. Returns roles of the workspace's linked Discord server with names, colors, and positions from discord.py cache.",
-      "summary": "List workspace Discord roles"
     },
     "rpc.app.workspaces.get": {
       "description": "Permission: public; no authentication required. Returns a single workspace by id, 404 if not found.",
@@ -3966,7 +3954,7 @@
       "summary": "List workspace members"
     },
     "rpc.app.workspaces.my_discord_guilds": {
-      "description": "Permission: authenticated (active) user; self-service \u2014 the caller's own Discord guilds only. Returns the Discord guilds the caller owns or can manage (via identity-service, the `guilds` OAuth scope), for picking one to verify; 503 if identity-service is unreachable.",
+      "description": "Permission: authenticated (active) user; self-service \u2014 the caller's own Discord guilds only. Returns the Discord guilds the caller owns or can manage (via identity-service, the `guilds` OAuth scope), for picking one to verify, and `relink_required` \u2014 true when the caller's Discord connection has no usable OAuth token, so the empty list means \"re-link Discord\" rather than \"administers nothing\"; 503 if identity-service is unreachable.",
       "response": {
         "array": false,
         "ref": "app.WorkspaceDiscordGuildsRead"
@@ -3974,7 +3962,7 @@
       "summary": "List my administered Discord guilds"
     },
     "rpc.app.workspaces.notification_config_get": {
-      "description": "Permission: workspace `workspace.update`, like the sibling Discord pickers \u2014 the stored channel names a private guild. Returns where this workspace's broadcast notifications are posted (`discord_channel_id`, a snowflake as a string), the language they are written in, which kinds are posted (`broadcast_kinds`), and the full set that may be enabled (`broadcastable_kinds`) so the screen needs no second source of truth. A workspace that never saved anything reads as its defaults \u2014 no channel, `ru`, registration and check-in openings. 404 if workspace missing.",
+      "description": "Permission: workspace `workspace.update` \u2014 the stored channel names a private guild. Returns where this workspace's broadcast notifications are posted (`discord_channel_id`, a snowflake as a string), the language they are written in, which kinds are posted (`broadcast_kinds`), and the full set that may be enabled (`broadcastable_kinds`) so the screen needs no second source of truth. A workspace that never saved anything reads as its defaults \u2014 no channel, `ru`, registration and check-in openings. 404 if workspace missing.",
       "response": {
         "array": false,
         "ref": "app.NotificationWorkspaceConfigRead"
@@ -3982,7 +3970,7 @@
       "summary": "Read a workspace's notification delivery settings"
     },
     "rpc.app.workspaces.notification_config_update": {
-      "description": "Permission: workspace `workspace.update`. Stores the whole form. A non-null `discord_channel_id` must be a text channel of THIS workspace's verified guild \u2014 otherwise an administrator of one workspace could make the bot post into another organiser's server: 409 `discord_guild_not_linked` when no guild is bound, 422 `discord_channel_not_in_guild` when the channel is not one of its text channels, and 503 `discord_unavailable` when Discord cannot be asked (an unchecked channel is never stored). `broadcast_kinds` must be a subset of `broadcastable_kinds` and `locale` one of `ru`/`en`, both 422 otherwise. Returns the same shape as the read. 404 if workspace missing.",
+      "description": "Permission: workspace `workspace.update`. Stores the whole form. A non-null `discord_channel_id` must be a text channel of THIS workspace's verified guild \u2014 otherwise an administrator of one workspace could make the bot post into another organiser's server: 409 `discord_guild_not_linked` when no guild is bound, 422 `discord_channel_not_in_guild` when the channel is not one of its text channels, and 503 `discord_unavailable` when discord-service cannot be asked (an unchecked channel is never stored). `broadcast_kinds` must be a subset of `broadcastable_kinds` and `locale` one of `ru`/`en`, both 422 otherwise. Returns the same shape as the read. 404 if workspace missing.",
       "request": {
         "array": false,
         "ref": "app.NotificationWorkspaceConfigUpdate"
@@ -4162,7 +4150,7 @@
       "summary": "Get workspace balancer config"
     },
     "rpc.balancer.admin.workspace_config_upsert": {
-      "description": "Permission: admin-panel access plus workspace `team.update`, and additionally `workspace.update` when the Discord channel actually changes. Creates or updates the workspace-level rank-delta threshold, hide-from-pool flag and the workspace-wide Discord channel for mix matchups.",
+      "description": "Permission: admin-panel access plus workspace `team.update`, and additionally `workspace.update` when the Discord channel actually changes. Creates or updates the workspace-level rank-delta threshold, hide-from-pool flag and the workspace-wide Discord channel for mix matchups. A newly set Discord id (mix channel, voice category, general voices) must be a text channel, category or voice channel of the workspace's own guild: 409 discord_guild_not_linked when the workspace has no guild, 422 discord_channel_not_in_guild, 503 discord_unavailable when Discord cannot be asked. Clearing a value or keeping it unchanged asks Discord nothing.",
       "request": {
         "array": false,
         "ref": "balancer.WorkspaceBalancerConfigUpsert"
@@ -4299,7 +4287,92 @@
       "summary": "Delete custom game"
     },
     "rpc.balancer.custom.list": {
-      "description": "Permission: public; no authentication required. Returns every mix in the workspace with its settings and host display name, but without rosters.",
+      "description": "Permission: public; no authentication required. One keyset page of the workspace's mixes, newest first: `{items, next_before_id}`. Each item carries the mix's settings and host display name (no roster), `players_count` (distinct members seated across its recorded matches), `roster_count`, the most recently played `maps` (at most 4, with `maps_count` for all of them) and every lobby's `matches_count`. Optional query: `discipline` (an installed game), `status` (`open` = draft or balanced, `history` = completed or cancelled; anything else is a 422), `q` (case-insensitive substring of the mix name or the host's display name), `limit` (1..100, default 30) and `before_id` (pass the previous page's `next_before_id`; null means there is no further page).",
+      "query_params": [
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Discipline"
+          }
+        },
+        {
+          "name": "status",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "enum": [
+                  "open",
+                  "history"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "`open` = draft or balanced, `history` = completed or cancelled; absent = every mix.",
+            "title": "Status"
+          }
+        },
+        {
+          "name": "q",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Case-insensitive substring of the mix name or its host's display name; blank = no filter.",
+            "title": "Q"
+          }
+        },
+        {
+          "name": "limit",
+          "required": false,
+          "schema": {
+            "default": 30,
+            "description": "Page size, 1..100, default 30.",
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "before_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Keyset cursor: only mixes with a smaller id (the previous page's `next_before_id`).",
+            "title": "Before Id"
+          }
+        }
+      ],
       "summary": "List custom games"
     },
     "rpc.balancer.custom.match_history": {
@@ -4307,7 +4380,7 @@
       "summary": "List custom game matches"
     },
     "rpc.balancer.custom.post_discord": {
-      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Queues an embed of one balance option's teams, the next map and the points at stake to the workspace-wide mix channel and returns immediately -- delivery is the bot's, and nothing about the mix changes. A multi-lobby mix names the lobby in the embed title and numbers the match within that lobby. 409 when the workspace has no mix channel configured and 404 when the balance option is missing.",
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Queues the lobby's lineup post -- the balance option the lobby is showing, the next map and the points at stake -- to the workspace-wide mix channel and returns immediately: discord-service renders the card, keeps it in step with the board and delivers it, and nothing about the mix changes. A multi-lobby mix names the lobby on the card and numbers the match within that lobby. 409 when the workspace has no mix channel configured and 404 when the balance option is missing.",
       "request": {
         "array": false,
         "ref": "balancer.CustomGamePostDiscord"
@@ -4315,7 +4388,7 @@
       "summary": "Post custom game lineup to Discord"
     },
     "rpc.balancer.custom.post_signup": {
-      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Opens self-signup in the given mode (into the pool or onto the bench) and queues a card with Join / My roles / Leave buttons to the workspace-wide mix channel. The card is static: every click re-reads the mix, so it refuses correctly once signup closes or the mix ends. A mix has one signup card: posting again deletes the previous one from the channel first. 409 when the workspace has no mix channel configured.",
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Opens self-signup in the given mode (into the pool or onto the bench) and queues the signup card with Join / My roles / Leave buttons to the workspace-wide mix channel. discord-service renders it and keeps it in step with the roster; every click re-reads the mix, so it refuses correctly once signup closes or the mix ends. A mix has one signup card: posting again deletes the previous one from the channel first. 409 when the workspace has no mix channel configured.",
       "request": {
         "array": false,
         "ref": "balancer.CustomGamePostSignup"
@@ -4435,7 +4508,7 @@
       }
     },
     "rpc.balancer.custom.stats": {
-      "description": "Permission: public; no authentication required. Per-member wins/losses/draws, win rate, current streak and the per-role split across the mixes this workspace has run, best record first. The optional `discipline` query parameter narrows it to one enabled game (422 `discipline_not_enabled` for another): seats, roles and `identity` (the member's handle for that game's identity provider) are that game's. Without it (or `all`) the scoreboard spans every game, `identity` is the member's first handle in any game's provider, and `by_role` is null -- role codes of different games are different roles. The optional since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole history counts. Read-only.",
+      "description": "Permission: public; no authentication required. Per-member wins/losses/draws, win rate, current streak and the per-role split across the mixes this workspace has run, best record first. The optional `discipline` query parameter narrows it to one enabled game (422 `discipline_not_enabled` for another): seats, roles and `identity` (the member's handle for that game's identity provider) are that game's. Without it (or `all`) the scoreboard spans every game, `identity` is the member's first handle in any game's provider, and `by_role` is null -- role codes of different games are different roles. The optional since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole history counts. Each member also carries `player_id` (the global player, null once the member is no longer on the roster) and `form`: their newest results first, at most 10, each `{outcome, match_id, played_at}`. Top-level `mixes` and `matches` count the distinct mixes and recorded matches inside the same window. Read-only.",
       "query_params": [
         {
           "name": "discipline",
@@ -5147,6 +5220,46 @@
     "rpc.balancer.teams.export_registered": {
       "description": "Permission: admin-panel access plus workspace `team.create`. Materializes the tournament's complete registered teams into balancer teams, optionally narrowed to given team ids, and returns removed/imported/created counts plus every team skipped and why, and emits a teams-changed realtime event when anything was imported.",
       "summary": "Export registered teams"
+    },
+    "rpc.discord.channel.backfill": {
+      "description": "Permission: workspace `discord_channel.update` in the tournament's workspace. Starts a rescan of the last 500 messages of the tournament's active Discord channel, resubmitting every log attachment found; returns an ack immediately, the scan itself is asynchronous, and 404s when no active channel is configured. Ingestion deduplicates on the SHA-256 of a log file's bytes, so logs already processed for the tournament are skipped rather than duplicated, but each call re-downloads and re-uploads every attachment \u2014 repeat it only when logs are genuinely missing.",
+      "summary": "Backfill Discord channel history"
+    },
+    "rpc.discord.channel.delete": {
+      "description": "Permission: workspace `discord_channel.delete` in the tournament's workspace. Removes a tournament's Discord channel configuration and returns no content, 404ing when no channel is configured.",
+      "summary": "Delete tournament Discord channel"
+    },
+    "rpc.discord.channel.get": {
+      "description": "Permission: workspace `discord_channel.read` in the tournament's workspace. Returns the Discord channel configuration for a tournament (or null).",
+      "response": {
+        "array": false,
+        "ref": "discord.DiscordChannelRead"
+      },
+      "summary": "Get tournament Discord channel"
+    },
+    "rpc.discord.channel.upsert": {
+      "description": "Permission: workspace `discord_channel.update` in the tournament's workspace. Creates or updates the tournament's match-log channel binding; the bot starts or stops watching it at once. The channel must be a text channel of the workspace's linked Discord server: 409 `discord_guild_not_linked` when the workspace has none, 422 `discord_channel_not_in_guild` otherwise, 503 `discord_unavailable` when Discord could not be asked.",
+      "request": {
+        "array": false,
+        "ref": "discord.DiscordChannelUpsert"
+      },
+      "response": {
+        "array": false,
+        "ref": "discord.DiscordChannelRead"
+      },
+      "summary": "Upsert tournament Discord channel"
+    },
+    "rpc.discord.workspace_channels": {
+      "description": "Permission: workspace `workspace.update`. Returns `{guild_id, channels}`: the text, voice and category channels of the workspace's linked Discord server with their categories and, for voice and categories, the permissions the bot lacks to move members. `guild_id` is null and `channels` empty when no server is linked; when the bot cannot read the server the list is empty and `error` carries a code (`guild_not_found`, `discord_error`) instead of failing the call.",
+      "summary": "List workspace Discord channels"
+    },
+    "rpc.discord.workspace_guild": {
+      "description": "Permission: workspace `workspace.update`. Returns connection status, server name, icon URL, member count, and Discord owner of the workspace's linked Discord server. With no server linked `connected` is false and the rest null; when the bot cannot read the server the answer is `{guild_id, connected: false, error}` with a code (`guild_not_found`, `discord_error`).",
+      "summary": "Workspace Discord server status"
+    },
+    "rpc.discord.workspace_roles": {
+      "description": "Permission: workspace `workspace.update`. Returns `{guild_id, roles}`: the roles of the workspace's linked Discord server with names, colors and positions, highest first, from the bot's gateway cache. `guild_id` is null and `roles` empty when no server is linked; when the bot cannot read the server the list is empty and `error` carries a code (`guild_not_found`, `discord_error`) instead of failing the call.",
+      "summary": "List workspace Discord roles"
     },
     "rpc.identity.api_key.quota_set": {
       "description": "Permission: workspace `team.create` on the key's own workspace, which must be active (a global `team.create` grant or superuser also passes). Overrides the five limit dimensions -- requests_per_minute, heavy_per_day, concurrent_heavy, max_upload_bytes, max_items_per_request -- for one API key; a body whose values are all null deletes the override and puts the key back on what its workspace and plan hand down. A superuser may raise or lower; anyone else may only lower, and a value above what the key would inherit is refused with 422, envelope `code: unprocessable` and `details.fields[0] = {code: quota_above_inherited, limit_name, limit, requested}`. Journalled as `api_key.quota_update` with the previous and new dimension maps.",
@@ -6694,34 +6807,6 @@
     "rpc.stats.catalog.sync": {
       "description": "Permission: superuser only. Pulls the discipline module's catalog source (Overwatch: OverFast; League of Legends: Data Dragon) into catalog.entity, mirroring images to S3; existing rows keep their name and attrs; an existing parent is kept; a missing one is filled from the source; nothing is deleted. 404 for a discipline without a sync.",
       "summary": "Sync a discipline's catalog"
-    },
-    "rpc.stats.discord_channel.backfill": {
-      "description": "Permission: workspace `discord_channel.update` in the tournament's workspace. Queues a rescan of the tournament's Discord channel history \u2014 the same `process_all` command the bot runs at startup \u2014 resubmitting every attachment found in the last 500 messages of each channel bound to the tournament; returns an ack immediately, the scan itself is asynchronous, and 404s when no channel is configured. Ingestion deduplicates on the SHA-256 of a log file's bytes, so logs already processed for the tournament are skipped rather than duplicated, but each call re-downloads and re-uploads every attachment \u2014 repeat it only when logs are genuinely missing.",
-      "summary": "Backfill Discord channel history"
-    },
-    "rpc.stats.discord_channel.delete": {
-      "description": "Permission: workspace `discord_channel.delete` in the tournament's workspace. Removes a tournament's Discord channel configuration and returns no content, 404ing when no channel is configured.",
-      "summary": "Delete tournament Discord channel"
-    },
-    "rpc.stats.discord_channel.get": {
-      "description": "Permission: workspace `discord_channel.read` in the tournament's workspace. Returns the Discord channel configuration for a tournament (or null).",
-      "response": {
-        "array": false,
-        "ref": "stats.DiscordChannelRead"
-      },
-      "summary": "Get tournament Discord channel"
-    },
-    "rpc.stats.discord_channel.upsert": {
-      "description": "Permission: workspace `discord_channel.update` in the tournament's workspace. Creates or updates a tournament's Discord guild/channel binding.",
-      "request": {
-        "array": false,
-        "ref": "stats.DiscordChannelUpsert"
-      },
-      "response": {
-        "array": false,
-        "ref": "stats.DiscordChannelRead"
-      },
-      "summary": "Upsert tournament Discord channel"
     },
     "rpc.stats.impact.recompute_baselines": {
       "description": "Permission: superuser. Rebuilds the native Overwatch baselines used for MVP-impact scoring (`stats.stat_baseline`) for the active formula version, aggregating a mean/standard deviation per (role id, rank bucket, stat code) from whole-match player facts across workspaces. Returns the row count and formula version. Each run atomically replaces that discipline/version's rows and aborts rather than wiping them when aggregation yields nothing. Repeated runs are safe but scan the historical facts and clear the 10-minute baseline cache.",
@@ -15067,6 +15152,40 @@
       "title": "CharacterPlaytimeQueryPaginationParams",
       "type": "object"
     },
+    "app.CharacterRecord": {
+      "description": "The player's career-best game on a character in the stat its class is judged by.",
+      "properties": {
+        "encounter_id": {
+          "title": "Encounter Id",
+          "type": "integer"
+        },
+        "map_name": {
+          "title": "Map Name",
+          "type": "string"
+        },
+        "stat": {
+          "title": "Stat",
+          "type": "string"
+        },
+        "tournament_name": {
+          "title": "Tournament Name",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "stat",
+        "value",
+        "encounter_id",
+        "map_name",
+        "tournament_name"
+      ],
+      "title": "CharacterRecord",
+      "type": "object"
+    },
     "app.CharacterStat": {
       "properties": {
         "avg_10": {
@@ -15153,12 +15272,55 @@
         "character": {
           "$ref": "#/components/schemas/app.CatalogEntityRead"
         },
+        "draw": {
+          "default": 0,
+          "title": "Draw",
+          "type": "integer"
+        },
+        "games": {
+          "default": 0,
+          "title": "Games",
+          "type": "integer"
+        },
+        "loss": {
+          "default": 0,
+          "title": "Loss",
+          "type": "integer"
+        },
+        "record": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.CharacterRecord"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "stats": {
           "items": {
             "$ref": "#/components/schemas/app.CharacterStat"
           },
           "title": "Stats",
           "type": "array"
+        },
+        "win": {
+          "default": 0,
+          "title": "Win",
+          "type": "integer"
+        },
+        "win_rate_all": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Win Rate All"
         }
       },
       "required": [
@@ -22667,6 +22829,11 @@
           },
           "title": "Guilds",
           "type": "array"
+        },
+        "relink_required": {
+          "default": false,
+          "title": "Relink Required",
+          "type": "boolean"
         }
       },
       "title": "WorkspaceDiscordGuildsRead",
@@ -25060,6 +25227,76 @@
       "title": "CustomGameHostTransfer",
       "type": "object"
     },
+    "balancer.CustomGameListQuery": {
+      "description": "``GET .../custom-games``: one keyset page of the workspace's mixes, newest first.",
+      "properties": {
+        "before_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Keyset cursor: only mixes with a smaller id (the previous page's `next_before_id`).",
+          "title": "Before Id"
+        },
+        "discipline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discipline"
+        },
+        "limit": {
+          "default": 30,
+          "description": "Page size, 1..100, default 30.",
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "q": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Case-insensitive substring of the mix name or its host's display name; blank = no filter.",
+          "title": "Q"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "enum": [
+                "open",
+                "history"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "`open` = draft or balanced, `history` = completed or cancelled; absent = every mix.",
+          "title": "Status"
+        }
+      },
+      "title": "CustomGameListQuery",
+      "type": "object"
+    },
     "balancer.CustomGameLobbyCountPatch": {
       "additionalProperties": false,
       "description": "How many lobbies the mix runs at once.",
@@ -25269,7 +25506,7 @@
     },
     "balancer.CustomGamePostDiscord": {
       "additionalProperties": false,
-      "description": "Which balance option's lineup to post; the picture of it is drawn server-side.",
+      "description": "Which balance option's lineup to post; discord-service renders the card.",
       "properties": {
         "lobby_index": {
           "default": 0,
@@ -28901,7 +29138,7 @@
             }
           ],
           "default": null,
-          "description": "Workspace-wide Discord channel every mix posts its matchup to. A mix may name its own channel instead, but only a workspace admin can.",
+          "description": "Workspace-wide Discord channel every mix posts its matchup to; must be a text channel of the workspace's guild.",
           "title": "Mix Discord Channel Id"
         },
         "mix_general_voice_channel_ids": {
@@ -28923,7 +29160,7 @@
             }
           ],
           "default": null,
-          "description": "Discord category whose voice channels mixes move players between.",
+          "description": "Discord category of the workspace's guild whose voice channels mixes move players between.",
           "title": "Mix Voice Category Id"
         },
         "rank_delta_hide_from_pool": {
@@ -29250,6 +29487,78 @@
         "variant"
       ],
       "title": "WorkspaceRankerUpsert",
+      "type": "object"
+    },
+    "discord.DiscordChannelRead": {
+      "description": "Schema for reading a tournament Discord sync channel.",
+      "properties": {
+        "channel_id": {
+          "title": "Channel Id",
+          "type": "string"
+        },
+        "channel_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Channel Name"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "is_active": {
+          "title": "Is Active",
+          "type": "boolean"
+        },
+        "tournament_id": {
+          "title": "Tournament Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "tournament_id",
+        "channel_id",
+        "channel_name",
+        "is_active"
+      ],
+      "title": "DiscordChannelRead",
+      "type": "object"
+    },
+    "discord.DiscordChannelUpsert": {
+      "description": "Schema for creating or updating a tournament Discord sync channel.\n\nchannel_id is a Discord snowflake (64-bit integer), accepted as a string to\navoid JavaScript float64 precision loss on the client side. The guild is not\nhere: it belongs to the workspace (``Workspace.discord_guild_id``).",
+      "properties": {
+        "channel_id": {
+          "title": "Channel Id",
+          "type": "string"
+        },
+        "channel_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Channel Name"
+        },
+        "is_active": {
+          "default": true,
+          "title": "Is Active",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "channel_id"
+      ],
+      "title": "DiscordChannelUpsert",
       "type": "object"
     },
     "identity.AdminSessionRead": {
@@ -33622,78 +33931,6 @@
         "generated_at"
       ],
       "title": "CurrentRanksResponse",
-      "type": "object"
-    },
-    "stats.DiscordChannelRead": {
-      "description": "Schema for reading a tournament Discord sync channel.",
-      "properties": {
-        "channel_id": {
-          "title": "Channel Id",
-          "type": "string"
-        },
-        "channel_name": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Channel Name"
-        },
-        "id": {
-          "title": "Id",
-          "type": "integer"
-        },
-        "is_active": {
-          "title": "Is Active",
-          "type": "boolean"
-        },
-        "tournament_id": {
-          "title": "Tournament Id",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "id",
-        "tournament_id",
-        "channel_id",
-        "channel_name",
-        "is_active"
-      ],
-      "title": "DiscordChannelRead",
-      "type": "object"
-    },
-    "stats.DiscordChannelUpsert": {
-      "description": "Schema for creating or updating a tournament Discord sync channel.\n\nchannel_id is a Discord snowflake (64-bit integer), accepted as a string to\navoid JavaScript float64 precision loss on the client side. The guild is not\nhere: it belongs to the workspace (``Workspace.discord_guild_id``).",
-      "properties": {
-        "channel_id": {
-          "title": "Channel Id",
-          "type": "string"
-        },
-        "channel_name": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Channel Name"
-        },
-        "is_active": {
-          "default": true,
-          "title": "Is Active",
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "channel_id"
-      ],
-      "title": "DiscordChannelUpsert",
       "type": "object"
     },
     "stats.EvaluateRequest": {

@@ -61,8 +61,7 @@ class AppConfig(BaseServiceSettings):
 
     redis_url: RedisDsn
 
-    # Subscription resolution credentials
-    discord_token: str | None = None
+    # Subscription resolution credentials (Boosty asks discord-service over the broker)
     twitch_client_id: str | None = None
 
     # RabbitMQ

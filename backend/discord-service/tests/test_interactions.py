@@ -19,9 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import discord  # noqa: E402
 
-from shared.schemas.events import DiscordAction, DiscordCard  # noqa: E402
 from shared.schemas.rpc import parse_rpc, rpc_error, rpc_ok  # noqa: E402
-from src.cogs.interactions import InteractionsCog  # noqa: E402
+from src.cogs.interactions import InteractionsCog, SlashTranslator  # noqa: E402
 from src.interactions import copy  # noqa: E402
 from src.interactions import dispatcher as dispatcher_module  # noqa: E402
 from src.interactions.actions import ACTIONS, parse_custom_id, parse_setup_target, setup_target  # noqa: E402
@@ -33,6 +32,7 @@ from src.interactions.dispatcher import (  # noqa: E402
     ActionDispatcher,
     Outcome,
 )
+from src.render.card import DiscordAction, DiscordCard  # noqa: E402
 
 SITE = "https://owt.example"
 IDENTITY = {"sub": 77, "username": "kira", "credential_type": "discord", "workspaces": []}
@@ -746,3 +746,21 @@ class VoiceControlsTests(IsolatedAsyncioTestCase):
             choices = await _dispatcher(workspaces=workspaces).hosted_mixes(_interaction(guild_id=555), "")
 
         self.assertEqual(choices, [])
+
+
+class SlashCopyTests(IsolatedAsyncioTestCase):
+    async def test_the_mix_group_is_russian_by_default_and_translated_for_every_other_client(self) -> None:
+        """What ``sync_commands`` publishes: ``copy``'s Russian as the base, English localisations beside it."""
+        tree = MagicMock(
+            allowed_contexts=discord.app_commands.AppCommandContext(),
+            allowed_installs=discord.app_commands.AppInstallationType(),
+        )
+        payload = await InteractionsCog.mix.get_translated_payload(tree, SlashTranslator())
+        move = next(option for option in payload["options"] if option["name"] == "move")
+        lobby_a = move["options"][1]["choices"][1]
+
+        self.assertEqual(payload["description"], copy.text("ru", "slash_mix"))
+        self.assertNotIn("ru", payload["description_localizations"])
+        self.assertEqual(move["description_localizations"]["en-US"], copy.text("en", "slash_move"))
+        self.assertEqual(move["description_localizations"]["de"], copy.text("en", "slash_move"))
+        self.assertEqual((lobby_a["name"], lobby_a["name_localizations"]["en-GB"]), ("Лобби A", "Lobby A"))

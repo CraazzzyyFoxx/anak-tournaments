@@ -33,6 +33,7 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/cachecontrol"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/config"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/db"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/discord"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/events"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/httplog"
@@ -40,13 +41,13 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/metrics"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/observability"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/openapi"
-	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stats"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/principal"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/ratelimit"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/replay"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/respcache"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/rpc"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/safego"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stats"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stream"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/tournament"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/tracing"
@@ -301,8 +302,8 @@ func run() error {
 	analyticsEdge.Register(mux, analytics.ReadRoutes)
 	analyticsEdge.Register(mux, analytics.WriteRoutes)
 	// stats-service domains folded into /api/v1 (match-log, OverFast rank,
-	// achievement engine + rules admin, metadata sync, settings, discord-channel,
-	// bootstrap importers), served as typed RPC.
+	// achievement engine + rules admin, metadata sync, settings, bootstrap
+	// importers), served as typed RPC.
 	statsEdge := edge.New(rpcClient, logger, resolver.Resolve)
 	statsEdge.Register(mux, stats.Routes)
 	// Multipart match-log upload (files[] -> base64 RPC body) the JSON dispatcher
@@ -318,6 +319,11 @@ func run() error {
 	// shared /api/v1/admin/ws/ prefix; tournament's balancer-statuses routes there
 	// are more specific and win, so the two coexist.
 	mux.Handle("/api/v1/admin/ws/", statsEdge.Subtree(stats.AchievementAdminRoutes))
+	// discord-service (the bot): the workspace Discord pickers and the
+	// per-tournament match-log channel binding. It is the only process holding
+	// the bot token, so guild reads land on it directly.
+	discordEdge := edge.New(rpcClient, logger, resolver.Resolve)
+	discordEdge.Register(mux, discord.Routes)
 	// app-service: typed RPC public reads.
 	// hero/map/gamemode/achievement get+list use the shared CRUD read engine.
 	// Home-page aggregates and /users/[slug] profile reads go through the same

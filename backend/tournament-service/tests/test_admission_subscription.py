@@ -29,15 +29,26 @@ BACKEND_ROOT = Path(__file__).resolve().parents[2]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-from shared.services.subscriptions import Outcome, SubscriptionVerdict  # noqa: E402
+import pytest  # noqa: E402
+
+from shared.core.errors import BaseAPIException  # noqa: E402
+from shared.services.subscriptions import (  # noqa: E402
+    Outcome,
+    SubscriptionVerdict,
+    evaluate_requirement,
+    parse_requirement,
+)
 from src.services.admission import (  # noqa: E402
     AdmissionConfig,
+    AdmissionDecision,
+    AdmissionEvaluation,
     AdmissionSignals,
     AdmissionStage,
     ReasonActor,
     RequirementState,
     SubscriptionSignal,
 )
+from src.services.admission.gates import assert_admitted  # noqa: E402
 from src.services.admission.requirements.subscription import (  # noqa: E402
     KEY,
     build_subscription_signal,
@@ -241,9 +252,33 @@ class TestActorRouting:
         assert signal.reasons[0].actor is ReasonActor.player
 
     def test_system_reason(self):
-        """A missing ``DISCORD_TOKEN`` is nobody in the product's fault to fix."""
+        """A process that cannot ask discord-service is nobody in the product's fault to fix."""
         signal = build_subscription_signal(
             Outcome.UNDETERMINED,
             {"discord": _verdict("unknown", reason_code="bot_not_configured")},
         )
         assert signal.reasons[0].actor is ReasonActor.system
+
+
+class TestOutageRefusal:
+    def test_an_unanswered_check_refuses_with_the_outage_not_a_missing_subscription(self):
+        """discord-service down at check-in: refused, and told the check is down -- not sent to buy a tier."""
+        rule = parse_requirement({"mode": "all", "requirements": [{"provider": "boosty"}]})
+        verdicts = {"boosty": _verdict("unknown", reason_code="provider_unavailable")}
+        signal = build_subscription_signal(evaluate_requirement(rule, verdicts), verdicts)
+        verdict = eval_subscription(CONFIG, _signals(signal), STAGE)
+        assert verdict.blocks
+
+        evaluation = AdmissionEvaluation(
+            decision=AdmissionDecision.not_admitted,
+            requirements=(verdict,),
+            blockers=(verdict,),
+            overridden=(),
+            checked_in=False,
+            ready=True,
+        )
+        with pytest.raises(BaseAPIException) as caught:
+            assert_admitted(evaluation, stage=STAGE, config=CONFIG)
+        [detail] = caught.value.detail
+        assert detail["code"] == "provider_unavailable"
+        assert "Boosty" in detail["msg"] and "нужна активная подписка" not in detail["msg"]

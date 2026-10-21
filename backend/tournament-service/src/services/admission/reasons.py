@@ -60,10 +60,13 @@ SUBSCRIPTION_REASON_CODES: Final[dict[str, ReasonActor]] = {
     "twitch_client_not_configured": ReasonActor.organizer,
     "broadcaster_not_eligible": ReasonActor.organizer,
     # ── nobody in the product ────────────────────────────────────────────────
+    # The two outage codes (``shared.services.subscriptions.OUTAGE_REASONS``):
+    # they REFUSE (a tier nobody could check is not confirmed), and the gate's
+    # message names the outage instead of asking for a subscription.
     "provider_unavailable": ReasonActor.system,
     "guild_not_accessible": ReasonActor.system,
-    # Deliberately SYSTEM, not organizer: this is a missing ``DISCORD_TOKEN`` in
-    # the environment. A tournament organizer cannot deploy a secret.
+    # Deliberately SYSTEM, not organizer: this process has no broker to ask
+    # discord-service with. A tournament organizer cannot fix a deployment.
     "bot_not_configured": ReasonActor.system,
     # Reserved for the Discord-cache transport (RPC into discord-service): a cold
     # cache right after a restart must read as an outage, never as "not

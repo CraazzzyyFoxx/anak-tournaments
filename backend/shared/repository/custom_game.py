@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,14 +18,60 @@ class CustomGameRepository(BaseRepository[models.CustomGame]):
         super().__init__(models.CustomGame)
 
     async def list_for_workspace(
-        self, session: AsyncSession, workspace_id: int, discipline: str | None = None
+        self,
+        session: AsyncSession,
+        workspace_id: int,
+        discipline: str | None = None,
+        *,
+        statuses: Collection[str] | None = None,
+        search: str | None = None,
+        before_id: int | None = None,
+        limit: int | None = None,
     ) -> Sequence[models.CustomGame]:
-        """Every mix of the workspace, newest first; one game's when ``discipline`` is given."""
+        """The workspace's mixes, newest first; one game's when ``discipline`` is given.
+
+        ``before_id`` is a keyset cursor (ids only grow, so "older than" is
+        ``id <``). ``search`` is a case-insensitive substring of the mix name or
+        of the host's name as the list shows it -- the workspace display name,
+        else the player name, else the account username (``hosts_by_user_id``).
+        Both run here, before ``limit``, so a page is never filtered after the
+        fact into a short one.
+        """
         query = self.select().where(self.model.workspace_id == workspace_id)
         if discipline is not None:
             query = query.where(self.model.discipline == discipline)
-        result = await session.scalars(query.order_by(self.model.id.desc()))
-        return result.all()
+        if statuses is not None:
+            query = query.where(self.model.status.in_(statuses))
+        if before_id is not None:
+            query = query.where(self.model.id < before_id)
+        if search:
+            host_name = sa.func.coalesce(
+                sa.func.nullif(models.WorkspaceMember.display_name, ""),
+                sa.func.nullif(models.User.name, ""),
+                models.AuthUser.username,
+            )
+            # EXISTS, not a join: the outer joins below must not fan a mix out into duplicate rows.
+            host_matches = (
+                sa.select(models.AuthUser.id)
+                .outerjoin(models.User, models.User.auth_user_id == models.AuthUser.id)
+                .outerjoin(
+                    models.WorkspaceMember,
+                    sa.and_(
+                        models.WorkspaceMember.player_id == models.User.id,
+                        models.WorkspaceMember.workspace_id == workspace_id,
+                    ),
+                )
+                .where(
+                    models.AuthUser.id == self.model.host_user_id,
+                    host_name.icontains(search, autoescape=True),
+                )
+                .exists()
+            )
+            query = query.where(sa.or_(self.model.name.icontains(search, autoescape=True), host_matches))
+        query = query.order_by(self.model.id.desc())
+        if limit is not None:
+            query = query.limit(limit)
+        return (await session.scalars(query)).all()
 
     async def list_open_runnable(
         self, session: AsyncSession, workspace_id: int, *, user_id: int | None
@@ -62,6 +108,17 @@ class CustomGamePlayerRepository(BaseRepository[models.CustomGamePlayer]):
             .order_by(self.model.sort_order, self.model.id)
         )
         return result.all()
+
+    async def counts_for_games(self, session: AsyncSession, custom_game_ids: Sequence[int]) -> dict[int, int]:
+        """``custom_game_id -> roster rows`` for a whole mix list in one query; an empty roster is absent."""
+        if not custom_game_ids:
+            return {}
+        result = await session.execute(
+            sa.select(self.model.custom_game_id, sa.func.count())
+            .where(self.model.custom_game_id.in_(custom_game_ids))
+            .group_by(self.model.custom_game_id)
+        )
+        return dict(result.all())
 
     async def delete_for_game(self, session: AsyncSession, custom_game_id: int) -> None:
         for row in await self.list_for_game(session, custom_game_id):

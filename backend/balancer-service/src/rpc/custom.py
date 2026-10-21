@@ -2,7 +2,7 @@
 
 ``rpc.balancer.custom.{create,list,get,rename,update_roster,update_player,set_participation,set_lobby_count,
 balance,set_team_names,set_next_map,set_variant_index,
-post_discord,post_signup,delete_discord_post,set_voice_channels,voice_options,voice_move,voice_return,
+post_discord,post_signup,delete_discord_post,discord_view,set_voice_channels,voice_options,voice_move,voice_return,
 transfer_host,add_co_host,remove_co_host,swap_seats,record_outcome,
 match_history,undo_match,rotation,stats,close,delete,hard_delete,
 self_get,self_current,self_join,self_leave,self_update,set_self_service,hosted_active}``.
@@ -31,13 +31,11 @@ Every Discord message this service sends is a ``discord_message`` row
 the host takes one down with ``delete_discord_post``, and deleting the mix
 deletes all of them. Commands for the bot are queued through the outbox
 (``discord_messages.enqueue``) INSIDE the handler's transaction, so a rolled
-back write queues nothing. Keeping the live signup and lineup cards in step
-with a mutation is nobody's job here: every write emits
-``emit_pickup_mix_changed`` and ``src.services.mix_discord_projector``
-re-renders the cards from the committed state. The bot answers nothing back
-here -- it writes the row's
-outcome itself -- so this module subscribes to no queue but its own RPC
-subjects.
+back write queues nothing. A claimed row carries no card: discord-service
+renders every card itself from ``discord_view`` -- internal, no route, no
+identity, the bot is its only caller -- and keeps the live ones in step with
+the board on the ``emit_pickup_mix_changed`` fact every write emits. The bot
+writes the row's outcome itself, so nothing answers back here.
 """
 
 from __future__ import annotations
@@ -55,10 +53,10 @@ from shared.disciplines import DISCIPLINES, rated_role_codes
 from shared.domain.custom_game_round import winner_slot
 from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
-from shared.schemas.discipline_filter import DisciplineFilterQuery
 from shared.schemas.role import RoleRef
 from shared.services import discord_messages
 from shared.services.discord_client import DiscordClient
+from shared.services.discord_messages import mix_subject
 from shared.services.division_grid.access import get_effective_division_grid
 from shared.services.member_rank import MIX_ORDER
 from shared.services.ontology import workspace_discipline
@@ -69,10 +67,12 @@ from src.domain.mix_lobbies import seated_member_ids
 from src.domain.mix_voice import snowflake
 from src.rpc import _common as c
 from src.schemas import custom_game as schemas
-from src.services.custom_game import custom_game_service, mix_subject
+from src.services.custom_game import custom_game_service
 from src.services.pickup_mix_realtime import emit_pickup_mix_changed
 
 _SF = db.async_session_maker
+#: Map thumbnails a list row carries; ``maps_count`` says how many more were played.
+_LIST_MAPS = 4
 
 _Body = TypeVar("_Body", bound=BaseModel)
 
@@ -263,8 +263,9 @@ def _dump_settings(
 
 
 def _dump_lobby(lobby: Any, *, balance_result: bool, activity: tuple[int, Any] | None = None) -> dict[str, Any]:
-    """One lobby: its pager, its rolled map, when it was last balanced -- and,
-    in the detail read, its own matchup and match count.
+    """One lobby: its pager, its rolled map, when it was last balanced, its match
+    count whenever the read counted them (the list and the detail read do) --
+    and, in the detail read, its own matchup.
 
     ``balance_result`` is detail-only -- the solver document grows with every
     stored option and no list row renders it. ``lineup_recorded`` is false while
@@ -281,10 +282,11 @@ def _dump_lobby(lobby: Any, *, balance_result: bool, activity: tuple[int, Any] |
         "team1_voice_channel_id": snowflake(lobby.team1_voice_channel_id),
         "team2_voice_channel_id": snowflake(lobby.team2_voice_channel_id),
     }
+    if activity is not None:
+        out["matches_count"] = activity[0]
     if balance_result:
-        matches_count, last_match_at = activity if activity is not None else (0, None)
+        last_match_at = activity[1] if activity is not None else None
         out["balance_result"] = as_lobby_document(lobby.balance_result_json)
-        out["matches_count"] = matches_count
         out["lineup_recorded"] = lobby.balanced_at is None or (
             last_match_at is not None and last_match_at >= lobby.balanced_at
         )
@@ -360,7 +362,8 @@ def _dump_game(
             _dump_lobby(
                 lobby,
                 balance_result=roster is not None,
-                activity=(lobby_activity or {}).get(lobby.lobby_index),
+                # A read that counted no lobby (``lobby_activity`` absent) says nothing, rather than a false 0.
+                activity=None if lobby_activity is None else lobby_activity.get(lobby.lobby_index, (0, None)),
             )
             for lobby in (lobbies or [])
         ],
@@ -612,13 +615,26 @@ def register(broker: Any, logger: Any) -> None:
     async def _list(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             workspace_id = _int(data, "workspace_id")
-            discipline = build_query_model(DisciplineFilterQuery, data.get("query")).discipline
-            rows = await custom_game_service.list(session, workspace_id=workspace_id, discipline=discipline)
+            query = build_query_model(schemas.CustomGameListQuery, data.get("query"))
+            rows, next_before_id = await custom_game_service.list(
+                session,
+                workspace_id=workspace_id,
+                discipline=query.discipline,
+                status=query.status,
+                search=query.q or None,
+                before_id=query.before_id,
+                limit=query.limit,
+            )
             game_ids = [row.id for row in rows]
             host_names = await custom_game_service.hosts(session, workspace_id, [row.host_user_id for row in rows])
-            # One grouped read per per-row column (activity, team names, points
+            # One grouped read per per-row column family (activity, per-lobby
+            # counts, seated players, maps, roster size, team names, points
             # knob) instead of a query per mix.
             activity = await custom_game_service.mix_rounds.activity_for_games(session, game_ids)
+            lobby_activity = await custom_game_service.mix_rounds.lobby_activity_for_games(session, game_ids)
+            players = await custom_game_service.mix_rounds.player_counts_for_games(session, game_ids)
+            maps = await custom_game_service.mix_rounds.maps_for_games(session, game_ids)
+            roster_counts = await custom_game_service.roster.counts_for_games(session, game_ids)
             team_names = await custom_game_service.team_names.mapping_for_games(session, game_ids)
             lobbies_by_game = await custom_game_service.lobbies.list_for_games(session, game_ids)
             # One query for the workspace's channel, for every row: the setting
@@ -631,7 +647,7 @@ def register(broker: Any, logger: Any) -> None:
             points_by_host = await custom_game_service.host_prefs.points_per_win_by_user(
                 session, [row.host_user_id for row in rows]
             )
-            return [
+            items = [
                 _dump_game(
                     row,
                     _dump_settings(
@@ -640,9 +656,21 @@ def register(broker: Any, logger: Any) -> None:
                     host_display_name=host_names.get(row.host_user_id),
                     lobbies=lobbies_by_game.get(row.id, []),
                     activity=activity.get(row.id),
+                    lobby_activity=lobby_activity.get(row.id, {}),
                 )
+                | {
+                    "players_count": players.get(row.id, 0),
+                    "roster_count": roster_counts.get(row.id, 0),
+                    # A row shows a few thumbnails and says how many more there are.
+                    "maps": [
+                        {"name": name, "image_path": image_path}
+                        for name, image_path in maps.get(row.id, [])[:_LIST_MAPS]
+                    ],
+                    "maps_count": len(maps.get(row.id, [])),
+                }
                 for row in rows
             ]
+            return {"items": items, "next_before_id": next_before_id}
 
         return await c.envelope(logger, "custom.list", op, session_factory=_SF)
 
@@ -1025,7 +1053,6 @@ def register(broker: Any, logger: Any) -> None:
                 variant_index=body.variant_index,
                 actor_user_id=user.id,
                 actor_is_superuser=user.is_superuser,
-                board_url_base=config.public_site_url,
             )
             # Nothing about the mix itself changed, but the post it is about to
             # make is a row of its own, so the commit is real and the board
@@ -1148,7 +1175,6 @@ def register(broker: Any, logger: Any) -> None:
                 self_signup=body.self_signup,
                 actor_user_id=user.id,
                 actor_is_superuser=user.is_superuser,
-                board_url_base=config.public_site_url,
             )
             # The signup mode is a fact about the mix, so the board refreshes;
             # delivery of the card itself is the bot's problem.
@@ -1196,6 +1222,27 @@ def register(broker: Any, logger: Any) -> None:
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.delete_discord_post", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.discord_view")
+    async def _discord_view(data: dict, msg: RabbitMessage) -> dict:
+        """What discord-service renders a mix's cards from.
+
+        Internal, service-to-service only (no gateway route, no identity): the
+        bot calls it for the ``mix.signup``/``mix.lineup`` rows it posts or
+        re-renders, naming each lineup by the ``(lobby_index, match_number)`` of
+        its slot. ``not_found`` for a mix that no longer exists.
+        """
+
+        async def op(session: Any) -> Any:
+            body = schemas.CustomGameDiscordView.model_validate(data or {})
+            return await custom_game_service.discord_view(
+                session,
+                body.custom_game_id,
+                [(lineup.lobby_index, lineup.match_number) for lineup in body.lineups],
+                board_url_base=config.public_site_url,
+            )
+
+        return await c.envelope(logger, "custom.discord_view", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.transfer_host")
     async def _transfer_host(data: dict, msg: RabbitMessage) -> dict:
@@ -1381,12 +1428,12 @@ def register(broker: Any, logger: Any) -> None:
                 if raw in (None, "", "all")
                 else await workspace_discipline(session, workspace_id=workspace_id, requested=raw)
             )
-            members = await custom_game_service.mix_stats(
+            scoreboard = await custom_game_service.mix_stats(
                 session, workspace_id=workspace_id, discipline=discipline, since=since
             )
             # The filter is echoed back normalized: the client renders the
             # window it actually got, not the string it happened to send.
-            return {"since": since.isoformat() if since is not None else None, "members": members}
+            return {"since": since.isoformat() if since is not None else None, **scoreboard}
 
         return await c.envelope(logger, "custom.stats", op, session_factory=_SF)
 

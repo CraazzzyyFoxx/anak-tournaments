@@ -11,7 +11,11 @@ via the other. Coercing it to true would make ``all[refused, unknown]`` pass,
 admitting a confirmed non-subscriber. Kleene is the only mapping that preserves
 "block only on certainty" in both modes.
 
-The gate blocks IFF the composed outcome is ``REFUSED``. ``deferred_providers``
+The gate blocks IFF the composed outcome is ``REFUSED``. One ``unknown`` is not
+like another, though: an organizer's misconfiguration (no guild, no tier
+mapping, a drifted role) is their problem and fails open, while an *outage* --
+discord-service or Twitch did not answer -- fails closed: a paid tier that could
+not be checked is not confirmed (:data:`OUTAGE_REASONS`). ``deferred_providers``
 exists for the one gate that runs *before* the patron has been offered every
 proof path — see ``evaluate_requirement``.
 """
@@ -28,6 +32,7 @@ from shared.services.subscriptions.types import SubscriptionState, SubscriptionV
 __all__ = (
     "MODE_ALL",
     "MODE_ANY",
+    "OUTAGE_REASONS",
     "Outcome",
     "ProviderRequirement",
     "SubscriptionRequirement",
@@ -38,6 +43,11 @@ __all__ = (
 MODE_ALL: Final = "all"
 MODE_ANY: Final = "any"
 _MODES: Final = frozenset({MODE_ALL, MODE_ANY})
+
+#: ``unknown`` verdict reasons that mean "could not ask", not "nothing to ask
+#: about". The provider resolvers file these when their transport fails
+#: (``provider_unavailable``) or was never wired (``bot_not_configured``).
+OUTAGE_REASONS: Final = frozenset({"provider_unavailable", "bot_not_configured"})
 
 
 class Outcome(enum.Enum):
@@ -77,7 +87,15 @@ class SubscriptionRequirement:
 def _evaluate_one(req: ProviderRequirement, verdict: SubscriptionVerdict | None, *, deferred: bool) -> Outcome:
     # No verdict at all: the provider is unconfigured, disabled, or was not
     # resolved. That is the organizer's problem, never read as "not subscribed".
-    if verdict is None or verdict.state == SubscriptionState.UNKNOWN:
+    if verdict is None:
+        return Outcome.UNDETERMINED
+    if verdict.state == SubscriptionState.UNKNOWN:
+        # An outage is the one ``unknown`` that refuses: the patron may well be
+        # subscribed, but nothing confirmed it, and a gate that admits everyone
+        # while the checker is down is no gate. Deferral still applies -- a
+        # code pasted at check-in proves the tier without the provider.
+        if verdict.evidence.get("reason") in OUTAGE_REASONS:
+            return Outcome.UNDETERMINED if deferred else Outcome.REFUSED
         return Outcome.UNDETERMINED
     # meets_min_tier also fails open on unknown, which is already handled above;
     # here it is a pure active/threshold comparison.

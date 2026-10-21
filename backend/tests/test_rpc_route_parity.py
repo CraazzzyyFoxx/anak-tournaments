@@ -28,7 +28,7 @@ _DOC_ONLY_MODULES = frozenset({"openapi_docs.py", "openapi_schemas.py"})
 #: package and the worker source root all carry the same name, so one entry is
 #: enough — and a service missing from this tuple is a service whose routes are
 #: unguarded, which is why it lists all of them rather than the two it started with.
-_SERVICES = ("tournament", "balancer", "app", "stats", "stream", "analytics", "identity")
+_SERVICES = ("tournament", "balancer", "app", "stats", "stream", "analytics", "identity", "discord")
 
 _PAIRS = tuple(
     (

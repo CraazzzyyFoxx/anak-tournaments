@@ -1,6 +1,6 @@
 """The bot's emoji: application emoji by name, Unicode until one is uploaded.
 
-Publishers name an emoji (``shared.domain.discord_ui``); only the bot knows the
+Publishers name an emoji (``src.ui``); only the bot knows the
 ids, because the dev and prod applications each hold their own copy. The
 registry is filled once in ``setup_hook``. A failed fetch leaves it empty, and
 every surface still renders -- with the Unicode fallbacks.
@@ -13,7 +13,7 @@ import re
 import discord
 from loguru import logger
 
-from shared.domain.discord_ui import EMOJI, EMOJI_PREFIX, SHORTCODE
+from src.ui import EMOJI, EMOJI_PREFIX, SHORTCODE
 
 __all__ = ("EmojiRegistry", "registry")
 

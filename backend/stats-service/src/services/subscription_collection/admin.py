@@ -314,7 +314,6 @@ class SubscriptionAdminService:
         user_id: int | None = None,
         providers: Sequence[str] | None = None,
         workspace_id: int | None = None,
-        discord_bot_token: str | None = None,
         twitch_client_id: str | None = None,
         broker: Any | None = None,
         proxy: str | None = None,
@@ -339,7 +338,6 @@ class SubscriptionAdminService:
             return await service.collect_subscriptions_for_active_tournaments(
                 session,
                 workspace_id=workspace_id,
-                discord_bot_token=discord_bot_token,
                 twitch_client_id=twitch_client_id,
                 broker=active_broker,
                 proxy=proxy,
@@ -362,7 +360,6 @@ class SubscriptionAdminService:
         wanted = set(providers) if providers else None
         resolver = build_resolver(
             session,
-            discord_bot_token=discord_bot_token,
             twitch_client_id=twitch_client_id,
             broker=active_broker,
             proxy=proxy,

@@ -13,6 +13,7 @@ from faststream.rabbit import RabbitMessage
 
 from shared import quota
 from shared.rpc.identity import ensure_workspace_permission
+from shared.services.discord_client import DiscordClient
 from src import models, schemas
 from src.core import db
 from src.core.auth import _get_balance_workspace_id, _get_tournament_workspace_id
@@ -212,6 +213,7 @@ def register(broker: Any, logger: Any) -> None:
 
         Both live in one config blob, so the admin gate applies only when the channel or the voice setup actually
         moves: an organizer who may build teams can save the rank-delta threshold beside an unchanged channel.
+        A newly set Discord id must be a channel of the workspace's guild, asked of discord-service.
         """
 
         async def op(session: Any) -> Any:
@@ -233,6 +235,7 @@ def register(broker: Any, logger: Any) -> None:
                 mix_voice_category_id=body.mix_voice_category_id,
                 mix_general_voice_channel_ids=body.mix_general_voice_channel_ids,
                 updated_by=user.id,
+                list_channels=DiscordClient(broker=broker).guild_channels,
             )
             return _config_to_read(cfg, workspace_id)
 

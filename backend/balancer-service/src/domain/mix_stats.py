@@ -23,9 +23,20 @@ from typing import Literal
 
 from shared.domain.custom_game_round import winner_slot
 
-__all__ = ("Outcome", "SeatOutcome", "RoleTally", "MemberMixStats", "aggregate_mix_stats", "outcome_for")
+__all__ = (
+    "FORM_LENGTH",
+    "Outcome",
+    "SeatOutcome",
+    "RoleTally",
+    "MemberMixStats",
+    "aggregate_mix_stats",
+    "outcome_for",
+)
 
 Outcome = Literal["win", "loss", "draw"]
+
+#: How many of a member's newest results the scoreboard's recent-form strip carries.
+FORM_LENGTH = 10
 
 
 @dataclass(frozen=True)
@@ -65,6 +76,8 @@ class MemberMixStats:
     streak: int
     last_played_at: datetime | None
     by_role: dict[str, RoleTally]
+    #: The member's newest seats, newest first, at most :data:`FORM_LENGTH`.
+    form: tuple[SeatOutcome, ...]
 
 
 def outcome_for(own_score: float, other_score: float) -> Outcome:
@@ -141,6 +154,7 @@ def aggregate_mix_stats(seats: Sequence[SeatOutcome]) -> list[MemberMixStats]:
                 streak=_streak([s.outcome for s in ordered]),
                 last_played_at=ordered[0].played_at if ordered else None,
                 by_role=by_role,
+                form=tuple(ordered[:FORM_LENGTH]),
             )
         )
 

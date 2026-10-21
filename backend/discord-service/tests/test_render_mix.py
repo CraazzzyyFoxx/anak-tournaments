@@ -1,23 +1,29 @@
+"""The two pickup-mix cards and the lineup picture, and how :func:`src.render.render` builds them from balancer's view."""
+
 from __future__ import annotations
 
 import io
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
+from unittest import IsolatedAsyncioTestCase
+from unittest.mock import AsyncMock, patch
 
-REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
-BALANCER_SERVICE_ROOT = REPO_BACKEND_ROOT / "balancer-service"
+# See test_member_roles_rpc.py: importing `src.*` pulls in the service Settings,
+# which needs the env block conftest.py installs.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
-    if candidate not in sys.path:
-        sys.path.insert(0, candidate)
-
-
+import discord  # noqa: E402
 from PIL import Image  # noqa: E402
 
-from shared.domain.discord_ui import SHORTCODE  # noqa: E402
-from src.domain.mix_discord import SignupPlayer, lineup_card, lineup_picture, signup_card  # noqa: E402
-from src.domain.mix_lineup_image import render_png  # noqa: E402
+from shared import models  # noqa: E402
+from shared.schemas.rpc import RpcReply  # noqa: E402
+from shared.services import discord_messages  # noqa: E402
+from src.render import KEEP, render  # noqa: E402
+from src.render.mix import SignupPlayer, lineup_card, lineup_picture, signup_card  # noqa: E402
+from src.render.mix_lineup_image import render_png  # noqa: E402
+from src.ui import SHORTCODE  # noqa: E402
 
 BOARD_URL = "https://owt.example/balancer/mix/42"
 NOW = datetime(2026, 10, 6, 18, 0, tzinfo=UTC)
@@ -345,3 +351,159 @@ def test_only_a_card_given_a_voice_target_offers_to_move_the_lobby() -> None:
     ]
     assert [button.style for button in card.answers] == ["primary", "secondary"]
     assert _lineup().answers == []
+
+
+# ── render(): the mix rows, from balancer's view ───────────────────────────
+
+
+def _view(**lineup: Any) -> dict:
+    """``rpc.balancer.custom.discord_view`` for mix 42, with lobby 0's lineup for game 3."""
+    document = _document({"Tank": [("Ana", 3000)]}, {"Tank": [("Bob", 2900)]})
+    return {
+        "custom_game_id": 42,
+        "workspace_id": 7,
+        "status": "draft",
+        "board_url": BOARD_URL,
+        "signup": {
+            "mix_name": "Friday Scrim",
+            "host_name": "Foxx",
+            "self_signup": "pool",
+            "status": "draft",
+            "lobby_count": 1,
+            "players": [{"name": "Ana", "role": "damage", "benched": False, "rank": 2450}],
+            "updated_at": NOW.isoformat(),
+        },
+        "lineups": [
+            {
+                "lobby_index": 0,
+                "match_number": 3,
+                "current": True,
+                "variant": document["variants"][0],
+                "players": document["players"],
+                "team_names": {"1": "Синие"},
+                "next_map": ["Busan", "Контроль"],
+                "map_image": None,
+                "points_per_win": 25,
+                "lobby_label": None,
+                "mention_user_ids": ["111"],
+                "voice_target": "42-0",
+                **lineup,
+            }
+        ],
+    }
+
+
+def _message(row_id: int, slot: str, **fields: Any) -> models.DiscordMessage:
+    kind = "mix.signup" if slot == "signup" else "mix.lineup"
+    return models.DiscordMessage(
+        id=row_id,
+        channel="discord_channel",
+        target="555",
+        subject="mix:42",
+        slot=slot,
+        kind=kind,
+        status=fields.pop("status", "posted"),
+        workspace_id=7,
+        **fields,
+    )
+
+
+class RenderMixRowTests(IsolatedAsyncioTestCase):
+    async def _render(
+        self, row: models.DiscordMessage, reply: RpcReply, live: list[models.DiscordMessage] = ()
+    ) -> tuple[Any, AsyncMock, AsyncMock]:
+        """``render`` of ``row`` with the view answering ``reply`` and ``live`` the subject's live rows."""
+        request = AsyncMock(return_value=reply)
+        draw = AsyncMock(side_effect=lambda picture: discord.File(io.BytesIO(b"png"), filename=picture.filename))
+        with (
+            patch("src.render.request_rpc", request),
+            patch("src.render._draw", draw),
+            patch.object(discord_messages.repository, "for_subject", AsyncMock(return_value=list(live) or [row])),
+        ):
+            result = await render(None, row, broker="broker")
+        return result, request, draw
+
+    async def test_a_signup_row_is_the_signup_card_of_the_mix_as_balancer_sees_it(self) -> None:
+        result, request, _ = await self._render(_message(1, "signup"), RpcReply(ok=True, data=_view()))
+
+        self.assertEqual(request.await_args.args[1], {"custom_game_id": 42, "lineups": []})
+        self.assertEqual(request.await_args.args[2], "rpc.balancer.custom.discord_view")
+        self.assertTrue(result.card.text.startswith("## :owt_live: Запись на микс «Friday Scrim»"))
+        self.assertIn(":owt_damage: :owt_div_platinum_1: Ana · 2450", result.card.details)
+        self.assertIn(f"<t:{int(NOW.timestamp())}:R>", result.card.details)
+        self.assertEqual(result.card.rows[0][0].url, BOARD_URL)
+        self.assertIsNone(result.file)
+        self.assertEqual(result.allowed_mentions.to_dict(), discord.AllowedMentions.none().to_dict())
+
+    async def test_a_mix_balancer_no_longer_knows_has_nothing_to_show(self) -> None:
+        missing = RpcReply(ok=False, error={"code": "not_found", "message": "gone"})
+
+        result, _, _ = await self._render(_message(1, "signup"), missing)
+
+        self.assertIsNone(result)
+
+    async def test_an_unreachable_balancer_is_an_outage_not_an_answer(self) -> None:
+        down = RpcReply(ok=False, error={"code": "internal", "message": "boom"})
+
+        with self.assertRaises(RuntimeError):
+            await self._render(_message(1, "signup"), down)
+
+    async def test_the_lobbys_newest_lineup_moves_people_and_pings_its_players(self) -> None:
+        row = _message(5, "lineup:0:3", status="pending")
+
+        result, request, draw = await self._render(row, RpcReply(ok=True, data=_view()))
+
+        self.assertEqual(
+            request.await_args.args[1], {"custom_game_id": 42, "lineups": [{"lobby_index": 0, "match_number": 3}]}
+        )
+        self.assertTrue(result.card.text.startswith("## :owt_vs: Friday Scrim · Игра 3"))
+        self.assertEqual([button.target for button in result.card.answers], ["42-0", "42-0"])
+        self.assertEqual(result.card.details, "-# :owt_players: <@111>")
+        self.assertEqual(result.allowed_mentions.to_dict(), {"parse": ["users"]})
+        # Drawn, and named after what it shows.
+        (picture,) = draw.await_args.args
+        self.assertEqual(picture.teams[1].name, "Синие")
+        self.assertEqual(result.file.filename, result.card.attachment_name)
+
+    async def test_an_older_lineup_of_the_lobby_carries_no_voice_buttons(self) -> None:
+        older, newer = _message(5, "lineup:0:3"), _message(6, "lineup:0:3", status="pending")
+        other_lobby = _message(7, "lineup:1:1")
+
+        result, _, _ = await self._render(older, RpcReply(ok=True, data=_view()), [older, newer, other_lobby])
+
+        self.assertEqual(result.card.answers, [])
+
+    async def test_the_picture_the_message_already_shows_is_not_drawn_again(self) -> None:
+        first, _, _ = await self._render(_message(5, "lineup:0:3"), RpcReply(ok=True, data=_view()))
+        shown = _message(5, "lineup:0:3", card_json=first.card.model_dump(mode="json"))
+
+        again, _, draw = await self._render(shown, RpcReply(ok=True, data=_view()))
+
+        draw.assert_not_awaited()
+        self.assertIsNone(again.file)
+        self.assertEqual(again.card, first.card)
+
+    async def test_a_played_lineup_stays_as_it_was_posted_but_gives_up_its_voice_buttons(self) -> None:
+        """A recorded match is history -- unless a newer card of the lobby now owns the buttons."""
+        played = RpcReply(ok=True, data=_view(current=False))
+        posted, _, _ = await self._render(_message(5, "lineup:0:3"), RpcReply(ok=True, data=_view()))
+        shown = posted.card.model_dump(mode="json")
+        newest = _message(5, "lineup:0:3", card_json=shown)
+        older = _message(5, "lineup:0:3", card_json=shown)
+
+        kept, _, _ = await self._render(newest, played)
+        stripped, _, draw = await self._render(older, played, [older, _message(6, "lineup:0:4")])
+
+        self.assertIs(kept, KEEP)
+        self.assertEqual(stripped.card, posted.card.model_copy(update={"answers": []}))
+        self.assertIsNone(stripped.file)
+        draw.assert_not_awaited()
+
+    async def test_a_kind_nothing_renders_is_nothing_to_show(self) -> None:
+        row = _message(1, "signup")
+        row.kind = "mix.unknown"
+
+        result, request, _ = await self._render(row, RpcReply(ok=True, data=_view()))
+
+        self.assertIsNone(result)
+        request.assert_not_awaited()

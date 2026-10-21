@@ -2,10 +2,11 @@
 
 Subclasses ``commands.Bot`` (rather than a bare ``discord.Client``) for its
 Cog/extension machinery. It reacts to gateway events (via Cogs), RabbitMQ
-commands and RPC (via ``DiscordRabbitGateway``), and the action buttons on the
-notification cards it sends (``InteractionsCog``, which also carries the
-``/mix`` command group). The command tree is never synced from here: a sync is
-a deploy step, run by hand through ``python -m src.tools.sync_commands``.
+commands, RPC and mix changes (via ``DiscordRabbitGateway`` and the
+``MixProjector`` it registers), and the action buttons on the cards it sends
+(``InteractionsCog``, which also carries the ``/mix`` command group). The
+command tree is never synced from here: a sync is a deploy step, run by hand
+through ``python -m src.tools.sync_commands``.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from src.services.attachment_client import AttachmentClientFactory
 from src.services.attachment_processor import AttachmentProcessor
 from src.services.channel_registry import ChannelRegistry
 from src.services.directory import DiscordDirectoryService
+from src.services.mix_projector import MixProjector
 from src.services.voice import VoiceMover
 from src.watchdog import GatewayWatchdog
 
@@ -56,6 +58,7 @@ class LogCollectorBot(commands.Bot):
         self.attachment_processor = AttachmentProcessor(
             client=self,
             attachment_clients=AttachmentClientFactory(settings),
+            registry=self.channel_registry,
         )
         self.directory = DiscordDirectoryService(self)
         self.voice = VoiceMover(self)
@@ -68,6 +71,7 @@ class LogCollectorBot(commands.Bot):
             voice=self.voice,
             bot=self,
             session_maker=self.session_maker,
+            projector=MixProjector(bot=self, session_maker=self.session_maker),
         )
         self.watchdog = GatewayWatchdog(
             self,

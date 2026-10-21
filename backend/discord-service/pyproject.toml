@@ -21,6 +21,7 @@ dependencies = [
     "orjson>=3.10.14",
     "pandas>=2.3.3",
     "passlib>=1.7.4",
+    "pillow>=12.3.0",
     "psycopg[binary]>=3.2.3",
     "pydantic-settings>=2.7.1",
     "pydantic[email]>=2.10.5",

@@ -1,11 +1,11 @@
-"""One notification row -> the Discord card that carries it. No session.
+"""One notification -> the Discord card that carries it. No session.
 
-Pure text assembly, kept out of the delivery service so the wording of eleven
-kinds in two languages can be pinned by a test that needs neither a database
-nor a broker. The bot owns the layout (``discord-service``
-``src/interactions/cards.py``); this module decides what the card says, its
-colour, its picture and its buttons -- links, and the one-click actions the
-bot answers itself (``src/interactions/actions.py``).
+Pure text assembly, kept apart from the lookups :mod:`src.render` does
+(workspace locale, branding) so the wording of eleven kinds in two languages
+can be pinned by a test that needs neither a database nor a broker.
+:mod:`src.interactions.cards` owns the layout; this module decides what the
+card says, its colour, its picture and its buttons -- links, and the one-click
+actions the bot answers itself (:mod:`src.interactions.actions`).
 
 Rules every card obeys:
 
@@ -16,11 +16,11 @@ Rules every card obeys:
   to end, and team, tournament and workspace names and a rejection reason are
   typed by people: ``[claim](https://evil.example)`` would otherwise be a
   clickable link inside the platform's own DM, ``# name`` a headline and
-  ``<@id>`` a mention. Pings are off at the bot as well (``allow_mentions``
-  defaults to ``False``), so a ``<@id>`` that survived escaping still pings nobody.
+  ``<@id>`` a mention. Pings are off at the bot as well (a notification is
+  sent with ``AllowedMentions.none()``), so a ``<@id>`` that survived escaping still pings nobody.
 * **Emoji are named, never pasted.** A heading and a button carry the bot's own
-  emoji as a ``:owt_<name>:`` shortcode (:mod:`shared.domain.discord_ui`), which
-  discord-service swaps for the uploaded application emoji -- or for a Unicode
+  emoji as a ``:owt_<name>:`` shortcode (:mod:`src.ui`), which the bot swaps
+  for the uploaded application emoji -- or for a Unicode
   fallback until one is. Nothing here depends on the picture arriving: every
   heading reads as a sentence with the emoji stripped out.
 * **User text is clipped before it is escaped**, so no name or reason, however
@@ -40,9 +40,9 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
-from shared.domain.discord_ui import AMBER, BLUE, GREEN, RED, TEAL, emoji
-from shared.schemas.events import DiscordActionButton, DiscordButton, DiscordCard, DiscordLinkButton
 from shared.services.notifications import NOTIFICATION_KINDS
+from src.render.card import DiscordActionButton, DiscordButton, DiscordCard, DiscordLinkButton
+from src.ui import AMBER, BLUE, GREEN, RED, TEAL, emoji
 
 __all__ = ("DELIVERABLE_KINDS", "TEMPLATES", "deep_link_path", "render_discord")
 
@@ -242,7 +242,7 @@ TEMPLATES: dict[str, dict[str, tuple[str, str, tuple[str, ...]]]] = {
     },
 }
 
-#: ``kind -> emoji name`` for the heading (:func:`shared.domain.discord_ui.emoji`).
+#: ``kind -> emoji name`` for the heading (:func:`src.ui.emoji`).
 #: Locale-independent on purpose: a picture is the one part of a card that does
 #: not need translating, and one map is one place to keep it honest. The names
 #: are checked against ``EMOJI`` by the test, because a typo would reach a
@@ -292,7 +292,7 @@ _LINK_LABELS: dict[str, dict[str, str]] = {
     },
 }
 
-#: Captions of the buttons the bot answers itself (discord-service ``ACTIONS``),
+#: Captions of the buttons the bot answers itself (:data:`src.interactions.actions.ACTIONS`),
 #: and the emoji each wears.
 _ACTION_LABELS: dict[str, dict[str, str]] = {
     "ru": {

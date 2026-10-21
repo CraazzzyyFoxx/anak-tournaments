@@ -7,13 +7,15 @@ export type DiscordSettingsTranslator = ReturnType<
 >;
 
 /**
- * The three ways a bind can fail, in the organiser's words.
+ * The ways a bind can fail, in the organiser's words.
  *
  * They are genuinely different situations (one is about this account, one is
  * about another workspace, one is about Discord being down) and a single
  * "could not link" toast would send the reader looking in the wrong place for
  * all three. The backend answers 403/409/503 exactly (`verify_discord_guild`),
- * so the status IS the distinction.
+ * so the status IS the distinction -- except a 403 whose detail is
+ * `discord_relink_required`: Discord could not be asked at all, because the
+ * account's Discord link has no usable token, and the fix is re-linking.
  */
 const BIND_FAILURE_KEYS: Record<number, "bindForbidden" | "bindClaimed" | "bindUnreachable"> = {
   403: "bindForbidden",
@@ -23,6 +25,13 @@ const BIND_FAILURE_KEYS: Record<number, "bindForbidden" | "bindClaimed" | "bindU
 
 export function bindFailure(error: unknown, t: DiscordSettingsTranslator): string {
   const status = error instanceof ApiError ? error.status : 0;
+  if (
+    error instanceof ApiError &&
+    status === 403 &&
+    error.details.some((detail) => detail.msg === "discord_relink_required")
+  ) {
+    return t("bindRelinkRequired");
+  }
   const key = BIND_FAILURE_KEYS[status];
   return key ? t(key) : getApiErrorMessage(error, t("linkError"));
 }

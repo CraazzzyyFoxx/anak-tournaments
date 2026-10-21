@@ -13,7 +13,7 @@ baselines and Discord channels live in `stats/`. `catalog/` writes only to `cata
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`discipline01c`** (122 revisions in `backend/migrations/versions/`).
+Alembic head: **`discordmsg03`** (123 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -133,7 +133,7 @@ flowchart TB
     end
 
     subgraph PLATFORM["Platform / infrastructure"]
-        LOG["log_processing<br/>(record, discord_channel)"]
+        LOG["log_processing<br/>(legacy record)"]
         RT["realtime.workspace_event<br/>(no FKs)"]
         OUTBOX["public.event_outbox<br/>(no FKs)"]
     end
@@ -2520,8 +2520,11 @@ New uploads are content-keyed; imported external ids preserve distinct historica
 `awaiting_link` is neither failure nor completion: an administrator must select an eligible
 game before retry. An active claim is identified by its attempt and start timestamp.
 Linked match provenance is retained; deleting an eligible orphan records its native
-owner effects in the same transaction. `discord_channel` keeps its channel/tournament
-uniqueness while moving into this schema.
+owner effects in the same transaction. `discord_channel` lives in this schema (not
+`log_processing`): a tournament's match-log channel, written only by discord-service through
+`rpc.discord.channel.*`, unique per channel and per tournament. `last_scanned_message_id` is the
+newest message the bot has already walked past, so a reconnect rescans from there; `NULL` (or a
+manual backfill) walks the history.
 
 Legacy `matches.*`, `log_processing.record`, their enums and the legacy hero MV remain
 physical transfer sources without runtime mappings. Their removal is a separate P9 gate,
@@ -2539,6 +2542,7 @@ erDiagram
         bigint channel_id UK
         varchar(100) channel_name "nullable"
         boolean is_active
+        bigint last_scanned_message_id "nullable"
     }
     STATS_EVENT {
         bigint id PK
@@ -3200,6 +3204,17 @@ being unpublished, so who saw it stays answerable. `deleted_at` on the same row 
 own delete button — that viewer stops seeing the notification while every other recipient's copy,
 and the journal row itself, are untouched.
 
+`discord_message` is one row per message the platform asked the bot to send (notification DMs,
+workspace broadcasts, mix signup and lineup cards). The publisher *claims* the row — destination
+(`channel` = `discord_dm` / `discord_channel`, `target`), `subject` / `slot` / `kind`,
+`dedupe_key`, and `payload_json`, the render input the bot cannot re-read from a table (the
+notification payload for every notification row; `NULL` for a mix, whose view the bot asks
+balancer for) — and queues a cardless `send` or `delete` command naming it. discord-service owns
+everything else: it renders the card, and `card_json` is its last render, compared on the next
+one so a no-op edit is skipped; `status`, `discord_channel_id`, `message_id` and `error` are the
+lifecycle it records (publishers only ever move a row to `deleting`). `(channel, target,
+dedupe_key)` is the idempotency claim a redelivered event relies on.
+
 <!-- ERD:auto platform -->
 ```mermaid
 erDiagram
@@ -3264,6 +3279,7 @@ erDiagram
         bigint discord_channel_id "nullable"
         bigint message_id "nullable"
         text error "nullable"
+        json payload_json "nullable"
         json card_json "nullable"
         timestamptz created_at
         timestamptz updated_at "nullable"
@@ -3496,3 +3512,7 @@ the top of this document is the only revision claim here.
   another lobby). `mixround01` moved every `casual.match` across; the `casual` tables stay as
   legacy, mapped by no model and read by nothing, until the gated `mixround02` drops them in the
   deploy after V2.
+- **Discord consolidation.** discord-service became the only process that renders or sends a
+  Discord message. `discordmsg03` adds `public.discord_message.payload_json` (what the publisher
+  claims a row with; `card_json` became the bot's own last render) and
+  `stats.discord_channel.last_scanned_message_id` (where a rescan resumes). Additive only.

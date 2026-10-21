@@ -202,7 +202,7 @@ class Action:
 
 _INVITE_BUTTONS = frozenset({"invite.accept", "invite.decline"})
 
-# The card contract (``shared.schemas.events.DiscordAction``) and this table are
+# The card contract (``src.render.card.DiscordAction``) and this table are
 # one list written twice; ``tests/test_interactions.py`` keeps them equal,
 # because a button the renderer may emit must never be one the bot cannot answer.
 ACTIONS: dict[str, Action] = {

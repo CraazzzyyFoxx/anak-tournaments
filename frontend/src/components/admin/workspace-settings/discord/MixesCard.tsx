@@ -157,7 +157,7 @@ export function MixesCard({
   const busy = channelsQuery.isLoading || saving;
 
   return (
-    <SettingGroup title={t("mixes")}>
+    <SettingGroup id="mixes" title={t("mixes")}>
       {!values ? (
         <div aria-busy="true" className="flex flex-col gap-4 py-2">
           {[0, 1].map((row) => (

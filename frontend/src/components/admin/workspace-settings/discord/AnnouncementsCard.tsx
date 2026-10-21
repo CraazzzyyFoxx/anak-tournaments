@@ -135,90 +135,89 @@ export function AnnouncementsCard({
     );
   }
 
-  // `SettingGroup` takes no id, so the `#announcements` anchor lives on a wrapper.
   return (
-    <div id="announcements">
-      <SettingGroup title={t("announcements")}>
-        {!values ? (
-          <div aria-busy="true" className="flex flex-col gap-4 py-2">
-            <span className="sr-only">{t("announcementLoading")}</span>
-            {[0, 1, 2].map((row) => (
-              <div key={row} className="grid gap-2 @xl:grid-cols-2 @xl:gap-6">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-9 w-full" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <>
-            <SettingRow label={t("channel")} hint={t("channelHint")}>
-              <div className="w-full md:max-w-sm">
-                <DiscordChannelSelect
-                  workspaceId={workspaceId}
-                  // The picker has no null: "" is its no-channel value.
-                  value={values.discord_channel_id ?? ""}
-                  onChange={(next) => patch({ discord_channel_id: next === "" ? null : next })}
-                  disabled={saving}
-                  ariaLabel={t("announcementChannelAria")}
-                  placeholder={t("noChannel")}
-                  noneLabel={t("noChannel")}
-                />
-              </div>
-            </SettingRow>
+    <SettingGroup id="announcements" title={t("announcements")}>
+      {!values ? (
+        <div aria-busy="true" className="flex flex-col gap-4 py-2">
+          <span className="sr-only">{t("announcementLoading")}</span>
+          {[0, 1, 2].map((row) => (
+            <div key={row} className="grid gap-2 @xl:grid-cols-2 @xl:gap-6">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-9 w-full" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <>
+          <SettingRow label={t("channel")} hint={t("channelHint")}>
+            <div className="w-full md:max-w-sm">
+              <DiscordChannelSelect
+                workspaceId={workspaceId}
+                // The picker has no null: "" is its no-channel value.
+                value={values.discord_channel_id ?? ""}
+                onChange={(next) => patch({ discord_channel_id: next === "" ? null : next })}
+                disabled={saving}
+                ariaLabel={t("announcementChannelAria")}
+                placeholder={t("noChannel")}
+                noneLabel={t("noChannel")}
+              />
+            </div>
+          </SettingRow>
 
-            <SettingRow label={t("events")} hint={t("eventsHint")}>
-              <div className="flex flex-col gap-2">
-                {kinds.map((kind) => {
-                  const id = `broadcast-${kind}`;
-                  const checked = values.broadcast_kinds.includes(kind);
-                  return (
-                    <div key={kind} className="flex items-center gap-2">
-                      <Checkbox
-                        id={id}
-                        checked={checked}
-                        disabled={saving}
-                        onCheckedChange={(next) =>
-                          patch({
-                            broadcast_kinds:
-                              next === true
-                                ? [...values.broadcast_kinds, kind]
-                                : values.broadcast_kinds.filter((entry) => entry !== kind)
-                          })
-                        }
-                      />
-                      <Label htmlFor={id} className="text-sm font-normal">
-                        {KIND_MESSAGE_KEYS[kind] ? contentT(KIND_MESSAGE_KEYS[kind]) : kind}
-                      </Label>
-                    </div>
-                  );
-                })}
-              </div>
-            </SettingRow>
+          {/* A list of choices reads down from its label, not as a column
+              pushed to the far edge of the card. */}
+          <SettingRow label={t("events")} hint={t("eventsHint")} stacked>
+            <div className="flex flex-col gap-2">
+              {kinds.map((kind) => {
+                const id = `broadcast-${kind}`;
+                const checked = values.broadcast_kinds.includes(kind);
+                return (
+                  <div key={kind} className="flex items-center gap-2">
+                    <Checkbox
+                      id={id}
+                      checked={checked}
+                      disabled={saving}
+                      onCheckedChange={(next) =>
+                        patch({
+                          broadcast_kinds:
+                            next === true
+                              ? [...values.broadcast_kinds, kind]
+                              : values.broadcast_kinds.filter((entry) => entry !== kind)
+                        })
+                      }
+                    />
+                    <Label htmlFor={id} className="text-sm font-normal">
+                      {KIND_MESSAGE_KEYS[kind] ? contentT(KIND_MESSAGE_KEYS[kind]) : kind}
+                    </Label>
+                  </div>
+                );
+              })}
+            </div>
+          </SettingRow>
 
-            <SettingRow label={t("language")} hint={t("languageHint")}>
-              <ToggleGroup
-                type="single"
-                value={values.locale}
-                onValueChange={(next) => patch({ locale: next as "ru" | "en" })}
-                aria-label={t("language")}
-              >
-                <ToggleGroupItem value="ru" disabled={saving}>
-                  {t("russian")}
-                </ToggleGroupItem>
-                <ToggleGroupItem value="en" disabled={saving}>
-                  {t("english")}
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </SettingRow>
-          </>
-        )}
+          <SettingRow label={t("language")} hint={t("languageHint")}>
+            <ToggleGroup
+              type="single"
+              value={values.locale}
+              onValueChange={(next) => patch({ locale: next as "ru" | "en" })}
+              aria-label={t("language")}
+            >
+              <ToggleGroupItem value="ru" disabled={saving}>
+                {t("russian")}
+              </ToggleGroupItem>
+              <ToggleGroupItem value="en" disabled={saving}>
+                {t("english")}
+              </ToggleGroupItem>
+            </ToggleGroup>
+          </SettingRow>
+        </>
+      )}
 
-        {error ? (
-          <p role="alert" className="max-w-prose pt-4 text-sm font-medium text-danger">
-            {error}
-          </p>
-        ) : null}
-      </SettingGroup>
-    </div>
+      {error ? (
+        <p role="alert" className="max-w-prose pt-4 text-sm font-medium text-danger">
+          {error}
+        </p>
+      ) : null}
+    </SettingGroup>
   );
 }

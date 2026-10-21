@@ -2,8 +2,8 @@
 
 For looking at a card the way Discord actually draws it -- emoji, accent
 colour, button row -- without waiting for the event that would publish it.
-Each file is one ``DiscordCard`` payload, the same shape a publisher puts in
-``DiscordCommandEvent.card``.
+Each file is one ``DiscordCard`` payload (``src.render.card``), the shape the
+renderers produce.
 """
 
 from __future__ import annotations
@@ -14,10 +14,10 @@ from pathlib import Path
 
 import discord
 
-from shared.schemas.events import DiscordCard
 from src.core.config import Settings
 from src.interactions.cards import card_view
 from src.interactions.emoji import registry
+from src.render.card import DiscordCard
 
 
 async def _run(channel_id: int, paths: list[Path]) -> None:

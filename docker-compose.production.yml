@@ -223,7 +223,10 @@ services:
   discord-worker:
     image: ghcr.io/craazzzyyfoxx/owt-discord:${IMAGE_TAG:-latest}
     logging: *log-rotate
+    # One Discord gateway session per token: see "Single replica" in
+    # backend/discord-service/README.md. Never --scale this service.
     deploy:
+      replicas: 1
       resources:
         limits:
           cpus: '0.25'

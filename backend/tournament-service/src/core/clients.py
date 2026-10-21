@@ -20,15 +20,14 @@ __all__ = ("discord_client", "subscription_resolver")
 
 
 def discord_client() -> DiscordClient:
-    """discord-service first, Discord's REST with the bot token as fallback."""
-    return DiscordClient(broker=optional_broker(), bot_token=settings.discord_token, proxy=settings.proxy_url)
+    """discord-service over RabbitMQ; this service holds no bot token."""
+    return DiscordClient(broker=optional_broker())
 
 
 def subscription_resolver(session: AsyncSession) -> SubscriptionResolver:
     """Resolver wired with this service's provider credentials."""
     return build_resolver(
         session,
-        discord_bot_token=settings.discord_token,
         twitch_client_id=settings.twitch_client_id,
         broker=optional_broker(),
         proxy=settings.proxy_url,

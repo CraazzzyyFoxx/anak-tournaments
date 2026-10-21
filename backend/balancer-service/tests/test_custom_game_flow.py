@@ -54,12 +54,28 @@ class _Games:
     async def get(self, _session: Any, game_id: int, **_options: Any) -> Any:
         return self.rows.get(game_id)
 
-    async def list_for_workspace(self, _session: Any, workspace_id: int, discipline: str | None = None) -> list[Any]:
-        return [
+    async def list_for_workspace(
+        self,
+        _session: Any,
+        workspace_id: int,
+        discipline: str | None = None,
+        *,
+        statuses: Any = None,
+        search: str | None = None,
+        before_id: int | None = None,
+        limit: int | None = None,
+    ) -> list[Any]:
+        rows = [
             row
-            for row in self.rows.values()
-            if row.workspace_id == workspace_id and (discipline is None or row.discipline == discipline)
+            for row in sorted(self.rows.values(), key=lambda row: row.id, reverse=True)
+            if row.workspace_id == workspace_id
+            and (discipline is None or row.discipline == discipline)
+            and (statuses is None or row.status in statuses)
+            and (before_id is None or row.id < before_id)
+            # Name only: the host-name half of the search is SQL against the roster, which has no fake here.
+            and (not search or search.lower() in row.name.lower())
         ]
+        return rows[:limit]
 
     async def delete(self, _session: Any, row: Any) -> None:
         self.rows.pop(row.id, None)

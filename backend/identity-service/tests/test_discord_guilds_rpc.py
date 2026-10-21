@@ -24,6 +24,7 @@ import pytest  # noqa: E402
 from src.core import db  # noqa: E402
 from src.rpc import oauth as oauth_rpc  # noqa: E402
 from src.services.oauth import oauth  # noqa: E402
+from src.services.oauth_providers import OAuthTokenRejected  # noqa: E402
 from tests._fakes import (
     FakeSessionMaker as _FakeSessionMaker,
 )
@@ -39,46 +40,52 @@ class _FakeConnection:
 
 
 class _FakeProvider:
-    def __init__(self, raw_guilds: list[dict]) -> None:
-        self.get_user_guilds = AsyncMock(return_value=raw_guilds)
+    def __init__(self, raw_guilds: list[dict] | None = None, *, error: Exception | None = None) -> None:
+        self.get_user_guilds = AsyncMock(return_value=raw_guilds or [], side_effect=error)
+
+
+def _live(token: str) -> _FakeConnection:
+    return _FakeConnection(token, token_expires_at=datetime.now(UTC) + timedelta(hours=1))
+
+
+RELINK = {"guilds": [], "relink_required": True}
 
 
 # --- service layer ----------------------------------------------------------
 
 
-def test_discord_guilds_returns_empty_list_when_no_connection(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_discord_connection_asks_for_a_relink(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(oauth.connections, "list_by_user_providers", AsyncMock(return_value=[]))
 
-    guilds = asyncio.run(oauth.discord_guilds(None, auth_user_id=7))
-
-    assert guilds == []
+    assert asyncio.run(oauth.discord_guilds(None, auth_user_id=7)) == RELINK
 
 
-def test_discord_guilds_returns_empty_list_when_access_token_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(oauth.connections, "list_by_user_providers", AsyncMock(return_value=[_FakeConnection(None)]))
-
-    guilds = asyncio.run(oauth.discord_guilds(None, auth_user_id=7))
-
-    assert guilds == []
-
-
-def test_discord_guilds_returns_empty_list_when_token_expired(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_usable_token_asks_for_a_relink_without_calling_discord(monkeypatch: pytest.MonkeyPatch) -> None:
     """No refresh-token exchange flow exists yet for any provider in this
     codebase (verified: no ``grant_type=refresh_token`` call site anywhere) --
-    an expired token degrades the same way a missing connection does, rather
-    than surfacing a raw Discord 401 through ``get_user_guilds``.
+    a missing or expired token can only be revived by linking again.
     """
     expired = _FakeConnection("stale-token", token_expires_at=datetime.now(UTC) - timedelta(hours=1))
-    monkeypatch.setattr(oauth.connections, "list_by_user_providers", AsyncMock(return_value=[expired]))
+    monkeypatch.setattr(
+        oauth.connections, "list_by_user_providers", AsyncMock(return_value=[_FakeConnection(None), expired])
+    )
+    fake_provider = _FakeProvider()
+    monkeypatch.setattr(oauth.providers, "get", lambda name: fake_provider)
 
-    guilds = asyncio.run(oauth.discord_guilds(None, auth_user_id=7))
+    assert asyncio.run(oauth.discord_guilds(None, auth_user_id=7)) == RELINK
+    fake_provider.get_user_guilds.assert_not_awaited()
 
-    assert guilds == []
+
+def test_a_token_discord_rejects_asks_for_a_relink(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(oauth.connections, "list_by_user_providers", AsyncMock(return_value=[_live("revoked")]))
+    fake_provider = _FakeProvider(error=OAuthTokenRejected("401"))
+    monkeypatch.setattr(oauth.providers, "get", lambda name: fake_provider)
+
+    assert asyncio.run(oauth.discord_guilds(None, auth_user_id=7)) == RELINK
 
 
 def test_discord_guilds_maps_owner_and_manage_guild_flags(monkeypatch: pytest.MonkeyPatch) -> None:
-    fresh = _FakeConnection("live-token", token_expires_at=datetime.now(UTC) + timedelta(hours=1))
-    monkeypatch.setattr(oauth.connections, "list_by_user_providers", AsyncMock(return_value=[fresh]))
+    monkeypatch.setattr(oauth.connections, "list_by_user_providers", AsyncMock(return_value=[_live("live-token")]))
 
     raw_guilds = [
         {"id": 111, "name": "Owned Guild", "icon": "abc123", "owner": True, "permissions": "0"},
@@ -88,47 +95,50 @@ def test_discord_guilds_maps_owner_and_manage_guild_flags(monkeypatch: pytest.Mo
     fake_provider = _FakeProvider(raw_guilds)
     monkeypatch.setattr(oauth.providers, "get", lambda name: fake_provider)
 
-    guilds = asyncio.run(oauth.discord_guilds(None, auth_user_id=7))
+    result = asyncio.run(oauth.discord_guilds(None, auth_user_id=7))
 
-    assert guilds == [
-        {
-            "guild_id": "111",
-            "name": "Owned Guild",
-            "icon_url": "https://cdn.discordapp.com/icons/111/abc123.png",
-            "owner": True,
-            "can_manage": True,
-        },
-        {"guild_id": "222", "name": "Manage Guild", "icon_url": None, "owner": False, "can_manage": True},
-        {"guild_id": "333", "name": "No Rights", "icon_url": None, "owner": False, "can_manage": False},
-    ]
+    assert result == {
+        "guilds": [
+            {
+                "guild_id": "111",
+                "name": "Owned Guild",
+                "icon_url": "https://cdn.discordapp.com/icons/111/abc123.png",
+                "owner": True,
+                "can_manage": True,
+            },
+            {"guild_id": "222", "name": "Manage Guild", "icon_url": None, "owner": False, "can_manage": True},
+            {"guild_id": "333", "name": "No Rights", "icon_url": None, "owner": False, "can_manage": False},
+        ],
+        "relink_required": False,
+    }
     fake_provider.get_user_guilds.assert_awaited_once_with("live-token")
 
 
-def test_discord_guilds_uses_the_first_discord_connection_when_several_exist(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_the_first_connection_with_a_usable_token_is_asked(monkeypatch: pytest.MonkeyPatch) -> None:
     """A user can link several Discord accounts (no uniqueness on
-    ``(auth_user_id, provider)`` — ``OAuthConnection`` model comment). This
-    pins today's behaviour (first one wins) rather than leaving it undefined.
+    ``(auth_user_id, provider)`` — ``OAuthConnection`` model comment). A dead
+    first link must not hide a live second one.
     """
-    first = _FakeConnection("token-a", token_expires_at=datetime.now(UTC) + timedelta(hours=1))
-    second = _FakeConnection("token-b", token_expires_at=datetime.now(UTC) + timedelta(hours=1))
-    monkeypatch.setattr(oauth.connections, "list_by_user_providers", AsyncMock(return_value=[first, second]))
+    dead = _FakeConnection("token-a", token_expires_at=datetime.now(UTC) - timedelta(hours=1))
+    monkeypatch.setattr(
+        oauth.connections, "list_by_user_providers", AsyncMock(return_value=[dead, _live("token-b"), _live("token-c")])
+    )
     fake_provider = _FakeProvider([])
     monkeypatch.setattr(oauth.providers, "get", lambda name: fake_provider)
 
-    asyncio.run(oauth.discord_guilds(None, auth_user_id=7))
-
-    fake_provider.get_user_guilds.assert_awaited_once_with("token-a")
+    assert asyncio.run(oauth.discord_guilds(None, auth_user_id=7)) == {"guilds": [], "relink_required": False}
+    fake_provider.get_user_guilds.assert_awaited_once_with("token-b")
 
 
 # --- RPC wiring ---------------------------------------------------------
 
 
-def test_rpc_delegates_auth_user_id_and_serializes_the_result(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_rpc_delegates_auth_user_id_and_returns_the_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    body = {"guilds": [{"guild_id": "111", "name": "G", "owner": True, "can_manage": True}], "relink_required": False}
+
     async def fake_discord_guilds(_session, auth_user_id: int):
         assert auth_user_id == 7
-        return [{"guild_id": "111", "name": "G", "owner": True, "can_manage": True}]
+        return body
 
     monkeypatch.setattr(oauth, "discord_guilds", fake_discord_guilds)
     monkeypatch.setattr(db, "async_session_maker", _FakeSessionMaker(object()))
@@ -136,10 +146,7 @@ def test_rpc_delegates_auth_user_id_and_serializes_the_result(monkeypatch: pytes
     handler = _handler(oauth_rpc, "rpc.identity.oauth_discord_guilds")
     reply = asyncio.run(handler({"auth_user_id": 7}, None))
 
-    assert reply == {
-        "ok": True,
-        "data": {"guilds": [{"guild_id": "111", "name": "G", "owner": True, "can_manage": True}]},
-    }
+    assert reply == {"ok": True, "data": body}
 
 
 def test_rpc_rejects_a_missing_auth_user_id(monkeypatch: pytest.MonkeyPatch) -> None:

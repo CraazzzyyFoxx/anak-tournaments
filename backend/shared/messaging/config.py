@@ -393,11 +393,10 @@ TOURNAMENT_REGISTRATION_RANK_CHECK_DLQ = RabbitQueue(
     durable=True,
 )
 
-# Routing keys on ``tournament.events`` that more than one binding names (the
-# bot's per-replica channel-registry queue binds both); the rest are spelled at
-# their single producer/consumer pair.
+# Routing key on ``tournament.events`` that more than one binding names (the
+# bot's per-replica channel-registry queue binds it too); the rest are spelled
+# at their single producer/consumer pair.
 TOURNAMENT_STATE_CHANGED_ROUTING_KEY = "tournament.state.changed"
-TOURNAMENT_DISCORD_CHANNEL_CHANGED_ROUTING_KEY = "tournament.discord_channel.changed"
 
 # Owner: analytics-worker. A ``completed`` tournament gets its compute job
 # created from here instead of waiting for someone to press "recalculate".
@@ -556,11 +555,11 @@ NOTIFICATION_DELIVERY_DLQ = RabbitQueue(
 )
 
 # ============================================================================
-# Pickup mix changes (balancer-service -> balancer-service)
+# Pickup mix changes (balancer-service -> discord-service)
 # ============================================================================
 # ``PickupMixChangedEvent`` through the outbox, straight onto the queue (default
-# exchange): the one consumer re-projects the mix's Discord signup card. No
-# exchange until a second consumer needs the fact.
+# exchange): the one consumer, the bot's mix projector, re-renders the mix's
+# live Discord cards. No exchange until a second consumer needs the fact.
 
 PICKUP_MIX_CHANGED_QUEUE = RabbitQueue(
     "pickup_mix_changed",

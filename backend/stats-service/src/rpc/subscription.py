@@ -101,7 +101,6 @@ def register(broker: Any, logger: Any) -> None:
                 user_id=body.user_id,
                 providers=body.providers,
                 workspace_id=workspace_id,
-                discord_bot_token=settings.discord_token,
                 twitch_client_id=settings.twitch_client_id,
                 broker=broker,
                 proxy=settings.proxy_url,

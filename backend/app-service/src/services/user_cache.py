@@ -31,7 +31,8 @@ USER_CACHE_KEY_PREFIXES: tuple[str, ...] = (
     # part of the prefix so the subject's id is still the first component after it (``{prefix}:{user_id}:*``).
     "user_tournament_stats:v2",
     "user_tournament_encounters:v6",
-    "user_characters",
+    # v2: rows gained games/win/loss/draw/win_rate_all/record; a v1 pickle would serve them as defaults.
+    "user_characters:v2",
     "user_encounters:v6",
     "user_maps",
     "user_teammates",

@@ -48,8 +48,8 @@ from shared.models.platform.notification import (  # noqa: E402
 )
 from shared.models.tenancy.workspace import Workspace, WorkspaceMember  # noqa: E402
 from shared.services.discord_client import DiscordClient  # noqa: E402
+from shared.services.discord_errors import DiscordUnavailable  # noqa: E402
 from shared.services.notifications import NOTIFICATION_GROUPS  # noqa: E402
-from shared.services.subscriptions.providers.discord_role import DiscordUnavailable  # noqa: E402
 from shared.testing import install_postgres_type_shims  # noqa: E402
 from src import schemas  # noqa: E402
 from src.rpc import notifications as notifications_rpc  # noqa: E402

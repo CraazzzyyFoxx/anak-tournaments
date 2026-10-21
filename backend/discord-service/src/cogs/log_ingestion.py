@@ -1,5 +1,6 @@
 """Watches monitored tournament channels for match-log attachments: live
-messages, edits that add attachments, and history rescans on connect.
+messages, edits that add attachments, and history rescans on connect -- from
+each channel's cursor, so a reconnect reads only what it missed.
 """
 
 from __future__ import annotations
@@ -15,9 +16,10 @@ if TYPE_CHECKING:
     from src.bot import LogCollectorBot
 
 _HISTORY_RESCAN_LIMIT = 500
-# Tournament/channel changes reload the registry as events (DiscordRabbitGateway);
-# this loop only catches what no event announces -- a finished tournament
-# leaving its grace period -- and an event that was lost.
+# Tournament changes reload the registry as events (DiscordRabbitGateway), and
+# a binding written through rpc.discord.channel.* reloads it in-process; this
+# loop only catches what neither announces -- a finished tournament leaving
+# its grace period -- and an event that was lost.
 _CHANNEL_RELOAD_FALLBACK_MINUTES = 60
 
 
@@ -43,7 +45,12 @@ class LogIngestionCog(commands.Cog):
         # not their sum.
         await asyncio.gather(
             *(
-                self._processor.process_channel_history(channel_id, tournament_id, limit=_HISTORY_RESCAN_LIMIT)
+                self._processor.process_channel_history(
+                    channel_id,
+                    tournament_id,
+                    after_message_id=self._registry.cursor_for(channel_id),
+                    limit=_HISTORY_RESCAN_LIMIT,
+                )
                 for channel_id, tournament_id in self._registry.channel_ids().items()
             )
         )
@@ -79,6 +86,7 @@ class LogIngestionCog(commands.Cog):
                 f"with {len(message.attachments)} attachment(s)"
             )
             await self._processor.process_message(message, tournament_id)
+            await self._registry.advance(message.channel.id, message.id)
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message) -> None:

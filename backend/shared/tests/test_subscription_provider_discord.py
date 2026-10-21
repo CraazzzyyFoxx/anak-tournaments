@@ -10,14 +10,14 @@ from __future__ import annotations
 from unittest import IsolatedAsyncioTestCase
 
 from shared.schemas.rpc import rpc_error, rpc_ok
-from shared.services.subscriptions import SubscriptionSource, SubscriptionState
-from shared.services.subscriptions.providers.discord_role import (
+from shared.services.discord_errors import (
     DiscordForbidden,
     DiscordNotConfigured,
-    DiscordRoleResolver,
     DiscordUnavailable,
     MemberNotFound,
 )
+from shared.services.subscriptions import SubscriptionSource, SubscriptionState
+from shared.services.subscriptions.providers.discord_role import DiscordRoleResolver
 
 CONFIG = {
     "guild_id": "999",
@@ -140,12 +140,12 @@ class TestUnknownFailsOpen(IsolatedAsyncioTestCase):
         assert verdict.state == SubscriptionState.UNKNOWN
         assert verdict.evidence["reason"] == "guild_not_accessible"
 
-    async def test_our_own_missing_bot_token_is_not_reported_as_a_guild_fault(self):
-        """A service deployed without DISCORD_TOKEN used to answer
+    async def test_our_own_missing_broker_is_not_reported_as_a_guild_fault(self):
+        """A service that could not ask discord-service used to answer
         ``guild_not_accessible``, which reads as "bot cannot read the guild" and sent
         the operator to inspect a guild id that was perfectly correct. The reason must
-        name the credential, not the guild."""
-        verdict = await _resolve(_Harness(member_error=DiscordNotConfigured("no bot token")))
+        name the wiring, not the guild."""
+        verdict = await _resolve(_Harness(member_error=DiscordNotConfigured("no broker")))
         assert verdict.state == SubscriptionState.UNKNOWN
         assert verdict.evidence["reason"] == "bot_not_configured"
 
@@ -275,7 +275,7 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
         )
 
         session = AsyncMock()
-        strategy = BoostyDiscordStrategy(session, bot_token="token", broker=fake_broker)
+        strategy = BoostyDiscordStrategy(session, broker=fake_broker)
 
         with patch(
             "shared.services.subscriptions.strategies.load_provider_user_ids",
@@ -299,7 +299,7 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
             rpc_ok({"guild_role_ids": ["100", "200"], "members": {"discord-id-1": {"found": True, "roles": ["200"]}}})
         )
 
-        strategy = BoostyDiscordStrategy(AsyncMock(), bot_token="token", broker=fake_broker)
+        strategy = BoostyDiscordStrategy(AsyncMock(), broker=fake_broker)
         with patch(
             "shared.services.subscriptions.strategies.load_provider_user_ids",
             AsyncMock(return_value={1: ["discord-id-1"]}),
@@ -312,7 +312,9 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
         sent = fake_broker.request.await_args.args[0]
         assert sent["user_ids"] == ["discord-id-1"]
 
-    async def test_resolve_many_falls_back_to_http_when_rpc_fails(self):
+    async def test_resolve_many_reports_an_unreachable_bot_as_an_outage(self):
+        """No REST fallback: a bot that does not answer is ``provider_unavailable``,
+        which the gate reads as a refusal rather than a guess."""
         from unittest.mock import AsyncMock, patch
 
         from shared.services.subscriptions.strategies import BoostyDiscordStrategy
@@ -320,29 +322,18 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
         fake_broker = AsyncMock()
         fake_broker.request.side_effect = RuntimeError("Broker error")
 
-        session = AsyncMock()
-        strategy = BoostyDiscordStrategy(session, bot_token="token", broker=fake_broker)
-
-        dummy_resolver = AsyncMock()
-        dummy_resolver.resolve.return_value = AsyncMock(state=SubscriptionState.ACTIVE)
-
-        with (
-            patch(
-                "shared.services.subscriptions.strategies.load_provider_user_ids",
-                AsyncMock(return_value={1: ["discord-id-1"]}),
-            ),
-            patch(
-                "shared.services.subscriptions.strategies.DiscordRoleResolver",
-                return_value=dummy_resolver,
-            ),
+        strategy = BoostyDiscordStrategy(AsyncMock(), broker=fake_broker)
+        with patch(
+            "shared.services.subscriptions.strategies.load_provider_user_ids",
+            AsyncMock(return_value={1: ["discord-id-1"]}),
         ):
             verdicts = await strategy.resolve_many(config=CONFIG, auth_user_ids=[1])
 
-        fake_broker.request.assert_awaited_once()
-        assert 1 in verdicts
+        assert verdicts[1].state == SubscriptionState.UNKNOWN
+        assert verdicts[1].evidence["reason"] == "provider_unavailable"
 
-    async def test_resolve_many_falls_back_when_peer_answers_with_an_error(self):
-        """``guild_not_found`` from discord-service must not be read as a verdict."""
+    async def test_resolve_many_reports_a_guild_the_bot_is_not_in_as_inaccessible(self):
+        """``not_found`` from discord-service is the organizer's guild, not an outage."""
         from unittest.mock import AsyncMock, patch
 
         from shared.services.subscriptions.strategies import BoostyDiscordStrategy
@@ -350,24 +341,15 @@ class TestBoostyDiscordStrategyRPC(IsolatedAsyncioTestCase):
         fake_broker = AsyncMock()
         fake_broker.request.return_value = _rpc_reply(rpc_error("not_found", "guild_not_found"))
 
-        strategy = BoostyDiscordStrategy(AsyncMock(), bot_token="token", broker=fake_broker)
-        dummy_resolver = AsyncMock()
-        dummy_resolver.resolve.return_value = AsyncMock(state=SubscriptionState.ACTIVE)
-
-        with (
-            patch(
-                "shared.services.subscriptions.strategies.load_provider_user_ids",
-                AsyncMock(return_value={1: ["discord-id-1"]}),
-            ),
-            patch(
-                "shared.services.subscriptions.strategies.DiscordRoleResolver",
-                return_value=dummy_resolver,
-            ),
+        strategy = BoostyDiscordStrategy(AsyncMock(), broker=fake_broker)
+        with patch(
+            "shared.services.subscriptions.strategies.load_provider_user_ids",
+            AsyncMock(return_value={1: ["discord-id-1"]}),
         ):
             verdicts = await strategy.resolve_many(config=CONFIG, auth_user_ids=[1])
 
-        dummy_resolver.resolve.assert_awaited()
-        assert 1 in verdicts
+        assert verdicts[1].state == SubscriptionState.UNKNOWN
+        assert verdicts[1].evidence["reason"] == "guild_not_accessible"
 
 
 class TestSeveralLinkedDiscordAccounts(IsolatedAsyncioTestCase):
@@ -382,7 +364,7 @@ class TestSeveralLinkedDiscordAccounts(IsolatedAsyncioTestCase):
         fake_broker.request.return_value = _rpc_reply(
             rpc_ok({"guild_role_ids": list(guild_role_ids), "members": members})
         )
-        strategy = BoostyDiscordStrategy(AsyncMock(), bot_token="token", broker=fake_broker)
+        strategy = BoostyDiscordStrategy(AsyncMock(), broker=fake_broker)
         with patch(
             "shared.services.subscriptions.strategies.load_provider_user_ids",
             AsyncMock(return_value={1: account_ids}),

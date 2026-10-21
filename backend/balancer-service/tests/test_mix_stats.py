@@ -12,7 +12,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
-from src.domain.mix_stats import SeatOutcome, aggregate_mix_stats, outcome_for  # noqa: E402
+from src.domain.mix_stats import FORM_LENGTH, SeatOutcome, aggregate_mix_stats, outcome_for  # noqa: E402
 
 _EPOCH = datetime(2026, 1, 1, 20, 0)
 
@@ -97,6 +97,21 @@ def test_seat_order_does_not_decide_the_streak() -> None:
     # shuffled input answers the same.
     shuffled = [_seat(7, 3, "win"), _seat(7, 1, "loss"), _seat(7, 2, "win")]
     assert _only(shuffled).streak == 2
+
+
+def test_form_is_the_newest_ten_results_newest_first() -> None:
+    # Twelve matches, shuffled: the strip reads match ids, not input order.
+    outcomes = ["win", "loss", "draw"] * 4
+    seats = [_seat(7, match_id, outcomes[match_id - 1]) for match_id in (5, 12, 1, 9, 3, 11, 2, 8, 4, 10, 6, 7)]
+    form = _only(seats).form
+    assert FORM_LENGTH == 10
+    assert [seat.match_id for seat in form] == list(range(12, 2, -1))
+    assert [seat.outcome for seat in form] == [outcomes[match_id - 1] for match_id in range(12, 2, -1)]
+    assert form[0].played_at == _EPOCH + timedelta(minutes=12)
+
+
+def test_a_short_record_is_the_whole_form() -> None:
+    assert [seat.outcome for seat in _only([_seat(7, 1, "loss"), _seat(7, 2, "win")]).form] == ["win", "loss"]
 
 
 def test_members_rank_by_wins_then_win_rate() -> None:

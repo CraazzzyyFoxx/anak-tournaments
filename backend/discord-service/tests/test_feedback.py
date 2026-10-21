@@ -23,25 +23,31 @@ def test_upload_reactions_say_how_much_of_the_message_went_out() -> None:
 
 
 def test_a_processed_log_is_a_reaction_without_a_reply() -> None:
-    summary = build_message_feedback(_result(AttachmentFeedbackState.PROCESSED_OK))
+    summary = build_message_feedback(_result(AttachmentFeedbackState.PROCESSED_OK), "ru")
     assert summary.reactions == ("ok",)
     assert summary.reply_text is None
 
 
 def test_single_awaiting_link_result_is_truthful_and_actionable() -> None:
-    summary = build_message_feedback(_result(AttachmentFeedbackState.AWAITING_LINK))
+    summary = build_message_feedback(_result(AttachmentFeedbackState.AWAITING_LINK), "ru")
     assert summary.reactions == ("ok", "warn")
     assert "администратору" in summary.reply_text and "привязать" in summary.reply_text
     assert "обработан" not in summary.reply_text
 
 
 def test_single_failed_result_includes_its_own_error() -> None:
-    summary = build_message_feedback(_result(AttachmentFeedbackState.PROCESSED_FAILED, "job-specific"))
+    summary = build_message_feedback(_result(AttachmentFeedbackState.PROCESSED_FAILED, "job-specific"), "ru")
     assert summary.reactions == ("ok", "warn")
     assert ":owt_warn: match-1.log" in summary.reply_text and "job-specific" in summary.reply_text
 
 
 def test_a_failure_before_the_job_existed_keeps_ok_and_says_so() -> None:
-    summary = build_message_feedback(_result(AttachmentFeedbackState.UPLOAD_FAILED, "Object storage unavailable"))
+    summary = build_message_feedback(_result(AttachmentFeedbackState.UPLOAD_FAILED, "Object storage unavailable"), "ru")
     assert summary.reactions == ("ok", "warn")
     assert "не удалось загрузить" in summary.reply_text and "Object storage unavailable" in summary.reply_text
+
+
+def test_an_english_guild_reads_english_around_the_same_emoji() -> None:
+    summary = build_message_feedback(_result(AttachmentFeedbackState.AWAITING_LINK), "en")
+    assert summary.reply_text.startswith(":owt_warn: match-1.log")
+    assert "link the log" in summary.reply_text

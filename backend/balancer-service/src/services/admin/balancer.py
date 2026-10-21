@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -20,6 +20,7 @@ from shared.repository import (
     WorkspaceBalancerConfigRepository,
 )
 from shared.services.balancer_realtime import BALANCER_BALANCE_SAVED, BALANCER_CONFIG_CHANGED, BALANCER_TEAMS_CHANGED
+from shared.services.discord_errors import DiscordError
 from src import models, schemas
 from src.domain.balancer.config.public_contract import (
     normalize_balance_response_payload,
@@ -35,6 +36,28 @@ from src.services.team_export import ExportPlan, sync_player_ranks, team_materia
 __all__ = ("BalancerAdminService", "balancer_admin_service", "materialize_balance_teams")
 
 logger = logging.getLogger(__name__)
+
+#: The workspace guild's channel listing (``DiscordClient.guild_channels``),
+#: passed in by the RPC layer, which holds the broker.
+ChannelReader = Callable[[str], Awaitable[list[dict[str, Any]]]]
+
+
+def _newly_set_discord_ids(
+    stored: Mapping[str, Any], channel: str | None, category: str | None, generals: list[str]
+) -> set[tuple[str, str]]:
+    """``(id, channel type)`` of every Discord id this write changes to a value.
+
+    An unchanged or cleared value is not asked about, so saving the pool knobs
+    beside an untouched channel -- or clearing one -- never needs Discord.
+    """
+    wanted: set[tuple[str, str]] = set()
+    if channel and channel != str(stored.get("mix_discord_channel_id") or ""):
+        wanted.add((channel, "text"))
+    if category and category != str(stored.get("mix_voice_category_id") or ""):
+        wanted.add((category, "category"))
+    if generals != [str(v) for v in stored.get("mix_general_voice_channel_ids") or []]:
+        wanted.update((voice, "voice") for voice in generals)
+    return wanted
 
 
 def materialize_balance_teams(
@@ -158,8 +181,39 @@ class BalancerAdminService:
         mix_voice_category_id: str | None,
         mix_general_voice_channel_ids: list[str],
         updated_by: int | None,
+        *,
+        list_channels: ChannelReader,
     ) -> WorkspaceBalancerConfig:
+        """Store the blob after proving every newly set Discord id is this workspace's guild's.
+
+        Without the check an admin of workspace A could point the bot at a
+        channel of guild B (the bot sits in both). Same rule and codes as
+        app-service's notification channel: 409 ``discord_guild_not_linked``,
+        422 ``discord_channel_not_in_guild``, 503 ``discord_unavailable`` --
+        never a silent accept of an id nobody checked.
+        """
         config = await self.get_workspace_balancer_config(session, workspace_id)
+        wanted = _newly_set_discord_ids(
+            (config.config_json or {}) if config is not None else {},
+            mix_discord_channel_id,
+            mix_voice_category_id,
+            mix_general_voice_channel_ids,
+        )
+        if wanted:
+            row = await self.workspace_configs.config_with_guild(session, workspace_id)
+            guild_id = row[1] if row is not None else None
+            if not guild_id:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="discord_guild_not_linked")
+            try:
+                channels = await list_channels(str(guild_id))
+            except DiscordError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="discord_unavailable"
+                ) from exc
+            if not wanted <= {(str(c.get("id")), c.get("type")) for c in channels}:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="discord_channel_not_in_guild"
+                )
         payload: dict[str, Any] = {
             "rank_delta_threshold": rank_delta_threshold,
             "rank_delta_hide_from_pool": rank_delta_hide_from_pool,

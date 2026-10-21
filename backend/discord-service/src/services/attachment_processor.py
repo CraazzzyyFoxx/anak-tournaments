@@ -13,7 +13,6 @@ import discord
 import httpx
 from loguru import logger
 
-from shared.domain.discord_ui import EMOJI
 from shared.messaging.config import UPLOAD_MATCH_LOG_QUEUE
 from shared.observability import publish_message
 from shared.schemas.events import MatchLogProcessedEvent, UploadMatchLogEvent
@@ -24,8 +23,11 @@ from src.feedback import (
     build_message_feedback,
     upload_reactions,
 )
+from src.interactions import copy
 from src.interactions.emoji import registry
 from src.services.attachment_client import AttachmentClientFactory
+from src.services.channel_registry import ChannelRegistry
+from src.ui import EMOJI
 
 _LOG_FILE_SUFFIXES = (".txt", ".log", ".json")
 
@@ -40,9 +42,12 @@ _LEGACY_REACTIONS = frozenset({"✅", "⚠️", "❌"})
 class AttachmentProcessor:
     """Owns the log-upload pipeline and the per-message in-flight processing guard."""
 
-    def __init__(self, *, client: discord.Client, attachment_clients: AttachmentClientFactory) -> None:
+    def __init__(
+        self, *, client: discord.Client, attachment_clients: AttachmentClientFactory, registry: ChannelRegistry
+    ) -> None:
         self._client = client
         self._attachment_clients = attachment_clients
+        self._registry = registry
         self._processing_messages: set[int] = set()
 
     async def get_text_channel(self, channel_id: int) -> discord.abc.Messageable | None:
@@ -167,8 +172,10 @@ class AttachmentProcessor:
             state = AttachmentFeedbackState.UPLOAD_FAILED
         else:
             state = AttachmentFeedbackState.PROCESSED_FAILED
+        # A channel message carries no reader locale: the guild's is the best guess.
+        locale = copy.locale_of(message.guild.preferred_locale) if message.guild else "ru"
         summary = build_message_feedback(
-            AttachmentFeedbackResult(filename=event.filename, state=state, error_message=event.error_message)
+            AttachmentFeedbackResult(filename=event.filename, state=state, error_message=event.error_message), locale
         )
 
         try:
@@ -220,10 +227,15 @@ class AttachmentProcessor:
         finally:
             self._processing_messages.discard(message.id)
 
-    async def process_channel_history(self, channel_id: int, tournament_id: int, *, limit: int = 10) -> None:
-        """
-        Process recent message history in a channel.
-        Used when the bot starts or a channel is newly added.
+    async def process_channel_history(
+        self, channel_id: int, tournament_id: int, *, after_message_id: int | None = None, limit: int = 500
+    ) -> None:
+        """Hand a channel's log messages to stats-service, then move its rescan cursor.
+
+        With ``after_message_id`` (the registry's cursor) only what came after it
+        is read, oldest first; without one, the last ``limit`` messages. The
+        newest message seen becomes the cursor either way, so a reconnect walks
+        what it missed instead of re-downloading the same attachments.
         """
         try:
             channel = await self.get_text_channel(channel_id)
@@ -231,14 +243,19 @@ class AttachmentProcessor:
                 logger.error(f"❌ Channel {channel_id} not found")
                 return
 
-            logger.info(f"🔍 Processing last {limit} messages in channel {channel_id}")
+            after = discord.Object(id=after_message_id) if after_message_id is not None else None
+            logger.info(f"🔍 Processing up to {limit} messages in channel {channel_id} after {after_message_id}")
 
             processed = 0
-            async for message in channel.history(limit=limit):
+            newest: int | None = None
+            async for message in channel.history(limit=limit, after=after):
+                newest = max(newest or 0, message.id)
                 if message.attachments:
                     await self.process_message(message, tournament_id)
                     processed += 1
 
+            if newest is not None:
+                await self._registry.advance(channel_id, newest)
             logger.success(f"✅ Processed {processed} messages with attachments")
 
         except discord.Forbidden:

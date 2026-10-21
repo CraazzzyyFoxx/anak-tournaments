@@ -49,7 +49,7 @@ world.
 
 ```
 internet → nginx :80 ─┬─ /api/*, /ws, /api/v1/realtime/ws, /health → gateway :8080 →
-                      │      ├─ RPC over RabbitMQ → headless workers (rpc.app.* / rpc.identity.* / rpc.tournament.* / rpc.stats.* / rpc.balancer.* / rpc.analytics.*)
+                      │      ├─ RPC over RabbitMQ → headless workers + the discord bot (rpc.app.* / rpc.identity.* / rpc.tournament.* / rpc.stats.* / rpc.balancer.* / rpc.analytics.* / rpc.discord.*)
                       │      └─ /ws + /api/v1/realtime/ws → Redis→WebSocket hub (replay from realtime.workspace_event)
                       └─ everything else (pages, /_next/*, /bff/*, /api/health) → frontend :3000
 ```

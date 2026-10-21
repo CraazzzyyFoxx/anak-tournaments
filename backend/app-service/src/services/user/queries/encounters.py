@@ -803,21 +803,24 @@ class UserEncounterQueries(DisciplineQueries):
     async def get_user_hero_records(
         self,
         session: AsyncSession,
-        user_id: int,
+        user_id: int | None,
         workspace_id: int | None = None,
+        tournament_id: int | None = None,
         *,
         min_seconds: float = 60,
-    ) -> typing.Sequence[tuple[models.CatalogEntity, int, int]]:
-        """Every hero the user played as ``(hero, maps played, maps won)``, most played first.
+    ) -> typing.Sequence[tuple[models.CatalogEntity, int, int, int, int]]:
+        """Every hero played as ``(hero, games, won, lost, drawn)``, most played first.
 
+        ``user_id=None`` counts every player's games (the discipline-wide baseline).
         "Played" follows the same convention as every other hero read here
         (``HeroTimePlayed`` above ``min_seconds``, round 0): a hero swapped in for
-        thirty seconds is not a map played. Win/loss comes from the map score
-        against the side the user played on — the rule
+        thirty seconds is not a game played. Win/loss/draw comes from the map score
+        against the side the player played on — the rule
         ``HeroQueries.get_user_hero_stats_by_maps`` applies for the per-map hero
-        popover; draws count as maps played, never as wins. ONE query, ranked in
-        the database. Uncapped because the card's role tiles look up the heroes a
-        player DECLARED, which need not be among their most played.
+        popover; draws count as games, never as wins, and a game without a score is
+        a game but none of the three. ONE query, ranked in the database. Uncapped
+        because the draft card's role tiles look up the heroes a player DECLARED,
+        which need not be among their most played.
         """
         hero_match_q = (
             sa.select(
@@ -830,7 +833,6 @@ class UserEncounterQueries(DisciplineQueries):
             .join(models.Encounter, models.Encounter.id == self._matches.c.encounter_id)
             .where(
                 sa.and_(
-                    self._facts.c.player_id == user_id,
                     self._facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
                     self._facts.c.entity_id.isnot(None),
                     self._facts.c.value > min_seconds,
@@ -838,6 +840,10 @@ class UserEncounterQueries(DisciplineQueries):
                 )
             )
         )
+        if user_id is not None:
+            hero_match_q = hero_match_q.where(self._facts.c.player_id == user_id)
+        if tournament_id is not None:
+            hero_match_q = hero_match_q.where(models.Encounter.tournament_id == tournament_id)
         if workspace_id is not None:
             hero_match_q = hero_match_q.join(
                 models.Tournament, models.Tournament.id == models.Encounter.tournament_id
@@ -847,7 +853,7 @@ class UserEncounterQueries(DisciplineQueries):
             self._facts.c.entity_id,
             self._facts.c.encounter_team_id,
             self._matches.c.id,
-        ).cte("draft_card_hero_match")
+        ).cte("hero_record_match")
 
         team_score = sa.case(
             (self._duels.c.home_encounter_team_id == hero_match.c.encounter_team_id, self._duels.c.home_score),
@@ -857,21 +863,26 @@ class UserEncounterQueries(DisciplineQueries):
             (self._duels.c.home_encounter_team_id == hero_match.c.encounter_team_id, self._duels.c.away_score),
             else_=self._duels.c.home_score,
         )
-        maps = sa.func.count(hero_match.c.match_id)
-        maps_won = sa.func.sum(sa.case((team_score > opponent_score, 1), else_=0))
+        games = sa.func.count(hero_match.c.match_id)
 
         query = (
-            sa.select(models.CatalogEntity, maps.label("maps"), maps_won.label("maps_won"))
+            sa.select(
+                models.CatalogEntity,
+                games.label("games"),
+                sa.func.sum(sa.case((team_score > opponent_score, 1), else_=0)).label("won"),
+                sa.func.sum(sa.case((team_score < opponent_score, 1), else_=0)).label("lost"),
+                sa.func.sum(sa.case((team_score == opponent_score, 1), else_=0)).label("drawn"),
+            )
             .select_from(hero_match)
             .join(self._duels, self._duels.c.id == hero_match.c.match_id)
             .join(models.CatalogEntity, models.CatalogEntity.id == hero_match.c.hero_id)
             .where(models.CatalogEntity.kind == "character", models.CatalogEntity.discipline == self.discipline)
             .group_by(models.CatalogEntity.id)
-            # hero id tiebreak keeps the order deterministic on equal map counts.
-            .order_by(maps.desc(), models.CatalogEntity.id.asc())
+            # hero id tiebreak keeps the order deterministic on equal game counts.
+            .order_by(games.desc(), models.CatalogEntity.id.asc())
         )
         result = await session.execute(query)
-        return [(row[0], int(row.maps), int(row.maps_won or 0)) for row in result]
+        return [(row[0], int(row.games), int(row.won or 0), int(row.lost or 0), int(row.drawn or 0)) for row in result]
 
     async def count_user_mvp_maps(
         self,

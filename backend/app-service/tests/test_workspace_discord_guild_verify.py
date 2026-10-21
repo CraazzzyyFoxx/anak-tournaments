@@ -43,8 +43,8 @@ def _actor(auth_user_id: int = 42, username: str = "ada") -> SimpleNamespace:
     return SimpleNamespace(id=auth_user_id, username=username)
 
 
-def _identity_reply(guilds: list[dict]):
-    return parse_rpc(rpc_ok({"guilds": guilds}))
+def _identity_reply(guilds: list[dict], *, relink_required: bool = False):
+    return parse_rpc(rpc_ok({"guilds": guilds, "relink_required": relink_required}))
 
 
 class VerifyDiscordGuildTests(IsolatedAsyncioTestCase):
@@ -102,6 +102,7 @@ class VerifyDiscordGuildTests(IsolatedAsyncioTestCase):
                 await workspaces.verify_discord_guild(session, workspace, _GUILD_ID, actor=actor, broker=MagicMock())
 
         self.assertEqual(403, ctx.exception.status_code)
+        self.assertEqual("discord_guild_not_administered", ctx.exception.detail)
         self.assertIsNone(workspace.discord_guild_id)
         session.flush.assert_not_awaited()
 
@@ -115,6 +116,23 @@ class VerifyDiscordGuildTests(IsolatedAsyncioTestCase):
                 await workspaces.verify_discord_guild(session, workspace, _GUILD_ID, actor=actor, broker=MagicMock())
 
         self.assertEqual(403, ctx.exception.status_code)
+        self.assertEqual("discord_guild_not_administered", ctx.exception.detail)
+        session.flush.assert_not_awaited()
+
+    async def test_an_unusable_discord_link_asks_for_a_relink(self) -> None:
+        """No usable OAuth token means the guild list is unknown, not empty:
+        "you do not administer it" would send the organiser to the wrong fix."""
+        session = SimpleNamespace(flush=AsyncMock())
+        workspace = _make_workspace()
+        reply = _identity_reply([], relink_required=True)
+
+        with patch.object(workspace_service, "request_rpc", AsyncMock(return_value=reply)):
+            with self.assertRaises(workspace_service.HTTPException) as ctx:
+                await workspaces.verify_discord_guild(session, workspace, _GUILD_ID, actor=_actor(), broker=MagicMock())
+
+        self.assertEqual(403, ctx.exception.status_code)
+        self.assertEqual("discord_relink_required", ctx.exception.detail)
+        self.assertIsNone(workspace.discord_guild_id)
         session.flush.assert_not_awaited()
 
     async def test_guild_already_claimed_maps_to_409_and_rolls_back(self) -> None:
@@ -224,9 +242,17 @@ class ListActorDiscordGuildsTests(IsolatedAsyncioTestCase):
         ) as req:
             result = await workspaces.list_actor_discord_guilds(auth_user_id=42, broker=MagicMock())
 
-        self.assertEqual({"guilds": self._GUILDS}, result)
+        self.assertEqual({"guilds": self._GUILDS, "relink_required": False}, result)
         self.assertEqual({"auth_user_id": 42}, req.await_args.args[1])
         self.assertEqual(workspace_service._DISCORD_GUILDS_SUBJECT, req.await_args.args[2])
+
+    async def test_an_unusable_discord_link_passes_through(self) -> None:
+        """The empty list then means "re-link Discord", and the picker has to know."""
+        reply = _identity_reply([], relink_required=True)
+        with patch.object(workspace_service, "request_rpc", AsyncMock(return_value=reply)):
+            result = await workspaces.list_actor_discord_guilds(auth_user_id=42, broker=MagicMock())
+
+        self.assertEqual({"guilds": [], "relink_required": True}, result)
 
     async def test_identity_service_unreachable_fails_closed_with_503(self) -> None:
         with patch.object(workspace_service, "request_rpc", AsyncMock(side_effect=TimeoutError("no reply"))):

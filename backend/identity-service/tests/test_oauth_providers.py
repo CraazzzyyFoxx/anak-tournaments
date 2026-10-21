@@ -16,6 +16,7 @@ from src.services.oauth import oauth  # noqa: E402
 from src.services.oauth_providers import (  # noqa: E402
     DiscordOAuthProvider,
     OAuthProviderRegistry,
+    OAuthTokenRejected,
     _raise_provider_call_error,
     has_manage_guild,
     oauth_providers,
@@ -115,7 +116,7 @@ def test_twitch_authorize_url_keeps_the_email_scope() -> None:
 
 
 def test_discord_authorize_url_requests_guilds_scope() -> None:
-    """Workspace self-service Discord-guild verification (``rpc.identity.oauth.discord_guilds``)
+    """Workspace self-service Discord-guild verification (``rpc.identity.oauth_discord_guilds``)
     needs to know which guilds the user administers, which requires the
     ``guilds`` OAuth scope. Dropping it makes ``/users/@me/guilds`` return 401.
     """
@@ -168,12 +169,21 @@ def test_discord_get_user_guilds_returns_the_raw_list() -> None:
     assert headers["Authorization"] == "Bearer token-abc"
 
 
-def test_discord_get_user_guilds_raises_on_non_200() -> None:
+def test_discord_get_user_guilds_raises_token_rejected_on_401() -> None:
+    """A 401 means the stored token is dead: ``discord_guilds`` turns this into ``relink_required``."""
     fake_http = _FakeHttpClient(_FakeGuildsResponse(401, {"message": "401: Unauthorized"}))
     provider = DiscordOAuthProvider(fake_http)  # type: ignore[arg-type]
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(OAuthTokenRejected):
         asyncio.run(provider.get_user_guilds("stale-token"))
+
+
+def test_discord_get_user_guilds_raises_on_other_non_200() -> None:
+    fake_http = _FakeHttpClient(_FakeGuildsResponse(429, {"message": "You are being rate limited."}))
+    provider = DiscordOAuthProvider(fake_http)  # type: ignore[arg-type]
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(provider.get_user_guilds("live-token"))
 
     assert exc_info.value.status_code == 400
 

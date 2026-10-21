@@ -20,7 +20,6 @@ from shared.repository import OAuthConnectionRepository, WorkspaceRepository
 from shared.schemas.events import DiscordMemberChangedEvent
 from shared.services.subscriptions.wiring import build_resolver
 from src.core import db
-from src.core.config import settings
 
 __all__ = ("register", "resync")
 
@@ -41,10 +40,8 @@ async def resync(session: Any, event: DiscordMemberChangedEvent, *, broker: Any)
     )
     if connection is None:
         return []
-    # The Boosty strategy asks the bot (discord_member_roles RPC) first; the bot token is only its REST fallback.
-    resolver = build_resolver(
-        session, discord_bot_token=settings.discord_token, broker=broker, proxy=settings.proxy_url
-    )
+    # Boosty is the only provider re-resolved here; it asks the bot (discord_member_roles RPC), so only the broker matters.
+    resolver = build_resolver(session, broker=broker)
     for workspace_id in workspace_ids:
         await resolver.resolve(
             workspace_id=workspace_id,

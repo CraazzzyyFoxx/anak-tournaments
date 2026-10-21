@@ -14,7 +14,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { DiscordChannelSelect } from "@/components/discord/DiscordChannelSelect";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
@@ -110,17 +109,14 @@ export function TournamentDiscordSection({
 
   return (
     <>
-      <section className="flex flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className={EYEBROW_CLASS}>{t("title")}</h3>
-          {/* Monitoring is the norm and "not configured" is the empty note
-              below; only a paused channel wants attention. */}
-          {discordChannel && !discordChannel.is_active ? (
-            <StatusPill tone="warning" className="shrink-0">
-              {tx("paused")}
-            </StatusPill>
-          ) : null}
-        </div>
+      <div className="flex flex-col gap-3">
+        {/* Monitoring is the norm and "not configured" is the empty note
+            below; only a paused channel wants attention. */}
+        {discordChannel && !discordChannel.is_active ? (
+          <StatusPill tone="warning" className="self-start">
+            {tx("paused")}
+          </StatusPill>
+        ) : null}
 
         {discordChannelLoading ? (
           <Skeleton className="h-16 w-full" />
@@ -168,7 +164,7 @@ export function TournamentDiscordSection({
             ) : null}
           </div>
         ) : null}
-      </section>
+      </div>
 
       <EntityFormDialog
         open={dialogOpen}

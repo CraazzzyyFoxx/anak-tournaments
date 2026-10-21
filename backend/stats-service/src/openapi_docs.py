@@ -214,21 +214,4 @@ DOCS: dict[str, dict] = {
         "summary": "Upsert global setting",
         "description": "Permission: superuser. Creates or updates a global setting by key, stamping the updating user.",
     },
-    # ── per-tournament Discord channel ────────────────────────────────────────
-    "rpc.stats.discord_channel.get": {
-        "summary": "Get tournament Discord channel",
-        "description": "Permission: workspace `discord_channel.read` in the tournament's workspace. Returns the Discord channel configuration for a tournament (or null).",
-    },
-    "rpc.stats.discord_channel.upsert": {
-        "summary": "Upsert tournament Discord channel",
-        "description": "Permission: workspace `discord_channel.update` in the tournament's workspace. Creates or updates a tournament's Discord guild/channel binding.",
-    },
-    "rpc.stats.discord_channel.backfill": {
-        "summary": "Backfill Discord channel history",
-        "description": "Permission: workspace `discord_channel.update` in the tournament's workspace. Queues a rescan of the tournament's Discord channel history — the same `process_all` command the bot runs at startup — resubmitting every attachment found in the last 500 messages of each channel bound to the tournament; returns an ack immediately, the scan itself is asynchronous, and 404s when no channel is configured. Ingestion deduplicates on the SHA-256 of a log file's bytes, so logs already processed for the tournament are skipped rather than duplicated, but each call re-downloads and re-uploads every attachment — repeat it only when logs are genuinely missing.",
-    },
-    "rpc.stats.discord_channel.delete": {
-        "summary": "Delete tournament Discord channel",
-        "description": "Permission: workspace `discord_channel.delete` in the tournament's workspace. Removes a tournament's Discord channel configuration and returns no content, 404ing when no channel is configured.",
-    },
 }

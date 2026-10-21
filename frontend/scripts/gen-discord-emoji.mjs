@@ -7,7 +7,7 @@
  * The standalone Discord palette below is intentionally distinct from ontology
  * attrs colors: the white originals must read on both Discord themes. It does
  * not depend on frontend role CSS tokens. Other glyphs use lucide silhouettes.
- * Names are shared/domain/discord_ui.py's EMOJI keys; upload them with
+ * Names are backend/discord-service/src/ui.py's EMOJI keys; upload them with
  * `python -m src.tools.emoji_sync` (backend/discord-service).
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";

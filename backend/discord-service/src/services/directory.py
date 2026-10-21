@@ -3,6 +3,10 @@
 Wraps discord.py's gateway cache with a REST fallback, since a guild the bot
 hasn't cached (e.g. right after a restart, before ``GUILD_CREATE`` events land)
 still needs to answer these lookups.
+
+A failed outcome names its cause with a stable code in ``payload["error"]``
+(``invalid``, ``guild_not_found``, ``discord_error``); the exception text stays
+in this service's log, never on the wire.
 """
 
 from __future__ import annotations
@@ -92,7 +96,7 @@ class DiscordDirectoryService:
 
     async def get_member_roles(self, guild_id: str, user_ids: list[str]) -> DirectoryOutcome:
         if not guild_id:
-            return DirectoryOutcome("invalid", {"error": "guild_id_required", "guild_role_ids": [], "members": {}})
+            return DirectoryOutcome("invalid", {"error": "invalid", "guild_role_ids": [], "members": {}})
 
         try:
             guild, _cached = await self._lookup_guild(guild_id)
@@ -121,11 +125,11 @@ class DiscordDirectoryService:
             return DirectoryOutcome("success", {"guild_role_ids": guild_role_ids, "members": members_out})
         except Exception as e:
             logger.error(f"❌ Error getting member roles for guild {guild_id}: {e}")
-            return DirectoryOutcome("error", {"error": str(e), "guild_role_ids": [], "members": {}})
+            return DirectoryOutcome("error", {"error": "discord_error", "guild_role_ids": [], "members": {}})
 
     async def get_guild_roles(self, guild_id: str) -> DirectoryOutcome:
         if not guild_id:
-            return DirectoryOutcome("invalid", {"error": "guild_id_required", "guild_id": guild_id, "roles": []})
+            return DirectoryOutcome("invalid", {"error": "invalid", "guild_id": guild_id, "roles": []})
 
         try:
             guild, _cached = await self._lookup_guild(guild_id)
@@ -152,11 +156,11 @@ class DiscordDirectoryService:
             return DirectoryOutcome("success", {"guild_id": guild_id, "roles": roles_out})
         except Exception as e:
             logger.error(f"❌ Error getting guild roles for {guild_id}: {e}")
-            return DirectoryOutcome("error", {"error": str(e), "guild_id": guild_id, "roles": []})
+            return DirectoryOutcome("error", {"error": "discord_error", "guild_id": guild_id, "roles": []})
 
     async def get_guild_channels(self, guild_id: str) -> DirectoryOutcome:
         if not guild_id:
-            return DirectoryOutcome("invalid", {"error": "guild_id_required", "guild_id": guild_id, "channels": []})
+            return DirectoryOutcome("invalid", {"error": "invalid", "guild_id": guild_id, "channels": []})
 
         try:
             guild, cached = await self._lookup_guild(guild_id)
@@ -190,27 +194,17 @@ class DiscordDirectoryService:
             return DirectoryOutcome("success", {"guild_id": guild_id, "channels": channels_out})
         except Exception as e:
             logger.error(f"❌ Error getting guild channels for {guild_id}: {e}")
-            return DirectoryOutcome("error", {"error": str(e), "guild_id": guild_id, "channels": []})
+            return DirectoryOutcome("error", {"error": "discord_error", "guild_id": guild_id, "channels": []})
 
     async def get_guild_info(self, guild_id: str) -> DirectoryOutcome:
         if not guild_id:
-            return DirectoryOutcome("invalid", {"error": "guild_id_required", "connected": False})
+            return DirectoryOutcome("invalid", {"error": "invalid", "guild_id": guild_id, "connected": False})
 
         try:
             guild, cached = await self._lookup_guild(guild_id)
             if guild is None:
                 return DirectoryOutcome(
-                    "guild_not_found",
-                    {
-                        "guild_id": guild_id,
-                        "connected": False,
-                        "name": None,
-                        "icon_url": None,
-                        "member_count": 0,
-                        "owner_id": None,
-                        "owner_name": None,
-                        "owner_avatar_url": None,
-                    },
+                    "guild_not_found", {"error": "guild_not_found", "guild_id": guild_id, "connected": False}
                 )
 
             icon_url = str(guild.icon.url) if guild.icon else None
@@ -240,4 +234,4 @@ class DiscordDirectoryService:
             )
         except Exception as e:
             logger.error(f"❌ Error getting guild info for {guild_id}: {e}")
-            return DirectoryOutcome("error", {"error": str(e), "guild_id": guild_id, "connected": False})
+            return DirectoryOutcome("error", {"error": "discord_error", "guild_id": guild_id, "connected": False})

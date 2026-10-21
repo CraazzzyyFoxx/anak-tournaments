@@ -126,7 +126,8 @@ class WorkspaceCreate(BaseModel):
 class WorkspaceUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str | None = None
+    # Same bounds as ``WorkspaceCreate``; stripped first, so a name of spaces is no name.
+    name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
     icon_url: str | None = None
     # Public community profile. Blank input clears the field (``_blank_to_none``);
@@ -204,6 +205,11 @@ class WorkspaceUpdate(BaseModel):
             raise ValueError(f"Unknown IANA timezone: {value!r}") from exc
         return value
 
+    @field_validator("name", mode="before")
+    @classmethod
+    def _strip_name(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
     @field_validator("tagline", "about", mode="before")
     @classmethod
     def _blank_text_to_none(cls, value: object) -> object:
@@ -262,6 +268,9 @@ class WorkspaceDiscordGuildOption(BaseModel):
 
 class WorkspaceDiscordGuildsRead(BaseModel):
     guilds: list[WorkspaceDiscordGuildOption] = Field(default_factory=list)
+    #: The caller's Discord connection has no usable OAuth token: the empty
+    #: list means "re-link Discord", not "you administer nothing".
+    relink_required: bool = False
 
 
 class WorkspaceVerificationSet(BaseModel):

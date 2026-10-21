@@ -5,12 +5,8 @@ I/O is injected as callables so every decision path is unit-testable without a
 network, a bot token, or a live OAuth session.
 """
 
-from shared.services.subscriptions.providers.discord_role import (
-    DiscordForbidden,
-    DiscordRoleResolver,
-    DiscordUnavailable,
-    MemberNotFound,
-)
+from shared.services.discord_errors import DiscordForbidden, DiscordUnavailable, MemberNotFound
+from shared.services.subscriptions.providers.discord_role import DiscordRoleResolver
 from shared.services.subscriptions.providers.twitch_helix import (
     HelixForbidden,
     HelixMissingScope,

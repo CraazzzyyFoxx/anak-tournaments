@@ -60,7 +60,11 @@ DOCS: dict[str, dict] = {
             "Permission: admin-panel access plus workspace `team.update`, and additionally "
             "`workspace.update` when the Discord channel actually changes. "
             "Creates or updates the workspace-level rank-delta threshold, hide-from-pool flag and the "
-            "workspace-wide Discord channel for mix matchups."
+            "workspace-wide Discord channel for mix matchups. A newly set Discord id (mix channel, voice "
+            "category, general voices) must be a text channel, category or voice channel of the "
+            "workspace's own guild: 409 discord_guild_not_linked when the workspace has no guild, 422 "
+            "discord_channel_not_in_guild, 503 discord_unavailable when Discord cannot be asked. "
+            "Clearing a value or keeping it unchanged asks Discord nothing."
         ),
     },
     "rpc.balancer.admin.workspace_ranker_get": {
@@ -288,7 +292,16 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.custom.list": {
         "summary": "List custom games",
-        "description": "Permission: public; no authentication required. Returns every mix in the workspace with its settings and host display name, but without rosters.",
+        "description": (
+            "Permission: public; no authentication required. One keyset page of the workspace's mixes, newest "
+            "first: `{items, next_before_id}`. Each item carries the mix's settings and host display name (no "
+            "roster), `players_count` (distinct members seated across its recorded matches), `roster_count`, the "
+            "most recently played `maps` (at most 4, with `maps_count` for all of them) and every lobby's "
+            "`matches_count`. Optional query: `discipline` (an installed game), `status` (`open` = draft or "
+            "balanced, `history` = completed or cancelled; anything else is a 422), `q` (case-insensitive "
+            "substring of the mix name or the host's display name), `limit` (1..100, default 30) and `before_id` "
+            "(pass the previous page's `next_before_id`; null means there is no further page)."
+        ),
     },
     "rpc.balancer.custom.get": {
         "summary": "Get custom game",
@@ -421,9 +434,10 @@ DOCS: dict[str, dict] = {
         "summary": "Post custom game lineup to Discord",
         "description": (
             "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
-            "Queues an embed of one balance option's teams, the next map and the points at stake "
-            "to the workspace-wide mix channel and returns immediately -- delivery is the bot's, "
-            "and nothing about the mix changes. A multi-lobby mix names the lobby in the embed title and "
+            "Queues the lobby's lineup post -- the balance option the lobby is showing, the next map "
+            "and the points at stake -- to the workspace-wide mix channel and returns immediately: "
+            "discord-service renders the card, keeps it in step with the board and delivers it, and "
+            "nothing about the mix changes. A multi-lobby mix names the lobby on the card and "
             "numbers the match within that lobby. 409 when the workspace has "
             "no mix channel configured and 404 when the balance option is missing."
         ),
@@ -432,11 +446,12 @@ DOCS: dict[str, dict] = {
         "summary": "Open custom game signup in Discord",
         "description": (
             "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
-            "Opens self-signup in the given mode (into the pool or onto the bench) and queues a card "
-            "with Join / My roles / Leave buttons to the workspace-wide mix channel. The card is "
-            "static: every click re-reads the mix, so it refuses correctly once signup closes or the "
-            "mix ends. A mix has one signup card: posting again deletes the previous one from the "
-            "channel first. 409 when the workspace has no mix channel configured."
+            "Opens self-signup in the given mode (into the pool or onto the bench) and queues the "
+            "signup card with Join / My roles / Leave buttons to the workspace-wide mix channel. "
+            "discord-service renders it and keeps it in step with the roster; every click re-reads "
+            "the mix, so it refuses correctly once signup closes or the mix ends. A mix has one "
+            "signup card: posting again deletes the previous one from the channel first. 409 when "
+            "the workspace has no mix channel configured."
         ),
     },
     "rpc.balancer.custom.delete_discord_post": {
@@ -543,7 +558,10 @@ DOCS: dict[str, dict] = {
             "scoreboard spans every game, `identity` is the member's first handle in any game's provider, and "
             "`by_role` is null -- role codes of different games are different roles. The optional since query "
             "parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole "
-            "history counts. Read-only."
+            "history counts. Each member also carries `player_id` (the global player, null once the member is no "
+            "longer on the roster) and `form`: their newest results first, at most 10, each "
+            "`{outcome, match_id, played_at}`. Top-level `mixes` and `matches` count the distinct mixes and "
+            "recorded matches inside the same window. Read-only."
         ),
     },
     "rpc.balancer.custom.close": {

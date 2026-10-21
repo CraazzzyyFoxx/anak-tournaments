@@ -1,9 +1,11 @@
-"""What the ``discord_commands`` tests share: the ``discord_message`` row behind every command.
+"""What the ``discord_commands`` and projector tests share: the ``discord_message`` row behind every card.
 
 Every message the platform sends is a row the bot reads before it touches
 Discord and writes back to afterwards, so each of these tests needs a
 repository and a session. Both are in-memory and deliberately dumb -- what is
-asserted is the status the bot leaves behind, never how it got there.
+asserted is the status the bot leaves behind, never how it got there. The
+renderer is a fake too: what a card says is pinned by the render tests, here
+only that the card the renderer made is the one Discord got.
 """
 
 from __future__ import annotations
@@ -17,16 +19,23 @@ from unittest.mock import AsyncMock, MagicMock
 # which needs the env block conftest.py installs.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import discord  # noqa: E402
+
 from shared import models  # noqa: E402
 from src.rabbit.gateway import DiscordRabbitGateway  # noqa: E402
+from src.render import Rendered  # noqa: E402
+from src.render.card import DiscordCard  # noqa: E402
+
+#: The Discord guild the test workspace is bound to.
+GUILD = "999"
 
 
 def row(**overrides: Any) -> models.DiscordMessage:
-    """One pending signup post of mix 42, field by field overridable.
+    """One pending signup post of mix 42 in workspace 7 (bound to :data:`GUILD`), field by field overridable.
 
-    ``workspace_id`` stays ``None`` so the real ``emit_changed`` returns before
-    it touches the realtime machinery; the test that cares about the signal
-    patches it and asserts on the call.
+    The real ``emit_changed`` runs on it and stages nothing: the fake session
+    is no SQLAlchemy session. The test that cares about the signal patches it
+    and asserts on the call.
     """
     fields: dict[str, Any] = {
         "id": 1,
@@ -36,21 +45,66 @@ def row(**overrides: Any) -> models.DiscordMessage:
         "slot": "signup",
         "kind": "mix.signup",
         "status": "pending",
-        "workspace_id": None,
-        "card_json": {"accent_color": 0x14B8A6, "text": "4/10"},
+        "workspace_id": 7,
+        "card_json": None,
     }
     fields.update(overrides)
     return models.DiscordMessage(**fields)
 
 
+def card(text: str = "### Вечерняя кастомка", **fields: Any) -> DiscordCard:
+    return DiscordCard(accent_color=0x14B8A6, text=text, **fields)
+
+
+def renderer(*results: Any) -> AsyncMock:
+    """``src.render.render`` answering ``results`` in turn (the last one forever); a card by default."""
+    answers = list(results) or [Rendered(card())]
+
+    async def render(session: Any, row: models.DiscordMessage, *, broker: Any) -> Any:
+        return answers.pop(0) if len(answers) > 1 else answers[0]
+
+    return AsyncMock(side_effect=render)
+
+
 class FakeMessages:
-    """``DiscordMessageRepository`` over a dict, mutating its rows in place."""
+    """``DiscordMessageRepository`` over a dict, mutating its rows in place, as guarded as the real one."""
 
     def __init__(self, *rows: models.DiscordMessage) -> None:
         self.rows = {r.id: r for r in rows}
 
     async def get(self, session: Any, row_id: int) -> models.DiscordMessage | None:
         return self.rows.get(row_id)
+
+    async def get_for_update(self, session: Any, row_id: int) -> models.DiscordMessage | None:
+        return self.rows.get(row_id)
+
+    async def for_subject(
+        self, session: Any, subject: str, *, slot: str | None = None, statuses: Any = None
+    ) -> list[models.DiscordMessage]:
+        return [
+            r
+            for r in sorted(self.rows.values(), key=lambda r: r.id)
+            if r.subject == subject and (slot is None or r.slot == slot) and (statuses is None or r.status in statuses)
+        ]
+
+    async def live_for_workspace(
+        self, session: Any, workspace_id: int, *, subject_prefix: str, slot: str
+    ) -> list[models.DiscordMessage]:
+        return [
+            r
+            for r in sorted(self.rows.values(), key=lambda r: r.id)
+            if r.workspace_id == workspace_id
+            and r.subject.startswith(subject_prefix)
+            and r.slot == slot
+            and r.status in ("pending", "posted")
+        ]
+
+    async def set_card(self, session: Any, row_id: int, card_json: dict) -> bool:
+        stored = self.rows[row_id]
+        if stored.status not in ("pending", "posted"):
+            return False
+        stored.card_json = card_json
+        return True
 
     async def mark_posted(self, session: Any, row_id: int, *, discord_channel_id: int, discord_message_id: int) -> bool:
         """Conditional like the real one: a row a delete already claimed does not become posted."""
@@ -62,18 +116,22 @@ class FakeMessages:
         stored.message_id = discord_message_id
         return True
 
-    async def mark_failed(self, session: Any, row_id: int, *, error: str) -> None:
+    async def mark_failed(self, session: Any, row_id: int, *, error: str) -> bool:
         stored = self.rows[row_id]
+        if stored.status != "pending":
+            return False
         stored.status = "failed"
         stored.error = error[:500]
+        return True
 
-    async def mark_deleted(self, session: Any, row_id: int) -> None:
+    async def mark_deleted(self, session: Any, row_id: int) -> bool:
         self.rows[row_id].status = "deleted"
+        return True
 
 
-def session_maker(*, commit: AsyncMock | None = None) -> MagicMock:
-    """``async with session_maker() as session`` over a session only committed on."""
-    session = MagicMock(commit=commit or AsyncMock(), rollback=AsyncMock())
+def session_maker(*, commit: AsyncMock | None = None, guild_id: str | None = GUILD) -> MagicMock:
+    """``async with session_maker() as session`` over a session that answers the workspace's guild."""
+    session = MagicMock(commit=commit or AsyncMock(), rollback=AsyncMock(), scalar=AsyncMock(return_value=guild_id))
     maker = MagicMock(session=session)
     maker.return_value.__aenter__ = AsyncMock(return_value=session)
     maker.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -93,12 +151,31 @@ def message() -> MagicMock:
     )
 
 
+def collect(register: Any) -> dict[str, Any]:
+    """Run a real registration against a fake broker; the handlers it subscribed, by function name."""
+    handlers: dict[str, Any] = {}
+
+    def fake_subscriber(*args: Any, **kwargs: Any) -> Any:
+        def decorator(fn: Any) -> Any:
+            handlers[fn.__name__] = fn
+            return fn
+
+        return decorator
+
+    broker = MagicMock(publish=AsyncMock())
+    broker.subscriber = fake_subscriber
+    register(broker)
+    return handlers
+
+
 def gateway(
     *,
     processor: MagicMock | None = None,
     bot: MagicMock | None = None,
     messages: FakeMessages | None = None,
     maker: MagicMock | None = None,
+    render: AsyncMock | None = None,
+    projector: MagicMock | None = None,
 ) -> tuple[Any, DiscordRabbitGateway]:
     """Run the real registration; hand back the discord-commands handler and the gateway."""
     built = DiscordRabbitGateway(
@@ -109,19 +186,21 @@ def gateway(
         voice=MagicMock(),
         bot=bot or MagicMock(wait_until_ready=AsyncMock()),
         session_maker=maker or session_maker(),
+        projector=projector or MagicMock(),
         messages=messages or FakeMessages(),
+        renderer=render or renderer(),
     )
+    return collect(built._register)["handle_discord_command"], built
 
-    handlers: dict[str, Any] = {}
 
-    def fake_subscriber(queue, *extra):
-        def decorator(fn):
-            handlers[fn.__name__] = fn
-            return fn
+def sent(*, channel_id: int = 555, message_id: int = 9001) -> MagicMock:
+    """The ``discord.Message`` a send answers with."""
+    return MagicMock(id=message_id, channel=MagicMock(id=channel_id), delete=AsyncMock())
 
-        return decorator
 
-    broker = MagicMock(publish=AsyncMock())
-    broker.subscriber = fake_subscriber
-    built._register(broker)
-    return handlers["handle_discord_command"], built
+def text_channel(send: AsyncMock | None = None, *, guild_id: int = int(GUILD)) -> MagicMock:
+    return MagicMock(send=send or AsyncMock(return_value=sent()), guild=MagicMock(id=guild_id))
+
+
+def http_error(cls: type[discord.HTTPException], status: int) -> discord.HTTPException:
+    return cls(MagicMock(status=status), "nope")

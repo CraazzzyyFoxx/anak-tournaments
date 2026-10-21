@@ -8,6 +8,7 @@ import (
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/analytics"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/app"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/balancer"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/discord"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/identity"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/openapi"
@@ -93,6 +94,8 @@ func Groups() (public, admin []openapi.Group) {
 			Routes: analytics.WriteRoutes},
 		{Tag: "Admin: Streams", Description: "Force an immediate live-status re-poll.",
 			Routes: stream.AdminRoutes},
+		{Tag: "Admin: Discord", Description: "Workspace Discord pickers (roles, channels, server status) + per-tournament match-log channel binding.",
+			Routes: discord.Routes},
 		{Tag: "Admin: RBAC", Description: "Permissions, roles, user-role/player assignment, sessions & service tokens.",
 			Routes: identity.AdminDocRoutes},
 		{Tag: "Admin: Audit", Description: "Platform audit log: who changed what, when, workspace-scoped.",

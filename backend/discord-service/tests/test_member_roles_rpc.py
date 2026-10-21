@@ -20,40 +20,21 @@ import discord  # noqa: E402
 from shared.messaging.config import DISCORD_MEMBER_CHANGED_QUEUE  # noqa: E402
 from src.cogs import membership  # noqa: E402
 from src.cogs.membership import MembershipEventsCog  # noqa: E402
-from src.rabbit.gateway import DiscordRabbitGateway  # noqa: E402
 from src.services.directory import DiscordDirectoryService  # noqa: E402
+from src.services.mix_projector import MixProjector  # noqa: E402
+from tests.gateway_fakes import collect, gateway  # noqa: E402
 
 
 def _registered_handlers() -> dict[str, object]:
-    """Run the real registration and index the handlers by queue name.
+    """Run the real registration -- the projector's and ``rpc_api``'s included -- and index the handlers by name.
 
-    ``*extra`` matters: the channel-registry subscriber is bound to an exchange
-    as a second positional argument, and a one-arg fake silently made such a
-    subscriber look like it did not exist.
+    The fake broker takes any arguments: the channel-registry subscriber is
+    bound to an exchange as a second positional argument and the command and
+    projector queues pass their own ``channel=``, and a narrower fake once
+    silently made such a subscriber look like it did not exist.
     """
-    gateway = DiscordRabbitGateway(
-        settings=MagicMock(),
-        processor=MagicMock(),
-        registry=MagicMock(),
-        directory=MagicMock(),
-        voice=MagicMock(),
-        bot=MagicMock(wait_until_ready=AsyncMock()),
-        session_maker=MagicMock(),
-    )
-
-    handlers: dict[str, object] = {}
-
-    def fake_subscriber(queue, *extra):
-        def decorator(fn):
-            handlers[getattr(queue, "name", str(queue))] = fn
-            return fn
-
-        return decorator
-
-    fake_broker = MagicMock()
-    fake_broker.subscriber = fake_subscriber
-    gateway._register(fake_broker)
-    return handlers
+    _, built = gateway(projector=MixProjector(bot=MagicMock(), session_maker=MagicMock()))
+    return collect(built._register)
 
 
 def _role(
@@ -74,10 +55,11 @@ class HandlerRegistrationTests(IsolatedAsyncioTestCase):
     def test_match_log_result_subscriber_is_registered(self) -> None:
         """Regression: it was once nested in an unrelated module-level function,
         so nothing consumed the match-log results and no upload got its verdict."""
-        names = {getattr(h, "__name__", "") for h in _registered_handlers().values()}
+        names = set(_registered_handlers())
         self.assertIn("handle_match_log_result", names)
         self.assertIn("handle_channel_registry_change", names)
         self.assertIn("handle_discord_command", names)
+        self.assertIn("project_mix_cards", names)
 
 
 class DirectoryServiceTests(IsolatedAsyncioTestCase):
@@ -115,6 +97,21 @@ class DirectoryServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(outcome.status, "guild_not_found")
         self.assertEqual(outcome.payload["error"], "guild_not_found")
         self.assertEqual(outcome.payload["members"], {})
+
+    async def test_a_failure_names_a_code_not_the_exception(self) -> None:
+        """The exception text stays in this service's log; the wire gets a stable code."""
+        mock_client = MagicMock()
+        mock_client.get_guild.side_effect = RuntimeError("secret internals")
+        directory = DiscordDirectoryService(mock_client)
+
+        for outcome in (
+            await directory.get_member_roles("999", ["111"]),
+            await directory.get_guild_roles("999"),
+            await directory.get_guild_channels("999"),
+            await directory.get_guild_info("999"),
+        ):
+            self.assertEqual((outcome.status, outcome.payload["error"]), ("error", "discord_error"))
+        self.assertEqual((await directory.get_guild_roles("")).payload["error"], "invalid")
 
     async def test_get_guild_roles_success(self) -> None:
         admin = _role(100, position=2, name="Admin", color=0xFF0000)

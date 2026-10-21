@@ -10,6 +10,7 @@ import (
 
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/app"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/balancer"
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/discord"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/identity"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/stats"
@@ -83,11 +84,13 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	mux.Handle("/api/v1/achievements/", d.Subtree(app.AchievementsSubtreeRoutes))
 	// stats domains folded into /api/v1. The achievement-rule admin subtree mounts
 	// at the shared /api/v1/admin/ws/ prefix; tournament's balancer-statuses routes
-	// there are more specific and win, so registering both must not panic. The
-	// discord-channel routes share /api/v1/admin/tournaments/{id}/... with the
-	// tournament admin routes (distinct leaves).
+	// there are more specific and win, so registering both must not panic.
 	d.Register(mux, stats.Routes)
 	mux.Handle("/api/v1/admin/ws/", d.Subtree(stats.AchievementAdminRoutes))
+	// discord-svc: the discord-channel routes share /api/v1/admin/tournaments/{id}/...
+	// with the tournament admin routes, and the pickers share
+	// /api/v1/workspaces/{workspace_id}/... with app's workspace routes (distinct leaves).
+	d.Register(mux, discord.Routes)
 	// Binary/multipart handlers (registering them must not conflict with the
 	// workspace member routes or the get-by-id routes).
 	anonymous := func(*http.Request) (map[string]any, bool, error) { return nil, false, nil }
@@ -370,7 +373,7 @@ func TestApiBalancer_MigratedRoutesHitDispatcher(t *testing.T) {
 	}
 }
 
-// TestApiV1_MigratedReadsHitDispatcher asserts the migrated app + stats read
+// TestApiV1_MigratedReadsHitDispatcher asserts the migrated app + stats + discord read
 // patterns win over the 404 guard (ServeMux specificity) and reach the typed
 // dispatcher. With the stub RPC caller the dispatcher returns 504 (or 401 for
 // auth'd routes), so a migrated path yields an empty X-Route (typed handler) —
@@ -410,6 +413,11 @@ func TestApiV1_MigratedReadsHitDispatcher(t *testing.T) {
 		"/api/v1/users/5/rank-history",
 		"/api/v1/users/5/current-ranks",
 		"/api/v1/battle-tags/5/rank-history",
+		// discord-service (moved from app + stats; paths unchanged)
+		"/api/v1/workspaces/5/discord/roles",
+		"/api/v1/workspaces/5/discord/channels",
+		"/api/v1/workspaces/5/discord/guild",
+		"/api/v1/admin/tournaments/9/discord-channel",
 	}
 	for _, p := range paths {
 		t.Run(p, func(t *testing.T) {

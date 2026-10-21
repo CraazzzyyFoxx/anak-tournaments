@@ -51,6 +51,7 @@ __all__ = (
     "CharacterStat",
     "CharacterWithUserStats",
     "CharacterStatBest",
+    "CharacterRecord",
     "UserBestTeammate",
     "UserOpponentStat",
     "UserStageRecord",
@@ -493,9 +494,27 @@ class CharacterStat(BaseModel):
     avg_10_all: float
 
 
+class CharacterRecord(BaseModel):
+    """The player's career-best game on a character in the stat its class is judged by."""
+
+    stat: str
+    value: float
+    encounter_id: int
+    map_name: str
+    tournament_name: str
+
+
 class CharacterWithUserStats(BaseModel):
     character: CatalogEntityRead
     stats: list[CharacterStat]
+    #: Scored games on the character in the read's scope (HeroTimePlayed > 60 s); a draw is a game, not a win.
+    games: int = 0
+    win: int = 0
+    loss: int = 0
+    draw: int = 0
+    #: Every player's ``win / games`` on the character across the discipline (not scoped, like ``avg_10_all``).
+    win_rate_all: float | None = None
+    record: CharacterRecord | None = None
 
 
 class UserBestTeammate(BaseModel):

@@ -7,13 +7,9 @@ from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, patch
 
-from pydantic import ValidationError
-
-from shared.schemas.events import DiscordCard, DiscordCommandEvent
 from shared.services import discord_messages
 
 NOW = datetime(2026, 10, 6, 12, 0, tzinfo=UTC)
-CARD = DiscordCard(text="### Mix")
 
 
 def _row(status: str, **overrides):
@@ -36,6 +32,8 @@ class StatusTests(TestCase):
         self.assertEqual(discord_messages.effective_status(_row("pending"), now=NOW + timedelta(minutes=1)), "pending")
         self.assertEqual(discord_messages.effective_status(_row("pending"), now=NOW + timedelta(minutes=6)), "lost")
         self.assertEqual(discord_messages.effective_status(_row("posted"), now=NOW + timedelta(days=1)), "posted")
+        naive = _row("pending", created_at=NOW.replace(tzinfo=None))
+        self.assertEqual(discord_messages.effective_status(naive, now=NOW + timedelta(minutes=6)), "lost")
 
     def test_a_jump_link_exists_only_for_a_posted_message(self) -> None:
         self.assertEqual(
@@ -46,83 +44,109 @@ class StatusTests(TestCase):
             "https://discord.com/channels/@me/555/999",
         )
         self.assertIsNone(discord_messages.jump_url(_row("posted"), guild_id=None))
+        self.assertIsNone(discord_messages.jump_url(_row("posted", message_id=None), guild_id=1))
         self.assertIsNone(discord_messages.jump_url(_row("deleted"), guild_id=1))
 
 
-class EditTests(IsolatedAsyncioTestCase):
-    async def test_a_live_message_gets_the_card_written_and_a_cardless_command(self) -> None:
-        """The command is a ping; the card the bot shows is the one on the row."""
-        for status in ("posted", "pending"):
-            set_card = AsyncMock()
-            with patch.object(discord_messages.repository, "set_card", set_card):
-                command = await discord_messages.edit_command(object(), _row(status), CARD)
+class SubjectTests(TestCase):
+    def test_a_mix_subject_round_trips(self) -> None:
+        self.assertEqual(discord_messages.mix_subject(42), "mix:42")
+        self.assertEqual(discord_messages.mix_id(discord_messages.mix_subject(42)), 42)
+        for other in ("notification:42", "mix:", "mix:abc", "mixer:42"):
+            self.assertIsNone(discord_messages.mix_id(other), other)
 
-            self.assertEqual((command.action, command.message_ref), ("edit_message", 7), status)
-            self.assertIsNone(command.card, status)
-            self.assertEqual(set_card.await_args.args[1:], (7, CARD.model_dump(mode="json")), status)
+    def test_slots_and_notification_subjects(self) -> None:
+        self.assertEqual(discord_messages.SIGNUP_SLOT, "signup")
+        self.assertEqual(discord_messages.lineup_slot(0, 3), "lineup:0:3")
+        self.assertEqual(discord_messages.notification_subject(7), "notification:7")
 
-    async def test_a_message_that_is_gone_is_neither_written_nor_commanded(self) -> None:
-        for gone in ("failed", "deleting", "deleted"):
-            set_card = AsyncMock()
-            with patch.object(discord_messages.repository, "set_card", set_card):
-                self.assertIsNone(await discord_messages.edit_command(object(), _row(gone), CARD), gone)
-            set_card.assert_not_awaited()
 
-    async def test_an_edit_may_carry_the_new_picture_its_card_shows(self) -> None:
-        """A re-rendered lineup picture travels with the edit that starts showing it."""
-        shown = DiscordCard(text="### Lineup", image_url="attachment://lineup.png")
-        with patch.object(discord_messages.repository, "set_card", AsyncMock()):
-            command = await discord_messages.edit_command(object(), _row("posted"), shown, image_b64="aGk=")
+class SendTests(IsolatedAsyncioTestCase):
+    async def test_a_message_has_exactly_one_destination(self) -> None:
+        claim = AsyncMock(return_value=7)
+        with patch.object(discord_messages.repository, "claim", claim):
+            for destinations in ({}, {"channel_id": 1, "discord_user_id": 2}):
+                with self.assertRaises(ValueError, msg=destinations):
+                    await discord_messages.send_command(
+                        object(), subject="mix:1", slot="signup", kind="mix.signup", workspace_id=1, **destinations
+                    )
+        claim.assert_not_awaited()
 
-        self.assertEqual((command.image_b64, command.image_filename), ("aGk=", "lineup.png"))
+    async def test_a_channel_post_claims_its_row_and_returns_a_send(self) -> None:
+        claim = AsyncMock(return_value=7)
+        with patch.object(discord_messages.repository, "claim", claim):
+            command = await discord_messages.send_command(
+                object(), subject="mix:1", slot="signup", kind="mix.signup", workspace_id=1, channel_id=555
+            )
 
-    def test_an_edit_command_may_not_carry_a_card(self) -> None:
-        """Two sources for one card is one too many: the row is the only one."""
-        with self.assertRaises(ValidationError):
-            DiscordCommandEvent(action="edit_message", message_ref=1, card=CARD)
+        self.assertEqual((command.action, command.message_ref), ("send", 7))
+        self.assertEqual(
+            claim.await_args.kwargs,
+            {
+                "channel": "discord_channel",
+                "target": "555",
+                "subject": "mix:1",
+                "slot": "signup",
+                "kind": "mix.signup",
+                "payload_json": None,
+                "dedupe_key": None,
+                "notification_id": None,
+                "workspace_id": 1,
+            },
+        )
+
+    async def test_a_dm_carries_the_payload_the_bot_renders_from(self) -> None:
+        claim = AsyncMock(return_value=8)
+        payload = {"tournament_id": 3}
+        with patch.object(discord_messages.repository, "claim", claim):
+            command = await discord_messages.send_command(
+                object(),
+                subject="notification:5",
+                slot="dm",
+                kind="registration.approved",
+                workspace_id=1,
+                discord_user_id=42,
+                dedupe_key="n:5",
+                notification_id=5,
+                payload=payload,
+            )
+
+        self.assertEqual((command.action, command.message_ref), ("send", 8))
+        kwargs = claim.await_args.kwargs
+        self.assertEqual((kwargs["channel"], kwargs["target"]), ("discord_dm", "42"))
+        self.assertEqual((kwargs["dedupe_key"], kwargs["notification_id"]), ("n:5", 5))
+        self.assertEqual(kwargs["payload_json"], payload)
+        self.assertIsNot(kwargs["payload_json"], payload)
+
+    async def test_a_taken_dedupe_key_sends_nothing(self) -> None:
+        with patch.object(discord_messages.repository, "claim", AsyncMock(return_value=None)):
+            command = await discord_messages.send_command(
+                object(), subject="n", slot="dm", kind="k", workspace_id=1, discord_user_id=42, dedupe_key="n:5"
+            )
+        self.assertIsNone(command)
 
 
 class DeleteTests(IsolatedAsyncioTestCase):
     async def test_delete_sends_commands_only_for_messages_that_may_exist(self) -> None:
-        rows = [_row("posted", id=1), _row("pending", id=2), _row("failed", id=3), _row("deleting", id=4)]
-        deleting, deleted = AsyncMock(), AsyncMock()
+        rows = [
+            _row("posted", id=1),
+            _row("pending", id=2),
+            _row("failed", id=3),
+            _row("deleting", id=4),
+            _row("deleted", id=5),
+        ]
+        statuses = {row.id: row.status for row in rows}
+        # The guarded UPDATE applies only to a live row.
+        deleting = AsyncMock(side_effect=lambda _session, row_id: statuses[row_id] in ("pending", "posted"))
+        deleted = AsyncMock(return_value=True)
         with (
             patch.object(discord_messages.repository, "mark_deleting", deleting),
             patch.object(discord_messages.repository, "mark_deleted", deleted),
         ):
             commands = await discord_messages.delete_commands(object(), rows)
 
-        self.assertEqual([command.message_ref for command in commands], [1, 2])
-        self.assertEqual([call.args[1] for call in deleting.await_args_list], [1, 2])
+        self.assertEqual(
+            [(command.action, command.message_ref) for command in commands], [("delete", 1), ("delete", 2)]
+        )
         # Refused by Discord, so nothing to delete there: closed without a command.
         self.assertEqual([call.args[1] for call in deleted.await_args_list], [3])
-
-    async def test_a_message_has_exactly_one_destination(self) -> None:
-        for destinations in ({}, {"channel_id": 1, "discord_user_id": 2}):
-            with self.assertRaises(ValueError, msg=destinations):
-                await discord_messages.send_command(
-                    object(),
-                    subject="mix:1",
-                    slot="signup",
-                    kind="mix.signup",
-                    card=CARD,
-                    workspace_id=1,
-                    **destinations,
-                )
-
-    async def test_the_claimed_row_stores_the_card_it_is_sent_with(self) -> None:
-        """The row is what the bot re-reads on every later edit, so it starts out current."""
-        claim = AsyncMock(return_value=7)
-        with patch.object(discord_messages.repository, "claim", claim):
-            command = await discord_messages.send_command(
-                object(),
-                subject="mix:1",
-                slot="signup",
-                kind="mix.signup",
-                card=CARD,
-                workspace_id=1,
-                channel_id=555,
-            )
-
-        self.assertEqual(claim.await_args.kwargs["card_json"], CARD.model_dump(mode="json"))
-        self.assertEqual((command.action, command.message_ref, command.card), ("post_message", 7, CARD))

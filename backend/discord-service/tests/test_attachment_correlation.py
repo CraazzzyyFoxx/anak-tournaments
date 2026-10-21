@@ -2,7 +2,7 @@
 
 No replica waits for a result any more: stats echoes ``channel_id``/``message_id``
 onto ``MatchLogProcessedEvent`` and whichever replica consumes ``match_log_result``
-reacts on that message.
+reacts on that message. A history walk starts at the channel's cursor and moves it.
 """
 
 import base64
@@ -18,10 +18,10 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from shared.domain.discord_ui import EMOJI  # noqa: E402
 from src.feedback import AttachmentFeedbackState as State  # noqa: E402
 from src.rabbit.gateway import DiscordRabbitGateway  # noqa: E402
 from src.services import attachment_processor as module  # noqa: E402
+from src.ui import EMOJI  # noqa: E402
 from tests.gateway_fakes import message as delivery  # noqa: E402
 
 
@@ -35,7 +35,12 @@ def _processor(*bodies: bytes) -> tuple[module.AttachmentProcessor, SimpleNamesp
     async def client(**_kwargs):
         yield http
 
-    return module.AttachmentProcessor(client=MagicMock(), attachment_clients=SimpleNamespace(create=client)), http
+    processor = module.AttachmentProcessor(
+        client=MagicMock(),
+        attachment_clients=SimpleNamespace(create=client),
+        registry=MagicMock(advance=AsyncMock()),
+    )
+    return processor, http
 
 
 def _result_handler(processor: module.AttachmentProcessor):
@@ -47,6 +52,7 @@ def _result_handler(processor: module.AttachmentProcessor):
         voice=MagicMock(),
         bot=MagicMock(wait_until_ready=AsyncMock()),
         session_maker=MagicMock(),
+        projector=MagicMock(),
     )
     handlers = {}
 
@@ -135,3 +141,47 @@ class ResultConsumerTests(IsolatedAsyncioTestCase):
         for msg in (unnamed, gone):
             msg.reject.assert_not_awaited()
             msg.nack.assert_not_awaited()
+
+
+class HistoryCursorTests(IsolatedAsyncioTestCase):
+    def _channel(self, *messages: SimpleNamespace) -> MagicMock:
+        async def history(**_kwargs):
+            for message in messages:
+                yield message
+
+        return MagicMock(history=MagicMock(side_effect=history))
+
+    def _processor(self, channel: MagicMock) -> module.AttachmentProcessor:
+        processor, _ = _processor()
+        processor.get_text_channel = AsyncMock(return_value=channel)
+        processor.process_message = AsyncMock()
+        return processor
+
+    async def test_a_cursor_walks_only_what_came_after_it_and_moves_to_the_newest(self) -> None:
+        log = SimpleNamespace(id=120, attachments=[object()])
+        chat = SimpleNamespace(id=130, attachments=[])
+        channel = self._channel(log, chat)
+        processor = self._processor(channel)
+
+        await processor.process_channel_history(44, 3, after_message_id=100)
+
+        kwargs = channel.history.call_args.kwargs
+        self.assertEqual((kwargs["after"].id, kwargs["limit"]), (100, 500))
+        processor.process_message.assert_awaited_once_with(log, 3)
+        processor._registry.advance.assert_awaited_once_with(44, 130)
+
+    async def test_without_a_cursor_the_last_messages_are_read_newest_first(self) -> None:
+        channel = self._channel(SimpleNamespace(id=90, attachments=[]), SimpleNamespace(id=80, attachments=[]))
+        processor = self._processor(channel)
+
+        await processor.process_channel_history(44, 3)
+
+        self.assertIsNone(channel.history.call_args.kwargs["after"])
+        processor._registry.advance.assert_awaited_once_with(44, 90)
+
+    async def test_nothing_new_leaves_the_cursor_where_it_was(self) -> None:
+        processor = self._processor(self._channel())
+
+        await processor.process_channel_history(44, 3, after_message_id=100)
+
+        processor._registry.advance.assert_not_awaited()

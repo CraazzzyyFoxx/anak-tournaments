@@ -126,7 +126,6 @@ class SubscriptionCollectionService:
         session: AsyncSession,
         *,
         workspace_id: int | None = None,
-        discord_bot_token: str | None = None,
         twitch_client_id: str | None = None,
         broker: Any | None = None,
         proxy: str | None = None,
@@ -152,12 +151,11 @@ class SubscriptionCollectionService:
             return 0
 
         # Optional: with a broker the Discord roles for a whole batch come back in one
-        # RPC; without one the strategy falls back to per-user Discord REST.
+        # RPC; without one Boosty resolves to ``unknown`` (``bot_not_configured``).
         active_broker = optional_broker(broker)
 
         resolver = build_resolver(
             session,
-            discord_bot_token=discord_bot_token,
             twitch_client_id=twitch_client_id,
             broker=active_broker,
             proxy=proxy,

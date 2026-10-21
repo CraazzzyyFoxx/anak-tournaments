@@ -110,9 +110,9 @@ class UserDraftCardTests(IsolatedAsyncioTestCase):
         class stays in its own ``attrs`` (no derived slot code)."""
         records = AsyncMock(
             return_value=[
-                (_hero(1, "ashe", enums.HeroClass.damage), 76, 46),
-                (_hero(2, "ana", enums.HeroClass.support), 40, 20),
-                (_hero(3, "dva", enums.HeroClass.tank), 12, 5),
+                (_hero(1, "ashe", enums.HeroClass.damage), 76, 46, 28, 2),
+                (_hero(2, "ana", enums.HeroClass.support), 40, 20, 20, 0),
+                (_hero(3, "dva", enums.HeroClass.tank), 12, 5, 7, 0),
             ]
         )
         with _queries(102, overall=(67, 60, 0.5), mvp_maps=6, hero_records=records):

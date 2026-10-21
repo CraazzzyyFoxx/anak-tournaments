@@ -29,14 +29,20 @@ import { ServerPicker } from "./discord/ServerPicker";
 import { userQueryKeys } from "@/lib/users/query-keys";
 import { workspaceQueryKeys } from "@/lib/workspace/query-keys";
 
+/**
+ * The bound server's name: Discord's answer, else the picker's, else plain
+ * words. Never a made-up name ("Discord" read as the server's real one) and
+ * never the id, which the card already prints under the name.
+ */
 function boundName(
   workspace: Workspace,
   info: DiscordGuildInfo | undefined,
-  picker: ManageableDiscordGuild[]
+  picker: ManageableDiscordGuild[],
+  unnamed: string
 ): string {
   if (info?.name) return info.name;
   const fromPicker = picker.find((guild) => guild.guild_id === workspace.discord_guild_id);
-  return fromPicker?.name ?? "Discord";
+  return fromPicker?.name ?? unnamed;
 }
 
 function boundIcon(
@@ -130,7 +136,7 @@ export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number |
       {({ workspace }) => {
         const boundId = workspace.discord_guild_id;
         const info = guildInfoQuery.data;
-        const name = boundName(workspace, info, manageable);
+        const name = boundName(workspace, info, manageable, t("unnamedServer"));
         const picker = (
           <ServerPicker
             boundId={boundId}
@@ -165,6 +171,8 @@ export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number |
                 <SaveBar
                   dirty={announcements.dirty || mixes.dirty}
                   summary={saveBarT("changedFields", { count: changedCount })}
+                  // Announcements explain their own refusal inside their group.
+                  error={mixes.error}
                   saving={announcements.saving || mixes.saving}
                   onDiscard={() => {
                     announcements.discard();
@@ -177,7 +185,7 @@ export function DiscordSection({ workspaceId }: Readonly<{ workspaceId: number |
                 />
               </>
             ) : (
-              <SettingGroup title={t("linkServer")} description={t("linkServerHelp")} immediate>
+              <SettingGroup id="server" title={t("linkServer")} description={t("linkServerHelp")} immediate>
                 {picker}
               </SettingGroup>
             )}

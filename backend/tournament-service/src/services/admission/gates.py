@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Final
 
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.core.social import PROVIDERS
+from shared.services.subscriptions.requirement import OUTAGE_REASONS
 from src.services.admission.requirements import open_profile, subscription
 from src.services.admission.types import AdmissionEvaluation, AdmissionStage, RequirementVerdict
 
@@ -72,8 +73,16 @@ def _message(verdict: RequirementVerdict, stage: AdmissionStage, config: Admissi
     Keyed on the GATE stage, not ``verdict.stage``: a requirement armed at
     ``registration`` also blocks check-in, and a patron refused at check-in must
     not read a sign-up message.
+
+    An outage refusal names the outage: the patron may well be subscribed, so
+    "подписка нужна" would send them to buy what they already hold.
     """
     if verdict.key == subscription.KEY:
+        if verdict.reasons and verdict.reasons[0].code in OUTAGE_REASONS:
+            provider = verdict.reasons[0].subject or ""
+            spec = PROVIDERS.get(provider)
+            label = spec.label if spec is not None else provider
+            return f"Не удалось проверить подписку {label}: проверка временно недоступна, попробуйте позже."
         head = f"Для {_STAGE_NOUNS[stage]} нужна активная подписка"
         rule = config.subscription_rule if config is not None else None
         return f"{head}: {describe_requirement(rule)}." if rule is not None else f"{head}."

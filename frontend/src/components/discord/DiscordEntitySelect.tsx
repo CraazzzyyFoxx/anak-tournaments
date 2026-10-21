@@ -7,6 +7,7 @@ import { Combobox, ComboboxCheck } from "@/components/kit/Combobox";
 import { Button } from "@/components/ui/button";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 /** A `CommandGroup` worth of entities. Omit `heading` for a single flat group
@@ -155,65 +156,70 @@ export function DiscordEntitySelect<T extends { id: string; name: string }>({
 
   return (
     <div className={cn("flex min-w-0 items-center gap-1.5", className)}>
-      <Combobox
-        id={id}
-        open={open}
-        onOpenChange={onOpenChange}
-        disabled={disabled || isLoading}
-        size={size}
-        triggerClassName={sizeClasses.trigger}
-        // The trigger names itself from its content: the chosen entity once
-        // there is one, the purpose while there is not.
-        label={
-          selected ? (
-            renderSelectedLabel(selected)
-          ) : value ? (
-            // A stored entity the guild no longer returns: the id is all we know.
-            <span className="font-mono text-xs">{value}</span>
-          ) : isLoading ? (
-            labels.loading
-          ) : (
-            (placeholder ?? labels.placeholder)
-          )
-        }
-        labelTitle={selected?.name ?? value ?? undefined}
-        searchValue={search}
-        onSearchValueChange={onSearchChange}
-        searchPlaceholder={labels.searchPlaceholder}
-        searchLabel={labels.searchLabel}
-        emptyMessage={labels.empty}
-      >
-        {noneLabel ? (
-          <CommandGroup>
-            <CommandItem
-              value={noneLabel}
-              onSelect={() => {
-                onChange("");
-                onOpenChange(false);
-                onSearchChange("");
-              }}
-            >
-              <span className="flex-1 text-muted-foreground">{noneLabel}</span>
-              <ComboboxCheck selected={value === ""} />
-            </CommandItem>
-          </CommandGroup>
-        ) : null}
-        {groups.map((group, index) => (
-          <CommandGroup key={group.heading ?? index} heading={group.heading}>
-            {group.entities.map((entity) => (
-              // The id joins the search text so a pasted snowflake still finds it.
+      {isLoading && !value ? (
+        <div role="status" className="w-full min-w-0">
+          <span className="sr-only">{labels.loading}</span>
+          <Skeleton aria-hidden className={cn("w-full", size === "sm" ? "h-8" : "h-9")} />
+        </div>
+      ) : (
+        <Combobox
+          id={id}
+          open={open}
+          onOpenChange={onOpenChange}
+          disabled={disabled || isLoading}
+          size={size}
+          triggerClassName={sizeClasses.trigger}
+          // The trigger names itself from its content: the chosen entity once
+          // there is one, the purpose while there is not.
+          label={
+            selected ? (
+              renderSelectedLabel(selected)
+            ) : value ? (
+              // A stored entity the guild no longer returns: the id is all we know.
+              <span className="font-mono text-xs">{value}</span>
+            ) : (
+              (placeholder ?? labels.placeholder)
+            )
+          }
+          labelTitle={selected?.name ?? value ?? undefined}
+          searchValue={search}
+          onSearchValueChange={onSearchChange}
+          searchPlaceholder={labels.searchPlaceholder}
+          searchLabel={labels.searchLabel}
+          emptyMessage={labels.empty}
+        >
+          {noneLabel ? (
+            <CommandGroup>
               <CommandItem
-                key={entity.id}
-                value={`${entity.name} ${entity.id}`}
-                onSelect={() => onPick(entity)}
+                value={noneLabel}
+                onSelect={() => {
+                  onChange("");
+                  onOpenChange(false);
+                  onSearchChange("");
+                }}
               >
-                {renderOption(entity)}
-                <ComboboxCheck selected={entity.id === value} />
+                <span className="flex-1 text-muted-foreground">{noneLabel}</span>
+                <ComboboxCheck selected={value === ""} />
               </CommandItem>
-            ))}
-          </CommandGroup>
-        ))}
-      </Combobox>
+            </CommandGroup>
+          ) : null}
+          {groups.map((group, index) => (
+            <CommandGroup key={group.heading ?? index} heading={group.heading}>
+              {group.entities.map((entity) => (
+                // The id joins the search text so a pasted snowflake still finds it.
+                <CommandItem
+                  key={entity.id}
+                  value={`${entity.name} ${entity.id}`}
+                  onSelect={() => onPick(entity)}
+                >
+                  {renderOption(entity)}
+                  <ComboboxCheck selected={entity.id === value} />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          ))}
+        </Combobox>
+      )}
       <Button
         type="button"
         variant="ghost"

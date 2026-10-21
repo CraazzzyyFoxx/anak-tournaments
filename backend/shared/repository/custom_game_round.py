@@ -97,6 +97,71 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
         )
         return {row.lobby_index: (row.rounds, row.last_at) for row in rows}
 
+    async def lobby_activity_for_games(
+        self, session: AsyncSession, custom_game_ids: Sequence[int]
+    ) -> dict[int, dict[int, tuple[int, datetime]]]:
+        """``custom_game_id -> {lobby_index: (rounds recorded, newest round time)}`` for a whole mix list in one
+        query: :meth:`activity_for_lobbies` across many mixes. A mix or lobby with no rounds is absent."""
+        if not custom_game_ids:
+            return {}
+        rows = await session.execute(
+            sa.select(
+                models.Encounter.custom_game_id,
+                models.CustomGameRound.lobby_index,
+                sa.func.count().label("rounds"),
+                sa.func.max(models.Encounter.created_at).label("last_at"),
+            )
+            .join(models.CustomGameRound, models.CustomGameRound.encounter_id == models.Encounter.id)
+            .where(models.Encounter.custom_game_id.in_(custom_game_ids))
+            .group_by(models.Encounter.custom_game_id, models.CustomGameRound.lobby_index)
+        )
+        grouped: dict[int, dict[int, tuple[int, datetime]]] = {}
+        for row in rows:
+            grouped.setdefault(row.custom_game_id, {})[row.lobby_index] = (row.rounds, row.last_at)
+        return grouped
+
+    async def player_counts_for_games(self, session: AsyncSession, custom_game_ids: Sequence[int]) -> dict[int, int]:
+        """``custom_game_id -> distinct members seated across its rounds``; a mix with none is absent.
+
+        Seats only: a member who was busy next door the whole night sat in no round of this mix."""
+        if not custom_game_ids:
+            return {}
+        seat = models.EncounterTeamMember
+        rows = await session.execute(
+            sa.select(
+                models.Encounter.custom_game_id,
+                sa.func.count(sa.distinct(seat.workspace_member_id)).label("players"),
+            )
+            .join(models.CustomGameRound, models.CustomGameRound.encounter_id == models.Encounter.id)
+            .join(seat, seat.encounter_id == models.Encounter.id)
+            .where(models.Encounter.custom_game_id.in_(custom_game_ids))
+            .group_by(models.Encounter.custom_game_id)
+        )
+        return {row.custom_game_id: row.players for row in rows}
+
+    async def maps_for_games(
+        self, session: AsyncSession, custom_game_ids: Sequence[int]
+    ) -> dict[int, list[tuple[str, str | None]]]:
+        """``custom_game_id -> [(map name, image path), ...]``: every distinct map its rounds were played on,
+        most recently played first (round ids follow recording order). A mix with no mapped round is absent."""
+        if not custom_game_ids:
+            return {}
+        game_map = models.CatalogEntity
+        last_round = sa.func.max(models.Encounter.id).label("last_round")
+        rows = await session.execute(
+            sa.select(models.Encounter.custom_game_id, game_map.name, game_map.image_path, last_round)
+            .join(models.CustomGameRound, models.CustomGameRound.encounter_id == models.Encounter.id)
+            .join(models.EncounterGame, models.EncounterGame.encounter_id == models.Encounter.id)
+            .join(game_map, game_map.id == models.EncounterGame.map_id)
+            .where(models.Encounter.custom_game_id.in_(custom_game_ids))
+            .group_by(models.Encounter.custom_game_id, game_map.id, game_map.name, game_map.image_path)
+            .order_by(models.Encounter.custom_game_id, last_round.desc())
+        )
+        grouped: dict[int, list[tuple[str, str | None]]] = {}
+        for row in rows:
+            grouped.setdefault(row.custom_game_id, []).append((row.name, row.image_path))
+        return grouped
+
     @staticmethod
     def seat_rows_select(workspace_id: int) -> sa.Select:
         """The one seat join (unexecuted): a row per seat of this workspace's rounds, with its rated leaf's code and id, its frozen

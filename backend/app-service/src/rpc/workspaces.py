@@ -25,7 +25,6 @@ RBAC cache.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from typing import Any
 
 from faststream.rabbit import RabbitMessage
@@ -40,11 +39,10 @@ from shared.rpc.query import parse_id_list
 from shared.schemas.team_format import TeamFormatWrite
 from shared.services.audit import record_admin_audit
 from shared.services.discord_client import DiscordClient
-from shared.services.subscriptions.providers.discord_role import DiscordError
 from shared.services.team_format import save_workspace_format, team_format_read, workspace_format
 from shared.tenancy.hostnames import normalize_custom_domain, subdomain_from_host
 from src import models, schemas
-from src.core import config, db
+from src.core import db
 from src.rpc import _common as c
 from src.services import notification_config
 from src.services.admin.quota import quota_admin_service
@@ -157,49 +155,6 @@ def _discipline(data: dict[str, Any]) -> str:
     if code not in DISCIPLINES:
         raise HTTPException(status_code=404, detail="Discipline not found")
     return code
-
-
-def _discord_client(broker: Any) -> DiscordClient:
-    """One client per call: discord-service first, Discord's REST as fallback."""
-    return DiscordClient(broker=broker, bot_token=config.settings.discord_token, proxy=config.settings.proxy_url)
-
-
-async def _discord_lookup(
-    broker: Any,
-    logger: Any,
-    session: AsyncSession,
-    data: dict[str, Any],
-    *,
-    label: str,
-    read: Callable[[DiscordClient, str], Awaitable[Any]],
-    key: str | None,
-    empty: dict[str, Any],
-    degraded: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """One gated read of an organizer's Discord guild, shared by the three
-    ``discord_*`` subscribers.
-
-    ``read`` is the ``DiscordClient`` method to call (discord-service first,
-    Discord REST when it is down); ``key`` wraps a list result under that name.
-    ``empty`` is the body returned when no guild is linked; ``degraded``
-    (defaulting to ``empty``) is the body carrying the ``error`` when both
-    transports fail. A settings picker with no options is the right answer for
-    an unreachable bot — a 500 would take the whole settings page down with it.
-    """
-    workspace = await _gate_workspace(session, data)
-    guild_id = workspace.discord_guild_id
-    if not guild_id:
-        return {"guild_id": None, **empty}
-
-    discord = _discord_client(broker)
-    try:
-        result = await read(discord, guild_id)
-    except DiscordError as exc:  # the pickers degrade, they never 500
-        logger.warning(f"{label} lookup failed for workspace {workspace.id}: {exc}")
-        return {"guild_id": guild_id, **(degraded if degraded is not None else empty), "error": str(exc)}
-    body = {key: result} if key is not None else dict(result)
-    body.setdefault("guild_id", guild_id)
-    return body
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -648,8 +603,8 @@ def register(broker: Any, logger: Any) -> None:
     async def _owner_get(data: dict, msg: RabbitMessage) -> dict:
         """Who is accountable for this workspace.
 
-        ``workspace.update``-gated for the same reason the ``discord_*`` reads
-        are: this resolves an internal ``auth_user_id`` to a name and an email,
+        ``workspace.update``-gated like the other settings reads here: this
+        resolves an internal ``auth_user_id`` to a name and an email,
         which the public ``WorkspaceRead`` deliberately refuses to publish.
         """
 
@@ -728,74 +683,10 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "workspaces.owner_transfer", op, session_factory=_SF)
 
-    # --- Discord entities (roles, channels, server status) ------------------
-    # Reads of an organizer's own server config, so they carry the same
-    # workspace.update gate as the custom-domain endpoints above: the role and
-    # channel lists (and the server's name and headcount) are private to the
-    # guild, and these only ever back the workspace settings pickers.
-    @broker.subscriber("rpc.app.workspaces.discord_roles")
-    async def _discord_roles(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            return await _discord_lookup(
-                broker,
-                logger,
-                session,
-                data,
-                label="discord_roles",
-                read=DiscordClient.guild_roles,
-                key="roles",
-                empty={"roles": []},
-            )
-
-        return await c.envelope(logger, "workspaces.discord_roles", op, session_factory=_SF)
-
-    @broker.subscriber("rpc.app.workspaces.discord_channels")
-    async def _discord_channels(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            return await _discord_lookup(
-                broker,
-                logger,
-                session,
-                data,
-                label="discord_channels",
-                read=DiscordClient.guild_channels,
-                key="channels",
-                empty={"channels": []},
-            )
-
-        return await c.envelope(logger, "workspaces.discord_channels", op, session_factory=_SF)
-
-    @broker.subscriber("rpc.app.workspaces.discord_guild")
-    async def _discord_guild(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            return await _discord_lookup(
-                broker,
-                logger,
-                session,
-                data,
-                label="discord_guild",
-                read=DiscordClient.guild_info,
-                key=None,
-                empty={
-                    "connected": False,
-                    "name": None,
-                    "icon_url": None,
-                    "member_count": 0,
-                    "owner_id": None,
-                    "owner_name": None,
-                    "owner_avatar_url": None,
-                },
-                # A failed round trip only knows the guild is unreachable; the rest
-                # of the shape would be inventing values the caller must not trust.
-                degraded={"connected": False},
-            )
-
-        return await c.envelope(logger, "workspaces.discord_guild", op, session_factory=_SF)
-
     # --- notification delivery settings -------------------------------------
     # Which channel this workspace's broadcasts are posted to, in which
-    # language, and which kinds are posted at all. Same workspace.update gate as
-    # the pickers above: it names a private channel and it makes the bot speak.
+    # language, and which kinds are posted at all. workspace.update-gated: it
+    # names a private channel and it makes the bot speak.
     @broker.subscriber("rpc.app.workspaces.notification_config_get")
     async def _notification_config_get(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
@@ -809,7 +700,8 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             workspace = await _gate_workspace(session, data)
             body = schemas.NotificationWorkspaceConfigUpdate.model_validate(c.payload(data))
-            client = _discord_client(broker)
+            # RPC-only: discord-service answers the guild's channel list.
+            client = DiscordClient(broker=broker)
             return await notification_config.write_config(
                 session,
                 workspace,

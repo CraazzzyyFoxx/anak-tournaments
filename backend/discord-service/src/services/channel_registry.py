@@ -1,14 +1,18 @@
 """In-memory cache of Discord channels currently monitored for match-log uploads.
 
 Backed by ``TournamentDiscordChannel`` via the repository; reloaded whenever a
-tournament's state or channel binding changes (``DiscordRabbitGateway``), and
-hourly as a fallback, so a channel starts/stops being watched without a restart.
+tournament's state changes (``DiscordRabbitGateway``), after a binding is
+written through ``rpc.discord.channel.*`` (``src.rpc_api``), and hourly as a
+fallback, so a channel starts/stops being watched without a restart.
+
+Each channel also carries its rescan cursor -- the newest message the bot has
+already walked past -- so a reconnect reads what it missed, not the last 500
+messages again.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from loguru import logger
@@ -31,6 +35,7 @@ class ChannelRegistry:
         self._session_maker = session_maker
         self._channels = channels
         self._active: dict[int, int] = {}
+        self._cursors: dict[int, int] = {}
         self._reload_lock = asyncio.Lock()
 
     def tournament_id_for(self, channel_id: int) -> int | None:
@@ -40,6 +45,19 @@ class ChannelRegistry:
     def channel_ids(self) -> dict[int, int]:
         """Snapshot of the active set as ``channel_id -> tournament_id``."""
         return dict(self._active)
+
+    def cursor_for(self, channel_id: int) -> int | None:
+        """The newest message already scanned in this channel; ``None`` when it never was."""
+        return self._cursors.get(channel_id)
+
+    async def advance(self, channel_id: int, message_id: int) -> None:
+        """Move the channel's cursor up to ``message_id`` (never back), in memory and in the row."""
+        if message_id <= self._cursors.get(channel_id, 0):
+            return
+        self._cursors[channel_id] = message_id
+        async with self._session_maker() as session:
+            await self._channels.set_last_scanned(session, channel_id, message_id)
+            await session.commit()
 
     async def reload(self) -> None:
         """Reload the active-channel set from the database.
@@ -53,19 +71,13 @@ class ChannelRegistry:
                 rows = await self._channels.list_active_with_tournament(session, finished_cutoff=finished_cutoff)
 
             new_active: dict[int, int] = {}
+            new_cursors: dict[int, int] = {}
             for discord_channel, tournament in rows:
                 new_active[discord_channel.channel_id] = tournament.id
+                if discord_channel.last_scanned_message_id is not None:
+                    new_cursors[discord_channel.channel_id] = discord_channel.last_scanned_message_id
                 logger.info(f"📌 Monitoring channel {discord_channel.channel_id} for tournament {tournament.name}")
 
             self._active = new_active
+            self._cursors = new_cursors
             logger.success(f"✅ Loaded {len(self._active)} active channels")
-
-    async def list_channel_ids_for_tournament(self, tournament_id: int) -> Sequence[int]:
-        """Fresh (uncached) lookup of a tournament's active channel ids.
-
-        Used by the ``process_all`` RabbitMQ command, which must see the
-        authoritative database state rather than whatever the last reload
-        cached.
-        """
-        async with self._session_maker() as session:
-            return await self._channels.list_channel_ids_for_tournament(session, tournament_id)

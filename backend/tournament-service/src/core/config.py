@@ -24,15 +24,10 @@ class Settings(BaseServiceSettings):
     # tournament_id for the invalidation patterns to match on).
     match_cache_ttl: int = 30
 
-    # Subscription-entitlement providers. Both optional: without them the
-    # resolver still answers, reporting `unknown` (fail open) with a reason, so a
-    # missing credential degrades the gate to "not enforced" rather than
-    # refusing every patron.
-    #
-    # `discord_token` is the SAME bot token discord-service already uses; the bot
-    # is already present in organizers' guilds. Reading one member's roles needs
-    # no privileged intent.
-    discord_token: str | None = None
+    # Subscription-entitlement provider credentials. Optional: without it Twitch
+    # still answers `unknown` (fail open) with a reason, so a missing credential
+    # degrades the gate to "not enforced" rather than refusing every patron.
+    # Boosty (Discord roles) asks discord-service over the broker; no bot token here.
     twitch_client_id: str | None = None
 
     @property

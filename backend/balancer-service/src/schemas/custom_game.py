@@ -8,6 +8,7 @@ from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StrictBool, S
 
 from shared.core.enums import MixParticipation, MixSelfSignup
 from shared.domain.mix_lobby import MAX_LOBBIES
+from shared.schemas.discipline_filter import DisciplineFilterQuery
 from shared.schemas.role import RoleRef
 from src.domain.mix_self_service import MAX_ROSTER
 
@@ -15,7 +16,10 @@ __all__ = (
     "CustomGameBalanceRequest",
     "CustomGameCoHostPatch",
     "CustomGameCreate",
+    "CustomGameDiscordLineup",
+    "CustomGameDiscordView",
     "CustomGameHostTransfer",
+    "CustomGameListQuery",
     "CustomGameLobbyCountPatch",
     "CustomGameLobbyVoice",
     "CustomGameNextMapPatch",
@@ -40,6 +44,21 @@ __all__ = (
 
 class _Request(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class CustomGameListQuery(DisciplineFilterQuery):
+    """``GET .../custom-games``: one keyset page of the workspace's mixes, newest first."""
+
+    status: Literal["open", "history"] | None = Field(
+        None, description="`open` = draft or balanced, `history` = completed or cancelled; absent = every mix."
+    )
+    q: Annotated[str, StringConstraints(strip_whitespace=True)] | None = Field(
+        None, description="Case-insensitive substring of the mix name or its host's display name; blank = no filter."
+    )
+    limit: int = Field(30, ge=1, le=100, description="Page size, 1..100, default 30.")
+    before_id: int | None = Field(
+        None, description="Keyset cursor: only mixes with a smaller id (the previous page's `next_before_id`)."
+    )
 
 
 #: Trimmed before the length check, so a blank name is refused rather than stored.
@@ -129,9 +148,24 @@ class CustomGameBalanceRequest(_LobbyScoped):
 
 
 class CustomGamePostDiscord(_LobbyScoped):
-    """Which balance option's lineup to post; the picture of it is drawn server-side."""
+    """Which balance option's lineup to post; discord-service renders the card."""
 
     variant_index: int = Field(ge=0)
+
+
+class CustomGameDiscordLineup(_Request):
+    """One posted lineup card, by its slot: the lobby and the match it announces."""
+
+    lobby_index: int = Field(ge=0, le=MAX_LOBBIES - 1)
+    match_number: int = Field(ge=1)
+
+
+class CustomGameDiscordView(_Request):
+    """``rpc.balancer.custom.discord_view``: the mix, and the lineup cards the bot is rendering."""
+
+    custom_game_id: int
+    # Plenty for every lineup a mix keeps live; bounds the reads one call makes.
+    lineups: list[CustomGameDiscordLineup] = Field(default_factory=list, max_length=64)
 
 
 class CustomGameHostTransfer(_Request):

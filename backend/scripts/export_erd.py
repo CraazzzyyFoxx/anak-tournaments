@@ -277,12 +277,14 @@ def render_block(tables) -> str:
 def alembic_head() -> str:
     """The single head of the migration chain, or an explanation of why not."""
     revisions: dict[str, str | None] = {}
+    # Both spellings Alembic's template and hand-written migrations use:
+    # ``revision: str = "x"`` and ``revision = "x"``.
     for path in sorted(MIGRATIONS.glob("*.py")):
         text = path.read_text(encoding="utf-8")
-        revision = re.search(r"^revision:\s*str\s*=\s*\"([^\"]+)\"", text, re.M)
+        revision = re.search(r"^revision(?::[^=]*)?\s*=\s*\"([^\"]+)\"", text, re.M)
         if not revision:
             continue
-        down = re.search(r"^down_revision:[^=]*=\s*\"([^\"]+)\"", text, re.M)
+        down = re.search(r"^down_revision(?::[^=]*)?\s*=\s*\"([^\"]+)\"", text, re.M)
         revisions[revision.group(1)] = down.group(1) if down else None
     parents = {d for d in revisions.values() if d}
     heads = sorted(r for r in revisions if r not in parents)

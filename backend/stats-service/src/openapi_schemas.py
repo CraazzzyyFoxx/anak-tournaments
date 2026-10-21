@@ -93,9 +93,6 @@ OPERATIONS: dict[str, Op] = {
     "rpc.stats.settings.list": Op(response=schemas.SettingRead, response_array=True),
     "rpc.stats.settings.get": Op(response=schemas.SettingRead),
     "rpc.stats.settings.upsert": Op(request=schemas.SettingUpsert, response=schemas.SettingRead),
-    # ── discord channel ────────────────────────────────────────────────────
-    "rpc.stats.discord_channel.get": Op(response=schemas.DiscordChannelRead),
-    "rpc.stats.discord_channel.upsert": Op(request=schemas.DiscordChannelUpsert, response=schemas.DiscordChannelRead),
     # ── achievement rules admin ────────────────────────────────────────────
     "rpc.stats.ach.condition_types": Op(
         response=schemas.ConditionTypeInfo,

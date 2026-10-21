@@ -796,9 +796,13 @@ class WorkspaceService:
         would let an unproven claim permanently attach to a workspace's
         identity.
 
-        Raises ``HTTPException(403)`` if ``actor`` does not administer
-        ``guild_id`` on Discord (owner or ``MANAGE_GUILD``, per
-        ``rpc.identity.oauth_discord_guilds``).
+        Raises ``HTTPException(403, "discord_relink_required")`` when identity
+        reports no usable Discord OAuth token for ``actor`` (nothing linked, or
+        the token expired): the guild list is unknown, not empty.
+
+        Raises ``HTTPException(403, "discord_guild_not_administered")`` if
+        ``actor`` does not administer ``guild_id`` on Discord (owner or
+        ``MANAGE_GUILD``, per ``rpc.identity.oauth_discord_guilds``).
 
         Raises ``HTTPException(409)`` if another workspace already claims this
         guild -- the ``uq_workspace_discord_guild_id`` unique constraint is the
@@ -814,10 +818,12 @@ class WorkspaceService:
             raise HTTPException(status_code=503, detail=_GUILD_UNREACHABLE_MESSAGE)
 
         payload = reply.data if isinstance(reply.data, dict) else {}
+        if payload.get("relink_required"):
+            raise HTTPException(status_code=403, detail="discord_relink_required")
         guilds = payload.get("guilds") or []
         administered = {g["guild_id"] for g in guilds if g.get("can_manage")}
         if guild_id not in administered:
-            raise HTTPException(status_code=403, detail="You do not administer this Discord guild")
+            raise HTTPException(status_code=403, detail="discord_guild_not_administered")
 
         guild_id_before = workspace.discord_guild_id
         verified_at_before = workspace.discord_guild_verified_at
@@ -910,7 +916,8 @@ class WorkspaceService:
         itself. Same subject, same timeout and the same fail-closed 503 as the
         verification call it feeds: an empty list would read as "you administer
         nothing", which is a different (and misleading) answer from "we could
-        not ask".
+        not ask". ``relink_required`` passes through for the same reason: an
+        empty list with it set means "re-link Discord".
         """
         try:
             reply = await request_rpc(broker, {"auth_user_id": auth_user_id}, _DISCORD_GUILDS_SUBJECT, timeout=5.0)
@@ -918,7 +925,10 @@ class WorkspaceService:
             raise HTTPException(status_code=503, detail=_GUILD_UNREACHABLE_MESSAGE) from exc
         if reply is None or not reply.ok or not isinstance(reply.data, dict):
             raise HTTPException(status_code=503, detail=_GUILD_UNREACHABLE_MESSAGE)
-        return {"guilds": reply.data.get("guilds") or []}
+        return {
+            "guilds": reply.data.get("guilds") or [],
+            "relink_required": bool(reply.data.get("relink_required")),
+        }
 
     # --- verification tier --------------------------------------------------
 

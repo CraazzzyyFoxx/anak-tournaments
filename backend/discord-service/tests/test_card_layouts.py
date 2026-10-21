@@ -30,10 +30,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import discord  # noqa: E402
 
-from shared.schemas.events import DiscordCard  # noqa: E402
 from src.interactions.actions import ACTIONS  # noqa: E402
 from src.interactions.cards import card_view, seat_modal, settle  # noqa: E402
 from src.interactions.dispatcher import ActionDispatcher, Outcome  # noqa: E402
+from src.render.card import DiscordCard  # noqa: E402
 
 LAYOUTS = Path(__file__).parent / "layouts"
 SITE = "https://owt.example"

@@ -2,6 +2,7 @@ package balancer
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 
@@ -161,6 +162,22 @@ func TestRosterRoutes(t *testing.T) {
 	if len(want) != 0 {
 		t.Fatalf("missing roster routes: %#v", want)
 	}
+}
+
+// TestMixListForwardsItsFilters pins the mix list's query surface: a param this
+// table drops reaches the worker as absent, so the page silently gets every mix
+// (or the first page again) instead of the tab, search or page it asked for.
+func TestMixListForwardsItsFilters(t *testing.T) {
+	for _, route := range RosterRoutes {
+		if route.Queue != "rpc.balancer.custom.list" {
+			continue
+		}
+		if !slices.Equal(route.Query, []string{"discipline", "status", "q", "limit", "before_id"}) {
+			t.Fatalf("custom.list forwards %v", route.Query)
+		}
+		return
+	}
+	t.Fatal("custom.list route is not registered")
 }
 
 // TestWorkspaceRankerRoutes pins the mix ranker's admin endpoints: the workspace

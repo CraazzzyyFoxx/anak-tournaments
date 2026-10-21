@@ -1,71 +1,107 @@
 # Discord Service (discord-worker)
 
-The Discord side of the platform: a [discord.py](https://discordpy.readthedocs.io/) bot that watches
-tournament channels for match-log attachments, hands them to stats-service, and answers guild/member
-lookups other services need. It exists as its own process because a Discord gateway session is
-stateful and single-tenant — one persistent WebSocket per bot token, carrying the message-content and
-members intents — and that connection cannot be shared with or restarted alongside a stateless RPC
-worker.
+The Discord side of the platform: a [discord.py](https://discordpy.readthedocs.io/) bot that sends
+every Discord message the platform sends, answers the buttons on them, watches tournament channels for
+match-log attachments, and answers the guild/member lookups other services need. **Every Discord
+interaction except the OAuth login goes through this process**: no other service holds
+`DISCORD_TOKEN`, calls Discord's REST API or renders a Discord card. It exists as its own process
+because a Discord gateway session is stateful and single-tenant — one persistent WebSocket per bot
+token, carrying the message-content and members intents — and that connection cannot be shared with
+or restarted alongside a stateless RPC worker.
 
-**This is the one backend service that is not a FastStream RPC worker.** It has no `rpc.discord.*`
-namespace, the Go gateway never routes an HTTP request to it, and no REST route resolves here. It is
-reached in two ways only: by Discord itself over the gateway WebSocket, and by sibling services over
-named RabbitMQ queues (`discord_commands`, `discord_member_roles`, `discord_guild_*`, `upload_match_log`,
-`match_log_result`, `discord_member_changed`) and the `tournament.events` exchange. It runs no HTTP
-server. See [`../../docs/architecture.md`](../../docs/architecture.md) for how it sits in the wider
-platform.
+It runs no HTTP server. It is reached by Discord itself over the gateway WebSocket, and by the rest of
+the platform over RabbitMQ only: its own `rpc.discord.*` namespace (which the Go gateway routes the
+admin Discord screens to), named queues (`discord_commands`, `discord_member_roles`,
+`discord_guild_*`, `discord_voice_move`, `pickup_mix_changed`, `upload_match_log`,
+`match_log_result`, `discord_member_changed`) and the `tournament.events` exchange. See
+[`../../docs/architecture.md`](../../docs/architecture.md) for how it sits in the wider platform.
 
 - **Compose service:** `discord-worker` — dev profile `workers`, unconditional in production
 - **Entry point:** `main.py` (`LogCollectorBot` in `src/bot.py`)
 - **Run command:** `python main.py`
-- **Transport:** Discord gateway WebSocket inbound; RabbitMQ named queues plus one per-replica queue on
-  the `tournament.events` topic exchange for service-to-service traffic; no HTTP, no `rpc.discord.*`
+- **Transport:** Discord gateway WebSocket inbound; RabbitMQ — `rpc.discord.*` request/reply, named
+  queues, plus one per-replica queue on the `tournament.events` topic exchange; no HTTP
 - **Metrics:** Prometheus on `WORKER_METRICS_PORT` (dev 9100, prod 9100) — the shared worker metrics
   plus `discord_gateway_ready` and `discord_gateway_latency_seconds`
 
 ## Responsibilities
 
+- **Every message the platform sends.** Notification DMs, workspace broadcasts, mix signup and lineup
+  posts: a publisher claims a `discord_message` row and queues a cardless `send`; the bot renders the
+  card from that row (`src/render/`) and posts it. Live mix cards are re-rendered by the bot itself
+  whenever their mix changes (`pickup_mix.changed`, `src/services/mix_projector.py`).
+- **Card buttons and `/mix`.** Answers every click and form on those cards as the clicking user's
+  linked account (see *User-facing surface*).
 - **Match-log intake from Discord.** Turns qualifying attachments in watched tournament channels
   into upload requests. It downloads the actual bytes; stats-service owns workspace/content-hash
   deduplication, so a reused filename never hides changed content.
 - **Upload feedback.** Marks the hand-off on the message at once, then adds each file's verdict
   (`done`, `failed` or `awaiting_link`, with its error text) when stats-service's result names that
   message. It never queries a latest-by-filename record to invent a verdict.
+- **Tournament channel bindings.** Which Discord channel a tournament collects logs from
+  (`rpc.discord.channel.*`), validated against the workspace's own guild.
 - **Discord directory.** The only process holding a live guild cache, so it answers guild info, guild
-  roles, guild channels, and per-member role sets on behalf of every other service.
+  roles, guild channels, and per-member role sets on behalf of every other service — and the
+  workspace Discord screens through `rpc.discord.workspace_*`.
 - **Member changes as events.** A member joining, leaving, or having roles changed is published as
   `DiscordMemberChangedEvent`; stats-service re-resolves that user's Boosty subscription instead of
   waiting for its scheduled sweep.
 
 ## Interface
 
-No RPC namespace of its own. The gateway's route table contains no entry pointing here, and
-`/api/docs` does not describe this service. Everything below is broker or gateway-event traffic;
-the only outbound RPCs are the ones a card button makes (see *User-facing surface*).
+### `rpc.discord.*`
+
+Request/reply subjects in `src/rpc_api.py`, routed by the Go gateway (`gateway/internal/discord`,
+identity injected there) and described in `/api/docs` (`src/openapi_schemas.py`, `src/openapi_docs.py`).
+Each one authorises with the caller's identity in the workspace the object belongs to.
+
+| Subject | HTTP path | Permission | Answer |
+| --- | --- | --- | --- |
+| `rpc.discord.workspace_roles` | `GET /api/v1/workspaces/{workspace_id}/discord/roles` | `workspace.update` | `{guild_id, roles}` |
+| `rpc.discord.workspace_channels` | `GET /api/v1/workspaces/{workspace_id}/discord/channels` | `workspace.update` | `{guild_id, channels}` |
+| `rpc.discord.workspace_guild` | `GET /api/v1/workspaces/{workspace_id}/discord/guild` | `workspace.update` | `{guild_id, connected, name, icon_url, member_count, owner_*}` |
+| `rpc.discord.channel.get` / `upsert` / `backfill` / `delete` | `/api/v1/admin/tournaments/{id}/discord-channel[...]` | `discord_channel.read` / `update` / `update` / `delete` | the tournament's binding (`DiscordChannelRead`) |
+
+A workspace with no linked guild answers `guild_id: null` and empty lists (`connected: false`); a
+Discord failure answers the body with a stable `error` code (`guild_not_found`, `discord_error`,
+`invalid`) instead of a 500 — the exception text is logged, never returned. `channel.upsert` accepts
+only a text channel of the tournament workspace's guild: 409 `discord_guild_not_linked`, 422
+`discord_channel_not_in_guild`, 503 `discord_unavailable` when the channel lookup itself fails. A
+write reloads the watched-channel map in-process; `backfill` starts an in-process rescan of the last
+500 messages and answers at once (404 without an active binding).
+
+The other outbound RPCs are the ones a card button makes (see *User-facing surface*) and
+`rpc.balancer.custom.discord_view`, the mix view the bot renders mix cards from.
 
 ### RabbitMQ
 
 | Queue / exchange | Direction | Purpose |
 | --- | --- | --- |
-| `discord_commands` | consumes | `DiscordCommandEvent` — `process_all` (rescan every channel of a tournament), `process_message` (re-ingest one message), `post_message` (one Components V2 `card` to a channel, with the PNG it shows when `card.image_url` is `attachment://<file>`), `send_dm` (one card to one user), `edit_message` (show the row's card — the command names the row and carries none itself; one is rejected) and `delete_message` (remove the message). The four message actions carry `message_ref`, the `discord_message` row the platform claimed for that message: the bot resolves *where* the message is from that row and writes back what Discord answered, so no publisher ever handles a Discord message id and one delete path serves DMs and channel posts alike. Every message is a card; there is no plain content or embed path. `allow_mentions=true` lets the users a card `<@id>`-mentions be pinged — never `@everyone` or a role; `false` (the default) and every DM ping nobody. A Discord refusal other than a missing channel/user or a closed DM (a 400 on the payload, an outage outlasting discord.py's own retries) is rejected to the DLQ with status `discord_error`, never requeued — and the row says `failed` with the reason either way. Published by stats-service's `rpc.discord_channel.backfill`, balancer-service's mix posts, live signup edits and post deletions, and app-service's notification delivery. |
+| `discord_commands` | consumes | `DiscordCommandEvent` — `{action: send \| delete, message_ref}` and nothing else. `message_ref` is the `discord_message` row a publisher claimed (`shared/services/discord_messages.py`); the row says where the message goes (`channel` + `target`) and what it is about (`kind`, `subject`, `slot`, `payload_json`). `send` renders the row (`src/render/`) and posts it to the channel or DMs the user; `delete` removes the posted message. The bot writes back what Discord answered, so no publisher ever handles a Discord message id or a card, and one delete path serves DMs and channel posts alike. Edits are never commands: see `pickup_mix_changed`. |
+| `pickup_mix_changed` | consumes | `PickupMixChangedEvent` from balancer-service's outbox: re-render the live cards of that mix (or of every mix of the workspace) — `src/services/mix_projector.py`. |
+| `rpc.balancer.custom.discord_view` | requests | The view a mix card is rendered from: signup state and roster, and each requested lineup with its seats, map, team names, Discord ids to ping and whether it is still `current` (5 s timeout; `not_found` = the mix is gone). |
 | `rpc.identity.discord_identity` | requests | The linked account's identity payload for a clicking Discord user (`not_found` = not linked). A successful answer is cached for 30 s (see *Operational notes*). |
 | action subjects | requests | `rpc.tournament.regteam_accept` / `regteam_decline` / `reg_pub_check_in` / `reg_pub_get_me`, `rpc.app.notification_preferences_update`, `rpc.balancer.custom.self_*` — each called with that identity, exactly as the gateway would for the same person on the site. |
 | `discord_member_roles` | consumes, replies | Role ids held by a set of users in a guild. Called by the shared Discord-role subscription strategy (`shared/services/subscriptions/strategies.py`, 5 s timeout). |
 | `discord_guild_roles` | consumes, replies | The guild's role list. |
 | `discord_guild_channels` | consumes, replies | The guild's text channels. |
 | `discord_guild_info` | consumes, replies | Guild name, icon, member count, connectivity. |
+| `discord_voice_move` | consumes, replies | Move a lobby's players between voice channels (the lineup card's voice buttons, through balancer-service). |
 | `upload_match_log` | publishes | `UploadMatchLogEvent` carrying the log bytes base64-encoded plus the `channel_id`/`message_id` it came from, consumed by stats-service. |
 | `match_log_result` | consumes | `MatchLogProcessedEvent`, the parse verdict for one uploaded file, naming the message to put it on. |
 | `discord_member_changed` | publishes | `DiscordMemberChangedEvent` (guild, user, `role_update` / `member_join` / `member_remove`), straight from the gateway event — there is no transaction for an outbox row to join. Consumed by stats-service. |
-| `tournament.events` (topic exchange) | consumes | `tournament.state.changed` and `tournament.discord_channel.changed`, on a server-named, exclusive, auto-deleted queue per replica: each replica reloads its own watched-channel map. |
+| `tournament.events` (topic exchange) | consumes | `tournament.state.changed`, on a server-named, exclusive, auto-deleted queue per replica: each replica reloads its own watched-channel map. A binding changed through `rpc.discord.channel.*` reloads it in-process. |
 
-The durable queues it consumes (`discord_commands`, the five `discord_*` request/reply queues and
-`match_log_result`) dead-letter to `dlx` with a `<name>.dlq` routing key — the bot declares all seven
-DLQs before it starts consuming — and carry a message TTL (60 s for the directory lookups, 5 min for
-`discord_commands` and `match_log_result`) — a lookup no live bot answers expires rather than piling
-up. Every handler awaits `bot.wait_until_ready()` first, so a request arriving during startup blocks
-until the gateway session is up instead of answering from an empty cache. Directory lookups fall back
-to a REST call when the gateway cache has not yet seen the guild.
+The durable queues it consumes (`discord_commands`, the five `discord_*` request/reply queues,
+`match_log_result` and `pickup_mix_changed`) dead-letter to `dlx` with a `<name>.dlq` routing key —
+the bot declares all eight DLQs before it starts consuming — and most carry a message TTL (60 s for
+the directory lookups, 5 min for `discord_commands` and `match_log_result`) — a lookup no live bot
+answers expires rather than piling up. `discord_commands` and `pickup_mix_changed` each consume on
+their own channel with `prefetch_count=4`: a send renders a card (an RPC, maybe a picture drawn)
+before Discord answers, and a burst queues at the broker instead of starting a task per delivery.
+Every Discord-facing handler awaits `bot.wait_until_ready()` first, so a request arriving during
+startup blocks until the gateway session is up instead of answering from an empty cache. Directory
+lookups fall back to a REST call when the gateway cache has not yet seen the guild.
 
 ### Match-log upload and its verdict
 
@@ -88,24 +124,32 @@ file's `warn`, and adding a reaction the bot already has is a no-op.
 
 ### Discord gateway events
 
-`LogIngestionCog` — `on_ready` (load channels, rescan history, start the fallback reload loop),
+`LogIngestionCog` — `on_ready` (load channels, catch up on missed history, start the fallback reload loop),
 `on_message` and `on_message_edit` in monitored channels. `MembershipEventsCog` —
 `on_guild_join`/`on_guild_remove` (logging only) and `on_member_join`/`on_member_remove`/`on_member_update`
 (publish `DiscordMemberChangedEvent`; with `RABBITMQ_URL` unset the change is logged and dropped).
 
 ### User-facing surface
 
-**Look.** One palette and one emoji set for every surface, defined once in
-`shared/domain/discord_ui.py`. Publishers write an emoji as a shortcode (`:owt_tank:`) in card text
-and by name (`emoji="tank"`) on a button; `src/interactions/emoji.py` swaps them for the
+**Look.** One palette and one emoji set for every surface, defined once in `src/ui.py`. The
+renderers (`src/render/`) write an emoji as a shortcode (`:owt_tank:`) in card text and by name
+(`emoji="tank"`) on a button; `src/interactions/emoji.py` swaps them for the
 **application emoji** uploaded as `owt_<name>` (Developer Portal → the app → Emojis; they work in
 every guild and in DMs), loaded once in `setup_hook`. An emoji not uploaded shows its Unicode
 fallback; a division badge (`div_<tier slug>`) has none and simply disappears. The dev and prod
 bots are different applications with different emoji ids, which is why no id ever leaves this
 service — see *Operator tools* for the uploader.
 
-**Card buttons.** Notification cards (built by app-service, laid out by `src/interactions/cards.py`)
-carry link buttons and action buttons. An action button's `custom_id` is `owt:<action>:<target>` —
+**Cards.** Every card the bot sends on the platform's behalf is a `DiscordCard`
+(`src/render/card.py`) rendered from its `discord_message` row by `src.render.render` and laid out
+as Components V2 by `src/interactions/cards.py`: a notification from the payload its publisher
+stored on the row (`src/render/notifications.py`, ru/en by the workspace's notification locale,
+branded with the workspace name and the tournament logo or workspace icon as they are when the card
+is rendered), a mix card from the view balancer-service answers (`src/render/mix.py`). A
+notification never pings; a lineup pings its seated players and nobody else.
+
+**Card buttons.** Cards carry link buttons and action buttons. An action button's `custom_id` is
+`owt:<action>:<target>` —
 what and on which object, never on whose behalf. `InteractionsCog.on_interaction` answers every such
 click — and every submit of a form the bot opened — by `custom_id` (no per-message views, so cards
 keep working across restarts), and `ActionDispatcher` runs it:
@@ -140,17 +184,21 @@ ephemeral messages only as an answer to a click, hence the trigger rather than a
 | `mix.roles` | `rpc.balancer.custom.self_get` | mix signup post («My seat») |
 | `mix.setup` | — (the bot alone: opens the seat form) | seat panel |
 | `mix.seat_set` | `rpc.balancer.custom.self_update` | the seat form's submit |
+| `voice.move` / `voice.return` | — (the bot alone: a confirm prompt) | the lobby's newest lineup card |
+| `voice.move_confirm` / `voice.return_confirm` | `rpc.balancer.custom.voice_move` / `…voice_return` | that prompt |
 
-**Mix self-signup.** A host opens signup for a pickup mix and balancer-service posts one **live**
-card into the workspace's channel: who hosts, how many lobbies, where a new player lands, how many
-signed up by first role, «Join» / «My seat» / «Leave». Any mutation that changes what the card shows
-— a click here, an edit on the site, a host closing signup — emits `pickup_mix.changed`, and
-balancer-service re-projects the card from the database onto the `discord_message` row and pings the
-bot with a cardless `edit_message` (`../balancer-service/README.md`); the post locks with a
-disabled «Join» when signup closes and loses its buttons when the mix ends. Pings for one message
-within 2 s collapse into a single Discord edit showing the row's card at that moment, and a host
-removing a post (or the whole mix) sends `delete_message` for its row, which is how the card leaves
-the channel.
+**Mix self-signup.** A host opens signup for a pickup mix; balancer-service claims a
+`mix.signup` row (`subject='mix:<id>'`, `slot='signup'`, no payload) and queues `send`, and the bot
+renders one **live** card into the workspace's channel from `rpc.balancer.custom.discord_view`: who
+hosts, how many lobbies, where a new player lands, the roster by first role with rank badges,
+«Join» / «My seat» / «Leave». Any mutation that changes what the card shows — a click here, an edit
+on the site, a host closing signup — emits `pickup_mix.changed`, and the bot's projector re-renders
+the mix's newest live signup card and every live lineup card of it (an event naming no mix — a
+renamed player — re-renders every mix's signup card in the workspace). Re-renders of one message
+within 2 s collapse into a single Discord edit of the render made at that moment; a render equal to
+the row's `card_json` edits nothing. The post locks with a disabled «Join» when signup closes and
+loses its buttons when the mix ends. A host removing a post (or the whole mix) queues `delete` for
+its row, which is how the card leaves the channel.
 
 Every `mix.*` action answers with the same self-state, rendered into the **seat panel**, an
 ephemeral card: participation and lobby, the role order with rank and division badge, the roles not
@@ -166,13 +214,17 @@ replaced in place. Refusals are worded from the mix's own blocker codes (`signup
 
 **`/mix`** (guild-only) shows the same seat panel for the newest open mix of the workspace bound to
 that guild (`workspace.discord_guild_id` → `rpc.balancer.custom.self_current`), so a player never
-has to scroll for the signup post. It is the bot's only application command; the tree is synced by
-the operator tool below, never on boot.
+has to scroll for the signup post. It is the bot's only application command; its names and
+descriptions are Russian with English translations, installed when the operator tool below syncs
+the tree — never on boot.
 
-**Lineup post.** `custom.post_discord` sends one card: mix · lobby · game, the map and the points a
-win moves, the host's screenshot of the matchup as the card's picture (team blocks in text when
-there is none), and a line mentioning every seated player with a linked Discord — the one post that
-pings.
+**Lineup post.** balancer-service claims a `mix.lineup` row (`slot='lineup:<lobby>:<match>'`); the
+bot renders one card from the view's lineup — mix · lobby · game, the map and the points a win
+moves, the matchup as a 1200×630 PNG it draws itself (`src/render/mix_lineup_image.py`, fonts and
+role glyphs in `assets/lineup`, map art and rank badges fetched over HTTP), and a line mentioning
+every seated player with a linked Discord — the one post that pings. Only a lobby's newest live
+lineup card carries the voice buttons: posting a new one re-renders the lobby's older ones without
+them. A lineup whose match is recorded (or whose mix is over) is history and stays as it was posted.
 
 A clicker's identity is looked up once and reused for 30 s, so a chain of clicks (open the panel,
 edit roles, submit, leave) costs one identity RPC instead of four; an unlink or a deactivation
@@ -183,7 +235,8 @@ at once. Every click logs one line with `action`, `target`, `status` and `code`.
 **Match logs.** Passive: post a `.txt`, `.log`, or `.json` file in a monitored channel and the bot
 reacts `owt_ok` / `owt_warn` / `owt_error`. Failures include the correlated error text, and
 awaiting-link includes an actionable administrator-link-and-retry reply, even for a single
-attachment. Reactions are reconciled so a reprocessed message reflects its current result.
+attachment, in the guild's preferred locale (ru/en). Reactions are reconciled so a reprocessed
+message reflects its current result.
 
 ### Operator tools
 
@@ -193,7 +246,7 @@ Run from `backend/discord-service` with the service env (REST only, safe beside 
   `owt_<name>` application emoji: the set in `assets/emoji/<name>.png|gif|webp` (rendered by
   `node frontend/scripts/gen-discord-emoji.mjs`: the site's role icons tinted with the role colours,
   everything else lucide icons in the `--aqt-*` palette), plus the Overwatch rank badges from the
-  repo's `static/divisions/<slug>.png` as `div_<slug>` (names from `shared/domain/discord_ui.py`;
+  repo's `static/divisions/<slug>.png` as `div_<slug>` (names from `src/ui.py`;
   ≤ 256 KiB). The seat panel badges a rank with the Overwatch ladder (`DEFAULT_GRID`: Bronze 5 ..
   Champion 1), never with a workspace's own grid, whose tiers are bare numbers — so these 45 are the
   only badges it needs. An existing name is never replaced — delete it in the portal first, which
@@ -204,28 +257,33 @@ Run from `backend/discord-service` with the service env (REST only, safe beside 
   migrations — non-fatal, a missing emoji only falls back to Unicode — and `make prod-discord-emoji`
   / `make discord-emoji` run it by hand. It mounts the checkout's `static/divisions`, which the bot
   image does not carry.
-- `python -m src.tools.sync_commands [--guild ID]` — syncs `/mix`; `--guild` for an instant dev sync.
+- `python -m src.tools.sync_commands [--guild ID]` — syncs `/mix` with its English translations;
+  `--guild` for an instant dev sync.
 - `python -m src.tools.preview --channel ID card.json ...` — posts `DiscordCard` JSON files through
   the real layout, to judge a design with the uploaded emoji.
 
 ### Scheduled work
 
-- The watched `channel_id -> tournament_id` map reloads on every `tournament.state.changed` and
-  `tournament.discord_channel.changed` (see *RabbitMQ*); reloads run one at a time, a burst queueing
-  behind the one in flight. `channel_monitor` (`discord.ext.tasks.loop`, every 60 minutes) is only the
-  fallback: no event announces a finished tournament leaving its 24-hour grace (kept so a late upload
-  still lands), and it also repairs an event that was lost.
+- The watched `channel_id -> tournament_id` map reloads on every `tournament.state.changed` (see
+  *RabbitMQ*) and in-process after every `rpc.discord.channel.*` write; reloads run one at a time, a
+  burst queueing behind the one in flight. `channel_monitor` (`discord.ext.tasks.loop`, every 60
+  minutes) is only the fallback: no event announces a finished tournament leaving its 24-hour grace
+  (kept so a late upload still lands), and it also repairs an event that was lost.
 - Application emoji are re-read from Discord every 10 minutes (and once in `setup_hook`), so an
   upload by the `discord-emoji` job shows up without a restart.
-- On `on_ready`, the last 500 messages of every monitored channel are rescanned concurrently and
-  qualifying attachments are uploaded; stats-service deduplicates their actual bytes.
+- On `on_ready`, every monitored channel catches up on what it missed: the messages after its rescan
+  cursor (`stats.discord_channel.last_scanned_message_id`, at most 500, oldest first), or the last
+  500 when it has none. Qualifying attachments are uploaded; stats-service deduplicates their bytes.
+- Re-renders of live mix cards wait out a 2 s coalescing window per message (see *Operational
+  notes*).
 - `GatewayWatchdog` (`discord.ext.tasks.loop`, every 30 s) proves the gateway session is alive — see
   *Operational notes*.
 
 ### Redis realtime
 
 Every `discord_message` status change the bot writes stages the realtime signal of the row's subject
-(see *Data owned*). The bot consumes no realtime topic.
+(see *Data owned*); a re-render that only changes `card_json` stages nothing. The bot consumes no
+realtime topic.
 
 ### Domain events
 
@@ -235,26 +293,31 @@ scheduled subscription sweep. This service does not write to the transactional o
 
 ## Data owned
 
-It owns no schema. Everything it touches belongs to another service's domain, and there are no
-migrations here — the single Alembic project lives at `backend/migrations/`.
+It owns no schema of its own. Everything it touches belongs to another service's domain, and there
+are no migrations here — the single Alembic project lives at `backend/migrations/`.
 
-Reads `stats.discord_channel` for the watched-channel map, written by stats-service's admin
-`rpc.discord_channel.*` methods. Match-log jobs and failure details are not read by the bot:
-upload outcomes arrive on the result event that names their message. See
-[`../../docs/database_erd.md`](../../docs/database_erd.md).
+Reads and writes `stats.discord_channel` — the tournament ↔ channel binding behind the watched-channel
+map (`rpc.discord.channel.*`) and each channel's rescan cursor — through `DiscordChannelRepository`.
+Match-log jobs and failure details are not read by the bot: upload outcomes arrive on the result
+event that names their message. See [`../../docs/database_erd.md`](../../docs/database_erd.md).
 
-Reads elsewhere: `workspace.discord_guild_id` (guild → workspace ids, for `/mix`) and
+Reads elsewhere: `workspace.discord_guild_id` (the guild a workspace posts into — the send guard,
+`/mix`, `rpc.discord.*`), `workspace.name` / `icon_url` and `tournament.logo_url` (a notification
+card's branding), `notification_workspace_config.locale` (the language of a notification card) and
 `discord_message` (below).
 
 Writes `discord_message` — the one state of every message the platform sends on its own behalf
 (notification DMs, workspace broadcasts, mix signup and lineup posts). Ownership is split on purpose
 and neither half is this service's: **publishers insert** the row in the transaction that decides to
-send (`shared/services/discord_messages.py`) and set `deleting` when they want it gone; **this
-service updates** it, because it is the only process that hears Discord answer. It writes `status`,
-`discord_channel_id`, `message_id` and `error`, and nothing else on the row — never `subject`, never
-`dedupe_key`, never a new row. The transitions it performs are exactly `pending → posted` (with the
-ids, the DM channel for a DM; conditional on the row still being `pending`), `pending → failed`
-(with the reason a refusal gives), `pending → deleted` (a delete reached the row before its own post
+send (`shared/services/discord_messages.py`), with `payload_json` holding what the bot cannot re-read
+from a table (a notification's payload; `None` for a mix card, which balancer answers for), and set
+`deleting` when they want it gone; **this service updates** it, because it is the only process that
+renders the card and hears Discord answer. It writes `status`, `discord_channel_id`, `message_id`,
+`error` and `card_json` (its last render, `DiscordCard.model_dump(mode="json")`, which the next
+render is compared against), and nothing else on the row — never `subject`, never `payload_json`,
+never `dedupe_key`, never a new row. The transitions it performs are exactly `pending → posted` (with
+the ids, the DM channel for a DM; conditional on the row still being `pending`), `pending → failed`
+(with the reason a refusal gives), `pending → deleted` (a delete reached the row before its own send
 did, so the message is deleted by never being sent) and `deleting → deleted` (the message is gone
 from Discord, was already, or had just been sent when the delete landed and was taken straight back
 out). Every one of them stages the realtime signal of the row's subject on the same transaction, so
@@ -264,15 +327,18 @@ the page showing a mix refetches when its post lands, fails or disappears.
 
 - **Discord** — gateway WebSocket plus REST, through the `proxy` egress container.
 - **RabbitMQ** — every inbound request and the log-upload/result path. Optional: with `RABBITMQ_URL`
-  unset the bot still starts and still watches channels, but uploads fail with "RabbitMQ unavailable"
-  and no directory lookup is served.
-- **PostgreSQL** — the tables above, always through `shared.repository`; no ad hoc SQLAlchemy in this
-  service.
+  unset the bot still starts and still watches channels, but uploads fail with "RabbitMQ unavailable",
+  no card is sent and no directory lookup is served.
+- **PostgreSQL** — the tables above; every write through `shared.repository`, a few reads as plain
+  `sa.select` (branding, the workspace guild).
 - **Redis** — the realtime signal of every `discord_message` change.
 - **stats-service** — over the broker only. It is never called over HTTP.
 - **identity-service** — over the broker for `rpc.identity.discord_identity` when a card button is pressed.
-- **tournament-service, app-service, balancer-service** — over the broker only, for the card actions
-  and `/mix`.
+- **balancer-service** — `rpc.balancer.custom.discord_view` for every mix card the bot renders, plus
+  the mix card actions and `/mix`.
+- **tournament-service, app-service** — over the broker only, for the card actions.
+- **The site and its media** — the lineup picture's map art and rank badges, fetched over HTTP
+  (`PUBLIC_SITE_URL`, the map image URLs the database stores).
 
 ## Configuration
 
@@ -285,8 +351,9 @@ actually changes behaviour:
 - `REDIS_URL` — required. Without it, a `discord_message` change never reaches the page showing it.
 - `PROXY_TYPE` / `PROXY_IP` / `PROXY_PORT` / `PROXY_USERNAME` / `PROXY_PASSWORD` — egress proxy for all
   Discord traffic, both the gateway connection and attachment downloads.
-- `PUBLIC_SITE_URL` — from `common.env`; where button replies link back to (link Discord, notification
-  settings). The same value app-service renders the cards' own links from.
+- `PUBLIC_SITE_URL` — from `common.env`; the base of every link a card or a button reply carries
+  (mix board, tournament pages, notification settings, link Discord) and of the rank badges a lineup
+  picture draws.
 - `GATEWAY_HEARTBEAT_PATH` — where the watchdog records a live gateway session and where the
   healthcheck reads it back (default `/tmp/discord-worker.alive`). Both ends read this one variable;
   override it only if `/tmp` is not writable.
@@ -299,7 +366,7 @@ actually changes behaviour:
 This service holds no service credential: nothing in it calls another service over HTTP, so there is no
 service token to mint (identity-service's `SERVICE_CLIENTS` has no discord entry). Acting *for* a user
 is the narrow path: the card actions above, for linked accounts only, with that user's own identity
-payload.
+payload. `rpc.discord.*` callers are authorised from the identity the gateway injects.
 
 ## Running
 
@@ -342,54 +409,66 @@ nothing outside the standard library, so it cannot report a configuration proble
   on its own — the cache shortens *who you are*, never *what you may do*.
 - **Single replica.** Every replica opens its own Discord gateway session under the same token and
   therefore receives the *same* `on_message` events, so N replicas do N uploads of the same
-  attachment. The `_processing_messages` guard is per-process and the `exists_done` check is a racy
-  read, neither is a cross-replica lock. The broker side is replica-ready — request/reply queues and
-  `match_log_result` round-robin (a verdict names its message, so any replica can place it), and each
-  replica's own channel-registry queue hears every tournament change — but the gateway side is not.
-  Do not scale this service; it is absent from the default `PROD_SCALE` set for that reason.
-- **Failure handling on `discord_commands`.** A malformed payload, a command naming a
-  `discord_message` row that no longer exists, a missing channel, a deleted message, or a
-  permissions error is `reject`ed straight to `discord_commands.dlq`; an unexpected exception is
-  `nack`ed and requeued. A `send_dm` the recipient cannot receive (DMs closed, no mutual guild,
-  unknown user) is `ack`ed instead — the notification already exists in the in-app inbox, and no
-  retry changes the outcome. Every refusal that settles the message also writes `failed` and its
-  reason on the row first, so the page that asked for it stops waiting. A `delete_message` Discord
-  refuses is `ack`ed with the row left `deleting`: requeueing it would hammer the same refusal.
-  Retries are RabbitMQ's, there is no application-level backoff. A database failure *after* a
-  successful send is logged and `ack`ed, never requeued — a second send would post the card twice,
-  while a row stuck at `pending` merely reads `lost` once the queue's 5-minute TTL passes.
-- **Nothing de-duplicates `discord_commands`; the row does.** The old 60 s debounce on
-  `post_message` / `send_dm` is gone — it compared target and body in process memory, which cannot
-  tell a redelivery from a deliberate second post. Each case it covered is now guarded where the
-  fact lives: a **redelivered command** finds its `discord_message` row past `pending` and is
-  `ack`ed without sending anything (the row is the only thing that knows a message was already
-  sent); **one event claimed twice** never produces a second command at all, because
-  `DiscordMessageRepository.claim` inserts `ON CONFLICT DO NOTHING` on the unique
+  attachment; the `_processing_messages` guard is per-process, not a cross-replica lock. The
+  projector's coalescing windows are process memory too. The broker side is replica-ready —
+  request/reply queues, `discord_commands` and `match_log_result` round-robin (a command and a verdict
+  name their row and message), and each replica's own channel-registry queue hears every tournament
+  change — but the gateway side is not. Do not scale this service; it is absent from the default
+  `PROD_SCALE` set for that reason.
+- **Failure handling on `discord_commands`.** A malformed payload (an action other than `send` /
+  `delete` included), a command naming a `discord_message` row that no longer exists, a missing
+  channel, a channel outside the workspace's guild, a permissions error or a payload Discord refuses
+  is `reject`ed straight to `discord_commands.dlq`; an unexpected exception — balancer-service not
+  answering the mix view included — is `nack`ed and requeued with the row still `pending`. A row
+  with nothing to render (its mix is gone, its lineup's match is already played, its payload fills
+  no card) and a DM the recipient cannot receive (DMs closed, no mutual guild, unknown user) are
+  `ack`ed instead: no retry changes the outcome, and a notification already exists in the in-app
+  inbox. Every refusal that settles the message also writes `failed` and its reason on the row
+  first, so the page that asked for it stops waiting. A `delete` Discord refuses is `ack`ed with the
+  row left `deleting`: requeueing it would hammer the same refusal. Retries are RabbitMQ's, there is
+  no application-level backoff. A database failure *after* a successful send is logged and `ack`ed,
+  never requeued — a second send would post the card twice, while a row stuck at `pending` merely
+  reads `lost` once the queue's 5-minute TTL passes.
+- **A channel post goes to the workspace's own guild only.** Before rendering a `discord_channel`
+  row the bot checks that the channel's guild is the `workspace.discord_guild_id` of the row's
+  workspace; a workspace with no guild linked, or a channel id from another guild (the bot sits in
+  every workspace's guild), fails the row with "channel is not in the workspace's Discord guild".
+  DMs carry no guild and are not checked.
+- **Nothing de-duplicates `discord_commands`; the row and the nonce do.** The old 60 s debounce is
+  gone — it compared target and body in process memory, which cannot tell a redelivery from a
+  deliberate second post. Each case it covered is now guarded where the fact lives: a **redelivered
+  command** finds its `discord_message` row past `pending` and is `ack`ed without sending anything
+  (the row is the only thing that knows a message was already sent); a **crash between Discord's
+  answer and `mark_posted`** leaves the row `pending`, and the redelivered send carries the same
+  `nonce` (the row id, with `enforce_nonce`), so Discord answers it with the message the first send
+  created instead of a second one; **one event claimed twice** never produces a second command at
+  all, because `DiscordMessageRepository.claim` inserts `ON CONFLICT DO NOTHING` on the unique
   `(channel, target, dedupe_key)` in the publisher's own transaction and returns nothing the second
   time; **two notification rows for one event** are prevented a step earlier still, by
   `notify(dedupe_key=…)` returning the existing row over `ix_notification_dedupe` instead of writing
   a second one. A deliberate repeat — a host pressing "post" again — carries no `dedupe_key`, so it
   is a new row and it posts, which the debounce used to swallow.
-- **Order between commands for one message is the row's doing, not the broker's.** aio-pika runs
-  every delivery in its own task (`aiormq.Channel._on_deliver` → `create_task`) and this broker sets
-  no `prefetch_count`, so FastStream gives this subscriber no serialisation whatsoever: two commands
-  naming the same row can be in flight together. What orders them is the state each handler reads
-  and writes. An `edit_message` whose row is still `pending` waits out up to
-  `EDIT_PENDING_ATTEMPTS` coalescing windows (~10 s) for the post to land, then drops the edit — the
-  next change re-renders the whole card anyway. A `delete_message` that finds no `message_id` yet
-  leaves the row `deleting` and deletes nothing; the post handler reads that status and closes the
-  row *instead of* sending, so the message is deleted by never existing. The last interleaving — a
-  delete reading the row while the post is mid-`send` — is closed in the database: `mark_posted` is
-  an `UPDATE … WHERE id = :id AND status = 'pending'` and reports whether it applied, so a row the
+- **Order between commands for one message is the row's doing, not the broker's.** The command
+  subscriber runs up to four deliveries at once (`prefetch_count=4`, each in its own task), so two
+  commands naming the same row can be in flight together. What orders them is the state each handler
+  reads and writes. A `delete` that finds no `message_id` yet leaves the row `deleting` and deletes
+  nothing; the send handler reads that status and closes the row *instead of* sending, so the
+  message is deleted by never existing. The last interleaving — a delete reading the row while the
+  send is mid-flight — is closed in the database: `mark_posted` is an
+  `UPDATE … WHERE id = :id AND status = 'pending'` and reports whether it applied, so a row the
   delete already moved to `deleting` never becomes `posted`. The bot, holding the message it has
   just created, deletes it on the spot and marks the row `deleted`.
-- **Edit coalescing.** `edit_message` is deferred by 2 s per `message_ref` and `ack`ed on
-  scheduling; what the flush writes is the card the row holds at that moment, read fresh from the
-  database, so pings cannot land out of order and a ping is never de-duplicated away (A → B → A
-  ends on A). A ping arriving while the flush writes schedules the next one. A `delete_message`
-  drops the edit still owed by its message. The window is process memory, which the single-replica
-  rule above makes enough; a crash loses one ping until the next change re-projects the card. A row
-  whose `card_json` is empty (posted before the column existed) or unreadable is logged and skipped.
+- **Edit coalescing lives in the projector.** A `pickup_mix.changed` event schedules a re-render
+  per affected row; the first one opens a 2 s window, and when it closes the bot locks the row
+  (`get_for_update`), renders the mix as it is *then*, and edits the message only when the render
+  differs from the row's `card_json` — then records it. Events cannot land out of order, and A → B →
+  A ends on A. One arriving while a flush writes schedules the next window. A row still `pending`
+  (its send is on its way) is waited out for up to `EDIT_PENDING_ATTEMPTS` windows (~10 s), then
+  the re-render is dropped — the next change renders the whole card anyway; a row past `posted` is
+  left alone, and a message found gone closes its row. A picture is only drawn and uploaded when its
+  file name (a hash of everything drawn) differs from the one the message shows. A failed render or
+  edit is logged and costs that edit only; the windows are process memory, which the
+  single-replica rule above makes enough.
 - **A verdict has five minutes to land.** `match_log_result` carries a 5-minute TTL; a result that
   expires dead-letters to `match_log_result.dlq` and the message keeps its hand-off reaction only. A
   verdict whose message was deleted (or the bot can no longer see) is acked and logged, never retried.
@@ -398,8 +477,11 @@ nothing outside the standard library, so it cannot report a configuration proble
   preserves the existing job's outcome and retry budget; an administrator explicitly retries
   failed or awaiting-link jobs. Filenames and tournament ids never identify a result; the message ids
   it echoes do.
-- **History rescan cost.** Startup and every `process_all` walk up to 500 messages per channel, all
-  channels concurrently, each attachment costing one Discord CDN download through the proxy.
-- **Attachment download is the only HTTP client.** `AttachmentClientFactory` (`services/attachment_client.py`)
-  builds the `httpx` client that fetches a log from Discord's CDN through the egress proxy; the bytes
-  reach stats-service over RabbitMQ (`UploadMatchLogEvent`).
+- **History rescan cost.** A (re)connect costs only what each channel missed since its cursor (at
+  most 500 messages per channel, all channels concurrently); an admin backfill walks the last 500.
+  Each attachment costs one Discord CDN download through the proxy.
+- **Two HTTP clients, neither to a service.** `AttachmentClientFactory`
+  (`services/attachment_client.py`) fetches a log from Discord's CDN through the egress proxy; the
+  bytes reach stats-service over RabbitMQ (`UploadMatchLogEvent`). `src/render` fetches a lineup
+  picture's map art and rank badges directly (3 s timeout, an in-process TTL cache of an hour; a
+  picture that fails to load is left out of the drawing, the post still goes).

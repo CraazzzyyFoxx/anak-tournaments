@@ -186,7 +186,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.users.characters": {
         "summary": "User characters",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated per-character stats in the required `discipline` for the requested stat names, optionally scoped to a tournament and workspace; rejects invalid stat values with 422.",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated per-character stats in the required `discipline` for the requested stat names, optionally scoped to a tournament and workspace; rejects invalid stat values with 422. Each row also carries the player's scoped map record on the character (`games`/`win`/`loss`/`draw`; a draw is a game, not a win), every player's discipline-wide `win_rate_all` (unscoped, like `avg_10_all`) and the player's career-best game (`record`) in the stat the character's class is judged by.",
     },
     "rpc.app.users.teammates": {
         "summary": "User best teammates",
@@ -283,7 +283,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.workspaces.discord_guild_verify": {
         "summary": "Verify and bind a Discord guild",
-        "description": "Permission: workspace `workspace.update`, and the caller must additionally administer the Discord guild (owner or MANAGE_GUILD, proven through identity-service). Binds the guild to the workspace, stamping verified_at/verified_by; 404 if workspace missing, 403 if the caller does not administer the guild, 409 if another workspace already claims it, 503 if identity-service is unreachable.",
+        "description": "Permission: workspace `workspace.update`, and the caller must additionally administer the Discord guild (owner or MANAGE_GUILD, proven through identity-service). Binds the guild to the workspace, stamping verified_at/verified_by; 404 if workspace missing, 403 `discord_relink_required` when the caller's Discord connection has no usable OAuth token (re-link Discord), 403 `discord_guild_not_administered` if the caller does not administer the guild, 409 if another workspace already claims it, 503 if identity-service is unreachable.",
     },
     "rpc.app.workspaces.discord_guild_clear": {
         "summary": "Unbind a Discord guild",
@@ -291,15 +291,15 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.workspaces.my_discord_guilds": {
         "summary": "List my administered Discord guilds",
-        "description": "Permission: authenticated (active) user; self-service — the caller's own Discord guilds only. Returns the Discord guilds the caller owns or can manage (via identity-service, the `guilds` OAuth scope), for picking one to verify; 503 if identity-service is unreachable.",
+        "description": 'Permission: authenticated (active) user; self-service — the caller\'s own Discord guilds only. Returns the Discord guilds the caller owns or can manage (via identity-service, the `guilds` OAuth scope), for picking one to verify, and `relink_required` — true when the caller\'s Discord connection has no usable OAuth token, so the empty list means "re-link Discord" rather than "administers nothing"; 503 if identity-service is unreachable.',
     },
     "rpc.app.workspaces.notification_config_get": {
         "summary": "Read a workspace's notification delivery settings",
-        "description": "Permission: workspace `workspace.update`, like the sibling Discord pickers — the stored channel names a private guild. Returns where this workspace's broadcast notifications are posted (`discord_channel_id`, a snowflake as a string), the language they are written in, which kinds are posted (`broadcast_kinds`), and the full set that may be enabled (`broadcastable_kinds`) so the screen needs no second source of truth. A workspace that never saved anything reads as its defaults — no channel, `ru`, registration and check-in openings. 404 if workspace missing.",
+        "description": "Permission: workspace `workspace.update` — the stored channel names a private guild. Returns where this workspace's broadcast notifications are posted (`discord_channel_id`, a snowflake as a string), the language they are written in, which kinds are posted (`broadcast_kinds`), and the full set that may be enabled (`broadcastable_kinds`) so the screen needs no second source of truth. A workspace that never saved anything reads as its defaults — no channel, `ru`, registration and check-in openings. 404 if workspace missing.",
     },
     "rpc.app.workspaces.notification_config_update": {
         "summary": "Update a workspace's notification delivery settings",
-        "description": "Permission: workspace `workspace.update`. Stores the whole form. A non-null `discord_channel_id` must be a text channel of THIS workspace's verified guild — otherwise an administrator of one workspace could make the bot post into another organiser's server: 409 `discord_guild_not_linked` when no guild is bound, 422 `discord_channel_not_in_guild` when the channel is not one of its text channels, and 503 `discord_unavailable` when Discord cannot be asked (an unchecked channel is never stored). `broadcast_kinds` must be a subset of `broadcastable_kinds` and `locale` one of `ru`/`en`, both 422 otherwise. Returns the same shape as the read. 404 if workspace missing.",
+        "description": "Permission: workspace `workspace.update`. Stores the whole form. A non-null `discord_channel_id` must be a text channel of THIS workspace's verified guild — otherwise an administrator of one workspace could make the bot post into another organiser's server: 409 `discord_guild_not_linked` when no guild is bound, 422 `discord_channel_not_in_guild` when the channel is not one of its text channels, and 503 `discord_unavailable` when discord-service cannot be asked (an unchecked channel is never stored). `broadcast_kinds` must be a subset of `broadcastable_kinds` and `locale` one of `ru`/`en`, both 422 otherwise. Returns the same shape as the read. 404 if workspace missing.",
     },
     "rpc.app.workspaces.verification_set": {
         "summary": "Set workspace verification status",
@@ -341,19 +341,6 @@ DOCS: dict[str, dict] = {
     "rpc.app.quota.workspace_usage": {
         "summary": "Read workspace quota usage",
         "description": "Permission: workspace `team.create` (i.e. a workspace admin) or superuser. Returns the workspace's plan slug and its shared pool's effective ceilings next to what has been spent — requests this minute, heavy units today, concurrent heavy slots held, and the two payload caps — with the seconds until each window resets. Per-key usage is not reported here (identity-service answers for an API key). `policy` is the editable half and covers all three scopes (`workspace`/`key`/`session`), because all three override rows belong to this tenant: each entry carries `override`, the row exactly as stored (all-null when the scope has none), and `inherited`, the ceiling `quota_set` holds a non-superuser write to. 404 if the workspace is missing. A metered call refused against these numbers answers 429 `code=rate_limited` with `Retry-After`, naming the dimension and the bucket as `details.limit_name` and `details.scope` (relayed by the gateway inside `fields[0]`).",
-    },
-    # ── workspace discord entities ──────────────────────────────────────────────────
-    "rpc.app.workspaces.discord_roles": {
-        "summary": "List workspace Discord roles",
-        "description": "Permission: workspace `workspace.update`. Returns roles of the workspace's linked Discord server with names, colors, and positions from discord.py cache.",
-    },
-    "rpc.app.workspaces.discord_channels": {
-        "summary": "List workspace Discord channels",
-        "description": "Permission: workspace `workspace.update`. Returns text channels of the workspace's linked Discord server with names and categories.",
-    },
-    "rpc.app.workspaces.discord_guild": {
-        "summary": "Workspace Discord server status",
-        "description": "Permission: workspace `workspace.update`. Returns connection status, server name, icon URL, member count, and Discord owner of the workspace's linked Discord server.",
     },
     # ── workspace icon (binary) ────────────────────────────────────────────────────
     "rpc.app.workspaces.icon_upload": {

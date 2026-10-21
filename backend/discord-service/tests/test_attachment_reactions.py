@@ -19,7 +19,7 @@ from src.services.attachment_processor import AttachmentProcessor  # noqa: E402
 
 
 def _processor(client: MagicMock) -> AttachmentProcessor:
-    return AttachmentProcessor(client=client, attachment_clients=MagicMock())
+    return AttachmentProcessor(client=client, attachment_clients=MagicMock(), registry=MagicMock())
 
 
 def _reaction(emoji: object, *, mine: bool = True) -> MagicMock:

@@ -4057,7 +4057,7 @@ export interface paths {
         };
         /**
          * User characters
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated per-character stats in the required `discipline` for the requested stat names, optionally scoped to a tournament and workspace; rejects invalid stat values with 422.
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated per-character stats in the required `discipline` for the requested stat names, optionally scoped to a tournament and workspace; rejects invalid stat values with 422. Each row also carries the player's scoped map record on the character (`games`/`win`/`loss`/`draw`; a draw is a game, not a win), every player's discipline-wide `win_rate_all` (unscoped, like `avg_10_all`) and the player's career-best game (`record`) in the stat the character's class is judged by.
          *
          *     RPC subject: `rpc.app.users.characters`
          */
@@ -7677,22 +7677,22 @@ export interface paths {
          * Get tournament Discord channel
          * @description Permission: workspace `discord_channel.read` in the tournament's workspace. Returns the Discord channel configuration for a tournament (or null).
          *
-         *     RPC subject: `rpc.stats.discord_channel.get`
+         *     RPC subject: `rpc.discord.channel.get`
          */
         get: operations["get__api_v1_admin_tournaments__id__discord_channel"];
         put?: never;
         /**
          * Upsert tournament Discord channel
-         * @description Permission: workspace `discord_channel.update` in the tournament's workspace. Creates or updates a tournament's Discord guild/channel binding.
+         * @description Permission: workspace `discord_channel.update` in the tournament's workspace. Creates or updates the tournament's match-log channel binding; the bot starts or stops watching it at once. The channel must be a text channel of the workspace's linked Discord server: 409 `discord_guild_not_linked` when the workspace has none, 422 `discord_channel_not_in_guild` otherwise, 503 `discord_unavailable` when Discord could not be asked.
          *
-         *     RPC subject: `rpc.stats.discord_channel.upsert`
+         *     RPC subject: `rpc.discord.channel.upsert`
          */
         post: operations["post__api_v1_admin_tournaments__id__discord_channel"];
         /**
          * Delete tournament Discord channel
          * @description Permission: workspace `discord_channel.delete` in the tournament's workspace. Removes a tournament's Discord channel configuration and returns no content, 404ing when no channel is configured.
          *
-         *     RPC subject: `rpc.stats.discord_channel.delete`
+         *     RPC subject: `rpc.discord.channel.delete`
          */
         delete: operations["delete__api_v1_admin_tournaments__id__discord_channel"];
         options?: never;
@@ -7711,9 +7711,9 @@ export interface paths {
         put?: never;
         /**
          * Backfill Discord channel history
-         * @description Permission: workspace `discord_channel.update` in the tournament's workspace. Queues a rescan of the tournament's Discord channel history — the same `process_all` command the bot runs at startup — resubmitting every attachment found in the last 500 messages of each channel bound to the tournament; returns an ack immediately, the scan itself is asynchronous, and 404s when no channel is configured. Ingestion deduplicates on the SHA-256 of a log file's bytes, so logs already processed for the tournament are skipped rather than duplicated, but each call re-downloads and re-uploads every attachment — repeat it only when logs are genuinely missing.
+         * @description Permission: workspace `discord_channel.update` in the tournament's workspace. Starts a rescan of the last 500 messages of the tournament's active Discord channel, resubmitting every log attachment found; returns an ack immediately, the scan itself is asynchronous, and 404s when no active channel is configured. Ingestion deduplicates on the SHA-256 of a log file's bytes, so logs already processed for the tournament are skipped rather than duplicated, but each call re-downloads and re-uploads every attachment — repeat it only when logs are genuinely missing.
          *
-         *     RPC subject: `rpc.stats.discord_channel.backfill`
+         *     RPC subject: `rpc.discord.channel.backfill`
          */
         post: operations["post__api_v1_admin_tournaments__id__discord_channel_backfill"];
         delete?: never;
@@ -9816,7 +9816,7 @@ export interface paths {
         get: operations["get__api_v1_balancer_workspaces__workspace_id__config"];
         /**
          * Upsert workspace balancer config
-         * @description Permission: admin-panel access plus workspace `team.update`, and additionally `workspace.update` when the Discord channel actually changes. Creates or updates the workspace-level rank-delta threshold, hide-from-pool flag and the workspace-wide Discord channel for mix matchups.
+         * @description Permission: admin-panel access plus workspace `team.update`, and additionally `workspace.update` when the Discord channel actually changes. Creates or updates the workspace-level rank-delta threshold, hide-from-pool flag and the workspace-wide Discord channel for mix matchups. A newly set Discord id (mix channel, voice category, general voices) must be a text channel, category or voice channel of the workspace's own guild: 409 discord_guild_not_linked when the workspace has no guild, 422 discord_channel_not_in_guild, 503 discord_unavailable when Discord cannot be asked. Clearing a value or keeping it unchanged asks Discord nothing.
          *
          *     RPC subject: `rpc.balancer.admin.workspace_config_upsert`
          */
@@ -9837,7 +9837,7 @@ export interface paths {
         };
         /**
          * List custom games
-         * @description Permission: public; no authentication required. Returns every mix in the workspace with its settings and host display name, but without rosters.
+         * @description Permission: public; no authentication required. One keyset page of the workspace's mixes, newest first: `{items, next_before_id}`. Each item carries the mix's settings and host display name (no roster), `players_count` (distinct members seated across its recorded matches), `roster_count`, the most recently played `maps` (at most 4, with `maps_count` for all of them) and every lobby's `matches_count`. Optional query: `discipline` (an installed game), `status` (`open` = draft or balanced, `history` = completed or cancelled; anything else is a 422), `q` (case-insensitive substring of the mix name or the host's display name), `limit` (1..100, default 30) and `before_id` (pass the previous page's `next_before_id`; null means there is no further page).
          *
          *     RPC subject: `rpc.balancer.custom.list`
          */
@@ -9865,7 +9865,7 @@ export interface paths {
         };
         /**
          * Get custom game statistics
-         * @description Permission: public; no authentication required. Per-member wins/losses/draws, win rate, current streak and the per-role split across the mixes this workspace has run, best record first. The optional `discipline` query parameter narrows it to one enabled game (422 `discipline_not_enabled` for another): seats, roles and `identity` (the member's handle for that game's identity provider) are that game's. Without it (or `all`) the scoreboard spans every game, `identity` is the member's first handle in any game's provider, and `by_role` is null -- role codes of different games are different roles. The optional since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole history counts. Read-only.
+         * @description Permission: public; no authentication required. Per-member wins/losses/draws, win rate, current streak and the per-role split across the mixes this workspace has run, best record first. The optional `discipline` query parameter narrows it to one enabled game (422 `discipline_not_enabled` for another): seats, roles and `identity` (the member's handle for that game's identity provider) are that game's. Without it (or `all`) the scoreboard spans every game, `identity` is the member's first handle in any game's provider, and `by_role` is null -- role codes of different games are different roles. The optional since query parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole history counts. Each member also carries `player_id` (the global player, null once the member is no longer on the roster) and `form`: their newest results first, at most 10, each `{outcome, match_id, played_at}`. Top-level `mixes` and `matches` count the distinct mixes and recorded matches inside the same window. Read-only.
          *
          *     RPC subject: `rpc.balancer.custom.stats`
          */
@@ -9999,7 +9999,7 @@ export interface paths {
         put?: never;
         /**
          * Post custom game lineup to Discord
-         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Queues an embed of one balance option's teams, the next map and the points at stake to the workspace-wide mix channel and returns immediately -- delivery is the bot's, and nothing about the mix changes. A multi-lobby mix names the lobby in the embed title and numbers the match within that lobby. 409 when the workspace has no mix channel configured and 404 when the balance option is missing.
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Queues the lobby's lineup post -- the balance option the lobby is showing, the next map and the points at stake -- to the workspace-wide mix channel and returns immediately: discord-service renders the card, keeps it in step with the board and delivers it, and nothing about the mix changes. A multi-lobby mix names the lobby on the card and numbers the match within that lobby. 409 when the workspace has no mix channel configured and 404 when the balance option is missing.
          *
          *     RPC subject: `rpc.balancer.custom.post_discord`
          */
@@ -10043,7 +10043,7 @@ export interface paths {
         put?: never;
         /**
          * Open custom game signup in Discord
-         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Opens self-signup in the given mode (into the pool or onto the bench) and queues a card with Join / My roles / Leave buttons to the workspace-wide mix channel. The card is static: every click re-reads the mix, so it refuses correctly once signup closes or the mix ends. A mix has one signup card: posting again deletes the previous one from the channel first. 409 when the workspace has no mix channel configured.
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Opens self-signup in the given mode (into the pool or onto the bench) and queues the signup card with Join / My roles / Leave buttons to the workspace-wide mix channel. discord-service renders it and keeps it in step with the roster; every click re-reads the mix, so it refuses correctly once signup closes or the mix ends. A mix has one signup card: posting again deletes the previous one from the channel first. 409 when the workspace has no mix channel configured.
          *
          *     RPC subject: `rpc.balancer.custom.post_signup`
          */
@@ -11157,7 +11157,7 @@ export interface paths {
         };
         /**
          * List my administered Discord guilds
-         * @description Permission: authenticated (active) user; self-service — the caller's own Discord guilds only. Returns the Discord guilds the caller owns or can manage (via identity-service, the `guilds` OAuth scope), for picking one to verify; 503 if identity-service is unreachable.
+         * @description Permission: authenticated (active) user; self-service — the caller's own Discord guilds only. Returns the Discord guilds the caller owns or can manage (via identity-service, the `guilds` OAuth scope), for picking one to verify, and `relink_required` — true when the caller's Discord connection has no usable OAuth token, so the empty list means "re-link Discord" rather than "administers nothing"; 503 if identity-service is unreachable.
          *
          *     RPC subject: `rpc.app.workspaces.my_discord_guilds`
          */
@@ -11463,6 +11463,72 @@ export interface paths {
          *     RPC subject: `rpc.app.workspaces.icon_delete`
          */
         delete: operations["delete__api_v1_workspaces__id__icon"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/discord/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List workspace Discord channels
+         * @description Permission: workspace `workspace.update`. Returns `{guild_id, channels}`: the text, voice and category channels of the workspace's linked Discord server with their categories and, for voice and categories, the permissions the bot lacks to move members. `guild_id` is null and `channels` empty when no server is linked; when the bot cannot read the server the list is empty and `error` carries a code (`guild_not_found`, `discord_error`) instead of failing the call.
+         *
+         *     RPC subject: `rpc.discord.workspace_channels`
+         */
+        get: operations["get__api_v1_workspaces__workspace_id__discord_channels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/discord/guild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Workspace Discord server status
+         * @description Permission: workspace `workspace.update`. Returns connection status, server name, icon URL, member count, and Discord owner of the workspace's linked Discord server. With no server linked `connected` is false and the rest null; when the bot cannot read the server the answer is `{guild_id, connected: false, error}` with a code (`guild_not_found`, `discord_error`).
+         *
+         *     RPC subject: `rpc.discord.workspace_guild`
+         */
+        get: operations["get__api_v1_workspaces__workspace_id__discord_guild"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/discord/roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List workspace Discord roles
+         * @description Permission: workspace `workspace.update`. Returns `{guild_id, roles}`: the roles of the workspace's linked Discord server with names, colors and positions, highest first, from the bot's gateway cache. `guild_id` is null and `roles` empty when no server is linked; when the bot cannot read the server the list is empty and `error` carries a code (`guild_not_found`, `discord_error`) instead of failing the call.
+         *
+         *     RPC subject: `rpc.discord.workspace_roles`
+         */
+        get: operations["get__api_v1_workspaces__workspace_id__discord_roles"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -12300,6 +12366,22 @@ export interface components {
             /** Playtime */
             playtime: number;
         };
+        /**
+         * CharacterRecord
+         * @description The player's career-best game on a character in the stat its class is judged by.
+         */
+        "app.CharacterRecord": {
+            /** Encounter Id */
+            encounter_id: number;
+            /** Map Name */
+            map_name: string;
+            /** Stat */
+            stat: string;
+            /** Tournament Name */
+            tournament_name: string;
+            /** Value */
+            value: number;
+        };
         /** CharacterStat */
         "app.CharacterStat": {
             /** Avg 10 */
@@ -12331,8 +12413,35 @@ export interface components {
         /** CharacterWithUserStats */
         "app.CharacterWithUserStats": {
             character: components["schemas"]["app.CatalogEntityRead"];
+            /**
+             * Draw
+             * @default 0
+             */
+            draw: number;
+            /**
+             * Games
+             * @default 0
+             */
+            games: number;
+            /**
+             * Loss
+             * @default 0
+             */
+            loss: number;
+            /** @default null */
+            record: components["schemas"]["app.CharacterRecord"] | null;
             /** Stats */
             stats: components["schemas"]["app.CharacterStat"][];
+            /**
+             * Win
+             * @default 0
+             */
+            win: number;
+            /**
+             * Win Rate All
+             * @default null
+             */
+            win_rate_all: number | null;
         };
         /** DashboardActiveTournamentStats */
         "app.DashboardActiveTournamentStats": {
@@ -21031,6 +21140,11 @@ export interface components {
         "app.WorkspaceDiscordGuildsRead": {
             /** Guilds */
             guilds?: components["schemas"]["app.WorkspaceDiscordGuildOption"][];
+            /**
+             * Relink Required
+             * @default false
+             */
+            relink_required: boolean;
         };
         /** BalanceExportResponse */
         "balancer.BalanceExportResponse": {
@@ -21257,7 +21371,7 @@ export interface components {
         };
         /**
          * CustomGamePostDiscord
-         * @description Which balance option's lineup to post; the picture of it is drawn server-side.
+         * @description Which balance option's lineup to post; discord-service renders the card.
          */
         "balancer.CustomGamePostDiscord": {
             /**
@@ -21699,7 +21813,7 @@ export interface components {
         "balancer.WorkspaceBalancerConfigUpsert": {
             /**
              * Mix Discord Channel Id
-             * @description Workspace-wide Discord channel every mix posts its matchup to. A mix may name its own channel instead, but only a workspace admin can.
+             * @description Workspace-wide Discord channel every mix posts its matchup to; must be a text channel of the workspace's guild.
              * @default null
              */
             mix_discord_channel_id: string | null;
@@ -21710,7 +21824,7 @@ export interface components {
             mix_general_voice_channel_ids?: string[];
             /**
              * Mix Voice Category Id
-             * @description Discord category whose voice channels mixes move players between.
+             * @description Discord category of the workspace's guild whose voice channels mixes move players between.
              * @default null
              */
             mix_voice_category_id: string | null;
@@ -21918,6 +22032,44 @@ export interface components {
              * @enum {string}
              */
             variant: BalancerWorkspaceRankerUpsertVariant;
+        };
+        /**
+         * DiscordChannelRead
+         * @description Schema for reading a tournament Discord sync channel.
+         */
+        "discord.DiscordChannelRead": {
+            /** Channel Id */
+            channel_id: string;
+            /** Channel Name */
+            channel_name: string | null;
+            /** Id */
+            id: number;
+            /** Is Active */
+            is_active: boolean;
+            /** Tournament Id */
+            tournament_id: number;
+        };
+        /**
+         * DiscordChannelUpsert
+         * @description Schema for creating or updating a tournament Discord sync channel.
+         *
+         *     channel_id is a Discord snowflake (64-bit integer), accepted as a string to
+         *     avoid JavaScript float64 precision loss on the client side. The guild is not
+         *     here: it belongs to the workspace (``Workspace.discord_guild_id``).
+         */
+        "discord.DiscordChannelUpsert": {
+            /** Channel Id */
+            channel_id: string;
+            /**
+             * Channel Name
+             * @default null
+             */
+            channel_name: string | null;
+            /**
+             * Is Active
+             * @default true
+             */
+            is_active: boolean;
         };
         /**
          * AdminSessionRead
@@ -22936,44 +23088,6 @@ export interface components {
              * @default false
              */
             subcondition_only: boolean;
-        };
-        /**
-         * DiscordChannelRead
-         * @description Schema for reading a tournament Discord sync channel.
-         */
-        "stats.DiscordChannelRead": {
-            /** Channel Id */
-            channel_id: string;
-            /** Channel Name */
-            channel_name: string | null;
-            /** Id */
-            id: number;
-            /** Is Active */
-            is_active: boolean;
-            /** Tournament Id */
-            tournament_id: number;
-        };
-        /**
-         * DiscordChannelUpsert
-         * @description Schema for creating or updating a tournament Discord sync channel.
-         *
-         *     channel_id is a Discord snowflake (64-bit integer), accepted as a string to
-         *     avoid JavaScript float64 precision loss on the client side. The guild is not
-         *     here: it belongs to the workspace (``Workspace.discord_guild_id``).
-         */
-        "stats.DiscordChannelUpsert": {
-            /** Channel Id */
-            channel_id: string;
-            /**
-             * Channel Name
-             * @default null
-             */
-            channel_name: string | null;
-            /**
-             * Is Active
-             * @default true
-             */
-            is_active: boolean;
         };
         /** EvaluateRequest */
         "stats.EvaluateRequest": {
@@ -57649,7 +57763,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["stats.DiscordChannelRead"];
+                    "application/json": components["schemas"]["discord.DiscordChannelRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -57721,7 +57835,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["stats.DiscordChannelUpsert"];
+                "application/json": components["schemas"]["discord.DiscordChannelUpsert"];
             };
         };
         responses: {
@@ -57731,7 +57845,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["stats.DiscordChannelRead"];
+                    "application/json": components["schemas"]["discord.DiscordChannelRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -67344,7 +67458,11 @@ export interface operations {
     get__api_v1_balancer_workspaces__workspace_id__custom_games: {
         parameters: {
             query?: {
-                discipline?: string;
+                discipline?: string | null;
+                status?: PathsApiV1BalancerWorkspacesWorkspace_idCustomGamesGetParametersQueryStatusAnyOf0 | null;
+                q?: string | null;
+                limit?: number;
+                before_id?: number | null;
             };
             header?: never;
             path: {
@@ -74114,6 +74232,240 @@ export interface operations {
             };
         };
     };
+    get__api_v1_workspaces__workspace_id__discord_channels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_workspaces__workspace_id__discord_guild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_workspaces__workspace_id__discord_roles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
 }
 export enum PathsApiV1AchievementsGetParametersQuerySort {
     id = "id",
@@ -74289,6 +74641,10 @@ export enum PathsApiV1AuthRbacUsersGetParametersQuerySort {
     email = "email",
     username = "username",
     created_at = "created_at"
+}
+export enum PathsApiV1BalancerWorkspacesWorkspace_idCustomGamesGetParametersQueryStatusAnyOf0 {
+    open = "open",
+    history = "history"
 }
 export enum AnalyticsPlayerAnalyticsPredicted_direction {
     promote = "promote",

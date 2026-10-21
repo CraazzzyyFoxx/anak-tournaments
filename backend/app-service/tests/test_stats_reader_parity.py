@@ -260,6 +260,9 @@ def _hero_page(page: Any) -> dict[str, Any]:
     result["results"].sort(key=lambda row: row["character"]["id"])
     for row in result["results"]:
         row["stats"].sort(key=lambda stat: stat["name"])
+        # The hover card's record/win-rate fields a row gained; not reader output the frozen capture had.
+        for key in ("games", "win", "loss", "draw", "win_rate_all", "record"):
+            row.pop(key, None)
     return result
 
 

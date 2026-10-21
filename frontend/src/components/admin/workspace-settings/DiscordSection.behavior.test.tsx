@@ -445,7 +445,7 @@ describe("Workspace settings › Discord", () => {
 
   it("says the account lost access when Discord refuses, not that it is taken", async () => {
     verifyDiscordGuild.mockRejectedValue(
-      new ApiError(403, [{ msg: "You do not administer this Discord guild", code: "error" }])
+      new ApiError(403, [{ msg: "discord_guild_not_administered", code: "forbidden" }])
     );
     await render();
 
@@ -454,6 +454,19 @@ describe("Workspace settings › Discord", () => {
     const alert = container.querySelector('[role="alert"]');
     expect(alert?.textContent).toContain("no longer administer");
     expect(alert?.textContent).not.toContain("already claimed");
+  });
+
+  it("asks for a re-link when Discord could not be asked for the account", async () => {
+    verifyDiscordGuild.mockRejectedValue(
+      new ApiError(403, [{ msg: "discord_relink_required", code: "forbidden" }])
+    );
+    await render();
+
+    await click(buttonIn(container, "Link this server"));
+
+    const alert = container.querySelector('[role="alert"]');
+    expect(alert?.textContent).toContain("Re-link Discord");
+    expect(alert?.textContent).not.toContain("no longer administer");
   });
 
   it("separates a Discord outage from a refusal", async () => {

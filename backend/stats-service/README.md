@@ -59,9 +59,11 @@ System overview: [`../../docs/architecture.md`](../../docs/architecture.md). Cod
 - **MVP impact scoring** — derived stats (`PerformancePoints`, `Performance`, `ImpactPoints`,
   `ImpactRank`, `OverperformanceScore`), the versioned baselines they are scored against, and the
   idempotent historical backfill. The Workshop decoder and these formulas are the Overwatch module's (`shared/disciplines/overwatch/`: `ingest`, `impact`, `baselines`, `backfill`); stats-service reaches them through `shared.disciplines`.
-- **Subscription entitlement collection** — periodic and on-demand re-checks of Discord/Twitch
-  subscription entitlements used as a registration admission condition.
-- **Global settings and the per-tournament Discord channel binding.**
+- **Subscription entitlement collection** — periodic and on-demand re-checks of Boosty (Discord
+  roles, asked of discord-service over RabbitMQ) and Twitch subscription entitlements used as a
+  registration admission condition.
+- **Global settings.** The per-tournament Discord channel binding (`stats.discord_channel`) is
+  discord-service's (`rpc.discord.channel.*`).
 
 ## Interface
 
@@ -77,7 +79,6 @@ RPC namespace: `rpc.stats.*` (single namespace, registered in `src/rpc/`).
 | `rpc.stats.impact.*` | Superuser recompute of the impact-scoring baselines |
 | `rpc.stats.catalog.sync` | Superuser `POST /api/v1/admin/catalog-sync/{discipline}`; dispatches through `shared.disciplines` to that module's source (OverFast or Data Dragon) |
 | `rpc.stats.settings.*` | Superuser global settings CRUD (`public.settings`) |
-| `rpc.stats.discord_channel.*` | Per-tournament Discord channel binding, plus an on-demand channel-history backfill |
 
 The full method list with request/response schemas is published at `/api/docs`, generated from
 `src/openapi_schemas.py` (`OPERATIONS`) and `src/openapi_docs.py` (`DOCS`).
@@ -315,9 +316,6 @@ global cooldown key set on a 429.
   deferred.
 - `rank_fetch` / `rank_fetch_priority` — from the collection tick, the admin collect RPC and
   registration approval.
-- `discord_commands` — `DiscordCommandEvent` for the on-demand channel-history backfill.
-- `tournament.discord_channel.changed` (`tournament.events`) — `DiscordChannelChangedEvent`, through the outbox, whenever a
-  tournament's match-log channel binding is upserted or deleted.
 - Through the transactional outbox (`public.event_outbox`): achievement evaluation and tournament
   score/cache invalidations; `EncounterCompletedEvent` is emitted when the encounter is already
   completed, without accepting a live-game result on the log's authority.
@@ -345,8 +343,8 @@ tick.
 
 Writes:
 
-- `stats` — `ingest_job`, `match`, `match_team`, `match_player`, `segment`, `fact`, `event`,
-  `stat_baseline` and `discord_channel` (the Discord channel binding).
+- `stats` — `ingest_job`, `match`, `match_team`, `match_player`, `segment`, `fact`, `event` and
+  `stat_baseline`. `stats.discord_channel` sits in this schema but discord-service writes it.
 - `overwatch_rank` — `battle_tag_state`, `rank_snapshot`, `fetch_log`.
 - `achievements` — `rule`, `evaluation_result`, `evaluation_run`, `override`.
 - `catalog` — `alias_miss` for unresolved Overwatch log names, plus `entity` aliases and rows
@@ -384,8 +382,10 @@ No service ships its own migrations — there is one Alembic project at
   `locale` parameter for `/maps` or `/gamemodes`, so their aliases are admin-supplied.
 - **Data Dragon** — the League of Legends module's champion and map catalog, using the
   latest published version. Both sources mirror images through `shared.catalog_sync`.
-- **Discord and Twitch APIs** — subscription entitlement verification.
-- Discord and Twitch calls egress through the outbound **`proxy`** container.
+- **discord-service** (RabbitMQ RPC `discord_member_roles`) — Boosty entitlement verification; this
+  service holds no Discord bot token.
+- **Twitch API** — Twitch subscription verification, egressing through the outbound **`proxy`**
+  container.
 
 Sync adds missing rows and aliases without overwriting an existing row's name or `attrs`, including
 admin-edited classes and map flags. New Overwatch maps start with `attrs.in_competitive = true`.
@@ -416,8 +416,8 @@ to a matching discipline and kind and closes the miss in one request.
   backoff base, max consecutive failures, rank mapping — live in `public.settings`, editable at
   runtime, not in the env file.
 - **Outbound proxy** — `PROXY_TYPE`, `PROXY_IP`, `PROXY_PORT`, `PROXY_USERNAME`, `PROXY_PASSWORD`.
-- **Subscription verification** — `DISCORD_TOKEN`, `TWITCH_CLIENT_ID`. Unset means every live check
-  resolves `unknown` and fails open: the sweep runs and proves nothing.
+- **Subscription verification** — `TWITCH_CLIENT_ID`. Unset means every live Twitch check resolves
+  `unknown` and fails open: the sweep runs and proves nothing.
 - **Transport and infrastructure** — `RABBITMQ_URL`, `RPC_PREFETCH_COUNT`, `REDIS_URL`,
   `RABBITMQ_MANAGEMENT_URL` / `_USER` / `_PASSWORD` (queue-depth reads for the admin monitor).
 - **Observability** — `WORKER_METRICS_PORT`, `LOG_LEVEL`, `JSON_LOGGING`, `SENTRY_DSN`,

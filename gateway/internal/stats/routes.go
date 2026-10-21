@@ -4,7 +4,7 @@
 //
 // Stats-unique domains are folded into the unified /api/v1/* namespace (match-log
 // admin, OverFast rank, subscription collection, achievement engine + rules admin,
-// catalog sync, settings, discord-channel, bootstrap importers). The
+// catalog sync, settings, bootstrap importers). The
 // worker's RPC queues are path-independent, so the external paths are clean
 // /api/v1/* with no /api/stats prefix. Un-migrated stats endpoints still proxy
 // to stats-service on their original addresses.
@@ -62,12 +62,6 @@ var Routes = []edge.RouteSpec{
 	{Method: "GET", Pattern: "/api/v1/admin/settings", Queue: "rpc.stats.settings.list", Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/admin/settings/{key}", Queue: "rpc.stats.settings.get", Path: []string{"key"}, Auth: edge.AuthRequired},
 	{Method: "PUT", Pattern: "/api/v1/admin/settings/{key}", Queue: "rpc.stats.settings.upsert", Path: []string{"key"}, Body: true, Auth: edge.AuthRequired},
-
-	// Per-tournament Discord channel (src/routes/admin/discord_channel.py); discord_channel perm.
-	{Method: "GET", Pattern: "/api/v1/admin/tournaments/{id}/discord-channel", Queue: "rpc.stats.discord_channel.get", IDParam: "id", Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/tournaments/{id}/discord-channel", Queue: "rpc.stats.discord_channel.upsert", IDParam: "id", Body: true, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/admin/tournaments/{id}/discord-channel/backfill", Queue: "rpc.stats.discord_channel.backfill", IDParam: "id", Auth: edge.AuthRequired},
-	{Method: "DELETE", Pattern: "/api/v1/admin/tournaments/{id}/discord-channel", Queue: "rpc.stats.discord_channel.delete", IDParam: "id", Auth: edge.AuthRequired, Success: 204},
 }
 
 // AchievementAdminRoutes are the workspace-scoped achievement rule/library/override

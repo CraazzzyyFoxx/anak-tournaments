@@ -64,6 +64,17 @@ def test_update_rejects_overlong_text(field, length):
         schemas.WorkspaceUpdate(**{field: "x" * length})
 
 
+@pytest.mark.parametrize("bad", ["", "   ", "x" * 256])
+def test_update_refuses_a_blank_or_overlong_name(bad):
+    # A rename to nothing used to save: the workspace then had no name anywhere.
+    with pytest.raises(ValidationError):
+        schemas.WorkspaceUpdate(name=bad)
+
+
+def test_update_trims_the_name():
+    assert schemas.WorkspaceUpdate(name="  Anakq  ").name == "Anakq"
+
+
 def test_read_exposes_profile_fields():
     fields = schemas.WorkspaceRead.model_fields
     for name in ("tagline", "about", "discord_url", "twitch_url", "boosty_url"):

@@ -1,6 +1,6 @@
 """Uploads the bot's application emoji: ``python -m src.tools.emoji_sync [--dry-run]``.
 
-Publishers name an emoji and the bot resolves it (``shared.domain.discord_ui``,
+Publishers name an emoji and the bot resolves it (``src.ui``,
 ``src.interactions.emoji``); until one is uploaded every surface falls back to
 Unicode. This fills the application's emoji slots from ``assets/emoji/`` -- the
 set ``frontend/scripts/gen-discord-emoji.mjs`` renders (tinted role icons and
@@ -27,8 +27,8 @@ from pathlib import Path
 
 import discord
 
-from shared.domain.discord_ui import EMOJI, EMOJI_PREFIX, division_emoji
 from src.core.config import Settings
+from src.ui import EMOJI, EMOJI_PREFIX, division_emoji
 
 #: ``backend/discord-service/src/tools/emoji_sync.py`` -> the repo root. Resolved
 #: from this file, not from the shell's CWD: the tool is run from wherever. In
@@ -53,7 +53,7 @@ _MAX_EMOJI = 2000
 def badge_name(slug: str) -> str:
     """``gold-3`` -> ``div_gold_3``: the very name the cards ask for.
 
-    Derived from :func:`shared.domain.discord_ui.division_emoji` rather than
+    Derived from :func:`src.ui.division_emoji` rather than
     re-implementing its normalisation -- a second copy of that regex is a badge
     that silently never resolves.
     """

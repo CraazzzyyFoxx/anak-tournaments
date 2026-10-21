@@ -74,8 +74,9 @@ flowchart TB
 ```
 
 The Go gateway is the single API ingress. The Python services are headless workers driven
-entirely by RabbitMQ; the only one that runs as a plain process rather than an RPC worker is
-`discord-service`, a `discord.py` bot.
+entirely by RabbitMQ; the one that also holds a long-lived outside connection is
+`discord-service`, a `discord.py` bot that answers its `rpc.discord.*` subjects from the same
+process as its Discord gateway session.
 
 ## 2. Request flow
 
@@ -102,7 +103,7 @@ entirely by RabbitMQ; the only one that runs as a plain process rather than an R
      revalidates and enriches the principal via `rpc.identity.validate_token`;
    - dispatches typed REST routes to workers as **RabbitMQ request/reply RPC**
      (`rpc.app.*`, `rpc.identity.*`, `rpc.tournament.*`, `rpc.stats.*`, `rpc.balancer.*`,
-     `rpc.analytics.*`), carrying an `x-deadline-ms` budget;
+     `rpc.analytics.*`, `rpc.discord.*`), carrying an `x-deadline-ms` budget;
    - serves `/api/v1/realtime/ws` (and the legacy `/ws`, `/api/realtime/ws`) from an in-process
      **Redis → WebSocket hub**, replaying missed events from `realtime.workspace_event`;
    - caches anonymous public reads in-process (30 s TTL), invalidated by the workers' Redis
@@ -129,10 +130,11 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
   analytics-worker to create the completed tournament's compute job, and by the discord bot to
   refresh its watched channels), `standings.invalidated`, `encounter.challonge_push_requested`
   (the Challonge push of a confirmed result, retried by the queue instead of swallowed in the
-  request) and `discord_channel.changed`; `cache.invalidation` fans `cache.invalidated.*` out to
-  one queue per caching service; `notifications` feeds app-service's Discord delivery;
-  `match.ingested` is stats → tournament's match layer; `workspace_member_changed` is
-  app → identity (drop the cached RBAC payload); `discord_member_changed` is the bot → stats
+  request); `cache.invalidation` fans `cache.invalidated.*` out to one queue per caching
+  service; `notifications` feeds app-service's Discord delivery (it claims `discord_message`
+  rows, the bot renders them); `pickup_mix_changed` is balancer → the bot (re-render a mix's
+  live cards); `match.ingested` is stats → tournament's match layer; `workspace_member_changed`
+  is app → identity (drop the cached RBAC payload); `discord_member_changed` is the bot → stats
   (re-resolve a Boosty entitlement). `backend/tests/test_messaging_config.py` fails on a queue
   nobody consumes or a DLQ nobody declares.
 - **Long jobs.** Durable queues decouple minutes-long compute: `balancer_jobs`,
@@ -155,10 +157,31 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
   the topic must equal the caller's own, and unlike every other rule it grants the platform
   superuser no bypass — an operator's blanket read right over workspace data is not a licence
   to watch one person's inbox arrive.
-- **Discord ingest.** The bot uploads match-log attachments as base64 to
-  `UPLOAD_MATCH_LOG_QUEUE`, naming the Discord channel and message; stats answers on the
-  `match_log_result` work queue with those ids echoed, and whichever bot replica takes the
-  result reacts on that message. No in-memory waiter, nothing lost on a bot restart.
+- **Discord.** `discord-service` is the only process that talks to Discord — identity-service's
+  OAuth login is the one exception — and holds the platform's only `DISCORD_TOKEN`. Everyone
+  else reaches Discord through it over RabbitMQ:
+  - *Reads and voice.* `shared/services/discord_client.py`'s `DiscordClient` is RPC-only
+    (member roles, guild roles/channels/info, voice moves on the bot's `discord_*` queues) with
+    no REST fallback: a bot that does not answer is `DiscordUnavailable`, and a subscription
+    gate counts that as an outage, never as a pass.
+  - *Messages.* A publisher only *claims* a `discord_message` row — destination,
+    `subject`/`slot`/`kind`, and `payload_json` as render input — and queues a cardless
+    `send`/`delete` on `discord_commands`. The bot renders every card itself: notifications
+    from the row's `payload_json`, mix signup and lineup cards from balancer's
+    `rpc.balancer.custom.discord_view`. Edits are never commands: the bot consumes
+    `pickup_mix_changed` and re-renders the mix's live cards, coalescing bursts in process.
+  - *Gateway surface.* `rpc.discord.*` serves the workspace settings pickers (guild roles, text
+    channels, server status) and the per-tournament match-log channel binding
+    (`rpc.discord.channel.*`, the `stats.discord_channel` row the bot watches).
+  - *Match-log ingest.* The bot uploads attachments as base64 to `UPLOAD_MATCH_LOG_QUEUE`,
+    naming the Discord channel and message; stats answers on the `match_log_result` work queue
+    with those ids echoed, and the bot reacts on that message. No in-memory waiter, nothing lost
+    on a bot restart.
+
+  It runs as **exactly one replica**, on purpose: every replica would open its own gateway
+  session under the same token and receive the same events, and the edit coalescing lives in
+  process memory. Production pins `deploy.replicas: 1`; see
+  [`backend/discord-service/README.md`](../backend/discord-service/README.md).
 
 ## 4. Components
 
@@ -172,7 +195,7 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
 | [`balancer-service`](../backend/balancer-service/README.md) | RPC worker | Genetic team balancing (native Rust `tournament_balancer`) + live draft + draft clock |
 | [`analytics-service`](../backend/analytics-service/README.md) | 2 workers | `analytics-svc` (RPC reads/mutations/job-control) + `analytics-worker` (heavy ML: v1 OpenSkill shifts, v2 ML pipeline) |
 | [`stream-service`](../backend/stream-service/README.md) | RPC worker + scheduler | Tournament stream live-status: Twitch Helix poll tick (app token), public `rpc.stream.*` reads. Owns no Postgres schema — live state is Redis-only |
-| [`discord-service`](../backend/discord-service/README.md) | bot | discord.py bot: match-log upload, notifications, commands |
+| [`discord-service`](../backend/discord-service/README.md) | bot, single replica | The only Discord client (OAuth aside): renders and sends every card, `rpc.discord.*` pickers + match-log channel binding, match-log upload, slash commands, voice moves |
 | [`shared`](../backend/shared/README.md) | library | Single-source ORM + cross-service kernel (models, repository, services, rpc, messaging, tenancy, rbac, observability, clients) |
 | [`frontend`](../frontend/README.md) | Next.js | User-facing app + white-label multidomain |
 

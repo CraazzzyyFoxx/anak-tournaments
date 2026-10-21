@@ -64,12 +64,13 @@ class WorkspaceBalancerConfigUpsert(BaseModel):
     mix_discord_channel_id: str | None = Field(
         default=None,
         description=(
-            "Workspace-wide Discord channel every mix posts its matchup to. "
-            "A mix may name its own channel instead, but only a workspace admin can."
+            "Workspace-wide Discord channel every mix posts its matchup to; "
+            "must be a text channel of the workspace's guild."
         ),
     )
     mix_voice_category_id: str | None = Field(
-        default=None, description="Discord category whose voice channels mixes move players between."
+        default=None,
+        description="Discord category of the workspace's guild whose voice channels mixes move players between.",
     )
     mix_general_voice_channel_ids: list[str] = Field(
         default_factory=list,

@@ -133,13 +133,14 @@ class WithRosterIdentityTests(IsolatedAsyncioTestCase):
                 workspace_member_id=member_id,
                 role=None,
                 encounter_id=member_id,
+                custom_game_id=1,
                 created_at=when,
                 own_score=1.0,
                 other_score=0.0,
             )
 
         service.mix_rounds = SimpleNamespace(seats=AsyncMock(return_value=[seat(7), seat(8)]))
-        wide = await service.mix_stats(object(), workspace_id=9, discipline=None, since=None)
+        wide = (await service.mix_stats(object(), workspace_id=9, discipline=None, since=None))["members"]
         self.assertEqual(service.mix_rounds.seats.await_args.kwargs["discipline"], None)
         self.assertEqual(sorted(set(seen)), ["battlenet", "riot"])
         self.assertEqual({row["workspace_member_id"] for row in wide}, {7, 8})

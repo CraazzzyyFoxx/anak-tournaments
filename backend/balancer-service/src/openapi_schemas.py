@@ -151,6 +151,7 @@ OPERATIONS: dict[str, Op] = {
             ),
         ),
     ),
+    "rpc.balancer.custom.list": Op(query=custom_game.CustomGameListQuery),
     # ── pickup mixes: writes (responses are hand-built dicts, see DOCS) ─────
     "rpc.balancer.custom.create": Op(request=custom_game.CustomGameCreate),
     "rpc.balancer.custom.update_roster": Op(request=custom_game.CustomGameRosterUpdate),

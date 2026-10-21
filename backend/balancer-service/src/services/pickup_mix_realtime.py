@@ -20,8 +20,8 @@ transaction, and it does two things:
 - A ``PickupMixChangedEvent`` outbox row on ``pickup_mix_changed``, for the
   Discord side. Durable because the signup card in a channel has no client to
   refetch on reconnect: the card is only as fresh as the last event that
-  reached :mod:`src.services.mix_discord_projector`. It carries no state either
-  -- the projector re-renders from the database.
+  reached discord-service's projector. It carries no state either -- the bot
+  re-renders from ``rpc.balancer.custom.discord_view``.
 
 Only balancer-service ever writes either signal (custom-game roster/lineup
 edits, workspace rank writes), so it lives here rather than in ``shared``.
