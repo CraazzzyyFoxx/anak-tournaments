@@ -78,7 +78,7 @@ export function AdminSidebar() {
           </span>
           <kbd
             aria-hidden
-            className="ml-auto rounded border border-sidebar-border/70 bg-sidebar/80 px-1 py-0.5 text-xs font-medium leading-none text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden"
+            className="ml-auto shrink-0 whitespace-nowrap rounded border border-sidebar-border/70 bg-sidebar/80 px-1 py-0.5 text-xs font-medium leading-none text-sidebar-foreground/60 group-data-[collapsible=icon]:hidden"
           >
             {t("commandPalette.ctrlK")}
           </kbd>

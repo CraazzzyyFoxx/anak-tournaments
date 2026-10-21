@@ -129,6 +129,7 @@ import {
   PregameRoomsRead,
   PregameRoomHistoryRead,
 } from "@/types/admin.types";
+import type { AdminDashboard, DashboardTrends } from "@/types/admin-dashboard.types";
 
 /**
  * Serialise the reports filter set once — the list and its counters must send
@@ -1864,33 +1865,38 @@ class AdminService {
     return response.json();
   }
 
-  // ─── OverFast rank collection ─────────────────────────────────────────────
+  // ─── Native rank collection ───────────────────────────────────────────────
   // `workspace_id` is injected (no `skipWorkspace`): it is the RBAC scope these
   // endpoints authorize against, so dropping it demands the GLOBAL
   // `rank.read`/`update` and locks out a workspace owner/admin holding it only
   // in their own workspace. It also scopes the rows to that workspace.
+  // `discipline` picks the game's collector (OverFast for Overwatch, Riot for League).
 
-  async getRankCollectionStatus(userId: number): Promise<RankCollectionStatusRow[]> {
-    const response = await apiFetch(`/api/v1/admin/rank/users/${userId}/collection`);
+  async getRankCollectionStatus(userId: number, discipline: string): Promise<RankCollectionStatusRow[]> {
+    const response = await apiFetch(`/api/v1/admin/rank/users/${userId}/collection`, {
+      query: { discipline }
+    });
     return response.json();
   }
 
-  async triggerRankCollection(data: CollectTriggerInput): Promise<CollectTriggerResult> {
+  async triggerRankCollection(discipline: string, data: CollectTriggerInput): Promise<CollectTriggerResult> {
     const response = await apiFetch("/api/v1/admin/rank/collect", {
       method: "POST",
+      query: { discipline },
       body: data
     });
     return response.json();
   }
 
-  async getRankCollectionStats(): Promise<RankCollectionStats> {
-    const response = await apiFetch("/api/v1/admin/rank/stats");
+  async getRankCollectionStats(discipline: string): Promise<RankCollectionStats> {
+    const response = await apiFetch("/api/v1/admin/rank/stats", { query: { discipline } });
     return response.json();
   }
 
-  async getRankFetchLog(params: RankFetchLogQuery = {}): Promise<RankFetchLogRow[]> {
+  async getRankFetchLog(discipline: string, params: RankFetchLogQuery = {}): Promise<RankFetchLogRow[]> {
     const response = await apiFetch("/api/v1/admin/rank/fetch-log", {
       query: {
+        discipline,
         status: params.status,
         source: params.source,
         before_id: params.before_id,
@@ -1901,10 +1907,12 @@ class AdminService {
   }
 
   async reenableDisabledRankCollection(
+    discipline: string,
     onlyPreviouslySucceeded = false
   ): Promise<{ reenabled: number }> {
     const response = await apiFetch("/api/v1/admin/rank/reenable-disabled", {
       method: "POST",
+      query: { discipline },
       body: { only_previously_succeeded: onlyPreviouslySucceeded }
     });
     return response.json();
@@ -1991,6 +1999,20 @@ class AdminService {
       skipWorkspace: allWorkspaces === true,
       query
     });
+    return response.json();
+  }
+
+  // ─── Organizer dashboard ───────────────────────────────────────────────────
+
+  /** The admin home of the ambient workspace: phase cards, timeline, work queue, backlog. */
+  async getDashboard(): Promise<AdminDashboard> {
+    const response = await apiFetch("/api/v1/admin/dashboard");
+    return response.json();
+  }
+
+  /** The last ten finished tournaments of the ambient workspace; `discipline` narrows to one game. */
+  async getDashboardTrends(discipline?: string | null): Promise<DashboardTrends> {
+    const response = await apiFetch("/api/v1/admin/dashboard/trends", { query: { discipline } });
     return response.json();
   }
 }

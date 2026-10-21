@@ -1,7 +1,7 @@
 import type { useTranslations } from "next-intl";
 
 import type { TournamentReadiness } from "@/types/admin.types";
-import type { StageSummary, Tournament, TournamentStatus } from "@/types/tournament.types";
+import type { StageSummary, Tournament } from "@/types/tournament.types";
 
 /** The `adminTournaments.checklist` translator of the component that renders the checklist. */
 export type ChecklistTranslator = ReturnType<typeof useTranslations<"adminTournaments.checklist">>;
@@ -49,13 +49,14 @@ export interface ChecklistContext {
   /** Hub base path, e.g. `/admin/tournaments/42`. */
   basePath: string;
   /** Statuses present in tournament_phase_schedule. */
-  schedule: readonly TournamentStatus[];
+  schedule: readonly string[];
   /** Bracket is Challonge-sourced — own registration form does not apply (§3). */
   hasChallongeSource: boolean;
 }
 
 export function buildChecklist(
-  readiness: TournamentReadiness,
+  // `status` is never read, so the dashboard's wire copy (a plain string) fits too.
+  readiness: Omit<TournamentReadiness, "status">,
   ctx: ChecklistContext,
   t: ChecklistTranslator
 ): ChecklistItem[] {

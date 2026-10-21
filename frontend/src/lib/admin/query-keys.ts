@@ -19,10 +19,16 @@ export const adminQueryKeys = {
     ["admin", "challonge-sync-log", tournamentId] as const,
   challongeTeamSyncPreview: (tournamentId: KeyPart) =>
     ["admin", "challonge-team-sync-preview", tournamentId] as const,
-  dashboardStats: (workspaceId: KeyPart, discipline: KeyPart) =>
-    ["admin", "dashboard", "stats", workspaceId, discipline] as const,
-  dashboardTournaments: (workspaceId: KeyPart) =>
-    ["admin", "dashboard", "tournaments", workspaceId] as const,
+  /** Prefix of the organizer dashboard and its activity feed: one realtime flush refetches both. */
+  dashboardRoot: () => ["admin", "dashboard"] as const,
+  dashboard: (workspaceId: KeyPart) => ["admin", "dashboard", "overview", workspaceId] as const,
+  dashboardActivity: (workspaceId: KeyPart, excludeActorId: KeyPart) =>
+    ["admin", "dashboard", "activity", workspaceId, excludeActorId] as const,
+  /** Outside `dashboardRoot` on purpose: trends move when a tournament finishes, not on realtime flushes. */
+  dashboardTrends: (workspaceId: KeyPart, discipline: KeyPart) =>
+    ["admin", "dashboard-trends", workspaceId, discipline] as const,
+  /** Finished tournaments since the active ML artifacts were trained (platform health). */
+  mlTrainingLag: () => ["admin", "ml-training-lag"] as const,
   personAchievements: (personId: KeyPart) =>
     ["admin", "person", personId, "achievements"] as const,
   person: (personId: KeyPart) => ["admin", "person", personId] as const,
@@ -32,15 +38,15 @@ export const adminQueryKeys = {
     ? ["admin", "player-sub-roles", workspaceId] as const
     : ["admin", "player-sub-roles", workspaceId, discipline] as const,
   playerSubRolesRoot: () => ["admin", "player-sub-roles"] as const,
-  rankCollection: (workspaceId: KeyPart, userId: KeyPart) =>
-    ["admin", "rank", "collection", workspaceId, userId] as const,
-  rankCurrent: (userId: KeyPart) => ["admin", "rank", "current", userId] as const,
-  rankFetchLog: (workspaceId: KeyPart, status: KeyPart, source: KeyPart) =>
-    ["admin", "rank", "fetch-log", workspaceId, status, source] as const,
+  rankCollection: (workspaceId: KeyPart, discipline: KeyPart, userId: KeyPart) =>
+    ["admin", "rank", "collection", workspaceId, discipline, userId] as const,
+  rankFetchLog: (workspaceId: KeyPart, discipline: KeyPart, status: KeyPart, source: KeyPart) =>
+    ["admin", "rank", "fetch-log", workspaceId, discipline, status, source] as const,
   /** The flat rank-overview table; `params` is the whole filter/sort/page set. */
   rankOverview: (workspaceId: KeyPart, params: unknown) =>
     ["admin", "rank", "overview", workspaceId, params] as const,
-  rankStats: (workspaceId: KeyPart) => ["admin", "rank", "stats", workspaceId] as const,
+  rankStats: (workspaceId: KeyPart, discipline: KeyPart) =>
+    ["admin", "rank", "stats", workspaceId, discipline] as const,
   rankStatsAll: () => ["admin", "rank", "stats"] as const,
   rankUserSearch: (query: KeyPart) => ["admin", "rank", "user-search", query] as const,
   rank: () => ["admin", "rank"] as const,
@@ -101,11 +107,6 @@ export const adminQueryKeys = {
     ["admin", "tournament", tournamentId, "standings"] as const,
   tournamentTeamsCount: (tournamentId: KeyPart) =>
     ["admin", "tournament", tournamentId, "teams", "count"] as const,
-  tournamentWizardDivisionGrids: (workspaceId: KeyPart) =>
-    ["admin", "tournaments", "create", "division-grids", workspaceId] as const,
-  tournamentWizardResume: (workspaceId: KeyPart) =>
-    ["admin", "tournaments", "wizard-resume", workspaceId] as const,
-  tournamentWizardResumeAll: () => ["admin", "tournaments", "wizard-resume"] as const,
   users: () => ["admin", "users"] as const,
   matchDetail: (matchId: KeyPart, workspaceId: KeyPart) =>
     ["admin-matches", "detail", matchId, workspaceId] as const,

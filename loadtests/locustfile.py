@@ -3,8 +3,8 @@
 Traffic model — four user archetypes mirroring real frontend usage, all
 hitting the nginx -> Go gateway edge (the same path production traffic takes):
 
-* ``AnonymousBrowser`` (weight 6) — landing dashboard, tournament pages,
-  matches, teams, cached metadata. The bulk of real traffic.
+* ``AnonymousBrowser`` (weight 6) — tournament pages, matches, teams,
+  cached metadata. The bulk of real traffic.
 * ``ProfileViewer``   (weight 3) — player profile tabs (profile, tournaments,
   characters, maps, teammates, encounters) and player compare, each in the
   configured game (``OWT_CATALOG_DISCIPLINE``).
@@ -75,14 +75,10 @@ class OwtUser(HttpUser):
 
 
 class AnonymousBrowser(OwtUser):
-    """Casual visitor: dashboard -> tournament pages -> matches/teams."""
+    """Casual visitor: tournament pages -> matches/teams."""
 
     weight = 6
     wait_time = between(1, 4)
-
-    @task(3)
-    def dashboard(self) -> None:
-        self.get("/api/v1/statistics/dashboard", "/api/v1/statistics/dashboard", self.game_params())
 
     @task(3)
     def list_tournaments(self) -> None:

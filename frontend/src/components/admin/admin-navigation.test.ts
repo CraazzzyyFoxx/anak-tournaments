@@ -198,7 +198,6 @@ describe("route gates", () => {
     const routes = [
       "/admin",
       "/admin/tournaments",
-      "/admin/tournaments/new",
       "/admin/tournaments/14/overview",
       "/admin/tournaments/14/registration/entries",
       "/admin/tournaments/14/teams/roster",

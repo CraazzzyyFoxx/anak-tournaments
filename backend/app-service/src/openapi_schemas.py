@@ -41,6 +41,7 @@ _MATE_SORT = typing.Literal["id", "name", "winrate", "tournaments"]
 # Reusable ad-hoc query params (handlers read these via c.q/c.q1, no query model).
 _ENTITIES = QueryParam("entities", array=True)
 _WS = QueryParam("workspace_id", "integer")
+_WS_REQUIRED = QueryParam("workspace_id", "integer", required=True)
 # The discipline reads take an explicit scope: a workspace id or the literal "all" (global view), so not an integer.
 _WS_OR_ALL = QueryParam(
     "workspace_id", "string", description='Workspace id (positive integer) or the literal "all" for the global view'
@@ -73,7 +74,10 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.statistics.character_leaderboard": Op(
         response=Paginated[schemas.CharacterLeaderboardEntry], query=schemas.CharacterLeaderboardQueryParams
     ),
-    "rpc.app.statistics.dashboard": Op(response=schemas.DashboardStats, query_params=(_DISCIPLINE, _WS)),
+    "rpc.app.statistics.admin_dashboard": Op(response=schemas.AdminDashboard, query_params=(_WS_REQUIRED,)),
+    "rpc.app.statistics.admin_dashboard_trends": Op(
+        response=schemas.DashboardTrends, query_params=(_WS_REQUIRED, _OPTIONAL_DISCIPLINE)
+    ),
     "rpc.app.statistics.champion": Op(
         response=Paginated[schemas.PlayerStatistics],
         query=PaginationSortQueryParams[_STAT_SORT],

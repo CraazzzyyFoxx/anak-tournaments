@@ -29,7 +29,7 @@ layering every backend service follows.
 - **Player identity** — the domain player, social accounts and their visibility, favourites, and the
   destructive profile merge that collapses two players into one.
 - **Read aggregations** — one game's per-user tournament/encounter/map/character/teammate histories,
-  cross-user comparison, leaderboards, the platform dashboard and tournament readiness.
+  cross-user comparison, leaderboards, the workspace admin dashboard (with its trends) and tournament readiness.
 - **Tenancy** — workspaces, membership and roles, custom domains, and Discord guild claim.
 - **Achievement reads** — a user's earned/locked achievements and the per-achievement earner list,
   including the workspace-scoped rarity aggregate.
@@ -50,7 +50,7 @@ list with request/response schemas is published at `/api/docs`, generated from
 | Group | Subject shape | What it covers | Module |
 | --- | --- | --- | --- |
 | Catalog reads | `rpc.app.read.{get,list}`, `rpc.app.catalog.{list,get}`, `rpc.app.disciplines.{list,metadata}` | Native `/api/v1/catalog/{discipline}/{kind}[/{id}]` reads over `catalog.entity`, installed disciplines and their metadata, achievement get+list | `reads_generic`, `catalog`, `disciplines` |
-| Statistics | `rpc.app.statistics.*` | Platform dashboard, tournament readiness, one game's character playtime and character leaderboard (`/api/v1/statistics/{discipline}/characters/playtime`, `/api/v1/statistics/{discipline}/characters/{entity_id}/leaderboard`), and the champion/winrate/won-maps player boards; every game-shaped read names its `discipline` (422 absent, 404 `discipline_not_installed`), except the three player boards, where it is optional (absent or `all`: one cross-game board) | `statistics` |
+| Statistics | `rpc.app.statistics.*` | Workspace admin dashboard (`/api/v1/admin/dashboard`: phase cards, 7-day timeline, work queue, backlog; `/api/v1/admin/dashboard/trends`: the last 10 finished tournaments; both require `workspace_id` and mask field groups by the caller's `<resource>.read`), tournament readiness, one game's character playtime and character leaderboard (`/api/v1/statistics/{discipline}/characters/playtime`, `/api/v1/statistics/{discipline}/characters/{entity_id}/leaderboard`), and the champion/winrate/won-maps player boards; every game-shaped read names its `discipline` (422 absent, 404 `discipline_not_installed`), except the three player boards, where it is optional (absent or `all`: one cross-game board) | `statistics` |
 | Users | `rpc.app.users.*` (reads) | Profile and search; per-user tournament, encounter, map, character (`/users/{id}/characters`), teammate and match histories; cross-user and cross-character comparison (`/users/{id}/compare`, `/users/{id}/compare/characters`); the users-overview grid. Every statistics read takes a required `discipline`, except the tournaments and encounters tabs, where it is optional (absent or `all`: every game, each row naming its own `discipline`; `mvp1` then is a 422); the per-tournament reads use their tournament's own game | `users` |
 | Achievements | `rpc.app.achievements.*` | A user's earned/locked achievements and the earner list for one achievement | `achievements` |
 | Workspaces | `rpc.app.workspaces.*`, `rpc.app.admin.{update,delete}` | Workspace read plus self-service create (any active user, capped at one owned workspace, reserved slugs rejected), member roster and roles, custom domain lifecycle, Discord guild claim, and the superuser-only `verification_set` trust tier; update/delete via the shared engine | `workspaces`, `admin_crud` |
@@ -58,7 +58,6 @@ list with request/response schemas is published at `/api/docs`, generated from
 | User & identity admin | `rpc.app.users.{admin_*,merge_*,social_*,avatar_*,me_*}` | Player CRUD, destructive profile merge, social-account management and visibility, avatar, and the `account.social` self-service subset | `users_admin` |
 | Catalog admin | `rpc.app.catalog.admin_*` | Superuser CRUD on `/api/v1/admin/catalog/{discipline}/{kind}[/{id}]`; one handler per verb, discipline and kind from the path | `metadata_admin` |
 | Catalog aliases | `rpc.app.catalog_aliases.*` | `catalog.alias_miss` worklist scoped by discipline and kind (`character\|map\|mode` entity names; `stat\|event\|role` codes are dismiss-only): list, attach `{entity_id, alias}`, dismiss | `catalog_aliases` |
-| Legacy catalog ids | `rpc.app.catalog.legacy` | Public `/api/v1/catalog/legacy/{hero\|map\|gamemode}/{id}` → `{entity_id, discipline, kind, slug}` for old-link redirects until `discipline02` | `catalog_legacy` |
 | Audit | `rpc.app.audit_list` | Read-only platform audit feed and per-entity trail, gated on `audit.read` | `audit` |
 
 ### The shared CRUD read engine, and why some subjects carry `#<entity>`
@@ -115,12 +114,6 @@ keys keep); a name-only edit keeps the stored slug. Explicit null for `name`, `s
 `active` is rejected with 422, and the effective slug must fit 64 characters without truncation.
 Parent and character-class validation comes from the discipline module. The existing Overwatch
 admin pages adapt to this generic wire; discipline-driven public and admin pages are a later phase.
-
-The legacy-id lookup accepts `hero`, `map` or `gamemode` plus an ASCII decimal id in `1..2**63-1`;
-unknown kinds, invalid ids and missing mappings return 404. The frontend proxy redirects old
-hero/map query filters on `/users/heroes-compare`, `/users/compare` and
-`/tournaments/{id}/matches` with a 308, preserving the other query parameters. The route,
-mapping table and redirect are temporary.
 
 ### Role ontology and workspace formats
 
@@ -230,9 +223,8 @@ the same transaction. Played-member deletion remains refused. Match-log download
 `StatsMatch` → `IngestJob.raw_ref` and game → encounter tournament, authorize visibility before
 fetching that actual S3 key, and use the filename only for display.
 
-**Other reads:** `tournament`, native `stats`, `balancer`, `registration`, `mix`, `draft`, `auth` (for the acting identity and its
-roles), and `catalog.entity_legacy` for old-id lookups. No runtime access to legacy `matches`,
-`log_processing` or `overwatch` tables remains.
+**Other reads:** `tournament`, native `stats`, `balancer`, `registration`, `mix`, `draft`, and `auth` (for the acting
+identity and its roles). No runtime access to legacy `matches`, `log_processing` or `overwatch` tables remains.
 
 ## Dependencies
 

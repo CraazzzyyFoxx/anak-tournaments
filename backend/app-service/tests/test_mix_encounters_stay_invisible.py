@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from shared.tests.encounter_writer_case import EncounterWriterCase
-from src.services.dashboard.service import DashboardService
+from src.services.dashboard.overview import AdminDashboardService, DashboardPermissions
 
 
 class MixEncountersStayInvisibleTests(EncounterWriterCase):
@@ -12,5 +14,11 @@ class MixEncountersStayInvisibleTests(EncounterWriterCase):
             await self.mix_encounter(s)
             await s.commit()
         async with self.Session() as s:
-            counts = await DashboardService().get_counts(s, self.ids["ws"], discipline="overwatch")
-        self.assertEqual(1, counts["encounters_total"])
+            dashboard = await AdminDashboardService().get_dashboard(
+                s,
+                workspace_id=self.ids["ws"],
+                permissions=DashboardPermissions(True, True, True, True, True),
+                now=datetime.now(UTC),
+            )
+        (card,) = dashboard.tournaments
+        self.assertEqual(1, card.play.encounters_total)

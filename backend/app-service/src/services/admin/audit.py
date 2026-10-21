@@ -52,6 +52,13 @@ class AuditLogService:
             filters.append(AuditLog.action == params.action)
         if params.actor_user_id is not None:
             filters.append(AuditLog.actor_auth_user_id == params.actor_user_id)
+        if params.exclude_actor_user_id is not None:
+            # IS DISTINCT FROM, not `!=`: NULL-actor (machine) rows must survive.
+            filters.append(AuditLog.actor_auth_user_id.is_distinct_from(params.exclude_actor_user_id))
+        if params.since is not None:
+            filters.append(AuditLog.created_at >= params.since)
+        if params.source:
+            filters.append(AuditLog.source.in_(params.source.split(",")))
         if params.search:
             pattern = f"%{params.search}%"
             filters.append(sa.or_(*[getattr(AuditLog, field).ilike(pattern) for field in schemas.AUDIT_SEARCH_FIELDS]))

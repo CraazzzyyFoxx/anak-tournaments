@@ -4,9 +4,6 @@ __all__ = (
     "TournamentStatistics",
     "PlayerStatistics",
     "OverallStatistics",
-    "DashboardActiveTournamentStats",
-    "DashboardIssues",
-    "DashboardStats",
     "TournamentReadiness",
 )
 
@@ -36,42 +33,6 @@ class OverallStatistics(BaseModel):
     maps: int
     days: int
     hours: int
-
-
-class DashboardActiveTournamentStats(BaseModel):
-    tournament_id: int
-    encounters_total: int
-    encounters_missing_logs: int
-    log_coverage_percent: int
-
-
-class DashboardIssues(BaseModel):
-    encounters_missing_logs: int
-    teams_without_players: int
-    tournaments_without_stages: int
-    users_without_identities: int
-    # Encounters whose scheduled slot has passed with no recorded result.
-    encounters_awaiting_result: int
-    # Captain-submitted results still waiting on an admin confirmation.
-    encounters_pending_confirmation: int
-    # Bracket slots still on StageItemInputType.EMPTY.
-    stage_slots_empty: int
-
-
-class DashboardStats(BaseModel):
-    tournaments_total: int
-    tournaments_active: int
-    teams_total: int
-    players_total: int
-    encounters_total: int
-    # Decision metrics: how far the current cycle has progressed.
-    tournaments_registration_open: int
-    encounters_completed: int
-    characters_total: int
-    modes_total: int
-    maps_total: int
-    active_tournament_stats: DashboardActiveTournamentStats | None
-    issues: DashboardIssues
 
 
 class TournamentReadiness(BaseModel):

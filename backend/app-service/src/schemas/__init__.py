@@ -4,6 +4,8 @@ from .catalog import *
 from .division_grid import *
 from .user_base import *
 from .statistics import *
+from .dashboard import *
+from .dashboard_trends import *
 from .achievement import *
 from .user import *
 from .announcement import *

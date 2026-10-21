@@ -48,9 +48,27 @@ DOCS: dict[str, dict] = {
         "summary": "Character leaderboard",
         "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated player leaderboard for one character of the path discipline, resolved against the workspace context and its division grid. 404 when the id is not a character of that discipline.",
     },
-    "rpc.app.statistics.dashboard": {
-        "summary": "Dashboard stats",
-        "description": "Permission: public; no authentication required. Returns aggregate dashboard statistics for the optional workspace; the catalog counts are the required `discipline`'s.",
+    "rpc.app.statistics.admin_dashboard": {
+        "summary": "Organizer dashboard",
+        "description": (
+            "Permission: any of workspace `tournament.read`, `team.read`, `match.read`, `user.read` or"
+            " `achievement.read`. Returns the organizer home of one workspace: one card per tournament that is not"
+            " finished (hidden ones included) plus completed tournaments within 14 days of finishing whose wrap-up"
+            " (results confirmed, duel logs, achievements, standings) is not done; the next 7 days of phase-schedule"
+            " boundaries plus every overdue phase start; the work queue of those cards ordered by severity; and the"
+            " backlog of every other tournament with a data-quality issue. Each field group is null when the caller"
+            " lacks the permission that gates it, never zero. 422 without `workspace_id`, 403 without any of the"
+            " permissions."
+        ),
+    },
+    "rpc.app.statistics.admin_dashboard_trends": {
+        "summary": "Organizer dashboard trends",
+        "description": (
+            "Permission: workspace `tournament.read`. Returns participants, newcomers, duel log coverage and the"
+            " median match-end-to-confirmation time of the workspace's last 10 finished, non-league, non-hidden"
+            " tournaments, oldest first, optionally narrowed to one installed `discipline` (404"
+            " `discipline_not_installed` for an unknown code). 422 without `workspace_id`."
+        ),
     },
     "rpc.app.statistics.champion": {
         "summary": "Most-champion players",

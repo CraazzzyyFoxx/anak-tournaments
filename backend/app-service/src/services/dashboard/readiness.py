@@ -1,11 +1,10 @@
 """Tournament readiness aggregate for the hub living checklist.
 
-Two round-trips of count/exists scalar subqueries over the shared models
-(same pattern as ``service.get_counts``) on top of the tournament fetch. Field
-groups are masked by the caller's workspace permissions: ``tournament.read``
-gates setup/bracket/logs fields, ``team.read`` gates registration/pool/balance/
-draft fields — a missing group yields ``None`` so the checklist renders
-"no-access" instead of zeros.
+Two round-trips of count/exists scalar subqueries over the shared models on
+top of the tournament fetch. Field groups are masked by the caller's workspace
+permissions: ``tournament.read`` gates setup/bracket/logs fields, ``team.read``
+gates registration/pool/balance/draft fields — a missing group yields ``None``
+so the checklist renders "no-access" instead of zeros.
 
 ``registrations_ranked`` counts SAVED rank data on registration roles
 (``RegistrationRole.rank_value``), never an autofill preview.

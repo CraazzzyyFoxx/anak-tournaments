@@ -1,9 +1,11 @@
-"""Bespoke statistics + dashboard reads (all public, workspace-filtered); the player leaderboards span every game
-unless one is named."""
+"""Bespoke statistics + dashboard reads. The statistics reads are public and workspace-filtered (the player
+leaderboards span every game unless one is named); the readiness checklist and the organizer dashboard are
+authenticated, gated on workspace read permissions."""
 
 from __future__ import annotations
 
 import typing
+from datetime import UTC, datetime
 from typing import Any
 
 from faststream.rabbit import RabbitMessage
@@ -15,8 +17,10 @@ from src import schemas
 from src.core import db
 from src.core.workspace import resolve_workspace_context
 from src.rpc import _common as c
+from src.services.dashboard.overview import DashboardPermissions
+from src.services.dashboard.overview import overview as overview_service
 from src.services.dashboard.readiness import readiness as readiness_service
-from src.services.dashboard.service import dashboard as dashboard_service
+from src.services.dashboard.trends import trends as trends_service
 from src.services.hero.service import heroes as character_service
 from src.services.statistics.service import statistics as statistics_service
 
@@ -25,15 +29,6 @@ _STAT_SORT = typing.Literal["id", "name", "value"]
 
 
 def register(broker: Any, logger: Any) -> None:
-    @broker.subscriber("rpc.app.statistics.dashboard")
-    async def _dashboard(data: dict, msg: RabbitMessage) -> dict:
-        async def op(session: Any) -> Any:
-            return await dashboard_service.get_dashboard_stats(
-                session, discipline=c.require_discipline(data), workspace_id=c.q1(data, "workspace_id", int)
-            )
-
-        return await c.envelope(logger, "statistics.dashboard", op, session_factory=_SF)
-
     # GET /api/v1/statistics/{discipline}/characters/playtime — one game's character playtime shares.
     @broker.subscriber("rpc.app.statistics.character_playtime")
     async def _character_playtime(data: dict, msg: RabbitMessage) -> dict:
@@ -97,6 +92,46 @@ def register(broker: Any, logger: Any) -> None:
             )
 
         return await c.envelope(logger, "statistics.tournament_readiness", op, session_factory=_SF)
+
+    # GET /api/v1/admin/dashboard — the organizer home of one workspace.
+    # Gate: ANY of the five workspace read permissions; each grant unmasks its
+    # field group. workspace_id is required even for a superuser (no all-workspaces view).
+    @broker.subscriber("rpc.app.statistics.admin_dashboard")
+    async def _admin_dashboard(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.actor(data)
+            c.require_active(user)
+            workspace_id = c.require_query_int(data, "workspace_id")
+            permissions = DashboardPermissions.of(user, workspace_id)
+            if not permissions.any_granted:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Permission denied for workspace {workspace_id}: "
+                    "tournament.read, team.read, match.read, user.read or achievement.read required",
+                )
+            return await overview_service.get_dashboard(
+                session, workspace_id=workspace_id, permissions=permissions, now=datetime.now(UTC)
+            )
+
+        return await c.envelope(logger, "statistics.admin_dashboard", op, session_factory=_SF)
+
+    # GET /api/v1/admin/dashboard/trends — the workspace's last 10 finished public tournaments.
+    @broker.subscriber("rpc.app.statistics.admin_dashboard_trends")
+    async def _admin_dashboard_trends(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.actor(data)
+            c.require_active(user)
+            workspace_id = c.require_query_int(data, "workspace_id")
+            if not user.has_workspace_permission(workspace_id, "tournament", "read"):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Permission denied for workspace {workspace_id}: tournament.read required",
+                )
+            return await trends_service.get_trends(
+                session, workspace_id=workspace_id, discipline=c.optional_discipline(data)
+            )
+
+        return await c.envelope(logger, "statistics.admin_dashboard_trends", op, session_factory=_SF)
 
     @broker.subscriber("rpc.app.statistics.champion")
     async def _champion(data: dict, msg: RabbitMessage) -> dict:

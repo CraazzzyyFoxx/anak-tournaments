@@ -4,8 +4,10 @@ The journal is append-only and write-side-owned (``shared.services.audit``), so
 there is no create/update model here — only the row shape the admin feed renders
 and the filter set it is allowed to ask for.
 
-The filter set is five values plus pagination, matching the admin one-search-input
-style: dates are served by sorting, and ``source`` is served by ``search``.
+The filter set is the admin one-search-input style plus three narrowing
+filters the dashboard activity feed needs: ``since`` (a time window),
+``exclude_actor_user_id`` (hide my own actions) and ``source`` (staff channels
+only). Sorting still serves dates in the full feed.
 """
 
 import typing
@@ -13,10 +15,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from shared.core import pagination
 from shared.core.pagination import SortOrder
+from shared.services.audit import AuditSource
 from src.schemas import BaseRead
 
 __all__ = (
@@ -25,6 +28,7 @@ __all__ = (
     "AuditLogListParams",
     "AUDIT_SORT_FIELDS",
     "AUDIT_SEARCH_FIELDS",
+    "AUDIT_SOURCES",
 )
 
 # Sortable columns. Narrow on purpose: every one of these is a heap sort except
@@ -40,6 +44,8 @@ AUDIT_SORT_FIELDS: tuple[str, ...] = typing.get_args(AuditSortField)
 # they can hold email addresses, and an ILIKE over JSONB would turn the search
 # box into a scan of every recorded value.
 AUDIT_SEARCH_FIELDS: tuple[str, ...] = ("actor_label", "entity_label", "action", "source")
+
+AUDIT_SOURCES: frozenset[str] = frozenset(typing.get_args(AuditSource))
 
 
 class AuditLogRead(BaseRead):
@@ -91,6 +97,28 @@ class AuditLogListQueryParams(pagination.PaginationSortQueryParams[AuditSortFiel
     action: str | None = Field(default=None, max_length=64)
     actor_user_id: int | None = None
     search: str | None = Field(default=None, max_length=255)
+    since: datetime | None = Field(default=None, description="Only rows with created_at >= since.")
+    exclude_actor_user_id: int | None = Field(
+        default=None,
+        description="Hide rows by this actor; machine rows (NULL actor) are kept.",
+    )
+    source: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Comma-separated audit sources to keep, e.g. `admin,api_key,discord,challonge`.",
+    )
+
+    @field_validator("source")
+    @classmethod
+    def _known_sources(cls, value: str | None) -> str | None:
+        """Normalize to a clean comma list; an unknown source is a 422, blank is no filter."""
+        if value is None:
+            return None
+        sources = [part.strip() for part in value.split(",") if part.strip()]
+        unknown = sorted(set(sources) - AUDIT_SOURCES)
+        if unknown:
+            raise ValueError(f"unknown audit source: {', '.join(unknown)}")
+        return ",".join(sources) or None
 
 
 @dataclass
@@ -104,6 +132,10 @@ class AuditLogListParams(pagination.PaginationSortParams):
     action: str | None = None
     actor_user_id: int | None = None
     search: str | None = None
+    since: datetime | None = None
+    exclude_actor_user_id: int | None = None
+    # Already validated and normalized by the query model: comma-joined AuditSource values.
+    source: str | None = None
 
     @property
     def descending(self) -> bool:

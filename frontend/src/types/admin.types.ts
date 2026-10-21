@@ -54,7 +54,7 @@ export interface RankMappingConfig {
 
 export interface RankCollectionStatusRow {
   social_account_id: number;
-  battle_tag: string;
+  handle: string;
   status: string | null;
   last_checked_at: string | null;
   last_success_at: string | null;
@@ -78,7 +78,7 @@ export interface RankFetchLogRow {
   social_account_id: number | null;
   /** Owning player id, resolved via the social account; null when deleted. */
   user_id: number | null;
-  battle_tag: string;
+  handle: string;
   status: string;
   source: string;
   error: string | null;
@@ -122,12 +122,12 @@ export interface RankCollectionStats {
   scope: string;
   interval_seconds: number;
   rate_limit_per_minute: number;
-  /** OverFast instance the worker fetches from. */
-  overfast_base_url: string;
-  /** `closed` | `half_open` | `open` — open means no battle tag is being fetched at all. */
-  overfast_circuit_state: string;
-  /** Fetches rejected in 24h because the stored handle is not a battletag. */
-  invalid_battle_tags_24h: number;
+  /** Upstream the worker fetches from (OverFast for Overwatch, the Riot API for League). */
+  upstream_base_url: string;
+  /** `closed` | `half_open` | `open` — open means no account is being fetched at all. */
+  upstream_circuit_state: string;
+  /** Fetches rejected in 24h because the stored handle is not valid for the game. */
+  invalid_handles_24h: number;
 }
 
 // ─── Subscription collection (parser admin) ────────────────────────────────────
@@ -301,8 +301,9 @@ export interface TournamentCreateInput {
   is_league: boolean;
   /** Public-URL slug; left blank, one is generated from `name`. */
   slug?: string;
-  /** Lazy wizard drafts (D4) are created Unpublished and published later. */
+  /** "Create tournament" creates it Unpublished; it is published from the hub. */
   is_hidden?: boolean;
+  team_formation?: string;
   status?: TournamentStatus;
   start_date: string;
   end_date: string;
@@ -1723,6 +1724,12 @@ export interface AuditLogQuery {
   sort?: AuditSortField | null;
   order?: "asc" | "desc";
   search?: string | null;
+  /** ISO timestamp: only rows created at or after it. */
+  since?: string | null;
+  /** Drops one actor's rows; machine rows (no actor) stay. */
+  exclude_actor_user_id?: number | null;
+  /** Comma-separated `AuditSource` values; an unknown one is a 422. */
+  source?: string | null;
   /**
    * Client-side only (hence camelCase, unlike the wire params above): drops the
    * ambient `workspace_id` injection. The only way to reach platform rows
