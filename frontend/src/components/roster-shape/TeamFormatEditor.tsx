@@ -1,31 +1,52 @@
 "use client";
 
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
+import { ChevronRight, X } from "lucide-react";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
+import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useRoleName } from "@/hooks/useRoleName";
 import { findRole, ratedDimension, selectableRoles, type RoleOntology } from "@/lib/roster/ontology";
-import { teamFormatPayload, type TeamFormatWrite, type TeamFormatDimension, type TeamFormatRule } from "@/lib/roster/team-format";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { teamFormatPayload, type TeamFormatDimension, type TeamFormatRule, type TeamFormatWrite } from "@/lib/roster/team-format";
+import { cn } from "@/lib/utils";
+
+const MODES = ["off", "informational", "preference", "enforced"] as const;
+const HEAD = cn("h-8 px-0 pr-3", EYEBROW_CLASS);
+const CELL = "px-0 py-2 pr-3";
+const ROW = "border-border/60 hover:bg-transparent";
 
 /** Edits the native P2 format. No slot-map projection is ever used as an editable source. */
-export function TeamFormatEditor({ value, ontology, presets, onChange, disabled = false, locked = false }: Readonly<{
+export function TeamFormatEditor({ value, ontology, presets, onChange, disabled = false, locked = false, showSubstitutes = false }: Readonly<{
   value: TeamFormatWrite;
   ontology: RoleOntology;
   presets: readonly TeamFormatWrite[];
   onChange: (value: TeamFormatWrite) => void;
   disabled?: boolean;
   locked?: boolean;
+  /** Substitutes exist only where captains register a roster; elsewhere the bounds stay stored but hidden. */
+  showSubstitutes?: boolean;
 }>) {
   const id = useId();
   const t = useTranslations("common.roleOntology");
   const nameOf = useRoleName();
-  if (!ratedDimension(ontology)) return <p role="alert">{t("metadataError")}</p>;
+  const rated = ratedDimension(ontology);
+  if (!rated) return <p role="alert">{t("metadataError")}</p>;
   const patch = (next: Partial<TeamFormatWrite>) => onChange({ ...value, ...next });
-  const numberField = (label: string, current: number | null | undefined, update: (next: number | null) => void, min = 0) => (
-    <label className="grid gap-1 text-xs"><span>{label}</span><Input type="number" step={1} min={min} aria-label={label}
-      value={current ?? ""} onChange={event => update(event.target.value === "" ? null : Number(event.target.value))} size="sm" className="w-28" /></label>
+  // Empty is "unspecified" and zero an explicit bound, so a nullable bound says "any" when empty.
+  const bound = (label: string, current: number | null | undefined, update: (next: number | null) => void, { min = 0, nullable = true, inputId }: { min?: number; nullable?: boolean; inputId?: string } = {}) => (
+    <NumberInput id={inputId} integer min={min} size="sm" className="w-20" aria-label={label}
+      placeholder={nullable ? t("any") : undefined} value={current} onValueChange={update} />
+  );
+  const range = (low: ReactNode, high: ReactNode) => (
+    <div className="flex items-center gap-1.5">{low}<span aria-hidden className="text-muted-foreground">–</span>{high}</div>
   );
   const updateDimension = (dimension: string, next: Partial<TeamFormatDimension>) => {
     const exists = value.dimensions.some(entry => entry.dimension === dimension);
@@ -33,62 +54,136 @@ export function TeamFormatEditor({ value, ontology, presets, onChange, disabled 
       : [...value.dimensions, { dimension, mode: "off", ...next }] });
   };
   const updateRule = (index: number, next: Partial<TeamFormatRule>) => patch({ rules: value.rules.map((rule, i) => i === index ? { ...rule, ...next } : rule) });
-  return <fieldset disabled={disabled || locked} className="space-y-6 rounded-xl border p-4">
-    <legend className="px-2 font-medium">{t("formatTitle")}</legend>
-    {locked && <p role="status">{t("locked")}</p>}
-    {presets.length > 0 && <label className="grid gap-1 text-sm">{t("preset")}
-      <select className="rounded-md border bg-background p-2" aria-label={t("preset")} value="" onChange={event => {
-        const preset = presets[Number(event.target.value)];
-        if (preset) onChange(teamFormatPayload(preset));
-      }}><option value="" disabled>{t("choosePreset")}</option>{presets.map((preset, index) => <option key={preset.preset_code ?? index} value={index}>{preset.name}</option>)}</select>
-    </label>}
-    <label className="grid gap-1 text-sm">{t("formatName")}<Input value={value.name} maxLength={128} onChange={event => patch({ name: event.target.value })} /></label>
-    <div className="flex flex-wrap gap-3">
-      {numberField(t("starterMin"), value.starter_min, next => patch({ starter_min: next ?? 0 }), 1)}
-      {numberField(t("starterMax"), value.starter_max, next => patch({ starter_max: next ?? 0 }), 1)}
-      {numberField(t("substituteMin"), value.substitute_min, next => patch({ substitute_min: next ?? 0 }))}
-      {numberField(t("substituteMax"), value.substitute_max, next => patch({ substitute_max: next ?? 0 }))}
-    </div>
+
+  return <fieldset disabled={disabled || locked} className="flex min-w-0 flex-col gap-4">
+    {locked && <p role="status" className="text-sm text-muted-foreground">{t("locked")}</p>}
+    <SettingGroup id="format" title={t("formatTitle")}>
+      {presets.length > 0 && <SettingRow htmlFor={`${id}-preset`} label={t("preset")} hint={t("presetHint")}>
+        <Select value="" onValueChange={next => {
+          const preset = presets[Number(next)];
+          if (preset) onChange(teamFormatPayload(preset));
+        }}>
+          <SelectTrigger id={`${id}-preset`} size="sm" className="w-fit min-w-48 max-w-full" aria-label={t("preset")}>
+            <SelectValue placeholder={t("choosePreset")} />
+          </SelectTrigger>
+          <SelectContent>
+            {presets.map((preset, index) => <SelectItem key={preset.preset_code ?? index} value={String(index)}>{preset.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </SettingRow>}
+      <SettingRow htmlFor={`${id}-name`} label={t("formatName")} stacked>
+        <Input id={`${id}-name`} value={value.name} maxLength={128} onChange={event => patch({ name: event.target.value })} />
+      </SettingRow>
+      <SettingRow htmlFor={`${id}-starters`} label={t("starters")}>
+        {range(
+          bound(t("starterMin"), value.starter_min, next => patch({ starter_min: next ?? 0 }), { min: 1, nullable: false, inputId: `${id}-starters` }),
+          bound(t("starterMax"), value.starter_max, next => patch({ starter_max: next ?? 0 }), { min: 1, nullable: false })
+        )}
+      </SettingRow>
+      {showSubstitutes && <SettingRow htmlFor={`${id}-substitutes`} label={t("substitutes")}>
+        {range(
+          bound(t("substituteMin"), value.substitute_min ?? 0, next => patch({ substitute_min: next ?? 0 }), { nullable: false, inputId: `${id}-substitutes` }),
+          bound(t("substituteMax"), value.substitute_max ?? 0, next => patch({ substitute_max: next ?? 0 }), { nullable: false })
+        )}
+      </SettingRow>}
+    </SettingGroup>
+
     {ontology.dimensions.map(dimension => {
       const entry = value.dimensions.find(row => row.dimension === dimension.code);
-      return <fieldset key={dimension.code} disabled={!dimension.active} className="space-y-3 rounded-md border p-3">
-        <legend className="px-1 text-sm">{dimension.name} · {t(dimension.selection_mode)}{dimension.rated ? ` · ${t("rated")}` : ""}</legend>
-        <label className="grid gap-1 text-xs">{t("mode")}
-          <select id={`${id}-${dimension.code}`} aria-label={`${t("mode")}: ${dimension.name}`} className="rounded-md border bg-background p-2" value={entry?.mode ?? "off"}
-            onChange={event => updateDimension(dimension.code, { mode: event.target.value as TeamFormatDimension["mode"] })}>
-            {(["off", "informational", "preference", "enforced"] as const).map(mode => <option key={mode} value={mode}>{t(mode)}</option>)}
-          </select>
-        </label>
-        <div className="flex flex-wrap gap-3">
-          {numberField(`${t("assignmentMin")}: ${dimension.name}`, entry?.player_min_assignments, next => updateDimension(dimension.code, { player_min_assignments: next }))}
-          {numberField(`${t("assignmentMax")}: ${dimension.name}`, entry?.player_max_assignments, next => updateDimension(dimension.code, { player_max_assignments: next }))}
-        </div>
-        {value.rules.map((rule, index) => {
-          if (rule.role.dimension !== dimension.code) return null;
-          const role = findRole(ontology, rule.role);
-          const name = role ? nameOf(role) : rule.role.role;
-          return <fieldset key={rule.role.role} className="space-y-2 rounded-md border p-3">
-            <legend className="flex items-center gap-2 px-1 text-sm"><PlayerRoleIcon role={rule.role} ontology={ontology} size={18} decorative />{name}</legend>
-            <div className="flex flex-wrap gap-3">
-              {numberField(`${t("hardMin")}: ${name}`, rule.hard_min, next => updateRule(index, { hard_min: next }))}
-              {numberField(`${t("hardMax")}: ${name}`, rule.hard_max, next => updateRule(index, { hard_max: next }))}
-              {numberField(`${t("recommendedMin")}: ${name}`, rule.recommended_min, next => updateRule(index, { recommended_min: next }))}
-              {numberField(`${t("recommendedMax")}: ${name}`, rule.recommended_max, next => updateRule(index, { recommended_max: next }))}
-            </div>
-            <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={rule.include_descendants ?? true} onChange={event => updateRule(index, { include_descendants: event.target.checked })} />{t("includeDescendants")}</label>
-            <Button type="button" variant="outline" size="sm" onClick={() => patch({ rules: value.rules.filter((_, i) => i !== index) })}>{t("removeRule")}</Button>
-          </fieldset>;
-        })}
-        <label className="grid gap-1 text-xs">{t("addRule")}
-          <select aria-label={`${t("addRule")}: ${dimension.name}`} value="" className="rounded-md border bg-background p-2" onChange={event => {
-            if (!event.target.value) return;
-            const dimensions = entry ? value.dimensions : [...value.dimensions, { dimension: dimension.code, mode: "off" as const }];
-            patch({ dimensions, rules: [...value.rules, { role: { dimension: dimension.code, role: event.target.value } }] });
-          }}><option value="">{t("chooseRole")}</option>{selectableRoles(ontology, dimension.code).filter(role => !value.rules.some(rule => rule.role.dimension === dimension.code && rule.role.role === role.code)).map(role => <option key={role.id} value={role.code}>{nameOf(role)}</option>)}</select>
-        </label>
+      const mode = entry?.mode ?? "off";
+      const rules = value.rules.flatMap((rule, index) => {
+        if (rule.role.dimension !== dimension.code) return [];
+        const role = findRole(ontology, rule.role);
+        // The descendants switch is a choice only for a role that has sub-roles in this workspace.
+        const subRoles = role !== null && ontology.roles.some(child => child.parent_id === role.id &&
+          (child.workspace_id === null || child.workspace_id === ontology.workspace_id));
+        return [{ rule, index, name: role ? nameOf(role) : rule.role.role, subRoles }];
+      });
+      const withSubRoles = rules.some(row => row.subRoles);
+      const addable = selectableRoles(ontology, dimension.code).filter(role => !rules.some(row => row.rule.role.role === role.code));
+      const modeId = `${id}-${dimension.code}-mode`;
+      const assignmentsId = `${id}-${dimension.code}-assignments`;
+      return <fieldset key={dimension.code} disabled={!dimension.active} className="min-w-0">
+        <SettingGroup id={`roles-${dimension.code}`} title={dimension.name}>
+          <SettingRow htmlFor={modeId} label={t("mode")} hint={dimension.code === rated.code ? t("modeHint") : undefined}>
+            <Select value={mode} onValueChange={next => updateDimension(dimension.code, { mode: next as TeamFormatDimension["mode"] })}>
+              <SelectTrigger id={modeId} size="sm" className="w-fit min-w-40 max-w-full" aria-label={`${t("mode")}: ${dimension.name}`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MODES.map(option => <SelectItem key={option} value={option}>{t(option)}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </SettingRow>
+          {/* Off ignores the dimension entirely; its quotas stay stored and come back with the mode. */}
+          {mode !== "off" && <div className="py-3 last:pb-0">
+            {rules.length > 0 && <Table>
+              <TableHeader>
+                <TableRow className={ROW}>
+                  <TableHead className={HEAD}>{t("roleColumn")}</TableHead>
+                  <TableHead className={HEAD}>{t("required")}</TableHead>
+                  <TableHead className={HEAD}>{t("recommended")}</TableHead>
+                  {withSubRoles && <TableHead className={HEAD}>{t("includeDescendants")}</TableHead>}
+                  <TableHead className="h-8 px-0"><span className="sr-only">{t("removeRule")}</span></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rules.map(({ rule, index, name, subRoles }) => <TableRow key={rule.role.role} className={ROW}>
+                  <TableCell className={CELL}>
+                    <span className="flex items-center gap-2 font-medium text-foreground">
+                      <PlayerRoleIcon role={rule.role} ontology={ontology} size={18} decorative />{name}
+                    </span>
+                  </TableCell>
+                  <TableCell className={CELL}>{range(
+                    bound(`${t("hardMin")}: ${name}`, rule.hard_min, next => updateRule(index, { hard_min: next })),
+                    bound(`${t("hardMax")}: ${name}`, rule.hard_max, next => updateRule(index, { hard_max: next }))
+                  )}</TableCell>
+                  <TableCell className={CELL}>{range(
+                    bound(`${t("recommendedMin")}: ${name}`, rule.recommended_min, next => updateRule(index, { recommended_min: next })),
+                    bound(`${t("recommendedMax")}: ${name}`, rule.recommended_max, next => updateRule(index, { recommended_max: next }))
+                  )}</TableCell>
+                  {withSubRoles && <TableCell className={CELL}>
+                    {subRoles && <Checkbox aria-label={`${t("includeDescendants")}: ${name}`} checked={rule.include_descendants ?? true}
+                      onCheckedChange={next => updateRule(index, { include_descendants: next === true })} />}
+                  </TableCell>}
+                  <TableCell className="px-0 py-2 text-right">
+                    <Button type="button" variant="ghost" size="icon" aria-label={`${t("removeRule")}: ${name}`} title={t("removeRule")}
+                      onClick={() => patch({ rules: value.rules.filter((_, i) => i !== index) })}>
+                      <X aria-hidden className="size-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>)}
+              </TableBody>
+            </Table>}
+            {addable.length > 0 && <Select value="" onValueChange={code => patch({ rules: [...value.rules, { role: { dimension: dimension.code, role: code } }] })}>
+              <SelectTrigger size="sm" className={cn("w-fit min-w-40 max-w-full", rules.length > 0 && "mt-2")} aria-label={`${t("addRule")}: ${dimension.name}`}>
+                <SelectValue placeholder={t("addRule")} />
+              </SelectTrigger>
+              <SelectContent>
+                {addable.map(role => <SelectItem key={role.id} value={role.code}>{nameOf(role)}</SelectItem>)}
+              </SelectContent>
+            </Select>}
+          </div>}
+          {mode !== "off" && <Collapsible className="py-3 last:pb-0"
+            defaultOpen={entry?.player_min_assignments != null || entry?.player_max_assignments != null}>
+            <CollapsibleTrigger asChild>
+              <Button type="button" variant="ghost" size="sm" className="group -ml-3">
+                <ChevronRight aria-hidden className="size-4 transition-transform group-data-[state=open]:rotate-90" />{t("advanced")}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="pt-2">
+              <SettingRow htmlFor={assignmentsId} label={t("assignments")}>
+                {range(
+                  bound(`${t("assignmentMin")}: ${dimension.name}`, entry?.player_min_assignments, next => updateDimension(dimension.code, { player_min_assignments: next }), { inputId: assignmentsId }),
+                  bound(`${t("assignmentMax")}: ${dimension.name}`, entry?.player_max_assignments, next => updateDimension(dimension.code, { player_max_assignments: next }))
+                )}
+              </SettingRow>
+            </CollapsibleContent>
+          </Collapsible>}
+        </SettingGroup>
       </fieldset>;
     })}
-    {value.dimensions.filter(entry => !ontology.dimensions.some(d => d.code === entry.dimension)).map(entry => <p key={entry.dimension} role="alert">{t("unknown", { role: entry.dimension })}</p>)}
-    <p className="text-xs text-muted-foreground">{t("nullHint")}</p>
+    {value.dimensions.filter(entry => !ontology.dimensions.some(d => d.code === entry.dimension)).map(entry =>
+      <p key={entry.dimension} role="alert" className="text-sm text-destructive">{t("unknown", { role: entry.dimension })}</p>)}
   </fieldset>;
 }

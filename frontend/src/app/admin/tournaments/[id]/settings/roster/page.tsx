@@ -93,7 +93,7 @@ function RosterForm({
         <PageStateCard state="error" title={formatT("loadError")} onAction={() => { void formatQuery.refetch(); void metadata.refetch(); }} />
       ) : form && metadata.data ? (
         <TeamFormatEditor value={form} ontology={metadata.data} presets={metadata.data.team_format_presets.map(teamFormatPayload)}
-          locked={tournament.roster_locked_by_draft === true} disabled={disabled || saving} onChange={patch} />
+          locked={tournament.roster_locked_by_draft === true} disabled={disabled || saving} showSubstitutes={hasBench} onChange={patch} />
       ) : tabFallback}
       {form && totalError && <p role="alert" className="text-sm text-destructive">{formatT("invalidFormat")}</p>}
 
