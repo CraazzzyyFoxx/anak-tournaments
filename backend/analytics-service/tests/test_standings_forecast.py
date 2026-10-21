@@ -12,7 +12,6 @@ now always simulates a virtual double round robin over the registered teams.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,7 +25,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
 
-os.environ["DEBUG"] = "false"
 
 standings_features = importlib.import_module("src.services.ml.features.standings_features")
 from tests.ow_analytics import exports as ow_exports  # noqa: E402

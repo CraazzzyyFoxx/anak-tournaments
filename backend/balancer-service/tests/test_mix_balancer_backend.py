@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import os
 import sys
 import unittest
 from pathlib import Path
@@ -24,7 +23,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 from src.domain.balancer.backends.mix_balancer import (  # noqa: E402
     MixBalancerBackend,

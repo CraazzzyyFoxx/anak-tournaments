@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import importlib
 import json
-import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -30,8 +29,6 @@ sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
 from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity
-
-os.environ["DEBUG"] = "true"
 
 admin_misc = importlib.import_module("src.rpc.admin_misc")
 helpers = importlib.import_module("src.rpc._helpers")

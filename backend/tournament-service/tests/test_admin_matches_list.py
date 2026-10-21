@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,7 +11,7 @@ from unittest import IsolatedAsyncioTestCase, TestCase
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
-os.environ["DEBUG"] = "true"
+
 
 svc = importlib.import_module("src.services.admin.matches")
 stats_reads = importlib.import_module("shared.repository.stats_reads")

@@ -21,12 +21,9 @@ serializer, so a future forward reference cannot reintroduce the bug silently.
 from __future__ import annotations
 
 import importlib
-import os
 import pkgutil
 import sys
 from unittest import TestCase
-
-os.environ.setdefault("DEBUG", "true")
 
 from pydantic import BaseModel  # noqa: E402
 from pydantic_core import SchemaSerializer  # noqa: E402

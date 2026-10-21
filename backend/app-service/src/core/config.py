@@ -4,12 +4,6 @@ from shared.core.config import BaseServiceSettings
 
 
 class Settings(BaseServiceSettings):
-    project_name: str = "OWT API"
-    project_url: str
-    # Gateway mount prefix for app-service: tournament-service owns the bare
-    # /api/v1 namespace, so app-service is carved out under /api/v1/core.
-    api_v1_str: str = "/api/v1/core"
-
     redis_url: RedisDsn
     # No default: a missing RABBITMQ_URL must fail at startup rather than fall
     # back to insecure ``guest:guest`` credentials.
@@ -29,13 +23,6 @@ class Settings(BaseServiceSettings):
     # that staleness. Kept short deliberately — do not fold it into
     # ``users_cache_ttl`` without wiring identity-service invalidation first.
     user_profile_cache_ttl: int = 60
-    tournaments_cache_ttl: int = 60 * 5
-    gamemodes_cache_ttl: int = 60 * 5
-    maps_cache_ttl: int = 60 * 5
-    heroes_cache_ttl: int = 60 * 5
-    statistics_cache_ttl: int = 60 * 5
-    teams_cache_ttl: int = 60 * 5
-    encounters_cache_ttl: int = 60 * 5
     achievements_cache_ttl: int = 60 * 5
 
     @property

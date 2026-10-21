@@ -14,7 +14,6 @@ synchronous ``Session`` behind an async facade avoids needing aiosqlite).
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 from unittest import TestCase
@@ -27,7 +26,6 @@ BACKEND_ROOT = Path(__file__).resolve().parents[1]
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
-os.environ.setdefault("DEBUG", "false")
 
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.models import (  # noqa: E402

@@ -8,7 +8,6 @@ counted/listed/looked up without the other game's.
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -23,7 +22,6 @@ from pydantic import ValidationError
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-os.environ.setdefault("DEBUG", "true")
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))

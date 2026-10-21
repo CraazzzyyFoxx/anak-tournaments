@@ -550,7 +550,6 @@ class LiveStack:
             JSON_LOGGING="false",
             LOG_LEVEL="info",
             QUOTA_ENABLED="false",
-            DEBUG="false",
             PYTHONPATH=str(BACKEND),
             TRACING_ENABLED="false",
             SENTRY_DSN="",

@@ -14,7 +14,6 @@ faked here. The worker tick's half of the same prerequisite — skip, do not rai
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -25,7 +24,6 @@ import pytest
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-os.environ.setdefault("DEBUG", "true")
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))

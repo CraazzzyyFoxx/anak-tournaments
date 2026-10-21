@@ -29,7 +29,7 @@ SERVICE_ROOT = BACKEND_ROOT / "stats-service"
 def _import(module: str):
     sys.path.insert(0, str(BACKEND_ROOT))
     sys.path.insert(0, str(SERVICE_ROOT))
-    os.environ["DEBUG"] = "true"
+
     return importlib.import_module(module)
 
 
@@ -42,7 +42,7 @@ def _subjects(process) -> set[str]:
 
 def _fresh_interpreter(code: str, **env: str) -> subprocess.CompletedProcess[str]:
     """Run ``code`` in a new interpreter (cwd = the service) with the test environment plus ``env``."""
-    full_env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(BACKEND_ROOT), str(SERVICE_ROOT)]), "DEBUG": "true"}
+    full_env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(BACKEND_ROOT), str(SERVICE_ROOT)])}
     full_env.pop("STATS_DISCIPLINES", None)
     full_env.update(env)
     return subprocess.run(

@@ -24,7 +24,6 @@ def test_test_env_file_is_committed() -> None:
     assert "POSTGRES_HOST=127.0.0.1" in text
     assert "POSTGRES_PORT=55432" in text
     assert "POSTGRES_DB=anak_test" in text
-    assert "DEBUG=" not in text
 
 
 def test_test_env_fills_when_no_local_env(monkeypatch: pytest.MonkeyPatch) -> None:

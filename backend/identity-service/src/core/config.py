@@ -15,11 +15,6 @@ class Settings(BaseServiceSettings):
         case_sensitive=False,
         extra="ignore",
     )
-
-    # Application overrides
-    project_name: str = "Authentication Service"
-    port: int = 8001
-
     # JWT Authentication
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"

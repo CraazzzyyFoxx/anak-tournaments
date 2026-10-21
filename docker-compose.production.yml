@@ -247,8 +247,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Phase 1: validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       # Same root value the frontend builds NEXT_PUBLIC_SITE_URL from: the bot's
       # "link Discord" / settings buttons must land on the site people actually use.
       - PUBLIC_SITE_URL=${SITE_URL:-https://owt.craazzzyyfoxx.me}
@@ -362,8 +360,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Phase 1: validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       - WORKER_METRICS_PORT=9100
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -415,8 +411,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Phase 1: validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       - WORKER_METRICS_PORT=9100
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -468,8 +462,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Phase 1: validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       - WORKER_METRICS_PORT=9103
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -516,8 +508,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       # Same root value the frontend builds NEXT_PUBLIC_SITE_URL from: the
       # links in notification DMs must land on the site people actually use.
       - PUBLIC_SITE_URL=${SITE_URL:-https://owt.craazzzyyfoxx.me}
@@ -567,8 +557,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Phase 1: validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       # Same root value the frontend builds NEXT_PUBLIC_SITE_URL from: the mix
       # signup card's board button must land on the site people actually use.
       - PUBLIC_SITE_URL=${SITE_URL:-https://owt.craazzzyyfoxx.me}
@@ -621,8 +609,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Phase 1: validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       - WORKER_METRICS_PORT=9106
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -672,8 +658,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       - WORKER_METRICS_PORT=9108
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -723,8 +707,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       - WORKER_METRICS_PORT=9111
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -824,11 +806,9 @@ services:
 
   # ==========================================================================
   # Gateway architecture — part of the DEFAULT stack.
-  # The gateway is the single API entry point: backend services validate tokens
-  # through it (AUTH_SERVICE_URL=http://gateway:8080/api/auth is set on each
-  # consumer below) -> RPC -> identity-svc, and the gateway serves /api/* (typed
-  # RPC) + the WebSocket hub. nginx is the external edge (Kong removed) and
-  # routes pages straight to the frontend.
+  # The gateway is the single API entry point: it validates tokens (-> RPC ->
+  # identity-svc) and serves /api/* (typed RPC) + the WebSocket hub. nginx is
+  # the external edge (Kong removed) and routes pages straight to the frontend.
   #   TLS terminator -> nginx -> gateway -> RPC -> identity
   #                          \-> frontend
   # ==========================================================================
@@ -860,8 +840,6 @@ services:
       - OTLP_ENDPOINT=http://alloy:4317
       - OTEL_TRACES_SAMPLER=parentbased_traceidratio
       - OTEL_TRACES_SAMPLER_ARG=0.1
-      # Phase 1: validate tokens via the gateway -> identity-svc (overrides common.env).
-      - AUTH_SERVICE_URL=http://gateway:8080/api/auth
       - WORKER_METRICS_PORT=9107
     extra_hosts:
       - "host.docker.internal:host-gateway"

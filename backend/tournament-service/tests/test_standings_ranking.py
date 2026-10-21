@@ -5,7 +5,6 @@ Pure functions over constructed ``RankedStageTeam``s -- no session, no fixtures.
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,7 +14,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 from src.services.standings import service  # noqa: E402
 from tests._stage_regulation import stage_regulation  # noqa: E402

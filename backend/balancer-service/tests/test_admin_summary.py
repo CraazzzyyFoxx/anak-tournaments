@@ -23,7 +23,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 import sqlalchemy as sa  # noqa: E402
 from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402

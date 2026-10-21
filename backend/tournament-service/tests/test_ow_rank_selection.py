@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 
@@ -11,7 +10,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 ow_rank_selection = importlib.import_module("src.domain.registration.ow_rank_selection")
 select_main_account_ow_ranks = ow_rank_selection.select_main_account_ow_ranks

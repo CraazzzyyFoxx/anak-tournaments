@@ -31,7 +31,6 @@ coincidence.
 from __future__ import annotations
 
 import importlib
-import os
 import re
 import sys
 import uuid
@@ -47,7 +46,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 import sqlalchemy as sa  # noqa: E402
 

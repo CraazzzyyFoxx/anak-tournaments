@@ -17,7 +17,6 @@ clears the score and unwinds the bracket.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -29,7 +28,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 enc_service = importlib.import_module("src.services.admin.encounter")
 schemas = importlib.import_module("src.schemas")

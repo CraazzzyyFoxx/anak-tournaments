@@ -28,7 +28,7 @@ from src.domain.balancer.config.public_contract import (
     normalize_config_payload,
 )
 from src.schemas.team import InternalBalancerTeamsPayload
-from src.services.admin.balancer_dual_write import BalancerVariantService, balancer_variant_service
+from src.services.admin.balancer_variant import BalancerVariantService, balancer_variant_service
 from src.services.balancer.config.provider import normalize_tournament_config_payload
 from src.services.balancer.realtime import emit_balancer_data, stage_export_invalidation
 from src.services.team import to_materialization_teams

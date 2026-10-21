@@ -10,7 +10,6 @@ position MAE for standings.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,8 +22,6 @@ sys.path.insert(0, str(backend_root / "analytics-service"))
 
 from tests.factories import identity_assign as _identity_assign  # noqa: E402
 from tests.ow_analytics import exports as ow_exports  # noqa: E402
-
-os.environ["DEBUG"] = "false"
 
 backtest = importlib.import_module("src.services.ml.training.backtest")
 

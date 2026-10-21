@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import importlib
 import logging
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,7 +13,7 @@ from unittest.mock import patch
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "stats-service"))
-os.environ["DEBUG"] = "true"
+
 
 rpc_misc = importlib.import_module("src.rpc.misc")
 

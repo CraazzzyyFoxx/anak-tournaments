@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from unittest import TestCase
@@ -13,7 +12,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
 
-os.environ["DEBUG"] = "false"
 
 device = importlib.import_module("src.services.ml.device")
 from tests.ow_analytics import module as ow_module  # noqa: E402

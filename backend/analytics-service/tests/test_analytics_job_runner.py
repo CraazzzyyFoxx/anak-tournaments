@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,7 +11,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "analytics-service"))
 
-os.environ["DEBUG"] = "false"
 
 job_runner = importlib.import_module("src.worker.job_runner")
 job_service = importlib.import_module("src.core.jobs")

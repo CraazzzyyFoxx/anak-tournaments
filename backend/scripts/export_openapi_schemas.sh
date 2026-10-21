@@ -32,9 +32,7 @@ out="$(cd "$here/../../gateway/internal/openapi" && pwd)/schemas.json"
 uv_bin="${UV:-uv}"
 
 export POSTGRES_USER=x POSTGRES_PASSWORD=x POSTGRES_DB=x POSTGRES_HOST=x POSTGRES_PORT=5432
-export REDIS_URL="redis://x:6379" RABBITMQ_URL="amqp://x" JWT_SECRET_KEY=x SECRET_KEY=x
-# stats-service Settings() additionally require these (never used — schemas only).
-export PROJECT_URL="http://x" CHALLONGE_USERNAME=x CHALLONGE_API_KEY=x
+export REDIS_URL="redis://x:6379" RABBITMQ_URL="amqp://x" JWT_SECRET_KEY=x
 
 # Services that declare src/openapi_schemas.py. Extend as coverage grows.
 services=(tournament-service app-service analytics-service balancer-service stats-service identity-service stream-service discord-service)

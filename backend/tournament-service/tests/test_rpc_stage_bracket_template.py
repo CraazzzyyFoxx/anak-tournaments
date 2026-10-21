@@ -15,7 +15,6 @@ with the service stubbed, the way the other rpc suites in this directory do it.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,7 +26,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 from shared.core.errors import BaseAPIException  # noqa: E402
 from tests._rpc_fakes import CapturingBroker, FakeSessionMaker, make_identity  # noqa: E402

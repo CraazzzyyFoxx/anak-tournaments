@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import os
 import sys
 import uuid
 from datetime import UTC, datetime
@@ -24,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "stats-service"))
-os.environ.setdefault("DEBUG", "true")
+
 
 from shared import models  # noqa: E402
 from shared.core.errors import BaseAPIException  # noqa: E402

@@ -20,7 +20,6 @@ Deliberately offline/deterministic: no DB, Redis or network.
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 from pathlib import Path
@@ -32,7 +31,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 from shared.disciplines import DISCIPLINES  # noqa: E402
 from src.domain.balancer.config.defaults import AlgorithmConfig, default_role_settings  # noqa: E402

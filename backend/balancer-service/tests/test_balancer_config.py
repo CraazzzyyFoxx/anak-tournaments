@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,7 +16,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 from src.domain.balancer.config.defaults import (  # noqa: E402
     AlgorithmConfig,

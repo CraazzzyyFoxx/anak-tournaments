@@ -3,7 +3,6 @@ and its facets must read it as "every workspace", not reject it with a 422."""
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -14,7 +13,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ.setdefault("DEBUG", "true")
 
 from shared.rpc.query import build_query_model  # noqa: E402
 from src import schemas  # noqa: E402

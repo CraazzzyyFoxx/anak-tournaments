@@ -7,7 +7,6 @@ client never has to filter a truncated cross-game sample.
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -15,8 +14,6 @@ import pytest
 import sqlalchemy as sa
 from pydantic import ValidationError
 from sqlalchemy.dialects import postgresql
-
-os.environ.setdefault("DEBUG", "true")
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))

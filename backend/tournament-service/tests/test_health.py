@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from unittest import IsolatedAsyncioTestCase
@@ -9,8 +8,6 @@ from unittest import IsolatedAsyncioTestCase
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
-
-os.environ["DEBUG"] = "true"
 
 
 class TournamentServiceSmokeTests(IsolatedAsyncioTestCase):

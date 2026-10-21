@@ -29,11 +29,6 @@ def select_disciplines(raw: str | None) -> tuple[DisciplineSpec, ...]:
 
 
 class AppConfig(BaseServiceSettings):
-    project_name: str = "OWT"
-    debug: bool = False
-    project_url: str
-    port: int = 8002
-
     # Disciplines this deployment serves (see select_disciplines); the worker consumes one ingest queue per entry.
     stats_disciplines: str | None = None
 
@@ -81,10 +76,6 @@ class AppConfig(BaseServiceSettings):
     @property
     def selected_disciplines(self) -> tuple[DisciplineSpec, ...]:
         return select_disciplines(self.stats_disciplines)
-
-    @property
-    def broker_url(self):
-        return self.rabbitmq_url
 
 
 settings = AppConfig()

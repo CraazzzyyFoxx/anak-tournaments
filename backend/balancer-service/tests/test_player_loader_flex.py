@@ -20,7 +20,6 @@ total roster slots" — see ``RoleLayout::from_request`` in ``native/balancer_na
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -34,7 +33,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 from shared.domain.roster_shape import FLEX_SLOT_CODE, RosterShape  # noqa: E402
 from src.domain.balancer.config.defaults import AlgorithmConfig  # noqa: E402

@@ -11,7 +11,6 @@ added without a DLQ the owning process (or discipline module) declares.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,7 +22,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "stats-service"))
 
-os.environ["DEBUG"] = "true"
 
 rpc = importlib.import_module("serve_rpc")
 worker = importlib.import_module("serve_worker")

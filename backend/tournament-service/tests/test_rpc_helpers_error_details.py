@@ -20,7 +20,6 @@ No database and no broker: the runners are driven directly with a session fake.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -35,7 +34,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 helpers = importlib.import_module("src.rpc._helpers")  # noqa: E402
 

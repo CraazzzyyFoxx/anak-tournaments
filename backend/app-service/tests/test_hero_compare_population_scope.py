@@ -19,7 +19,6 @@ substitutions, unfinished tournaments and leagues are all out.
 
 from __future__ import annotations
 
-import os
 import re
 import sys
 from pathlib import Path
@@ -35,7 +34,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "app-service"))
 
-os.environ["DEBUG"] = "true"
 
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB  # noqa: E402
 

@@ -35,7 +35,6 @@ class BaseServiceSettings(BaseSettings):
     proxy_http_port: int = 8080
 
     # Application
-    project_name: str = "OWT Service"
     version: str = "0.0.1"
     # Build identity, injected by CI/the image build (GIT_SHA). ``version`` is a
     # hand-maintained constant that has not moved from 0.0.1, so on its own it
@@ -44,8 +43,6 @@ class BaseServiceSettings(BaseSettings):
     # defects in Sentry. See sentry_release below.
     git_sha: str | None = None
     environment: typing.Literal["development", "production", "staging"] = "development"
-    host: str = "localhost"
-    port: int = 8000
 
     # Postgres
     postgres_user: str
@@ -53,12 +50,6 @@ class BaseServiceSettings(BaseSettings):
     postgres_db: str
     postgres_host: str
     postgres_port: str | int
-
-    # Auth/identity: services validate tokens through the gateway, which routes
-    # to the headless identity-svc over RPC. (auth-service is decommissioned.)
-    auth_service_url: str = "http://gateway:8080/api/auth"
-    auth_service_timeout: float = 5.0
-    auth_service_max_retries: int = 2
 
     # RabbitMQ consumer QoS: max unacked messages per default channel. Bounds
     # per-process concurrency so overload backlog stays in the queue (where the
@@ -92,13 +83,6 @@ class BaseServiceSettings(BaseSettings):
     # prepared-statement caching and applies statement_timeout per-transaction
     # via SET LOCAL. The client-side pool tuning above still applies.
     db_pgbouncer: bool = False
-
-    # Circuit Breaker
-    circuit_breaker_failure_threshold: int = 5
-    circuit_breaker_recovery_timeout: float = 30.0
-
-    # CORS
-    cors_origins: list[str] = []
 
     # Logging
     log_level: str = "info"

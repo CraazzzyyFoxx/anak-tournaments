@@ -22,7 +22,6 @@ Two additions are load-bearing rather than cosmetic and are pinned here:
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
@@ -33,7 +32,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 from shared.core.enums import HeroClass  # noqa: E402
 from shared.core.social import SocialProvider  # noqa: E402

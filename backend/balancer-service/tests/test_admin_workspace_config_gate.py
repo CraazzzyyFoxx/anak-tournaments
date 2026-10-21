@@ -13,7 +13,6 @@ Discord id must also be a channel of the workspace's own guild.
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -27,7 +26,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.services.discord_errors import DiscordUnavailable  # noqa: E402

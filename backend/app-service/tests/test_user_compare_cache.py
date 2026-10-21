@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,7 +16,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "app-service"))
 
-os.environ["DEBUG"] = "true"
 
 flows = importlib.import_module("src.services.user.service")
 schemas = importlib.import_module("src.schemas")

@@ -16,12 +16,9 @@ which is why the schema could not catch it.
 from __future__ import annotations
 
 import importlib
-import os
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
-
-os.environ.setdefault("DEBUG", "true")
 
 team_flows = importlib.import_module("src.services.team.flows")
 

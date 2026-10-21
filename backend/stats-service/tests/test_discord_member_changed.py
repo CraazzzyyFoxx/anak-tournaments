@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "stats-service"))
-os.environ["DEBUG"] = "true"
+
 
 from shared.core.social import SocialProvider
 from shared.schemas.events import DiscordMemberChangedEvent

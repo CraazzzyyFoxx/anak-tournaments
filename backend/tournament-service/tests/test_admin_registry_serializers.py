@@ -24,13 +24,10 @@ though the link was persisted.
 from __future__ import annotations
 
 import importlib
-import os
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, patch
-
-os.environ.setdefault("DEBUG", "true")
 
 registry = importlib.import_module("src.services.admin.registry")
 team_flows = importlib.import_module("src.services.team.flows")

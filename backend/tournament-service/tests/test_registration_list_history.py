@@ -10,7 +10,6 @@ Covers the Tier A/B optimization of ``_build_tournament_history``:
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -22,7 +21,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 registration = importlib.import_module("src.schemas.registration_build")
 

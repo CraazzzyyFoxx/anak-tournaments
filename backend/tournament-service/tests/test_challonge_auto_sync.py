@@ -11,7 +11,6 @@ orchestration (no-op gates, per-tournament isolation, aggregation), not Challong
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,7 +21,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 challonge_sync = importlib.import_module("src.services.challonge.sync")
 

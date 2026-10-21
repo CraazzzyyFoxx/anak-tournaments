@@ -3,9 +3,7 @@
 Uploads images per workspace: assets/achievements/{workspace_slug}/{slug}.{ext}
 Each workspace gets its own copy so images can be customized independently.
 
-Updates image_url in:
-  - achievements.achievement (legacy)
-  - achievements.rule (new engine, per workspace)
+Updates image_url in achievements.rule (per workspace).
 
 Usage:
     cd backend/

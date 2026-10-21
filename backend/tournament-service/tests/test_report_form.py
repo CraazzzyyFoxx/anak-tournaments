@@ -13,7 +13,6 @@ maps actually played, not best-of slots.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -25,7 +24,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 pydantic = importlib.import_module("pydantic")
 report_form = importlib.import_module("src.services.encounter.report_form")

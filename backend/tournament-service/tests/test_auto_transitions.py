@@ -16,7 +16,6 @@ Two layers:
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -27,16 +26,6 @@ from unittest.mock import AsyncMock, Mock, patch
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-
-def _ensure_test_env() -> None:
-    env = {
-        "DEBUG": "true",
-    }
-    for key, value in env.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))

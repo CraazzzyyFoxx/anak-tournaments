@@ -10,22 +10,11 @@ unplayable.
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest import IsolatedAsyncioTestCase, mock
-
-
-def _ensure_test_env() -> None:
-    for key, value in {
-        "DEBUG": "true",
-    }.items():
-        os.environ.setdefault(key, value)
-
-
-_ensure_test_env()
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))

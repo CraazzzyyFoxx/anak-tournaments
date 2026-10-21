@@ -19,7 +19,6 @@ backend_root = Path(__file__).resolve().parents[2]
 def _run(script: str) -> dict:
     env = {
         **os.environ,
-        "DEBUG": "true",
         "PYTHONPATH": os.pathsep.join([str(backend_root), str(backend_root / "stats-service")]),
     }
     done = subprocess.run(

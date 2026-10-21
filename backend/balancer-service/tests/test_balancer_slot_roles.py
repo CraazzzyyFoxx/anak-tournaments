@@ -20,7 +20,7 @@ from shared.services.ontology import project_disciplines  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
 from shared.testing.db import ensure_test_postgres  # noqa: E402
 from src.schemas.team import InternalBalancerTeamsPayload  # noqa: E402
-from src.services.admin.balancer_dual_write import BalancerVariantService  # noqa: E402
+from src.services.admin.balancer_variant import BalancerVariantService  # noqa: E402
 
 
 class BalancerSlotRoleTests(IsolatedAsyncioTestCase):

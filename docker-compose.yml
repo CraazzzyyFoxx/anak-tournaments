@@ -96,7 +96,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/app.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317
@@ -157,7 +156,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/stats.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317
@@ -206,7 +204,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/stats.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317
@@ -255,7 +252,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/tournament.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317
@@ -293,7 +289,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/balancer.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317
@@ -338,7 +333,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/analytics.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317
@@ -383,7 +377,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/analytics.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317
@@ -426,7 +419,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/stream.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317
@@ -467,7 +459,6 @@ services:
       - ./backend/env/common.env
       - ./backend/env/discord.env
     environment:
-      - DEBUG=true
       - LOG_LEVEL=DEBUG
       - TRACING_ENABLED=true
       - OTLP_ENDPOINT=http://otel-collector:4317

@@ -27,9 +27,6 @@ class Settings(BaseServiceSettings):
     gateway_heartbeat_path: str = DEFAULT_HEARTBEAT_PATH
     gateway_unready_timeout_seconds: float = 300.0
 
-    # Logging overrides
-    logs_celery_root_path: str = ""
-
     @property
     def broker_url(self) -> str | None:
         return self.rabbitmq_url

@@ -7,7 +7,6 @@ writer stay covered.
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,7 +21,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 from shared.domain.team_format import FormatDimension, TeamFormat  # noqa: E402
 from shared.models.catalog.role import CatalogRole, RoleDimension  # noqa: E402

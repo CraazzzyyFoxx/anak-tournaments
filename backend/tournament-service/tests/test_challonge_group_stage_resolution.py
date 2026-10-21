@@ -16,11 +16,8 @@ for this group yet" lookup crashed instead of reporting the miss.
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
 from unittest import TestCase
-
-os.environ.setdefault("DEBUG", "true")
 
 from shared import models  # noqa: E402
 from shared.core import enums  # noqa: E402

@@ -8,7 +8,6 @@ overlapping resources, and the routability contract cashews imposes at runtime.
 from __future__ import annotations
 
 import importlib
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -22,7 +21,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 cache_invalidation = importlib.import_module("src.services.tournament.cache_invalidation")
 form_service_module = importlib.import_module("src.services.registration.form_service")

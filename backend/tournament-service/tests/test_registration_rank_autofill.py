@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -14,7 +13,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ["DEBUG"] = "true"
 
 models = importlib.import_module("shared.models")
 rank_autofill = importlib.import_module("src.services.registration.rank_autofill")

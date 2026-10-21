@@ -423,9 +423,6 @@ to a matching discipline and kind and closes the miss in one request.
 - **Observability** — `WORKER_METRICS_PORT`, `LOG_LEVEL`, `JSON_LOGGING`, `SENTRY_DSN`,
   `TRACING_ENABLED`, `OTLP_ENDPOINT`, `OTEL_TRACES_SAMPLER*`.
 
-`PORT` is still present in `stats.env.example` and in `AppConfig`; nothing binds it — it is a
-leftover from the decommissioned HTTP service.
-
 ## Running
 
 Locally, from `backend/stats-service/`:

@@ -10,13 +10,10 @@ team_entities/player_entities; only the nested .player is entity-gated).
 from __future__ import annotations
 
 import importlib
-import os
 from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 
 from shared.schemas.role import RoleRef
-
-os.environ.setdefault("DEBUG", "true")
 
 team_flows = importlib.import_module("src.services.team.flows")
 

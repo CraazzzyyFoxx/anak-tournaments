@@ -15,7 +15,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 from src.core.job_store import BalancerJobStore  # noqa: E402
 from src.domain.balancer.captain_assignment_service import assign_captains  # noqa: E402

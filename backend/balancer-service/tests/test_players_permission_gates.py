@@ -13,7 +13,6 @@ the lobby, including people the workspace has never seen.
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,7 +25,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ["DEBUG"] = "false"
 
 from shared.schemas.identity import PlayerIdentityRead  # noqa: E402
 from src.rpc import players  # noqa: E402

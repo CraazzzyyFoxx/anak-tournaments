@@ -9,7 +9,6 @@ projection cannot know (tournament, roster shape, flex mode, division grid).
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,7 +22,6 @@ for candidate in (str(BACKEND_ROOT), str(SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-os.environ.setdefault("DEBUG", "false")
 
 from shared.division_grid import DivisionGrid  # noqa: E402
 from shared.domain.roster import PlayerRoster, RosterRole  # noqa: E402

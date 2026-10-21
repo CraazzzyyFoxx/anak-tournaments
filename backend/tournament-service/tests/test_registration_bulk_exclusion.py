@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,7 +10,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
-os.environ.setdefault("DEBUG", "true")
 
 from shared.core.errors import BaseAPIException as HTTPException
 from src.services.registration.lifecycle import lifecycle_service  # noqa: E402

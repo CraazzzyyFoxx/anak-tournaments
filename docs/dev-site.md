@@ -87,10 +87,10 @@ curl -sX POST -H 'Cookie: owtdev_refresh_token=x' https://<dev-host>/auth/refres
   production's app would invite production's bot). No `COMPOSE_PROFILES=telemetry`: the Alloy
   agent in `docker-compose.production.yml` pushes into production monitoring and is
   production-only.
-- `backend/env/*.env` — from the `.example` files, with `PLATFORM_ZONE`, `PROJECT_URL`,
-  `CORS_ORIGINS`, `GATEWAY_WS_ALLOWED_ORIGINS` and `OAUTH_REDIRECT` on the dev host,
+- `backend/env/*.env` — from the `.example` files, with `PLATFORM_ZONE`,
+  `GATEWAY_WS_ALLOWED_ORIGINS` and `OAUTH_REDIRECT` on the dev host,
   `SESSION_COOKIE_PREFIX=owtdev` in `gateway.env`, a
-  **dev-only** `JWT_SECRET_KEY`/`ACCESS_TOKEN_SERVICE`, and `POSTGRES_*` pointing at the dev
+  **dev-only** `JWT_SECRET_KEY`, and `POSTGRES_*` pointing at the dev
   database.
 - `proxy/xray.json` — the `proxy` sidecar's config, if outbound API calls need it. A dead
   outbound shows up as every Discord check answering `unknown`.

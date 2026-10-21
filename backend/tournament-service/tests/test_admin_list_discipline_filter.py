@@ -7,7 +7,6 @@ filter reaches both the page and the count statement.
 from __future__ import annotations
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -16,8 +15,6 @@ import pytest
 import sqlalchemy as sa
 from pydantic import ValidationError
 from sqlalchemy.dialects import postgresql
-
-os.environ.setdefault("DEBUG", "true")
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))

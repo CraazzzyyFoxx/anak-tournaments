@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -12,7 +11,6 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "stats-service"))
 
-os.environ.setdefault("DEBUG", "true")
 
 from src import schemas  # noqa: E402
 from src.services.achievement.rule_service import achievement_rule_service  # noqa: E402
