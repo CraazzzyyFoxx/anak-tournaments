@@ -977,10 +977,8 @@ export interface LogRecordRef {
  * its official result and observed team facts (`team_facts.score`); a deleted source team is `tournament_team_id: null`.
  */
 export interface AdminMatchRow
-  extends Omit<Schema<"tournament.AdminMatchRow">, "map" | "mode" | "raw_status" | "log_record" | "participants"> {
+  extends Omit<Schema<"tournament.AdminMatchRow">, "map" | "raw_status" | "log_record" | "participants"> {
   map: CatalogEntityRead;
-  /** The mode this match was played in; null when unknown. */
-  mode?: CatalogEntityRead | null;
   participants: MatchParticipant[];
   raw_status: RawSourceStatus | null;
   /** Null when no raw-log ingestion job is linked; not a processing failure. */

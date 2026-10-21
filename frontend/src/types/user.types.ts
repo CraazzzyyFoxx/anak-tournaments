@@ -199,12 +199,10 @@ export interface UserMatchViewer {
  * `member_totals`.
  */
 export interface MatchWithUserStats
-  extends Omit<Schema<"app.MatchReadWithUserStats">, "map" | "mode" | "raw_status" | "viewer" | "member_totals"> {
+  extends Omit<Schema<"app.MatchReadWithUserStats">, "map" | "raw_status" | "viewer" | "member_totals"> {
   raw_status: RawSourceStatus | null;
-  /** Always expanded, with its catalog mode as `map.parent`. */
+  /** Always expanded, with its catalog mode as `map.parent`; the match's own mode is `mode`. */
   map: CatalogEntityRead;
-  /** The mode this match was played in; prefer it over `map.parent`. Null when unknown. */
-  mode?: CatalogEntityRead | null;
   viewer: UserMatchViewer | null;
   member_totals: UserNativeFact[];
 }

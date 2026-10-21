@@ -51,7 +51,7 @@ export interface EncounterTeam {
 export interface EncounterGameWithMap extends EncounterGame {
   map: Match["map"];
   /** The game's own mode, served with `map`; null until known. */
-  mode?: CatalogEntityRead | null;
+  mode: Schema<"tournament.EncounterGameRead">["mode"];
 }
 
 export interface Encounter {
@@ -194,17 +194,15 @@ export type RawSourceStatus = "available" | "missing" | "conflict" | "unverified
 export type MatchParticipant = Schema<"tournament.MatchParticipantRead">;
 
 /** What a parsed log OBSERVED, with every participant (any number, `slot` order). Scores live in `participants`. */
-export interface Match extends Omit<Schema<"tournament.MatchRead">, "map" | "mode" | "encounter" | "raw_status"> {
+export interface Match extends Omit<Schema<"tournament.MatchRead">, "map" | "encounter" | "raw_status"> {
   /**
    * Proven game's 1-based series position, never source order or an array
    * index. Null means the observation has no confirmed game binding.
    */
   map_index: number | null;
   raw_status: RawSourceStatus | null;
-  /** Expanded by `entities=map`; its catalog mode is `map.parent` (`entities=map.parent`). */
+  /** Expanded by `entities=map`; its catalog mode is `map.parent`, the match's own mode is `mode`. */
   map: CatalogEntityRead | null;
-  /** The mode this match was played in, served with `map`; prefer it over `map.parent`. Null when unknown. */
-  mode?: CatalogEntityRead | null;
   /** Expanded by `entities=encounter`. */
   encounter: Encounter | null;
 }
