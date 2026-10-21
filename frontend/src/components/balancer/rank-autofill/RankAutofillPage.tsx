@@ -351,6 +351,7 @@ export default function RankAutofillPage({
             ) : (
               <RankAutofillPreviewTables
                 discipline={tournamentQuery.data?.discipline}
+                workspaceId={tournamentQuery.data?.workspace_id}
                 preview={tournamentQuery.data ? previewQuery.data : undefined}
                 loading={previewQuery.isFetching || tournamentQuery.isPending}
                 search={search}

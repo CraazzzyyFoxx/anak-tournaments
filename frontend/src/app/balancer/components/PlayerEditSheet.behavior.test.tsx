@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RankAutofillPreviewTables } from "@/components/balancer/rank-autofill/_components/RankAutofillPreviewTables";
 import { PickBanTargetBoard } from "@/components/pick-ban/PickBanTargetBoard";
 import messages from "@/i18n/messages/en.json";
+import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
 import adminService from "@/services/admin.service";
 import balancerAdminService from "@/services/balancer-admin.service";
 import userService from "@/services/user.service";
@@ -368,7 +369,7 @@ describe("owner-grid receiving controls", () => {
 });
 
 describe("owner-grid nested crests", () => {
-  it("uses LoL crests for both sides of an autofill rank transition", async () => {
+  it("uses LoL crests and role glyphs for an autofill rank transition", async () => {
     const preview: RegistrationRankAutofillResponse = {
       total_registrations: 1,
       updatable_registrations: 1,
@@ -414,9 +415,11 @@ describe("owner-grid nested crests", () => {
         }
       ]
     };
+    client.setQueryData(disciplineQueryKeys.metadata(workspace.id, "lol"), LOL_METADATA);
     await render(
       <RankAutofillPreviewTables
         discipline="lol"
+        workspaceId={workspace.id}
         preview={preview}
         loading={false}
         search=""
@@ -427,6 +430,7 @@ describe("owner-grid nested crests", () => {
       />
     );
     expect(crestNames()).toEqual(["LoL 1", "LoL 2"]);
+    expect(document.querySelector('img[src="/test-roles/support.svg"]')).not.toBeNull();
     expect([...document.querySelectorAll("img")].some((image) => image.src.includes("ow-"))).toBe(
       false
     );

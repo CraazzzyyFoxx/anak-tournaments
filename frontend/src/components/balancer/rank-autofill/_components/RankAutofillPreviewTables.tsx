@@ -11,7 +11,9 @@ import { EYEBROW_CLASS, TONE_CLASS, TONE_TEXT, type Tone } from "@/components/ki
 import type { DateFormatter } from "@/components/kit/format-time";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
+import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import { roleOf } from "@/lib/roster/role-ref";
 import { cn } from "@/lib/utils";
 import type {
@@ -150,10 +152,12 @@ function RowStatus({ states }: Readonly<{ states: Array<RowState | false | undef
 function RankAutofillRolePill({
   role,
   discipline,
+  ontology,
   owValue
 }: Readonly<{
   role: RegistrationRankAutofillRole;
   discipline?: string;
+  ontology: RoleOntology | null;
   owValue: RankAutofillOwValue | null;
 }>) {
   const t = useTranslations();
@@ -210,7 +214,12 @@ function RankAutofillRolePill({
         .join("\n")}
     >
       <span className="shrink-0">
-        <PlayerRoleIcon role={roleOf(role.role)} size={14} color="currentColor" decorative />
+        <PlayerRoleIcon
+          role={{ dimension: role.role.dimension, role: roleOf(role.role) }}
+          ontology={ontology}
+          size={14}
+          decorative
+        />
       </span>
       <span className="sr-only">{roleLabel}</span>
 
@@ -254,6 +263,7 @@ function RankAutofillRolePill({
 interface RankAutofillPreviewTablesProps {
   preview: RegistrationRankAutofillResponse | undefined;
   discipline?: string;
+  workspaceId?: number;
   loading: boolean;
   search: string;
   mismatchOnly: boolean;
@@ -265,6 +275,7 @@ interface RankAutofillPreviewTablesProps {
 export function RankAutofillPreviewTables({
   preview,
   discipline,
+  workspaceId,
   loading,
   search,
   mismatchOnly,
@@ -273,6 +284,8 @@ export function RankAutofillPreviewTables({
   onToggleAll
 }: Readonly<RankAutofillPreviewTablesProps>) {
   const t = useTranslations();
+  // The tournament's own game draws the role glyphs; without it every role is "?".
+  const ontology = useDisciplineMetadata(workspaceId ?? "all", discipline ?? null).data ?? null;
 
   if (!preview && !loading) {
     return (
@@ -373,6 +386,7 @@ export function RankAutofillPreviewTables({
                       <RankAutofillRolePill
                         key={`${role.role.dimension}:${role.role.role}`}
                         discipline={discipline}
+                        ontology={ontology}
                         role={role}
                         owValue={preview.ow_value}
                       />
@@ -414,6 +428,7 @@ export function RankAutofillPreviewTables({
                     <RankAutofillRolePill
                       key={`${role.role.dimension}:${role.role.role}`}
                       discipline={discipline}
+                      ontology={ontology}
                       role={role}
                       owValue={preview.ow_value}
                     />
@@ -474,6 +489,7 @@ export function RankAutofillPreviewTables({
                         <RankAutofillRolePill
                           key={`${role.role.dimension}:${role.role.role}`}
                           discipline={discipline}
+                          ontology={ontology}
                           role={role}
                           owValue={preview.ow_value}
                         />
