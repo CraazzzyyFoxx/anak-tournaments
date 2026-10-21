@@ -28,6 +28,7 @@ import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import type { Encounter } from "@/types/encounter.types";
 import { getLogFileName } from "./logs.helpers";
+import { mapWithModeName } from "@/lib/catalog/mode";
 
 /** Two encounters of one pair share a name, so the stage and round tell them apart. */
 function encounterOptionLabel(encounter: Encounter, formatRound: BracketRoundLabelFormatter) {
@@ -198,7 +199,7 @@ export function AttachLogDialog({
             value: String(game.id),
             label: t("gameOption", {
               position: game.position,
-              map: game.map?.name ?? t("unknownMap"),
+              map: mapWithModeName(game.map, game.mode) ?? t("unknownMap"),
               id: game.id
             })
           }))}

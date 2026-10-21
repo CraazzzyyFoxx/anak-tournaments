@@ -110,6 +110,8 @@ export function PreGameEditor({
     () => new Map(catalogue.map((option) => [option.id, option])),
     [catalogue]
   );
+  // A mode in the pool restricts which logs count; a room never offers it, so slots and rules see maps only.
+  const roomCatalogue = useMemo(() => catalogue.filter((option) => !option.isMode), [catalogue]);
 
   const scopeLabel = describeScope({ stage_id: scope.stageId, round: scope.round });
   const inheritedLabel =
@@ -168,6 +170,7 @@ export function PreGameEditor({
                   catalogue={catalogue}
                   catalogueById={catalogueById}
                   catalogueLoading={catalogueLoading}
+                  roomCatalogue={roomCatalogue}
                   canManage={canManage}
                   patch={form.patch}
                   patchSlot={form.patchSlot}
@@ -186,7 +189,7 @@ export function PreGameEditor({
                   validating={validation.pending}
                   inherited={form.inheritedDraft}
                   inheritedLabel={inheritedLabel}
-                  catalogue={catalogue}
+                  catalogue={roomCatalogue}
                   canManage={canManage}
                   patch={form.patch}
                 />

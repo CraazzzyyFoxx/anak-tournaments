@@ -30,6 +30,8 @@ export interface CatalogueItem {
   /** Game mode for a map, role for a hero. Disambiguates similar names. */
   group: string | null;
   imageSrc: string | null;
+  /** A mode beside the maps: it narrows which logs a match accepts, and only a shared pool may name it. */
+  isMode?: boolean;
 }
 
 /** Filter value showing every catalogue row regardless of its group. */

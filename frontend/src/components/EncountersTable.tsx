@@ -32,6 +32,7 @@ import {
   type EncounterState
 } from "@/lib/encounter/status";
 import { encounterSeatScore } from "@/lib/encounter/detail";
+import { mapWithModeName } from "@/lib/catalog/mode";
 import { duelSeats, duelWinner, seatTeam } from "@/lib/encounter/seats";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import encounterService from "@/services/encounter.service";
@@ -512,7 +513,7 @@ export function EncountersDataTable({
                     ? (encounter.matches ?? []).map((match) => ({
                         matchId: match.id,
                         rawAvailable: match.raw_available,
-                        label: `${match.map?.name ?? t("encounters.match.mapAlt")} · #${match.id}`
+                        label: `${mapWithModeName(match.map, match.mode) ?? t("encounters.match.mapAlt")} · #${match.id}`
                       }))
                     : undefined
                 }

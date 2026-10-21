@@ -13,6 +13,7 @@ import { GameIcon } from "@/components/workspace/GameIcon";
 import { EncounterWithUserStats } from "@/types/user.types";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import { tournamentHref } from "@/lib/tournament/url";
+import { mapWithModeName } from "@/lib/catalog/mode";
 
 interface MatchRowProps {
   enc: EncounterWithUserStats;
@@ -105,7 +106,7 @@ const MatchRow = ({ enc, selfUserId, showGame = false }: MatchRowProps) => {
               ? (enc.matches ?? []).map((m) => ({
                   matchId: m.id,
                   rawAvailable: m.raw_available,
-                  label: `${m.map?.name ?? t("encounters.match.mapAlt")} · #${m.id}`
+                  label: `${mapWithModeName(m.map, m.mode) ?? t("encounters.match.mapAlt")} · #${m.id}`
                 }))
               : undefined
           }

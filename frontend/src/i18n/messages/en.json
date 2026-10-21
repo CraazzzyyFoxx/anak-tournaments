@@ -4585,6 +4585,7 @@
       "useInheritedValue": "Use that",
       "poolSection": "What captains choose from",
       "poolSectionHint": "The candidates a match draws on, and how they are grouped.",
+      "poolModesHint": "Modes can join the pool beside maps. Once it names a mode, a match's log is accepted only from one of the modes it names.",
       "modeLabel": "Pool shape",
       "modePool": "One shared pool",
       "modeSlots": "One group per match",

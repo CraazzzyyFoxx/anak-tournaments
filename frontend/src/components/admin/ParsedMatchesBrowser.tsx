@@ -26,6 +26,7 @@ import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { scoreLine } from "@/lib/encounter/detail";
+import { mapWithModeName } from "@/lib/catalog/mode";
 import tournamentService from "@/services/tournament.service";
 import type { AdminMatchRow, LogProcessingStatus } from "@/types/admin.types";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
@@ -173,8 +174,8 @@ export function ParsedMatchesBrowser({
         enableSorting: false,
         cell: ({ row }) => (
           <div className="min-w-0 max-w-[20rem]">
-            <p className="truncate font-medium text-foreground" title={row.original.map.name}>
-              {row.original.map.name}
+            <p className="truncate font-medium text-foreground" title={mapWithModeName(row.original.map, row.original.mode)}>
+              {mapWithModeName(row.original.map, row.original.mode)}
             </p>
             <p
               className="truncate text-xs text-muted-foreground"
@@ -258,7 +259,7 @@ export function ParsedMatchesBrowser({
             onRowClick={(row) => setParams({ id: String(row.original.id) })}
             renderMobileCard={(row) => (
               <div className="min-w-0 flex-1 space-y-0.5">
-                <p className="truncate text-sm font-medium">{row.original.map.name}</p>
+                <p className="truncate text-sm font-medium">{mapWithModeName(row.original.map, row.original.mode)}</p>
                 {discipline === null ? (
                   <RowGameLabel code={row.original.discipline} className="flex text-xs text-muted-foreground" />
                 ) : null}
@@ -305,7 +306,7 @@ export function ParsedMatchesBrowser({
         <Inspector
           openId={openRow ? openId : null}
           onClose={() => setParams({ id: null })}
-          title={openRow?.map.name ?? ""}
+          title={openRow ? mapWithModeName(openRow.map, openRow.mode) : ""}
           subtitle={
             openRow ? `${openRow.encounter_name} · ${openRow.tournament_name}` : undefined
           }

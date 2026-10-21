@@ -167,7 +167,7 @@ export function MatchRow({
             className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_4rem_4rem_auto] items-center gap-2 py-1"
           >
             <span className="truncate font-semibold">{map.map?.name ?? "—"}</span>
-            <span className="truncate text-[color:var(--aqt-fg-muted)]">{map.map?.parent?.name ?? "—"}</span>
+            <span className="truncate text-[color:var(--aqt-fg-muted)]">{(map.mode ?? map.map?.parent)?.name ?? "—"}</span>
             <span className="text-right tabular-nums">
               {seatScoreLabel(map)}
             </span>

@@ -37,6 +37,7 @@ import {
   formatSeriesClock,
   getSeriesSeconds
 } from "@/lib/encounter/detail";
+import { mapWithModeName } from "@/lib/catalog/mode";
 import styles from "@/components/match/EncounterDetail.module.css";
 
 export const dynamic = "force-dynamic";
@@ -170,7 +171,7 @@ const EncounterPage = async (props: {
   const closeness = formatCloseness(encounter.closeness);
   const logs = observations.map((match) => ({
     matchId: match.id,
-    label: `${match.map?.name ?? t("encounters.match.mapAlt")} · #${match.id}`,
+    label: `${mapWithModeName(match.map, match.mode) ?? t("encounters.match.mapAlt")} · #${match.id}`,
     rawAvailable: match.raw_available
   }));
   const withStats = observations.length > 0;

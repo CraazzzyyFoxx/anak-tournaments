@@ -21,6 +21,7 @@ import MatchStatistics from "@/components/match/MatchStatistics";
 import encounterService from "@/services/encounter.service";
 import { acceptedScore } from "@/components/pick-ban/pick-ban-model";
 import { formatSeriesClock, type SeriesSlot } from "@/lib/encounter/detail";
+import { mapWithModeName } from "@/lib/catalog/mode";
 import type { Duel } from "@/lib/encounter/seats";
 import type { Encounter } from "@/types/encounter.types";
 import { Pill } from "@/components/match/EncounterAtoms";
@@ -90,6 +91,8 @@ export default function EncounterMapRow({
   // names the same map later. Prefer the match's object when both exist.
   const map = match?.map ?? game?.map ?? null;
   const mapName = map?.name ?? t("encounters.match.mapAlt");
+  // The match's own mode: a map several modes share (Deadlock's Midtown) has no parent to name it.
+  const mode = match?.mode ?? game?.mode ?? map?.parent ?? null;
   const duration = match != null ? formatSeriesClock(match.duration_s, clockUnits) : null;
   const shown = accepted ?? (game == null ? parsed : null);
   // The log's own score is news only when it is not the score above: a map no
@@ -123,12 +126,12 @@ export default function EncounterMapRow({
       <span className={styles.mapIdentity}>
         <span className={styles.mapName}>{mapName}</span>
         <span className={styles.mapMode}>
-          {map?.parent ? (
+          {mode ? (
             <>
-              {map.parent.image_path ? (
-                <Image src={map.parent.image_path} alt="" width={14} height={14} aria-hidden />
+              {mode.image_path ? (
+                <Image src={mode.image_path} alt="" width={14} height={14} aria-hidden />
               ) : null}
-              {map.parent.name}
+              {mode.name}
             </>
           ) : (
             t("encounters.match.gamemodeAlt")
@@ -202,16 +205,16 @@ export default function EncounterMapRow({
           <DialogContent className="flex max-h-[90vh] w-[95vw] max-w-[1100px] flex-col gap-0 overflow-hidden p-0">
             <DialogHeader className={cn(styles.dialogHead, "space-y-0")}>
               <DialogTitle className={styles.dialogTitle}>
-                {match.map?.parent?.image_path ? (
+                {mode?.image_path ? (
                   <Image
-                    src={match.map.parent.image_path}
+                    src={mode.image_path}
                     alt=""
                     width={26}
                     height={26}
                     aria-hidden
                   />
                 ) : null}
-                {mapName}
+                {mapWithModeName(match.map, match.mode) ?? mapName}
               </DialogTitle>
               <span className={styles.dialogScore}>
                 <span className={cn(styles.dialogTeam, styles.scoreOne)}>{names.one}</span>

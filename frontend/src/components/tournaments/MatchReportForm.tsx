@@ -22,6 +22,7 @@ import { buildMapCodeSlots } from "@/components/tournaments/matchReportSlots";
 import { reportOf } from "@/lib/encounter/reports";
 import { seriesClaimErrors, seriesReportErrorCodes } from "@/lib/encounter/series-claim";
 import { isLobby, seatsBySlot } from "@/lib/encounter/seats";
+import { modeBeyondMap } from "@/lib/catalog/mode";
 import {
   DEFAULT_MATCH_REPORT_BUILT_INS,
   type Encounter,
@@ -590,7 +591,14 @@ export function MatchReportForm({
             <div className="space-y-2">
               {slots.map((slot, position) => {
                 const name = slot.mapId != null ? mapNameById.get(slot.mapId) : undefined;
-                const label = name ?? t("matchReport.mapLabel", { index: String(position + 1) });
+                const game = encounter.games?.find((candidate) => candidate.position === slot.mapIndex);
+                const mode = modeBeyondMap(game?.map, game?.mode);
+                const label =
+                  name == null
+                    ? t("matchReport.mapLabel", { index: String(position + 1) })
+                    : mode == null
+                      ? name
+                      : `${name} · ${mode.name}`;
                 const value = codes[slot.mapIndex] ?? "";
                 // `playedSlots` is a prefix of `slots`, so position decides it.
                 const isPlayed = position < playedSlots.length;

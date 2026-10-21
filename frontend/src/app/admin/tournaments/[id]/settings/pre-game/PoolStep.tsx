@@ -32,6 +32,7 @@ export function PoolStep({
   catalogue,
   catalogueById,
   catalogueLoading,
+  roomCatalogue,
   canManage,
   patch,
   patchSlot,
@@ -53,6 +54,8 @@ export function PoolStep({
   catalogue: CatalogueItem[];
   catalogueById: Map<number, CatalogueItem>;
   catalogueLoading: boolean;
+  /** `catalogue` without its modes: what a group of one match may hold. */
+  roomCatalogue: CatalogueItem[];
   canManage: boolean;
   patch: (values: Partial<PickBanDraft>) => void;
   patchSlot: (index: number, slotPatch: Partial<PickBanDraftSlot>) => void;
@@ -106,6 +109,9 @@ export function PoolStep({
             {isHero ? t("poolHeroLabel") : t("poolMapLabel")}
           </FieldTitle>
           <FieldDescription>{t("poolHint")}</FieldDescription>
+          {roomCatalogue.length < catalogue.length ? (
+            <FieldDescription>{t("poolModesHint")}</FieldDescription>
+          ) : null}
           <CatalogueChips
             itemIds={draft.itemIds}
             catalogue={catalogueById}
@@ -149,7 +155,7 @@ export function PoolStep({
                     reserveLabel={t("slotReserveAria", { n: index + 1 })}
                     slot={slot}
                     kind={kind}
-                    catalogue={catalogue}
+                    catalogue={roomCatalogue}
                     catalogueById={catalogueById}
                     catalogueLoading={catalogueLoading}
                     canManage={canManage}
@@ -183,7 +189,7 @@ export function PoolStep({
                 reserveLabel={t("slotReserveAria", { n: index + 1 })}
                 slot={slot}
                 kind={kind}
-                catalogue={catalogue}
+                catalogue={roomCatalogue}
                 catalogueById={catalogueById}
                 catalogueLoading={catalogueLoading}
                 canManage={canManage}

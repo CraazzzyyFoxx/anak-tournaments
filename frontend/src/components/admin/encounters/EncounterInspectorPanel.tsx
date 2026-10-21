@@ -17,6 +17,7 @@ import type { AdminMatchRow } from "@/types/admin.types";
 import type { Encounter } from "@/types/encounter.types";
 import { reportOf, scoreline } from "@/lib/encounter/reports";
 import { scoreLine } from "@/lib/encounter/detail";
+import { mapWithModeName } from "@/lib/catalog/mode";
 import { isLobby, seatsBySlot } from "@/lib/encounter/seats";
 
 /**
@@ -104,7 +105,7 @@ export function EncounterInspectorPanel({
           <ul className="space-y-1 text-sm">
             {(parsedMapsQuery.data?.results ?? []).map((map: AdminMatchRow) => (
               <li key={map.id} className="flex items-center justify-between gap-2">
-                <span className="truncate">{map.map.name}</span>
+                <span className="truncate">{mapWithModeName(map.map, map.mode)}</span>
                 <span className="text-xs tabular-nums text-muted-foreground">{scoreLine(map.participants)}</span>
               </li>
             ))}

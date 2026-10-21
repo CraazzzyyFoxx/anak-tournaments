@@ -31,6 +31,8 @@ import {
   type PreGameStep
 } from "./pre-game-scope";
 import { useCatalogEntities } from "@/hooks/useCatalogEntities";
+import { useGameDescriptors } from "@/hooks/useGameDescriptors";
+import { useKindLabel } from "@/hooks/useKindLabel";
 
 export default function PreGameSettingsPage() {
   return (
@@ -88,19 +90,44 @@ function PreGamePhase({
   // One catalogue query per kind of the tournament's own game, both gated on the kind on screen.
   const mapsQuery = useCatalogEntities(discipline, "map", { enabled: kind === "map" });
   const heroesQuery = useCatalogEntities(discipline, "character", { enabled: kind === "hero" });
+  // A game whose maps belong to no mode (Deadlock's Midtown hosts all of them) names a match's mode apart from its
+  // map, so its pool may hold modes too. A game that files each map under a mode (Overwatch) says it through the map.
+  const descriptor = useGameDescriptors().get(discipline);
+  const kindLabel = useKindLabel();
+  const offersModes =
+    kind === "map" &&
+    descriptor != null &&
+    "mode" in descriptor.kinds &&
+    mapsQuery.data != null &&
+    mapsQuery.data.every((map) => map.parent_id == null);
+  const modesQuery = useCatalogEntities(discipline, "mode", { enabled: offersModes });
 
   const catalogue = useMemo<CatalogueItem[]>(() => {
     if (kind === "map") {
+      // Maps and modes share the pool, so each is filed under its kind for the picker's group filter.
+      const mapGroup = offersModes && descriptor ? kindLabel(descriptor, "map") : null;
       // Off-rotation maps (a retired brawl-only map) are not something an
       // organizer bans or picks in a ranked series.
-      return (mapsQuery.data ?? [])
+      const maps = (mapsQuery.data ?? [])
         .filter((map) => map.attrs.in_competitive !== false)
         .map((map) => ({
           id: map.id,
           name: map.name,
-          group: map.parent?.name ?? null,
+          group: map.parent?.name ?? mapGroup,
           imageSrc: map.image_path ?? null
         }));
+      if (!offersModes || !descriptor) return maps;
+      const modeGroup = kindLabel(descriptor, "mode");
+      return [
+        ...maps,
+        ...(modesQuery.data ?? []).map((mode) => ({
+          id: mode.id,
+          name: mode.name,
+          group: modeGroup,
+          imageSrc: mode.image_path ?? null,
+          isMode: true
+        }))
+      ];
     }
     return (heroesQuery.data ?? []).map((hero) => ({
       id: hero.id,
@@ -108,9 +135,10 @@ function PreGamePhase({
       group: typeof hero.attrs.class === "string" ? hero.attrs.class : null,
       imageSrc: hero.image_path ?? null
     }));
-  }, [kind, mapsQuery.data, heroesQuery.data]);
+  }, [kind, mapsQuery.data, heroesQuery.data, modesQuery.data, offersModes, descriptor, kindLabel]);
 
-  const catalogueLoading = kind === "map" ? mapsQuery.isPending : heroesQuery.isPending;
+  const catalogueLoading =
+    kind === "map" ? mapsQuery.isPending || (offersModes && modesQuery.isPending) : heroesQuery.isPending;
 
   const stages = useMemo(() => stagesQuery.data ?? [], [stagesQuery.data]);
   const stagesById = useMemo(() => new Map(stages.map((stage) => [stage.id, stage])), [stages]);

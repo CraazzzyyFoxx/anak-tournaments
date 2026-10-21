@@ -27,6 +27,7 @@ import {
   pickBanSeats
 } from "@/components/pick-ban/pick-ban-model";
 import { isLobby } from "@/lib/encounter/seats";
+import { modeBeyondMap } from "@/lib/catalog/mode";
 import { PickBanUndoControl } from "@/components/pick-ban/PickBanUndoControl";
 import { PickBanSideAssignment } from "@/components/pick-ban/PickBanSideChoice";
 import { useSideLabel } from "@/components/pick-ban/useSideLabel";
@@ -360,14 +361,17 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
     const reportMapId = loop.pendingMap?.item_id ?? reportGame?.map_id ?? null;
     const reportSides = heroState.starting_sides ?? mapState.starting_sides;
     const reportMapItem = reportMapId != null ? room.mapsById[reportMapId] : undefined;
+    const reportMapName =
+      reportMapItem?.name ??
+      (reportMapId != null ? t("map.itemNumber", { id: reportMapId }) : t("mapResult.pickMap"));
+    // Once a log names the game's mode, a map several modes share (Midtown) says which one was played.
+    const reportEncounterGame = encounter.games?.find((game) => game.position === loop.reportRound);
+    const reportMode = modeBeyondMap(reportEncounterGame?.map, reportEncounterGame?.mode);
     return (
       <div className="flex flex-col gap-4">
         <PregameMapResult
           encounterId={encounterId}
-          mapName={
-            reportMapItem?.name ??
-            (reportMapId != null ? t("map.itemNumber", { id: reportMapId }) : t("mapResult.pickMap"))
-          }
+          mapName={reportMode == null ? reportMapName : `${reportMapName} · ${reportMode.name}`}
           mapImagePath={reportMapItem?.image_path ?? null}
           round={loop.reportRound}
           viewerTeamId={viewerTeamId}

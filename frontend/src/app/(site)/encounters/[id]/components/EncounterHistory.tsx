@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import MatchLogIndicator, { RawLogStatus } from "@/components/match/MatchLogIndicator";
 import type { Match } from "@/types/encounter.types";
 import { cn } from "@/lib/utils";
+import { mapWithModeName } from "@/lib/catalog/mode";
 import styles from "@/components/match/EncounterDetail.module.css";
 
 export default function EncounterHistory({ matches }: Readonly<{ matches: Match[] }>) {
@@ -26,7 +27,7 @@ export default function EncounterHistory({ matches }: Readonly<{ matches: Match[
           <li key={match.id} className="flex flex-wrap items-start justify-between gap-3 p-4">
             <div className="min-w-0 space-y-1">
               <Link href={`/matches/${match.id}`} className={cn(styles.button, styles.buttonAccent)}>
-                {match.map?.name ?? t("encounters.match.mapAlt")} · #{match.id}
+                {mapWithModeName(match.map, match.mode) ?? t("encounters.match.mapAlt")} · #{match.id}
               </Link>
               <p className="text-sm text-[color:var(--aqt-fg-muted)]">
                 {t("encounters.history.unconfirmed")}
@@ -39,7 +40,7 @@ export default function EncounterHistory({ matches }: Readonly<{ matches: Match[
               hasLogs
               logs={[{
                 matchId: match.id,
-                label: `${match.map?.name ?? t("encounters.match.mapAlt")} · #${match.id}`,
+                label: `${mapWithModeName(match.map, match.mode) ?? t("encounters.match.mapAlt")} · #${match.id}`,
                 rawAvailable: match.raw_available
               }]}
             />

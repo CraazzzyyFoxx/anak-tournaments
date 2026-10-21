@@ -3,6 +3,7 @@
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
+import { mapWithModeName } from "@/lib/catalog/mode";
 import { EncounterWithUserStats } from "@/types/user.types";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
@@ -137,7 +138,7 @@ const EncounterRow = ({
               ? (enc.matches ?? []).map((m) => ({
                   matchId: m.id,
                   rawAvailable: m.raw_available,
-                  label: `${m.map?.name ?? t("encounters.match.mapAlt")} · #${m.id}`
+                  label: `${mapWithModeName(m.map, m.mode) ?? t("encounters.match.mapAlt")} · #${m.id}`
                 }))
               : undefined
           }

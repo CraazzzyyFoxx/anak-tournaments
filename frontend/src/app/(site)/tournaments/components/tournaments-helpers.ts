@@ -1,5 +1,6 @@
 import type { useTranslations } from "next-intl";
 
+import { mapWithModeName } from "@/lib/catalog/mode";
 import { getTournamentStatusMeta } from "@/lib/tournament/status";
 import { pickCurrentStage } from "@/lib/tournament/stages";
 import type { Encounter } from "@/types/encounter.types";
@@ -79,5 +80,5 @@ export function currentMapName(encounter: Encounter): string | null {
   const index = encounter.current_map_index;
   if (index == null) return null;
   const match = encounter.matches?.[index];
-  return match?.map?.name ?? null;
+  return mapWithModeName(match?.map, match?.mode);
 }

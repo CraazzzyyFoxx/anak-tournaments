@@ -12,6 +12,7 @@ import { RawLogStatus } from "@/components/match/MatchLogIndicator";
 import { getTranslations } from "next-intl/server";
 import { SITE_NAME, SITE_URL } from "@/config/site";
 import { seatsBySlot } from "@/lib/encounter/seats";
+import { modeBeyondMap } from "@/lib/catalog/mode";
 
 /** One accent per participant, in seat order; a lobby cycles through them. Full literals so Tailwind sees them. */
 const ACCENT_CLASSES = [
@@ -61,6 +62,8 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
   const t = await getTranslations();
 
   const participants = seatsBySlot(match.participants);
+  const mode = match.mode ?? match.map?.parent ?? null;
+  const modeAfterMap = modeBeyondMap(match.map, match.mode);
   const tournament_name = match?.encounter?.tournament.name;
   const stageLabel =
     match?.encounter?.stage_item?.name ??
@@ -75,15 +78,21 @@ const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
           <div className="flex flex-row gap-8 items-center">
             <div className="flex flex-row gap-4 items-center">
               {/* A map without a mode (every LoL map) or a mode without an image has no badge: never an empty src. */}
-              {match.map?.parent?.image_path ? (
+              {mode?.image_path ? (
                 <Image
-                  src={match.map.parent.image_path}
-                  alt={match.map.parent.name || t("matches.gamemode")}
+                  src={mode.image_path}
+                  alt={mode.name || t("matches.gamemode")}
                   height={40}
                   width={40}
                 />
               ) : null}
-              <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">{match.map?.name}</h4>
+              <h4 className="scroll-m-20 text-xl font-semibold tracking-tight">
+                {match.map?.name}
+                {/* A map shared by several modes does not name the one played. */}
+                {modeAfterMap ? (
+                  <span className="font-normal text-[color:var(--aqt-fg-dim)]"> · {modeAfterMap.name}</span>
+                ) : null}
+              </h4>
             </div>
             <div className="flex flex-row flex-wrap gap-4">
               {participants.map((participant, index) => {

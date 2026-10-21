@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
+import { mapWithModeName } from "@/lib/catalog/mode";
 import { encounterSeatScore } from "@/lib/encounter/detail";
 import { getEncounterWinner, isEncounterCompleted, isEncounterLive } from "@/lib/encounter/status";
 import { seatAt, seatTeam, type DuelSlot } from "@/lib/encounter/seats";
@@ -124,7 +125,7 @@ export function MatchCard({
                     : "border-dashed border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-faint)]"
                 )}
               >
-                {map.map?.name ?? "—"}
+                {mapWithModeName(map.map, map.mode) ?? "—"}
                 {played ? ` ${mapScore.one}:${mapScore.two}` : null}
               </li>
             );
