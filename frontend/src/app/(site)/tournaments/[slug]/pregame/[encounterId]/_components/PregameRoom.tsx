@@ -188,6 +188,11 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
   // has its pool or report there, so the rosters sit one click away instead.
   const showRostersButton = !loop.waitingOnReadiness;
   const canUploadLog = workspaceId != null && hasWorkspacePermission(workspaceId, "log.create");
+  // A tournament game of a discipline that declares a match fetcher can be filed by its match id (a scrim room
+  // publishes no result). `match_fetch` is read through `in` until `api.generated.ts` is regenerated with it.
+  const capabilities = room.metadata.status === "ready" ? room.metadata.metadata.discipline.capabilities : null;
+  const matchImport =
+    seriesReport && capabilities != null && "match_fetch" in capabilities && capabilities.match_fetch === true;
   const header = (
     <>
       <PregameHeader
@@ -287,6 +292,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
             seriesWins={seriesSummary?.wins ?? null}
             onMutated={room.invalidateRoom}
             grid={grid}
+            matchImport={matchImport}
           />
         </CollapsibleContent>
       </Collapsible>
@@ -369,6 +375,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
               ? room.mapChoices.map((map) => ({ id: map.id, name: map.name }))
               : undefined
           }
+          matchImport={matchImport}
         />
         {/* A dispute parks the room on this screen until an organizer rules on
             it, and ruling means correcting the game's result — which is in

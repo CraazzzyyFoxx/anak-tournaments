@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ShieldCheck } from "lucide-react";
+import { FileDown, ShieldCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMutation } from "@tanstack/react-query";
 
@@ -10,6 +10,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { PickBanKind, PickBanState } from "@/types/tournament.types";
+import { MatchImport } from "@/components/pick-ban/MatchImport";
 import type { PickBanSeat } from "@/components/pick-ban/pick-ban-model";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 
@@ -44,7 +45,8 @@ export function PregameAdminPanel({
   bestOf,
   seriesWins,
   onMutated,
-  grid = null
+  grid = null,
+  matchImport = false
 }: Readonly<{
   encounterId: number;
   statesByKind: Record<PickBanKind, PickBanState>;
@@ -64,6 +66,8 @@ export function PregameAdminPanel({
   onMutated: () => void;
   /** The board on screen, when one is: its selection and its own reset. */
   grid?: PickBanAdminSlot | null;
+  /** Offer filing each game's match by its id: a tournament of a discipline with a match fetcher. */
+  matchImport?: boolean;
 }>) {
   const t = useTranslations("pickBan.room");
   const withSession = KINDS.filter((kind) => statesByKind[kind].session != null);
@@ -144,6 +148,8 @@ export function PregameAdminPanel({
   }
 
   const onThisKind = grid != null && grid.kind === kind;
+  // A cancelled position was never played, so it has no match to file.
+  const importable = (statesByKind.map.games ?? []).filter((game) => game.state !== "cancelled");
   return (
     <div className="flex flex-col gap-3">
       <PregameAdminControls
@@ -187,6 +193,15 @@ export function PregameAdminPanel({
           ) : null
         }
       />
+      {matchImport && importable.length > 0 ? (
+        <section className="rounded-xl border border-dashed border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <FileDown className="h-4 w-4 text-[color:var(--aqt-amber)]" aria-hidden />
+            <h2 className="text-sm font-semibold">{t("matchImport.title")}</h2>
+          </div>
+          <MatchImport encounterId={encounterId} games={importable} admin />
+        </section>
+      ) : null}
       {history}
     </div>
   );

@@ -446,6 +446,8 @@
       "battlenetPlaceholder": "Player#1234",
       "riot": "Riot ID",
       "riotPlaceholder": "Name#TAG",
+      "steam": "Steam",
+      "steamPlaceholder": "SteamID64 or profile link",
       "smurfs": "Smurf Accounts",
       "discord": "Discord",
       "twitch": "Twitch",
@@ -470,7 +472,7 @@
       "youtubePlaceholder": "@handle",
       "verified": "Verified",
       "noAccountsHint": "You don't have any linked accounts yet.",
-      "noAccountsHintDesc": "Link your Battle.net, Riot, Discord or Twitch in profile settings to autofill and verify them.",
+      "noAccountsHintDesc": "Link your Battle.net, Riot, Steam, Discord or Twitch in profile settings to autofill and verify them.",
       "noAccountsHintCta": "Link accounts in profile settings"
     },
     "roles": {
@@ -1112,6 +1114,7 @@
       "disconnectAria": "Disconnect {name}",
       "disconnectConfirm": "Disconnect your {provider} account? You can reconnect it later via OAuth.",
       "riotNotice": "Linking your Riot account makes your League of Legends rank public on {siteName}.",
+      "steamNotice": "Linking your Steam account makes your Deadlock rank public on {siteName}.",
       "footnote": "Accounts can only be added through OAuth, which also verifies them. Disconnect removes the OAuth link (the account stays, unverified, until you reconnect); hiding removes it from your public profile. Only an administrator can erase a linked account from your profile entirely.",
       "hidden": "Hidden",
       "linkAria": "Link {provider}"
@@ -3626,6 +3629,13 @@
       "chartTitle": "Rank over time",
       "empty": "No ranked games this season."
     },
+    "deadlock": {
+      "current": "Current rank",
+      "unranked": "Unranked",
+      "rank": "Rank",
+      "chartTitle": "Rank over time",
+      "empty": "No ranked matches yet."
+    },
     "roleLabel": "Role",
     "platformLabel": "Platform"
   },
@@ -4125,6 +4135,10 @@
         "lol": {
           "blue": "Blue side",
           "red": "Red side"
+        },
+        "deadlock": {
+          "hidden_king": "Hidden King",
+          "archmother": "Archmother"
         }
       },
       "sideAssignment": "{side}: {team}",
@@ -4260,6 +4274,34 @@
           "map_locked": "A captain already reported this map, so it can no longer be changed.",
           "side_pick_pending": "The side this map is played on is not decided yet.",
           "side_pick_required": "This map's sides are chosen in the pick-ban room first."
+        }
+      },
+      "matchImport": {
+        "title": "Match import",
+        "label": "Match ID",
+        "hint": "The match ID from the game's match history. Its result and statistics are imported once the game's servers publish the match, which can take a while.",
+        "gameLabel": "Game",
+        "game": "Game {position}",
+        "submit": "Import",
+        "submitted": "Match ID sent. The match is imported as soon as it is available.",
+        "failed": "Could not send the match ID",
+        "loadFailed": "Could not load the matches sent for this game.",
+        "listLabel": "Matches sent",
+        "attempts": "{count, plural, one {# attempt} other {# attempts}}",
+        "status": {
+          "pending": "Waiting for the match",
+          "done": "Imported",
+          "failed": "Failed"
+        },
+        "errors": {
+          "invalid_external_id": "That is not a match ID.",
+          "match_already_imported": "This match is already sent for another game.",
+          "unsupported_ingestor": "This game cannot import matches by ID.",
+          "match_import_tournament_only": "Matches are imported by ID in tournaments only."
+        },
+        "warnings": {
+          "participants_dropped": "{count, plural, one {# participant} other {# participants}} without a public profile left out of the statistics.",
+          "banned_character_played": "A hero banned for this game was played: {characters}."
         }
       },
       "admin": {
@@ -6560,7 +6602,7 @@
         },
         "accounts": {
           "title": "Accounts and sign-in",
-          "body": "There is no separate password: you sign in through Discord, Twitch, Battle.net, or Riot Games OAuth, and {siteName} stores the profile information that provider returns (username, avatar, and a stable identifier) together with any tournament data tied to your account. You're responsible for keeping that OAuth account secure — anyone who can sign in to it can sign in as you here."
+          "body": "There is no separate password: you sign in through Discord, Twitch, Battle.net, Riot Games, or Steam, and {siteName} stores the profile information that provider returns (username, avatar, and a stable identifier) together with any tournament data tied to your account. You're responsible for keeping that account secure — anyone who can sign in to it can sign in as you here."
         },
         "workspaces": {
           "title": "Workspaces",
@@ -6584,11 +6626,15 @@
         },
         "thirdParty": {
           "title": "Third-party services",
-          "body": "Sign-in and some profile data depend on Discord, Twitch, Battle.net, and Riot Games; your use of those providers is governed by their own terms, separately from ours. {siteName} isn't responsible for their availability or behavior."
+          "body": "Sign-in and some profile data depend on Discord, Twitch, Battle.net, Riot Games, and Steam; your use of those providers is governed by their own terms, separately from ours. {siteName} isn't responsible for their availability or behavior."
         },
         "riotGames": {
           "title": "Riot Games",
           "body": "{siteName} isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc."
+        },
+        "valve": {
+          "title": "Valve",
+          "body": "{siteName} isn't endorsed by Valve and doesn't reflect the views or opinions of Valve or anyone officially involved in producing or managing Valve properties. Valve, Deadlock, and all associated properties are trademarks or registered trademarks of Valve Corporation. Deadlock data is provided by deadlock-api.com."
         },
         "liability": {
           "title": "No warranty, limited liability",
@@ -6612,11 +6658,15 @@
       "sections": {
         "collection": {
           "title": "Information we collect",
-          "body": "When you sign in, your OAuth provider (Discord, Twitch, Battle.net, or Riot Games) gives us a stable account identifier, your username or display name, and your avatar; some providers also share an email address. As you use the site we also store what you generate directly: tournament registrations, match and map reports, draft picks, and any roles assigned to you. Standard web infrastructure logs (IP address, user agent) are kept briefly for security and abuse prevention."
+          "body": "When you sign in, your provider (Discord, Twitch, Battle.net, Riot Games, or Steam) gives us a stable account identifier, your username or display name, and your avatar; some providers also share an email address. As you use the site we also store what you generate directly: tournament registrations, match and map reports, draft picks, and any roles assigned to you. Standard web infrastructure logs (IP address, user agent) are kept briefly for security and abuse prevention."
         },
         "riotGames": {
           "title": "Riot Games",
           "body": "{siteName} isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc."
+        },
+        "valve": {
+          "title": "Valve",
+          "body": "{siteName} isn't endorsed by Valve and doesn't reflect the views or opinions of Valve or anyone officially involved in producing or managing Valve properties. Valve, Deadlock, and all associated properties are trademarks or registered trademarks of Valve Corporation. Deadlock data is provided by deadlock-api.com."
         },
         "use": {
           "title": "How we use it",
@@ -6740,6 +6790,7 @@
     "builtins": {
       "identity_battlenet": "BattleTag",
       "identity_riot": "Riot ID",
+      "identity_steam": "Steam account",
       "roles": "Roles",
       "stream_pov": "Stream POV",
       "reserve": "On call",
@@ -7710,6 +7761,7 @@
         "discord_not_linked": "Link your Discord account to join.",
         "battlenet_not_linked": "Link your Battle.net account to join.",
         "riot_not_linked": "Link your Riot account to join.",
+        "steam_not_linked": "Link your Steam account to join.",
         "player_not_linked": "Your account is not linked to a player profile yet.",
         "self_join_denied": "An admin has closed self-signup for your account.",
         "already_joined": "You are already in this mix.",
@@ -9642,6 +9694,7 @@
       "providerTwitch": "Twitch",
       "providerBattleNet": "Battle.net",
       "providerRiot": "Riot Games",
+      "providerSteam": "Steam",
       "providerGoogle": "Google",
       "providerGitHub": "GitHub",
       "token": "Token",

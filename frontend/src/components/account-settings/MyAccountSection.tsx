@@ -27,7 +27,7 @@ import { SettingsGroup } from "./SettingsGroup";
 import { userQueryKeys } from "@/lib/users/query-keys";
 
 // Providers a user can OAuth-link (and thereby verify).
-const OAUTH_ADDABLE = ["battlenet", "riot", "discord", "twitch"] as const;
+const OAUTH_ADDABLE = ["battlenet", "riot", "steam", "discord", "twitch"] as const;
 
 export default function MyAccountSection() {
   const t = useTranslations("accountSettings");
@@ -296,6 +296,9 @@ export default function MyAccountSection() {
             </div>
             <p className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">
               {t("linked.riotNotice", { siteName: SITE_NAME })}
+            </p>
+            <p className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">
+              {t("linked.steamNotice", { siteName: SITE_NAME })}
             </p>
             <p className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">{t("linked.footnote")}</p>
           </>

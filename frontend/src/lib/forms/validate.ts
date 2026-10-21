@@ -28,6 +28,8 @@ const DEFAULT_PATTERNS: Record<string, string> = {
   identity_twitch: String.raw`^[a-zA-Z0-9_]{4,25}$`,
   identity_boosty: String.raw`^[^#]{2,50}$`,
   identity_riot: String.raw`^[^#]{3,16}#[0-9a-z]{3,5}$`,
+  // A Steam account id, 1..2^32-1 (`shared.core.social`'s handle pattern): any other spelling is normalized to it first.
+  identity_steam: String.raw`^(?:[1-9]\d{0,8}|[1-3]\d{9}|4[01]\d{8}|42[0-8]\d{7}|429[0-3]\d{6}|4294[0-8]\d{5}|42949[0-5]\d{4}|429496[0-6]\d{3}|4294967[01]\d{2}|42949672[0-8]\d|429496729[0-5])$`,
   url: String.raw`^https?://.+$`
 };
 

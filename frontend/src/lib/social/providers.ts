@@ -20,7 +20,7 @@ export interface SocialProviderConfig {
   /** Input placeholder for the admin add/edit form. */
   placeholder: string;
   /** Build a public profile URL from the handle, when the provider has one. */
-  profileUrl?: (username: string) => string;
+  profileUrl?: (username: string) => string | null;
   /** Whether ownership of a handle can be proven (`social_account.is_verified`) —
    *  gates the admin "manually verify" action and a form's `require_verified`
    *  toggle. Mirrors backend `ProviderSpec.can_be_verified`. */
@@ -31,9 +31,10 @@ export interface SocialProviderConfig {
   /** Default ceiling on handles of this provider in one registration answer;
    *  `undefined` means one. Mirrors `ProviderSpec.default_max_count`. */
   defaultMaxCount?: number;
-  /** Collapse spacing around `#`; only BattleTags also drop inner name spaces
-   *  when matched. Mirrors `ProviderSpec.normalize`. */
-  normalizeRule?: "battletag" | "riot_id";
+  /** Collapse spacing around `#` (only BattleTags also drop inner name spaces
+   *  when matched), or read any Steam spelling as its account id. Mirrors
+   *  `ProviderSpec.normalize`. */
+  normalizeRule?: "battletag" | "riot_id" | "steam_id";
 }
 
 /** Display/selection order. */
@@ -44,7 +45,8 @@ export const SOCIAL_PROVIDER_ORDER: SocialProvider[] = [
   "boosty",
   "vk",
   "youtube",
-  "riot"
+  "riot",
+  "steam"
 ];
 
 const SOCIAL_PROVIDER_CONFIG: Record<SocialProvider, SocialProviderConfig> = {
@@ -110,6 +112,20 @@ const SOCIAL_PROVIDER_CONFIG: Record<SocialProvider, SocialProviderConfig> = {
     canBeVerified: true,
     isGameProvider: true,
     normalizeRule: "riot_id"
+  },
+  steam: {
+    value: "steam",
+    label: "Steam",
+    icon: "/steam.svg",
+    color: "var(--aqt-fg-dim)",
+    placeholder: "76561198000000000",
+    profileUrl: (u) => {
+      const accountId = steamAccountId(u);
+      return accountId == null ? null : `https://steamcommunity.com/profiles/${BigInt(accountId) + STEAM_ID64_BASE}`;
+    },
+    canBeVerified: true,
+    isGameProvider: true,
+    normalizeRule: "steam_id"
   }
 };
 
@@ -155,14 +171,40 @@ export function socialProfileUrl(account: SocialAccount): string | null {
 /** `\s*#\s*` around a BattleTag's separator, as `shared.core.social` spells it. */
 const BATTLE_TAG_HASH = /\s*#\s*/g;
 
+/** The SteamID64 of account id 0: a SteamID64 is this plus the account id. */
+const STEAM_ID64_BASE = BigInt("76561197960265728");
+const STEAM_ACCOUNT_MAX = BigInt("4294967295");
+
+/**
+ * A Steam handle as its decimal account id (SteamID3's `N`, deadlock-api's `account_id`), mirroring
+ * `shared.core.social.steam_account_id`: an account id, a SteamID64, `[U:1:N]`, `STEAM_X:Y:Z` (`Z*2+Y`) or a
+ * `steamcommunity.com/profiles/<SteamID64>` link. `null` for anything else, a vanity `/id/<name>` link included.
+ */
+function steamAccountId(handle: string): string | null {
+  const text = handle.trim();
+  const id64 = /^(?:https?:\/\/steamcommunity\.com\/profiles\/(\d{17})\/?|(\d{17}))$/i.exec(text);
+  const id3 = /^(?:\[U:1:(\d{1,10})\]|([1-9]\d{0,9}))$/i.exec(text);
+  const legacy = /^STEAM_[0-5]:([01]):(\d{1,10})$/i.exec(text);
+  const id = id64
+    ? BigInt(id64[1] ?? id64[2]) - STEAM_ID64_BASE
+    : id3
+      ? BigInt(id3[1] ?? id3[2])
+      : legacy
+        ? BigInt(legacy[2]) * BigInt(2) + BigInt(legacy[1])
+        : null;
+  return id != null && id >= 1 && id <= STEAM_ACCOUNT_MAX ? id.toString() : null;
+}
+
 /**
  * The handle as STORED, mirroring `shared.core.social.display_social_handle`:
  * trimmed, casing kept; a BattleTag or Riot ID additionally loses the spacing
- * a human types around `#` (`Player # 1234` → `Player#1234`).
+ * a human types around `#` (`Player # 1234` → `Player#1234`), and a Steam
+ * handle becomes its account id.
  */
 export function displaySocialHandle(provider: string, handle: string): string {
   const text = handle.trim();
   const rule = getSocialProviderConfig(provider).normalizeRule;
+  if (rule === "steam_id") return steamAccountId(text) ?? text;
   return rule === "battletag" || rule === "riot_id" ? text.replace(BATTLE_TAG_HASH, "#") : text;
 }
 

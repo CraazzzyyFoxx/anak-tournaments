@@ -65,7 +65,7 @@ export interface UpsertRolePayload {
   workspace_id?: number | null;
 }
 
-export type OAuthProvider = "discord" | "twitch" | "battlenet" | "riot" | "google" | "github";
+export type OAuthProvider = "discord" | "twitch" | "battlenet" | "riot" | "steam" | "google" | "github";
 
 export interface OAuthConnectionAdmin {
   id: number;

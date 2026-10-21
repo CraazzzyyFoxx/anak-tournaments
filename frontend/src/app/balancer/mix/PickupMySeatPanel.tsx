@@ -29,6 +29,8 @@ import { resolveRoleOrder, roleRefsOf, toggleRole, type MixOwner } from "./picku
 const LINKABLE_BLOCKERS: Record<string, true> = {
   discord_not_linked: true,
   battlenet_not_linked: true,
+  riot_not_linked: true,
+  steam_not_linked: true,
   player_not_linked: true,
 };
 

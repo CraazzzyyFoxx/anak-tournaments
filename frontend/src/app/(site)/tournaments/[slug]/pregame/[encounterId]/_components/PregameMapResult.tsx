@@ -63,6 +63,8 @@ interface PregameMapResultProps {
   invalidateKeys: unknown[][];
   /** Catalog for naming the played map when there was no veto pick. */
   mapChoices?: ReadonlyArray<{ id: number; name: string }>;
+  /** The report dialog also files the game's match by its id (a tournament game of a game with a match fetcher). */
+  matchImport?: boolean;
 }
 
 /** What a side's claim tile may show, in the order the phase moves through. */
@@ -101,7 +103,8 @@ export function PregameMapResult({
   heroUndo,
   header,
   invalidateKeys,
-  mapChoices
+  mapChoices,
+  matchImport
 }: Readonly<PregameMapResultProps>) {
   const t = useTranslations("pickBan.room");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -294,6 +297,7 @@ export function PregameMapResult({
           onOpenChange={setDialogOpen}
           mapChoices={mapChoices}
           invalidateKeys={invalidateKeys}
+          matchImport={matchImport}
         />
       ) : null}
     </>

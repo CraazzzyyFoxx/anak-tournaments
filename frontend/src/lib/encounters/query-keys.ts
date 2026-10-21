@@ -41,5 +41,8 @@ export const encounterQueryKeys = {
   roomHistory: (encounterId: KeyPart) => ["encounter", encounterId, "room-history"] as const,
   pregameState: (encounterId: KeyPart, kind: KeyPart) =>
     ["pregame-state", encounterId, kind] as const,
+  /** One game's match imports; the organizer read (`admin`) adds the warnings a captain does not see. */
+  matchImports: (encounterId: KeyPart, gameId: KeyPart, admin: boolean) =>
+    ["encounter", encounterId, "match-imports", gameId, admin ? "admin" : "captain"] as const,
   bracket: () => ["bracket"] as const,
 };

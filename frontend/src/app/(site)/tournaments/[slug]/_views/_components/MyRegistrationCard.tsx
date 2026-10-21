@@ -140,6 +140,13 @@ const IDENTITY_ICONS: Record<
       <img alt="Riot Games" className={props.className} src="/riot.png" />
     ),
     className: ""
+  },
+  steam: {
+    Icon: (props) => (
+      // eslint-disable-next-line @next/next/no-img-element -- small static asset from /public
+      <img alt="Steam" className={props.className} src="/steam.svg" />
+    ),
+    className: ""
   }
 };
 

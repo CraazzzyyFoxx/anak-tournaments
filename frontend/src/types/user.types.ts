@@ -40,7 +40,7 @@ export interface CharacterSummary extends Omit<CharacterWithUserStats, "stats"> 
 }
 
 export type SocialProvider =
-  "battlenet" | "discord" | "twitch" | "boosty" | "vk" | "youtube" | "riot";
+  "battlenet" | "discord" | "twitch" | "boosty" | "vk" | "youtube" | "riot" | "steam";
 
 export interface SocialAccount {
   id: number;

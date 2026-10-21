@@ -42,13 +42,13 @@ Collector health is one word: **Healthy**, **Degraded**, **Failing** or **Paused
 
 ### Rank
 
-Collects each game's own ranks through its linked accounts: Overwatch profiles through BattleTags (from OverFast), League of Legends Solo/Duo and Flex through Riot IDs (from the Riot API). The game switch at the top of the page picks which game's collector you are looking at. These are the ranks used when a player has none on their entry and none in the workspace book — see [Ranks and divisions](/docs/organizers/divisions).
+Collects each game's own ranks through its linked accounts: Overwatch profiles through BattleTags (from OverFast), League of Legends Solo/Duo and Flex through Riot IDs (from the Riot API), Deadlock ranks through Steam accounts (from deadlock-api.com). The game switch at the top of the page picks which game's collector you are looking at. These are the ranks used when a player has none on their entry and none in the workspace book — see [Ranks and divisions](/docs/organizers/divisions).
 
 The page shows **Coverage (snapshots)**, **Fetches (24h)**, **Upstream**, **Accounts** and **Auto-disabled accounts** — accounts whose collection switched itself off after repeated failures. **Re-enable all accounts** turns them back on; for Overwatch it is worth confirming afterwards that the player's profile really is public. When the upstream refuses every fetch, or nothing has been collected for a while although collection is on, a **Rank collection is down** banner appears.
 
 Below that is **Task history**: time, account, status, what triggered the run, the number of snapshots and the error text.
 
-To recheck one player, open their card in **Admin → People**. It shows their current ranks, a table of accounts with status, last check, last success and consecutive failures, plus **Collect all**, **Collect selected** and a per-row **Collect**. If a player has no account for that game there is nothing to collect — ask them to connect Battle.net (Overwatch) or Riot (League of Legends).
+To recheck one player, open their card in **Admin → People**. It shows their current ranks, a table of accounts with status, last check, last success and consecutive failures, plus **Collect all**, **Collect selected** and a per-row **Collect**. If a player has no account for that game there is nothing to collect — ask them to connect Battle.net (Overwatch), Riot (League of Legends) or Steam (Deadlock).
 
 ### Subscriptions
 

@@ -164,7 +164,7 @@ export interface LinkedPlayer {
   linked_at: string;
 }
 
-export type OAuthProviderName = "discord" | "twitch" | "battlenet" | "riot";
+export type OAuthProviderName = "discord" | "twitch" | "battlenet" | "riot" | "steam";
 
 export interface OAuthProviderAvailability {
   provider: OAuthProviderName;

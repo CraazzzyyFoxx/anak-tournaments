@@ -8,8 +8,8 @@ import en from "@/i18n/messages/en.json";
 import { LOL_METADATA } from "@/test/discipline-metadata";
 import type { EncounterTeam } from "@/types/encounter.types";
 
-import type { PregameCharacterAction, PregameCharacterBoard } from "../../types";
-import PregameCharacterBans from "./PregameCharacterBans";
+import type { PregameCharacterAction, PregameCharacterBoard } from "@/disciplines/types";
+import CharacterBansBoard from "./CharacterBansBoard";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -52,7 +52,7 @@ async function render(board: PregameCharacterBoard) {
   await act(async () => {
     root.render(
       <NextIntlClientProvider locale="en" messages={en}>
-        <PregameCharacterBans encounterId={1} metadata={METADATA} board={board} teams={TEAMS} />
+        <CharacterBansBoard encounterId={1} metadata={METADATA} board={board} teams={TEAMS} />
       </NextIntlClientProvider>
     );
   });

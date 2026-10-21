@@ -63,6 +63,7 @@ const KNOWN_PROVIDERS: ReadonlySet<OAuthProviderName> = new Set<OAuthProviderNam
   "twitch",
   "battlenet",
   "riot",
+  "steam",
 ]);
 
 // Only redirect back to the platform apex or a valid tenant subdomain. The
@@ -237,7 +238,13 @@ export async function handleOAuthCallback(request: Request): Promise<NextRespons
   const { cookies } = await import("next/headers");
 
   const url = new URL(request.url);
-  const code = url.searchParams.get("code");
+  // Steam speaks OpenID 2.0, not OAuth: it returns no `code`, only its signed `openid.*` assertion, which goes to
+  // identity-service whole as the code (its Steam provider re-verifies it with Steam, once).
+  const code =
+    url.searchParams.get("code") ??
+    (url.searchParams.has("openid.mode")
+      ? new URLSearchParams([...url.searchParams].filter(([key]) => key.startsWith("openid."))).toString()
+      : null);
   const state = url.searchParams.get("state");
   const error = url.searchParams.get("error");
   const errorDescription = url.searchParams.get("error_description");

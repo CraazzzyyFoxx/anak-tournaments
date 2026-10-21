@@ -4,21 +4,22 @@ import { Ban, History, Shield } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
-import { classRank } from "@/components/pick-ban/pick-ban-model";
-import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
+import { classRank } from "./pick-ban-model";
+import { PickBanItemThumb } from "./PickBanItemThumb";
 import { seatTeam, seatsBySlot } from "@/lib/encounter/seats";
 import { cn } from "@/lib/utils";
 import type { EncounterTeam } from "@/types/encounter.types";
 
-import type { PregameCharacterAction, SlotProps } from "../../types";
+import type { PregameCharacterAction, SlotProps } from "@/disciplines/types";
 
 /**
- * League's `pregameCharacterBans` slot: the round's champion bans, on the screen where the game is played and
- * reported. Split by team (a blind step is two lists, and a duplicate merges into one ban on the board), then
- * the final bans of this game. No lobby copy: a League draft is not typed into a custom-game lobby. The
- * side-selection preset bans nothing, so the board is empty and this renders nothing; custom ban configs use it.
+ * The `pregameCharacterBans` slot of a game whose draft is not typed into a custom-game lobby (League, Deadlock):
+ * the round's character bans, on the screen where the game is played and reported. Split by team (a blind step is
+ * two lists, and a duplicate merges into one ban on the board), then the final bans of this game. A preset that bans
+ * nothing leaves the board empty and this renders nothing. Core, not a module: several modules render it, and a
+ * module never imports another (Z7).
  */
-export default function PregameCharacterBans({
+export default function CharacterBansBoard({
   board,
   teams,
   eyebrow,

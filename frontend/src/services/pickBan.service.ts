@@ -67,6 +67,29 @@ interface GameReportResult {
 /** `EncounterTeam.id` (as a string) -> whether that captain confirmed readiness. */
 type ReadinessMap = Record<string, boolean>;
 
+/**
+ * One game's match filed by its id in the game's own records (`stats.match_fetch`), fetched and imported in the
+ * background. Hand-typed until `api.generated.ts` carries the match-import routes.
+ */
+export interface MatchImport {
+  id: number;
+  status: "pending" | "done" | "failed";
+  attempts: number;
+  last_error: string | null;
+  external_id: string;
+  created_at: string;
+  /** Filled on the organizer read only; a captain's always reads `[]`. */
+  warnings: MatchImportWarning[];
+}
+
+export interface MatchImportWarning {
+  code: "fetch_failed" | "participants_dropped" | "banned_character_played";
+  /** `participants_dropped`: how many. */
+  count: number | null;
+  /** `banned_character_played`: the characters' catalog names. */
+  characters: string[];
+}
+
 class PickBanService {
   /**
    * Fetch one kind's pick-ban room state. 200-with-`reason` contract: `null`
@@ -197,6 +220,26 @@ class PickBanService {
     const response = await apiFetch(
       `/api/v1/admin/encounters/${encounterId}/games/${gameId}/result`,
       { method: "POST", body: data }
+    );
+    return response.json();
+  }
+
+  /** One game's match imports, newest first; `admin` reads the organizer route, which adds the warnings. */
+  async listMatchImports(encounterId: number, gameId: number, admin: boolean): Promise<MatchImport[]> {
+    const response = await apiFetch(
+      `/api/v1/${admin ? "admin/" : ""}encounters/${encounterId}/games/${gameId}/match-import`
+    );
+    return response.json();
+  }
+
+  /**
+   * Files a game's match by its id (a captain of the encounter, or `admin` with `match.result`). Re-filing the same
+   * id returns its row (a failed one starts over); 409 `match_already_imported` when another game holds it.
+   */
+  async importMatch(encounterId: number, gameId: number, externalId: string, admin: boolean): Promise<MatchImport> {
+    const response = await apiFetch(
+      `/api/v1/${admin ? "admin/" : ""}encounters/${encounterId}/games/${gameId}/match-import`,
+      { method: "POST", body: { external_id: externalId } }
     );
     return response.json();
   }

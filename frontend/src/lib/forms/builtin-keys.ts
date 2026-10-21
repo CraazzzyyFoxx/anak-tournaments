@@ -20,7 +20,8 @@ export const IDENTITY_PROVIDERS = [
   "boosty",
   "vk",
   "youtube",
-  "riot"
+  "riot",
+  "steam"
 ] as const;
 
 export type IdentityProvider = (typeof IDENTITY_PROVIDERS)[number];
@@ -101,6 +102,7 @@ const FIXED_VISIBILITY: Record<string, Visibility> = {
   // The game handle is the roster's public face, as the BattleTag column was.
   identity_battlenet: "public",
   identity_riot: "public",
+  identity_steam: "public",
   roles: "public",
   stream_pov: "public",
   // A reserve hidden from the roster cannot be found when a replacement is

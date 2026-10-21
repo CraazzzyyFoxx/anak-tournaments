@@ -29,6 +29,7 @@ import pickBanService from "@/services/pickBan.service";
 import type { PickBanGame } from "@/types/tournament.types";
 import { Spinner } from "@/components/ui/spinner";
 
+import { MatchImport } from "./MatchImport";
 import { acceptedScore, type PickBanSeat } from "./pick-ban-model";
 
 /** Server codes of a game claim a captain can act on (`map_report.submit_game_claim`, `games.select_map`). */
@@ -63,6 +64,8 @@ interface MapReportDialogProps {
   mapChoices?: ReadonlyArray<{ id: number; name: string }>;
   /** Query keys to invalidate once the report lands (encounter + pick-ban state). */
   invalidateKeys: unknown[][];
+  /** Offer filing the game's match by its id: a tournament game of a discipline with a match fetcher. */
+  matchImport?: boolean;
 }
 
 /**
@@ -88,6 +91,7 @@ export function MapReportDialog({
   onOpenChange,
   mapChoices,
   invalidateKeys,
+  matchImport = false,
 }: Readonly<MapReportDialogProps>) {
   const t = useTranslations("pickBan.room.mapReport");
   const tRoom = useTranslations("pickBan.room");
@@ -208,6 +212,12 @@ export function MapReportDialog({
             </div>
           </>
         )}
+
+        {matchImport ? (
+          <div className="border-t border-[color:var(--aqt-border)] pt-4">
+            <MatchImport encounterId={encounterId} games={[game]} />
+          </div>
+        ) : null}
 
         <DialogFooter>
           {locked ? (

@@ -349,6 +349,8 @@ export type MixSelfBlocker =
   | "mix_closed"
   | "discord_not_linked"
   | "battlenet_not_linked"
+  | "riot_not_linked"
+  | "steam_not_linked"
   | "player_not_linked"
   | "self_join_denied"
   | "already_joined"

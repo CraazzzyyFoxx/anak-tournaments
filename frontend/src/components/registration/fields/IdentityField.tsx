@@ -21,7 +21,7 @@ import VerifiedAccountSelect from "../VerifiedAccountSelect";
  * `registration.accounts.<provider>` and `…<provider>Placeholder` exist for all
  * six, and a seventh provider added to the catalog gets its label from the same
  * rule the moment its two strings are translated. Only the brand icons are a
- * table, because only five of them are in `public/`.
+ * table, because only six of them are in `public/`.
  */
 const PROVIDER_ICONS: Record<string, string> = {
   battlenet: "/battlenet.svg",
@@ -29,6 +29,7 @@ const PROVIDER_ICONS: Record<string, string> = {
   twitch: "/twitch.png",
   boosty: "/boosty.svg",
   riot: "/riot.png",
+  steam: "/steam.svg",
 };
 
 /** Providers whose subscription standing is shown under the handle. */
