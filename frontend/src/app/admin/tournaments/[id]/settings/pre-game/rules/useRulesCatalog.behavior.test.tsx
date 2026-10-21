@@ -84,7 +84,11 @@ describe("useRulesCatalog", () => {
     expect(shown()).toBe("none");
     expect(getRulesCatalog.mock.calls.map(([discipline]) => discipline)).toEqual(["overwatch", "lol"]);
 
-    pending.resolve(catalog("lol_side_selection"));
+    // The answer lands in two hops: the read settles (microtasks), then react-query notifies observers on a zero
+    // timeout. Resolved in the same tick as `flush`, that timeout was queued after `flush`'s own, and whenever the
+    // read took a millisecond to settle it fired after `flush`'s act had closed. Settled in its own act first, the
+    // notification is always queued ahead of `flush`.
+    await act(async () => pending.resolve(catalog("lol_side_selection")));
     await flush();
     expect(shown()).toBe("lol_side_selection");
 

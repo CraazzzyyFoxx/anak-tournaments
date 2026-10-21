@@ -29,14 +29,11 @@ vi.mock("@/stores/workspace.store", () => ({
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
 // The admin's game is the game filter's `?discipline=`; none is every game.
 vi.mock("@/hooks/useGameScope", async () => {
+  // vi.mock factories run hoisted above static imports, so the helper is imported here.
   const { gameScopeState } = await import("@/test/game-scope");
   return {
     useGameScope: () => gameScopeState(new URLSearchParams(window.location.search).get("discipline"))
   };
-});
-vi.mock("@/hooks/useGameDescriptors", async () => {
-  const { GAME_DESCRIPTORS } = await import("@/test/game-scope");
-  return { useGameDescriptors: () => GAME_DESCRIPTORS };
 });
 vi.mock("@/hooks/useMobile", () => ({ useIsMobile: () => false }));
 let rerender: (() => void) | null = null;
@@ -50,9 +47,9 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(window.location.search)
 }));
 vi.mock("@/hooks/useDisciplineMetadata", () => ({
-  useDisciplineMetadata: (_axis: number, code: string | null) => ({
+  useDisciplineMetadata: (_axis: number, code: string) => ({
     data:
-      code === null || code === failingMetadata
+      code === failingMetadata
         ? undefined
         : {
             discipline: { code },
@@ -71,12 +68,11 @@ vi.mock("@/hooks/useDisciplineMetadata", () => ({
                 active: true,
                 selectable: true,
                 sort_order: i,
-                // An icon, so a role heading's text is its name rather than the monogram fallback.
                 attrs: { icon: `/disciplines/${code}/roles/${role}.svg` }
               })
             )
           },
-    isError: code !== null && code === failingMetadata,
+    isError: code === failingMetadata,
     refetch: refetchMetadata
   })
 }));
@@ -123,20 +119,25 @@ async function click(node: Element) {
     await tick();
   });
 }
-function button(text: string) {
-  return [...document.querySelectorAll("button")].find((node) => node.textContent?.trim() === text)!;
-}
-function commandItem(text: string) {
-  return [...document.querySelectorAll('[cmdk-item=""]')].find((node) => node.textContent?.endsWith(text))!;
-}
-/** Picks a game in the page's game filter: "+ Filter" › Game › the game. */
+/** Picks a game in the page's inline game select (an option reads as its mark, then its name). */
 async function pickGame(name: string) {
-  await click(container.querySelector('button[aria-label="Add filter"]')!);
-  await click(commandItem("Game"));
-  await click(commandItem(name));
+  await click(container.querySelector('button[role="combobox"][aria-label="Game"]')!);
+  await click([...document.querySelectorAll('[role="option"]')].find((node) => node.textContent?.endsWith(name))!);
 }
 function search() {
   return new URLSearchParams(window.location.search);
+}
+/** A game's section, by its heading (its mark, then its name). */
+function game(name: string) {
+  const section = [...container.querySelectorAll("section")].find((node) =>
+    node.querySelector(":scope > h2")?.textContent?.endsWith(name)
+  );
+  expect(section).toBeTruthy();
+  return section!;
+}
+/** The role cards' headings, in order. */
+function roleCards(scope: ParentNode = container) {
+  return [...scope.querySelectorAll("section > header > h3")].map((node) => node.textContent);
 }
 
 beforeEach(() => {
@@ -157,138 +158,68 @@ afterEach(async () => {
 });
 
 describe("sub-role settings under all games", () => {
-  it("lists every game's sub-roles grouped under each game, without naming a game", async () => {
+  it("reads the catalog once and files each game's sub-roles under that game's own roles", async () => {
     await mount();
 
+    expect(getPlayerSubRoles).toHaveBeenCalledTimes(1);
     expect(getPlayerSubRoles).toHaveBeenCalledWith({ workspace_id: 1, include_inactive: true }, expect.any(AbortSignal));
-    expect(container.textContent).toContain("Overwatch");
-    expect(container.textContent).toContain("League of Legends");
-    expect(container.textContent).toContain("Main Tank");
-    expect(container.textContent).toContain("Solo Top");
-    // Each row is "parent › sub-role", the parent named from its own game's ontology.
-    expect(container.textContent).toContain("Tank›Main Tank");
-    expect(container.textContent).toContain("Top›Solo Top");
+    expect(roleCards(game("Overwatch")!)).toEqual(["Tank", "Damage", "Support"]);
+    expect(roleCards(game("League of Legends")!)).toEqual(["Top", "Jungle", "Mid", "Bot", "Support"]);
+    expect(game("Overwatch")?.textContent).toContain("Main Tank");
+    expect(game("Overwatch")?.textContent).not.toContain("Solo Top");
+    expect(game("League of Legends")?.textContent).toContain("Solo Top");
   });
 
-  it("creates a sub-role in the game and parent picked in the dialog", async () => {
+  it("adds a sub-role in the game of the card it is typed into", async () => {
     await mount();
-    await click(button("New sub-role"));
 
-    const games = document.getElementById("sub-role-game")!.querySelectorAll('[role="radio"]');
-    await click(games[1]);
-    await click([...document.querySelectorAll('[role="radio"]')].find((node) => node.textContent === "Top")!);
-    const input = document.querySelector<HTMLInputElement>("#sub-role-label")!;
+    const input = container.querySelector<HTMLInputElement>('input[aria-label="New sub-role for Top"]')!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "Solo");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await click(button("Save"));
+    await act(async () => {
+      input.form!.requestSubmit();
+      await tick();
+    });
 
     expect(createPlayerSubRole).toHaveBeenCalledWith({ workspace_id: 1, discipline: "lol", role: "top", label: "Solo" });
   });
 
-  it("says so with a retry when the picked game's roles fail to load, instead of an empty parent picker", async () => {
+  it("says so with a retry where one game's roles fail to load, the other game still shown", async () => {
     failingMetadata = "lol";
     await mount();
-    await click(button("New sub-role"));
-    await click(document.getElementById("sub-role-game")!.querySelectorAll('[role="radio"]')[1]);
 
-    expect(document.querySelector('[aria-labelledby="sub-role-parent-label"]')).toBeNull();
-    expect(document.querySelector('[role="dialog"] [role="alert"]')?.textContent).toContain(
-      "Role metadata is unavailable"
+    expect(roleCards(game("Overwatch")!)).toEqual(["Tank", "Damage", "Support"]);
+    const retry = [...game("League of Legends")!.querySelectorAll("button")].find(
+      (node) => node.textContent?.trim() === "Retry"
     );
-    await click(button("Retry"));
+    await click(retry!);
     expect(refetchMetadata).toHaveBeenCalledTimes(1);
-  });
-
-  it("opens a sub-role in its own game's editor", async () => {
-    await mount();
-    await click([...container.querySelectorAll("button")].find((node) => node.textContent?.includes("Main Tank"))!);
-
-    const pushed = new URLSearchParams(push.mock.calls.at(-1)![0].split("?")[1]);
-    expect(pushed.get("sub_role")).toBe("11");
-    expect(pushed.get("role")).toBe("tank");
-    expect([...container.querySelectorAll("h2")].map((node) => node.textContent)).toContain("Tank");
   });
 });
 
 describe("the game filter", () => {
-  it("narrows the list to the picked game's catalog and drops a role of the previous game", async () => {
-    window.history.replaceState(null, "", "/admin/settings/sub-roles?discipline=overwatch&role=damage");
+  it("narrows the page to the picked game, without a game heading or a second read", async () => {
     await mount();
 
     await pickGame("League of Legends");
 
     expect(search().get("discipline")).toBe("lol");
-    expect(search().has("role")).toBe(false);
-    expect(getPlayerSubRoles).toHaveBeenLastCalledWith(
-      { workspace_id: 1, discipline: "lol", include_inactive: true },
-      expect.any(AbortSignal)
-    );
-    expect(container.querySelector("nav button")?.textContent).toBe("Top");
+    expect(container.querySelector("h2")).toBeNull();
+    expect(roleCards()).toEqual(["Top", "Jungle", "Mid", "Bot", "Support"]);
+    expect(container.textContent).not.toContain("Main Tank");
+    expect(getPlayerSubRoles).toHaveBeenCalledTimes(1);
   });
 
-  it("lists every game again when the chip is removed", async () => {
+  it("lists every game again when the game is cleared", async () => {
     window.history.replaceState(null, "", "/admin/settings/sub-roles?discipline=lol");
     await mount();
 
-    await click(container.querySelector('button[aria-label="Remove filter Game: League of Legends"]')!);
-    // Every game's catalog is a read of its own.
-    await act(async () => {
-      await tick();
-    });
+    await pickGame("All games");
 
     expect(search().has("discipline")).toBe(false);
-    expect(container.textContent).toContain("Tank›Main Tank");
-    expect(container.textContent).toContain("Top›Solo Top");
-  });
-
-  it("keeps an opened sub-role and its role on a game pick: Back lands on the picked game", async () => {
-    window.history.replaceState(null, "", "/admin/settings/sub-roles?sub_role=11&role=tank");
-    await mount();
-
-    await pickGame("League of Legends");
-
-    expect(search().get("sub_role")).toBe("11");
-    expect(search().get("role")).toBe("tank");
-    expect(container.querySelector("nav button")?.textContent).toBe("Tank");
-    await click(button("Back"));
-    expect(container.querySelector("nav button")?.textContent).toBe("Top");
-  });
-});
-
-describe("an opened sub-role under a game filter", () => {
-  it.each([
-    ["lol", "Top"],
-    ["overwatch", "Tank"]
-  ])("opens in its own game's editor under %s, Back returning to that game", async (filtered, first) => {
-    window.history.replaceState(null, "", `/admin/settings/sub-roles?discipline=${filtered}&sub_role=11&role=tank`);
-    await mount();
-
-    expect(getPlayerSubRoles).toHaveBeenCalledWith({ workspace_id: 1, include_inactive: true }, expect.any(AbortSignal));
-    expect([...container.querySelectorAll("nav button")].map((node) => node.textContent)).toEqual([
-      "Tank",
-      "Damage",
-      "Support"
-    ]);
-
-    await click(button("Back"));
-    expect(container.querySelector("nav button")?.textContent).toBe(first);
-  });
-});
-
-describe("sub-role creation's game", () => {
-  it.each([
-    ["?discipline=lol", "League of Legends", ["Top", "Jungle", "Mid", "Bot", "Support"]],
-    ["", "Overwatch", ["Tank", "Damage", "Support"]]
-  ])("starts on the filtered game, else the first enabled (%s)", async (query, game, parents) => {
-    window.history.replaceState(null, "", `/admin/settings/sub-roles${query}`);
-    await mount();
-    await click(button("New sub-role"));
-
-    const picked = document.getElementById("sub-role-game")!.querySelector('[role="radio"][aria-checked="true"]');
-    expect(picked?.textContent).toContain(game);
-    const offered = document.querySelectorAll('[aria-labelledby="sub-role-parent-label"] [role="radio"]');
-    expect([...offered].map((node) => node.textContent)).toEqual(parents);
+    expect(game("Overwatch")?.textContent).toContain("Main Tank");
+    expect(game("League of Legends")?.textContent).toContain("Solo Top");
   });
 });

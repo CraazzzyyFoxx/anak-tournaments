@@ -77,7 +77,7 @@ function RegistrationForm({
   return (
     <>
       <div className="flex flex-col gap-4">
-        <SettingGroup title={tStatus("title")}>
+        <SettingGroup id="status" title={tStatus("title")}>
           {/* Derived, not editable: openness is the REGISTRATION phase-schedule
                 window. Shown because this is the screen an organizer opens to ask
                 "are we taking entries", and the answer lives one section away.
@@ -99,7 +99,7 @@ function RegistrationForm({
           </SettingRow>
         </SettingGroup>
 
-        <SettingGroup title={t("display.title")} description={t("display.description")}>
+        <SettingGroup id="display" title={t("display.title")} description={t("display.description")}>
           <SettingRow
             htmlFor={`${ids}-max-participants`}
             label={t("display.maxParticipants")}

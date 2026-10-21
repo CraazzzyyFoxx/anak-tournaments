@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -12,7 +13,9 @@ import {
 } from "@/components/kit/useScopedSettingsForm";
 import {
   formFromWorkspace,
+  formIssues,
   sectionPayload,
+  type FieldIssue,
   type WorkspaceSettingsFormState
 } from "./fields";
 import type { WorkspaceRecordSectionKey } from "./sections";
@@ -32,6 +35,12 @@ export interface WorkspaceSettingsForm
   refetch: () => void;
   /** Re-read `admin-workspaces`, `admin-workspace`, the community's game list and the picker store. */
   invalidate: () => void;
+}
+
+/** Words for a `FieldIssue`, in the reader's language. */
+export function useFieldIssueText(): (issue: FieldIssue) => string {
+  const t = useTranslations("adminWorkspace.workspaceSettings.errors");
+  return (issue) => ("values" in issue ? t(issue.key, issue.values) : t(issue.key));
 }
 
 /**
@@ -72,11 +81,17 @@ export function useWorkspaceSettingsForm(
     void fetchWorkspaces();
   }, [queryClient, workspaceId, fetchWorkspaces]);
 
+  const issueText = useFieldIssueText();
   const settings = useScopedSettingsForm({
     baseline,
     toPayload: (form, base) => sectionPayload(section, form, base),
     submit: (payload) => workspaceService.update(workspaceId as number, payload),
-    onSaved: invalidate
+    onSaved: invalidate,
+    validate: (form) => {
+      const messages: Record<string, string> = {};
+      for (const [key, issue] of Object.entries(formIssues(form))) messages[key] = issueText(issue);
+      return messages;
+    }
   });
 
   return {

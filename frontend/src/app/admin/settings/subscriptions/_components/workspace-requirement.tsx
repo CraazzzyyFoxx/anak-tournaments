@@ -106,7 +106,7 @@ export function WorkspaceRequirementCard({
   }
 
   return (
-    <SettingGroup title={t("title")} description={t("description")}>
+    <SettingGroup id="requirement" title={t("title")} description={t("description")}>
       {requirementQuery.isLoading ? (
         // Shaped like the editor: a provider/tier row, then the add button.
         <div aria-busy="true" className="space-y-3">

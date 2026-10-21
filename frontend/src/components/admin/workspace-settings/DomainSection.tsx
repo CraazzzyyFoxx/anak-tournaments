@@ -17,18 +17,28 @@ import { Textarea } from "@/components/ui/textarea";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { PhaseStrip, type PhaseState } from "@/components/kit/PhaseStrip";
 import { SaveBar } from "@/components/kit/SaveBar";
-import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
+import { useInSettingsPreview } from "@/components/kit/SettingsContinuation";
+import { SettingGroup, SettingRow, invalidProps } from "@/components/kit/SettingRow";
+import { getApiErrorMessage } from "@/lib/api/error";
 import { PLATFORM_ZONE } from "@/lib/site/host";
 import { notify } from "@/lib/notify";
 import workspaceService from "@/services/workspace.service";
 import type { Workspace } from "@/types/workspace.types";
+import { customDomainIssue } from "./fields";
 import { WorkspaceSettingsFrame } from "./WorkspaceSettingsFrame";
-import { useWorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
+import { useFieldIssueText, useWorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 
 /** DNS propagation is minutes, not seconds; re-checking faster only burns
  * requests on a resolver that has not refreshed yet. */
 const VERIFY_POLL_MS = 15000;
+
+/**
+ * Lengths search engines show before they cut a snippet. Advice, not limits:
+ * the server stores longer text, so the counters warn and never block.
+ */
+const SEO_TITLE_SHOWN = 60;
+const SEO_DESCRIPTION_SHOWN = 160;
 
 type DomainState = { domain: string | null; verifiedAt: string | null; token: string | null };
 
@@ -50,9 +60,17 @@ const domainStateOf = (ws: Workspace): DomainState => ({
 export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
   const t = useTranslations("adminWorkspace.workspaceSettings.domain");
   const settings = useWorkspaceSettingsForm(workspaceId, "domain");
-  const { patch, invalidate, workspace } = settings;
+  const { patch, invalidate, workspace, errors, reveal } = settings;
+  const issueText = useFieldIssueText();
+  // As the next page's ghost this section only shows; it must not poll DNS
+  // and toast a verification on a page that is about something else.
+  const inPreview = useInSettingsPreview();
 
   const [draftDomain, setDraftDomain] = useState("");
+  // The draft is judged once the reader leaves it or tries to save it, and a
+  // refusal from the server replaces that judgement until the draft changes.
+  const [draftJudged, setDraftJudged] = useState(false);
+  const [domainRefusal, setDomainRefusal] = useState<string | null>(null);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [domain, setDomain] = useState<DomainState>({
     domain: null,
@@ -74,6 +92,8 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
   const applyDomain = (updated: Workspace) => {
     setDomain(domainStateOf(updated));
     setDraftDomain(updated.custom_domain ?? "");
+    setDraftJudged(false);
+    setDomainRefusal(null);
     invalidate();
   };
 
@@ -83,8 +103,16 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
       applyDomain(updated);
       notify.success(t("saved"));
     },
-    onError: (error) => notify.apiError(error, { title: t("saveError") })
+    onError: (error) => setDomainRefusal(getApiErrorMessage(error, t("saveError")))
   });
+
+  const draftIssue = customDomainIssue(draftDomain);
+  const draftError =
+    domainRefusal ?? (draftJudged && draftIssue ? issueText(draftIssue) : undefined);
+  const saveDraft = () => {
+    setDraftJudged(true);
+    if (!draftIssue) setDomainMutation.mutate(draftDomain);
+  };
 
   const verifyMutation = useMutation({
     mutationFn: () => workspaceService.verifyCustomDomain(workspaceId as number),
@@ -119,7 +147,7 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
   const poll = useQuery({
     queryKey: adminQueryKeys.workspaceDomainVerify(workspaceId, domain.domain),
     queryFn: () => workspaceService.verifyCustomDomain(workspaceId as number),
-    enabled: pending,
+    enabled: pending && !inPreview,
     refetchInterval: pending ? VERIFY_POLL_MS : false,
     refetchOnWindowFocus: false,
     retry: false,
@@ -155,6 +183,7 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
       {({ form: values, workspace: ws }) => (
         <>
           <SettingGroup
+            id="address"
             title={t("groups.address.title")}
             description={t("groups.address.description")}
           >
@@ -166,16 +195,21 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                   ? `https://${values.subdomain}.${PLATFORM_ZONE}`
                   : t("platformUrlOnly")
               }
+              error={errors.subdomain}
+              stacked
             >
               <InputGroup>
                 <InputGroupInput
                   id="workspace-subdomain"
                   value={values.subdomain ?? ""}
+                  spellCheck={false}
                   onChange={(event) =>
                     patch({
                       subdomain: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "")
                     })
                   }
+                  onBlur={() => reveal("subdomain")}
+                  {...invalidProps("workspace-subdomain", errors.subdomain)}
                 />
                 <InputGroupAddon align="inline-end">
                   <InputGroupText>.{PLATFORM_ZONE}</InputGroupText>
@@ -185,6 +219,7 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
           </SettingGroup>
 
           <SettingGroup
+            id="custom-domain"
             title={t("customDomain")}
             description={t("groups.customDomain.description")}
             immediate
@@ -199,15 +234,32 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
               />
             </div>
 
-            <SettingRow htmlFor="workspace-custom-domain" label={t("domainLabel")} stacked>
+            <SettingRow
+              htmlFor="workspace-custom-domain"
+              label={t("domainLabel")}
+              error={draftError}
+              stacked
+            >
               <div className="flex w-full flex-wrap gap-2">
                 <Input
                   id="workspace-custom-domain"
                   className="min-w-[16rem] flex-1"
                   value={draftDomain}
                   placeholder={t("domainPlaceholder")}
+                  inputMode="url"
+                  spellCheck={false}
                   disabled={!!domain.verifiedAt}
-                  onChange={(event) => setDraftDomain(event.target.value.toLowerCase().trim())}
+                  onChange={(event) => {
+                    setDraftDomain(event.target.value.toLowerCase().trim());
+                    setDomainRefusal(null);
+                  }}
+                  onBlur={() => {
+                    if (draftDomain) setDraftJudged(true);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !domain.verifiedAt) saveDraft();
+                  }}
+                  {...invalidProps("workspace-custom-domain", draftError)}
                 />
                 {domain.verifiedAt ? (
                   <Button
@@ -224,13 +276,7 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                     type="button"
                     variant="outline"
                     disabled={setDomainMutation.isPending}
-                    onClick={() => {
-                      if (!draftDomain) {
-                        notify.error(t("enterDomain"));
-                        return;
-                      }
-                      setDomainMutation.mutate(draftDomain);
-                    }}
+                    onClick={saveDraft}
                   >
                     {setDomainMutation.isPending ? t("saving") : t("saveDomain")}
                   </Button>
@@ -253,52 +299,51 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
                 hint={t("addRecords", { seconds: VERIFY_POLL_MS / 1000 })}
                 stacked
               >
-                <dl className="w-full divide-y divide-border/60 font-mono text-xs">
-                  <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)_1.25rem] items-center gap-x-3 py-2">
-                    <dt className="text-muted-foreground">TXT</dt>
-                    <dd className="break-all">{`_owt-verify.${domain.domain}`}</dd>
-                    <dd className="break-all">{domain.token}</dd>
-                    <dd>
-                      {domain.token ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-5"
-                          aria-label={t("copyTxt")}
-                          title={t("copyTxt")}
-                          onClick={() => domain.token && copy(domain.token)}
-                        >
-                          <Copy aria-hidden className="size-3" />
-                        </Button>
-                      ) : null}
-                    </dd>
-                  </div>
-                  <div className="grid grid-cols-[3.5rem_minmax(0,1fr)_minmax(0,1fr)_1.25rem] items-center gap-x-3 py-2">
-                    <dt className="text-muted-foreground">CNAME</dt>
-                    <dd className="break-all">{domain.domain}</dd>
-                    <dd className="break-all">{PLATFORM_ZONE}</dd>
-                  </div>
-                </dl>
+                <DnsRecords
+                  records={[
+                    { type: "TXT", host: `_owt-verify.${domain.domain}`, value: domain.token ?? "" },
+                    { type: "CNAME", host: domain.domain ?? "", value: PLATFORM_ZONE }
+                  ]}
+                  onCopy={copy}
+                />
               </SettingRow>
             ) : null}
           </SettingGroup>
 
+          {/* Each placeholder is what a blank field falls back to, so the
+              reader sees what search engines get without filling anything. */}
           <SettingGroup
+            id="search"
             title={t("groups.search.title")}
             description={t("groups.search.description")}
           >
-            <SettingRow htmlFor="workspace-seo-title" label={t("seoTitle")}>
+            <SettingRow
+              htmlFor="workspace-seo-title"
+              label={t("seoTitle")}
+              count={{ value: (values.seo_title ?? "").length, max: SEO_TITLE_SHOWN, soft: true }}
+              stacked
+            >
               <Input
                 id="workspace-seo-title"
                 value={values.seo_title ?? ""}
+                placeholder={ws.name}
                 onChange={(event) => patch({ seo_title: event.target.value })}
               />
             </SettingRow>
-            <SettingRow htmlFor="workspace-seo-description" label={t("seoDescription")} stacked>
+            <SettingRow
+              htmlFor="workspace-seo-description"
+              label={t("seoDescription")}
+              count={{
+                value: (values.seo_description ?? "").length,
+                max: SEO_DESCRIPTION_SHOWN,
+                soft: true
+              }}
+              stacked
+            >
               <Textarea
                 id="workspace-seo-description"
                 value={values.seo_description ?? ""}
+                placeholder={ws.description ?? undefined}
                 onChange={(event) => patch({ seo_description: event.target.value })}
               />
             </SettingRow>
@@ -307,6 +352,7 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
           <SaveBar
             dirty={settings.dirty}
             summary={settings.summary}
+            error={settings.error}
             saving={settings.saving}
             onDiscard={settings.discard}
             onSave={settings.save}
@@ -330,5 +376,86 @@ export function DomainSection({ workspaceId }: Readonly<{ workspaceId: number | 
         </>
       )}
     </WorkspaceSettingsFrame>
+  );
+}
+
+interface DnsRecord {
+  type: "TXT" | "CNAME";
+  host: string;
+  value: string;
+}
+
+/**
+ * The records to add at the DNS provider, each part copyable on its own: a
+ * provider's form asks for the host and the value in separate fields, so a
+ * copy of only the token left the reader retyping the rest.
+ */
+function DnsRecords({
+  records,
+  onCopy
+}: Readonly<{ records: readonly DnsRecord[]; onCopy: (value: string) => void }>) {
+  const t = useTranslations("adminWorkspace.workspaceSettings.domain");
+  return (
+    <table className="w-full table-fixed text-left text-xs">
+      <thead className="text-label uppercase tracking-label text-muted-foreground">
+        <tr>
+          <th scope="col" className="w-16 pb-1.5 font-semibold">
+            {t("dnsType")}
+          </th>
+          <th scope="col" className="pb-1.5 pr-3 font-semibold">
+            {t("dnsHost")}
+          </th>
+          <th scope="col" className="pb-1.5 font-semibold">
+            {t("dnsValue")}
+          </th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-border/60 border-t border-border/60 font-mono">
+        {records.map((record) => (
+          <tr key={record.type}>
+            <td className="py-2 align-top text-muted-foreground">{record.type}</td>
+            <td className="py-2 pr-3 align-top">
+              <CopyableValue
+                value={record.host}
+                label={t("copyHost", { type: record.type })}
+                onCopy={onCopy}
+              />
+            </td>
+            <td className="py-2 align-top">
+              <CopyableValue
+                value={record.value}
+                label={t("copyValue", { type: record.type })}
+                onCopy={onCopy}
+              />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function CopyableValue({
+  value,
+  label,
+  onCopy
+}: Readonly<{ value: string; label: string; onCopy: (value: string) => void }>) {
+  return (
+    <div className="flex items-start gap-1">
+      <span className="min-w-0 flex-1 break-all py-0.5">{value}</span>
+      {value ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-6 shrink-0"
+          aria-label={label}
+          title={label}
+          onClick={() => onCopy(value)}
+        >
+          <Copy aria-hidden className="size-3.5" />
+        </Button>
+      ) : null}
+    </div>
   );
 }

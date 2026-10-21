@@ -31,7 +31,7 @@ let pathname = "/admin/settings";
 vi.mock("next/navigation", () => ({
   usePathname: () => pathname,
   useParams: () => ({ id: "8" }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() })
 }));
 
 vi.mock("next/link", () => ({
@@ -69,12 +69,8 @@ vi.mock("@/stores/workspace.store", () => ({
   ) => selector({ currentWorkspaceId: 8, fetchWorkspaces: vi.fn() })
 }));
 
-const saveBar = vi.fn();
 vi.mock("@/components/kit/SaveBar", () => ({
-  SaveBar: () => {
-    saveBar();
-    return null;
-  }
+  SaveBar: () => <div data-save-bar />
 }));
 
 const WORKSPACE: Workspace = {
@@ -160,7 +156,6 @@ function rows() {
 beforeEach(() => {
   pathname = "/admin/settings";
   getById.mockReset().mockResolvedValue(WORKSPACE);
-  saveBar.mockReset();
 });
 
 afterEach(async () => {
@@ -191,19 +186,22 @@ describe("Workspace settings overview", () => {
     await render(Page);
 
     const byTitle = rows();
-    expect(byTitle["Description and tagline"].href).toBe(`${basePath}/general`);
-    expect(byTitle["Site branding"].href).toBe(`${basePath}/branding`);
-    expect(byTitle["Subdomain"].href).toBe(`${basePath}/domain`);
+    expect(byTitle["Description and tagline"].href).toBe(`${basePath}/general#community`);
+    expect(byTitle["Site branding"].href).toBe(`${basePath}/branding#palette`);
+    expect(byTitle["Subdomain"].href).toBe(`${basePath}/domain#address`);
     // Done items and the superuser-set verification offer nothing to click.
     expect(byTitle["Icon"].href).toBeNull();
     expect(byTitle["Discord server"].href).toBeNull();
     expect(byTitle["Platform verification"].href).toBeNull();
   });
 
+  // The ghost of General under it is a form, but an inert preview of one.
   it("is read-only: no save bar, no form controls", async () => {
     await render(SettingsRootPage);
 
-    expect(saveBar).not.toHaveBeenCalled();
-    expect(container.querySelector("input, textarea, select, [role='switch']")).toBeNull();
+    const outsidePreview = (selector: string) =>
+      [...container.querySelectorAll(selector)].filter((node) => !node.closest("[inert]"));
+    expect(outsidePreview("[data-save-bar]")).toEqual([]);
+    expect(outsidePreview("input, textarea, select, [role='switch']")).toEqual([]);
   });
 });

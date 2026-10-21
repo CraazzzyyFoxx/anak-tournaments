@@ -66,7 +66,9 @@ export function SetupChecklist({
               {!item.done && item.section ? (
                 <ItemActions>
                   <Button asChild variant="outline" size="sm">
-                    <Link href={`${basePath}/${item.section}`}>{t("setUp")}</Link>
+                    <Link href={`${basePath}/${item.section}${item.group ? `#${item.group}` : ""}`}>
+                      {t("setUp")}
+                    </Link>
                   </Button>
                 </ItemActions>
               ) : null}

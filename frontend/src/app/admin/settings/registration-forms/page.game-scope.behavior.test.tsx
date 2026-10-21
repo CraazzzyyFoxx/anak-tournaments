@@ -158,13 +158,16 @@ async function createNamed(text: string) {
   return { name, discipline, keys: schema.sections.flatMap((section) => section.fields.map((field) => field.key)) };
 }
 
-/** Picks a game in the page's game filter: "+ Filter" › Game › the game (an option reads as its mark, then its name). */
+/** Picks a game in the page's inline game select (an option reads as its mark, then its name). */
 async function pickGame(name: string) {
-  const item = (text: string) =>
-    [...document.querySelectorAll<HTMLElement>('[cmdk-item=""]')].find((node) => node.textContent?.endsWith(text))!;
-  await act(async () => container.querySelector<HTMLElement>(`button[aria-label="${en.kit.actions.addFilter}"]`)!.click());
-  await act(async () => item(en.common.discipline.column).click());
-  await act(async () => item(name).click());
+  await act(async () =>
+    container
+      .querySelector<HTMLElement>(`button[role="combobox"][aria-label="${en.common.discipline.column}"]`)!
+      .click()
+  );
+  await act(async () =>
+    [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((node) => node.textContent?.endsWith(name))!.click()
+  );
   await settle();
 }
 

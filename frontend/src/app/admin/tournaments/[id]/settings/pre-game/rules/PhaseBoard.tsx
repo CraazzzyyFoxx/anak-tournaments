@@ -1,7 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
-import { MoreHorizontal, Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, MoreHorizontal, Plus } from "lucide-react";
 
 import { SortableGrip, SortableRows, useSortableRow } from "@/components/kit/SortableRows";
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,8 @@ import {
   addStep,
   duplicatePhase,
   duplicateStep,
+  movePhase,
+  moveStep,
   newPhase,
   removePhase,
   removeStep,
@@ -131,37 +133,103 @@ export function PhaseBoard({
   );
 }
 
-/** The one row-actions menu of a phase or a step: duplicate, and delete when allowed. */
-function RowMenu({
-  label,
+/**
+ * The actions of a phase or a step: reorder and duplicate one click away,
+ * delete in the menu. When delete is impossible the item stays, disabled,
+ * with the reason under it.
+ */
+function RowActions({
+  scope,
+  index,
+  total,
+  removeBlockedReason,
+  onMove,
   onDuplicate,
   onRemove,
-}: Readonly<{ label: string; onDuplicate: () => void; onRemove?: () => void }>) {
+}: Readonly<{
+  scope: "phase" | "step";
+  index: number;
+  total: number;
+  removeBlockedReason?: string;
+  onMove: (delta: -1 | 1) => void;
+  onDuplicate: () => void;
+  onRemove: () => void;
+}>) {
   const t = useTranslations("pickBan.rules");
+  const n = index + 1;
+  const moveUp = t(`${scope}.moveUp`, { n });
+  const moveDown = t(`${scope}.moveDown`, { n });
+  const duplicate = t(`${scope}.duplicate`, { n });
+  const actions = t(`${scope}.actions`, { n });
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="size-7 shrink-0"
-          aria-label={label}
-          title={label}
-        >
-          <MoreHorizontal aria-hidden className="size-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onSelect={onDuplicate}>{t("rowMenu.duplicate")}</DropdownMenuItem>
-        {onRemove ? (
-          <DropdownMenuItem className="text-danger focus:text-danger" onSelect={onRemove}>
-            {t("rowMenu.remove")}
+    <div className="flex shrink-0 items-center gap-0.5">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-7"
+        disabled={index === 0}
+        aria-label={moveUp}
+        title={moveUp}
+        onClick={() => onMove(-1)}
+      >
+        <ArrowUp aria-hidden className="size-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-7"
+        disabled={index === total - 1}
+        aria-label={moveDown}
+        title={moveDown}
+        onClick={() => onMove(1)}
+      >
+        <ArrowDown aria-hidden className="size-4" />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="size-7"
+        aria-label={duplicate}
+        title={duplicate}
+        onClick={onDuplicate}
+      >
+        <Copy aria-hidden className="size-4" />
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            aria-label={actions}
+            title={actions}
+          >
+            <MoreHorizontal aria-hidden className="size-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem
+            className="text-danger focus:text-danger"
+            disabled={removeBlockedReason != null}
+            onSelect={onRemove}
+          >
+            <span>
+              {t("rowMenu.remove")}
+              {removeBlockedReason == null ? null : (
+                <span className="block text-caption text-muted-foreground">
+                  {removeBlockedReason}
+                </span>
+              )}
+            </span>
           </DropdownMenuItem>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 
@@ -221,10 +289,14 @@ function PhaseSection({
         />
         <div className="flex-1" />
         {canManage ? (
-          <RowMenu
-            label={t("phase.actions", { n: index + 1 })}
+          <RowActions
+            scope="phase"
+            index={index}
+            total={total}
+            removeBlockedReason={total > 1 ? undefined : t("rowMenu.lastPhase")}
+            onMove={(delta) => onChange(movePhase(ruleset, phase.id, delta))}
             onDuplicate={() => onChange(duplicatePhase(ruleset, phase.id))}
-            onRemove={total > 1 ? () => onChange(removePhase(ruleset, phase.id)) : undefined}
+            onRemove={() => onChange(removePhase(ruleset, phase.id))}
           />
         ) : null}
       </div>
@@ -308,6 +380,7 @@ function PhaseSection({
                   selected={selected?.phaseId === phase.id && selected.stepId === step.id}
                   canManage={canManage}
                   onSelect={() => onSelect({ phaseId: phase.id, stepId: step.id })}
+                  onMove={(delta) => onChange(moveStep(ruleset, phase.id, step.id, delta))}
                   onDuplicate={() => onChange(duplicateStep(ruleset, phase.id, step.id))}
                   onRemove={() => {
                     if (selected?.stepId === step.id) onSelect(null);
@@ -347,6 +420,7 @@ function StepRow({
   selected,
   canManage,
   onSelect,
+  onMove,
   onDuplicate,
   onRemove,
 }: Readonly<{
@@ -357,6 +431,7 @@ function StepRow({
   selected: boolean;
   canManage: boolean;
   onSelect: () => void;
+  onMove: (delta: -1 | 1) => void;
   onDuplicate: () => void;
   onRemove: () => void;
 }>) {
@@ -396,8 +471,11 @@ function StepRow({
           )}
         </button>
         {canManage ? (
-          <RowMenu
-            label={t("step.actions", { n: index + 1 })}
+          <RowActions
+            scope="step"
+            index={index}
+            total={total}
+            onMove={onMove}
             onDuplicate={onDuplicate}
             onRemove={onRemove}
           />

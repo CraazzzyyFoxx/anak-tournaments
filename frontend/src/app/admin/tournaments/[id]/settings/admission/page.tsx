@@ -74,7 +74,7 @@ function AdmissionForm({
   return (
     <>
       <div className="flex flex-col gap-4">
-        <SettingGroup title={t("admission.title")}>
+        <SettingGroup id="admission" title={t("admission.title")}>
           <SettingRow
             htmlFor={`${ids}-open-profile`}
             label={t("admission.requireOpenProfile")}
@@ -111,7 +111,7 @@ function AdmissionForm({
           </SettingRow>
         </SettingGroup>
 
-        <SettingGroup title={t("subscription.title")} description={t("subscription.hint")}>
+        <SettingGroup id="subscription" title={t("subscription.title")} description={t("subscription.hint")}>
           <SettingRow
             htmlFor={`${ids}-subscription`}
             label={t("subscription.require")}
@@ -198,7 +198,7 @@ function AdmissionForm({
         {/* Structurally empty without registered teams: there is no roster to
               check a rank spread or a duplicate identity across. */}
         {teamRegistration ? (
-          <SettingGroup title={t("team.title")} description={t("team.description")}>
+          <SettingGroup id="team" title={t("team.title")} description={t("team.description")}>
             <SettingRow
               htmlFor={`${ids}-rank-min`}
               label={t("team.rankMin")}

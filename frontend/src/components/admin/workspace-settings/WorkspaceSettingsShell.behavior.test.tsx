@@ -36,8 +36,12 @@ vi.mock("next/navigation", () => ({
 vi.mock("next/link", () => ({
   default: forwardRef<
     HTMLAnchorElement,
-    { href: string; children: React.ReactNode } & React.AnchorHTMLAttributes<HTMLAnchorElement>
-  >(function Link({ href, children, ...props }, ref) {
+    {
+      href: string;
+      children: React.ReactNode;
+      prefetch?: boolean | null;
+    } & React.AnchorHTMLAttributes<HTMLAnchorElement>
+  >(function Link({ href, children, prefetch: _prefetch, ...props }, ref) {
     return (
       <a ref={ref} href={href} {...props}>
         {children}

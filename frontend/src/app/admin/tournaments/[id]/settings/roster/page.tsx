@@ -59,7 +59,7 @@ function RosterForm({
   });
   const metadata = useDisciplineMetadata(owner.workspaceId, owner.discipline);
   const baseline = useMemo(() => formatQuery.data ? teamFormatPayload(formatQuery.data) : null, [formatQuery.data]);
-  const { form, patch, dirty, summary, saving, save, discard } = useScopedSettingsForm<TeamFormatWrite, TeamFormatWrite>({
+  const { form, patch, dirty, summary, saving, save, discard, error } = useScopedSettingsForm<TeamFormatWrite, TeamFormatWrite>({
     baseline,
     toPayload: form => teamFormatPayload(form),
     countChanges: (payload, _form, base) => teamFormatsEqual(payload, base) ? 0 : 1,
@@ -109,7 +109,7 @@ function RosterForm({
           tabFallback
         )
       ) : hasBench && bench.value ? (
-        <SettingGroup title={t("bench.title")} description={t("bench.description")}>
+        <SettingGroup id="bench" title={t("bench.title")} description={t("bench.description")}>
           <SettingRow
             htmlFor={`${ids}-max-substitutes`}
             label={t("team.maxSubstitutes")}
@@ -139,6 +139,7 @@ function RosterForm({
                 .filter(Boolean)
                 .join(" · ")
         }
+        error={error}
         saving={saving || bench.saving}
         onDiscard={() => {
           discard();

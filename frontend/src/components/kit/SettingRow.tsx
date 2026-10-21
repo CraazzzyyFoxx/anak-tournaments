@@ -1,18 +1,46 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import { useId, useRef, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
+import { AlertTriangle } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { useSettingsOutlineEntry } from "./SettingsOutline";
+
+/** Id of the error line a `SettingRow` renders for the control `controlId`. */
+export function settingErrorId(controlId: string): string {
+  return `${controlId}-error`;
+}
+
+/**
+ * The control half of an inline error: spread on the control whose row gets
+ * the same `error`, so the field is marked and names its message.
+ */
+export function invalidProps(controlId: string, error: string | undefined) {
+  return error
+    ? ({ "aria-invalid": true, "aria-describedby": settingErrorId(controlId) } as const)
+    : {};
+}
+
+/** Characters used against a limit. `soft` is advice (search snippets), not a cap. */
+export interface SettingRowCount {
+  value: number;
+  max: number;
+  soft?: boolean;
+}
 
 /**
  * One setting: what it is and why on the left, the control on the right.
  *
  * `stacked` puts the control under its label at full width, for the values a
- * half column cannot hold: long text, Markdown, a record table. A group
- * narrower than `@xl` (36rem) stacks every row, from the same DOM.
+ * half column cannot hold: text a reader types, Markdown, a record table. A
+ * group narrower than `@xl` (36rem) stacks every row, from the same DOM.
+ *
+ * `error` renders under the control, with an icon and words (never colour
+ * alone); pair it with `invalidProps(htmlFor, error)` on the control. `count`
+ * sits at the end of the label line.
  *
  * Lived inside `RegistrationFormBuilder` until the registration policy moved
  * into the settings rail; every settings section now builds rows from it, and
@@ -24,14 +52,22 @@ export function SettingRow({
   label,
   hint,
   stacked = false,
+  error,
+  count,
   children
 }: Readonly<{
   htmlFor?: string;
   label: string;
   hint?: ReactNode;
   stacked?: boolean;
+  error?: string;
+  count?: SettingRowCount;
   children: ReactNode;
 }>) {
+  const fallbackId = useId();
+  const errorId = htmlFor ? settingErrorId(htmlFor) : fallbackId;
+  const over = count ? count.value > count.max : false;
+
   return (
     <div
       className={cn(
@@ -43,13 +79,33 @@ export function SettingRow({
       )}
     >
       <div className="min-w-0">
-        <Label htmlFor={htmlFor} className="text-sm font-medium text-foreground">
-          {label}
-        </Label>
+        <div className="flex items-baseline justify-between gap-3">
+          <Label htmlFor={htmlFor} className="text-sm font-medium text-foreground">
+            {label}
+          </Label>
+          {count ? (
+            <span
+              className={cn(
+                "aqt-tnum shrink-0 text-label",
+                over ? (count.soft ? "text-warning" : "text-danger") : "text-muted-foreground"
+              )}
+            >
+              {count.value} / {count.max}
+            </span>
+          ) : null}
+        </div>
         {hint ? <p className="mt-0.5 max-w-prose text-xs text-muted-foreground">{hint}</p> : null}
       </div>
-      <div className={cn("flex min-w-0 items-center", !stacked && "@xl:justify-end")}>
-        {children}
+      <div className="min-w-0">
+        <div className={cn("flex min-w-0 items-center", !stacked && "@xl:justify-end")}>
+          {children}
+        </div>
+        {error ? (
+          <p id={errorId} role="alert" className="mt-1.5 flex items-start gap-1.5 text-caption text-danger">
+            <AlertTriangle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+            <span className="min-w-0 [overflow-wrap:anywhere]">{error}</span>
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -61,16 +117,21 @@ export function SettingRow({
  * form. Rows are separated by hairlines inside the card, never by another
  * frame (DESIGN §5, one level of framing).
  *
+ * `id` is the group's anchor: stable and locale-free, because it is what a
+ * `#fragment` link and the section rail's outline (`SettingsOutline`) point at.
+ *
  * `immediate` marks a group whose controls act on their own (an upload, a
  * transfer, a DNS check) rather than through the page's save bar, so the two
  * save models never share a group without saying so.
  */
 export function SettingGroup({
+  id,
   title,
   description,
   immediate = false,
   children
 }: Readonly<{
+  id: string;
   title: string;
   description?: ReactNode;
   immediate?: boolean;
@@ -78,10 +139,13 @@ export function SettingGroup({
 }>) {
   const t = useTranslations("kit.settings");
   const titleId = useId();
+  const ref = useRef<HTMLElement>(null);
+  useSettingsOutlineEntry(id, title, ref);
 
   return (
-    <Card asChild>
-      <section aria-labelledby={titleId}>
+    // `scroll-mt-16` keeps a jumped-to group clear of the admin top bar.
+    <Card asChild className="scroll-mt-16">
+      <section id={id} ref={ref} aria-labelledby={titleId}>
         <header className="px-5 py-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <h2 id={titleId} className="text-ui font-semibold text-foreground">

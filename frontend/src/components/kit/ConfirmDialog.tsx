@@ -81,9 +81,9 @@ export function ConfirmDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <div className="flex items-center gap-2">
-            {intent.tone === "danger" ? (
-              <AlertTriangle aria-hidden className={cn("size-5", TONE_TEXT.danger)} />
-            ) : null}
+            {intent.tone === "neutral" ? null : (
+              <AlertTriangle aria-hidden className={cn("size-5", TONE_TEXT[intent.tone])} />
+            )}
             <AlertDialogTitle>{intent.title}</AlertDialogTitle>
           </div>
           <AlertDialogDescription asChild>

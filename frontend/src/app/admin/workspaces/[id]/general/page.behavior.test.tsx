@@ -69,7 +69,7 @@ vi.mock("@/components/kit/SortableRows", () => ({
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "8" }),
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() })
 }));
 
 let superuser = true;
@@ -207,21 +207,6 @@ describe("Workspaces › [id] › General", () => {
     expect(container.querySelector<HTMLInputElement>("#workspace-name")?.value).toBe("Rivals Cup");
   });
 
-  it("previews the typed tagline in the community page header", async () => {
-    await render();
-    const tagline = container.querySelector<HTMLInputElement>("#workspace-tagline")!;
-
-    await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
-        tagline,
-        "Weekly cups since 2019"
-      );
-      tagline.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-
-    expect(container.querySelector("figure")?.textContent).toContain("Weekly cups since 2019");
-  });
-
   // The owner is the one field on this screen the public workspace payload
   // cannot carry, so it is fetched separately — and it has to be fetched for
   // the workspace in the route, like everything else here.
@@ -241,12 +226,12 @@ describe("Workspaces › [id] › General", () => {
   });
 
   // The reassignment control is superuser-only and writes through its own
-  // endpoint, so "Clear" is the one branch reachable without driving the
+  // endpoint, so "Remove owner" is the one branch reachable without driving the
   // account picker: it must send an explicit null, not just drop the field.
   it("lets a superuser drop the accountability stamp in one click", async () => {
     await render();
     const clear = [...container.querySelectorAll("button")].find(
-      (button) => button.textContent?.trim() === "Clear"
+      (button) => button.textContent?.trim() === "Remove owner"
     );
 
     expect(container.querySelector("#workspace-owner")).not.toBeNull();

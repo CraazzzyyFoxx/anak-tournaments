@@ -31,7 +31,7 @@ export function OverviewSection({ workspaceId }: Readonly<{ workspaceId: number 
     <WorkspaceSettingsFrame workspaceId={workspaceId} settings={settings}>
       {({ workspace }) => (
         <>
-          <SettingGroup title={t("overview.identity")}>
+          <SettingGroup id="workspace" title={t("overview.identity")}>
             <SettingRow label={t("overview.name")}>
               <span className="flex min-w-0 items-center gap-2">
                 <WorkspaceIcon workspace={workspace} />
@@ -48,7 +48,7 @@ export function OverviewSection({ workspaceId }: Readonly<{ workspaceId: number 
 
           <WorkspaceNotListedNotice status={workspace.verification_status} />
 
-          <SettingGroup title={t("setup.title")}>
+          <SettingGroup id="setup" title={t("setup.title")}>
             <SetupChecklist workspace={workspace} basePath={basePath} />
           </SettingGroup>
         </>

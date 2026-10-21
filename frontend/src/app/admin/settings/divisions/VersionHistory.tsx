@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
@@ -27,7 +28,8 @@ export interface VersionHistoryProps {
   /**
    * Whether a published version may be activated right now, by id. `undefined`
    * while its readiness is loading; absent for versions that are not
-   * candidates (drafts, archived, the active one). Activate is offered only on `true`.
+   * candidates (drafts, archived, the active one). A candidate's Activate is
+   * shown, and enabled only on `true`.
    */
   activatable: Record<number, boolean | undefined>;
   onActivate?: (version: DivisionGridVersion) => void;
@@ -53,6 +55,7 @@ export function VersionHistory({
 }: Readonly<VersionHistoryProps>) {
   const t = useTranslations("adminSettings.divisions");
   const format = useFormatter();
+  const reasonIdPrefix = useId();
   const ordered = [...versions].sort((left, right) => right.version - left.version);
 
   return (
@@ -62,6 +65,9 @@ export function VersionHistory({
         const pill = VERSION_PILL[state];
         const bands = bandsFromTiers(ladder, version.tiers);
         const isDraft = version.status === "draft";
+        const canActivate = version.id in activatable;
+        const ready = activatable[version.id];
+        const reasonId = `${reasonIdPrefix}-${version.id}`;
 
         // The pill already says "in force"; a count of readers is only known for the others.
         const usage =
@@ -108,8 +114,19 @@ export function VersionHistory({
             </div>
 
             <div className="col-start-2 flex flex-wrap items-center gap-2 lg:col-start-3 lg:justify-end">
-              {activatable[version.id] === true && onActivate ? (
-                <Button size="sm" variant="outline" onClick={() => onActivate(version)}>
+              {ready === false && onActivate ? (
+                <p id={reasonId} className="max-w-xs text-caption text-muted-foreground">
+                  {t("editorDetails.mappingBlocked")}
+                </p>
+              ) : null}
+              {canActivate && onActivate ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={ready !== true}
+                  aria-describedby={ready === false ? reasonId : undefined}
+                  onClick={() => onActivate(version)}
+                >
                   {t("activateVersion", { version: version.version })}
                 </Button>
               ) : null}

@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   PICK_BAN_MODES,
   type PickBanDraft,
@@ -161,13 +162,18 @@ export function PoolStep({
         </div>
       ) : (
         <div className="flex flex-col">
-          <FieldDescription>
-            {roundsLoading
-              ? t("roundHintLoading")
-              : isStageScope
+          {roundsLoading ? (
+            <div role="status">
+              <span className="sr-only">{t("roundHintLoading")}</span>
+              <Skeleton aria-hidden className="h-4 w-64" />
+            </div>
+          ) : (
+            <FieldDescription>
+              {isStageScope
                 ? t("roundsUnknownStageWide")
                 : t("slotCountFromBracket", { maps: slotCount })}
-          </FieldDescription>
+            </FieldDescription>
+          )}
 
           <div className="flex flex-col divide-y divide-border">
             {draft.slots.map((slot, index) => (

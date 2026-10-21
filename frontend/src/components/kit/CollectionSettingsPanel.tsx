@@ -122,6 +122,7 @@ export function CollectionSettingsPanel<T>({
       <SaveBar
         dirty={settings.dirty}
         summary={settings.summary}
+        error={settings.error}
         saving={settings.saving}
         onDiscard={settings.discard}
         onSave={settings.save}

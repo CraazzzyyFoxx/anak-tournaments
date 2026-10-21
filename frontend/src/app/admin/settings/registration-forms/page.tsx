@@ -79,7 +79,7 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
   const gameT = useTranslations("common.discipline");
   const { searchParams, setParams } = useQueryParams({ mode: "push" });
   // An open `?template=` owns its game, so a game pick keeps it.
-  const gameDefs = gameFilterDefs(games, gameT("column"));
+  const gameDefs = gameFilterDefs(games, gameT("column"), undefined, gameT("all"));
   const filters = useFilters(gameDefs);
 
   const selectedId = Number(searchParams?.get("template")) || null;

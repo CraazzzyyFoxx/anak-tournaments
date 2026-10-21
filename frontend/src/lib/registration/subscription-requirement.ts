@@ -16,12 +16,17 @@ import type {
  *
  * Composition is Kleene three-valued logic, and `unknown` must never be coerced
  * to a boolean before combining. Coercing it to false makes
- * `any[refused, unknown]` block, so one provider's outage locks out every patron
- * subscribed via the other. Coercing it to true makes `all[refused, unknown]`
- * pass, admitting a confirmed non-subscriber. The truth table is asserted in
- * `subscription-requirement.test.ts` with the same twelve cases the Python suite
- * uses, so the two implementations cannot drift.
+ * `any[refused, unknown]` block, so one provider's misconfiguration locks out
+ * every patron subscribed via the other. Coercing it to true makes
+ * `all[refused, unknown]` pass, admitting a confirmed non-subscriber. One
+ * `unknown` is an exception, as on the server: an *outage* (`OUTAGE_REASONS`)
+ * refuses, because a paid tier that could not be checked is not confirmed. The
+ * truth table is asserted in `subscription-requirement.test.ts` with the same
+ * cases the Python suite uses, so the two implementations cannot drift.
  */
+
+/** `unknown` reasons that mean "could not ask", mirrored from `requirement.py`. */
+const OUTAGE_REASONS: Record<string, true> = { provider_unavailable: true, bot_not_configured: true };
 
 /** Brand names, never translated; an unknown key renders as itself. */
 export const PROVIDER_LABELS: Record<string, string> = {
@@ -46,7 +51,10 @@ function evaluateOne(
   // A missing verdict means the provider is unconfigured, disabled, or was not
   // resolved. That is the organizer's problem and must never read as "not
   // subscribed".
-  if (!verdict || verdict.state === "unknown") return "undetermined";
+  if (!verdict) return "undetermined";
+  if (verdict.state === "unknown") {
+    return verdict.reason && OUTAGE_REASONS[verdict.reason] ? "refused" : "undetermined";
+  }
   if (verdict.state !== "active") return "refused";
   // `null` tier means "subscribed, level unknown", which counts as level 1.
   return (verdict.tier_rank ?? 1) >= minTierRank ? "satisfied" : "refused";

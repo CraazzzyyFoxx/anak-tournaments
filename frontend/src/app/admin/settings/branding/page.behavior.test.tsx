@@ -35,7 +35,7 @@ vi.mock("@/services/workspace.service", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() })
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() })
 }));
 
 let workspaceAdmin = true;

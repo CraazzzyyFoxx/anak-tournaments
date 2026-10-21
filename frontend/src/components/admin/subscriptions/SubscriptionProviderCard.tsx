@@ -255,7 +255,7 @@ function ProviderEditor({
     method === "code" && enabled && config.codes.length === 0 && newCodes.length === 0;
 
   return (
-    <SettingGroup title={label}>
+    <SettingGroup id={`provider-${config.provider}`} title={label}>
       <SettingRow
         htmlFor={`enabled-${config.provider}`}
         label={t("enabled.label")}

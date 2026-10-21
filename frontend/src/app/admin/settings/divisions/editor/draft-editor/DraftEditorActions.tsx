@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
@@ -27,8 +28,8 @@ interface DraftEditorActionsProps {
 
 /**
  * The editor header's buttons: undo, discard, publish a draft, activate or
- * clone a published version. An action whose precondition is unmet is absent;
- * "Ready to publish?" says what is missing.
+ * clone a published version. Publish and activate stay on screen while their
+ * precondition is unmet: disabled, with the reason beside them.
  */
 export function DraftEditorActions({
   version,
@@ -48,11 +49,21 @@ export function DraftEditorActions({
   onClone
 }: Readonly<DraftEditorActionsProps>) {
   const t = useTranslations("adminSettings.divisions");
+  const reasonId = useId();
   const isDraft = version.status === "draft";
+  const showPublish = canPublish && isDraft;
+  const showActivate = canPublish && !isDraft && version.id !== activeVersionId;
+  const reason =
+    showPublish && !publishable
+      ? t("editorDetails.publishBlocked")
+      : showActivate && !activationReady
+        ? t("editorDetails.mappingBlocked")
+        : null;
+  const describedBy = reason ? reasonId : undefined;
   return (
     <>
-      {editable && canUndo ? (
-        <Button variant="outline" size="sm" onClick={onUndo}>
+      {editable ? (
+        <Button variant="outline" size="sm" disabled={!canUndo} onClick={onUndo}>
           {t("editor.undo")}
         </Button>
       ) : null}
@@ -61,8 +72,13 @@ export function DraftEditorActions({
           {t("editor.discardDraft")}
         </Button>
       ) : null}
-      {canPublish && isDraft && publishable ? (
-        <Button size="sm" disabled={publishing} onClick={onPublish}>
+      {showPublish ? (
+        <Button
+          size="sm"
+          disabled={!publishable || publishing}
+          aria-describedby={describedBy}
+          onClick={onPublish}
+        >
           {t("editor.publishVersion", { version: version.version })}
         </Button>
       ) : null}
@@ -71,10 +87,20 @@ export function DraftEditorActions({
           {t("editor.createDraft")}
         </Button>
       ) : null}
-      {canPublish && !isDraft && version.id !== activeVersionId && activationReady ? (
-        <Button size="sm" disabled={activating} onClick={onActivate}>
+      {showActivate ? (
+        <Button
+          size="sm"
+          disabled={!activationReady || activating}
+          aria-describedby={describedBy}
+          onClick={onActivate}
+        >
           {t("activateVersion", { version: version.version })}
         </Button>
+      ) : null}
+      {reason ? (
+        <p id={reasonId} className="max-w-xs text-caption text-muted-foreground">
+          {reason}
+        </p>
       ) : null}
     </>
   );

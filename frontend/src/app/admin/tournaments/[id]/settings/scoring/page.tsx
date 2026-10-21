@@ -2,12 +2,10 @@
 
 import { useTranslations } from "next-intl";
 
-import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { Switch } from "@/components/ui/switch";
 import { SaveBar } from "@/components/kit/SaveBar";
+import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import type { Tournament } from "@/types/tournament.types";
 import { SettingsSectionPage } from "../SettingsSection";
 import { useTournamentSettingsForm } from "../useTournamentSettingsForm";
@@ -37,7 +35,7 @@ function ScoringForm({
   disabled
 }: Readonly<{ tournament: Tournament; tournamentId: number; disabled: boolean }>) {
   const t = useTranslations("adminTournament.scoring");
-  const { form, patch, dirty, summary, saving, save, discard } = useTournamentSettingsForm(
+  const { form, patch, dirty, summary, saving, save, discard, error } = useTournamentSettingsForm(
     tournament,
     tournamentId,
     "scoring"
@@ -45,83 +43,73 @@ function ScoringForm({
 
   return (
     <>
-      <Card>
-        <CardContent className="flex flex-col gap-5 pt-6">
-          <section className="flex flex-col gap-2">
-            <h2 className={EYEBROW_CLASS}>{t("points")}</h2>
-            <div className="grid grid-cols-3 gap-3 pt-1">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="settings-win-points">{t("win")}</Label>
-                <NumberInput
-                  id="settings-win-points"
-                  value={form.win_points}
-                  disabled={disabled}
-                  onValueChange={(next) => patch({ win_points: next ?? 0 })}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="settings-draw-points">{t("draw")}</Label>
-                <NumberInput
-                  id="settings-draw-points"
-                  value={form.draw_points}
-                  disabled={disabled}
-                  onValueChange={(next) => patch({ draw_points: next ?? 0 })}
-                />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="settings-loss-points">{t("loss")}</Label>
-                <NumberInput
-                  id="settings-loss-points"
-                  value={form.loss_points}
-                  disabled={disabled}
-                  onValueChange={(next) => patch({ loss_points: next ?? 0 })}
-                />
-              </div>
-            </div>
-          </section>
+      <div className="flex flex-col gap-4">
+        <SettingGroup id="points" title={t("points")}>
+          <SettingRow htmlFor="settings-win-points" label={t("win")}>
+            <NumberInput
+              id="settings-win-points"
+              value={form.win_points}
+              disabled={disabled}
+              onValueChange={(next) => patch({ win_points: next ?? 0 })}
+              size="sm"
+              className="w-24"
+            />
+          </SettingRow>
+          <SettingRow htmlFor="settings-draw-points" label={t("draw")}>
+            <NumberInput
+              id="settings-draw-points"
+              value={form.draw_points}
+              disabled={disabled}
+              onValueChange={(next) => patch({ draw_points: next ?? 0 })}
+              size="sm"
+              className="w-24"
+            />
+          </SettingRow>
+          <SettingRow htmlFor="settings-loss-points" label={t("loss")}>
+            <NumberInput
+              id="settings-loss-points"
+              value={form.loss_points}
+              disabled={disabled}
+              onValueChange={(next) => patch({ loss_points: next ?? 0 })}
+              size="sm"
+              className="w-24"
+            />
+          </SettingRow>
+        </SettingGroup>
 
-          <div className="flex flex-col gap-4 border-t border-border pt-5">
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="settings-is-league"
-                checked={form.is_league}
-                disabled={disabled}
-                onCheckedChange={(checked) => patch({ is_league: checked === true })}
-              />
-              <Label htmlFor="settings-is-league" className="cursor-pointer">
-                {t("league")}
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="settings-is-finished"
-                checked={form.is_finished}
-                disabled={disabled}
-                onCheckedChange={(checked) => patch({ is_finished: checked === true })}
-              />
-              <Label htmlFor="settings-is-finished" className="cursor-pointer">
-                {t("finished")}
-              </Label>
-            </div>
-            <div className="flex flex-col gap-1 border-t border-border pt-4">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="settings-logs-official"
-                  checked={form.logs_official}
-                  disabled={disabled}
-                  onCheckedChange={(checked) => patch({ logs_official: checked === true })}
-                />
-                <Label htmlFor="settings-logs-official" className="cursor-pointer">
-                  {t("logsOfficial")}
-                </Label>
-              </div>
-              <p className="pl-6 text-xs text-muted-foreground">{t("logsOfficialDescription")}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        <SettingGroup id="results" title={t("results")}>
+          <SettingRow htmlFor="settings-is-league" label={t("league")}>
+            <Switch
+              id="settings-is-league"
+              checked={form.is_league}
+              disabled={disabled}
+              onCheckedChange={(checked) => patch({ is_league: checked })}
+            />
+          </SettingRow>
+          <SettingRow htmlFor="settings-is-finished" label={t("finished")}>
+            <Switch
+              id="settings-is-finished"
+              checked={form.is_finished}
+              disabled={disabled}
+              onCheckedChange={(checked) => patch({ is_finished: checked })}
+            />
+          </SettingRow>
+          <SettingRow
+            htmlFor="settings-logs-official"
+            label={t("logsOfficial")}
+            hint={t("logsOfficialDescription")}
+          >
+            <Switch
+              id="settings-logs-official"
+              checked={form.logs_official}
+              disabled={disabled}
+              onCheckedChange={(checked) => patch({ logs_official: checked })}
+            />
+          </SettingRow>
+        </SettingGroup>
+      </div>
 
-      <SaveBar dirty={dirty} summary={summary} saving={saving} onDiscard={discard} onSave={save} />
+      <SaveBar dirty={dirty} summary={summary} error={error} saving={saving} onDiscard={discard} onSave={save} />
     </>
   );
 }

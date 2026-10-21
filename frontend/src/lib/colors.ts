@@ -16,6 +16,9 @@ export const getWinrateColor = (winrate: number) => {
   return "var(--aqt-violet)";
 };
 
+/** Below this many games a winrate is greyed and any comparison hidden (DESIGN.md §11). */
+export const LOW_SAMPLE_GAMES = 10;
+
 /**
  * Winrate (0–100) → accent color on the design-book §1 thresholds:
  * ≥60 good · 50–59 mid · <50 bad.

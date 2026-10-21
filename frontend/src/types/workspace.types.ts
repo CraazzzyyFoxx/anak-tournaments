@@ -86,7 +86,7 @@ export interface DivisionGridMarketplaceImportRequest {
   source_grid_id: number;
   source_version_id: number;
   include_icons: boolean;
-  include_ow_rank_mappings: boolean;
+  include_native_rank_mappings: boolean;
 }
 
 interface DivisionGridMarketplaceImportedGrid {

@@ -31,7 +31,7 @@ vi.mock("@/services/admin.service", () => ({
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "14" }),
   usePathname: () => "/admin/tournaments/14/settings/rules",
-  useRouter: () => ({ push: vi.fn() })
+  useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() })
 }));
 
 vi.mock("next/link", () => ({

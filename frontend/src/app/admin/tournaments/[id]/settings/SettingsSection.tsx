@@ -6,6 +6,7 @@ import type messages from "@/i18n/messages/en.json";
 import type { ReactNode } from "react";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { useInSettingsPreview } from "@/components/kit/SettingsContinuation";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { Tournament } from "@/types/tournament.types";
@@ -66,7 +67,10 @@ export function SettingsSectionPage({
     `sections.${SETTINGS_SECTION_LABEL_KEYS[section]}` as `sections.${keyof typeof messages.adminTournament.settings.sections}`
   );
 
-  const header = (
+  // As the next section's ghost the page is titled by the ghost itself; a
+  // second h1 there would be a heading for something not open.
+  const inPreview = useInSettingsPreview();
+  const header = inPreview ? null : (
     <AdminPageHeader title={sectionLabel} description={description} />
   );
 

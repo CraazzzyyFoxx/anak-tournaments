@@ -74,6 +74,9 @@ export function WorkspaceOwnerValue({ workspaceId }: Readonly<{ workspaceId: num
  * there is nothing to stage, and a Save button over a single field would only
  * add a state that can be abandoned half-set. It is a `SettingRow` of its own,
  * so a caller it is not offered to gets no row at all.
+ *
+ * The picker starts empty: the current owner is already on the Owner row
+ * above it, and a trigger repeating the name read as a field still to fill.
  */
 export function WorkspaceOwnerControl({
   workspaceId,
@@ -103,13 +106,13 @@ export function WorkspaceOwnerControl({
   if (!isSuperuser || workspaceId == null) return null;
 
   return (
-    <SettingRow htmlFor="workspace-owner" label={tc("reassignOwner")}>
+    <SettingRow htmlFor="workspace-owner" label={tc("reassignOwner")} hint={t("reassignHint")}>
       <div className="flex w-full items-center gap-2">
         <AuthUserSearchCombobox
           id="workspace-owner"
-          value={owner?.auth_user_id}
-          selectedLabel={owner?.username ?? owner?.email ?? undefined}
-          onSelect={(account) => mutation.mutate(account?.id ?? null)}
+          onSelect={(account) => {
+            if (account) mutation.mutate(account.id);
+          }}
           placeholder={tc("selectAccount")}
           disabled={mutation.isPending}
         />
@@ -118,10 +121,11 @@ export function WorkspaceOwnerControl({
             type="button"
             variant="ghost"
             size="sm"
+            className="shrink-0"
             disabled={mutation.isPending}
             onClick={() => mutation.mutate(null)}
           >
-            {tc("clear")}
+            {t("removeOwner")}
           </Button>
         ) : null}
       </div>
@@ -169,7 +173,11 @@ export function WorkspaceOwnerTransferControl({
   if (workspaceId == null || !(isSuperuser || isOwner)) return null;
 
   return (
-    <SettingRow htmlFor="workspace-owner-transfer" label={tc("transferOwnership")}>
+    <SettingRow
+      htmlFor="workspace-owner-transfer"
+      label={tc("transferOwnership")}
+      hint={t("transferHint")}
+    >
       <AuthUserSearchCombobox
         id="workspace-owner-transfer"
         value={target?.id}

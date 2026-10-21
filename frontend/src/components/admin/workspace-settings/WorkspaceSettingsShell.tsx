@@ -8,6 +8,8 @@ import { createPortal } from "react-dom";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LinkTabs } from "@/components/kit/LinkTabs";
 import { SectionNav } from "@/components/kit/SectionNav";
+import { SettingsOutlineProvider } from "@/components/kit/SettingsOutline";
+import { useInSettingsPreview } from "@/components/kit/SettingsContinuation";
 import { cn } from "@/lib/utils";
 import {
   WORKSPACE_SETTINGS_SECTIONS,
@@ -40,11 +42,13 @@ const HeaderActionsContext = createContext<HTMLElement | null>(null);
 /**
  * Puts a section's page-level controls (the audit trail, a discipline picker)
  * into the shell's header, beside the title they act on, instead of a row of
- * their own above the form. Renders nothing outside a settings shell.
+ * their own above the form. Renders nothing outside a settings shell, or for
+ * the next page's ghost, whose header is not this one.
  */
 export function SettingsHeaderActions({ children }: Readonly<{ children: ReactNode }>) {
   const node = useContext(HeaderActionsContext);
-  return node ? createPortal(children, node) : null;
+  const inPreview = useInSettingsPreview();
+  return node && !inPreview ? createPortal(children, node) : null;
 }
 
 /**
@@ -84,26 +88,28 @@ export function WorkspaceSettingsShell({
   const page = activeKey ? workspaceSettingsPage(activeKey, basePath, t, sections) : null;
 
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
-      <SectionNav
-        groups={workspaceSettingsNavGroups(basePath, t, sections)}
-        activeKey={page?.key ?? ""}
-      />
-      {/* Not `<main>`: the admin shell already exposes the page-level main
-          landmark (`components/ui/sidebar.tsx` SidebarInset). */}
-      <div className={cn("flex min-w-0 flex-1 flex-col gap-4", !page?.wide && "max-w-3xl")}>
-        <AdminPageHeader
-          title={page?.title ?? t("sections.settingsTitle")}
-          description={page?.description}
-          actions={<div ref={setActionsNode} className="flex flex-wrap items-center gap-2" />}
+    <SettingsOutlineProvider>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
+        <SectionNav
+          groups={workspaceSettingsNavGroups(basePath, t, sections)}
+          activeKey={page?.key ?? ""}
         />
-        {page && activeKey ? (
-          <LinkTabs items={page.tabs} activeKey={activeKey} ariaLabel={page.title} />
-        ) : null}
-        <HeaderActionsContext.Provider value={actionsNode}>
-          {children}
-        </HeaderActionsContext.Provider>
+        {/* Not `<main>`: the admin shell already exposes the page-level main
+            landmark (`components/ui/sidebar.tsx` SidebarInset). */}
+        <div className={cn("flex min-w-0 flex-1 flex-col gap-4", !page?.wide && "max-w-3xl")}>
+          <AdminPageHeader
+            title={page?.title ?? t("sections.settingsTitle")}
+            description={page?.description}
+            actions={<div ref={setActionsNode} className="flex flex-wrap items-center gap-2" />}
+          />
+          {page && activeKey ? (
+            <LinkTabs items={page.tabs} activeKey={activeKey} ariaLabel={page.title} />
+          ) : null}
+          <HeaderActionsContext.Provider value={actionsNode}>
+            {children}
+          </HeaderActionsContext.Provider>
+        </div>
       </div>
-    </div>
+    </SettingsOutlineProvider>
   );
 }

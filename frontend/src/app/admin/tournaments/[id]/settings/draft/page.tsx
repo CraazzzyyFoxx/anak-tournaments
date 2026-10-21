@@ -3,8 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import { SaveBar } from "@/components/kit/SaveBar";
-import { Card, CardContent } from "@/components/ui/card";
-import { FieldDescription } from "@/components/ui/field";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import type { Tournament } from "@/types/tournament.types";
 
 import { DraftFormatFields } from "../../components/draft/DraftFormatFields";
@@ -36,7 +35,7 @@ function DraftFormatForm({
   disabled
 }: Readonly<{ tournament: Tournament; tournamentId: number; disabled: boolean }>) {
   const t = useTranslations("draftAdmin");
-  const { form, patch, dirty, summary, saving, save, discard } = useTournamentSettingsForm(
+  const { form, patch, dirty, summary, saving, save, discard, error } = useTournamentSettingsForm(
     tournament,
     tournamentId,
     "draft"
@@ -49,21 +48,22 @@ function DraftFormatForm({
 
   return (
     <>
-      <Card>
-        <CardContent className="space-y-4 pt-6">
-          {locked && (
-            <FieldDescription className="text-warning">{t("formatLockedByDraft")}</FieldDescription>
-          )}
-          <DraftFormatFields
-            value={value}
-            rounds={rounds}
-            disabled={disabled || locked}
-            onChange={(next) => patch({ draft_format_json: next })}
-          />
-        </CardContent>
-      </Card>
+      <SettingGroup
+        id="format"
+        title={t("groups.format.title")}
+        description={
+          locked ? <span className="text-warning">{t("formatLockedByDraft")}</span> : undefined
+        }
+      >
+        <DraftFormatFields
+          value={value}
+          rounds={rounds}
+          disabled={disabled || locked}
+          onChange={(next) => patch({ draft_format_json: next })}
+        />
+      </SettingGroup>
 
-      <SaveBar dirty={dirty} summary={summary} saving={saving} onDiscard={discard} onSave={save} />
+      <SaveBar dirty={dirty} summary={summary} error={error} saving={saving} onDiscard={discard} onSave={save} />
     </>
   );
 }

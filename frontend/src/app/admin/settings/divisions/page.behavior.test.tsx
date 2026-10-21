@@ -292,17 +292,14 @@ function button(text: string) {
   );
 }
 
-function commandItem(text: string) {
-  return Array.from(document.querySelectorAll('[cmdk-item=""]')).find((item) =>
-    item.textContent?.endsWith(text)
-  );
-}
-
-/** Picks a game in the page's game filter: "+ Filter" › Game › the game (an option reads as its mark, then its name). */
+/** Picks a game in the page's inline game select (an option reads as its mark, then its name). */
 async function pickGame(name: string) {
-  await click(document.querySelector('button[aria-label="Add filter"]'));
-  await click(commandItem("Game"));
-  await click(commandItem(name));
+  await click(document.querySelector('button[role="combobox"][aria-label="Game"]'));
+  await click(
+    Array.from(document.querySelectorAll('[role="option"]')).find((option) =>
+      option.textContent?.endsWith(name)
+    )
+  );
 }
 
 beforeEach(() => {
@@ -821,7 +818,7 @@ describe("Settings › Divisions · game filter", () => {
     getDivisionGridVersions.mockImplementation(async (_ws: number, id: number) => (id === 8 ? [] : VERSIONS));
   });
 
-  it("offers the Game chip, and a picked game opens that game's grid", async () => {
+  it("offers the Game select, and a picked game opens that game's grid", async () => {
     const container = await mount();
     expect(container.querySelector("#divisions-in-force")?.textContent).toBe(VERSIONS[2].label);
 
@@ -834,14 +831,14 @@ describe("Settings › Divisions · game filter", () => {
     expect(getDivisionGridVersions).toHaveBeenLastCalledWith(1, 8);
   });
 
-  it("unpins a grid only for another game's pick; removing the chip keeps the pin", async () => {
+  it("unpins a grid only for another game's pick; clearing the game keeps the pin", async () => {
     window.history.replaceState(null, "", "/admin/settings/divisions?grid=7");
     const container = await mount();
 
     await pickGame("Overwatch");
     expect(window.location.search).toBe("?grid=7&discipline=overwatch");
 
-    await click(document.querySelector('button[aria-label="Remove filter Game: Overwatch"]'));
+    await pickGame("All games");
     expect(window.location.search).toBe("?grid=7");
 
     await pickGame("League of Legends");

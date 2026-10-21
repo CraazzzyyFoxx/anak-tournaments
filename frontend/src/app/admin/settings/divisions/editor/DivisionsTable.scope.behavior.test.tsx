@@ -15,8 +15,13 @@ import type { DisciplineCapabilities } from "@/types/discipline.types";
 import type { DivisionTier } from "@/types/workspace.types";
 
 vi.mock("next/image", () => ({
-  // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
-  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} alt={props.alt ?? ""} />
+  default: ({
+    unoptimized: _unoptimized,
+    ...props
+  }: React.ImgHTMLAttributes<HTMLImageElement> & { unoptimized?: boolean }) => (
+    // eslint-disable-next-line @next/next/no-img-element -- this IS the next/image stand-in
+    <img {...props} alt={props.alt ?? ""} />
+  )
 }));
 
 import { TEST_LADDER } from "./__fixtures__/test-ladder";

@@ -1,12 +1,18 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { WorkspaceSettingsFrame } from "./WorkspaceSettingsFrame";
 import { useWorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
+
+const NEWCOMER_SCOPES = [
+  { value: "global", label: "platformWide", help: "platformWideHelp" },
+  { value: "workspace", label: "workspaceOnly", help: "workspaceOnlyHelp" }
+] as const;
 
 /**
  * Who can find this workspace, and whose history counts when a roster decides
@@ -14,7 +20,9 @@ import { useWorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
  *
  * Newcomer scope reads like a rating knob rather than a visibility one, but it
  * is the same question in reverse — how much of the platform this workspace
- * considers itself part of — and it has no other home.
+ * considers itself part of — and it has no other home. Its two options are
+ * radios that each state their consequence: as a two-button toggle the
+ * difference lived in one paragraph the reader had to map back onto them.
  */
 export function VisibilitySection({ workspaceId }: Readonly<{ workspaceId: number | null }>) {
   const t = useTranslations("adminWorkspace.workspaceSettings.visibility");
@@ -25,7 +33,7 @@ export function VisibilitySection({ workspaceId }: Readonly<{ workspaceId: numbe
     <WorkspaceSettingsFrame workspaceId={workspaceId} settings={settings}>
       {({ form: values }) => (
         <>
-          <SettingGroup title={t("groups.discovery.title")}>
+          <SettingGroup id="listing" title={t("groups.discovery.title")}>
             <SettingRow htmlFor="workspace-is-hidden" label={t("hidden")} hint={t("hiddenHelp")}>
               <Switch
                 id="workspace-is-hidden"
@@ -35,27 +43,45 @@ export function VisibilitySection({ workspaceId }: Readonly<{ workspaceId: numbe
             </SettingRow>
           </SettingGroup>
 
-          <SettingGroup title={t("groups.newcomers.title")}>
-            {/* A ToggleGroup is not a labelable element, so the row's
-                `<label>` cannot name it; it carries the name itself. */}
-            <SettingRow label={t("newcomerScope")} hint={t("scopeHelp")}>
-              <ToggleGroup
-                type="single"
-                value={values.newcomer_scope}
-                onValueChange={(value) =>
-                  patch({ newcomer_scope: value as "global" | "workspace" })
-                }
-                aria-label={t("newcomerScope")}
-              >
-                <ToggleGroupItem value="global">{t("platformWide")}</ToggleGroupItem>
-                <ToggleGroupItem value="workspace">{t("workspaceOnly")}</ToggleGroupItem>
-              </ToggleGroup>
-            </SettingRow>
+          <SettingGroup
+            id="newcomers"
+            title={t("groups.newcomers.title")}
+            description={t("scopeHelp")}
+          >
+            <RadioGroup
+              value={values.newcomer_scope}
+              onValueChange={(value) => patch({ newcomer_scope: value as "global" | "workspace" })}
+              aria-label={t("newcomerScope")}
+              className="gap-4"
+            >
+              {NEWCOMER_SCOPES.map((scope) => {
+                const id = `newcomer-scope-${scope.value}`;
+                return (
+                  <div key={scope.value} className="flex items-start gap-3">
+                    <RadioGroupItem
+                      id={id}
+                      value={scope.value}
+                      aria-describedby={`${id}-help`}
+                      className="mt-0.5"
+                    />
+                    <div className="min-w-0">
+                      <Label htmlFor={id} className="text-sm font-medium">
+                        {t(scope.label)}
+                      </Label>
+                      <p id={`${id}-help`} className="mt-0.5 max-w-prose text-xs text-muted-foreground">
+                        {t(scope.help)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </RadioGroup>
           </SettingGroup>
 
           <SaveBar
             dirty={settings.dirty}
             summary={settings.summary}
+            error={settings.error}
             saving={settings.saving}
             onDiscard={settings.discard}
             onSave={settings.save}

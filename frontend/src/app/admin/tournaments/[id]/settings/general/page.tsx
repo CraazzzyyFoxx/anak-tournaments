@@ -3,10 +3,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { Card, CardContent } from "@/components/ui/card";
 import { EditableAvatar } from "@/components/ui/editable-avatar";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -14,8 +12,10 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { AuditTrailButton } from "@/components/kit/AuditTrailSheet";
+import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { MAX_AVATAR_BYTES } from "@/lib/uploads";
 import { notify } from "@/lib/notify";
@@ -53,7 +53,7 @@ function GeneralForm({
   disabled: boolean;
 }>) {
   const t = useTranslations("adminTournament.general");
-  const { form, patch, dirty, summary, saving, save, discard } = useTournamentSettingsForm(
+  const { form, patch, dirty, summary, saving, save, discard, error } = useTournamentSettingsForm(
     tournament,
     tournamentId,
     "general"
@@ -80,94 +80,86 @@ function GeneralForm({
         />
       </div>
 
-      <Card>
-        <CardContent className="flex flex-col gap-4 pt-6">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="settings-name">{t("name")}</Label>
-            <Input
-              id="settings-name"
-              value={form.name}
-              disabled={disabled}
-              onChange={(event) => patch({ name: event.target.value })}
-            />
-          </div>
+      <SettingGroup id="details" title={t("groups.details.title")}>
+        <SettingRow htmlFor="settings-name" label={t("name")} stacked>
+          <Input
+            id="settings-name"
+            value={form.name}
+            disabled={disabled}
+            onChange={(event) => patch({ name: event.target.value })}
+          />
+        </SettingRow>
+        <SettingRow htmlFor="settings-slug" label={t("slug")} hint={t("slugHint")} stacked>
+          <Input
+            id="settings-slug"
+            value={form.slug}
+            disabled={disabled}
+            onChange={(event) => patch({ slug: event.target.value })}
+          />
+        </SettingRow>
+        <SettingRow htmlFor="settings-description" label={t("descriptionLabel")} stacked>
+          <Textarea
+            id="settings-description"
+            rows={4}
+            value={form.description}
+            disabled={disabled}
+            placeholder={t("descriptionPlaceholder")}
+            onChange={(event) => patch({ description: event.target.value })}
+          />
+        </SettingRow>
+      </SettingGroup>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="settings-slug">{t("slug")}</Label>
-            <Input
-              id="settings-slug"
-              value={form.slug}
-              disabled={disabled}
-              onChange={(event) => patch({ slug: event.target.value })}
-            />
-            <p className="text-xs text-muted-foreground">
-              {t("slugHint")}
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="settings-description">{t("descriptionLabel")}</Label>
-            <Textarea
-              id="settings-description"
-              rows={4}
-              value={form.description}
-              disabled={disabled}
-              placeholder={t("descriptionPlaceholder")}
-              onChange={(event) => patch({ description: event.target.value })}
-            />
-          </div>
-
-          <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="settings-team-formation">{t("formation")}</Label>
-              <Select
-                value={form.team_formation}
-                disabled={disabled}
-                onValueChange={(value) => patch({ team_formation: value })}
-              >
-                <SelectTrigger id="settings-team-formation">
-                  <SelectValue placeholder={t("formationPlaceholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="balancer">{t("balancer")}</SelectItem>
-                  <SelectItem value="draft">{t("liveDraft")}</SelectItem>
-                  <SelectItem value="registration">{t("teamRegistration")}</SelectItem>
-                  <SelectItem value="solo">{t("soloRegistration")}</SelectItem>
-                </SelectContent>
-              </Select>
+      <SettingGroup id="format" title={t("groups.format.title")}>
+        <SettingRow htmlFor="settings-team-formation" label={t("formation")}>
+          <Select
+            value={form.team_formation}
+            disabled={disabled}
+            onValueChange={(value) => patch({ team_formation: value })}
+          >
+            <SelectTrigger id="settings-team-formation">
+              <SelectValue placeholder={t("formationPlaceholder")} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="balancer">{t("balancer")}</SelectItem>
+              <SelectItem value="draft">{t("liveDraft")}</SelectItem>
+              <SelectItem value="registration">{t("teamRegistration")}</SelectItem>
+              <SelectItem value="solo">{t("soloRegistration")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingRow>
+        <SettingRow htmlFor="settings-division-grid-version" label={t("divisionGrid")}>
+          {gridsQuery.isLoading ? (
+            <div role="status" className="w-full">
+              <span className="sr-only">{t("loadingDivisionGrids")}</span>
+              <Skeleton aria-hidden className="h-9 w-full" />
             </div>
+          ) : (
+            <Select
+              value={form.division_grid_version_id?.toString() ?? "none"}
+              disabled={disabled}
+              onValueChange={(value) =>
+                patch({ division_grid_version_id: value === "none" ? null : Number(value) })
+              }
+            >
+              <SelectTrigger id="settings-division-grid-version">
+                <SelectValue placeholder={t("selectVersion")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">{t("workspaceDefault")}</SelectItem>
+                {versions.map((version) => (
+                  <SelectItem key={version.id} value={version.id.toString()}>
+                    {t("gridVersionOption", { label: version.label, version: version.version, status: version.status })}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </SettingRow>
+      </SettingGroup>
 
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="settings-division-grid-version">{t("divisionGrid")}</Label>
-              <Select
-                value={form.division_grid_version_id?.toString() ?? "none"}
-                disabled={disabled}
-                onValueChange={(value) =>
-                  patch({ division_grid_version_id: value === "none" ? null : Number(value) })
-                }
-              >
-                <SelectTrigger id="settings-division-grid-version">
-                  <SelectValue
-                    placeholder={gridsQuery.isLoading ? t("loadingDivisionGrids") : t("selectVersion")}
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{t("workspaceDefault")}</SelectItem>
-                  {versions.map((version) => (
-                    <SelectItem key={version.id} value={version.id.toString()}>
-                      {t("gridVersionOption", { label: version.label, version: version.version, status: version.status })}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <BrandingGroup tournament={tournament} tournamentId={tournamentId} disabled={disabled} />
 
-      <BrandingCard tournament={tournament} tournamentId={tournamentId} disabled={disabled} />
-
-      <SaveBar dirty={dirty} summary={summary} saving={saving} onDiscard={discard} onSave={save} />
+      <SaveBar dirty={dirty} summary={summary} error={error} saving={saving} onDiscard={discard} onSave={save} />
     </>
   );
 }
@@ -180,7 +172,7 @@ function GeneralForm({
  * `File` in dirty-tracked form state would mean reconciling a failed upload
  * with a succeeded PATCH on every save, so the picker uploads immediately.
  */
-function BrandingCard({
+function BrandingGroup({
   tournament,
   tournamentId,
   disabled
@@ -208,56 +200,39 @@ function BrandingCard({
   const busy = upload.isPending || remove.isPending;
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-4 pt-6">
-        <div className="flex flex-col gap-1.5">
-          <Label>{t("branding")}</Label>
-          <p className="text-xs text-muted-foreground">
-            {t("brandingHint")}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-start gap-8">
-          <div className="flex flex-col gap-2">
-            <span className="text-xs font-medium text-muted-foreground">{t("cover")}</span>
-            <EditableAvatar
-              src={tournament.cover_image_url}
-              name={tournament.name}
-              size={96}
-              width={288}
-              shape="rounded"
-              editable={!disabled}
-              busy={busy}
-              onSelectFile={(file) => upload.mutate({ slot: "cover", file })}
-              onDelete={tournament.cover_image_url ? () => remove.mutate("cover") : undefined}
-              maxSizeBytes={MAX_AVATAR_BYTES}
-              onError={(message) => notify.error(message)}
-              disabled={disabled}
-            />
-            <p className="text-xs text-muted-foreground">
-              {t("coverHint")}
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2">
-            <span className="text-xs font-medium text-muted-foreground">{t("logo")}</span>
-            <EditableAvatar
-              src={tournament.logo_url}
-              name={tournament.name}
-              size={80}
-              shape="rounded"
-              editable={!disabled}
-              busy={busy}
-              onSelectFile={(file) => upload.mutate({ slot: "logo", file })}
-              onDelete={tournament.logo_url ? () => remove.mutate("logo") : undefined}
-              maxSizeBytes={MAX_AVATAR_BYTES}
-              onError={(message) => notify.error(message)}
-              disabled={disabled}
-            />
-            <p className="text-xs text-muted-foreground">{t("logoHint")}</p>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <SettingGroup id="images" title={t("branding")} description={t("brandingHint")} immediate>
+      {/* Stacked: the 288px banner does not fit half of a narrow group. */}
+      <SettingRow label={t("cover")} hint={t("coverHint")} stacked>
+        <EditableAvatar
+          src={tournament.cover_image_url}
+          name={tournament.name}
+          size={96}
+          width={288}
+          shape="rounded"
+          editable={!disabled}
+          busy={busy}
+          onSelectFile={(file) => upload.mutate({ slot: "cover", file })}
+          onDelete={tournament.cover_image_url ? () => remove.mutate("cover") : undefined}
+          maxSizeBytes={MAX_AVATAR_BYTES}
+          onError={(message) => notify.error(message)}
+          disabled={disabled}
+        />
+      </SettingRow>
+      <SettingRow label={t("logo")} hint={t("logoHint")}>
+        <EditableAvatar
+          src={tournament.logo_url}
+          name={tournament.name}
+          size={80}
+          shape="rounded"
+          editable={!disabled}
+          busy={busy}
+          onSelectFile={(file) => upload.mutate({ slot: "logo", file })}
+          onDelete={tournament.logo_url ? () => remove.mutate("logo") : undefined}
+          maxSizeBytes={MAX_AVATAR_BYTES}
+          onError={(message) => notify.error(message)}
+          disabled={disabled}
+        />
+      </SettingRow>
+    </SettingGroup>
   );
 }

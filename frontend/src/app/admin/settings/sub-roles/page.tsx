@@ -1,60 +1,62 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Palette, Plus } from "lucide-react";
+import { AlertTriangle, ChevronDown, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { gameFilterDefs } from "@/components/admin/game-filter";
-import { EmptyNote } from "@/components/kit/EmptyNote";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { FilterBar } from "@/components/kit/FilterBar";
-import { InlineEditText } from "@/components/kit/InlineEditText";
-import { MasterDetail, MasterList, MasterListSkeleton } from "@/components/kit/MasterDetail";
+import { invalidProps, settingErrorId } from "@/components/kit/SettingRow";
 import { useFilters } from "@/components/kit/useFilters";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ColorSwatch } from "@/components/ui/color-swatch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { GameField } from "@/components/workspace/GameField";
-import { GameLabel } from "@/components/workspace/GameLabel";
+import { Textarea } from "@/components/ui/textarea";
+import { GameMark } from "@/components/workspace/GameMark";
 import { GameScopeGate } from "@/components/workspace/GameScopeGate";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
-import { useGameDescriptors } from "@/hooks/useGameDescriptors";
 import { useGameScope } from "@/hooks/useGameScope";
-import { useIsMobile } from "@/hooks/useMobile";
 import { usePermissions } from "@/hooks/usePermissions";
-import { useQueryParams } from "@/hooks/useQueryParams";
 import { useRoleName } from "@/hooks/useRoleName";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
+import { getApiErrorMessage } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
-import { ratedDimension, selectableRoles, type RoleOntology } from "@/lib/roster/ontology";
+import { ratedDimension, rolePresentation, selectableRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
-import { ALL_DISCIPLINES, defaultCreationGame } from "@/lib/site/discipline-scope";
+import { ALL_DISCIPLINES } from "@/lib/site/discipline-scope";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { PlayerSubRole, PlayerSubRoleUpdateInput } from "@/types/admin.types";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
 
-interface RootRole {
+/** A rated, top-level role of one game: the parent every sub-role hangs under. */
+interface ParentRole {
   id: number;
   code: string;
   name: string;
+  /** Its own resolved icon and colour: what a sub-role without its own wears. */
+  icon: string | null;
+  color: string | null;
 }
 
 interface SubRolePermissions {
+  create: boolean;
   edit: boolean;
   deactivate: boolean;
 }
 
 const PRESENTATION_KEYS = ["icon", "color"] as const;
 type PresentationKey = (typeof PRESENTATION_KEYS)[number];
-/** `undefined` inherits from the parent role, `null` is explicitly cleared, a string is its own. */
+/** `undefined` inherits from the parent role, `null` is explicitly none, a string is its own. */
 type Presentation = Record<PresentationKey, string | null | undefined>;
 
 function presentationOf(entry: PlayerSubRole): Presentation {
@@ -66,24 +68,43 @@ function presentationOf(entry: PlayerSubRole): Presentation {
   return { icon: read("icon"), color: read("color") };
 }
 
+/** What a sub-role actually shows: its own value, none, or its parent's. */
+function effective(own: string | null | undefined, inherited: string | null): string | null {
+  return own === undefined ? inherited : own;
+}
+
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+
+/** `validate_presentation` in `shared/domain/roles.py`. */
+function iconAccepted(icon: string, discipline: string): boolean {
+  if (icon.length > 512 || /[\s'"<>\\]/.test(icon) || icon.includes("..")) return false;
+  const game = discipline.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return (
+    /^https:\/\/\S+$/.test(icon) ||
+    new RegExp(`^assets/${game}/[a-z0-9_/-]+\\.(svg|png|webp)$`).test(icon) ||
+    new RegExp(`^/disciplines/${game}/[a-z0-9_/-]+\\.(svg|png|webp)$`).test(icon)
+  );
+}
+
 /**
- * The workspace's sub-role catalog (T4), a multi page (spec §6.11). Filtered to a game: that game's rated roles on the
- * left, the selected role's sub-roles on the right. Unfiltered: every game's sub-roles, grouped by game.
- * Creation is one dialog in both modes (spec §7.2): its game field starts on the filtered game, else the first enabled.
+ * The workspace's sub-role catalog: under each game, one card per rated role
+ * holding that role's sub-roles. The game filter only narrows which games are
+ * shown; there is no second layout for one game, and nothing opens into a
+ * mode of its own.
+ *
+ * Each card is the whole workflow for its role: add a sub-role at its foot
+ * (game and parent are where it is typed, so nothing asks for them), switch
+ * one off or back on in its row, open a row to edit its name, description,
+ * colour and icon. Switched-off sub-roles fold away under a count, since a
+ * catalog that keeps its retired entries would otherwise read half retired.
  */
 export default function WorkspaceSubRolesSettingsPage() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const t = useTranslations("adminSettings.subRoles");
   const gameT = useTranslations("common.discipline");
-  const { canAccessPermission } = usePermissions();
   const scope = useGameScope({ axis: workspaceId ?? "all" });
-  const { searchParams } = useQueryParams();
-  // `?role=` is a role of the filtered game; while a sub-role is open it is that sub-role's (its own game), so it stays.
-  const gameDefs = gameFilterDefs(scope.games, gameT("column"), () =>
-    searchParams?.has("sub_role") ? [] : ["role"]
-  );
+  const gameDefs = gameFilterDefs(scope.games, gameT("column"), undefined, gameT("all"));
   const filters = useFilters(gameDefs);
-  const [creating, setCreating] = useState(false);
 
   if (workspaceId === null) {
     return (
@@ -98,382 +119,165 @@ export default function WorkspaceSubRolesSettingsPage() {
   return (
     <GameScopeGate scope={scope}>
       {(game) => (
-        <div className="space-y-4">
-          <FilterBar
-            defs={gameDefs}
-            filters={filters}
-            trailing={
-              canAccessPermission("player.create", workspaceId) ? (
-                <Button type="button" onClick={() => setCreating(true)}>
-                  <Plus className="mr-1 size-4" aria-hidden />
-                  {t("create")}
-                </Button>
-              ) : undefined
-            }
+        <div className="space-y-6">
+          {gameDefs.length > 0 ? <FilterBar defs={gameDefs} filters={filters} /> : null}
+          <SubRoleCatalog
+            workspaceId={workspaceId}
+            games={game === null ? games : games.filter((entry) => entry.code === game)}
+            namedGames={game === null && games.length > 1}
           />
-          <SubRoleListing workspaceId={workspaceId} game={game} games={games} />
-          {creating ? (
-            <CreateSubRoleDialog
-              workspaceId={workspaceId}
-              games={games}
-              game={game}
-              onClose={() => setCreating(false)}
-            />
-          ) : null}
+          <p className="max-w-prose text-caption text-pretty text-muted-foreground">{t("deactivationNote")}</p>
         </div>
       )}
     </GameScopeGate>
   );
 }
 
-/** One game's editor: its metadata, then the role → sub-roles catalog. */
-function GameSubRoleCatalog({ workspaceId, discipline }: Readonly<{ workspaceId: number; discipline: string }>) {
-  const t = useTranslations("adminSettings.subRoles");
-  const metadata = useDisciplineMetadata(workspaceId, discipline);
-  if (metadata.isError) {
-    return <PageStateCard state="error" title={t("errors.load")} onAction={() => void metadata.refetch()} />;
-  }
-  if (!metadata.data) {
-    return (
-      <MasterDetail
-        list={<MasterListSkeleton />}
-        detail={null}
-        emptyDetail={
-          <div aria-hidden className="space-y-4">
-            <Skeleton className="h-5 w-32" />
-            <Skeleton className="h-32" />
-          </div>
-        }
-      />
-    );
-  }
-  return (
-    <SubRoleCatalog
-      key={`${workspaceId}:${discipline}`}
-      workspaceId={workspaceId}
-      discipline={discipline}
-      ontology={metadata.data}
-    />
-  );
-}
+/** Role cards in DESIGN §7's three-column role grid; the skeleton draws the same grid. */
+const ROLE_GRID_CLASS = "grid gap-3 lg:grid-cols-2 xl:grid-cols-3 lg:items-start";
 
-/**
- * The page body. An opened sub-role (`?sub_role=`) is an owner (spec §5) under any game filter: its game's editor.
- * Otherwise the filtered list: one game's editor, or every game's sub-roles grouped by game with its mark (spec §6.11).
- */
-function SubRoleListing({
-  workspaceId,
-  game,
-  games
-}: Readonly<{ workspaceId: number; game: string | null; games: DisciplineDescriptor[] }>) {
-  const t = useTranslations("adminSettings.subRoles");
-  const commonT = useTranslations("common");
-  const { searchParams, setParams } = useQueryParams({ mode: "push" });
-  const openedId = searchParams?.get("sub_role") ?? null;
-  // Every game's rows: the all-games list, and the lookup resolving an opened sub-role whatever the scope.
-  const needsCatalog = game === null || openedId !== null;
-  const catalog = useQuery({
-    queryKey: adminQueryKeys.playerSubRolesAll(workspaceId, ALL_DISCIPLINES),
-    queryFn: ({ signal }) =>
-      adminService.getPlayerSubRoles({ workspace_id: workspaceId, include_inactive: true }, signal),
-    enabled: needsCatalog
-  });
-  const rows = catalog.data ?? [];
-  const opened = openedId === null ? undefined : rows.find((entry) => String(entry.id) === openedId);
-
-  if (needsCatalog && catalog.isError) {
-    return <PageStateCard state="error" title={t("errors.load")} onAction={() => void catalog.refetch()} />;
-  }
-  if (opened) {
-    return (
-      <div className="space-y-4">
-        <Button type="button" variant="ghost" size="sm" onClick={() => setParams({ sub_role: null, role: null })}>
-          <ArrowLeft className="mr-1 size-4" aria-hidden />
-          {game === null ? t("backToAll") : commonT("back")}
-        </Button>
-        <GameSubRoleCatalog workspaceId={workspaceId} discipline={opened.discipline} />
-      </div>
-    );
-  }
-  if (needsCatalog && catalog.isPending) return <Skeleton className="h-64" />;
-  // An unknown `?sub_role=` (deleted, another community's) opens nothing: the scoped list stays.
-  if (game !== null) return <GameSubRoleCatalog workspaceId={workspaceId} discipline={game} />;
+function RoleGridSkeleton() {
   return (
-    <div className="space-y-6">
-      {rows.length === 0 ? (
-        <EmptyNote>{t("empty")}</EmptyNote>
-      ) : (
-        games.map((entry) => {
-          const entries = rows.filter((row) => row.discipline === entry.code);
-          return entries.length === 0 ? null : (
-            <GameSubRoleGroup
-              key={entry.code}
-              workspaceId={workspaceId}
-              discipline={entry.code}
-              entries={entries}
-              onOpen={(row) => setParams({ sub_role: String(row.id), role: row.role })}
-            />
-          );
-        })
-      )}
+    <div aria-hidden className={ROLE_GRID_CLASS}>
+      {[0, 1, 2].map((card) => (
+        <Card key={card} className="space-y-3 p-4">
+          <Skeleton className="h-5 w-28" />
+          <Skeleton className="h-9 w-full" />
+          <Skeleton className="h-9 w-full" />
+        </Card>
+      ))}
     </div>
   );
 }
 
-/** One game's sub-roles in the all-games list: "parent › sub-role", each opening that game's editor. */
-function GameSubRoleGroup({
-  workspaceId,
-  discipline,
-  entries,
-  onOpen
-}: Readonly<{
-  workspaceId: number;
-  discipline: string;
-  entries: PlayerSubRole[];
-  onOpen: (entry: PlayerSubRole) => void;
-}>) {
-  const t = useTranslations("adminSettings.subRoles");
-  const nameOf = useRoleName();
-  const descriptors = useGameDescriptors();
-  const metadata = useDisciplineMetadata(workspaceId, discipline);
-  const parents = new Map((metadata.data?.roles ?? []).map((role) => [role.code, nameOf(role)]));
-  return (
-    <section className="space-y-2">
-      <h2 className="text-ui font-semibold text-foreground">
-        <GameLabel code={discipline} games={descriptors} />
-      </h2>
-      <ul className="divide-y divide-border border-y border-border">
-        {entries.map((entry) => (
-          <li key={entry.id}>
-            <button
-              type="button"
-              onClick={() => onOpen(entry)}
-              className="flex w-full items-center gap-2 py-2 text-left text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <span className="text-muted-foreground">{parents.get(entry.role) ?? entry.role}</span>
-              <span aria-hidden className="text-muted-foreground">
-                ›
-              </span>
-              <span className={cn("min-w-0 flex-1 truncate", !entry.is_active && "text-muted-foreground")}>
-                {entry.label}
-              </span>
-              {entry.is_active ? null : <span className="text-caption text-muted-foreground">{t("inactive")}</span>}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
-/**
- * Sub-role creation in both list modes (spec §7.2): the game field (the creation default: the filtered game), then a
- * parent among that game's rated roles.
- */
-function CreateSubRoleDialog({
-  workspaceId,
-  games,
-  game,
-  onClose
-}: Readonly<{
-  workspaceId: number;
-  games: DisciplineDescriptor[];
-  /** The list's filtered game, `null` = every game. */
-  game: string | null;
-  onClose: () => void;
-}>) {
-  const t = useTranslations("adminSettings.subRoles");
-  const roleT = useTranslations("common.roleOntology");
-  const nameOf = useRoleName();
-  const queryClient = useQueryClient();
-  const [discipline, setDiscipline] = useState(() => defaultCreationGame(game, games));
-  const [role, setRole] = useState<string | null>(null);
-  const [label, setLabel] = useState("");
-  const metadata = useDisciplineMetadata(workspaceId, discipline);
-  const rated = metadata.data ? ratedDimension(metadata.data) : null;
-  const roots =
-    metadata.data && rated
-      ? selectableRoles(metadata.data, rated.code).filter((entry) => entry.parent_id === null)
-      : [];
-  const create = useMutation({
-    mutationFn: () =>
-      adminService.createPlayerSubRole({
-        workspace_id: workspaceId,
-        discipline: discipline!,
-        role: role!,
-        label: label.trim()
-      }),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: adminQueryKeys.playerSubRoles(workspaceId) }),
-        queryClient.invalidateQueries({ queryKey: adminQueryKeys.playerSubRolesPublic(workspaceId, discipline) }),
-        queryClient.invalidateQueries({ queryKey: disciplineQueryKeys.metadata(workspaceId, discipline!) })
-      ]);
-      notify.success(t("toast.added"));
-      onClose();
-    },
-    onError: (error) => notify.apiError(error, { title: t("errors.add") })
-  });
-  const ready = discipline !== null && role !== null && label.trim() !== "";
-
-  return (
-    <EntityFormDialog
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      title={t("create")}
-      isDirty={role !== null || label.trim() !== ""}
-      isSubmitting={create.isPending}
-      onSubmit={() => {
-        if (ready) create.mutate();
-      }}
-    >
-      <GameField
-        id="sub-role-game"
-        games={games}
-        value={discipline}
-        onChange={(code) => {
-          setDiscipline(code);
-          setRole(null);
-        }}
-      />
-      <div className="space-y-1.5">
-        <Label id="sub-role-parent-label">{t("parentRole")}</Label>
-        {/* A game whose roles did not load offers no parent: say so, rather than an empty picker. */}
-        {metadata.isError || (metadata.data && !rated) ? (
-          <PageStateCard
-            state="error"
-            title={roleT("metadataError")}
-            onAction={metadata.isError ? () => void metadata.refetch() : undefined}
-          />
-        ) : (
-          <ToggleGroup
-            type="single"
-            variant="pill"
-            size="sm"
-            aria-labelledby="sub-role-parent-label"
-            value={role ?? ""}
-            onValueChange={(value) => setRole(value || null)}
-          >
-            {roots.map((entry) => (
-              <ToggleGroupItem key={entry.id} value={entry.code}>
-                {nameOf(entry)}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        )}
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="sub-role-label">{t("labelField")}</Label>
-        <Input id="sub-role-label" value={label} onChange={(event) => setLabel(event.target.value)} />
-      </div>
-    </EntityFormDialog>
-  );
-}
-
-/**
- * `?role=` is the selection, written with `mode: "push"`: below `md`
- * `MasterDetail` shows the list or the role, and its Back is `history.back()`.
- * For the same reason only a wide viewport opens the first role implicitly.
- */
 function SubRoleCatalog({
   workspaceId,
-  discipline,
-  ontology
-}: Readonly<{ workspaceId: number; discipline: string; ontology: RoleOntology }>) {
+  games,
+  namedGames
+}: Readonly<{ workspaceId: number; games: DisciplineDescriptor[]; namedGames: boolean }>) {
   const t = useTranslations("adminSettings.subRoles");
-  const roleT = useTranslations("common.roleOntology");
-  const nameOf = useRoleName();
-  const isMobile = useIsMobile();
-  const { searchParams, setParams } = useQueryParams({ mode: "push" });
   const { canAccessPermission } = usePermissions();
-  const rated = ratedDimension(ontology);
-  const roots: RootRole[] = rated
-    ? selectableRoles(ontology, rated.code)
-        .filter((role) => role.parent_id === null)
-        .map((role) => ({ id: role.id, code: role.code, name: nameOf(role) }))
-    : [];
+  // One read for every game: switching the filter then costs nothing.
+  const catalog = useQuery({
+    queryKey: adminQueryKeys.playerSubRolesAll(workspaceId, ALL_DISCIPLINES),
+    queryFn: ({ signal }) =>
+      adminService.getPlayerSubRoles({ workspace_id: workspaceId, include_inactive: true }, signal)
+  });
   const permissions: SubRolePermissions = {
+    create: canAccessPermission("player.create", workspaceId),
     edit: canAccessPermission("player.update", workspaceId),
     deactivate: canAccessPermission("player.delete", workspaceId)
   };
-  const catalog = useQuery({
-    queryKey: adminQueryKeys.playerSubRolesAll(workspaceId, discipline),
-    queryFn: ({ signal }) =>
-      adminService.getPlayerSubRoles(
-        { workspace_id: workspaceId, discipline, include_inactive: true },
-        signal
-      )
-  });
 
-  if (!rated) return <PageStateCard state="error" title={roleT("metadataError")} />;
   if (catalog.isError) {
+    return <PageStateCard state="error" title={t("errors.load")} onAction={() => void catalog.refetch()} />;
+  }
+  if (!catalog.data) {
     return (
-      <PageStateCard
-        state="error"
-        title={t("errors.load")}
-        onAction={() => void catalog.refetch()}
-      />
+      <div aria-busy="true">
+        <span className="sr-only">{t("loading")}</span>
+        <RoleGridSkeleton />
+      </div>
     );
   }
-
-  const selected =
-    roots.find((role) => role.code === searchParams?.get("role")) ??
-    (isMobile ? null : (roots[0] ?? null));
-
   return (
-    <MasterDetail
-      list={
-        <MasterList
-          label={t("rolesLabel")}
-          items={roots.map((role) => ({
-            key: role.code,
-            label: role.name,
-            icon: (
-              <PlayerRoleIcon
-                role={{ dimension: rated.code, role: role.code }}
-                ontology={ontology}
-                size={16}
-                decorative
-              />
-            )
-          }))}
-          selectedKey={selected?.code}
-          onSelect={(roleCode) => setParams({ role: roleCode })}
+    <div className="space-y-8">
+      {games.map((game) => (
+        <GameSection
+          key={game.code}
+          workspaceId={workspaceId}
+          game={game}
+          named={namedGames}
+          entries={catalog.data.filter((row) => row.discipline === game.code)}
+          permissions={permissions}
         />
-      }
-      detail={
-        selected ? (
-          <RoleSubRoles
-            key={selected.code}
-            workspaceId={workspaceId}
-            discipline={discipline}
-            dimension={rated.code}
-            ontology={ontology}
-            role={selected}
-            loading={catalog.isLoading}
-            entries={(catalog.data ?? []).filter(
-              (row) =>
-                row.discipline === discipline &&
-                row.dimension === rated.code &&
-                row.role === selected.code
-            )}
-            permissions={permissions}
-          />
-        ) : null
-      }
-    />
+      ))}
+    </div>
   );
 }
 
-function RoleSubRoles({
+/** One game: its heading (when several are listed), then a card per rated role. */
+function GameSection({
+  workspaceId,
+  game,
+  named,
+  entries,
+  permissions
+}: Readonly<{
+  workspaceId: number;
+  game: DisciplineDescriptor;
+  named: boolean;
+  entries: PlayerSubRole[];
+  permissions: SubRolePermissions;
+}>) {
+  const t = useTranslations("adminSettings.subRoles");
+  const roleT = useTranslations("common.roleOntology");
+  const nameOf = useRoleName();
+  const headingId = useId();
+  const metadata = useDisciplineMetadata(workspaceId, game.code);
+  const ontology = metadata.data;
+  const rated = ontology ? ratedDimension(ontology) : null;
+
+  let body;
+  if (metadata.isError) {
+    body = <PageStateCard state="error" title={t("errors.load")} onAction={() => void metadata.refetch()} />;
+  } else if (!ontology) {
+    body = <RoleGridSkeleton />;
+  } else if (!rated) {
+    body = <PageStateCard state="error" title={roleT("metadataError")} />;
+  } else {
+    const parents: ParentRole[] = selectableRoles(ontology, rated.code)
+      .filter((role) => role.parent_id === null)
+      .map((role) => ({ id: role.id, code: role.code, name: nameOf(role), ...rolePresentation(ontology.roles, role.id) }));
+    body = (
+      <div className={ROLE_GRID_CLASS}>
+        {parents.map((parent) => (
+          <RoleCard
+            key={parent.code}
+            workspaceId={workspaceId}
+            discipline={game.code}
+            dimension={rated.code}
+            ontology={ontology}
+            parent={parent}
+            entries={entries.filter((row) => row.dimension === rated.code && row.role === parent.code)}
+            permissions={permissions}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  return named ? (
+    <section aria-labelledby={headingId} className="space-y-3">
+      <h2 id={headingId} className="flex items-center gap-2 text-heading font-semibold text-foreground">
+        <GameMark discipline={game} size={22} decorative />
+        {game.name}
+      </h2>
+      {body}
+    </section>
+  ) : (
+    body
+  );
+}
+
+function useInvalidateSubRoles(workspaceId: number, discipline: string) {
+  const queryClient = useQueryClient();
+  return () =>
+    Promise.all([
+      // Every game's list shows this game's rows too: drop the workspace's sub-role lists, not one game's.
+      queryClient.invalidateQueries({ queryKey: adminQueryKeys.playerSubRoles(workspaceId) }),
+      queryClient.invalidateQueries({ queryKey: adminQueryKeys.playerSubRolesPublic(workspaceId, discipline) }),
+      queryClient.invalidateQueries({ queryKey: disciplineQueryKeys.metadata(workspaceId, discipline) })
+    ]);
+}
+
+/** One parent role: its active sub-roles, the switched-off ones folded, and the field that adds one. */
+function RoleCard({
   workspaceId,
   discipline,
   dimension,
   ontology,
-  role,
-  loading,
+  parent,
   entries,
   permissions
 }: Readonly<{
@@ -481,175 +285,414 @@ function RoleSubRoles({
   discipline: string;
   dimension: string;
   ontology: RoleOntology;
-  role: RootRole;
-  loading: boolean;
+  parent: ParentRole;
   entries: PlayerSubRole[];
   permissions: SubRolePermissions;
 }>) {
   const t = useTranslations("adminSettings.subRoles");
-  const queryClient = useQueryClient();
+  const headingId = useId();
+  const invalidate = useInvalidateSubRoles(workspaceId, discipline);
   const [editing, setEditing] = useState<PlayerSubRole | null>(null);
+  const active = entries.filter((entry) => entry.is_active);
+  const inactive = entries.filter((entry) => !entry.is_active);
 
-  const invalidate = async () => {
-    await Promise.all([
-      // Every game's list shows this game's rows too: drop the workspace's sub-role lists, not one game's.
-      queryClient.invalidateQueries({ queryKey: adminQueryKeys.playerSubRoles(workspaceId) }),
-      queryClient.invalidateQueries({
-        queryKey: adminQueryKeys.playerSubRolesPublic(workspaceId, discipline)
-      }),
-      queryClient.invalidateQueries({ queryKey: disciplineQueryKeys.metadata(workspaceId, discipline) })
-    ]);
-  };
-  const update = useMutation({
-    mutationFn: ({ id, patch }: { id: number; patch: PlayerSubRoleUpdateInput }) =>
-      adminService.updatePlayerSubRole(id, patch),
-    onSuccess: invalidate,
+  // Switching off lives in the editor; a folded row only comes back.
+  const restore = useMutation({
+    mutationFn: (entry: PlayerSubRole) => adminService.updatePlayerSubRole(entry.id, { is_active: true }),
+    onSuccess: async (_result, entry) => {
+      await invalidate();
+      notify.success(t("toast.restored", { name: entry.label }));
+    },
     onError: (error) => notify.apiError(error, { title: t("errors.update") })
   });
-  const deactivate = useMutation({
-    mutationFn: (id: number) => adminService.deletePlayerSubRole(id),
-    onSuccess: invalidate,
-    onError: (error) => notify.apiError(error, { title: t("errors.update") })
-  });
-  const busy = update.isPending || deactivate.isPending;
+  const restoringId = restore.isPending ? restore.variables?.id : undefined;
+
+  const row = (entry: PlayerSubRole) => (
+    <SubRoleRow
+      key={entry.id}
+      entry={entry}
+      parent={parent}
+      canEdit={permissions.edit}
+      restoring={restoringId === entry.id}
+      onOpen={() => setEditing(entry)}
+      onRestore={() => restore.mutate(entry)}
+    />
+  );
 
   return (
-    <section className="space-y-4">
-      <h2 className="flex items-center gap-2 text-ui font-semibold text-foreground">
-        <PlayerRoleIcon
-          role={{ dimension, role: role.code }}
-          ontology={ontology}
-          size={20}
-          decorative
-        />
-        {role.name}
-      </h2>
+    <Card asChild>
+      <section aria-labelledby={headingId}>
+        <header className="flex items-center gap-2.5 border-b border-border px-4 py-3">
+          <PlayerRoleIcon role={{ dimension, role: parent.code }} ontology={ontology} size={20} decorative />
+          <h3 id={headingId} className="min-w-0 flex-1 truncate text-ui font-semibold text-foreground">
+            {parent.name}
+          </h3>
+          {/* Zero is said by the empty line below; a "0" here would say it twice. */}
+          {active.length > 0 ? (
+            <span className="aqt-tnum text-caption text-muted-foreground">
+              <span aria-hidden>{active.length}</span>
+              <span className="sr-only">{t("activeCount", { count: active.length })}</span>
+            </span>
+          ) : null}
+        </header>
 
-      {loading ? (
-        <Skeleton className="h-32" />
-      ) : entries.length === 0 ? (
-        <EmptyNote>{t("empty")}</EmptyNote>
-      ) : (
-        <ul className="divide-y divide-border border-y border-border">
-          {entries.map((entry) => (
-            <SubRoleRow
-              key={entry.id}
-              entry={entry}
-              roleName={role.name}
-              permissions={permissions}
-              busy={busy}
-              onRename={(label) => update.mutateAsync({ id: entry.id, patch: { label } })}
-              onToggle={(active) =>
-                active
-                  ? update.mutate({ id: entry.id, patch: { is_active: true } })
-                  : deactivate.mutate(entry.id)
-              }
-              onEditPresentation={() => setEditing(entry)}
-            />
-          ))}
-        </ul>
-      )}
+        {active.length > 0 ? (
+          <ul className="divide-y divide-border/60">{active.map(row)}</ul>
+        ) : (
+          <p className="px-4 py-3 text-caption text-muted-foreground">{t("empty")}</p>
+        )}
 
-      {editing ? (
-        <PresentationDialog
-          entry={editing}
-          saving={update.isPending}
-          onClose={() => setEditing(null)}
-          onSave={(patch) =>
-            update.mutate({ id: editing.id, patch }, { onSuccess: () => setEditing(null) })
-          }
-        />
-      ) : null}
-    </section>
+        {inactive.length > 0 ? (
+          <Collapsible className="border-t border-border/60">
+            <CollapsibleTrigger className="group flex w-full items-center gap-1.5 px-4 py-2 text-caption text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
+              <ChevronDown aria-hidden className="size-3.5 transition-transform group-data-[state=open]:rotate-180" />
+              {t("inactiveToggle", { count: inactive.length })}
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <ul className="divide-y divide-border/60 border-t border-border/60">{inactive.map(row)}</ul>
+            </CollapsibleContent>
+          </Collapsible>
+        ) : null}
+
+        {permissions.create ? (
+          <AddSubRole
+            workspaceId={workspaceId}
+            discipline={discipline}
+            parent={parent}
+            onAdded={invalidate}
+          />
+        ) : null}
+
+        {editing ? (
+          <EditSubRoleDialog
+            entry={editing}
+            discipline={discipline}
+            parent={parent}
+            canSwitchOff={permissions.deactivate}
+            onClose={() => setEditing(null)}
+            onSaved={invalidate}
+          />
+        ) : null}
+      </section>
+    </Card>
   );
 }
 
+/** An inline error: icon and words, never colour alone (DESIGN §12). */
+function FieldError({ id, message, className }: Readonly<{ id: string; message: string; className?: string }>) {
+  return (
+    <p id={id} role="alert" className={cn("flex items-start gap-1.5 text-caption text-danger", className)}>
+      <AlertTriangle aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+      {message}
+    </p>
+  );
+}
+
+/** The sub-role's own icon in its colour, its parent's when it has none of its own, a dot without an icon. */
+function SubRoleMark({ icon, color, size = 18 }: Readonly<{ icon: string | null; color: string | null; size?: number }>) {
+  const tint = color ?? "var(--aqt-fg-muted)";
+  if (!icon) {
+    return (
+      <span aria-hidden className="flex shrink-0 items-center justify-center" style={{ width: size, height: size }}>
+        <span className="size-2.5 rounded-full" style={{ background: tint }} />
+      </span>
+    );
+  }
+  const mask = `url("${icon}")`;
+  return (
+    <span
+      aria-hidden
+      className="shrink-0"
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: tint,
+        maskImage: mask,
+        WebkitMaskImage: mask,
+        maskSize: "contain",
+        WebkitMaskSize: "contain",
+        maskRepeat: "no-repeat",
+        WebkitMaskRepeat: "no-repeat",
+        maskPosition: "center",
+        WebkitMaskPosition: "center"
+      }}
+    />
+  );
+}
+
+/**
+ * A sub-role. Its state is where it sits (the list or the fold), so an active
+ * row carries no control; a folded one offers "Restore" to whoever may edit.
+ */
 function SubRoleRow({
   entry,
-  roleName,
-  permissions,
-  busy,
-  onRename,
-  onToggle,
-  onEditPresentation
+  parent,
+  canEdit,
+  restoring,
+  onOpen,
+  onRestore
 }: Readonly<{
   entry: PlayerSubRole;
-  roleName: string;
-  permissions: SubRolePermissions;
-  busy: boolean;
-  onRename: (label: string) => Promise<unknown>;
-  onToggle: (active: boolean) => void;
-  onEditPresentation: () => void;
+  parent: ParentRole;
+  canEdit: boolean;
+  restoring: boolean;
+  onOpen: () => void;
+  onRestore: () => void;
 }>) {
   const t = useTranslations("adminSettings.subRoles");
-  // Deactivating and restoring are gated separately; whichever the reader may
-  // not do is absent, and an inactive row then says so in words.
-  const canToggle = entry.is_active ? permissions.deactivate : permissions.edit;
+  const own = presentationOf(entry);
+  const nameClass = cn("truncate text-sm font-medium", entry.is_active ? "text-foreground" : "text-muted-foreground");
 
   return (
-    <li className="flex items-center gap-3 py-2">
+    <li
+      className={cn(
+        "relative flex items-center gap-3 px-4 py-2.5",
+        canEdit && "transition-colors hover:bg-[color:var(--aqt-overlay-2)]"
+      )}
+    >
+      <SubRoleMark icon={effective(own.icon, parent.icon)} color={effective(own.color, parent.color)} />
       <div className="min-w-0 flex-1">
-        <InlineEditText
-          value={entry.label}
-          label={t("nameLabel", { role: roleName })}
-          canEdit={permissions.edit && !busy}
-          onSave={onRename}
-          textClassName={entry.is_active ? undefined : "text-muted-foreground"}
-        />
+        {canEdit ? (
+          // The whole row opens the editor; "Restore" sits above this button's box.
+          <button
+            type="button"
+            onClick={onOpen}
+            aria-label={t("edit", { name: entry.label })}
+            className={cn(
+              nameClass,
+              "block max-w-full text-left after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring"
+            )}
+          >
+            {entry.label}
+          </button>
+        ) : (
+          <p className={nameClass}>{entry.label}</p>
+        )}
+        {entry.description ? (
+          <p className="truncate text-caption text-muted-foreground">{entry.description}</p>
+        ) : null}
       </div>
-      {permissions.edit ? (
+      {canEdit && !entry.is_active ? (
         <Button
           type="button"
           variant="ghost"
-          size="icon"
-          aria-label={t("presentation", { name: entry.label })}
-          title={t("presentation", { name: entry.label })}
-          onClick={onEditPresentation}
+          size="sm"
+          className="relative -my-1"
+          disabled={restoring}
+          aria-label={t("restore", { name: entry.label })}
+          onClick={onRestore}
         >
-          <Palette className="size-4" aria-hidden />
+          {t("restoreAction")}
         </Button>
       ) : null}
-      {canToggle ? (
-        <Switch
-          checked={entry.is_active}
-          disabled={busy}
-          aria-label={
-            entry.is_active
-              ? t("deactivate", { name: entry.label })
-              : t("restore", { name: entry.label })
-          }
-          onCheckedChange={onToggle}
-        />
-      ) : entry.is_active ? null : (
-        <span className="text-caption text-muted-foreground">{t("inactive")}</span>
-      )}
     </li>
   );
 }
 
-/** Icon and colour of one sub-role: each inherits, is its own, or is explicitly cleared. */
-function PresentationDialog({
+/** Adds a sub-role under this card's role: type a name, Enter. Stays focused for the next one. */
+function AddSubRole({
+  workspaceId,
+  discipline,
+  parent,
+  onAdded
+}: Readonly<{ workspaceId: number; discipline: string; parent: ParentRole; onAdded: () => Promise<unknown> }>) {
+  const t = useTranslations("adminSettings.subRoles");
+  const inputId = useId();
+  const [label, setLabel] = useState("");
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const create = useMutation({
+    mutationFn: (value: string) =>
+      adminService.createPlayerSubRole({ workspace_id: workspaceId, discipline, role: parent.code, label: value }),
+    onSuccess: async () => {
+      setLabel("");
+      await onAdded();
+    },
+    onError: (error) => setRefusal(getApiErrorMessage(error, t("errors.add")))
+  });
+  const value = label.trim();
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (value && !create.isPending) create.mutate(value);
+  };
+
+  return (
+    <form onSubmit={submit} className="border-t border-border/60 px-4 py-2.5">
+      <div className="flex items-center gap-2">
+        <Plus aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+        <Input
+          id={inputId}
+          size="sm"
+          value={label}
+          placeholder={t("addPlaceholder")}
+          aria-label={t("addLabel", { role: parent.name })}
+          // Read-only, not disabled: a disabled field drops focus, and the next sub-role is typed right after.
+          readOnly={create.isPending}
+          onChange={(event) => {
+            setLabel(event.target.value);
+            setRefusal(null);
+          }}
+          className="border-transparent bg-transparent shadow-none focus-visible:border-input"
+          {...invalidProps(inputId, refusal ?? undefined)}
+        />
+        <Button type="submit" size="sm" variant="outline" disabled={!value || create.isPending}>
+          {t("add")}
+        </Button>
+      </div>
+      {refusal ? (
+        <FieldError id={settingErrorId(inputId)} message={refusal} className="mt-1.5" />
+      ) : null}
+    </form>
+  );
+}
+
+/** One presentation key in the editor: its own value, none, or its parent's, shown before it is typed. */
+function PresentationField({
+  kind,
   entry,
-  saving,
-  onClose,
-  onSave
+  parent,
+  value,
+  error,
+  onChange
 }: Readonly<{
+  kind: PresentationKey;
   entry: PlayerSubRole;
-  saving: boolean;
-  onClose: () => void;
-  onSave: (patch: PlayerSubRoleUpdateInput) => void;
+  parent: ParentRole;
+  value: string | null | undefined;
+  error?: string;
+  onChange: (next: string | null) => void;
 }>) {
   const t = useTranslations("adminSettings.subRoles");
-  const roleT = useTranslations("common.roleOntology");
-  const [initial] = useState(() => presentationOf(entry));
+  const id = `sub-role-${entry.id}-${kind}`;
+  const label = t(kind === "color" ? "colorField" : "iconField");
+  const inherited = kind === "color" ? parent.color : parent.icon;
+  const placeholder =
+    value === undefined ? t("presentationInherits", { role: parent.name }) : t("presentationNone");
+
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="flex items-center gap-2">
+        {kind === "color" ? (
+          <ColorSwatch
+            value={value ?? ""}
+            fallback={value === undefined ? (inherited ?? undefined) : undefined}
+            label={label}
+            onChange={onChange}
+          />
+        ) : (
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-md border border-dashed border-[color:var(--aqt-border-3)]">
+            <SubRoleMark
+              icon={value && iconAccepted(value, entry.discipline) ? value : value === undefined ? inherited : null}
+              color={parent.color}
+              size={20}
+            />
+          </span>
+        )}
+        <Input
+          id={id}
+          value={value ?? ""}
+          placeholder={placeholder}
+          spellCheck={false}
+          className={cn(kind === "color" && "font-mono placeholder:font-sans")}
+          onChange={(event) => onChange(event.target.value)}
+          {...invalidProps(id, error)}
+        />
+        {value === null ? null : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={t("removePresentation", { field: label, name: entry.label })}
+            onClick={() => onChange(null)}
+          >
+            {t("remove")}
+          </Button>
+        )}
+      </div>
+      {error ? (
+        <FieldError id={settingErrorId(id)} message={error} />
+      ) : kind === "icon" ? (
+        <p className="text-caption text-muted-foreground">{t("iconHint", { game: entry.discipline })}</p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * A sub-role's name, description, colour and icon. Colour and icon each
+ * inherit from the parent role until set; "Remove" sets them to none (the API
+ * keeps an explicit none apart from inheriting, and cannot go back to it).
+ * "Switch off" at the footer's start saves what was edited first, so nothing
+ * typed is lost to it.
+ */
+function EditSubRoleDialog({
+  entry,
+  discipline,
+  parent,
+  canSwitchOff,
+  onClose,
+  onSaved
+}: Readonly<{
+  entry: PlayerSubRole;
+  discipline: string;
+  parent: ParentRole;
+  canSwitchOff: boolean;
+  onClose: () => void;
+  onSaved: () => Promise<unknown>;
+}>) {
+  const t = useTranslations("adminSettings.subRoles");
+  const [initial] = useState(() => ({
+    label: entry.label,
+    description: entry.description ?? "",
+    ...presentationOf(entry)
+  }));
   const [form, setForm] = useState(initial);
+  const [attempted, setAttempted] = useState(false);
+
+  // An emptied field that was inheriting still inherits; one that had a value is now none.
+  const presentationValue = (key: PresentationKey) => {
+    const value = form[key];
+    if (value === null || value === undefined) return value;
+    return value.trim() || (initial[key] === undefined ? undefined : null);
+  };
 
   const patch: PlayerSubRoleUpdateInput = {};
+  if (form.label.trim() !== initial.label) patch.label = form.label.trim();
+  if (form.description.trim() !== initial.description.trim()) patch.description = form.description.trim() || null;
   for (const key of PRESENTATION_KEYS) {
-    const value = form[key];
-    if (value !== initial[key]) patch[key] = value?.trim() || null;
+    const value = presentationValue(key);
+    if (value !== initial[key] && value !== undefined) patch[key] = value;
   }
   const dirty = Object.keys(patch).length > 0;
+
+  const errors: Record<string, string> = {};
+  if (!form.label.trim()) errors.label = t("errors.labelRequired");
+  const color = presentationValue("color");
+  if (typeof color === "string" && !HEX_RE.test(color)) errors.color = t("errors.color");
+  const icon = presentationValue("icon");
+  if (typeof icon === "string" && !iconAccepted(icon, discipline)) errors.icon = t("errors.icon", { game: discipline });
+  const shown = attempted ? errors : {};
+
+  const save = useMutation({
+    mutationFn: async ({ off }: { off: boolean }) => {
+      if (dirty) await adminService.updatePlayerSubRole(entry.id, patch);
+      if (off) await adminService.deletePlayerSubRole(entry.id);
+    },
+    onSuccess: async (_result, { off }) => {
+      await onSaved();
+      const name = patch.label ?? entry.label;
+      notify.success(off ? t("toast.deactivated", { name }) : t("toast.saved", { name }));
+      onClose();
+    }
+  });
+
+  const submit = (off: boolean) => {
+    setAttempted(true);
+    if (Object.keys(errors).length > 0) return;
+    if (dirty || off) save.mutate({ off });
+    else onClose();
+  };
 
   return (
     <EntityFormDialog
@@ -657,38 +700,51 @@ function PresentationDialog({
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
-      title={t("presentation", { name: entry.label })}
+      title={t("editTitle", { name: entry.label })}
+      description={t("editDescription", { role: parent.name })}
       isDirty={dirty}
-      isSubmitting={saving}
-      onSubmit={() => (dirty ? onSave(patch) : onClose())}
+      isSubmitting={save.isPending}
+      fieldErrors={shown}
+      errorMessage={save.isError ? getApiErrorMessage(save.error, t("errors.update")) : undefined}
+      onSubmit={() => submit(false)}
+      footerStart={
+        entry.is_active && canSwitchOff ? (
+          <Button type="button" variant="ghost" disabled={save.isPending} onClick={() => submit(true)}>
+            {t("switchOff")}
+          </Button>
+        ) : undefined
+      }
     >
-      {PRESENTATION_KEYS.map((key) => {
-        const value = form[key];
-        const state = value === undefined ? "inherits" : value?.trim() ? "override" : "cleared";
-        return (
-          <div key={key} className="space-y-1.5">
-            <Label htmlFor={`sub-role-${entry.id}-${key}`}>{roleT(key)}</Label>
-            <div className="flex gap-2">
-              <Input
-                id={`sub-role-${entry.id}-${key}`}
-                value={value ?? ""}
-                onChange={(event) => setForm((current) => ({ ...current, [key]: event.target.value }))}
-              />
-              {state === "cleared" ? null : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  aria-label={roleT("clearPresentation", { field: roleT(key), role: entry.label })}
-                  onClick={() => setForm((current) => ({ ...current, [key]: null }))}
-                >
-                  {roleT("clearOverride")}
-                </Button>
-              )}
-            </div>
-            <p className="text-caption text-muted-foreground">{roleT(state)}</p>
-          </div>
-        );
-      })}
+      <div className="space-y-1.5">
+        <Label htmlFor="sub-role-label">{t("labelField")}</Label>
+        <Input
+          id="sub-role-label"
+          value={form.label}
+          onChange={(event) => setForm((current) => ({ ...current, label: event.target.value }))}
+          {...invalidProps("sub-role-label", shown.label)}
+        />
+        {shown.label ? <FieldError id={settingErrorId("sub-role-label")} message={shown.label} /> : null}
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="sub-role-description">{t("descriptionField")}</Label>
+        <Textarea
+          id="sub-role-description"
+          rows={2}
+          value={form.description}
+          onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
+        />
+      </div>
+      {PRESENTATION_KEYS.map((key) => (
+        <PresentationField
+          key={key}
+          kind={key}
+          entry={entry}
+          parent={parent}
+          value={form[key]}
+          error={shown[key]}
+          onChange={(next) => setForm((current) => ({ ...current, [key]: next }))}
+        />
+      ))}
     </EntityFormDialog>
   );
 }

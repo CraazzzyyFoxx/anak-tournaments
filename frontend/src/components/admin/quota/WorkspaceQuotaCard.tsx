@@ -128,7 +128,7 @@ export function WorkspaceQuotaCard({ workspaceId }: Readonly<{ workspaceId: numb
 
   return (
     <div className="flex flex-col gap-4">
-      <SettingGroup title={t("usageHeading")}>
+      <SettingGroup id="usage" title={t("usageHeading")}>
         {usageQuery.data ? (
           <QuotaUsagePanel usage={usageQuery.data} />
         ) : (
@@ -146,6 +146,7 @@ export function WorkspaceQuotaCard({ workspaceId }: Readonly<{ workspaceId: numb
       </SettingGroup>
 
       <SettingGroup
+        id="override"
         title={t("overrideHeading")}
         description={isSuperuser ? t("overrideHint") : t("overrideHintAdmin")}
       >

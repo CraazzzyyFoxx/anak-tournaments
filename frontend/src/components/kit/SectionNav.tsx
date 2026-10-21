@@ -14,6 +14,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { SettingsOutlineList } from "@/components/kit/SettingsOutline";
 import { cn } from "@/lib/utils";
 
 export interface SectionNavItem {
@@ -88,7 +89,7 @@ export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
           the way out of reach. */}
       <nav
         aria-label={t("settingsSections")}
-        className="hidden w-[200px] shrink-0 lg:sticky lg:top-16 lg:block lg:self-start"
+        className="hidden w-[200px] shrink-0 lg:sticky lg:top-16 lg:block lg:max-h-[calc(100dvh-5rem)] lg:self-start lg:overflow-y-auto"
       >
         {visibleGroups.map((group) => (
           <div key={group.label ?? "ungrouped"} className="mb-4 last:mb-0">
@@ -112,6 +113,9 @@ export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
                     >
                       {item.label}
                     </Link>
+                    {/* The open page's groups, when a `SettingsOutlineProvider`
+                        wraps this rail and the page has enough of them. */}
+                    {isActive ? <SettingsOutlineList /> : null}
                   </li>
                 );
               })}

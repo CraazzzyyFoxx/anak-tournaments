@@ -2,9 +2,9 @@
 
 import { useTranslations } from "next-intl";
 
-import { Card, CardContent } from "@/components/ui/card";
 import { MarkdownEditor } from "@/components/admin/MarkdownEditor";
 import { SaveBar } from "@/components/kit/SaveBar";
+import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import type { Tournament } from "@/types/tournament.types";
 import { SettingsSectionPage } from "../SettingsSection";
 import { useTournamentSettingsForm } from "../useTournamentSettingsForm";
@@ -44,7 +44,7 @@ function RulesForm({
   disabled
 }: Readonly<{ tournament: Tournament; tournamentId: number; disabled: boolean }>) {
   const t = useTranslations("adminTournament.rules");
-  const { form, patch, dirty, summary, saving, save, discard } = useTournamentSettingsForm(
+  const { form, patch, dirty, summary, saving, save, discard, error } = useTournamentSettingsForm(
     tournament,
     tournamentId,
     "rules"
@@ -52,11 +52,13 @@ function RulesForm({
 
   return (
     <>
-      <Card>
-        <CardContent className="flex flex-col gap-3 pt-6">
-          <p className="text-caption text-muted-foreground">
-            {t.rich("hint", { code: (chunks) => <code>{chunks}</code> })}
-          </p>
+      <SettingGroup id="document" title={t("groups.document.title")}>
+        <SettingRow
+          label={t("label")}
+          hint={t.rich("hint", { code: (chunks) => <code>{chunks}</code> })}
+          count={{ value: form.rules.length, max: RULES_MAX_LENGTH }}
+          stacked
+        >
           <MarkdownEditor
             label={t("label")}
             placeholder={"## Format\n\n- Best of 3, grand final best of 5\n\n## Tiebreakers\n\n1. Head-to-head\n2. Map difference"}
@@ -64,17 +66,12 @@ function RulesForm({
             onChange={(rules) => patch({ rules })}
             readOnly={disabled}
             maxLength={RULES_MAX_LENGTH}
+            className="w-full"
           />
-          {/* Unformatted on purpose: this component also renders in the server
-              pass, and a locale-grouped number there can disagree with the
-              browser's and trip hydration. */}
-          <p className="text-caption text-muted-foreground tabular-nums">
-            {t("characterCount", { count: form.rules.length, max: RULES_MAX_LENGTH })}
-          </p>
-        </CardContent>
-      </Card>
+        </SettingRow>
+      </SettingGroup>
 
-      <SaveBar dirty={dirty} summary={summary} saving={saving} onDiscard={discard} onSave={save} />
+      <SaveBar dirty={dirty} summary={summary} error={error} saving={saving} onDiscard={discard} onSave={save} />
     </>
   );
 }

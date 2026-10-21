@@ -14,7 +14,10 @@ import type {
 
 const T: SubscriptionProviderVerdict = { state: "active", tier_rank: 3 };
 const F: SubscriptionProviderVerdict = { state: "inactive" };
-const U: SubscriptionProviderVerdict = { state: "unknown", reason: "provider_unavailable" };
+// Misconfiguration: the organizer's problem, fails open.
+const U: SubscriptionProviderVerdict = { state: "unknown", reason: "guild_not_configured" };
+// Outage: nothing confirmed the tier, fails closed.
+const O: SubscriptionProviderVerdict = { state: "unknown", reason: "provider_unavailable" };
 
 function req(mode: "any" | "all", providers: string[], minTier = 1): SubscriptionRequirement {
   return {
@@ -61,12 +64,22 @@ describe("composeOutcome — Kleene truth table", () => {
     }
   });
 
-  it("never blocks when one provider is down but the other satisfies (any)", () => {
+  it("never blocks when one provider is misconfigured but the other satisfies (any)", () => {
     // The headline regression: coercing `unknown` to false here would lock out
     // every patron subscribed via the surviving provider.
     expect(composeOutcome(req("any", ["boosty", "twitch"]), { boosty: F, twitch: U })).toBe(
       "undetermined"
     );
+  });
+
+  it("refuses on an outage, as the server does", () => {
+    expect(composeOutcome(req("all", ["boosty"]), { boosty: O })).toBe("refused");
+    expect(composeOutcome(req("all", ["boosty", "twitch"]), { boosty: T, twitch: O })).toBe("refused");
+    expect(composeOutcome(req("any", ["boosty", "twitch"]), { boosty: F, twitch: O })).toBe("refused");
+    expect(composeOutcome(req("any", ["boosty", "twitch"]), { boosty: T, twitch: O })).toBe("satisfied");
+    expect(
+      composeOutcome(req("all", ["boosty"]), { boosty: { state: "unknown", reason: "bot_not_configured" } })
+    ).toBe("refused");
   });
 });
 

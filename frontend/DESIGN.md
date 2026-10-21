@@ -263,6 +263,7 @@ code are migration debt, not precedent.
 | Search                      | `SearchField` (`ui/search-field.tsx`), `label` required                                                                 |
 | Text / number / time field  | `ui/input.tsx`, `ui/number-input.tsx`, `ui/time-input.tsx`, `ui/textarea.tsx`                                           |
 | Checkbox / switch / radio   | `ui/checkbox.tsx`, `ui/switch.tsx`, `ui/radio-group.tsx`                                                                |
+| Colour                      | `ui/color-swatch.tsx` — the one native `<input type="color">`; a blank value paints its fallback, dashed                |
 | Select                      | `ui/select.tsx` — never a native `<select>`                                                                             |
 | Panels of different content | `ui/tabs.tsx` (Radix), `TabsTrigger badge` for a count                                                                  |
 | Tabs that are addresses     | `kit/LinkTabs.tsx` (`aria-current="page"`, `level={2}` for sub-tabs)                                                    |
@@ -349,6 +350,7 @@ system.
 | **Card that drops what is obvious** | a finished tournament card shows no status pill and no progress bar                                                                                                                                                                              | `tournaments/components/TournamentCard.tsx`                                             |
 | **Search highlight**                | `<mark className={MARK_CLASS}>` on the matched token                                                                                                                                                                                             | `_views/tournamentTeams.model.ts`                                                       |
 | **Inline roster**                   | role glyph + nick, captain crown, in one truncating caption line                                                                                                                                                                                 | `TeamListRow.tsx`                                                                       |
+| **Add at the list's foot**          | a `<form>` row closing the list it adds to: `Plus` glyph, borderless input, outline Add; Enter submits, the field clears and keeps focus; what the list already fixes (game, parent) is never asked; a refusal shows under the field             | `admin/settings/sub-roles/page.tsx` (`AddSubRole`)                                      |
 
 ## 9. States
 
@@ -367,7 +369,10 @@ system.
 
 - Transitions: colour, border, opacity, `transform` for a chevron. ~150ms.
 - No entrance animations, no staggered reveals, no perpetual loops — except
-  the live pulse (`StatusDot pulse`, `.livePulse`) on something that is live.
+  the live pulse (`StatusDot pulse`, `.livePulse`) on something that is live,
+  and the settings page change through `kit/SettingsContinuation` (the old
+  page lifts away in 180ms, the new one rises from where its ghost was in
+  320ms; reversed going back), which says which way the reader went.
 - No hover that changes size or shifts layout.
 - `prefers-reduced-motion` mutes all of it; the static cue (colour, border,
   word) always remains.
@@ -392,7 +397,7 @@ system.
   - word only in a role split; text only in a meta line. Divisions: icon only,
     name in `title`.
 - **Hero avatar sizes**: 30px stacks, 24px compact rows, 26px in tables, 32px
-  single.
+  single, 56px as the identity of a hero hover card (`CharacterCard`).
 - **No encoding captions** ("bar = …", "lower is better"): if the encoding
   needs a caption, change the encoding.
 - One term per metric (Closeness, not Proximity).
@@ -457,13 +462,29 @@ Rules on every admin screen:
   `EntityFormDialog`. Read-only investigation → `Inspector`. Editable _and_
   shareable → its own route. T2 defaults to the Inspector.
 - **One filter surface.** `FilterBar` above the table; nothing in the header,
-  no `<Select>` in the toolbar.
+  no `<Select>` in the toolbar. The one filter a page's actions depend on (the
+  game on a per-game page) is an `inline` def: a visible select in the bar,
+  not a "+ Filter" entry.
 - **One tab look.** Routed tabs are `LinkTabs`; non-address tabs are
   `ui/tabs.tsx`; a view switch is a `ToggleGroup`, never a hand-rolled
   `<nav>` of pills.
 - **One row-actions convention.** `createKebabColumn`
-  (`data-table/kebab-column.tsx`). An action the reader may not perform is
-  _absent_, never disabled; the menu is always visible.
+  (`data-table/kebab-column.tsx`); the menu is always visible. The one or two
+  actions a reader uses on most rows (change a slot, reorder, "only this
+  actor") stay inline as labelled or titled buttons; rare and destructive
+  ones go in the menu, or, where the row opens an `EntityFormDialog`, at its
+  footer's start (`footerStart`: switch off, delete). A list that already
+  separates on and off rows (active above, the rest folded) puts no switch
+  on each row: the place says the state, the fold offers "Restore".
+- **Permission hides, state disables.** An action the reader may _never_
+  perform (no grant) is absent. An action they may perform once something
+  else is true (pick a tournament, a game, resolve the blockers, finish the
+  draft) is shown disabled with the reason as visible text beside it, not
+  only in a tooltip.
+- **Header actions.** A hub header leads with the next step as its primary
+  button (`→ Live`), then a menu for the rest. A menu groups what differs in
+  kind or risk (allowed vs forced transitions, a flag vs a status) under
+  labels; it never lists them as one flat run.
 - **At most three dialogs per screen**: `EntityFormDialog`, one
   `ConfirmDialog` with a swapped `intent`, at most one domain dialog.
 - **All three page states**, through `PageStateCard`; the first load is a
@@ -498,10 +519,11 @@ Rules on every admin screen:
 | `kit/Inspector.tsx`                          | row detail: right panel at `lg`+, a sheet below                |
 | `kit/InspectorField.tsx`                     | a labelled fact and a titled group inside an inspector or detail dialog; no local `Field` copies |
 | `kit/ConfirmDialog.tsx`                      | every confirmation                                             |
-| `kit/SectionNav.tsx`                         | T5 navigation (sticky `<nav>` at `lg`+, `Select` below); a rail item is a page, small related sections are its `LinkTabs`, never extra rail items |
-| `kit/SettingRow.tsx`                         | T5 body: `SettingGroup` is one card per group (`immediate` when its controls act without the save bar); `SettingRow` is label + hint left, control right once the group is `@xl` (36rem) wide, `stacked` for long text. Never wrap a group in another `Card` |
+| `kit/SectionNav.tsx`                         | T5 navigation (sticky `<nav>` at `lg`+, `Select` below); a rail item is a page, small related sections are its `LinkTabs`, never extra rail items. Under the active item it lists the open page's groups (`kit/SettingsOutline.tsx`, mounted by the T5 shells) once there are three or more: `#id` links, scroll-spy highlight, a fragment URL lands on its group |
+| `kit/SettingRow.tsx`                         | T5 body: `SettingGroup` is one card per group, with a stable locale-free `id` (its anchor and outline entry; `immediate` when its controls act without the save bar); `SettingRow` is label + hint left, control right once the group is `@xl` (36rem) wide. Text a reader types (names, links, domains) and long text are `stacked`; switches, selects and radios stay two-column. `error` renders under the control with an icon (pair it with `invalidProps` on the control); `count` puts a `value / max` counter on the label line, `soft` for advice rather than a cap. Never wrap a group in another `Card` |
 | `workspace-settings/WorkspaceSettingsShell.tsx` | the workspace hub's header and tabs; `SettingsHeaderActions` puts a section's page-level controls (audit trail, discipline picker) beside the h1. Forms are capped at `max-w-3xl`, tables and list/detail pages take the column |
-| `kit/SaveBar.tsx` + `kit/useUnsavedGuard.ts` | dirty-form save/discard and the leave guard                    |
+| `kit/SaveBar.tsx` + `kit/useUnsavedGuard.ts` | dirty-form save/discard and the leave guard. A refused or failed save is the bar's `error`, never a toast (a toast covers the bar's own Discard). `useScopedSettingsForm` `validate` gives field errors, shown once the reader leaves the field or tries to save; a 422's per-field reasons land on the same fields |
+| `kit/SettingsContinuation.tsx`               | a T5 page between its neighbours. Below it the next page's ghost: its real render, inert and faded, under a "Next" link; scrolling on past the end fills a bar and opens it at its top. Scrolling up past the top fills a pill naming the previous page and opens it at its end (wheel and keys only: a downward swipe at the top is the browser's pull-to-refresh). Both off while unsaved and under reduced motion; a wheel gesture that opened a page does not carry into the next. Inside the ghost `useInSettingsPreview()` is true: groups stay out of the outline, header actions, page headers and polling stay off. Chains: workspace hub Overview → General → Branding → Visibility → Domain → Discord; tournament settings run through the form sections the caller may open, in rail order, skipping the editors (pre-game, report form, links) and Danger zone |
 | `kit/WizardShell.tsx`                        | T6 frame                                                       |
 | `kit/EntityHubHeader.tsx`                    | T3 header (title, status pill, middot-joined metrics, actions) |
 | `kit/PhaseStrip.tsx`                         | lifecycle position, indicator only                             |
@@ -518,7 +540,14 @@ Rules on every admin screen:
   `#1` and "1st place").
 - A card inside a card; a tinted callout or coloured left border inside a
   card.
-- A control with no choice (one filter, one tab, one view).
+- A control with no choice (one filter, one tab, one view). Table utilities
+  are not choices about the data and always stay: saved Views, rows per page,
+  CSV (disabled while there is nothing to export).
+- A state-gated action that vanishes: it is disabled with a visible reason
+  (see "Permission hides, state disables" in §14).
+- A banner's action dropped as "a repeated fact": "Draft live → Open draft
+  board", "N failed → Show failed" are the shortest path to the work, not a
+  restatement.
 - Raw hex, Tailwind neutrals, `text-[Npx]`, a font size below 12px, a
   tracking other than `tracking-label` on uppercase text.
 - A `text-*`, `font-*` or height override on a control (§3, Control text).

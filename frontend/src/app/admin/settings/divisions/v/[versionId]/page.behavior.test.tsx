@@ -369,16 +369,21 @@ describe("Divisions › draft editor", () => {
 
     expect(container.textContent).toContain("You cannot edit this draft");
     expect(button("Undo last change")).toBeUndefined();
+    // No grant: Publish is absent, not disabled.
+    expect(button("Publish v4")).toBeUndefined();
     expect(byLabel("Start a new division at Champion 2")).toBeNull();
   });
 
-  it("refuses Publish while an older version's mapping is incomplete", async () => {
+  it("shows Publish disabled, with the reason, while an older version's mapping is incomplete", async () => {
     getDivisionGridVersionReadiness.mockResolvedValue(
       readiness({ is_ready: false, incomplete_mapping_version_ids: [21] })
     );
     const container = await mount();
 
-    expect(button("Publish v4")).toBeUndefined();
+    const publish = button("Publish v4");
+    expect(publish!.disabled).toBe(true);
+    const reasonId = publish!.getAttribute("aria-describedby");
+    expect(document.getElementById(reasonId!)?.textContent).toContain("Ready to publish?");
     expect(container.textContent).toContain("1 mapping decision left in the Mappings tab");
   });
 

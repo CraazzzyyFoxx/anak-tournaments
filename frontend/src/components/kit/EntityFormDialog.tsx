@@ -39,6 +39,8 @@ interface EntityFormDialogProps {
    */
   guardNavigation?: boolean;
   contentClassName?: string;
+  /** An action of the entity itself (switch off, delete), set apart at the footer's start. */
+  footerStart?: React.ReactNode;
   children: React.ReactNode;
   isReadOnly?: boolean;
 }
@@ -60,6 +62,7 @@ export function EntityFormDialog({
   dirtyDescription,
   guardNavigation = true,
   contentClassName,
+  footerStart,
   children,
   isReadOnly = false,
 }: Readonly<EntityFormDialogProps>) {
@@ -173,6 +176,7 @@ export function EntityFormDialog({
             ) : null}
 
             <DialogFooter className="mt-4 shrink-0 border-t border-border/60 pt-4">
+              {footerStart ? <div className="flex flex-col sm:mr-auto">{footerStart}</div> : null}
               <Button type="button" variant="outline" onClick={handleCancel} disabled={isSubmitting}>
                 {cancelText}
               </Button>
