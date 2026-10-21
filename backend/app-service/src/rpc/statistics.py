@@ -159,15 +159,37 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "statistics.winrate", op, session_factory=_SF)
 
-    @broker.subscriber("rpc.app.statistics.won_maps")
-    async def _won_maps(data: dict, msg: RabbitMessage) -> dict:
+    # GET /api/v1/statistics/players — the almanac players table (titles, tournaments, maps, win rate).
+    @broker.subscriber("rpc.app.statistics.players")
+    async def _players(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            qp = build_query_model(pagination.PaginationSortQueryParams[_STAT_SORT], data.get("query"))
-            return await statistics_service.get_to_won_players(
+            return await statistics_service.get_players(
                 session,
-                pagination.PaginationSortParams.from_query_params(qp),
+                build_query_model(schemas.PlayerLeaderboardQueryParams, data.get("query")),
                 discipline=c.optional_discipline(data),
                 workspace_id=c.q1(data, "workspace_id", int),
             )
 
-        return await c.envelope(logger, "statistics.won_maps", op, session_factory=_SF)
+        return await c.envelope(logger, "statistics.players", op, session_factory=_SF)
+
+    # GET /api/v1/statistics/records — all-time records; the parsed-log ones only for one game.
+    @broker.subscriber("rpc.app.statistics.records")
+    async def _records(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            return await statistics_service.get_records(
+                session, discipline=c.optional_discipline(data), workspace_id=c.q1(data, "workspace_id", int)
+            )
+
+        return await c.envelope(logger, "statistics.records", op, session_factory=_SF)
+
+    # GET /api/v1/statistics/{discipline}/maps — one game's maps by mode.
+    @broker.subscriber("rpc.app.statistics.maps")
+    async def _maps(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            return await statistics_service.get_maps(
+                session,
+                discipline=c.require_discipline(data, in_path=True),
+                workspace_id=c.q1(data, "workspace_id", int),
+            )
+
+        return await c.envelope(logger, "statistics.maps", op, session_factory=_SF)

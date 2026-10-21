@@ -2046,6 +2046,126 @@
       },
       "summary": "Character playtime shares"
     },
+    "rpc.app.statistics.maps": {
+      "description": "Permission: public; no authentication required. Returns the path discipline's maps (404 `discipline_not_installed` for an unknown game) grouped by mode (the map's catalog parent; maps without one in a last null bucket), optionally workspace-scoped, most played first. A game is one of a completed series of a public, non-league tournament: the series' confirmed games with a map when it has any, else its parsed maps, so nothing counts twice. `share` is a map's games over its mode's; `avg_duration_s` averages the parsed maps (null when none).",
+      "query_params": [
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.MapStatsResponse"
+      },
+      "summary": "Map statistics"
+    },
+    "rpc.app.statistics.players": {
+      "description": "Permission: public; no authentication required. Returns every player with at least one public, non-league tournament (substitute entries excluded), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped: titles, tournaments, maps won/lost, map win rate (null without maps) and `low_sample` (three tournaments or fewer). `sort` = `titles` (default) | `tournaments` | `maps_won` | `winrate` (only players above the low-sample threshold), `order` = `desc` (default) | `asc`. `rank` is the competition rank (1, 2, 2, 4) over the whole population; the optional case-insensitive name search `query` filters the page without renumbering it, and `total` counts the filtered rows. Ties: win rate desc (null last), then name.",
+      "query_params": [
+        {
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "default": 20,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Per Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "sort",
+          "required": false,
+          "schema": {
+            "default": "titles",
+            "enum": [
+              "titles",
+              "tournaments",
+              "maps_won",
+              "winrate"
+            ],
+            "title": "Sort",
+            "type": "string"
+          }
+        },
+        {
+          "name": "order",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/app.SortOrder",
+            "default": "desc"
+          }
+        },
+        {
+          "name": "query",
+          "required": false,
+          "schema": {
+            "default": "",
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "description": "Installed discipline code; absent or \"all\": every game",
+            "type": "string"
+          }
+        },
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.Paginated_PlayerLeaderboardRow_"
+      },
+      "summary": "Players almanac table"
+    },
+    "rpc.app.statistics.records": {
+      "description": "Permission: public; no authentication required. Returns the all-time records of public, non-league tournaments (mixes never count), optionally workspace-scoped, in a fixed order; a record with no data is omitted. Always: `win_streak` (most consecutive series won by a player's team), `biggest_upset` (series won by the roster with the lower average SR, largest gap relative to the loser's), `underdog_champion` (champion with the lowest roster SR rank within its own tournament: `value` = rank, `of_total` = rated teams) and `closest_final` (a finished tournament's final with the highest closeness). With a `discipline` (404 `discipline_not_installed` for an unknown code) also the parsed-log records the game has: the highest single-map player `hero_damage`, `healing`, `eliminations`, `damage_blocked` and `solo_kills`, `most_mvps` (maps at impact rank 1) and `longest_map`.",
+      "query_params": [
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "description": "Installed discipline code; absent or \"all\": every game",
+            "type": "string"
+          }
+        },
+        {
+          "name": "workspace_id",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.StatRecords"
+      },
+      "summary": "All-time records"
+    },
     "rpc.app.statistics.tournament_readiness": {
       "description": "Permission: workspace `tournament.read` or `team.read` on the tournament's own workspace. Returns the living readiness checklist for one tournament, telling its organisers what is still missing before it can run: schedule/grid/stage-slot configuration, bracket and encounter log coverage, and the registration, pool, balance and draft state. Each group of fields is masked to null when the caller lacks the permission that gates it, so a partial reader sees no-access rather than zeros. 403 without either permission, 404 if the tournament is unknown; hidden tournaments of the caller's own workspace are visible.",
       "response": {
@@ -2134,87 +2254,6 @@
         "ref": "app.Paginated_PlayerStatistics_"
       },
       "summary": "Top winrate players"
-    },
-    "rpc.app.statistics.won_maps": {
-      "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by maps won (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
-      "query_params": [
-        {
-          "name": "page",
-          "required": false,
-          "schema": {
-            "default": 1,
-            "minimum": 1,
-            "title": "Page",
-            "type": "integer"
-          }
-        },
-        {
-          "name": "per_page",
-          "required": false,
-          "schema": {
-            "default": 10,
-            "maximum": 100,
-            "minimum": -1,
-            "title": "Per Page",
-            "type": "integer"
-          }
-        },
-        {
-          "name": "entities",
-          "required": false,
-          "schema": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Entities",
-            "type": "array"
-          }
-        },
-        {
-          "name": "only_count",
-          "required": false,
-          "schema": {
-            "default": false,
-            "title": "Only Count",
-            "type": "boolean"
-          }
-        },
-        {
-          "name": "sort",
-          "required": false,
-          "schema": {
-            "default": "id",
-            "enum": [
-              "id",
-              "name",
-              "value"
-            ],
-            "title": "Sort",
-            "type": "string"
-          }
-        },
-        {
-          "name": "order",
-          "required": false,
-          "schema": {
-            "$ref": "#/components/schemas/app.SortOrder",
-            "default": "asc"
-          }
-        },
-        {
-          "name": "discipline",
-          "required": false,
-          "schema": {
-            "description": "Installed discipline code; absent or \"all\": every game",
-            "type": "string"
-          }
-        }
-      ],
-      "response": {
-        "array": false,
-        "ref": "app.Paginated_PlayerStatistics_"
-      },
-      "summary": "Top won-maps players"
     },
     "rpc.app.users.admin_create": {
       "description": "Permission: global `user.create`. Creates a player and returns it with discord/battle_tag/twitch identities.",
@@ -16853,6 +16892,93 @@
       "title": "LookupItem",
       "type": "object"
     },
+    "app.MapModeStats": {
+      "properties": {
+        "games": {
+          "title": "Games",
+          "type": "integer"
+        },
+        "maps": {
+          "items": {
+            "$ref": "#/components/schemas/app.MapStat"
+          },
+          "title": "Maps",
+          "type": "array"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.StatMapRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "mode",
+        "games",
+        "maps"
+      ],
+      "title": "MapModeStats",
+      "type": "object"
+    },
+    "app.MapStat": {
+      "properties": {
+        "avg_duration_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Avg Duration S"
+        },
+        "games": {
+          "title": "Games",
+          "type": "integer"
+        },
+        "map": {
+          "$ref": "#/components/schemas/app.StatMapRef"
+        },
+        "share": {
+          "title": "Share",
+          "type": "number"
+        }
+      },
+      "required": [
+        "map",
+        "games",
+        "share",
+        "avg_duration_s"
+      ],
+      "title": "MapStat",
+      "type": "object"
+    },
+    "app.MapStatsResponse": {
+      "properties": {
+        "modes": {
+          "items": {
+            "$ref": "#/components/schemas/app.MapModeStats"
+          },
+          "title": "Modes",
+          "type": "array"
+        },
+        "total_games": {
+          "title": "Total Games",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_games",
+        "modes"
+      ],
+      "title": "MapStatsResponse",
+      "type": "object"
+    },
     "app.MatchParticipantRead": {
       "properties": {
         "encounter_team_id": {
@@ -18240,6 +18366,37 @@
       "title": "Paginated[NotificationAdminItem]",
       "type": "object"
     },
+    "app.Paginated_PlayerLeaderboardRow_": {
+      "properties": {
+        "page": {
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/app.PlayerLeaderboardRow"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "page",
+        "per_page",
+        "total",
+        "results"
+      ],
+      "title": "Paginated[PlayerLeaderboardRow]",
+      "type": "object"
+    },
     "app.Paginated_PlayerStatistics_": {
       "properties": {
         "page": {
@@ -18531,6 +18688,105 @@
         }
       },
       "title": "PaginationSortQueryParams[Literal['id', 'name', 'winrate', 'tournaments']]",
+      "type": "object"
+    },
+    "app.PlayerLeaderboardQueryParams": {
+      "properties": {
+        "order": {
+          "$ref": "#/components/schemas/app.SortOrder",
+          "default": "desc"
+        },
+        "page": {
+          "default": 1,
+          "minimum": 1,
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "default": 20,
+          "maximum": 100,
+          "minimum": 1,
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "query": {
+          "default": "",
+          "title": "Query",
+          "type": "string"
+        },
+        "sort": {
+          "default": "titles",
+          "enum": [
+            "titles",
+            "tournaments",
+            "maps_won",
+            "winrate"
+          ],
+          "title": "Sort",
+          "type": "string"
+        }
+      },
+      "title": "PlayerLeaderboardQueryParams",
+      "type": "object"
+    },
+    "app.PlayerLeaderboardRow": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "low_sample": {
+          "title": "Low Sample",
+          "type": "boolean"
+        },
+        "maps_lost": {
+          "title": "Maps Lost",
+          "type": "integer"
+        },
+        "maps_won": {
+          "title": "Maps Won",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "rank": {
+          "title": "Rank",
+          "type": "integer"
+        },
+        "titles": {
+          "title": "Titles",
+          "type": "integer"
+        },
+        "tournaments": {
+          "title": "Tournaments",
+          "type": "integer"
+        },
+        "winrate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Winrate"
+        }
+      },
+      "required": [
+        "rank",
+        "id",
+        "name",
+        "titles",
+        "tournaments",
+        "maps_won",
+        "maps_lost",
+        "winrate",
+        "low_sample"
+      ],
+      "title": "PlayerLeaderboardRow",
       "type": "object"
     },
     "app.PlayerStatistics": {
@@ -19491,6 +19747,269 @@
         "sort_order"
       ],
       "title": "StatDefinition",
+      "type": "object"
+    },
+    "app.StatMapRef": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "image_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Image Path"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "slug",
+        "image_path"
+      ],
+      "title": "StatMapRef",
+      "type": "object"
+    },
+    "app.StatRecord": {
+      "properties": {
+        "code": {
+          "enum": [
+            "win_streak",
+            "biggest_upset",
+            "underdog_champion",
+            "closest_final",
+            "hero_damage",
+            "healing",
+            "eliminations",
+            "damage_blocked",
+            "solo_kills",
+            "most_mvps",
+            "longest_map"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "duration_s": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration S"
+        },
+        "encounter_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Encounter Id"
+        },
+        "ended_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Ended At"
+        },
+        "map": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.StatMapRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "match_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Match Id"
+        },
+        "of_total": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Of Total"
+        },
+        "opponent": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.StatRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "player": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.StatRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "relative": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Started At"
+        },
+        "team": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.StatRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "tournament": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/app.StatRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "value": {
+          "title": "Value",
+          "type": "number"
+        }
+      },
+      "required": [
+        "code",
+        "value"
+      ],
+      "title": "StatRecord",
+      "type": "object"
+    },
+    "app.StatRecords": {
+      "properties": {
+        "records": {
+          "items": {
+            "$ref": "#/components/schemas/app.StatRecord"
+          },
+          "title": "Records",
+          "type": "array"
+        }
+      },
+      "required": [
+        "records"
+      ],
+      "title": "StatRecords",
+      "type": "object"
+    },
+    "app.StatRef": {
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "StatRef",
       "type": "object"
     },
     "app.StreamVisibilityUpdate": {

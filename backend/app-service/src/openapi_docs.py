@@ -78,9 +78,43 @@ DOCS: dict[str, dict] = {
         "summary": "Top winrate players",
         "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
     },
-    "rpc.app.statistics.won_maps": {
-        "summary": "Top won-maps players",
-        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by maps won (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
+    "rpc.app.statistics.players": {
+        "summary": "Players almanac table",
+        "description": (
+            "Permission: public; no authentication required. Returns every player with at least one public,"
+            " non-league tournament (substitute entries excluded), across every game or only the optional"
+            " `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped: titles,"
+            " tournaments, maps won/lost, map win rate (null without maps) and `low_sample` (three tournaments or"
+            " fewer). `sort` = `titles` (default) | `tournaments` | `maps_won` | `winrate` (only players above the"
+            " low-sample threshold), `order` = `desc` (default) | `asc`. `rank` is the competition rank (1, 2, 2, 4) over"
+            " the whole population; the optional case-insensitive name search `query` filters the page without"
+            " renumbering it, and `total` counts the filtered rows. Ties: win rate desc (null last), then name."
+        ),
+    },
+    "rpc.app.statistics.records": {
+        "summary": "All-time records",
+        "description": (
+            "Permission: public; no authentication required. Returns the all-time records of public, non-league"
+            " tournaments (mixes never count), optionally workspace-scoped, in a fixed order; a record with no data is"
+            " omitted. Always: `win_streak` (most consecutive series won by a player's team), `biggest_upset` (series"
+            " won by the roster with the lower average SR, largest gap relative to the loser's), `underdog_champion`"
+            " (champion with the lowest roster SR rank within its own tournament: `value` = rank, `of_total` = rated"
+            " teams) and `closest_final` (a finished tournament's final with the highest closeness). With a"
+            " `discipline` (404 `discipline_not_installed` for an unknown code) also the parsed-log records the game"
+            " has: the highest single-map player `hero_damage`, `healing`, `eliminations`, `damage_blocked` and"
+            " `solo_kills`, `most_mvps` (maps at impact rank 1) and `longest_map`."
+        ),
+    },
+    "rpc.app.statistics.maps": {
+        "summary": "Map statistics",
+        "description": (
+            "Permission: public; no authentication required. Returns the path discipline's maps (404"
+            " `discipline_not_installed` for an unknown game) grouped by mode (the map's catalog parent; maps without one"
+            " in a last null bucket), optionally workspace-scoped, most played first. A game is one of a completed"
+            " series of a public, non-league tournament: the series' confirmed games with a map when it has any, else"
+            " its parsed maps, so nothing counts twice. `share` is a map's games over its mode's; `avg_duration_s`"
+            " averages the parsed maps (null when none)."
+        ),
     },
     "rpc.app.statistics.tournament_readiness": {
         "summary": "Tournament readiness checklist",

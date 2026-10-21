@@ -240,7 +240,7 @@ plain fact. That ends here.
 | Page hero                  | `PageHero` / `HeroFrame` (`components/site/PageHero.tsx`); `variant="plain"` on `/` and `/get-workspace`                                                                                                                                                                                               |
 | Profile section / open KPI | `CardSurface`, `ProfileStat` (`users/components/shared/atoms.tsx`): uppercase label, Onest figure, dim sub line, colour only for quality                                                                                                                                                               |
 | Empty / error / not-found  | `PageStateCard` (`ui/page-state-card.tsx`); on tournament sections `TournamentPageState` (adds `refresh-error` under stale content)                                                                                                                                                                    |
-| Skeletons                  | `ui/skeleton.tsx`; tournament sections `_components/TournamentSkeletons.tsx`; dashboards `components/skeletons/dashboard-skeletons.tsx`                                                                                                                                                                |
+| Skeletons                  | `ui/skeleton.tsx`; tournament sections `_components/TournamentSkeletons.tsx`; open sections draw their own skeleton beside the section (`LeadersSkeleton`, `statistics/_components/*Skeleton`)                                                                                                       |
 | Link with hover prefetch   | `HoverPrefetchLink`                                                                                                                                                                                                                                                                                    |
 | Team identity              | `TeamName` / `TeamLogo` (`components/TeamName.tsx`) — no fallback glyph when a team has no image                                                                                                                                                                                                       |
 | Player identity            | `PlayerName`, roster rows `RosterPlayer` / `RosterRole` / `RosterRank` (`TournamentTeamCard.tsx`)                                                                                                                                                                                                      |
@@ -283,7 +283,7 @@ code are migration debt, not precedent.
 | Placement medal    | `PlaceBadge` (`ui/place-badge.tsx`, `--aqt-medal-*`)                       |
 | W/L/D square       | `ResTag` (`components/match/cells.tsx`)                                    |
 | MVP placement      | `MvpOrdinal` (`users/components/shared/MvpOrdinal.tsx`): gold for 1st only |
-| Platform totals    | `components/stats/PlatformStatsGrid.tsx`                                   |
+| Platform totals    | `LeadersContent` (`components/site/leaders.tsx`) on `/` and the community page; `HeroStat` figures in the `/statistics` hero (`statistics/_components/OverallFigures.tsx`) |
 | Markdown           | `components/Markdown.tsx`; editing `components/admin/MarkdownEditor.tsx`   |
 | Spinner (rare)     | `ui/spinner.tsx` — prefer a skeleton                                       |
 

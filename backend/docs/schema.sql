@@ -2733,6 +2733,8 @@ CREATE INDEX ix_fact_member_entity_total ON stats.fact (workspace_member_id, ent
 
 CREATE INDEX ix_fact_member_stat_total ON stats.fact (workspace_member_id, stat_id) WHERE segment = 0 AND entity_id IS NULL;
 
+CREATE INDEX ix_fact_stat_value_total ON stats.fact (stat_id, value) WHERE segment = 0 AND entity_id IS NULL AND workspace_member_id IS NOT NULL;
+
 CREATE TABLE stats.ingest_job (
 	id BIGSERIAL NOT NULL,
 	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,

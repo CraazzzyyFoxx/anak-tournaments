@@ -25,8 +25,8 @@ import "github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/respcache"
 //     paths); correctness there must never lag an admin domain change.
 var PublicCacheableReads = map[string]respcache.Rule{
 	// Home page: communities section + champions / top-winrate cards, plus the
-	// /statistics won-maps table. The statistics routes are AuthNone, so
-	// RegisterCached also serves signed-in viewers from these entries.
+	// /statistics almanac (players table, records, maps). The statistics routes
+	// are AuthNone, so RegisterCached also serves signed-in viewers from these entries.
 	"/api/v1/workspaces": {Extract: respcache.TTLOnly()},
 	// The workspace page's staff block. TTLOnly like the directory above: the
 	// resource manifest publishes nothing for workspace membership or RBAC
@@ -35,7 +35,9 @@ var PublicCacheableReads = map[string]respcache.Rule{
 	"/api/v1/workspaces/{workspace_id}/staff": {Extract: respcache.TTLOnly()},
 	"/api/v1/statistics/champion":             {Extract: respcache.TTLOnly()},
 	"/api/v1/statistics/winrate":              {Extract: respcache.TTLOnly()},
-	"/api/v1/statistics/won-maps":             {Extract: respcache.TTLOnly()},
+	"/api/v1/statistics/players":              {Extract: respcache.TTLOnly()},
+	"/api/v1/statistics/records":              {Extract: respcache.TTLOnly()},
+	"/api/v1/statistics/{discipline}/maps":    {Extract: respcache.TTLOnly()},
 	// /users/[slug] page: slug resolution + every profile tab. NO AuthedRead:
 	// several reads are AuthOptional (characters, maps, tournaments) — the viewer
 	// reaches the handler, so viewer-agnostic bodies are not guaranteed.

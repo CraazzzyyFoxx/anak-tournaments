@@ -109,9 +109,11 @@ class Seat:
         """Maps this participation lost: its games placed below first, else (see :attr:`maps_won`) the
         other live seats' score under the ``wins`` preset."""
         others = self._others
+        # Bare ``active``, not ``IS TRUE``: only the bare column proves the ``WHERE active`` partial index
+        # (``uq_team_active_slot``) for this per-row probe; ``IS TRUE`` scans ``uq_team_id_encounter`` whole.
         series_score = sa.cast(
             sa.select(sa.func.coalesce(sa.func.sum(others.score), 0))
-            .where(others.encounter_id == self.team.encounter_id, others.active.is_(True), others.id != self.team.id)
+            .where(others.encounter_id == self.team.encounter_id, others.active, others.id != self.team.id)
             .correlate(self.team)
             .scalar_subquery(),
             sa.Integer,
@@ -130,7 +132,7 @@ class Seat:
             sa.select(1)
             .where(
                 others.encounter_id == self.team.encounter_id,
-                others.active.is_(True),
+                others.active,
                 others.id != self.team.id,
                 others.placement == 1,
             )

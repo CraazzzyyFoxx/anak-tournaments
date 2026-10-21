@@ -88,11 +88,13 @@ OPERATIONS: dict[str, Op] = {
         query=PaginationSortQueryParams[_STAT_SORT],
         query_params=(_OPTIONAL_DISCIPLINE,),
     ),
-    "rpc.app.statistics.won_maps": Op(
-        response=Paginated[schemas.PlayerStatistics],
-        query=PaginationSortQueryParams[_STAT_SORT],
-        query_params=(_OPTIONAL_DISCIPLINE,),
+    "rpc.app.statistics.players": Op(
+        response=Paginated[schemas.PlayerLeaderboardRow],
+        query=schemas.PlayerLeaderboardQueryParams,
+        query_params=(_OPTIONAL_DISCIPLINE, _WS),
     ),
+    "rpc.app.statistics.records": Op(response=schemas.StatRecords, query_params=(_OPTIONAL_DISCIPLINE, _WS)),
+    "rpc.app.statistics.maps": Op(response=schemas.MapStatsResponse, query_params=(_WS,)),
     "rpc.app.statistics.tournament_readiness": Op(response=schemas.TournamentReadiness),
     # ── users (bespoke reads) ──────────────────────────────────────────────
     "rpc.app.users.get_profile": Op(response=schemas.UserProfile, query_params=(_OPTIONAL_DISCIPLINE, _WS)),

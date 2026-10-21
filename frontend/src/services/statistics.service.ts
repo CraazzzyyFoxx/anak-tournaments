@@ -1,5 +1,9 @@
 import {
   CharacterLeaderboardEntry,
+  MapStatsResponse,
+  PlayerLeaderboardRow,
+  PlayerSort,
+  StatRecord,
   TournamentDivisionStatistics,
   TournamentStatistics,
   TournamentOverall,
@@ -36,8 +40,8 @@ function buildWorkspaceOpts(opts?: StatsOpts) {
   };
 }
 
-/** A player leaderboard (`/statistics/{champion,winrate,won-maps}`): one game's, or every game's when `discipline` is
- *  `null` (spec §6.5; the param is then omitted). */
+/** A player leaderboard (`/statistics/{champion,winrate}`): one game's, or every game's when `discipline` is `null`
+ *  (spec §6.5; the param is then omitted). */
 function playerLeaderboard(
   path: string,
   discipline: string | null,
@@ -86,11 +90,34 @@ export default class statisticsService {
     return playerLeaderboard("/api/v1/statistics/winrate", discipline, opts);
   }
 
-  static async getTopWonMapsPlayers(
+  /** The all-time players table: every game's, or one game's; `query` filters it without renumbering the ranks. */
+  static async getPlayers(
     discipline: string | null,
+    { sort, query, page, perPage }: { sort: PlayerSort; query: string; page: number; perPage: number },
     opts?: StatsOpts
-  ): Promise<PaginatedResponse<PlayerStatistics>> {
-    return playerLeaderboard("/api/v1/statistics/won-maps", discipline, opts);
+  ): Promise<PaginatedResponse<PlayerLeaderboardRow>> {
+    const base = buildWorkspaceOpts(opts);
+    return apiFetch("/api/v1/statistics/players", {
+      ...base,
+      query: { ...base.query, discipline, sort, order: "desc", query: query || undefined, page, per_page: perPage },
+    }).then((res) => res.json());
+  }
+
+  /** All-time records in their fixed order; one game's log-based ones only when `discipline` names it. */
+  static async getRecords(discipline: string | null, opts?: StatsOpts): Promise<{ records: StatRecord[] }> {
+    const base = buildWorkspaceOpts(opts);
+    return apiFetch("/api/v1/statistics/records", {
+      ...base,
+      query: { ...base.query, discipline },
+    }).then((res) => res.json());
+  }
+
+  /** One game's finished games per map, grouped by mode. */
+  static async getMaps(discipline: string, opts?: StatsOpts): Promise<MapStatsResponse> {
+    return apiFetch(
+      `/api/v1/statistics/${encodeURIComponent(discipline)}/maps`,
+      buildWorkspaceOpts(opts)
+    ).then((res) => res.json());
   }
 
   /** One game's characters by share of observed playtime, most played first. */

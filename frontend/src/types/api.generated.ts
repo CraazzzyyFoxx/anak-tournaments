@@ -3174,6 +3174,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/statistics/players": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Players almanac table
+         * @description Permission: public; no authentication required. Returns every player with at least one public, non-league tournament (substitute entries excluded), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped: titles, tournaments, maps won/lost, map win rate (null without maps) and `low_sample` (three tournaments or fewer). `sort` = `titles` (default) | `tournaments` | `maps_won` | `winrate` (only players above the low-sample threshold), `order` = `desc` (default) | `asc`. `rank` is the competition rank (1, 2, 2, 4) over the whole population; the optional case-insensitive name search `query` filters the page without renumbering it, and `total` counts the filtered rows. Ties: win rate desc (null last), then name.
+         *
+         *     RPC subject: `rpc.app.statistics.players`
+         */
+        get: operations["get__api_v1_statistics_players"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/statistics/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * All-time records
+         * @description Permission: public; no authentication required. Returns the all-time records of public, non-league tournaments (mixes never count), optionally workspace-scoped, in a fixed order; a record with no data is omitted. Always: `win_streak` (most consecutive series won by a player's team), `biggest_upset` (series won by the roster with the lower average SR, largest gap relative to the loser's), `underdog_champion` (champion with the lowest roster SR rank within its own tournament: `value` = rank, `of_total` = rated teams) and `closest_final` (a finished tournament's final with the highest closeness). With a `discipline` (404 `discipline_not_installed` for an unknown code) also the parsed-log records the game has: the highest single-map player `hero_damage`, `healing`, `eliminations`, `damage_blocked` and `solo_kills`, `most_mvps` (maps at impact rank 1) and `longest_map`.
+         *
+         *     RPC subject: `rpc.app.statistics.records`
+         */
+        get: operations["get__api_v1_statistics_records"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/statistics/winrate": {
         parameters: {
             query?: never;
@@ -3188,28 +3232,6 @@ export interface paths {
          *     RPC subject: `rpc.app.statistics.winrate`
          */
         get: operations["get__api_v1_statistics_winrate"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/statistics/won-maps": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Top won-maps players
-         * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by maps won (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.
-         *
-         *     RPC subject: `rpc.app.statistics.won_maps`
-         */
-        get: operations["get__api_v1_statistics_won_maps"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3254,6 +3276,28 @@ export interface paths {
          *     RPC subject: `rpc.app.statistics.character_leaderboard`
          */
         get: operations["get__api_v1_statistics__discipline__characters__entity_id__leaderboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/statistics/{discipline}/maps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Map statistics
+         * @description Permission: public; no authentication required. Returns the path discipline's maps (404 `discipline_not_installed` for an unknown game) grouped by mode (the map's catalog parent; maps without one in a last null bucket), optionally workspace-scoped, most played first. A game is one of a completed series of a public, non-league tournament: the series' confirmed games with a map when it has any, else its parsed maps, so nothing counts twice. `share` is a map's games over its mode's; `avg_duration_s` averages the parsed maps (null when none).
+         *
+         *     RPC subject: `rpc.app.statistics.maps`
+         */
+        get: operations["get__api_v1_statistics__discipline__maps"];
         put?: never;
         post?: never;
         delete?: never;
@@ -12644,6 +12688,31 @@ export interface components {
          * @enum {string}
          */
         "app.LogStatsName": AppLogStatsName;
+        /** MapModeStats */
+        "app.MapModeStats": {
+            /** Games */
+            games: number;
+            /** Maps */
+            maps: components["schemas"]["app.MapStat"][];
+            mode: components["schemas"]["app.StatMapRef"] | null;
+        };
+        /** MapStat */
+        "app.MapStat": {
+            /** Avg Duration S */
+            avg_duration_s: number | null;
+            /** Games */
+            games: number;
+            map: components["schemas"]["app.StatMapRef"];
+            /** Share */
+            share: number;
+        };
+        /** MapStatsResponse */
+        "app.MapStatsResponse": {
+            /** Modes */
+            modes: components["schemas"]["app.MapModeStats"][];
+            /** Total Games */
+            total_games: number;
+        };
         /** MatchParticipantRead */
         "app.MatchParticipantRead": {
             /** Encounter Team Id */
@@ -13039,6 +13108,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** Paginated[PlayerLeaderboardRow] */
+        "app.Paginated_PlayerLeaderboardRow_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["app.PlayerLeaderboardRow"][];
+            /** Total */
+            total: number;
+        };
         /** Paginated[PlayerStatistics] */
         "app.Paginated_PlayerStatistics_": {
             /** Page */
@@ -13071,6 +13151,27 @@ export interface components {
             results: components["schemas"]["app.UserMap"][];
             /** Total */
             total: number;
+        };
+        /** PlayerLeaderboardRow */
+        "app.PlayerLeaderboardRow": {
+            /** Id */
+            id: number;
+            /** Low Sample */
+            low_sample: boolean;
+            /** Maps Lost */
+            maps_lost: number;
+            /** Maps Won */
+            maps_won: number;
+            /** Name */
+            name: string;
+            /** Rank */
+            rank: number;
+            /** Titles */
+            titles: number;
+            /** Tournaments */
+            tournaments: number;
+            /** Winrate */
+            winrate: number | null;
         };
         /** PlayerStatistics */
         "app.PlayerStatistics": {
@@ -13214,6 +13315,92 @@ export interface components {
              * @enum {string}
              */
             value_format: AppStatDefinitionValue_format;
+        };
+        /** StatMapRef */
+        "app.StatMapRef": {
+            /** Id */
+            id: number;
+            /** Image Path */
+            image_path: string | null;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /** StatRecord */
+        "app.StatRecord": {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: AppStatRecordCode;
+            /**
+             * Duration S
+             * @default null
+             */
+            duration_s: number | null;
+            /**
+             * Encounter Id
+             * @default null
+             */
+            encounter_id: number | null;
+            /**
+             * Ended At
+             * @default null
+             */
+            ended_at: string | null;
+            /** @default null */
+            map: components["schemas"]["app.StatMapRef"] | null;
+            /**
+             * Match Id
+             * @default null
+             */
+            match_id: number | null;
+            /**
+             * Of Total
+             * @default null
+             */
+            of_total: number | null;
+            /** @default null */
+            opponent: components["schemas"]["app.StatRef"] | null;
+            /** @default null */
+            player: components["schemas"]["app.StatRef"] | null;
+            /**
+             * Relative
+             * @default null
+             */
+            relative: number | null;
+            /**
+             * Score
+             * @default null
+             */
+            score: [
+                number,
+                number
+            ] | null;
+            /**
+             * Started At
+             * @default null
+             */
+            started_at: string | null;
+            /** @default null */
+            team: components["schemas"]["app.StatRef"] | null;
+            /** @default null */
+            tournament: components["schemas"]["app.StatRef"] | null;
+            /** Value */
+            value: number;
+        };
+        /** StatRecords */
+        "app.StatRecords": {
+            /** Records */
+            records: components["schemas"]["app.StatRecord"][];
+        };
+        /** StatRef */
+        "app.StatRef": {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
         };
         /** TeamFormatRead */
         "app.TeamFormatRead": {
@@ -40743,16 +40930,16 @@ export interface operations {
             };
         };
     };
-    get__api_v1_statistics_winrate: {
+    get__api_v1_statistics_players: {
         parameters: {
             query?: {
                 page?: number;
                 per_page?: number;
-                entities?: string[];
-                only_count?: boolean;
-                sort?: PathsApiV1StatisticsWinrateGetParametersQuerySort;
+                sort?: PathsApiV1StatisticsPlayersGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
+                query?: string;
                 discipline?: string;
+                workspace_id?: number;
             };
             header?: never;
             path?: never;
@@ -40766,7 +40953,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.Paginated_PlayerStatistics_"];
+                    "application/json": components["schemas"]["app.Paginated_PlayerLeaderboardRow_"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -40809,14 +40996,75 @@ export interface operations {
             };
         };
     };
-    get__api_v1_statistics_won_maps: {
+    get__api_v1_statistics_records: {
+        parameters: {
+            query?: {
+                discipline?: string;
+                workspace_id?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.StatRecords"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_statistics_winrate: {
         parameters: {
             query?: {
                 page?: number;
                 per_page?: number;
                 entities?: string[];
                 only_count?: boolean;
-                sort?: PathsApiV1StatisticsWonMapsGetParametersQuerySort;
+                sort?: PathsApiV1StatisticsWinrateGetParametersQuerySort;
                 order?: components["schemas"]["app.SortOrder"];
                 discipline?: string;
             };
@@ -40970,6 +41218,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["app.Paginated_CharacterLeaderboardEntry_"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_statistics__discipline__maps: {
+        parameters: {
+            query?: {
+                workspace_id?: number;
+            };
+            header?: never;
+            path: {
+                discipline: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.MapStatsResponse"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -74711,12 +75021,13 @@ export enum PathsApiV1StatisticsChampionGetParametersQuerySort {
     name = "name",
     value = "value"
 }
-export enum PathsApiV1StatisticsWinrateGetParametersQuerySort {
-    id = "id",
-    name = "name",
-    value = "value"
+export enum PathsApiV1StatisticsPlayersGetParametersQuerySort {
+    titles = "titles",
+    tournaments = "tournaments",
+    maps_won = "maps_won",
+    winrate = "winrate"
 }
-export enum PathsApiV1StatisticsWonMapsGetParametersQuerySort {
+export enum PathsApiV1StatisticsWinrateGetParametersQuerySort {
     id = "id",
     name = "name",
     value = "value"
@@ -74953,6 +75264,19 @@ export enum AppStatDefinitionValue_format {
     decimal = "decimal",
     percent = "percent",
     duration = "duration"
+}
+export enum AppStatRecordCode {
+    win_streak = "win_streak",
+    biggest_upset = "biggest_upset",
+    underdog_champion = "underdog_champion",
+    closest_final = "closest_final",
+    hero_damage = "hero_damage",
+    healing = "healing",
+    eliminations = "eliminations",
+    damage_blocked = "damage_blocked",
+    solo_kills = "solo_kills",
+    most_mvps = "most_mvps",
+    longest_map = "longest_map"
 }
 export enum AppTeamFormatReadSource {
     tournament = "tournament",

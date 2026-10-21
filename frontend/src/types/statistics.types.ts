@@ -17,6 +17,22 @@ export interface PlayerStatistics {
   value: number;
 }
 
+/** `/statistics/players` orderings (always descending); `titles` is the default and never written to the URL. */
+export const PLAYER_SORTS = ["titles", "tournaments", "maps_won", "winrate"] as const;
+export type PlayerSort = (typeof PLAYER_SORTS)[number];
+
+/** One row of the all-time players table. `rank` is over the whole population; a search never renumbers it. */
+export type PlayerLeaderboardRow = Schema<"app.PlayerLeaderboardRow">;
+
+/** The generated enum, as the literal union every caller already spells. */
+export type StatRecordCode = `${Schema<"app.StatRecord">["code"]}`;
+
+/** One all-time record: its holder, the value and where it happened. A record with no data is absent, never null. */
+export type StatRecord = Omit<Schema<"app.StatRecord">, "code"> & { code: StatRecordCode };
+
+/** One game's finished games per map, grouped by mode (a `null` mode last), most played first. */
+export type MapStatsResponse = Schema<"app.MapStatsResponse">;
+
 export interface TournamentOverall {
   tournaments: number;
   teams: number;

@@ -51,13 +51,13 @@ def test_get_champions(
     assert content["results"]
 
 
-LEADERBOARDS = ("rpc.app.statistics.champion", "rpc.app.statistics.winrate", "rpc.app.statistics.won_maps")
+LEADERBOARDS = ("rpc.app.statistics.champion", "rpc.app.statistics.winrate", "rpc.app.statistics.players")
 
 
 @pytest.mark.parametrize("topic", LEADERBOARDS)
 @pytest.mark.parametrize("discipline", [None, "all"])
 def test_a_leaderboard_without_a_game_is_every_game(rpc: RpcHarness, topic: str, discipline: str | None) -> None:
-    params: dict[str, object] = {"page": 1, "per_page": 10, "sort": "value", "order": "desc"}
+    params: dict[str, object] = {"page": 1, "per_page": 10, "order": "desc"}
     if discipline is not None:
         params["discipline"] = discipline
     env = rpc.call_sync(topic, {"query": build_query(params)})
@@ -71,3 +71,22 @@ def test_a_leaderboard_never_reads_an_unknown_game(rpc: RpcHarness, topic: str) 
     assert env["ok"] is False
     assert env["error"]["code"] == "not_found"
     assert env["error"]["details"]["fields"][0]["code"] == "discipline_not_installed"
+
+
+@pytest.mark.parametrize(
+    ("topic", "data"),
+    [
+        ("rpc.app.statistics.records", {"query": build_query({"discipline": "chess"})}),
+        ("rpc.app.statistics.maps", {"discipline": "chess", "query": {}}),
+    ],
+)
+def test_records_and_maps_never_read_an_unknown_game(rpc: RpcHarness, topic: str, data: dict) -> None:
+    env = rpc.call_sync(topic, data)
+    assert env["ok"] is False
+    assert env["error"]["details"]["fields"][0]["code"] == "discipline_not_installed"
+
+
+def test_the_players_sort_is_validated(rpc: RpcHarness) -> None:
+    env = rpc.call_sync("rpc.app.statistics.players", {"query": build_query({"sort": "value"})})
+    assert env["ok"] is False
+    assert env["error"]["code"] == "unprocessable"

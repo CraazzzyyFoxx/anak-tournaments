@@ -546,7 +546,6 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict[st
         for name, reader in (
             ("champions", statistics.get_most_champions),
             ("winrate", statistics.get_to_winrate_players),
-            ("won", statistics.get_to_won_players),
         ):
             for label, params in (
                 ("ranked", pagination.PaginationSortParams(per_page=100, sort="value", order="desc")),

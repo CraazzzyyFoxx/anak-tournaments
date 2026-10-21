@@ -13679,24 +13679,6 @@
           }
         ],
         "total": 1
-      },
-      "won:only_count": {
-        "page": 1,
-        "per_page": 10,
-        "results": [],
-        "total": 1
-      },
-      "won:ranked": {
-        "page": 1,
-        "per_page": 100,
-        "results": [
-          {
-            "id": 910000,
-            "name": "P4 Alpha",
-            "value": 11.0
-          }
-        ],
-        "total": 1
       }
     },
     "user": {
@@ -57920,24 +57902,6 @@
           }
         ],
         "total": 1
-      },
-      "won:only_count": {
-        "page": 1,
-        "per_page": 10,
-        "results": [],
-        "total": 1
-      },
-      "won:ranked": {
-        "page": 1,
-        "per_page": 100,
-        "results": [
-          {
-            "id": 910000,
-            "name": "P4 Alpha",
-            "value": 10.0
-          }
-        ],
-        "total": 1
       }
     },
     "user": {
@@ -73311,18 +73275,6 @@
         "total": 0
       },
       "winrate:ranked": {
-        "page": 1,
-        "per_page": 100,
-        "results": [],
-        "total": 0
-      },
-      "won:only_count": {
-        "page": 1,
-        "per_page": 10,
-        "results": [],
-        "total": 0
-      },
-      "won:ranked": {
         "page": 1,
         "per_page": 100,
         "results": [],

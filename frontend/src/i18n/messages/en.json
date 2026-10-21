@@ -3509,25 +3509,95 @@
   "statistics": {
     "navTitle": "Statistics",
     "metaDescription": "View statistics on {siteName}.",
-    "eyebrow": "Platform statistics",
-    "title": "All-time leaderboards & trends",
-    "description": "Aggregate numbers across every tournament: how the field has grown, the average division per role over time, and the players who top the championship, win-rate and maps-won boards.",
-    "trendsOverTime": "Trends over time",
-    "leaderboards": "Leaderboards",
-    "overallStatistics": "Overall statistics",
-    "statTournamentsHeld": "Tournaments Held",
-    "statTeamsBalanced": "Teams Balanced",
-    "statPlayersParticipated": "Players Participated",
-    "liveCount": "{count, plural, other {# Live}}",
-    "upcomingCount": "{count, plural, other {# Upcoming}}",
-    "tournamentActivity": "Tournament activity",
-    "avgDivisionByRole": "Average division by role",
-    "mostChampionships": "Most championships",
-    "topWinRate": "Top win rate",
-    "mostMapsWon": "Most maps won",
-    "roleTank": "Tank",
-    "roleDamage": "Damage",
-    "roleSupport": "Support"
+    "eyebrow": "All-time statistics",
+    "title": "Tournament almanac",
+    "description": "Who is best and what gets played: the player rankings, the records, the most played characters and maps.",
+    "encountersLink": "Encounter analytics",
+    "figures": {
+      "tournaments": "Tournaments",
+      "players": "Players",
+      "encounters": "Encounters",
+      "maps": "Maps",
+      "hours": "Hours played",
+      "days": "Tournament days",
+      "what": "the totals",
+      "empty": "The totals appear after the first tournament."
+    },
+    "players": {
+      "title": "Players",
+      "sub": "Titles, tournaments and maps played, all time.",
+      "subWinrate": "Win rate counts players with more than three tournaments.",
+      "what": "the player rankings",
+      "empty": "The rankings appear after the first tournament.",
+      "search": "Search players",
+      "searchPlaceholder": "Player name",
+      "notFoundTitle": "No players found",
+      "notFound": "Nobody matches “{query}”.",
+      "resetSearch": "Clear search",
+      "total": "{count, plural, one {# player} other {# players}}",
+      "mapsRecord": "Won: {won}, lost: {lost}",
+      "lowSample": "Three tournaments or fewer: too few for a fair win rate",
+      "col": {
+        "rank": "Rank",
+        "player": "Player",
+        "titles": "Titles",
+        "tournaments": "Tournaments",
+        "maps": "Maps",
+        "winrate": "Win rate"
+      }
+    },
+    "records": {
+      "title": "Records",
+      "sub": "The best of all time, from encounter results.",
+      "subGame": "The best of all time, from encounter results and match logs.",
+      "what": "the records",
+      "empty": "Records appear once the first encounters are played.",
+      "fromLogs": "From match logs",
+      "matchup": "{team} vs {opponent}",
+      "against": "vs {opponent}",
+      "ofTotal": "{value} of {total}",
+      "unit": {
+        "streak": "{count, plural, one {win in a row} other {wins in a row}}",
+        "upset": "opponent rated {pct} higher",
+        "underdog": "by average SR among the tournament's teams",
+        "closeness": "closeness",
+        "mvps": "{count, plural, one {map as the top player} other {maps as the top player}}"
+      },
+      "code": {
+        "win_streak": "Longest win streak",
+        "biggest_upset": "Biggest upset",
+        "underdog_champion": "Underdog champion",
+        "closest_final": "Closest final",
+        "hero_damage": "Hero damage on one map",
+        "healing": "Healing on one map",
+        "eliminations": "Eliminations on one map",
+        "damage_blocked": "Damage blocked on one map",
+        "solo_kills": "Solo kills on one map",
+        "most_mvps": "Most MVPs",
+        "longest_map": "Longest map"
+      }
+    },
+    "heroes": {
+      "title": "Characters",
+      "sub": "Share of playtime, all time, from match logs.",
+      "what": "the character stats",
+      "empty": "Shares appear once the first match logs are uploaded.",
+      "noClass": "No class",
+      "compare": "{name}: player leaderboard on this character"
+    },
+    "maps": {
+      "title": "Maps",
+      "sub": "Maps played by mode: how many games, and how long a map runs on average.",
+      "what": "the map stats",
+      "empty": "Maps appear after the first encounters are played.",
+      "noMode": "No mode",
+      "col": {
+        "map": "Map",
+        "games": "Games",
+        "share": "Share",
+        "avgDuration": "Avg time"
+      }
+    }
   },
   "notConfigured": {
     "title": "Workspace not configured",

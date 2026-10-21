@@ -17,10 +17,11 @@ import "github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
 // surface is in AchievementsSubtreeRoutes (ServeMux can't disambiguate
 // /{id}/users vs /user/{user_id}); the achievements *list* stays here.
 var ReadRoutes = []edge.RouteSpec{
-	// --- one discipline's character statistics (the catalog reads are the native /api/v1/catalog routes below).
-	// Five/six segments: no clash with the three-segment /statistics/{champion,winrate,won-maps} literals. ---
+	// --- one discipline's character and map statistics (the catalog reads are the native /api/v1/catalog routes below).
+	// Four to six segments: no clash with the three-segment /statistics/{champion,winrate,players,records} literals. ---
 	{Method: "GET", Pattern: "/api/v1/statistics/{discipline}/characters/playtime", Queue: "rpc.app.statistics.character_playtime", Path: []string{"discipline"}, AllQuery: true, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/statistics/{discipline}/characters/{entity_id}/leaderboard", Queue: "rpc.app.statistics.character_leaderboard", IDParam: "entity_id", Path: []string{"discipline"}, AllQuery: true, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/statistics/{discipline}/maps", Queue: "rpc.app.statistics.maps", Path: []string{"discipline"}, Query: []string{"workspace_id"}, Auth: edge.AuthNone},
 	// --- catalog: one discipline's characters/maps/modes, public, never cached (P7 §3.2) ---
 	{Method: "GET", Pattern: "/api/v1/catalog/{discipline}/{kind}", Queue: "rpc.app.catalog.list", Path: []string{"discipline", "kind"}, AllQuery: true, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/catalog/{discipline}/{kind}/{id}", Queue: "rpc.app.catalog.get", IDParam: "id", Path: []string{"discipline", "kind"}, Auth: edge.AuthNone},
@@ -33,7 +34,8 @@ var ReadRoutes = []edge.RouteSpec{
 	// --- statistics ---------------------------------------------------------
 	{Method: "GET", Pattern: "/api/v1/statistics/champion", Queue: "rpc.app.statistics.champion", AllQuery: true, Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/statistics/winrate", Queue: "rpc.app.statistics.winrate", AllQuery: true, Auth: edge.AuthNone},
-	{Method: "GET", Pattern: "/api/v1/statistics/won-maps", Queue: "rpc.app.statistics.won_maps", AllQuery: true, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/statistics/players", Queue: "rpc.app.statistics.players", AllQuery: true, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/statistics/records", Queue: "rpc.app.statistics.records", Query: []string{"discipline", "workspace_id"}, Auth: edge.AuthNone},
 	// --- workspaces (public reads; writes + members in Phase 2) -------------
 	// list takes ?scope=public|admin|all (default public — the shared home-page
 	// directory: no hidden, no unverified, superusers included). admin/all

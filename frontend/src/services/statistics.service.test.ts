@@ -50,4 +50,18 @@ describe("statisticsService leaderboards", () => {
       options: { query: { discipline: "lol", workspace_id: 7 } }
     });
   });
+
+  it("reads the players table descending, leaving an empty search out of the URL", async () => {
+    await statisticsService.getPlayers(null, { sort: "winrate", query: "", page: 2, perPage: 20 }, { skipWorkspace: true });
+    await statisticsService.getPlayers("lol", { sort: "titles", query: "fox", page: 1, perPage: 20 }, { workspaceId: 7 });
+
+    expect(calls[0]).toMatchObject({
+      path: "/api/v1/statistics/players",
+      options: {
+        skipAuth: true,
+        query: { discipline: null, sort: "winrate", order: "desc", query: undefined, page: 2, per_page: 20 }
+      }
+    });
+    expect(calls[1].options?.query).toMatchObject({ discipline: "lol", query: "fox", workspace_id: 7 });
+  });
 });

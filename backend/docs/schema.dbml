@@ -2513,6 +2513,7 @@ Table stats.fact {
     (match_id, workspace_member_id, segment) [name: "ix_fact_match_member"]
     (workspace_member_id, entity_id, stat_id) [name: "ix_fact_member_entity_total"]
     (workspace_member_id, stat_id) [name: "ix_fact_member_stat_total"]
+    (stat_id, value) [name: "ix_fact_stat_value_total"]
   }
 }
 

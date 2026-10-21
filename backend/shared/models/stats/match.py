@@ -234,6 +234,13 @@ class StatsFact(db.Base):
             postgresql_where=sa.text("segment = 0 AND entity_id IS NOT NULL"),
         ),
         sa.Index("ix_fact_match_member", "match_id", "workspace_member_id", "segment"),
+        # Highest single-map player totals per stat (the statistics records) without sorting every total.
+        sa.Index(
+            "ix_fact_stat_value_total",
+            "stat_id",
+            "value",
+            postgresql_where=sa.text("segment = 0 AND entity_id IS NULL AND workspace_member_id IS NOT NULL"),
+        ),
         {"schema": "stats"},
     )
     # SQLAlchemy needs an identity; PostgreSQL has ONLY the null-equal natural unique key. Core writes/read aggregates

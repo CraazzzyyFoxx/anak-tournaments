@@ -103,15 +103,14 @@ def test_leaderboards_without_a_game_rank_every_games_results(
             others = {user: value for user, value in every.items() if user != ids["player"]}
             assert others == {user: value for user, value in ow_champions.items() if user != ids["player"]}
 
-            # Winrate and won maps keep the "> 3 tournaments" threshold, counted across games when no game is named:
-            # one League tournament ranks nobody on the League board, and lifts player_away (3 Overwatch tournaments)
-            # onto the cross-game board only.
-            for reader in (statistics.get_to_winrate_players, statistics.get_to_won_players):
-                ow, lol, every = [await board(reader, game) for game in (OW, LOL, None)]
-                assert lol == {}, reader.__name__
-                assert ids["player"] in ow and ids["player"] in every, reader.__name__
-                assert ids["player_away"] not in ow, reader.__name__
-                assert ids["player_away"] in every, reader.__name__
+            # Winrate keeps the "> 3 tournaments" threshold, counted across games when no game is named: one League
+            # tournament ranks nobody on the League board, and lifts player_away (3 Overwatch tournaments) onto the
+            # cross-game board only.
+            ow, lol, every = [await board(statistics.get_to_winrate_players, game) for game in (OW, LOL, None)]
+            assert lol == {}
+            assert ids["player"] in ow and ids["player"] in every
+            assert ids["player_away"] not in ow
+            assert ids["player_away"] in every
             await session.rollback()
 
     asyncio.run(run())

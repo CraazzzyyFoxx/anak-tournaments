@@ -1,281 +1,87 @@
-import React, { Suspense } from "react";
+import { Suspense } from "react";
 import { getTranslations } from "next-intl/server";
-import { Map as MapIcon, Percent, Trophy } from "lucide-react";
 
-import { LeaderboardCard } from "@/components/stats/LeaderboardCard";
-import { PlatformStatsGrid } from "@/components/stats/PlatformStatsGrid";
-import TournamentsChart from "@/components/TournamentsChart";
-import TournamentsDivisionChart from "@/components/TournamentsDivisionChart";
-import { BlockGameTabs } from "@/components/workspace/BlockGameTabs";
+import { HeroCoord, PageHero } from "@/components/site/PageHero";
+import { MoreLink, SectionStack } from "@/components/site/open-layout";
 import { ServerGameScopeNotice } from "@/components/workspace/ServerGameScopeNotice";
-import statisticsService from "@/services/statistics.service";
-import { isTenantHost } from "@/lib/site/tenant-host";
 import { resolveServerPageGame } from "@/lib/site/discipline-server";
-import disciplineService from "@/services/discipline.service";
-import type { PlayerStatistics, TournamentStatistics } from "@/types/statistics.types";
-import {
-  ChartCardSkeleton,
-  StatsGridSkeleton,
-  TableCardSkeleton,
-} from "@/components/skeletons/dashboard-skeletons";
+
+import { HeroMetaSection, HeroMetaSkeleton } from "./_components/HeroMetaSection";
+import { MapsSection, MapsSkeleton } from "./_components/MapsSection";
+import { OverallFigures, OverallFiguresSkeleton } from "./_components/OverallFigures";
+import { PlayersSection, PlayersSkeleton } from "./_components/PlayersSection";
+import { RecordsSection, RecordsSkeleton } from "./_components/RecordsSection";
+import { parsePlayersParams } from "./_components/statistics.model";
 
 export const dynamic = "force-dynamic";
 
-const LEADERBOARD_SIZE = 15;
+type Param = string | string[] | undefined;
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Page
-// ─────────────────────────────────────────────────────────────────────────────
-
+/**
+ * The all-time almanac: who is best (the players table, the records) and what is played (characters, maps).
+ *
+ * A multi page (spec §5): the totals are game-neutral; the players and the results-based records are every game's
+ * under "all games" and the game's own under one (§6.5); characters, maps and the log-based records are one game's by
+ * nature and show only when one is chosen. An invalid or empty game reads nothing but the totals.
+ */
 export default async function StatisticsPage({
   searchParams
-}: Readonly<{ searchParams: Promise<{ discipline?: string | string[] }> }>) {
-  const [t, { discipline }] = await Promise.all([getTranslations(), searchParams]);
-  // A multi page (spec §5): the totals and the activity trend are game-neutral; the leaderboards are every game's
-  // under "all games" and the game's own under one (§6.5); the division trend is one game's by nature, so under
-  // "all games" it reads the "single" rows for itself, with block tabs (§6.4).
-  const { init, resolution } = await resolveServerPageGame("multi", discipline);
+}: Readonly<{ searchParams: Promise<{ discipline?: Param; sort?: Param; q?: Param; page?: Param }> }>) {
+  const [t, params] = await Promise.all([getTranslations("statistics"), searchParams]);
+  const { init, resolution } = await resolveServerPageGame("multi", params.discipline);
   const page = resolution?.game ?? null;
   const boards = page?.kind === "all" || page?.kind === "game";
   const game = page?.kind === "game" ? page.code : null;
-  const block = page?.kind === "all" ? (await resolveServerPageGame("single", undefined)).resolution : resolution;
-  const blockGame = block?.game.kind === "game" ? block.game.code : null;
+  const players = parsePlayersParams(params);
+  // The main host reads across every workspace, a tenant host its own (as `skipWorkspace` does for the other reads).
+  const axis = init.hostLockedWorkspaceId ?? "all";
+  const urlGame = Array.isArray(params.discipline) ? params.discipline[0] : params.discipline;
+
   return (
-    <div className="space-y-8">
-      <header>
-        <p className="mb-2 text-label font-semibold tracking-label uppercase text-muted-foreground/50">
-          {t("statistics.eyebrow")}
-        </p>
-        <h1 className="font-display text-3xl font-bold uppercase tracking-wide text-foreground">
-          {t("statistics.title")}
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-          {t("statistics.description")}
-        </p>
-      </header>
+    <SectionStack>
+      <PageHero
+        eyebrow={<HeroCoord>{t("eyebrow")}</HeroCoord>}
+        title={t("title")}
+        lede={t("description")}
+        stamp={
+          <Suspense fallback={<OverallFiguresSkeleton />}>
+            <OverallFigures />
+          </Suspense>
+        }
+      />
 
       <ServerGameScopeNotice initial={init} />
 
-      <section>
-        <Suspense fallback={<StatsGridSkeleton />}>
-          <OverallStats />
+      {boards ? (
+        <Suspense key={`players-${game}`} fallback={<PlayersSkeleton sort={players.sort} />}>
+          <PlayersSection discipline={game} urlDiscipline={params.discipline} params={players} />
         </Suspense>
-      </section>
-
-      <section className="space-y-4">
-        <SectionLabel>{t("statistics.trendsOverTime")}</SectionLabel>
-        <Suspense fallback={<ChartCardSkeleton />}>
-          <ActivityTrendCard />
-        </Suspense>
-        {page?.kind === "all" && block?.tabs ? <BlockGameTabs initial={init} /> : null}
-        {blockGame === null ? null : (
-          <Suspense key={blockGame} fallback={<ChartCardSkeleton />}>
-            <DivisionTrendCard discipline={blockGame} />
-          </Suspense>
-        )}
-      </section>
+      ) : null}
 
       {boards ? (
-        <section className="space-y-4">
-          <SectionLabel>{t("statistics.leaderboards")}</SectionLabel>
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Suspense fallback={<TableCardSkeleton />}>
-              <ChampionsLeaderboard discipline={game} />
-            </Suspense>
-            <Suspense fallback={<TableCardSkeleton />}>
-              <WinRateLeaderboard discipline={game} />
-            </Suspense>
-            <Suspense fallback={<TableCardSkeleton />}>
-              <WonMapsLeaderboard discipline={game} />
-            </Suspense>
-          </div>
-        </section>
+        <Suspense key={`records-${game}`} fallback={<RecordsSkeleton discipline={game} />}>
+          <RecordsSection discipline={game} />
+        </Suspense>
       ) : null}
-    </div>
-  );
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Primitives
-// ─────────────────────────────────────────────────────────────────────────────
+      {game ? (
+        <Suspense key={`heroes-${game}`} fallback={<HeroMetaSkeleton />}>
+          <HeroMetaSection discipline={game} axis={axis} />
+        </Suspense>
+      ) : null}
 
-function SectionLabel({ children }: Readonly<{ children: React.ReactNode }>) {
-  return (
-    <p className="text-label font-semibold tracking-label uppercase text-muted-foreground/50">
-      {children}
-    </p>
-  );
-}
+      {game ? (
+        <Suspense key={`maps-${game}`} fallback={<MapsSkeleton />}>
+          <MapsSection discipline={game} />
+        </Suspense>
+      ) : null}
 
-function DashCard({ children }: Readonly<{ children: React.ReactNode }>) {
-  return (
-    <div
-      className="rounded-xl overflow-hidden"
-      style={{ background: "var(--aqt-bg-2)", border: "1px solid var(--aqt-border)" }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function DashCardHeader({ icon, children }: Readonly<{ icon?: React.ReactNode; children: React.ReactNode }>) {
-  return (
-    <div
-      className="flex items-center gap-2 px-5 py-4 border-b font-display font-bold text-ui uppercase tracking-[0.04em]"
-      style={{ borderColor: "var(--aqt-border)", color: "var(--aqt-fg)" }}
-    >
-      {icon}
-      {children}
-    </div>
-  );
-}
-
-function ErrorBody({ message }: Readonly<{ message: string }>) {
-  return <div className="px-5 py-4 text-sm text-muted-foreground">{message}</div>;
-}
-
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Overall KPI strip
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function OverallStats() {
-  const t = await getTranslations();
-  const skipWorkspace = !(await isTenantHost());
-  let overall = null;
-  try {
-    overall = await statisticsService.getOverallStatistics({ skipWorkspace });
-  } catch {
-    overall = null;
-  }
-
-  if (!overall) {
-    return (
-      <DashCard>
-        <ErrorBody message={t("common.loadError")} />
-      </DashCard>
-    );
-  }
-
-  return <PlatformStatsGrid totals={overall} />;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Trend charts (full recharts versions, not on the home summary)
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function ActivityTrendCard() {
-  const t = await getTranslations();
-  const skipWorkspace = !(await isTenantHost());
-  let data: TournamentStatistics[] | null = null;
-  try {
-    data = await statisticsService.getTournaments({ skipWorkspace });
-  } catch {
-    data = null;
-  }
-
-  if (!data || data.length === 0) {
-    return (
-      <DashCard>
-        <DashCardHeader>{t("statistics.tournamentActivity")}</DashCardHeader>
-        <ErrorBody message={data ? t("common.noData") : t("common.loadError")} />
-      </DashCard>
-    );
-  }
-  return <TournamentsChart data={data} />;
-}
-
-/** The browsed game's average division per tournament, one line per role of its rated dimension. */
-async function DivisionTrendCard({ discipline }: Readonly<{ discipline: string }>) {
-  const t = await getTranslations();
-  const skipWorkspace = !(await isTenantHost());
-  const [data, ontology] = await Promise.all([
-    statisticsService.getTournamentsDivision(discipline, { skipWorkspace }).catch(() => null),
-    disciplineService.metadata("all", discipline).catch(() => null)
-  ]);
-  const title = `${t("statistics.avgDivisionByRole")} · ${ontology?.discipline.name ?? discipline}`;
-
-  if (!data || data.length === 0) {
-    return (
-      <DashCard>
-        <DashCardHeader>{title}</DashCardHeader>
-        <ErrorBody message={data ? t("common.noData") : t("common.loadError")} />
-      </DashCard>
-    );
-  }
-  return <TournamentsDivisionChart data={data} ontology={ontology} title={title} />;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Leaderboards
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** `discipline: null` is one cross-game board (spec §6.5). */
-async function ChampionsLeaderboard({ discipline }: Readonly<{ discipline: string | null }>) {
-  const t = await getTranslations();
-  const skipWorkspace = !(await isTenantHost());
-  let rows: PlayerStatistics[] = [];
-  try {
-    rows = (await statisticsService.getChampions(discipline, { skipWorkspace })).results.slice(
-      0,
-      LEADERBOARD_SIZE,
-    );
-  } catch {
-    rows = [];
-  }
-  return (
-    <LeaderboardCard
-      title={t("statistics.mostChampionships")}
-      icon={<Trophy className="h-4 w-4 text-[color:var(--aqt-amber)]" />}
-      rows={rows}
-      format={(v) => `${v}×`}
-      accent="teal"
-    />
-  );
-}
-
-async function WinRateLeaderboard({ discipline }: Readonly<{ discipline: string | null }>) {
-  const t = await getTranslations();
-  const skipWorkspace = !(await isTenantHost());
-  let rows: PlayerStatistics[] = [];
-  try {
-    rows = (await statisticsService.getTopWinratePlayers(discipline, { skipWorkspace })).results.slice(
-      0,
-      LEADERBOARD_SIZE,
-    );
-  } catch {
-    rows = [];
-  }
-  return (
-    <LeaderboardCard
-      title={t("statistics.topWinRate")}
-      icon={<Percent className="h-4 w-4 text-[color:var(--aqt-emerald)]" />}
-      rows={rows}
-      format={(v) => `${(v * 100).toFixed(1)}%`}
-      accent="emerald"
-    />
-  );
-}
-
-async function WonMapsLeaderboard({ discipline }: Readonly<{ discipline: string | null }>) {
-  const t = await getTranslations();
-  const skipWorkspace = !(await isTenantHost());
-  let rows: PlayerStatistics[] = [];
-  try {
-    rows = (await statisticsService.getTopWonMapsPlayers(discipline, { skipWorkspace })).results.slice(
-      0,
-      LEADERBOARD_SIZE,
-    );
-  } catch {
-    rows = [];
-  }
-  return (
-    <LeaderboardCard
-      title={t("statistics.mostMapsWon")}
-      icon={<MapIcon className="h-4 w-4 text-[color:var(--aqt-blue)]" />}
-      rows={rows}
-      format={(v) => `${v}`}
-      accent="blue"
-    />
+      <MoreLink
+        href={urlGame ? `/encounters?discipline=${encodeURIComponent(urlGame)}` : "/encounters"}
+        className="self-start"
+      >
+        {t("encountersLink")}
+      </MoreLink>
+    </SectionStack>
   );
 }
