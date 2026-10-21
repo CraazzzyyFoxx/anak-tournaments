@@ -305,6 +305,7 @@ async def _roster(session: AsyncSession, participation: EncounterTeam) -> list[M
             rank=member.rank,
             is_substitute=member.is_substitute,
             roles=tuple(roles.get(member.id, ())),
+            is_captain=member.is_captain,
         )
         for member in members
     ]

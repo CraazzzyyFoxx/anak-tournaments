@@ -62,6 +62,8 @@ class MemberSnapshot:
     is_substitute: bool
     #: One ``(dimension, leaf code)`` pair per dimension; a sub-role IS the leaf.
     roles: tuple[tuple[str, str], ...]
+    #: The team's captain at placement. ``False`` for a seat with no captain behind it (a logged substitute).
+    is_captain: bool = False
 
 
 async def active_teams(session: AsyncSession, encounter_id: int) -> list[EncounterTeam]:
@@ -171,6 +173,7 @@ async def _snapshot_member(
             display_name_snapshot=member.display_name,
             rank=member.rank,
             is_substitute=member.is_substitute,
+            is_captain=member.is_captain,
         ),
     )
     roles = []

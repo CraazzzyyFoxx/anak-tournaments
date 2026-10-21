@@ -115,6 +115,40 @@ class PlaceTeamTests(ParticipationWriterCase):
             ).all()
             self.assertEqual([("player_role", "tank")], roles)
 
+    async def test_the_captain_flag_is_snapshotted_per_member(self) -> None:
+        async with self.Session() as s:
+            encounter = await self.encounter(s)
+            participation = await participants.place_team(
+                s,
+                encounter,
+                slot=1,
+                team_id=self.ids["team0"],
+                name="TEAM0",
+                seed=1,
+                members=[
+                    participants.MemberSnapshot(
+                        workspace_member_id=self.ids["m0"],
+                        display_name="m0",
+                        rank=2500,
+                        is_substitute=False,
+                        roles=(),
+                        is_captain=True,
+                    ),
+                    _member(self.ids["m1"], "m1"),
+                ],
+            )
+            await s.commit()
+
+        async with self.Session() as s:
+            rows = (
+                await s.execute(
+                    sa.select(EncounterTeamMember.workspace_member_id, EncounterTeamMember.is_captain)
+                    .where(EncounterTeamMember.encounter_team_id == participation.id)
+                    .order_by(EncounterTeamMember.workspace_member_id)
+                )
+            ).all()
+        self.assertEqual([(self.ids["m0"], True), (self.ids["m1"], False)], [tuple(row) for row in rows])
+
     async def test_active_teams_reads_the_live_seats_in_slot_order(self) -> None:
         async with self.Session() as s:
             await self.place(s, 2, "team1", "m1")

@@ -13,7 +13,7 @@ baselines and Discord channels live in `stats/`. `catalog/` writes only to `cata
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`owmapdrop01`** (133 revisions in `backend/migrations/versions/`).
+Alembic head: **`mixcapt01`** (135 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -1720,6 +1720,7 @@ erDiagram
         varchar(255) display_name_snapshot
         int rank "nullable"
         boolean is_substitute
+        boolean is_captain
     }
     ENCOUNTER_TEAM_MEMBER_ROLE {
         bigint team_member_id PK,FK
