@@ -11,7 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from shared import models
 from shared.core.enums import (
@@ -74,6 +76,19 @@ class MixRoundDraft:
     recorder_player_id: int | None
 
 
+async def _map_mode(session: AsyncSession, map_id: int | None) -> int | None:
+    """The catalog mode ``map_id`` belongs to: its parent when that parent is a ``mode``, else ``None``."""
+    if map_id is None:
+        return None
+    mode = aliased(models.CatalogEntity, name="mode")
+    return await session.scalar(
+        sa.select(mode.id)
+        .select_from(models.CatalogEntity)
+        .join(mode, mode.id == models.CatalogEntity.parent_id)
+        .where(models.CatalogEntity.id == map_id, mode.kind == "mode")
+    )
+
+
 async def record_mix_round(session: AsyncSession, draft: MixRoundDraft) -> models.Encounter:
     encounter = await _encounters.create(
         session,
@@ -119,6 +134,7 @@ async def record_mix_round(session: AsyncSession, draft: MixRoundDraft) -> model
             encounter_id=encounter.id,
             position=1,
             map_id=draft.map_id,
+            mode_id=await _map_mode(session, draft.map_id),
             state=EncounterGameState.CONFIRMED,
             result_source=EncounterGameResultSource.HOST,
             result_version=1,
