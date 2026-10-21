@@ -251,7 +251,7 @@ falls back to LoL's own ladder. No other game's default can satisfy it. Workspac
 are independent per discipline; tournament pins are preserved and do not require workspace
 activation.
 
-For a game with a native layer (Overwatch, LoL), a member's rank value can exist in nine places —
+For a game with a native layer (Overwatch, LoL, Deadlock), a member's rank value can exist in nine places —
 the two stored layers, the mix ranker's hidden rating, the native snapshot, the two effective values
 the resolver computes, and the three historical records (registration, tournament roster seat,
 recorded mix seat).

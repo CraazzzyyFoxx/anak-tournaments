@@ -15,7 +15,7 @@ One PostgreSQL database, one SQLAlchemy metadata (`backend/shared`). Domain boun
 | `tournament-svc` | Tournament lifecycle, registration, brackets, results, pick-ban, scrims, outbox sweeper |
 | `balancer-svc` | NSGA-II / mix balance, live draft, custom games |
 | `identity-svc` | JWT, OAuth, RBAC, hostnames, API keys, player linking |
-| `stats-svc` | Match logs, impact/MVP, achievements, native ranks (OverFast, Riot API) |
+| `stats-svc` | Match logs, match import by external id, impact/MVP, achievements, native ranks (OverFast, Riot API, deadlock-api) |
 | `analytics-svc` | OpenSkill / linear / ML shifts |
 | `app-svc` | Public reads: players, stats, catalogs, assets |
 | `stream-svc` | Twitch live status (Redis only, no Postgres schema) |
@@ -44,7 +44,7 @@ One PostgreSQL database, one SQLAlchemy metadata (`backend/shared`). Domain boun
 
 - `OAuthConnection` UNIQUE `(provider, provider_user_id)` — one external subject binds to one account. One account may hold several subjects of the same provider.
 - OAuth callback: (1) proven `provider_user_id` → (2) exactly one unowned player matching the handle → (3) new account. Never overwrites an already-owned player.
-- Self-service link requires Discord/Battle.net OAuth **and** a handle intersection with `social_account`; otherwise 403; another owner → 409.
+- Self-service link requires a Discord, Battle.net, Riot or Steam OAuth connection **and** a handle intersection with `social_account`; otherwise 403; another owner → 409.
 - Unlink is blocked while the account holds any workspace role other than `player` (otherwise an orphan `workspace_member` that admin lists cannot see, because those lists require `auth_user_id IS NOT NULL`).
 
 ---
@@ -275,9 +275,10 @@ one-lobby behaviour exactly, so no backfill was needed.
 
 Self-signup (`custom_game.self_signup` = `closed` | `pool` | `benched`, `self_role_edit`): one policy,
 `mix_self_service.mix_self_policy`, gates Discord and the board alike. Check order is the reason order —
-`mix_closed` → `discord_not_linked` → `battlenet_not_linked` → `player_not_linked` → `self_join_denied` →
-`already_joined`/`not_on_roster` → `signup_closed` → `roster_full` → `role_edit_off`. Both Discord **and**
-Battle.net must be linked (`account_links.missing_account_links`); capability `custom_game.self_join` is
+`mix_closed` → `discord_not_linked` → `<provider>_not_linked` → `player_not_linked` → `self_join_denied` →
+`already_joined`/`not_on_roster` → `signup_closed` → `roster_full` → `role_edit_off`. Discord **and** the mix game's
+identity provider must be linked (`account_links.required_link_providers`: Battle.net for Overwatch, Riot for LoL,
+Steam for Deadlock; `missing_account_links`); capability `custom_game.self_join` is
 allow-by-default, an admin cuts one account with a deny. `already_joined` is not an error: `self_join` is
 idempotent and a host's bench decision survives a second press. `can_leave` ignores every link. A signup is an
 ordinary `custom_game_player` row — no separate application table. A player writes `roles` and `is_flex` only;
@@ -373,13 +374,13 @@ The API returns the room as `teams[]` with slot numbers and `team_names`; the vi
 - `author_user_id IS NULL` = workspace canon (everyone sees it).
 - Non-null = that account's private book, used only for **their** mixes. The two dictionaries are never merged.
 
-Native snapshots (`rank.rank_snapshot`: Overwatch from OverFast, LoL Solo/Duo from the Riot API) are normalised onto the owner's grid of the same discipline. Every grid belongs to a discipline; existing grids are Overwatch grids.
+Native snapshots (`rank.rank_snapshot`: Overwatch from OverFast, LoL Solo/Duo from the Riot API, Deadlock from deadlock-api) are normalised onto the owner's grid of the same discipline. Every grid belongs to a discipline; existing grids are Overwatch grids.
 
 Grids are versioned. Cosmetic tier edits apply in place; structural edits spawn a version and auto-map from used sources of the same discipline. Activation requires complete mappings and an enabled discipline. A tournament may pin `division_grid_version_id` only from its own discipline and workspace (or a system grid). Otherwise the owner resolves its discipline's workspace default, then its discipline's system default.
 
 Workspace defaults are independently persisted per `(workspace_id, discipline)`: activating Overwatch cannot replace the LoL default. Public workspace reads expose `default_division_grid_versions` (explicit selections only) and `effective_division_grid_versions` (resolved public version/tier payloads, including same-discipline persisted system fallback). Missing persisted versions are omitted; native ladders remain module-owned. These replace the former singular ID/payload wire fields; grid activation, not workspace create/update, changes assignments.
 
-Overwatch (45 tiers) and LoL (31 league-v4 tiers) declare native ladders: a new grid of either game is seeded with its ladder, and a tournament or mix (including a clone) without a grid of its own falls back to its own game's ladder, never another game's. A game without a native ladder needs a tiered grid of its own; missing or empty runtime grids return 422 `division_grid_required`.
+Overwatch (45 tiers), LoL (31 league-v4 tiers) and Deadlock (66 tiers: 11 × 6 subranks) declare native ladders: a new grid of any of them is seeded with its ladder, and a tournament or mix (including a clone) without a grid of its own falls back to its own game's ladder, never another game's. A game without a native ladder needs a tiered grid of its own; missing or empty runtime grids return 422 `division_grid_required`.
 
 Legacy public player/hero statistics and workspace-wide achievements still query Overwatch data, so their grid and normalization target remain explicitly Overwatch even in a LoL-first workspace. Generic workspace rank entrypoints continue to use the first enabled discipline. Tournament player sheets, autofill previews, and pick/ban crests carry the owner's resolved grid through nested controls; the player sheet exposes no rank controls until that owner scope is available. Grid administration renders native ladder bars, native-rank columns, and native crest fallbacks only for Overwatch, never for a LoL grid with or without an activated version. Activation and version-mapping explanations apply to the selected game.
 

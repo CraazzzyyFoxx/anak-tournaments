@@ -189,9 +189,9 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
 | --- | --- | --- |
 | [`gateway`](../gateway/README.md) | Go, HTTP/WS | Sole API ingress: JWT, RPC dispatch, realtime hub, response cache, rate limit, docs, metrics |
 | [`app-service`](../backend/app-service/README.md) | RPC worker | Core read/data API (tournaments, players, teams, heroes, maps, matches, stats), workspace/user/metadata admin, binary assets, cache |
-| [`identity-service`](../backend/identity-service/README.md) | RPC worker | JWT auth, OAuth (Discord, Twitch, Battle.net, Riot), RBAC, workspace membership, custom domains/subdomains, API keys, player linking, service tokens, SSO |
+| [`identity-service`](../backend/identity-service/README.md) | RPC worker | JWT auth, OAuth (Discord, Twitch, Battle.net, Riot) and Steam OpenID, RBAC, workspace membership, custom domains/subdomains, API keys, player linking, service tokens, SSO |
 | [`tournament-service`](../backend/tournament-service/README.md) | RPC worker + scheduler | Tournament lifecycle, registration, brackets/standings, Challonge + Google Sheets sync, map veto, state machine, Challonge push consumer |
-| [`stats-service`](../backend/stats-service/README.md) | RPC process (`stats-svc`) + worker (`stats-worker`), one image | Canonical match ingest and match-log parsing (`stats.ingest.<discipline>`), native rank fetch (OverFast, Riot API), achievement evaluation, MVP-impact backfill |
+| [`stats-service`](../backend/stats-service/README.md) | RPC process (`stats-svc`) + worker (`stats-worker`), one image | Canonical match ingest and match-log parsing (`stats.ingest.<discipline>`), match import by external id (`stats.match_fetch`), native rank fetch (OverFast, Riot API, deadlock-api), achievement evaluation, MVP-impact backfill |
 | [`balancer-service`](../backend/balancer-service/README.md) | RPC worker | Genetic team balancing (native Rust `tournament_balancer`) + live draft + draft clock |
 | [`analytics-service`](../backend/analytics-service/README.md) | 2 workers | `analytics-svc` (RPC reads/mutations/job-control) + `analytics-worker` (heavy ML: v1 OpenSkill shifts, v2 ML pipeline) |
 | [`stream-service`](../backend/stream-service/README.md) | RPC worker + scheduler | Tournament stream live-status: Twitch Helix poll tick (app token), public `rpc.stream.*` reads. Owns no Postgres schema — live state is Redis-only |
@@ -239,7 +239,7 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   pre-game pick/ban room hang off the encounter in the same schema. The bracket position
   (stage, stage item, round) and the advancement edges stay in `tournament`
   (`bracket_encounter`, `encounter_link`), so the match layer carries no tournament structure.
-  `catalog.discipline` lists the games the platform knows (`overwatch` and `lol`); every tournament,
+  `catalog.discipline` lists the games the platform knows (`overwatch`, `lol` and `deadlock`); every tournament,
   mix and encounter carries its `discipline`, and one composite foreign key keeps the copy from
   disagreeing with its owner. Every result change goes through one writer,
   `backend/shared/services/encounter/result.py`: one transaction, the encounter row locked,
@@ -253,11 +253,13 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   and a character's class is `attrs.class`. Names and slugs are unique per discipline and kind.
   Behaviour lives under `backend/shared/disciplines/<slug>/`, reached only through the
   `shared.disciplines` registry: supported kinds and labels ("Hero", "Champion"), character classes,
-  sides, catalog sync, `native_ranks`, `native_ladder`, `native_rank_rows` and `identity_provider`. Overwatch declares
-  its 45-tier ladder, OverFast native reader and `battlenet`; LoL declares its 31-tier league-v4 ladder, a Solo/Duo
-  native reader and `riot`. P1's catalog sources are OverFast and Data Dragon. Each game's rank collector (OverFast for
-  Overwatch, the Riot API for LoL) runs as that module's jobs inside `stats-worker` and writes the shared `rank` schema,
-  one `discipline` per row. These declarations are not the complete LoL gameplay vertical.
+  sides, catalog sync, `native_ranks`, `native_ladder`, `native_rank_rows`, `identity_provider` and `match_fetchers`.
+  Overwatch declares its 45-tier ladder, OverFast native reader and `battlenet`; LoL declares its 31-tier league-v4
+  ladder, a Solo/Duo native reader and `riot`; Deadlock declares its 66-tier ladder (11 tiers × 6 subranks), a
+  per-account native reader, `steam` and the `deadlock_api` match fetcher. Catalog sources are OverFast, Data Dragon
+  and deadlock-api. Each game's rank collector (OverFast for Overwatch, the Riot API for LoL, deadlock-api for
+  Deadlock) runs as that module's jobs inside `stats-worker` and writes the shared `rank` schema, one `discipline` per
+  row. These declarations are not the complete LoL or Deadlock gameplay vertical.
   Stats-service dispatches `rpc.stats.catalog.sync` to the module;
   app-service provides generic admin CRUD by discipline and kind on `rpc.app.catalog.admin_*`.
   `catalog.alias_miss` is the unresolved-name worklist, keyed by `(discipline, kind, raw_name)`.
@@ -289,7 +291,7 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   that discipline. Registration/author overrides precede workspace canon and then the registry's
   native reader; effective source values use `native`. Open slots hold no hidden rating or host-book
   rank. `division_grid.discipline` scopes grids, mappings and fallback; tier native bounds are
-  `native_rank_min/max`. A game with a native ladder (Overwatch, LoL) falls back to it when it has no grid of its own;
+  `native_rank_min/max`. A game with a native ladder (Overwatch, LoL, Deadlock) falls back to it when it has no grid of its own;
   a ladder-less game's creation/clone/runtime reads without a usable grid fail with 422 `division_grid_required`.
   `public.workspace_division_grid_default` selects one version per `(workspace_id, discipline)`.
   Activation and deletion affect only that game's assignment and preserve valid event pins.
@@ -316,11 +318,15 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
 - **Canonical ingest (P5).** One strict `owt.match/1` document (`shared/schemas/match_doc.py`) is the only input of
   `stats-service`: producers post it with a workspace API key holding `stats.ingest` (`POST /api/v1/stats/matches`,
   raw bytes relayed by the gateway), the Overwatch Workshop decoder is a module that emits the same document, and
-  `stats-worker` binds it to a game, replaces observations atomically and publishes `match.ingested`. The
+  `stats-worker` binds it to a game, replaces observations atomically and publishes `match.ingested`. A module with a
+  `match_fetchers` entry (Deadlock's `deadlock_api`) also lets a captain or organizer import a tournament game's match
+  by its external id: `stats.match_fetch` holds the request, and the worker retries the module's fetcher for up to
+  24 h, then stores and queues the bytes exactly like an upload. The
   tournament process alone decides whether that evidence becomes an official result (`logs_official`, owner
   policy, receipts on the encounter journal). `stats-svc` (RPC) and `stats-worker` (one ingest queue per selected
   discipline) are separate processes of one image. See the
-  [P5 release guide](./releases/2026-10-15-multi-game-p5-ingest.md).
+  [P5 release guide](./releases/2026-10-15-multi-game-p5-ingest.md) and the
+  [Deadlock release note](./releases/2026-10-21-deadlock.md).
 - **Registration form schema.** What a tournament asks its registrants is one document:
   a versioned `FormSchema` of ordered sections of typed fields, modelled in
   `backend/shared/domain/forms/`. `registration.form_version` keeps append-only
@@ -333,7 +339,8 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   keeps organizer-only answers off the public roster.
   The module's provider chooses the default identity field, roster/chat handle and parser matching.
   `TournamentRead.identity_provider` is computed from discipline; backend `default_schema(provider)`
-  requires it. Riot IDs preserve inner name spaces and match case-insensitively after normalization.
+  requires it. Riot IDs preserve inner name spaces and match case-insensitively after normalization; a Steam
+  handle is normalized to the decimal SteamID3 account id from any accepted spelling.
   Known-owner form loading/errors cannot create an implicit Battle.net default; loaded existing forms
   remain intact. Optional admin game identities remain optional, with fresh registration relationships
   initialized before flush and persisted reads still eagerly loaded. P7 owns primary-identity
@@ -399,7 +406,8 @@ Shared substrate: **PostgreSQL** (optionally behind pgBouncer), **Redis** (cache
 bus + active-user counters), **RabbitMQ** (all RPC/events/jobs), **S3/MinIO** (avatars,
 icons, match-log files). Workers that call external APIs (Discord, Twitch, Challonge, S3)
 egress through the outbound `proxy` container (xray); the self-hosted OverFast runs on the
-production host and is called directly, and so is the Riot API (the LoL rank collector).
+production host and is called directly, and so are the Riot API (the LoL rank collector) and deadlock-api (the
+Deadlock catalog, rank collector and match fetcher).
 
 **Releases.** Pushing a `v*` tag is the whole ritual:
 

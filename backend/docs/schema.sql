@@ -1,7 +1,7 @@
 -- Anak Tournaments — PostgreSQL DDL compiled from SQLAlchemy metadata.
 -- Open in any SQL editor (DataGrip, DBeaver, VS Code).
 -- Runtime mappings only, not a complete physical-database dump.
--- Tables: 163
+-- Tables: 164
 -- Source of truth is backend/shared/models. Regenerate: python scripts/export_db_schema.py
 
 CREATE SCHEMA IF NOT EXISTS achievements;
@@ -34,6 +34,7 @@ CREATE TYPE encounter.pickbansessionstatus AS ENUM ('active', 'completed', 'canc
 CREATE TYPE encounter.encounterresultauditaction AS ENUM ('confirm', 'reopen', 'auto_confirm', 'auto_dispute', 'auto_pending', 'import', 'cascade_reset', 'game_confirm', 'game_correct', 'game_cancel');
 CREATE TYPE ck_ingest_job_raw_status AS ENUM ('available', 'missing', 'conflict', 'unverified');
 CREATE TYPE ck_ingest_job_status AS ENUM ('pending', 'processing', 'awaiting_link', 'done', 'failed');
+CREATE TYPE ck_match_fetch_status AS ENUM ('pending', 'done', 'failed');
 CREATE TYPE tournament.pickbanmode AS ENUM ('pool', 'slots');
 CREATE TYPE tournament.pickbanfirstpickrule AS ENUM ('higher_seed');
 CREATE TYPE tournament.pickbanrotation AS ENUM ('fixed', 'alternate', 'result_winner_first', 'result_loser_first', 'result_loser_choice');
@@ -2815,6 +2816,39 @@ CREATE INDEX ix_stats_match_encounter ON stats.match (encounter_id);
 CREATE INDEX ix_stats_match_ingest_job ON stats.match (ingest_job_id);
 
 CREATE INDEX ix_stats_match_workspace ON stats.match (workspace_id);
+
+CREATE TABLE stats.match_fetch (
+	id BIGSERIAL NOT NULL,
+	created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	updated_at TIMESTAMP WITH TIME ZONE,
+	workspace_id BIGINT NOT NULL,
+	discipline VARCHAR(32) NOT NULL,
+	source_kind VARCHAR(32) NOT NULL,
+	external_id VARCHAR(128) NOT NULL,
+	hint_tournament_id BIGINT NOT NULL,
+	hint_encounter_id BIGINT NOT NULL,
+	hint_encounter_game_id BIGINT NOT NULL,
+	requested_by_user_id BIGINT,
+	status VARCHAR(16) DEFAULT 'pending' NOT NULL,
+	attempts INTEGER DEFAULT '0' NOT NULL,
+	next_attempt_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL,
+	last_error TEXT,
+	ingest_job_id BIGINT,
+	PRIMARY KEY (id),
+	CONSTRAINT uq_match_fetch_game UNIQUE (source_kind, external_id, hint_encounter_game_id),
+	CONSTRAINT fk_match_fetch_workspace FOREIGN KEY(workspace_id) REFERENCES workspace (id) ON DELETE CASCADE,
+	CONSTRAINT fk_match_fetch_discipline FOREIGN KEY(discipline) REFERENCES catalog.discipline (code),
+	CONSTRAINT fk_match_fetch_tournament FOREIGN KEY(hint_tournament_id) REFERENCES tournament.tournament (id) ON DELETE CASCADE,
+	CONSTRAINT fk_match_fetch_encounter FOREIGN KEY(hint_encounter_id) REFERENCES encounter.encounter (id) ON DELETE CASCADE,
+	CONSTRAINT fk_match_fetch_game FOREIGN KEY(hint_encounter_game_id) REFERENCES encounter.game (id) ON DELETE CASCADE,
+	CONSTRAINT fk_match_fetch_requested_by FOREIGN KEY(requested_by_user_id) REFERENCES auth."user" (id) ON DELETE SET NULL,
+	CONSTRAINT ck_match_fetch_status CHECK (status IN ('pending', 'done', 'failed')),
+	CONSTRAINT fk_match_fetch_ingest_job FOREIGN KEY(ingest_job_id) REFERENCES stats.ingest_job (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_match_fetch_due ON stats.match_fetch (status, next_attempt_at);
+
+CREATE INDEX ix_match_fetch_workspace_external ON stats.match_fetch (workspace_id, source_kind, external_id);
 
 CREATE TABLE stats.match_player (
 	match_id BIGINT NOT NULL,

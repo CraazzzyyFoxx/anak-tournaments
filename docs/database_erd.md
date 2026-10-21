@@ -13,7 +13,7 @@ baselines and Discord channels live in `stats/`. `catalog/` writes only to `cata
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`drift01`** (129 revisions in `backend/migrations/versions/`).
+Alembic head: **`deadlock01`** (130 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -556,7 +556,7 @@ Composite unique keys:
 
 ## catalog — `catalog`
 
-`catalog.discipline` lists the games the platform knows (`overwatch` and `lol`), referenced by
+`catalog.discipline` lists the games the platform knows (`overwatch`, `lol` and `deadlock`), referenced by
 tournaments, mixes and encounters. Behaviour lives in `backend/shared/disciplines/<slug>/`,
 reached only through the `shared.disciplines` registry: supported catalog kinds and their labels,
 character classes, catalog sync source, sides, role ontology and team-format presets. Catalog and
@@ -909,17 +909,19 @@ Composite unique keys:
 
 Native rank telemetry of every game, one `discipline` per row: Overwatch per role from OverFast
 against a linked BattleTag, League of Legends per queue (`solo`, `flex`) from the Riot API against a
-linked Riot ID. The snapshot time series, the per-account fetch state, and the fetch log.
+linked Riot ID, Deadlock one series per account from deadlock-api against a linked Steam account
+(`division` = tier name, `tier` = subrank). The snapshot time series, the per-account fetch state,
+and the fetch log.
 
-Collection is bound to the game's `social_account` (battlenet, riot), not to a bare handle string,
+Collection is bound to the game's `social_account` (battlenet, riot, steam), not to a bare handle string,
 so a re-linked or renamed account keeps its history. `rank_snapshot` is append-only and stores one
-row per role (Overwatch) or queue (LoL, with `lp`/`wins`/`losses`) per capture. It keeps the native
+row per role (Overwatch), queue (LoL, with `lp`/`wins`/`losses`) or account (Deadlock) per capture. It keeps the native
 `division`/`tier` next to `rank_value` and `mapping_version` (which mapping produced `rank_value`), so a
 mapping change can be replayed instead of re-fetched. `handle` is the account's handle at capture time.
 
 `account_state` is the scheduler, one row per social account (UNIQUE): `next_eligible_at`,
 `consecutive_failures` and `priority_tier` are the backoff, `external_id` is the upstream id
-(OverFast slug, Riot PUUID; NULL until resolved) and `region` the LoL platform. Its PK,
+(OverFast slug, Riot PUUID, Steam account id; NULL until resolved) and `region` the LoL platform. Its PK,
 unique-constraint and sequence names keep the pre-`rank01` `battle_tag_state_*` names. `fetch_log`
 is the attempt history, with a nullable account FK so it survives unlinking.
 
@@ -2525,6 +2527,12 @@ owner effects in the same transaction. `discord_channel` lives in this schema (n
 newest message the bot has already walked past, so a reconnect rescans from there; `NULL` (or a
 manual backfill) walks the history.
 
+`match_fetch` is a pending "import this match by its external id" request, one per
+`(source_kind, external_id, hint_encounter_game_id)`: the stats worker retries it (`pending`,
+`attempts`, `next_attempt_at`, `last_error`) until the discipline's fetcher serves the bytes, then
+stores them like an upload and points `ingest_job_id` at the normal ingest job (`done`), or gives
+up 24 h after the request (`failed`).
+
 <!-- ERD:auto stats -->
 ```mermaid
 erDiagram
@@ -2610,6 +2618,24 @@ erDiagram
         bigint map_entity_id FK
         varchar(16) map_kind FK
     }
+    STATS_MATCH_FETCH {
+        bigint id PK
+        timestamptz created_at
+        timestamptz updated_at "nullable"
+        bigint workspace_id FK
+        varchar(32) discipline FK
+        varchar(32) source_kind
+        varchar(128) external_id
+        bigint hint_tournament_id FK
+        bigint hint_encounter_id FK
+        bigint hint_encounter_game_id FK
+        bigint requested_by_user_id FK "nullable"
+        ck_match_fetch_status status
+        int attempts
+        timestamptz next_attempt_at
+        text last_error "nullable"
+        bigint ingest_job_id FK "nullable"
+    }
     STATS_MATCH_PLAYER {
         bigint match_id PK,FK
         bigint encounter_team_id FK
@@ -2653,8 +2679,10 @@ erDiagram
     }
 
     AUTH_API_KEY |o--o{ STATS_INGEST_JOB : "api_key_id"
+    AUTH_USER |o--o{ STATS_MATCH_FETCH : "requested_by_user_id"
     CATALOG_DISCIPLINE ||--o{ STATS_EVENT_TYPE : "discipline"
     CATALOG_DISCIPLINE ||--o{ STATS_INGEST_JOB : "discipline"
+    CATALOG_DISCIPLINE ||--o{ STATS_MATCH_FETCH : "discipline"
     CATALOG_DISCIPLINE ||--o{ STATS_STAT_DEF : "discipline"
     CATALOG_ENTITY |o--o{ STATS_EVENT : "entity_id"
     CATALOG_ENTITY |o--o{ STATS_EVENT : "related_entity_id"
@@ -2668,16 +2696,20 @@ erDiagram
     CATALOG_ROLE ||--o{ STATS_STAT_BASELINE : "role_id"
     ENCOUNTER_ENCOUNTER |o--o{ STATS_INGEST_JOB : "hint_encounter_id"
     ENCOUNTER_ENCOUNTER ||--o{ STATS_MATCH : "encounter_id"
+    ENCOUNTER_ENCOUNTER ||--o{ STATS_MATCH_FETCH : "hint_encounter_id"
     ENCOUNTER_GAME |o--o{ STATS_INGEST_JOB : "hint_encounter_game_id"
     ENCOUNTER_GAME |o--o| STATS_MATCH : "encounter_game_id"
+    ENCOUNTER_GAME ||--o{ STATS_MATCH_FETCH : "hint_encounter_game_id"
     ENCOUNTER_TEAM ||--o{ STATS_MATCH_TEAM : "encounter_id"
     ENCOUNTER_TEAM ||--o| STATS_MATCH_TEAM : "encounter_team_id"
     PLAYERS_USER |o--o{ STATS_INGEST_JOB : "uploader_user_id"
     PUBLIC_WORKSPACE ||--o{ STATS_INGEST_JOB : "workspace_id"
     PUBLIC_WORKSPACE ||--o{ STATS_MATCH : "workspace_id"
+    PUBLIC_WORKSPACE ||--o{ STATS_MATCH_FETCH : "workspace_id"
     PUBLIC_WORKSPACE_MEMBER ||--o| STATS_MATCH_PLAYER : "workspace_member_id"
     STATS_EVENT_TYPE ||--o{ STATS_EVENT : "type_id"
     STATS_INGEST_JOB |o--o{ STATS_MATCH : "ingest_job_id"
+    STATS_INGEST_JOB |o--o{ STATS_MATCH_FETCH : "ingest_job_id"
     STATS_MATCH ||--o{ STATS_EVENT : "match_id"
     STATS_MATCH ||--o{ STATS_MATCH_TEAM : "encounter_id"
     STATS_MATCH ||--o| STATS_MATCH_TEAM : "match_id"
@@ -2697,6 +2729,7 @@ erDiagram
     STATS_STAT_DEF ||--o{ STATS_FACT : "stat_id"
     STATS_STAT_DEF ||--o{ STATS_STAT_BASELINE : "stat_id"
     TOURNAMENT_TOURNAMENT |o--o{ STATS_INGEST_JOB : "hint_tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ STATS_MATCH_FETCH : "hint_tournament_id"
     TOURNAMENT_TOURNAMENT ||--o| STATS_DISCORD_CHANNEL : "tournament_id"
 ```
 
@@ -2705,6 +2738,7 @@ Composite unique keys:
 - `STATS_EVENT_TYPE` unique on (`discipline`, `code`)
 - `STATS_FACT` unique on (`match_id`, `segment`, `encounter_team_id`, `workspace_member_id`, `entity_id`, `stat_id`)
 - `STATS_MATCH` unique on (`id`, `encounter_id`)
+- `STATS_MATCH_FETCH` unique on (`source_kind`, `external_id`, `hint_encounter_game_id`)
 - `STATS_MATCH_TEAM` unique on (`match_id`, `source_position`)
 - `STATS_STAT_BASELINE` unique on (`formula_version`, `role_id`, `rank_bucket`, `stat_id`)
 - `STATS_STAT_DEF` unique on (`discipline`, `code`)

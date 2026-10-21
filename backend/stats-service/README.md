@@ -21,7 +21,7 @@ delays an RPC reply and exactly one process family owns the schedules.
 | Compose service | `stats-svc` | `stats-worker` |
 | Entry point | `serve_rpc.py` | `serve_worker.py` |
 | Run command | `faststream run serve_rpc:app` | `faststream run serve_worker:app` |
-| Registers | typed `rpc.stats.*` handlers only | `stats.ingest.<discipline>` (selected) + upload/tournament fanout, achievements, `tournament_encounter_completed`, `discord_member_changed`, the selected disciplines' own jobs (rank fetch + both registration rank checks: OverFast for Overwatch, Riot API for LoL) |
+| Registers | typed `rpc.stats.*` handlers only | `stats.ingest.<discipline>` (selected) + upload/tournament fanout, achievements, `tournament_encounter_completed`, `discord_member_changed`, the selected disciplines' own jobs (rank fetch + both registration rank checks: OverFast for Overwatch, Riot API for LoL, deadlock-api for Deadlock) |
 | Schedules | outbox drain | rank collection, stall reaper (selected disciplines), failed-log retention, match fetch (selected disciplines), subscription collection, outbox drain |
 | Health | `GET :9100/health` | `GET :9100/health` |
 
@@ -54,8 +54,8 @@ System overview: [`../../docs/architecture.md`](../../docs/architecture.md). Cod
   battlenet renames share the observation transaction; ingestion does not grant workspace access.
 - **Native rank collection** — each game's module collector selects due accounts in `rank.account_state`
   (its `discipline`), fetches them upstream (Overwatch: OverFast career summaries per BattleTag; LoL:
-  Riot API Solo/Duo and Flex per Riot ID) and keeps the per-account collection state, snapshot series
-  and fetch log.
+  Riot API Solo/Duo and Flex per Riot ID; Deadlock: deadlock-api `/v1/players/rank`, up to 1000 Steam
+  accounts per request) and keeps the per-account collection state, snapshot series and fetch log.
 - **Achievement evaluation** — owns the condition-tree engine, the rules admin surface, the
   evaluation runs and the manual grant/revoke overlay.
 - **MVP impact scoring** — derived stats (`PerformancePoints`, `Performance`, `ImpactPoints`,
@@ -101,6 +101,8 @@ The full method list with request/response schemas is published at `/api/docs`, 
 | `rank_fetch`, `rank_fetch_priority` | `FetchRankEvent` | One OverFast call per battle tag; shared channel with prefetch `RANK_FETCH_WORKER_PREFETCH` |
 | `lol_rank_fetch`, `lol_rank_fetch_priority` | LoL fetch request | One Riot API fetch per Riot account; shared channel with prefetch `LOL_RANK_FETCH_WORKER_PREFETCH` (3) |
 | `lol_rank_registration_approved`, `lol_rank_registration_rank_check` | — | Bound to the same exchange (routing keys `tournament.registration.approved` / `.rank_check_requested`); priority-fetch the Riot accounts of an approved LoL registrant, or of one asking for a re-check |
+| `deadlock_rank_fetch`, `deadlock_rank_fetch_priority` | `DeadlockFetchRequest` (up to 1000 Steam accounts) | One deadlock-api `/v1/players/rank` request per batch; shared channel with prefetch 1 |
+| `deadlock_rank_registration_approved`, `deadlock_rank_registration_rank_check` | — | Bound to the same exchange (routing keys `tournament.registration.approved` / `.rank_check_requested`); priority-fetch the Steam accounts of an approved Deadlock registrant, or of one asking for a re-check |
 | `discord_member_changed` | `DiscordMemberChangedEvent` | Re-resolves the member's Boosty entitlement in every workspace bound to the guild (`subscription_collection/member_events.py`); own channel, prefetch 2; the scheduled sweep stays the slow reconciliation |
 
 Every one of those queues carries `x-dead-letter-exchange=dlx` and an `x-message-ttl`; the worker
@@ -314,6 +316,17 @@ is transient. A 400 on a stored PUUID means it was minted under another Riot pro
 re-resolves the PUUID once by Riot ID, and if that also fails it clears `external_id` and `region`.
 Only a verified Riot account's RSO subject is trusted as its PUUID.
 
+Deadlock's collector (`shared/disciplines/deadlock/collector.py`) follows the same rules for `steam`
+accounts, keyed `deadlock_rank:*`, with a batched upstream: the tick claims up to `batch_size` (≤ 1000)
+due accounts and publishes **one** fetch; the consumer asks `GET /v1/players/rank?account_ids=…` once,
+with no transaction open, then writes every account's outcome in one transaction. A badge
+(`tier * 10 + subrank`) appends a snapshot only when it changed; badge 0 is ok and unranked; an
+account missing from the answer is `not_found`; a handle that is not a Steam account id is never sent
+and is `disabled` after `max_consecutive_failures`. A failed batch (5xx, timeout, open circuit, 429)
+defers every claimed account by `backoff_base_seconds` without counting a failure and logs one summary
+row; a 429 also sets `deadlock_rank:cooldown`. `rate_limit_per_minute` counts requests (20 without
+`DEADLOCK_API_KEY`, 100 with it). There is no per-account pending/in-flight dedup.
+
 ### Events published
 
 - `match_log_result` (work queue) — `MatchLogProcessedEvent` with the upload's `channel_id`/`message_id`, consumed by discord-service.
@@ -324,8 +337,9 @@ Only a verified Riot account's RSO subject is trusted as its PUUID.
   `verification_status` is `unverified`: the run row is created `queued` and the message carries its
   id, so the consumer finishes that row instead of opening a second one. `parse_complete` is never
   deferred.
-- `rank_fetch` / `rank_fetch_priority` (Overwatch) and `lol_rank_fetch` / `lol_rank_fetch_priority`
-  (LoL) — from the collection tick, the admin collect RPC and registration approval.
+- `rank_fetch` / `rank_fetch_priority` (Overwatch), `lol_rank_fetch` / `lol_rank_fetch_priority`
+  (LoL) and `deadlock_rank_fetch` / `deadlock_rank_fetch_priority` (Deadlock) — from the collection
+  tick, the admin collect RPC and registration approval.
 - Through the transactional outbox (`public.event_outbox`): achievement evaluation and tournament
   score/cache invalidations; `EncounterCompletedEvent` is emitted when the encounter is already
   completed, without accepting a live-game result on the log's authority.
@@ -341,12 +355,14 @@ on subscribe, so a missed signal self-heals, and the actual log data stays gated
 
 The jobs below are APScheduler interval jobs guarded by a Redis leader lock, so only one replica acts
 per tick. Each rank collector also runs a fetch-log purge without a lock, because its delete is
-idempotent (`ow_rank_fetch_log_purge`; `lol_rank_fetch_log_purge`, daily, 7-day retention).
+idempotent (`ow_rank_fetch_log_purge`; `lol_rank_fetch_log_purge` and `deadlock_rank_fetch_log_purge`, daily,
+7-day retention).
 
 | Job | Cadence | What it does |
 | --- | --- | --- |
 | OverFast rank collection | 60s tick | Selects and *claims* due battle tags and publishes one `FetchRankEvent` each — it never calls OverFast itself. Per-tag cadence comes from `next_eligible_at`, so changing the admin interval needs no restart. No-ops while collection is disabled in settings. |
 | LoL rank collection | 60s tick | The same for League (`lol_rank:*` keys, `lol.rank_collection` settings): claims due Riot accounts and publishes one fetch each. Off by default. |
+| Deadlock rank collection | 60s tick | The same for Deadlock (`deadlock_rank:*` keys, `deadlock.rank_collection` settings): claims up to 1000 due Steam accounts and publishes them as one batched fetch. On by default (seeded by `deadlock01`). |
 | Match-log stall reaper | `LOG_REAPER_TICK_SECONDS` (300s) | Requeues native jobs dropped by the queue: `pending` older than `LOG_REAPER_PENDING_AFTER_SECONDS` and `processing` older than `LOG_REAPER_PROCESSING_AFTER_SECONDS`. Exhausted attempts become `failed`; awaiting-link is never claimed. Keep the pending threshold above the queue TTL. |
 | Failed match-log retention | 1h tick | Deletes only expired failed jobs whose raw reference is unused by another job or match. A linked match keeps both its job row and raw object, not an orphaned object with no usable reference. Storage deletion failure keeps the row; an upload's raw-key lock prevents concurrent deletion. Alias breadcrumb SET NULL and deleted-owner evidence share the deletion transaction. Invalid/uncompleted uploads are rejected before persistence; processing never deletes raw bytes as validation cleanup. |
 | Match fetch | 60s tick (selected disciplines with a `match_fetchers` entry) | Import by external id (`stats.match_fetch`, `src/services/ingest/fetch.py`): calls the module's fetcher for up to 20 due `pending` rows. `MatchFetchNotReady` backs off 1, 2, 5, 10, 20, 40 min then hourly, until 24 h after the request (`failed`, `last_error`); `MatchFetchFailed` fails at once. Fetched bytes are stored and queued exactly like an upload (`logs/{tournament}/{sha256}`, the normal ingest job with the game hint). Requests come from tournament-service over the internal `rpc.stats.ingest.fetch` / `fetch_list`; organizer warnings (`fetch_failed`, `participants_dropped`, `banned_character_played`) are derived on the list read. |
@@ -397,7 +413,11 @@ No service ships its own migrations — there is one Alembic project at
   `RIOT_ACCOUNT_CLUSTER` (Riot ID ↔ PUUID, region) and league-v4 on the account's platform host.
   PUUIDs are encrypted per Riot project, so a key change re-resolves every account once.
 - **Data Dragon** — the League of Legends module's champion and map catalog, using the
-  latest published version. Both sources mirror images through `shared.catalog_sync`.
+  latest published version.
+- **deadlock-api** (`https://api.deadlock-api.com`, called directly; `X-API-KEY` when
+  `DEADLOCK_API_KEY` is set) — the Deadlock module's catalog (`/v1/assets/heroes`, `/v1/assets/map`),
+  rank collector (`/v1/players/rank`) and match fetcher (`/v1/matches/{id}/metadata`). All three
+  catalog sources mirror images through `shared.catalog_sync`.
 - **discord-service** (RabbitMQ RPC `discord_member_roles`) — Boosty entitlement verification; this
   service holds no Discord bot token.
 - **Twitch API** — Twitch subscription verification, egressing through the outbound **`proxy`**
@@ -435,6 +455,9 @@ to a matching discipline and kind and closes the miss in one request.
   (`europe`), `RIOT_TIMEOUT`, `RIOT_MAX_RETRIES`, `LOL_RANK_FETCH_WORKER_PREFETCH`. They belong to the
   LoL module's collector (`shared/disciplines/lol/riot.py`); its runtime parameters live in
   `public.settings` under `lol.rank_collection`.
+- **deadlock-api** — `DEADLOCK_API_KEY` (optional; unset means the public per-IP limits). It belongs
+  to the Deadlock module (`shared/disciplines/deadlock/client.py`); the collector's runtime
+  parameters live in `public.settings` under `deadlock.rank_collection`.
 - **Outbound proxy** — `PROXY_TYPE`, `PROXY_IP`, `PROXY_PORT`, `PROXY_USERNAME`, `PROXY_PASSWORD`.
 - **Subscription verification** — `TWITCH_CLIENT_ID`. Unset means every live Twitch check resolves
   `unknown` and fails open: the sweep runs and proves nothing.

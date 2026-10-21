@@ -70,8 +70,8 @@ Method groups:
 | Registered teams | `regteam_*` | Captain team formation, invites and invite caps, roster changes, crest images |
 | Subscription config | `sub_config_*`, `sub_requirement_*` | Per-workspace provider credentials and the entitlement rule |
 | Stages and brackets | `stage_*` | Activation, generation, merge, wiring, seeding, best-of, planned rounds, progress, preview |
-| Encounters and results | `encounter_*`, `admin_encounter_reports_*`, `admin_match*`, `report_form_*` | Admin result writes, the result audit trail, the captain-report form, parsed-match reads |
-| Captain surfaces | `captain_*` | A captain's own role, readiness, map reports, report submission, pick-ban state and actions |
+| Encounters and results | `encounter_*`, `admin_encounter_reports_*`, `admin_match*`, `report_form_*` | Admin result writes, the result audit trail, the captain-report form, parsed-match reads, an organizer's match import by external id (`admin_match_import(s)`, with the stats warnings) |
+| Captain surfaces | `captain_*` | A captain's own role, readiness, map reports, report submission, match import by external id (`captain_match_import(s)`), pick-ban state and actions |
 | Pick/ban | `get_pick_ban_configs`, `admin_pick_ban_*` | Config CRUD, admin acting, opener election, session reset |
 | Lifecycle | `tournament_status`, `tournament_finish`, `tournament_schedule_set` | Status transitions and the phase schedule |
 | Images | `teams.image_*`, `tournaments.image_*`, `regteam_image_*` | Binary upload/delete (base64 on the wire) to S3 |

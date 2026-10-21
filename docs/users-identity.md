@@ -231,9 +231,10 @@ both rank layers remain separate. Reads select only that provider's primary acco
 and search handles with the same provider normalizer. Missing provider identity stays null.
 
 The handle is the **owner game's** identity: the tournament's or mix's discipline selects the provider (`battlenet`
-for Overwatch, `riot` for League of Legends: `Name#TAG`, internal spaces kept, never an authentication or ownership
-proof). Identical handle text under two providers is two people. Registration identity conflicts are 409
-`game_identity_conflict` with the provider's field (`identity_riot`, section 7.4); roster conflicts are 409
+for Overwatch; `riot` for League of Legends: `Name#TAG`, internal spaces kept; `steam` for Deadlock: the decimal
+SteamID3 account id). A handle is never an authentication or ownership proof. Identical handle text under two
+providers is two people. Registration identity conflicts are 409 `game_identity_conflict` with the provider's field
+(`identity_riot`, `identity_steam`, section 7.4); roster conflicts are 409
 `identity_conflict` (several owners) or 422 `identity.provider_mismatch` / the provider's handle-format code.
 
 Registration approval/rejection/rank-check events likewise carry `identity` (never `battle_tag`): position zero
@@ -334,13 +335,18 @@ OW is pulled in only where the cheaper layers left a hole. Snapshots collapse in
 
 ```
 user_id                 FK players.user CASCADE
-provider                battlenet | riot | discord | twitch | boosty | vk | youtube | …
+provider                battlenet | riot | steam | discord | twitch | boosty | vk | youtube | …
 username / username_normalized
 url
-provider_user_id        NULL until proven by an OAuth subject (Riot Sign-On: the PUUID)
+provider_user_id        NULL until proven by an OAuth subject (Riot Sign-On: the PUUID; Steam OpenID: the account id)
 is_verified             true after a completed OAuth flow
 is_primary
 ```
+
+A `steam` handle is always stored as the decimal SteamID3 account id (1..4294967295, deadlock-api's `account_id`).
+Input may be that id, a 17-digit SteamID64, `[U:1:N]`, `STEAM_X:Y:Z` (account = Z·2 + Y) or
+`https://steamcommunity.com/profiles/<SteamID64>`; all normalize to the account id. A vanity `/id/<name>` link
+cannot be resolved offline and is refused (`identity.steam.format`).
 
 Uniqueness:
 
@@ -403,7 +409,7 @@ These stay on `auth.user.id` because they belong to a session or an operator, no
 - `favorite_player` — `(auth_user_id, player_id)`: an account bookmarks someone else's game profile
 - `encounter_saved_view`
 
-`rank.rank_snapshot` stays on `players.user.id` (it is a fact about a game account — a BattleTag or a Riot ID — not about membership). It is the resolver's `ow` layer, not the workspace canon.
+`rank.rank_snapshot` stays on `players.user.id` (it is a fact about a game account — a BattleTag, a Riot ID or a Steam account — not about membership). It is the resolver's `ow` layer, not the workspace canon.
 
 ---
 
@@ -444,8 +450,8 @@ RPC: the user is already signed in and picks an existing `players.user`.
 
 Preconditions:
 
-1. The account has an OAuth Discord, Battle.net **or** Riot connection. Otherwise 400: *"Link Discord, Battle.net or Riot OAuth account before linking a player"*.
-2. Ownership: a normalized intersection between the OAuth connection's handles and the player's `social_account` handles (discord username/global_name/email, battletag **or** Riot ID). Otherwise 403.
+1. The account has an OAuth Discord, Battle.net, Riot **or** Steam connection. Otherwise 400: *"Link Discord, Battle.net, Riot or Steam OAuth account before linking a player"*.
+2. Ownership: a normalized intersection between the OAuth connection's handles and the player's `social_account` handles (discord username/global_name/email, battletag, Riot ID **or** Steam account id). Otherwise 403: *"Discord, Battle.net, Riot or Steam account does not match selected player"*. A Steam connection offers only its account id: the persona name is display text and never matches a handle.
 3. The player is free or already belongs to this account. Another owner → 409.
 
 After a successful `UPDATE players.user SET auth_user_id = …`:
@@ -757,7 +763,7 @@ request body selects a workspace or key.
 |---|---|
 | Taking over an account through the same email on OAuth | Email is not used for reuse. Only `provider_user_id` or an explicit authenticated link. |
 | Taking over someone's auth-player through a matching discord/battletag | Auto-link on login only for `auth_user_id IS NULL`. Another account's link is never overwritten. |
-| Self-service link to someone else's profile | Requires OAuth Discord/BN/Riot **and** an intersection of handles. Otherwise 403. |
+| Self-service link to someone else's profile | Requires OAuth Discord/BN/Riot/Steam **and** an intersection of handles. Otherwise 403. |
 | Two accounts, one Battle.net subject | Unique `(provider, provider_user_id)` on `oauth_connections` and on the verified social subject. |
 | A custom-domain OAuth link binding the apex session | The ticket carries only the provider identity; it is redeemed on the domain from that domain's cookie. |
 | A registration ban | `user_permission_deny` + `can_capability`; a deny beats a grant. |

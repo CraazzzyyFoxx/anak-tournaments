@@ -59,7 +59,7 @@ echo | openssl s_client -connect owt.craazzzyyfoxx.me:443 -servername owt.craazz
 
 ## 3. OAuth Provider Registration
 
-Each OAuth provider (Discord, Twitch, Battle.net, Riot) requires the **single redirect URI** to be registered in their developer console.
+Each OAuth provider (Discord, Twitch, Battle.net, Riot) requires the **single redirect URI** to be registered in their developer console. Steam (OpenID 2.0) has no console to register in.
 
 ### Redirect URI
 ```
@@ -115,6 +115,14 @@ https://owt.craazzzyyfoxx.me/auth/callback
 `RIOT_ACCOUNT_CLUSTER` (`americas`, `asia` or `europe`; default `europe`) is the account-v1 host the sign-in reads the
 Riot ID from. The LoL rank collector's API key is separate: `RIOT_API_KEY` in `stats.env`.
 
+### Steam (OpenID 2.0)
+
+Steam sign-in needs **no keys and no registration**: there is no client id or secret. The identity service sends Steam
+`openid.return_to` = `OAUTH_REDIRECT` (with the signed `state`) and `openid.realm` = the scheme and host of
+`OAUTH_REDIRECT` (`https://owt.craazzzyyfoxx.me`); Steam shows the realm on its sign-in page and redirects back to the
+same callback. Set `STEAM_OAUTH_ENABLED=true`. The persona name and avatar come from deadlock-api (best effort), so
+no Steam Web API key is needed either.
+
 ### Environment Variables
 
 Update `backend/env/auth.env` (or `.env.production` for Docker) with:
@@ -134,6 +142,8 @@ RIOT_OAUTH_ENABLED=true
 RIOT_CLIENT_ID=<your-riot-rso-client-id>
 RIOT_CLIENT_SECRET=<your-riot-rso-client-secret>
 RIOT_ACCOUNT_CLUSTER=europe
+
+STEAM_OAUTH_ENABLED=true
 
 OAUTH_REDIRECT=https://owt.craazzzyyfoxx.me/auth/callback
 ```
@@ -171,7 +181,7 @@ curl -vI https://test-tenant.owt.craazzzyyfoxx.me/api/health
 ### [ ] OAuth Login Round-Trip
 
 1. Navigate to `https://owt.craazzzyyfoxx.me` in a browser
-2. Click **Login** → select **Discord** (or Twitch/Battle.net/Riot)
+2. Click **Login** → select **Discord** (or Twitch/Battle.net/Riot/Steam)
 3. Approve scopes in the OAuth provider's consent screen
 4. Verify you are redirected back to `https://owt.craazzzyyfoxx.me/auth/callback`
 5. Check that you are authenticated and can see your profile

@@ -1,7 +1,7 @@
 // Anak Tournaments — PostgreSQL schema dumped from SQLAlchemy metadata.
 // Open in VS Code (DBML extension) or paste into https://dbdiagram.io
 // Runtime mappings only, not a complete physical-database dump.
-// Tables: 163
+// Tables: 164
 
 Project anak_tournaments {
   database_type: "PostgreSQL"
@@ -19,6 +19,12 @@ Enum ck_ingest_job_status {
   pending
   processing
   awaiting_link
+  done
+  failed
+}
+
+Enum ck_match_fetch_status {
+  pending
   done
   failed
 }
@@ -2569,6 +2575,30 @@ Table stats.match {
   }
 }
 
+Table stats.match_fetch {
+  id bigint [pk, increment]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz
+  workspace_id bigint [not null]
+  discipline VARCHAR(32) [not null]
+  source_kind VARCHAR(32) [not null]
+  external_id VARCHAR(128) [not null]
+  hint_tournament_id bigint [not null]
+  hint_encounter_id bigint [not null]
+  hint_encounter_game_id bigint [not null]
+  requested_by_user_id bigint
+  status ck_match_fetch_status [not null, default: `pending`]
+  attempts int [not null, default: 0]
+  next_attempt_at timestamptz [not null, default: `now()`]
+  last_error text
+  ingest_job_id bigint
+  indexes {
+    (source_kind, external_id, hint_encounter_game_id) [unique, name: "uq_match_fetch_game"]
+    (status, next_attempt_at) [name: "ix_match_fetch_due"]
+    (workspace_id, source_kind, external_id) [name: "ix_match_fetch_workspace_external"]
+  }
+}
+
 Table stats.match_player {
   match_id bigint [pk]
   encounter_team_id bigint [not null]
@@ -2637,6 +2667,7 @@ TableGroup stats {
   stats.fact
   stats.ingest_job
   stats.match
+  stats.match_fetch
   stats.match_player
   stats.match_team
   stats.segment
@@ -3647,6 +3678,13 @@ Ref: stats.match.encounter_game_id > encounter.game.id [delete: set null]
 Ref: stats.match.ingest_job_id > stats.ingest_job.id [delete: set null]
 Ref: stats.match.map_entity_id > catalog.entity.id [delete: restrict]
 Ref: stats.match.map_kind > catalog.entity.kind [delete: restrict]
+Ref: stats.match_fetch.workspace_id > workspace.id [delete: cascade]
+Ref: stats.match_fetch.discipline > catalog.discipline.code
+Ref: stats.match_fetch.hint_tournament_id > tournament.tournament.id [delete: cascade]
+Ref: stats.match_fetch.hint_encounter_id > encounter.encounter.id [delete: cascade]
+Ref: stats.match_fetch.hint_encounter_game_id > encounter.game.id [delete: cascade]
+Ref: stats.match_fetch.requested_by_user_id > auth.user.id [delete: set null]
+Ref: stats.match_fetch.ingest_job_id > stats.ingest_job.id [delete: set null]
 Ref: stats.match_player.match_id > stats.match_team.match_id [delete: cascade]
 Ref: stats.match_player.encounter_team_id > stats.match_team.encounter_team_id [delete: cascade]
 Ref: stats.match_player.workspace_member_id > workspace_member.id
