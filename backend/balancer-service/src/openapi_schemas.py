@@ -173,6 +173,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.balancer.custom.transfer_host": Op(request=custom_game.CustomGameHostTransfer),
     "rpc.balancer.custom.add_co_host": Op(request=custom_game.CustomGameCoHostPatch),
     "rpc.balancer.custom.swap_seats": Op(request=custom_game.CustomGameSeatSwap),
+    "rpc.balancer.custom.set_captain": Op(request=custom_game.CustomGameCaptainPatch),
     "rpc.balancer.custom.record_outcome": Op(request=custom_game.CustomGameRecordOutcome),
     "rpc.balancer.custom.stats": Op(
         query_params=(

@@ -501,8 +501,18 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
             "Swaps two seated players between teams inside one balance option, same role only, and "
-            "returns the refreshed mix. 404 when the option or either seat is "
-            "missing, 422 when the seats hold different roles or sit on the same team."
+            "returns the refreshed mix; a swap that moves a team's captain re-captains both teams. "
+            "404 when the option or either seat is missing, 422 when the seats hold different roles or sit on the "
+            "same team."
+        ),
+    },
+    "rpc.balancer.custom.set_captain": {
+        "summary": "Make custom game captain",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
+            "Makes one seated player the captain of their team in the option the lobby is showing and returns the "
+            "refreshed mix. A balance captains each team by its strongest seat; a swap that moves a captain "
+            "re-captains both teams. 404 when that option does not seat the player."
         ),
     },
     "rpc.balancer.custom.record_outcome": {

@@ -4526,6 +4526,14 @@
       },
       "summary": "Update my mix seat"
     },
+    "rpc.balancer.custom.set_captain": {
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Makes one seated player the captain of their team in the option the lobby is showing and returns the refreshed mix. A balance captains each team by its strongest seat; a swap that moves a captain re-captains both teams. 404 when that option does not seat the player.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameCaptainPatch"
+      },
+      "summary": "Make custom game captain"
+    },
     "rpc.balancer.custom.set_lobby_count": {
       "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Runs the mix as 1..6 lobbies. Growing opens the new lobbies empty, leaving the running ones untouched; shrinking deletes every lobby past the new count together with its stored matchup and clears the pins that named them. Matches already recorded for a deleted lobby stay in the history and in the statistics.",
       "request": {
@@ -4603,7 +4611,7 @@
       "summary": "Get custom game statistics"
     },
     "rpc.balancer.custom.swap_seats": {
-      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Swaps two seated players between teams inside one balance option, same role only, and returns the refreshed mix. 404 when the option or either seat is missing, 422 when the seats hold different roles or sit on the same team.",
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Swaps two seated players between teams inside one balance option, same role only, and returns the refreshed mix; a swap that moves a team's captain re-captains both teams. 404 when the option or either seat is missing, 422 when the seats hold different roles or sit on the same team.",
       "request": {
         "array": false,
         "ref": "balancer.CustomGameSeatSwap"
@@ -26375,6 +26383,28 @@
         }
       },
       "title": "CustomGameBalanceRequest",
+      "type": "object"
+    },
+    "balancer.CustomGameCaptainPatch": {
+      "additionalProperties": false,
+      "description": "Who captains their team in the lobby's shown option.",
+      "properties": {
+        "lobby_index": {
+          "default": 0,
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Lobby Index",
+          "type": "integer"
+        },
+        "workspace_member_id": {
+          "title": "Workspace Member Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspace_member_id"
+      ],
+      "title": "CustomGameCaptainPatch",
       "type": "object"
     },
     "balancer.CustomGameCoHostPatch": {

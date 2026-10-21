@@ -12,7 +12,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 
 from src.domain.balancer.result_serializer import lobby_document  # noqa: E402
-from src.domain.mix_lobbies import seated_member_ids, seated_teams  # noqa: E402
+from src.domain.mix_lobbies import seated_member_ids, seated_teams, with_captains  # noqa: E402
 
 
 def _payload(*teams: dict[str, list[int]]) -> dict[str, object]:
@@ -79,3 +79,41 @@ def test_a_seat_that_is_not_a_member_id_is_left_out_of_its_team() -> None:
     document = lobby_document([_payload({"tank": [7]})])
     document["variants"][0]["teams"][0]["roster"]["damage"] = ["not-a-member"]
     assert seated_teams(document, 0) == ((7,),)
+
+
+def _rated(*teams: dict[str, list[tuple[int, int]]]) -> dict[str, object]:
+    """One option whose seats carry the rating the solver seated them at: ``{role: [(member, rating), ...]}``."""
+    return {
+        "teams": [
+            {
+                "roster": {
+                    role: [{"uuid": str(member), "assigned_rating": rating} for member, rating in seats]
+                    for role, seats in team.items()
+                }
+            }
+            for team in teams
+        ]
+    }
+
+
+def test_each_team_is_captained_by_its_strongest_seat() -> None:
+    document = with_captains(
+        lobby_document(
+            [_rated({"tank": [(7, 2400)], "damage": [(8, 3100)]}, {"tank": [(9, 2900)], "support": [(10, 2800)]})]
+        )
+    )
+    assert [team["captain_member_id"] for team in document["variants"][0]["teams"]] == [8, 9]
+
+
+def test_a_rating_tie_goes_to_the_lower_member_id() -> None:
+    document = with_captains(lobby_document([_rated({"tank": [(12, 3000)], "damage": [(11, 3000)]})]))
+    assert document["variants"][0]["teams"][0]["captain_member_id"] == 11
+
+
+def test_a_seated_captain_is_kept_and_one_who_left_is_replaced() -> None:
+    document = lobby_document([_rated({"tank": [(7, 2400)], "damage": [(8, 3100)]}, {"tank": [(9, 2900)]})])
+    first, second = document["variants"][0]["teams"]
+    first["captain_member_id"] = 7  # a host's pick, still on the team
+    second["captain_member_id"] = 8  # sits on the other team now
+    with_captains(document)
+    assert (first["captain_member_id"], second["captain_member_id"]) == (7, 9)

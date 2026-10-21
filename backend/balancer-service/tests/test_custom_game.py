@@ -47,6 +47,7 @@ from shared.services.member_rank import MIX_ORDER  # noqa: E402
 from shared.testing import install_postgres_type_shims  # noqa: E402
 from shared.tests.test_team_format import OW_5V5, _module_ontology  # noqa: E402
 from src.domain.balancer.result_serializer import lobby_document  # noqa: E402
+from src.domain.mix_lobbies import with_captains  # noqa: E402
 from src.domain.mix_ranker import Ranker  # noqa: E402
 from src.domain.mix_self_service import MAX_ROSTER  # noqa: E402
 from src.services import custom_game as custom_game_module
@@ -4012,6 +4013,100 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                 actor_user_id=99,
             )
         self.assertEqual(ctx.exception.status_code, 403)
+
+    def _captained_result(self) -> dict[str, object]:
+        """Two teams of member seats: 7 (3200) and 8 (2900) against 9 (2600) and 10 (3000)."""
+        return lobby_document(
+            [
+                {
+                    "teams": [
+                        {
+                            "roster": {
+                                "tank": [self._seat("7", "Alpha", 3200, "tank")],
+                                "damage": [self._seat("8", "Bravo", 2900, "damage")],
+                            }
+                        },
+                        {
+                            "roster": {
+                                "tank": [self._seat("9", "Charlie", 2600, "tank")],
+                                "damage": [self._seat("10", "Delta", 3000, "damage")],
+                            }
+                        },
+                    ]
+                }
+            ]
+        )
+
+    def _captains(self) -> list[int | None]:
+        return [team["captain_member_id"] for team in self.lobby_rows[0].balance_result_json["variants"][0]["teams"]]
+
+    async def test_balance_captains_each_team_by_its_strongest_seat(self) -> None:
+        self.games.get.return_value = _game()
+        self.roster.list_for_game.return_value = [_roster_row(1, 7, 0)]
+        self.ranks.resolve.return_value = _ranks(7)
+        self.run_balance.return_value = self._captained_result()
+
+        await self.service.balance(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
+
+        self.assertEqual([7, 10], self._captains())
+
+    async def test_swapping_a_captain_captains_both_teams_afresh(self) -> None:
+        self.games.get.return_value = _game()
+        self.lobby_rows[0] = _lobby(0, balance_result_json=with_captains(self._captained_result()))
+
+        # Alpha (team 1's captain) and Charlie trade tank seats.
+        await self.service.swap_seats(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            variant_index=0,
+            first_uuid="7",
+            second_uuid="9",
+            actor_user_id=9,
+        )
+
+        # Team 1 is now Charlie 2600 + Bravo 2900, team 2 Alpha 3200 + Delta 3000.
+        self.assertEqual([8, 7], self._captains())
+
+    async def test_a_swap_between_two_non_captains_keeps_both_captains(self) -> None:
+        document = with_captains(self._captained_result())
+        document["variants"][0]["teams"][1]["captain_member_id"] = 9  # the host's pick for team 2
+        self.games.get.return_value = _game()
+        self.lobby_rows[0] = _lobby(0, balance_result_json=document)
+
+        await self.service.swap_seats(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            variant_index=0,
+            first_uuid="8",
+            second_uuid="10",
+            actor_user_id=9,
+        )
+
+        self.assertEqual([7, 9], self._captains())
+
+    async def test_make_captain_hands_the_crown_to_a_seat_of_the_shown_option(self) -> None:
+        self.games.get.return_value = _game()
+        self.lobby_rows[0] = _lobby(0, balance_result_json=with_captains(self._captained_result()))
+
+        await self.service.set_captain(
+            self.session, workspace_id=1, custom_game_id=11, workspace_member_id=9, actor_user_id=9
+        )
+
+        self.assertEqual([7, 9], self._captains())
+
+    async def test_make_captain_of_somebody_the_option_does_not_seat_404(self) -> None:
+        self.games.get.return_value = _game()
+        self.lobby_rows[0] = _lobby(0, balance_result_json=with_captains(self._captained_result()))
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.set_captain(
+                self.session, workspace_id=1, custom_game_id=11, workspace_member_id=99, actor_user_id=9
+            )
+
+        self.assertEqual(ctx.exception.status_code, 404)
+        self.assertEqual([7, 10], self._captains())
 
     async def test_rotation_returns_empty_list_for_an_empty_pool(self) -> None:
         self.games.get.return_value = _game()

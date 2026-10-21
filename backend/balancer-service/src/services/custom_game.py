@@ -66,7 +66,7 @@ from shared.services.team_format import (
 )
 from src.domain.balancer.result_serializer import as_lobby_document, seat_rating
 from src.domain.balancer.role_naming import role_slot_code
-from src.domain.mix_lobbies import seated_member_ids, seated_teams
+from src.domain.mix_lobbies import seated_member_ids, seated_teams, with_captains
 from src.domain.mix_lobby_split import LobbySplitError, SplitCandidate, split_into_lobbies
 from src.domain.mix_ranker import Ranker
 from src.domain.mix_rotation import PlayerHistory, RotationRecommendation, recommend_rotation, rotation_priority
@@ -1743,7 +1743,8 @@ class CustomGameService:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
         if opens:
             _stamp_open_ratings(result, opens)
-        lobby.balance_result_json = result
+        # Every option of a fresh run is captained by its strongest seats; a re-formed lobby starts over (§7.2).
+        lobby.balance_result_json = with_captains(result)
         # A fresh search renumbers every option, so whatever the host had paged
         # to describes nothing now -- back to the best one.
         lobby.selected_variant_index = 0
@@ -2422,6 +2423,8 @@ class CustomGameService:
         Edits whichever balance option is on screen (``variant_index``), not
         only the first: a host who paged to option 2 and likes it otherwise is
         adjusting that one, not silently rewriting option 1.
+
+        A swap that moves a team's captain re-captains both teams (``with_captains``).
         """
         game = await self._writable(
             session,
@@ -2457,11 +2460,53 @@ class CustomGameService:
                 detail="Both seats are already on the same team",
             )
 
+        captains = {str(teams[index].get("captain_member_id")) for index in (first_team, second_team)}
         first_bucket = teams[first_team]["roster"][first_role]
         second_bucket = teams[second_team]["roster"][second_role]
         first_bucket[first_pos], second_bucket[second_pos] = second_bucket[second_pos], first_bucket[first_pos]
+        if captains & {first_uuid, second_uuid}:
+            # A captain changed teams: both teams are captained afresh by their strongest seat (§7.2).
+            for index in (first_team, second_team):
+                teams[index]["captain_member_id"] = None
+        with_captains(result)
         _recompute_variant_stats(variant, _lobby_players(result))
 
+        lobby.balance_result_json = result
+        await session.flush()
+        return game
+
+    async def set_captain(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+        lobby_index: int = 0,
+        workspace_member_id: int,
+        actor_user_id: int,
+        actor_is_superuser: bool = False,
+    ) -> models.CustomGame:
+        """Make one seated player their team's captain in the option the lobby is showing ("Make captain").
+
+        The shown option, not an index the caller names: the crown is read out with the matchup, and the pager
+        that picks it is the lobby's own. 404 when that option does not seat the player.
+        """
+        game = await self._writable(
+            session,
+            workspace_id=workspace_id,
+            custom_game_id=custom_game_id,
+            actor_user_id=actor_user_id,
+            actor_is_superuser=actor_is_superuser,
+        )
+        lobby = await self._lobby(session, game, lobby_index)
+        result = with_captains(copy.deepcopy(as_lobby_document(lobby.balance_result_json)))
+        index = lobby.selected_variant_index
+        team_index = next(
+            (team for team, members in enumerate(seated_teams(result, index)) if workspace_member_id in members), None
+        )
+        if team_index is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Player not seated in this option")
+        result["variants"][index]["teams"][team_index]["captain_member_id"] = workspace_member_id
         lobby.balance_result_json = result
         await session.flush()
         return game

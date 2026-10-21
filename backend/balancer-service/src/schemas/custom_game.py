@@ -14,6 +14,7 @@ from src.domain.mix_self_service import MAX_ROSTER
 
 __all__ = (
     "CustomGameBalanceRequest",
+    "CustomGameCaptainPatch",
     "CustomGameCoHostPatch",
     "CustomGameCreate",
     "CustomGameDiscordLineup",
@@ -180,6 +181,12 @@ class CustomGameSeatSwap(_LobbyScoped):
     variant_index: int = Field(ge=0)
     first_uuid: str = Field(min_length=1)
     second_uuid: str = Field(min_length=1)
+
+
+class CustomGameCaptainPatch(_LobbyScoped):
+    """Who captains their team in the lobby's shown option."""
+
+    workspace_member_id: int
 
 
 class CustomGameOutcome(_Request):

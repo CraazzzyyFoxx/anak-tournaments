@@ -3,7 +3,7 @@
 ``rpc.balancer.custom.{create,list,get,rename,update_roster,update_player,set_participation,set_lobby_count,
 balance,set_team_names,set_next_map,set_variant_index,
 post_discord,post_signup,delete_discord_post,discord_view,set_voice_channels,voice_options,voice_move,voice_return,
-transfer_host,add_co_host,remove_co_host,swap_seats,record_outcome,
+transfer_host,add_co_host,remove_co_host,swap_seats,set_captain,record_outcome,
 match_history,undo_match,rotation,stats,close,delete,hard_delete,
 self_get,self_current,self_join,self_leave,self_update,set_self_service,hosted_active}``.
 
@@ -40,6 +40,7 @@ writes the row's outcome itself, so nothing answers back here.
 
 from __future__ import annotations
 
+import copy
 from datetime import datetime
 from typing import Any, TypeVar
 
@@ -62,7 +63,7 @@ from shared.services.ontology import workspace_discipline
 from src.core import db
 from src.core.config import config
 from src.domain.balancer.result_serializer import as_lobby_document
-from src.domain.mix_lobbies import seated_member_ids
+from src.domain.mix_lobbies import seated_member_ids, with_captains
 from src.domain.mix_voice import snowflake
 from src.rpc import _common as c
 from src.schemas import custom_game as schemas
@@ -285,7 +286,9 @@ def _dump_lobby(lobby: Any, *, balance_result: bool, activity: tuple[int, Any] |
         out["matches_count"] = activity[0]
     if balance_result:
         last_match_at = activity[1] if activity is not None else None
-        out["balance_result"] = as_lobby_document(lobby.balance_result_json)
+        # Crowned on a copy: a lineup stored before captains existed reads back captained, and a read never
+        # writes into the ORM's JSON.
+        out["balance_result"] = with_captains(copy.deepcopy(as_lobby_document(lobby.balance_result_json)))
         out["lineup_recorded"] = lobby.balanced_at is None or (
             last_match_at is not None and last_match_at >= lobby.balanced_at
         )
@@ -1339,6 +1342,30 @@ def register(broker: Any, logger: Any) -> None:
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.swap_seats", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.set_captain")
+    async def _set_captain(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(user, workspace_id, "update")
+            body = _body(schemas.CustomGameCaptainPatch, data)
+            game = await custom_game_service.set_captain(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                lobby_index=body.lobby_index,
+                workspace_member_id=body.workspace_member_id,
+                actor_user_id=user.id,
+                actor_is_superuser=user.is_superuser,
+            )
+            await emit_pickup_mix_changed(
+                session, workspace_id, custom_game_id=game.id, change="teams", actor_user_id=user.id
+            )
+            await session.commit()
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.set_captain", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.record_outcome")
     async def _record_outcome(data: dict, msg: RabbitMessage) -> dict:
