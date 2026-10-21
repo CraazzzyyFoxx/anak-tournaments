@@ -26,6 +26,8 @@ def api_key() -> str | None:
     return DeadlockSettings().deadlock_api_key
 
 
-def deadlock_client() -> ResilientHttpClient:
+def deadlock_client(*, timeout: float = 15.0, max_retries: int = 3) -> ResilientHttpClient:
     key = api_key()
-    return ResilientHttpClient(DEADLOCK_API, timeout=15.0, max_retries=3, headers={"X-API-KEY": key} if key else None)
+    return ResilientHttpClient(
+        DEADLOCK_API, timeout=timeout, max_retries=max_retries, headers={"X-API-KEY": key} if key else None
+    )

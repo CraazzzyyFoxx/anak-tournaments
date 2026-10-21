@@ -8,9 +8,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import httpx
 from faststream.rabbit import RabbitMessage
 
 from shared.catalog_sync import CatalogImageMirror
+from shared.clients import CircuitBreakerOpen
 from shared.core import errors
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import DISCIPLINES
@@ -40,7 +42,21 @@ def register(broker: Any, logger: Any) -> None:
                     detail=[errors.ApiExc(code="not_found", msg=f"Discipline {code!r} has no catalog sync")],
                 )
             # The sync commits itself: it releases the session before every image round-trip.
-            await spec.catalog_sync(session, _catalog_images)
+            try:
+                await spec.catalog_sync(session, _catalog_images)
+            except (httpx.HTTPError, CircuitBreakerOpen) as exc:
+                # An unreachable or failing source is the upstream's fault, not ours: 503 ("retry shortly", the
+                # envelope's `unavailable`; it has no 502), not an opaque 500.
+                raise errors.ApiHTTPException(
+                    status_code=503,
+                    detail=[
+                        errors.ApiExc(
+                            code="catalog_source_unavailable",
+                            msg=f"The {spec.name} catalog source did not answer ({type(exc).__name__}); "
+                            "try again in a minute",
+                        )
+                    ],
+                ) from exc
             return {"success": True}
 
         return await c.envelope(logger, "catalog.sync", op, session_factory=_SF)

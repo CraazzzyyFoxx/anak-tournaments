@@ -199,7 +199,7 @@ DOCS: dict[str, dict] = {
     # ── catalog sync ──────────────────────────────────────────────────────────
     "rpc.stats.catalog.sync": {
         "summary": "Sync a discipline's catalog",
-        "description": "Permission: superuser only. Pulls the discipline module's catalog source (Overwatch: OverFast; League of Legends: Data Dragon) into catalog.entity, mirroring images to S3; existing rows keep their name and attrs; an existing parent is kept; a missing one is filled from the source; nothing is deleted. 404 for a discipline without a sync.",
+        "description": "Permission: superuser only. Pulls the discipline module's catalog source (Overwatch: OverFast; League of Legends: Data Dragon; Deadlock: deadlock-api) into catalog.entity, mirroring images to S3; existing rows keep their name and attrs; an existing parent is kept; a missing one is filled from the source; nothing is deleted. 404 for a discipline without a sync; 503 `catalog_source_unavailable` when the source times out, is unreachable or answers an error (rows already applied stay; run it again).",
     },
     # ── global settings ─────────────────────────────────────────────────────
     "rpc.stats.settings.list": {

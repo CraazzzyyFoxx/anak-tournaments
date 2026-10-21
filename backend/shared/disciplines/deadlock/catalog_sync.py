@@ -50,7 +50,8 @@ async def sync_catalog(
     if http is not None:
         await _sync(session, images, http)
         return
-    async with deadlock_client() as client:
+    # /v1/assets/heroes is ~1.9 MB: two 30 s attempts, so a slow source still fails inside the 120 s RPC budget.
+    async with deadlock_client(timeout=30.0, max_retries=2) as client:
         await _sync(session, images, client)
 
 
