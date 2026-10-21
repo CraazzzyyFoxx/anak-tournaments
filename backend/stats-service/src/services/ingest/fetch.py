@@ -43,6 +43,7 @@ from shared.services.distributed_lock import (
     DistributedLockUnavailable,
     acquire_distributed_lock,
     release_distributed_lock,
+    renew_distributed_lock,
 )
 from shared.services.scheduler import IntervalScheduler
 from shared.services.team_format import tournament_format
@@ -65,7 +66,11 @@ __all__ = (
 
 FETCH_WINDOW = timedelta(hours=24)
 TICK_SECONDS = 60
+#: One lease per discipline, shared by every worker that selects it, whatever else each selects.
 LEADER_LOCK_KEY = "stats:match_fetch:leader"
+#: Renewed before each attempt; one attempt (a fetcher's request with its client retries, then the store) stays far
+#: inside it.
+LEASE_SECONDS = 3 * TICK_SECONDS
 _BACKOFF_MINUTES = (1, 2, 5, 10, 20, 40)
 _DUE_PER_TICK = 20
 _EXTERNAL_ID = re.compile(r"[A-Za-z0-9_.:-]{1,128}")
@@ -119,9 +124,13 @@ async def submit_fetch(session: AsyncSession, *, data: dict[str, Any], requested
     if not isinstance(external_id, str) or not _EXTERNAL_ID.fullmatch(external_id):
         raise _refuse(422, "invalid_external_id", "external_id must be 1-128 letters, digits or _.:-")
     game_id = int(data["encounter_game_id"])
+    workspace_id = int(data["workspace_id"])
+    # Held through the insert/reset and the commit below: a concurrent request of another game waits here and then
+    # sees this one's committed row.
+    await _fetches.lock_match(session, workspace_id=workspace_id, source_kind=kind, external_id=external_id)
     if await _fetches.active_elsewhere(
         session,
-        workspace_id=int(data["workspace_id"]),
+        workspace_id=workspace_id,
         source_kind=kind,
         external_id=external_id,
         encounter_game_id=game_id,
@@ -129,7 +138,7 @@ async def submit_fetch(session: AsyncSession, *, data: dict[str, Any], requested
         raise _refuse(409, "match_already_imported", "This match is already imported for another game")
     row = await _fetches.get_or_create(
         session,
-        workspace_id=int(data["workspace_id"]),
+        workspace_id=workspace_id,
         discipline=data["discipline"],
         source_kind=kind,
         external_id=external_id,
@@ -318,6 +327,37 @@ async def _attempt(fetch_id: int, *, session_factory: Any, s3: S3Client, now: da
     return None
 
 
+async def _run_discipline(discipline: str, *, redis: Any, s3: S3Client, session_factory: Any, now: datetime) -> int:
+    """The due requests of one discipline, under that discipline's lease (shared by every worker selecting it)."""
+    try:
+        token = await acquire_distributed_lock(
+            redis, f"{LEADER_LOCK_KEY}:{discipline}", ttl_seconds=LEASE_SECONDS, acquire_timeout_seconds=0.5
+        )
+    except DistributedLockUnavailable:
+        return 0
+    tried = 0
+    try:
+        async with session_factory() as session:
+            due = await _fetches.due_ids(session, now=now, limit=_DUE_PER_TICK, discipline=discipline)
+        for fetch_id in due:
+            # Renewed before each attempt, which is bounded well inside the lease: a lost lease stops the pass
+            # before another leader's fetch of the same row can start.
+            if not await renew_distributed_lock(redis, token, ttl_seconds=LEASE_SECONDS):
+                logger.warning("Match fetch lease for {} lost; the pass stops", discipline)
+                break
+            try:
+                await _attempt(fetch_id, session_factory=session_factory, s3=s3, now=now)
+            except Exception:
+                logger.exception("Match fetch {} failed unexpectedly; retried next tick", fetch_id)
+            tried += 1
+        return tried
+    except Exception:
+        logger.exception("Match fetch pass for {} failed", discipline)
+        return tried
+    finally:
+        await release_distributed_lock(redis, token)
+
+
 async def run_fetch_tick(
     *,
     redis: Any,
@@ -326,32 +366,14 @@ async def run_fetch_tick(
     session_factory: Any = db.async_session_maker,
     now: datetime | None = None,
 ) -> int:
-    """One leader-locked pass over the due requests of this worker's disciplines; returns how many were tried."""
-    try:
-        token = await acquire_distributed_lock(
-            redis,
-            f"{LEADER_LOCK_KEY}:{','.join(sorted(set(disciplines)))}",
-            ttl_seconds=TICK_SECONDS * 2,
-            acquire_timeout_seconds=0.5,
-        )
-    except DistributedLockUnavailable:
-        return 0
+    """One pass per selected discipline with a fetcher; returns how many requests were tried."""
     moment = now or datetime.now(UTC)
-    try:
-        async with observe_scheduled_job("match_fetch_tick"):
-            async with session_factory() as session:
-                due = await _fetches.due_ids(session, now=moment, limit=_DUE_PER_TICK, disciplines=disciplines)
-            for fetch_id in due:
-                try:
-                    await _attempt(fetch_id, session_factory=session_factory, s3=s3, now=moment)
-                except Exception:
-                    logger.exception("Match fetch {} failed unexpectedly; retried next tick", fetch_id)
-            return len(due)
-    except Exception:
-        logger.exception("Match fetch tick failed")
-        return 0
-    finally:
-        await release_distributed_lock(redis, token)
+    async with observe_scheduled_job("match_fetch_tick"):
+        tried = 0
+        for code in sorted(set(disciplines)):
+            if DISCIPLINES[code].match_fetchers:
+                tried += await _run_discipline(code, redis=redis, s3=s3, session_factory=session_factory, now=moment)
+        return tried
 
 
 def start_scheduler(*, redis: Any, s3: S3Client, disciplines: Sequence[str]) -> None:

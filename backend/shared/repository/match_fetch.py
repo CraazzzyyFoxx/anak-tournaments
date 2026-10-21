@@ -28,6 +28,17 @@ class MatchFetchRepository:
             )
         ).all()
 
+    async def lock_match(self, session: AsyncSession, *, workspace_id: int, source_kind: str, external_id: str) -> None:
+        """Serialize every request for one workspace's match until the caller's transaction ends.
+
+        The unique key includes the game, so only this lock stops two games from reserving the same match at once:
+        whoever waits rechecks :meth:`active_elsewhere` against the winner's committed row.
+        """
+        await session.execute(
+            sa.text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+            {"key": f"stats.match_fetch:{workspace_id}:{source_kind}:{external_id}"},
+        )
+
     async def active_elsewhere(
         self, session: AsyncSession, *, workspace_id: int, source_kind: str, external_id: str, encounter_game_id: int
     ) -> bool:
@@ -64,16 +75,14 @@ class MatchFetchRepository:
             )
         ).one()
 
-    async def due_ids(
-        self, session: AsyncSession, *, now: datetime, limit: int, disciplines: Sequence[str]
-    ) -> list[int]:
+    async def due_ids(self, session: AsyncSession, *, now: datetime, limit: int, discipline: str) -> list[int]:
         return list(
             await session.scalars(
                 sa.select(MatchFetch.id)
                 .where(
                     MatchFetch.status == MatchFetchStatus.PENDING,
                     MatchFetch.next_attempt_at <= now,
-                    MatchFetch.discipline.in_(disciplines),
+                    MatchFetch.discipline == discipline,
                 )
                 .order_by(MatchFetch.next_attempt_at)
                 .limit(limit)
