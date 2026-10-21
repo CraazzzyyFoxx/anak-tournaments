@@ -198,8 +198,12 @@ DOCS: dict[str, dict] = {
     },
     # ── catalog sync ──────────────────────────────────────────────────────────
     "rpc.stats.catalog.sync": {
-        "summary": "Sync a discipline's catalog",
-        "description": "Permission: superuser only. Pulls the discipline module's catalog source (Overwatch: OverFast; League of Legends: Data Dragon; Deadlock: deadlock-api) into catalog.entity, mirroring images to S3; existing rows keep their name and attrs; an existing parent is kept; a missing one is filled from the source; nothing is deleted. 404 for a discipline without a sync; 503 `catalog_source_unavailable` when the source times out, is unreachable or answers an error (rows already applied stay; run it again).",
+        "summary": "Start a discipline's catalog sync",
+        "description": "Permission: superuser only. Starts a background sync of the discipline module's catalog source (named in the snapshot's `source`) into catalog.entity, mirroring images to S3, and returns its first snapshot (`status: running`) at once. Existing rows keep their name and attrs; an existing parent is kept; a missing one is filled from the source; nothing is deleted. Stages run in order: `source`, then the discipline's kinds `mode`, `map`, `character`; a kind counts the images it actually downloads (`done`/`total`) and reports the rows it created, committing on its own. Every change is published whole as `catalog_sync.progress` on the caller's `user:{id}:catalog-sync` topic (non-durable). A failed sync is `status: failed` with `error.code` `catalog_source_unavailable` (the source timed out, is unreachable or answered an error), the code of the module's refusal (e.g. `catalog_conflict`), `interrupted` or `internal_error`; the stage it died in is `failed`, finished stages stay `done`. 404 for a discipline without a sync; 409 `catalog_sync_running` while a sync of the same discipline runs.",
+    },
+    "rpc.stats.catalog.sync_status": {
+        "summary": "Read a discipline's catalog sync",
+        "description": "Permission: superuser only. The discipline's last catalog sync snapshot, the same body `catalog_sync.progress` carries; `null` when nothing ran in the last 15 minutes, or when a running sync stopped reporting for 5 minutes (its worker died). 404 for a discipline without a sync.",
     },
     # ── global settings ─────────────────────────────────────────────────────
     "rpc.stats.settings.list": {

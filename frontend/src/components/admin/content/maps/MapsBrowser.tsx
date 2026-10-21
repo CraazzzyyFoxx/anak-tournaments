@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { DataTable } from "@/components/data-table";
 import { CatalogAliasesField, CatalogNameField } from "@/components/admin/CatalogFormFields";
+import { CatalogSyncDialog } from "@/components/admin/CatalogSyncDialog";
 import { CatalogToolbarActions } from "@/components/admin/CatalogToolbarActions";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters } from "@/components/kit/useFilters";
@@ -22,6 +23,7 @@ import adminService from "@/services/admin.service";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCatalogEntityCrud } from "@/hooks/useCatalogEntityCrud";
+import { useCatalogSync } from "@/hooks/useCatalogSync";
 import { useKindLabel } from "@/hooks/useKindLabel";
 import { catalogQueryKeys } from "@/lib/catalog/query-keys";
 import { catalogSort } from "@/lib/catalog/sort";
@@ -60,10 +62,10 @@ export function MapsBrowser({ descriptor, discipline, kind, kindLabel }: Readonl
       create: (d, k, data) => adminService.createCatalogEntity(d, k, toWrite(hasModes, data)),
       update: (d, k, id, data) => adminService.updateCatalogEntity(d, k, id, toWrite(hasModes, data)),
       delete: (d, k, id) => adminService.deleteCatalogEntity(d, k, id),
-      sync: (d) => adminService.syncCatalog(d),
     },
   });
   const { formData, setFormData } = crud;
+  const sync = useCatalogSync(discipline);
 
   const filterDefs = useMemo(
     () => mapFilterDefs({ hasModes, modes: modesData ?? [], modeLabel, t }),
@@ -115,8 +117,8 @@ export function MapsBrowser({ descriptor, discipline, kind, kindLabel }: Readonl
         actions={
           <CatalogToolbarActions
             canSync={isSuperuser}
-            isSyncing={crud.syncMutation.isPending}
-            onSync={crud.sync}
+            isSyncing={sync.running}
+            onSync={sync.start}
             syncLabel={t("catalog.entity.sync", { game: descriptor.name })}
             onCreate={crud.openCreate}
             createLabel={t("catalog.entity.create", { kind: kindLabel })}
@@ -179,6 +181,8 @@ export function MapsBrowser({ descriptor, discipline, kind, kindLabel }: Readonl
           </Label>
         </div>
       </CatalogEntityDialogs>
+
+      <CatalogSyncDialog descriptor={descriptor} sync={sync} />
     </>
   );
 }

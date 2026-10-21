@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from pydantic import BaseModel
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from shared.catalog_sync import CatalogImageMirror
+    from shared.catalog_sync import CatalogImageMirror, CatalogSyncProgress
     from shared.disciplines.analytics import AnalyticsExports
     from shared.disciplines.ingest import Decoder, DeriveMatch, MatchFetcher
     from shared.domain.achievements.context import EvalContext
@@ -25,8 +25,8 @@ if TYPE_CHECKING:
     from shared.models.catalog.entity import CatalogEntity
     from shared.models.identity.auth_user import AuthUser
 
-#: Pull the module's catalog source into ``catalog.entity`` (commits itself).
-CatalogSync = Callable[["AsyncSession", "CatalogImageMirror"], Awaitable[None]]
+#: Pull the module's catalog source into ``catalog.entity`` (commits itself), reporting its stages on the progress.
+CatalogSync = Callable[["AsyncSession", "CatalogImageMirror", "CatalogSyncProgress"], Awaitable[None]]
 
 #: A game's native rank layer: ``players.user`` ids -> ``{user_id: {role code: rank}}``, the best rank a player
 #: holds per role of the rated dimension on the game's own ladder; the core places it on a division grid. Reads only.

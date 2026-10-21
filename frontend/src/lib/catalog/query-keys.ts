@@ -16,5 +16,8 @@ export const catalogQueryKeys = {
   detail: (scope: CatalogScope, kind: CatalogKind, id: number) =>
     ["catalog", scope.discipline, kind, "detail", id] as const,
   adminList: (scope: CatalogScope, kind: CatalogKind, filters: CatalogListFilters) =>
-    ["catalog", scope.discipline, kind, "admin", filters] as const
+    ["catalog", scope.discipline, kind, "admin", filters] as const,
+  /** The discipline's sync snapshot: outside the `["catalog", discipline]` root, so the refresh a finished sync
+   *  triggers does not refetch the snapshot that triggered it. */
+  syncState: (discipline: string) => ["catalog-sync", discipline] as const
 };

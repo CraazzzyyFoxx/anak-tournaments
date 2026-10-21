@@ -11013,7 +11013,30 @@
         "unavailable": "{game} does not use this kind of content, so there is nothing to list or create here.",
         "inactive": "Inactive",
         "targetsError": "Could not load the entries to attach the name to.",
-        "origin": "{game} · {kind}"
+        "origin": "{game} · {kind}",
+        "sync": {
+          "title": "{game} catalog sync",
+          "running": "Sync in progress",
+          "done": "Sync finished",
+          "failed": "Sync failed",
+          "sourceUnavailable": "The game's data source is unavailable",
+          "interrupted": "Sync was interrupted",
+          "startError": "Could not start the sync",
+          "startedByOther": "Started by another admin — live updates are not shown",
+          "stageSource": "Fetching data from {source}",
+          "stageSourceUnknown": "Fetching data from the source",
+          "images": "images {done}/{total}",
+          "created": "new: {created}",
+          "states": {
+            "pending": "pending",
+            "running": "in progress",
+            "done": "done",
+            "failed": "failed"
+          },
+          "hide": "Hide",
+          "close": "Close",
+          "retry": "Retry"
+        }
       },
       "heroRoles": {
         "tank": "Tank",

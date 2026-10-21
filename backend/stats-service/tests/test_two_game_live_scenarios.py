@@ -3096,8 +3096,16 @@ def _source_sync(live: Live, ids: dict[str, Any]) -> dict[str, Any]:
     except OSError as exc:
         live.stack.evidence.record("source", "unavailable", repr(exc))
         pytest.fail(f"Data Dragon unavailable: unmet source evidence ({exc!r})")
-    sync = call(live, ids, "root", "POST", "/api/v1/admin/catalog-sync/{d}", d=LOL, expect=200)
-    evidence["sync"] = sync.json()
+    started = call(live, ids, "root", "POST", "/api/v1/admin/catalog-sync/{d}", d=LOL, expect=200).json()
+    assert started["status"] == "running", started
+
+    def finished() -> dict[str, Any] | None:
+        # The sync runs in the background; its snapshot is null only if it never started or its worker died.
+        state = call(live, ids, "root", "GET", "/api/v1/admin/catalog-sync/{d}", expect=200, d=LOL).json()
+        return state if state["status"] != "running" else None
+
+    evidence["sync"] = wait_until(finished, "the Data Dragon catalog sync", timeout=300, interval=2)
+    assert evidence["sync"]["status"] == "done", evidence["sync"]
     evidence["rows"] = [
         list(row)
         for row in live.q(

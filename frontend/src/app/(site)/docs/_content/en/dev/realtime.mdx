@@ -83,12 +83,13 @@ A topic name is always `<kind>:<id>:<domain>`; the domain may itself contain a c
 | `workspace:{id}:analytics_jobs` | Analytics jobs | Workspace member; superuser |
 | `user:{id}:invalidation` | Stale personal resources | That user only |
 | `user:{id}:notifications` | "A notification arrived" signal | That user only |
+| `user:{id}:catalog-sync` | Stages of the catalog sync that user started | That user only |
 
 Rules are evaluated in order and the first match decides; `workspace:{id}:*` covers every workspace domain at once. A topic that matches no rule is denied — an unknown name cannot simply be subscribed to.
 
 "Same as viewing the tournament" means: an ordinary tournament is public, anonymous clients included; a hidden one requires a logged-in insider — a superuser, a member of the organizing workspace, or an account on the preview allowlist. A tournament (or encounter, or draft session) that does not exist is always denied, so a subscription cannot be used as an existence probe.
 
-Personal topics have no exception at all: `user:{id}:notifications` and `user:{id}:invalidation` are readable only by the account with that `id`, and a superuser does not bypass them.
+Personal topics have no exception at all: `user:{id}:notifications`, `user:{id}:invalidation` and `user:{id}:catalog-sync` are readable only by the account with that `id`, and a superuser does not bypass them.
 
 ## Cache invalidation
 

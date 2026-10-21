@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import itertools
 import os
 import sys
@@ -12,7 +13,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from shared.catalog_sync import CatalogImageMirror, SourceEntity, apply_source, merge_aliases
+from shared.catalog_sync import CatalogImageMirror, CatalogSyncProgress, SourceEntity, apply_source, merge_aliases
 from shared.core.errors import ApiHTTPException
 from shared.disciplines import DISCIPLINES
 from shared.disciplines.lol import catalog_sync as lol_sync
@@ -66,12 +67,28 @@ class _Http:
         return _Response(self.routes[path])
 
 
+def _progress(snapshots: list | None = None, kinds=("mode", "map", "character")) -> CatalogSyncProgress:
+    """A progress over ``kinds``; ``snapshots`` collects ``(source, stages)`` after each change."""
+
+    async def record(progress: CatalogSyncProgress) -> None:
+        if snapshots is not None:
+            snapshots.append((progress.source, copy.deepcopy(list(progress.stages.values()))))
+
+    return CatalogSyncProgress(kinds, record)
+
+
+def _stage(key: str, state: str, done: int | None = None, total: int | None = None, created: int | None = None):
+    return {"key": key, "state": state, "done": done, "total": total, "created": created}
+
+
 def test_the_mirror_keeps_an_image_on_the_bucket_and_uploads_the_rest_by_discipline_and_kind() -> None:
     s3 = _S3()
     http = _Http({})
+    snapshots: list = []
     urls = asyncio.run(
         CatalogImageMirror(s3).resolve_many(
             http,
+            _progress(snapshots),
             discipline="lol",
             kind="character",
             images={"ahri": (f"{BUCKET}keep.png", "https://src/ahri.PNG"), "annie": (None, "https://src/annie.png")},
@@ -80,13 +97,22 @@ def test_the_mirror_keeps_an_image_on_the_bucket_and_uploads_the_rest_by_discipl
     assert urls == {"ahri": f"{BUCKET}keep.png", "annie": f"{BUCKET}assets/lol/character/annie.png"}
     assert s3.keys == ["assets/lol/character/annie.png"]
     assert http.paths == ["https://src/annie.png"]
+    # The counter covers the one download, not the image already on the bucket.
+    assert [stages[3] for _source, stages in snapshots] == [
+        _stage("character", "pending", done=0, total=1),
+        _stage("character", "pending", done=1, total=1),
+    ]
 
 
 def test_the_mirror_refuses_a_page_that_is_not_an_image() -> None:
     with pytest.raises(ValueError, match="not an image"):
         asyncio.run(
             CatalogImageMirror(_S3()).resolve_many(
-                _Http({}, image_type="text/html"), discipline="lol", kind="map", images={"x": (None, "https://src/x")}
+                _Http({}, image_type="text/html"),
+                _progress(),
+                discipline="lol",
+                kind="map",
+                images={"x": (None, "https://src/x")},
             )
         )
 
@@ -99,7 +125,7 @@ def test_the_mirror_propagates_an_upload_failure() -> None:
     with pytest.raises(RuntimeError, match="S3 upload failed"):
         asyncio.run(
             CatalogImageMirror(_FailingS3()).resolve_many(
-                _Http({}), discipline="overwatch", kind="map", images={"x": (None, "https://src/x.PNG")}
+                _Http({}), _progress(), discipline="overwatch", kind="map", images={"x": (None, "https://src/x.PNG")}
             )
         )
 
@@ -116,6 +142,28 @@ def test_alias_merge_keeps_manual_names_and_sorts_a_deduplicated_union_without_t
 def test_every_registered_module_brings_its_sync() -> None:
     assert DISCIPLINES["overwatch"].catalog_sync is not None
     assert DISCIPLINES["lol"].catalog_sync is not None
+
+
+def test_the_stages_follow_the_source_in_sync_order_and_a_failure_marks_the_first_unfinished_one() -> None:
+    assert list(_progress(kinds=DISCIPLINES["overwatch"].kinds).stages) == ["source", "mode", "map", "character"]
+    progress = _progress(kinds=DISCIPLINES["lol"].kinds)
+    assert list(progress.stages.values()) == [  # LoL has no modes; the source runs from the start
+        _stage("source", "running"),
+        _stage("map", "pending"),
+        _stage("character", "pending"),
+    ]
+
+    async def map_done() -> None:
+        await progress.begin("map")
+        await progress.finish("map", 3)
+
+    asyncio.run(map_done())
+    progress.fail()
+    assert list(progress.stages.values()) == [
+        _stage("source", "done"),
+        _stage("map", "done", created=3),
+        _stage("character", "failed"),
+    ]
 
 
 class CatalogSyncDbTests(IsolatedAsyncioTestCase):
@@ -198,7 +246,13 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
                 async with self.Session() as session:
                     with self.assertRaisesRegex(ValueError, "attrs[.]"):
                         await apply_source(
-                            session, http, CatalogImageMirror(s3), discipline=discipline, kind=kind, rows=rows
+                            session,
+                            http,
+                            CatalogImageMirror(s3),
+                            _progress(),
+                            discipline=discipline,
+                            kind=kind,
+                            rows=rows,
                         )
                 assert await self._rows(discipline, kind) == []
                 assert http.paths == [] and s3.keys == []
@@ -232,9 +286,16 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
                 attrs={"class": "tank"},
             ),
         ]
+        snapshots: list = []
         async with self.Session() as s:
             created = await apply_source(
-                s, _Http({}), CatalogImageMirror(_S3()), discipline="overwatch", kind="character", rows=rows
+                s,
+                _Http({}),
+                CatalogImageMirror(_S3()),
+                _progress(snapshots),
+                discipline="overwatch",
+                kind="character",
+                rows=rows,
             )
         assert created == 1
         assert await self._rows("overwatch", "character") == [
@@ -253,6 +314,15 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
                 [],
             ),
         ]
+        # The kind's stage: running from the start, then the one download Rein needs (Ana's image is already ours),
+        # then done with what it created. The source is done once a kind writes; the other kinds never started.
+        source, mode, game_map = _stage("source", "done"), _stage("mode", "pending"), _stage("map", "pending")
+        assert [stages for _source, stages in snapshots] == [
+            [source, mode, game_map, _stage("character", "running")],
+            [source, mode, game_map, _stage("character", "running", done=0, total=1)],
+            [source, mode, game_map, _stage("character", "running", done=1, total=1)],
+            [source, mode, game_map, _stage("character", "done", done=1, total=1, created=1)],
+        ]
 
     async def test_sync_finds_an_entity_after_an_admin_changes_its_slug(self) -> None:
         source = SourceEntity(
@@ -266,7 +336,13 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
         async with self.Session() as s:
             assert (
                 await apply_source(
-                    s, _Http({}), CatalogImageMirror(_S3()), discipline="overwatch", kind="character", rows=[source]
+                    s,
+                    _Http({}),
+                    CatalogImageMirror(_S3()),
+                    _progress(),
+                    discipline="overwatch",
+                    kind="character",
+                    rows=[source],
                 )
                 == 1
             )
@@ -291,7 +367,13 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
         )
         async with self.Session() as s:
             created = await apply_source(
-                s, _Http({}), CatalogImageMirror(_S3()), discipline="overwatch", kind="character", rows=[updated_source]
+                s,
+                _Http({}),
+                CatalogImageMirror(_S3()),
+                _progress(),
+                discipline="overwatch",
+                kind="character",
+                rows=[updated_source],
             )
             current = await repo.get_by(s, name=source.name)
             assert current.id == entity_id
@@ -354,7 +436,7 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
         }
         http = _Http(routes)
         async with self.Session() as s:
-            await overwatch_sync.sync_catalog(s, CatalogImageMirror(_S3()), http=http)
+            await overwatch_sync.sync_catalog(s, CatalogImageMirror(_S3()), _progress(), http=http)
         (mode,) = await self._rows("overwatch", "mode")
         assert mode[3] == {"description": "Capture"}
         async with self.Session() as s:
@@ -427,7 +509,7 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
             },
         }
         async with self.Session() as s:
-            await overwatch_sync.sync_catalog(s, CatalogImageMirror(_S3()), http=_Http(routes))
+            await overwatch_sync.sync_catalog(s, CatalogImageMirror(_S3()), _progress(), http=_Http(routes))
             ilios = await s.scalar(sa.select(CatalogEntity).where(CatalogEntity.slug == f"{tag}-ilios"))
             nepal = await s.scalar(sa.select(CatalogEntity).where(CatalogEntity.slug == f"{tag}-nepal"))
             oasis = await s.scalar(sa.select(CatalogEntity).where(CatalogEntity.slug == f"{tag}-oasis"))
@@ -474,7 +556,7 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
         s3 = _S3()
         http = _Http(routes)
         async with self.Session() as s:
-            await lol_sync.sync_catalog(s, CatalogImageMirror(s3), http=http)
+            await lol_sync.sync_catalog(s, CatalogImageMirror(s3), _progress(), http=http)
         champions = await self._rows("lol", "character")
         assert [(slug, attrs, aliases) for slug, _n, _i, attrs, aliases in champions] == [
             (f"{tag}ahri", {"class": "Mage"}, []),
@@ -512,17 +594,19 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
             await s.commit()
             return entity.id
 
-    async def _sync_map11(self, http: _Http | None = None, s3: _S3 | None = None) -> tuple[_Http, _S3]:
+    async def _sync_map11(
+        self, http: _Http | None = None, s3: _S3 | None = None, progress: CatalogSyncProgress | None = None
+    ) -> tuple[_Http, _S3]:
         http, s3 = http or _Http(_map11_routes(self.tag)), s3 or _S3()
         async with self.Session() as s:
-            await lol_sync.sync_catalog(s, CatalogImageMirror(s3), http=http)
+            await lol_sync.sync_catalog(s, CatalogImageMirror(s3), progress or _progress(), http=http)
         return http, s3
 
     async def _assert_refused_unchanged(self, *ids: int) -> None:
         before = [_snapshot(m) for m in await self._lol_maps()]
-        http, s3 = _Http(_map11_routes(self.tag)), _S3()
+        http, s3, progress = _Http(_map11_routes(self.tag)), _S3(), _progress(kinds=DISCIPLINES["lol"].kinds)
         with self.assertRaises(ApiHTTPException) as raised:
-            await self._sync_map11(http, s3)
+            await self._sync_map11(http, s3, progress)
         assert raised.exception.status_code == 409
         (error,) = raised.exception.detail
         assert error["code"] == "catalog_conflict"
@@ -531,6 +615,9 @@ class CatalogSyncDbTests(IsolatedAsyncioTestCase):
         assert [_snapshot(m) for m in await self._lol_maps()] == before
         assert s3.keys == []
         assert f"{lol_sync.DATA_DRAGON}/cdn/14.1.1/img/map/map11.png" not in http.paths
+        # Inside the map stage, so a failure marks that stage, not the fetched source.
+        progress.fail()
+        assert [stage["state"] for stage in progress.stages.values()] == ["done", "failed", "pending"]
 
     async def _adopt_legacy(self, image_path: str) -> tuple[CatalogEntity, _Http, _S3]:
         """A row an earlier sync created under ``slugify(name)``, since edited by an admin and referenced by a child."""

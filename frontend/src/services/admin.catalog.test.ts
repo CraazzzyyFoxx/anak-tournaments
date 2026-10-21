@@ -19,11 +19,15 @@ describe("adminService on the generic catalog", () => {
     calls.length = 0;
   });
 
-  it("syncs a whole discipline at once", async () => {
-    reply = { success: true };
-    const result = await adminService.syncCatalog("lol");
-    expect(calls[0]).toEqual({ path: "/api/v1/admin/catalog-sync/lol", options: { method: "POST" } });
-    expect(result).toEqual({ success: true });
+  it("starts a whole discipline's background sync and reads its snapshot back", async () => {
+    reply = { discipline: "lol", status: "running", stages: [] };
+    expect(await adminService.startCatalogSync("lol")).toBe(reply);
+    reply = null;
+    expect(await adminService.getCatalogSync("lol")).toBeNull();
+    expect(calls).toEqual([
+      { path: "/api/v1/admin/catalog-sync/lol", options: { method: "POST" } },
+      { path: "/api/v1/admin/catalog-sync/lol", options: undefined }
+    ]);
   });
 
   it("lists one discipline's kind and sends attrs filters as a JSON object", async () => {

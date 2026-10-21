@@ -377,6 +377,9 @@ func TestAllow_OwnUserNotifications(t *testing.T) {
 		{"anonymous", nil, "user:7:notifications", false},
 		{"superuser has no bypass", &auth.User{ID: 8, IsSuperuser: true}, "user:7:notifications", false},
 		{"unparseable id", &auth.User{ID: 7}, "user:abc:notifications", false},
+		// A catalog sync's progress reaches only the admin who started it; another superuser reads GET.
+		{"sync starter", &auth.User{ID: 7, IsSuperuser: true}, "user:7:catalog-sync", true},
+		{"another superuser", &auth.User{ID: 8, IsSuperuser: true}, "user:7:catalog-sync", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

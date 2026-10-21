@@ -9,7 +9,7 @@ and the union of the aliases. An existing parent is kept; a missing one is fille
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
@@ -23,10 +23,57 @@ from shared.clients.http_client import ResilientHttpClient
 from shared.disciplines import DISCIPLINES
 from shared.repository import CatalogEntityRepository
 
-__all__ = ("CatalogImageMirror", "SourceEntity", "apply_source", "fetch_json", "merge_aliases")
+__all__ = ("CatalogImageMirror", "CatalogSyncProgress", "SourceEntity", "apply_source", "fetch_json", "merge_aliases")
 
-# A first sync mirrors ~170 images through the proxy; four at a time stays well inside the 120 s RPC budget.
+# A first sync mirrors ~170 images through the proxy, four at a time.
 _IMAGE_FETCH_CONCURRENCY = 4
+# The order every module writes its kinds in: a map's parent is a mode, synced first.
+_SYNC_ORDER = ("mode", "map", "character")
+
+
+class CatalogSyncProgress:
+    """The live half of a sync's snapshot: its source's name and its stages; every change awaits ``on_change(self)``.
+
+    The stages run in order: ``source`` (running from the start: every module fetches its whole source before its
+    first write), then the discipline's kinds in sync order (mode, map, character). A kind counts the images it
+    actually downloads.
+    """
+
+    def __init__(self, kinds: Collection[str], on_change: Callable[[CatalogSyncProgress], Awaitable[object]]) -> None:
+        self.source: str | None = None
+        self.stages: dict[str, dict[str, Any]] = {
+            key: {"key": key, "state": "pending", "done": None, "total": None, "created": None}
+            for key in ("source", *(kind for kind in _SYNC_ORDER if kind in kinds))
+        }
+        self.stages["source"]["state"] = "running"
+        self._on_change = on_change
+
+    async def report_source(self, name: str) -> None:
+        self.source = name
+        await self._on_change(self)
+
+    async def begin(self, kind: str) -> None:
+        self.stages["source"]["state"] = "done"
+        self.stages[kind]["state"] = "running"
+        await self._on_change(self)
+
+    async def images(self, kind: str, total: int) -> None:
+        self.stages[kind].update(done=0, total=total)
+        await self._on_change(self)
+
+    async def image_mirrored(self, kind: str) -> None:
+        self.stages[kind]["done"] += 1
+        await self._on_change(self)
+
+    async def finish(self, kind: str, created: int) -> None:
+        self.stages[kind].update(state="done", created=created)
+        await self._on_change(self)
+
+    def fail(self) -> None:
+        """Mark the stage the sync died in: stages run in order, so it is the first one not done."""
+        failed = next((stage for stage in self.stages.values() if stage["state"] != "done"), None)
+        if failed is not None:
+            failed["state"] = "failed"
 
 
 def merge_aliases(*, existing: Iterable[str], localized: Iterable[str], canonical: str) -> list[str]:
@@ -72,19 +119,23 @@ class CatalogImageMirror:
     async def resolve_many(
         self,
         http: ResilientHttpClient,
+        progress: CatalogSyncProgress,
         *,
         discipline: str,
         kind: str,
         images: Mapping[str, tuple[str | None, str]],
     ) -> dict[str, str]:
-        """``{slug: (current, source)}`` -> ``{slug: url to store}``."""
+        """``{slug: (current, source)}`` -> ``{slug: url to store}``; counts the downloads on ``kind``'s stage."""
         semaphore = asyncio.Semaphore(_IMAGE_FETCH_CONCURRENCY)
+        await progress.images(kind, sum(not self.is_mirrored(current) for current, _source in images.values()))
 
         async def _resolve(slug: str, current: str | None, source: str) -> str:
             if current and self.is_mirrored(current):
                 return current
             async with semaphore:
-                return await self.mirror(http, discipline=discipline, kind=kind, slug=slug, source_url=source)
+                url = await self.mirror(http, discipline=discipline, kind=kind, slug=slug, source_url=source)
+            await progress.image_mirrored(kind)
+            return url
 
         slugs = list(images)
         urls = await asyncio.gather(*(_resolve(slug, *images[slug]) for slug in slugs))
@@ -106,12 +157,17 @@ async def apply_source(
     session: AsyncSession,
     http: ResilientHttpClient,
     images: CatalogImageMirror,
+    progress: CatalogSyncProgress,
     *,
     discipline: str,
     kind: str,
     rows: Sequence[SourceEntity],
 ) -> int:
-    """Upsert one kind of one discipline from its source; returns how many rows were created. Commits."""
+    """Upsert one kind of one discipline from its source; returns how many rows were created. Commits.
+
+    Runs ``kind``'s stage on ``progress``: running from the first check, done with its created count after the commit.
+    """
+    await progress.begin(kind)
     spec = DISCIPLINES[discipline]
     for row in rows:
         spec.validate_attrs(kind, row.attrs)
@@ -129,6 +185,7 @@ async def apply_source(
     await session.commit()
     image_paths = await images.resolve_many(
         http,
+        progress,
         discipline=discipline,
         kind=kind,
         images={row.slug: (getattr(existing.get(row.slug), "image_path", None), row.image_url) for row in rows},
@@ -147,4 +204,5 @@ async def apply_source(
     if created:
         await repo.create_many(session, created)
     await session.commit()
+    await progress.finish(kind, len(created))
     return len(created)

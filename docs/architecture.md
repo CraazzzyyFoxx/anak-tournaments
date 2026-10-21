@@ -157,6 +157,10 @@ via FastStream. See [`backend/shared/README.md`](../backend/shared/README.md) fo
   the topic must equal the caller's own, and unlike every other rule it grants the platform
   superuser no bypass — an operator's blanket read right over workspace data is not a licence
   to watch one person's inbox arrive.
+  `user:{id}:catalog-sync` carries a catalog sync's progress to the superuser who started it, under the same self-only
+  rule: one non-durable `catalog_sync.progress` per change (a stage, a mirrored image) with the whole snapshot, sent
+  straight from stats-service's RPC process (no transaction to wait for); a client that missed one reads the snapshot
+  over GET.
 - **Discord.** `discord-service` is the only process that talks to Discord — identity-service's
   OAuth login is the one exception — and holds the platform's only `DISCORD_TOKEN`. Everyone
   else reaches Discord through it over RabbitMQ:
@@ -260,7 +264,9 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   and deadlock-api. Each game's rank collector (OverFast for Overwatch, the Riot API for LoL, deadlock-api for
   Deadlock) runs as that module's jobs inside `stats-worker` and writes the shared `rank` schema, one `discipline` per
   row. These declarations are not the complete LoL or Deadlock gameplay vertical.
-  Stats-service dispatches `rpc.stats.catalog.sync` to the module;
+  Stats-service runs the module's sync (`rpc.stats.catalog.sync`) as a background job in its RPC process: one per
+  discipline (409 `catalog_sync_running` otherwise), its stage snapshot in Redis for `rpc.stats.catalog.sync_status`
+  and published to the starter's `user:{id}:catalog-sync` topic;
   app-service provides generic admin CRUD by discipline and kind on `rpc.app.catalog.admin_*`.
   `catalog.alias_miss` is the unresolved-name worklist, keyed by `(discipline, kind, raw_name)`.
   Old hero/map/gamemode ids no longer resolve: `legacy01` dropped their `catalog.entity_legacy` mapping and

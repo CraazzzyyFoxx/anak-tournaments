@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from pydantic import BaseModel
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from shared.catalog_sync import CatalogImageMirror
+    from shared.catalog_sync import CatalogImageMirror, CatalogSyncProgress
     from shared.disciplines.spec import CollectionHandler
     from shared.domain.pick_ban_rules.presets import Preset
     from shared.models.identity.auth_user import AuthUser
@@ -30,12 +30,12 @@ if TYPE_CHECKING:
 __all__ = ("SPEC",)
 
 
-async def _catalog_sync(session: AsyncSession, images: CatalogImageMirror) -> None:
+async def _catalog_sync(session: AsyncSession, images: CatalogImageMirror, progress: CatalogSyncProgress) -> None:
     # Imported on call: the registry is imported by the pure pick-ban domain, which must not load repositories and an
     # HTTP client to answer "does this game have sides".
     from shared.disciplines.lol.catalog_sync import sync_catalog
 
-    await sync_catalog(session, images)
+    await sync_catalog(session, images, progress)
 
 
 def _pick_ban_presets() -> tuple[Preset, ...]:

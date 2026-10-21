@@ -115,6 +115,9 @@ OPERATIONS: dict[str, Op] = {
     "rpc.stats.ach.calculate_tournament": Op(
         request=schemas.AchievementCalculateRequest, response=schemas.AchievementCalculateResponse
     ),
+    # ── catalog sync (the status answers null when no snapshot is stored) ───────────
+    "rpc.stats.catalog.sync": Op(response=schemas.CatalogSyncState),
+    "rpc.stats.catalog.sync_status": Op(response=schemas.CatalogSyncState),
     # ── settings ───────────────────────────────────────────────────────────
     "rpc.stats.settings.list": Op(response=schemas.SettingRead, response_array=True),
     "rpc.stats.settings.get": Op(response=schemas.SettingRead),

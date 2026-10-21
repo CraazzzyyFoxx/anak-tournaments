@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 
-import { invalidateCatalogSync } from "@/lib/catalog/invalidate";
 import { catalogQueryKeys, type CatalogScope } from "@/lib/catalog/query-keys";
 import { hasUnsavedChanges } from "@/lib/form-change";
 import type { CatalogKind } from "@/types/catalog.types";
@@ -10,8 +9,6 @@ interface CatalogEntityService<TEntity, TCreate, TUpdate> {
   create: (discipline: string, kind: CatalogKind, data: TCreate) => Promise<TEntity>;
   update: (discipline: string, kind: CatalogKind, id: number, data: TUpdate) => Promise<TEntity>;
   delete: (discipline: string, kind: CatalogKind, id: number) => Promise<void>;
-  /** Pulls the whole discipline (every kind) from the module's source. */
-  sync: (discipline: string) => Promise<unknown>;
 }
 
 interface UseCatalogEntityCrudOptions<TEntity, TCreate, TUpdate> {
@@ -33,15 +30,14 @@ const invalidateKind = (client: QueryClient, { discipline, kind }: Submitted) =>
   client.invalidateQueries({ queryKey: catalogQueryKeys.kind({ discipline }, kind) });
 
 /**
- * Create/edit/delete/sync state and mutations shared by the game-catalogue admin
+ * Create/edit/delete state and mutations shared by the game-catalogue admin
  * pages (characters, maps, modes of the selected discipline): same
  * dialog-as-create-and-edit pattern, same invalidate-on-success mutations, same
  * dirty-check. Pages keep their own columns and form fields — only this
  * boilerplate lives here instead of being copy-pasted three times.
  *
- * Create, edit and delete drop that kind's caches; sync drops the whole discipline (it pulls every kind) plus its
- * statistic families. Each invalidates the discipline it was submitted for, even if the page has switched games
- * by the time the request settles.
+ * Create, edit and delete drop that kind's caches, for the discipline and kind they were submitted for, even if the
+ * page has switched games by the time the request settles. Syncing lives in `useCatalogSync`.
  */
 export function useCatalogEntityCrud<TEntity extends { id: number }, TCreate, TUpdate>({
   discipline,
@@ -89,11 +85,6 @@ export function useCatalogEntityCrud<TEntity extends { id: number }, TCreate, TU
     },
   });
 
-  const syncMutation = useMutation({
-    mutationFn: ({ scope }: { scope: Submitted }) => service.sync(scope.discipline),
-    onSuccess: (_result, { scope }) => invalidateCatalogSync(queryClient, scope.discipline),
-  });
-
   const submitted = (): Submitted => ({ discipline, kind });
 
   const openCreate = () => {
@@ -136,9 +127,7 @@ export function useCatalogEntityCrud<TEntity extends { id: number }, TCreate, TU
     createMutation,
     updateMutation,
     deleteMutation,
-    syncMutation,
-    /** Each captures the discipline and kind of the render that called it. */
+    /** Captures the discipline and kind of the render that called it. */
     deleteEntity: (id: number) => deleteMutation.mutate({ scope: submitted(), id }),
-    sync: () => syncMutation.mutate({ scope: submitted() }),
   };
 }

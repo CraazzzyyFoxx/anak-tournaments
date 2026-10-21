@@ -9,6 +9,7 @@
  */
 
 import { Plus } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
@@ -19,6 +20,7 @@ interface CatalogToolbarActionsProps {
    * granted together (superuser), so the toolbar renders nothing when false.
    */
   canSync: boolean;
+  /** A sync runs in the background: the button says so and stays clickable — `onSync` then reopens its modal. */
   isSyncing: boolean;
   onSync: () => void;
   /** Sentence-case label naming the object, e.g. "Sync maps from game". */
@@ -36,15 +38,16 @@ export function CatalogToolbarActions({
   onCreate,
   createLabel
 }: Readonly<CatalogToolbarActionsProps>) {
+  const t = useTranslations("adminWorkspace.content.catalog.sync");
   if (!canSync) {
     return null;
   }
 
   return (
     <div className="flex gap-2">
-      <Button variant="outline" onClick={onSync} disabled={isSyncing} aria-busy={isSyncing}>
+      <Button variant="outline" onClick={onSync}>
         {isSyncing ? <Spinner /> : null}
-        {syncLabel}
+        {isSyncing ? t("running") : syncLabel}
       </Button>
       <Button onClick={onCreate}>
         <Plus aria-hidden className="mr-2 h-4 w-4" />

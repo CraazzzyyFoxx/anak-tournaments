@@ -14,7 +14,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.catalog_aliases import slugify
-from shared.catalog_sync import CatalogImageMirror, SourceEntity, apply_source, fetch_json
+from shared.catalog_sync import CatalogImageMirror, CatalogSyncProgress, SourceEntity, apply_source, fetch_json
 from shared.clients.http_client import ResilientHttpClient
 from shared.disciplines.deadlock.client import deadlock_client
 
@@ -45,23 +45,30 @@ def hero_rows(heroes: list[dict[str, Any]]) -> list[SourceEntity]:
 
 
 async def sync_catalog(
-    session: AsyncSession, images: CatalogImageMirror, http: ResilientHttpClient | None = None
+    session: AsyncSession,
+    images: CatalogImageMirror,
+    progress: CatalogSyncProgress,
+    http: ResilientHttpClient | None = None,
 ) -> None:
     if http is not None:
-        await _sync(session, images, http)
+        await _sync(session, images, progress, http)
         return
-    # /v1/assets/heroes is ~1.9 MB: two 30 s attempts, so a slow source still fails inside the 120 s RPC budget.
+    # /v1/assets/heroes is ~1.9 MB: two 30 s attempts.
     async with deadlock_client(timeout=30.0, max_retries=2) as client:
-        await _sync(session, images, client)
+        await _sync(session, images, progress, client)
 
 
-async def _sync(session: AsyncSession, images: CatalogImageMirror, http: ResilientHttpClient) -> None:
+async def _sync(
+    session: AsyncSession, images: CatalogImageMirror, progress: CatalogSyncProgress, http: ResilientHttpClient
+) -> None:
+    await progress.report_source("deadlock-api")
     characters = hero_rows(await fetch_json(http, "/v1/assets/heroes"))
     minimap = (await fetch_json(http, "/v1/assets/map"))["images"]["minimap"]
     await apply_source(
         session,
         http,
         images,
+        progress,
         discipline=DISCIPLINE,
         kind="mode",
         rows=[SourceEntity(slug=slug, name=name, image_url=minimap) for slug, name in MODES],
@@ -70,8 +77,9 @@ async def _sync(session: AsyncSession, images: CatalogImageMirror, http: Resilie
         session,
         http,
         images,
+        progress,
         discipline=DISCIPLINE,
         kind="map",
         rows=[SourceEntity(slug=MAP_SLUG, name="Midtown", image_url=minimap)],
     )
-    await apply_source(session, http, images, discipline=DISCIPLINE, kind="character", rows=characters)
+    await apply_source(session, http, images, progress, discipline=DISCIPLINE, kind="character", rows=characters)

@@ -24,7 +24,6 @@ interface Actions {
   create: () => Promise<Entity>;
   update: () => Promise<Entity>;
   delete: () => Promise<void>;
-  sync: () => Promise<unknown>;
 }
 
 const LOL = { discipline: "lol" };
@@ -44,7 +43,6 @@ let container: HTMLDivElement;
 let root: Root;
 let actions: Actions;
 let release: (() => void) | null;
-const synced: string[] = [];
 
 function Catalog({ discipline, kind }: Readonly<{ discipline: string; kind: CatalogKind }>) {
   const crud = useCatalogEntityCrud<Entity, Form, Form>({
@@ -61,18 +59,14 @@ function Catalog({ discipline, kind }: Readonly<{ discipline: string; kind: Cata
         return { id: 2, ...form };
       },
       update: async (_d, _k, id, form) => ({ id, ...form }),
-      delete: async () => undefined,
-      sync: async (d) => {
-        synced.push(d);
-      }
+      delete: async () => undefined
     }
   });
   useEffect(() => {
     actions = {
       create: () => crud.createMutation.mutateAsync({ scope: { discipline, kind }, data: { name: "Ilios" } }),
       update: () => crud.updateMutation.mutateAsync({ scope: { discipline, kind }, id: 1, data: { name: "Ilios" } }),
-      delete: () => crud.deleteMutation.mutateAsync({ scope: { discipline, kind }, id: 1 }),
-      sync: () => crud.syncMutation.mutateAsync({ scope: { discipline, kind } })
+      delete: () => crud.deleteMutation.mutateAsync({ scope: { discipline, kind }, id: 1 })
     };
   });
   return null;
@@ -90,7 +84,6 @@ const render = (discipline: string, kind: CatalogKind = "map") =>
 const invalidated = (key: readonly unknown[]) => client.getQueryState(key)?.isInvalidated === true;
 
 beforeEach(async () => {
-  synced.length = 0;
   release = null;
   client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
   for (const key of Object.values(KEYS)) client.setQueryData(key, []);
@@ -107,15 +100,6 @@ afterEach(async () => {
 });
 
 describe("catalog mutation invalidation", () => {
-  it("syncs the whole discipline (every kind, public and admin) and its statistic families, not another game's", async () => {
-    await act(async () => {
-      await actions.sync();
-    });
-    expect(synced).toEqual(["lol"]);
-    for (const key of [KEYS.lolMap, KEYS.lolMapPublic, KEYS.lolCharacter, KEYS.lolStats]) expect(invalidated(key)).toBe(true);
-    for (const key of [KEYS.owMap, KEYS.owStats, KEYS.unrelated]) expect(invalidated(key)).toBe(false);
-  });
-
   it.each(["update", "delete"] as const)("keeps %s invalidation to that game's kind", async (operation) => {
     await act(async () => {
       await actions[operation]();

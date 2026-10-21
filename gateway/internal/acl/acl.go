@@ -112,6 +112,7 @@ func New(resolver WorkspaceResolver, members MembershipChecker, vis VisibilityCh
 	r.register("tournament:*:streams", r.allowSpectateTournament) // public unless hidden
 	r.register("workspace:*:*", r.allowWorkspaceMember)           // workspace member
 	r.register("user:*:notifications", r.allowOwnNotifications)   // the user themself, no bypass
+	r.register("user:*:catalog-sync", r.allowOwnNotifications)    // the starter's catalog sync progress, same rule
 	return r
 }
 

@@ -53,8 +53,10 @@ var Routes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/achievement/calculate", Queue: "rpc.stats.ach.calculate", Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/achievement/calculate/{tournament_id}", Queue: "rpc.stats.ach.calculate_tournament", Path: []string{"tournament_id"}, Body: true, Auth: edge.AuthRequired},
 
-	// Catalog sync of one discipline from its module's source (OverFast, Data Dragon); superuser in the handler.
+	// Catalog sync of one discipline from its module's source, a background job: POST starts it, GET reads its
+	// snapshot (src/services/catalog_sync.py); superuser in the handler.
 	{Method: "POST", Pattern: "/api/v1/admin/catalog-sync/{discipline}", Queue: "rpc.stats.catalog.sync", Path: []string{"discipline"}, Auth: edge.AuthRequired},
+	{Method: "GET", Pattern: "/api/v1/admin/catalog-sync/{discipline}", Queue: "rpc.stats.catalog.sync_status", Path: []string{"discipline"}, Auth: edge.AuthRequired},
 
 	// Global settings (src/routes/admin/settings.py); superuser in the handler.
 	{Method: "GET", Pattern: "/api/v1/admin/settings", Queue: "rpc.stats.settings.list", Auth: edge.AuthRequired},

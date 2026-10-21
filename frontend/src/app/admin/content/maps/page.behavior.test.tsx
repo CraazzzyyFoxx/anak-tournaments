@@ -16,6 +16,8 @@ const MODE = {
 vi.mock("@/lib/api/fetch", () => ({
   apiFetch: (path: string, options?: Call["options"]) => {
     calls.push({ path, options });
+    // No sync ran lately.
+    if (path.startsWith("/api/v1/admin/catalog-sync/")) return Promise.resolve({ json: async () => null });
     // Two modes: a filter with a single option is not offered.
     const results = path === "/api/v1/admin/catalog/overwatch/mode" ? [MODE, { ...MODE, id: 909, slug: "control", name: "Control" }] : [];
     const reply = options?.method === "POST"

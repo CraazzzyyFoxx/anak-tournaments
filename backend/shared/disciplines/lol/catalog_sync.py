@@ -12,7 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.catalog_aliases import slugify
-from shared.catalog_sync import CatalogImageMirror, SourceEntity, apply_source, fetch_json, merge_aliases
+from shared.catalog_sync import (
+    CatalogImageMirror,
+    CatalogSyncProgress,
+    SourceEntity,
+    apply_source,
+    fetch_json,
+    merge_aliases,
+)
 from shared.clients.http_client import ResilientHttpClient
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.repository import CatalogEntityRepository
@@ -77,23 +84,56 @@ async def _adopt_canonical_map(session: AsyncSession, name: str) -> None:
 
 
 async def sync_catalog(
-    session: AsyncSession, images: CatalogImageMirror, http: ResilientHttpClient | None = None
+    session: AsyncSession,
+    images: CatalogImageMirror,
+    progress: CatalogSyncProgress,
+    http: ResilientHttpClient | None = None,
 ) -> None:
     if http is not None:
-        await _sync(session, images, http)
+        await _sync(session, images, progress, http)
         return
     async with ResilientHttpClient(DATA_DRAGON, timeout=15.0, max_retries=3) as client:
-        await _sync(session, images, client)
+        await _sync(session, images, progress, client)
 
 
-async def _sync(session: AsyncSession, images: CatalogImageMirror, http: ResilientHttpClient) -> None:
+async def _sync(
+    session: AsyncSession, images: CatalogImageMirror, progress: CatalogSyncProgress, http: ResilientHttpClient
+) -> None:
+    await progress.report_source("Data Dragon")
     version = (await fetch_json(http, "/api/versions.json"))[0]
     champions = (await fetch_json(http, f"/cdn/{version}/data/en_US/champion.json"))["data"].values()
     maps = (await fetch_json(http, f"/cdn/{version}/data/en_US/map.json"))["data"].values()
+    # Data Dragon repeats a map name across map ids (seasonal variants); the oldest id wins. It also lists
+    # map ids with an empty MapName (453 in 16.20): nothing to show or match a log against, so they are skipped.
+    by_name: dict[str, dict] = {}
+    for game_map in sorted(maps, key=lambda entry: int(entry["MapId"])):
+        if name := game_map["MapName"].strip():
+            by_name.setdefault(name, game_map)
+    # Adopting map 11 is the map stage's first write: its 409 fails that stage.
+    await progress.begin("map")
+    if canonical := next((name for name, game_map in by_name.items() if str(game_map["MapId"]) == "11"), None):
+        await _adopt_canonical_map(session, canonical)
     await apply_source(
         session,
         http,
         images,
+        progress,
+        discipline=DISCIPLINE,
+        kind="map",
+        rows=[
+            SourceEntity(
+                slug=_map_slug(game_map, name),
+                name=name,
+                image_url=f"{DATA_DRAGON}/cdn/{version}/img/map/{game_map['image']['full']}",
+            )
+            for name, game_map in by_name.items()
+        ],
+    )
+    await apply_source(
+        session,
+        http,
+        images,
+        progress,
         discipline=DISCIPLINE,
         kind="character",
         rows=[
@@ -105,28 +145,5 @@ async def _sync(session: AsyncSession, images: CatalogImageMirror, http: Resilie
                 aliases=(champion["id"],) if champion["id"] != champion["name"] else (),
             )
             for champion in champions
-        ],
-    )
-    # Data Dragon repeats a map name across map ids (seasonal variants); the oldest id wins. It also lists
-    # map ids with an empty MapName (453 in 16.20): nothing to show or match a log against, so they are skipped.
-    by_name: dict[str, dict] = {}
-    for game_map in sorted(maps, key=lambda entry: int(entry["MapId"])):
-        if name := game_map["MapName"].strip():
-            by_name.setdefault(name, game_map)
-    if canonical := next((name for name, game_map in by_name.items() if str(game_map["MapId"]) == "11"), None):
-        await _adopt_canonical_map(session, canonical)
-    await apply_source(
-        session,
-        http,
-        images,
-        discipline=DISCIPLINE,
-        kind="map",
-        rows=[
-            SourceEntity(
-                slug=_map_slug(game_map, name),
-                name=name,
-                image_url=f"{DATA_DRAGON}/cdn/{version}/img/map/{game_map['image']['full']}",
-            )
-            for name, game_map in by_name.items()
         ],
     )

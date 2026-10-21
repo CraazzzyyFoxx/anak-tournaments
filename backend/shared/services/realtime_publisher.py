@@ -2,7 +2,9 @@
 
 The Redis leg only: turning a persisted ``WorkspaceEvent`` into the envelope
 clients receive, and putting a frame on the channel. The publication POLICY —
-when, in what order, on whose session — belongs to ``emit``, the only caller.
+when, in what order, on whose session — belongs to ``emit``. The one other
+caller is stats-service's catalog sync, whose progress belongs to no transaction
+and goes straight to ``publish_envelope_to_redis``.
 """
 
 from __future__ import annotations

@@ -40,3 +40,36 @@ export interface CatalogListFilters {
   /** The public list defaults to active rows; `false` asks for the retired ones. */
   active?: boolean;
 }
+
+/**
+ * One stage of a catalog sync: `source` (the module fetching its whole source), then each kind the game declares
+ * in sync order (`mode`, `map`, `character`).
+ */
+export interface CatalogSyncStage {
+  key: "source" | CatalogKind;
+  state: "pending" | "running" | "done" | "failed";
+  /** Images mirrored so far, out of `total` that actually needed downloading (`0` is valid: nothing to fetch). */
+  done: number | null;
+  total: number | null;
+  /** Rows the kind added, set when it commits. */
+  created: number | null;
+}
+
+/**
+ * The whole sync snapshot of one discipline: the `POST`/`GET /admin/catalog-sync/{discipline}` body and the data of
+ * every `catalog_sync.progress` event, always replaced wholesale.
+ */
+export interface CatalogSyncState {
+  discipline: string;
+  status: "running" | "done" | "failed";
+  /** The module's source by name ("OverFast"); null until the sync reports it. */
+  source: string | null;
+  /** Auth user id of whoever started it. */
+  started_by: number;
+  started_at: string;
+  updated_at: string;
+  /** Set when failed: `catalog_source_unavailable`, a module refusal (`catalog_conflict`, …), `interrupted` or
+   *  `internal_error`. */
+  error: { code: string; msg: string } | null;
+  stages: CatalogSyncStage[];
+}

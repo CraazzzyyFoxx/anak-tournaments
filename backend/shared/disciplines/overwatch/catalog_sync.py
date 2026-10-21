@@ -13,7 +13,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.catalog_aliases import slugify
-from shared.catalog_sync import CatalogImageMirror, SourceEntity, apply_source, fetch_json
+from shared.catalog_sync import CatalogImageMirror, CatalogSyncProgress, SourceEntity, apply_source, fetch_json
 from shared.clients.http_client import ResilientHttpClient
 
 __all__ = ("ALIAS_LOCALES", "CANONICAL_LOCALE", "sync_catalog")
@@ -48,16 +48,22 @@ class _Settings(BaseSettings):
 
 
 async def sync_catalog(
-    session: AsyncSession, images: CatalogImageMirror, http: ResilientHttpClient | None = None
+    session: AsyncSession,
+    images: CatalogImageMirror,
+    progress: CatalogSyncProgress,
+    http: ResilientHttpClient | None = None,
 ) -> None:
     if http is not None:
-        await _sync(session, images, http)
+        await _sync(session, images, progress, http)
         return
     async with ResilientHttpClient(_Settings().overfast_base_url, timeout=15.0, max_retries=3) as client:
-        await _sync(session, images, client)
+        await _sync(session, images, progress, client)
 
 
-async def _sync(session: AsyncSession, images: CatalogImageMirror, http: ResilientHttpClient) -> None:
+async def _sync(
+    session: AsyncSession, images: CatalogImageMirror, progress: CatalogSyncProgress, http: ResilientHttpClient
+) -> None:
+    await progress.report_source("OverFast")
     gamemodes = await fetch_json(http, "/gamemodes")
     # ponytail: sequential — a handful of modes; parallelize like the locales if that grows.
     maps_by_mode = [(mode["key"], await fetch_json(http, f"/maps?gamemode={mode['key']}")) for mode in gamemodes]
@@ -77,6 +83,7 @@ async def _sync(session: AsyncSession, images: CatalogImageMirror, http: Resilie
         session,
         http,
         images,
+        progress,
         discipline=DISCIPLINE,
         kind="mode",
         rows=[
@@ -103,11 +110,12 @@ async def _sync(session: AsyncSession, images: CatalogImageMirror, http: Resilie
                     parent_slug=mode_key,
                 ),
             )
-    await apply_source(session, http, images, discipline=DISCIPLINE, kind="map", rows=list(map_rows.values()))
+    await apply_source(session, http, images, progress, discipline=DISCIPLINE, kind="map", rows=list(map_rows.values()))
     await apply_source(
         session,
         http,
         images,
+        progress,
         discipline=DISCIPLINE,
         kind="character",
         rows=[

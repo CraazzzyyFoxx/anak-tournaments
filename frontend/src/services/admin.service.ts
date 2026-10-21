@@ -20,7 +20,8 @@ import type {
   CatalogEntityRead,
   CatalogEntityWrite,
   CatalogKind,
-  CatalogListFilters
+  CatalogListFilters,
+  CatalogSyncState
 } from "@/types/catalog.types";
 import type {
   TournamentLink,
@@ -924,9 +925,16 @@ class AdminService {
     return page.results;
   }
 
-  /** Pull a discipline's catalog from its module's source (OverFast, Data Dragon). */
-  async syncCatalog(discipline: string): Promise<BulkOperationResult> {
+  /** Start pulling a discipline's catalog from its module's source (OverFast, Data Dragon) in the background; 409
+   *  `catalog_sync_running` while one already runs. */
+  async startCatalogSync(discipline: string): Promise<CatalogSyncState> {
     const response = await apiFetch(`/api/v1/admin/catalog-sync/${discipline}`, { method: "POST" });
+    return response.json();
+  }
+
+  /** The discipline's latest sync; null when none ran in the last 15 minutes or its worker died mid-run. */
+  async getCatalogSync(discipline: string): Promise<CatalogSyncState | null> {
+    const response = await apiFetch(`/api/v1/admin/catalog-sync/${discipline}`);
     return response.json();
   }
 

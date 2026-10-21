@@ -11,7 +11,9 @@ const paths: string[] = [];
 vi.mock("@/lib/api/fetch", () => ({
   apiFetch: (path: string) => {
     paths.push(path);
-    return Promise.resolve({ json: async () => ({ results: [], total: 0, page: 1, per_page: 25 }) });
+    // No sync ran lately.
+    const reply = path.startsWith("/api/v1/admin/catalog-sync/") ? null : { results: [], total: 0, page: 1, per_page: 25 };
+    return Promise.resolve({ json: async () => reply });
   }
 }));
 vi.mock("@/lib/datetime/client", () => ({ useFormatter: () => ({ dateTime: (value: Date) => value.toISOString() }) }));

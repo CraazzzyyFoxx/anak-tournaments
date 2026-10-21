@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { DataTable } from "@/components/data-table";
 import { AssetPreview } from "@/components/admin/AssetPreview";
 import { CatalogAliasesField, CatalogNameField } from "@/components/admin/CatalogFormFields";
+import { CatalogSyncDialog } from "@/components/admin/CatalogSyncDialog";
 import { CatalogToolbarActions } from "@/components/admin/CatalogToolbarActions";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters } from "@/components/kit/useFilters";
@@ -24,6 +25,7 @@ import adminService from "@/services/admin.service";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useCatalogEntityCrud } from "@/hooks/useCatalogEntityCrud";
+import { useCatalogSync } from "@/hooks/useCatalogSync";
 import { catalogQueryKeys } from "@/lib/catalog/query-keys";
 import { catalogSort } from "@/lib/catalog/sort";
 import type { CatalogKindContext } from "@/app/admin/content/_components/ContentDiscipline";
@@ -59,10 +61,10 @@ export function HeroesBrowser({ descriptor, discipline, kind, kindLabel }: Reado
       create: (d, k, data) => adminService.createCatalogEntity(d, k, toWrite(classes, data)),
       update: (d, k, id, data) => adminService.updateCatalogEntity(d, k, id, toWrite(classes, data)),
       delete: (d, k, id) => adminService.deleteCatalogEntity(d, k, id),
-      sync: (d) => adminService.syncCatalog(d),
     },
   });
   const { formData, setFormData } = crud;
+  const sync = useCatalogSync(discipline);
 
   const filterDefs = useMemo(() => heroFilterDefs(classes, classLabel, t), [classes, classLabel, t]);
   const filters = useFilters(filterDefs);
@@ -109,8 +111,8 @@ export function HeroesBrowser({ descriptor, discipline, kind, kindLabel }: Reado
         actions={
           <CatalogToolbarActions
             canSync={isSuperuser}
-            isSyncing={crud.syncMutation.isPending}
-            onSync={crud.sync}
+            isSyncing={sync.running}
+            onSync={sync.start}
             syncLabel={t("catalog.entity.sync", { game: descriptor.name })}
             onCreate={crud.openCreate}
             createLabel={t("catalog.entity.create", { kind: kindLabel })}
@@ -203,6 +205,8 @@ export function HeroesBrowser({ descriptor, discipline, kind, kindLabel }: Reado
           </Label>
         </div>
       </CatalogEntityDialogs>
+
+      <CatalogSyncDialog descriptor={descriptor} sync={sync} />
     </>
   );
 }
