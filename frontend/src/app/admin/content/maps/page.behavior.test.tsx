@@ -87,6 +87,16 @@ it("narrows the list by the selected mode through parent_id", async () => {
   expect(mapCall?.options?.query?.parent_id).toBe(907);
 });
 
+it("offers the status chip even without modes, and Inactive goes out as active=false", async () => {
+  page = await mountContentPage(LOL, <MapsAdminPage />);
+  await click(document.querySelector('[aria-label="Add filter"]'));
+  await click(Array.from(document.querySelectorAll('[cmdk-item=""]')).find((element) => element.textContent?.trim().startsWith("Status")));
+  await click(Array.from(document.querySelectorAll('[cmdk-item=""]')).find((element) => element.textContent?.trim().startsWith("Inactive")));
+
+  const mapCall = calls.filter((call) => call.path === "/api/v1/admin/catalog/lol/map").at(-1);
+  expect(mapCall?.options?.query?.active).toBe(false);
+});
+
 it("for a game without modes asks for no modes and files a map under nothing", async () => {
   page = await mountContentPage(LOL, <MapsAdminPage />);
   await settle();

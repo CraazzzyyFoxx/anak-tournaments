@@ -67,6 +67,7 @@ export function HeroesBrowser({ descriptor, discipline, kind, kindLabel }: Reado
   const filterDefs = useMemo(() => heroFilterDefs(classes, classLabel, t), [classes, classLabel, t]);
   const filters = useFilters(filterDefs);
   const classFilter = String(filters.values.class ?? "");
+  const activeFilter = String(filters.values.active ?? "");
 
   const columns = useHeroColumns({
     kindLabel,
@@ -88,6 +89,7 @@ export function HeroesBrowser({ descriptor, discipline, kind, kindLabel }: Reado
             sort: catalogSort(sortField),
             order: sortDir,
             ...(classFilter && { attrs: { class: classFilter } }),
+            ...(activeFilter && { active: activeFilter === "true" }),
           })
         }
         queryFn={(page, search, pageSize, sortField, sortDir) =>
@@ -98,12 +100,13 @@ export function HeroesBrowser({ descriptor, discipline, kind, kindLabel }: Reado
             sort: catalogSort(sortField),
             order: sortDir,
             ...(classFilter && { attrs: { class: classFilter } }),
+            ...(activeFilter && { active: activeFilter === "true" }),
           })
         }
         columns={columns}
         searchPlaceholder={t("catalog.entity.search", { kind: kindLabel })}
         filterKey={filters.filterKey}
-        toolbar={classes.length > 0 ? <FilterBar defs={filterDefs} filters={filters} /> : undefined}
+        toolbar={<FilterBar defs={filterDefs} filters={filters} />}
         emptyMessage={t("catalog.entity.empty", { kind: kindLabel })}
         onRowDoubleClick={isSuperuser ? (row) => crud.openEdit(row.original) : undefined}
         actions={

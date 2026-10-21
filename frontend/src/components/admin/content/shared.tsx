@@ -8,7 +8,7 @@
 import { useMemo, type FormEvent, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
-import { CircleSlash, Pencil, Trash2 } from "lucide-react";
+import { CircleCheck, CircleSlash, Pencil, Trash2 } from "lucide-react";
 
 import { columnMeta, createKebabColumn } from "@/components/data-table";
 import { createAliasesColumn } from "@/components/admin/catalog-table-columns";
@@ -16,7 +16,21 @@ import { entityFormError, onEntityDialogClose } from "@/components/admin/Catalog
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
+import type { FilterDef } from "@/components/kit/useFilters";
 import type { CatalogEntityRead } from "@/types/catalog.types";
+
+/** Active / inactive: the chip every catalogue screen offers. The value goes out as `?active=`. */
+export function activeFilterDef(t: (key: "filters.status" | "columns.active" | "catalog.inactive") => string): FilterDef {
+  return {
+    key: "active",
+    label: t("filters.status"),
+    kind: "single",
+    options: [
+      { value: "true", label: t("columns.active") },
+      { value: "false", label: t("catalog.inactive") },
+    ],
+  };
+}
 
 /** Active, aliases, then edit/delete. */
 export function useCatalogTrailingColumns({
@@ -39,9 +53,10 @@ export function useCatalogTrailingColumns({
         size: 72,
         enableSorting: false,
         meta: columnMeta<CatalogEntityRead>({ align: "center" }),
-        // Active is the norm: only the exception is marked.
         cell: ({ row }) =>
-          row.original.active ? null : (
+          row.original.active ? (
+            <StatusIcon icon={CircleCheck} label={t("columns.active")} variant="success" />
+          ) : (
             <StatusIcon icon={CircleSlash} label={t("catalog.inactive")} variant="muted" />
           ),
       },

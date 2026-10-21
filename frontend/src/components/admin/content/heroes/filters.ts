@@ -1,10 +1,12 @@
 import type { FilterDef } from "@/components/kit/useFilters";
 
-/** One chip: the game's own character classes. A game that declares none renders no chip row at all. */
+import { activeFilterDef } from "../shared";
+
+/** The game's own character classes (`FilterBar` drops the chip when there are none), then active state. */
 export function heroFilterDefs(
   classes: readonly string[],
   classLabel: (code: string) => string,
-  t: (key: "filters.class") => string
+  t: (key: "filters.class" | "filters.status" | "columns.active" | "catalog.inactive") => string
 ): FilterDef[] {
   return [
     {
@@ -13,5 +15,6 @@ export function heroFilterDefs(
       kind: "single",
       options: classes.map((code) => ({ value: code, label: classLabel(code) })),
     },
+    activeFilterDef(t),
   ];
 }

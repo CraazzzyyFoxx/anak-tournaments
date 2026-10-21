@@ -74,6 +74,7 @@ export function MapsBrowser({ descriptor, discipline, kind, kindLabel }: Readonl
   const filters = useFilters(filterDefs);
   const modeFilter = String(filters.values.mode ?? "");
   const competitiveFilter = String(filters.values.in_competitive ?? "");
+  const activeFilter = String(filters.values.active ?? "");
 
   const listFilters = (page: number, search: string, pageSize: number, sortField: string | null, sortDir: "asc" | "desc") => ({
     page,
@@ -84,6 +85,7 @@ export function MapsBrowser({ descriptor, discipline, kind, kindLabel }: Readonl
     ...(modeFilter && { parent_id: Number(modeFilter) }),
     // `false` is a real filter value (the casual pool), so test the string, not truthiness.
     ...(competitiveFilter && { attrs: { in_competitive: competitiveFilter === "true" } }),
+    ...(activeFilter && { active: activeFilter === "true" }),
   });
 
   const columns = useMapColumns({
@@ -111,7 +113,7 @@ export function MapsBrowser({ descriptor, discipline, kind, kindLabel }: Readonl
         columns={columns}
         searchPlaceholder={t("catalog.entity.search", { kind: kindLabel })}
         filterKey={filters.filterKey}
-        toolbar={hasModes ? <FilterBar defs={filterDefs} filters={filters} /> : undefined}
+        toolbar={<FilterBar defs={filterDefs} filters={filters} />}
         emptyMessage={t("catalog.entity.empty", { kind: kindLabel })}
         onRowDoubleClick={isSuperuser ? (row) => crud.openEdit(row.original) : undefined}
         actions={

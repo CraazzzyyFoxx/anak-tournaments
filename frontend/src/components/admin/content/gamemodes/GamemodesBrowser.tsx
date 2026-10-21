@@ -1,12 +1,14 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useMemo } from "react";
 import { useTranslations } from "next-intl";
 
 import { DataTable } from "@/components/data-table";
 import { CatalogAliasesField, CatalogImageField, CatalogNameField } from "@/components/admin/CatalogFormFields";
 import { CatalogSyncDialog } from "@/components/admin/CatalogSyncDialog";
 import { CatalogToolbarActions } from "@/components/admin/CatalogToolbarActions";
+import { FilterBar } from "@/components/kit/FilterBar";
+import { useFilters } from "@/components/kit/useFilters";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 
@@ -19,7 +21,7 @@ import { catalogQueryKeys } from "@/lib/catalog/query-keys";
 import { catalogSort } from "@/lib/catalog/sort";
 import type { CatalogKindContext } from "@/app/admin/content/_components/ContentDiscipline";
 
-import { CatalogEntityDialogs } from "../shared";
+import { activeFilterDef, CatalogEntityDialogs } from "../shared";
 import { useGamemodeColumns } from "./useGamemodeColumns";
 
 interface ModeForm {
@@ -61,6 +63,10 @@ export function GamemodesBrowser({ descriptor, discipline, kind, kindLabel }: Re
   const { formData, setFormData } = crud;
   const sync = useCatalogSync(discipline);
 
+  const filterDefs = useMemo(() => [activeFilterDef(t)], [t]);
+  const filters = useFilters(filterDefs);
+  const activeFilter = String(filters.values.active ?? "");
+
   const columns = useGamemodeColumns({
     kindLabel,
     isSuperuser,
@@ -78,6 +84,7 @@ export function GamemodesBrowser({ descriptor, discipline, kind, kindLabel }: Re
             search,
             sort: catalogSort(sortField),
             order: sortDir,
+            ...(activeFilter && { active: activeFilter === "true" }),
           })
         }
         queryFn={(page, search, pageSize, sortField, sortDir) =>
@@ -87,10 +94,13 @@ export function GamemodesBrowser({ descriptor, discipline, kind, kindLabel }: Re
             search,
             sort: catalogSort(sortField),
             order: sortDir,
+            ...(activeFilter && { active: activeFilter === "true" }),
           })
         }
         columns={columns}
         searchPlaceholder={t("catalog.entity.search", { kind: kindLabel })}
+        filterKey={filters.filterKey}
+        toolbar={<FilterBar defs={filterDefs} filters={filters} />}
         emptyMessage={t("catalog.entity.empty", { kind: kindLabel })}
         onRowDoubleClick={isSuperuser ? (row) => crud.openEdit(row.original) : undefined}
         actions={

@@ -11048,7 +11048,8 @@
         "type": "Type",
         "includeResolved": "Include resolved",
         "class": "Class",
-        "mode": "Mode"
+        "mode": "Mode",
+        "status": "Status"
       },
       "fields": {
         "name": "Name",
