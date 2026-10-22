@@ -142,10 +142,10 @@ test("overwatch lifecycle: announcement → archived through the API", async ({ 
     const editor = pool[EDITOR];
     const mine = await editor.api.get<Registration>(`/api/v1/tournaments/${tid}/registration/me`);
     expect(mine.can_edit, "a pending entry on an editable form can be edited").toBe(true);
-    // Only the form's own keys: GET echoes server defaults (`reserve`) the form never asked, and PATCH refuses those.
+    // A read → modify → write round trip: GET echoes server-managed keys (`reserve`) the form never asked, and PATCH takes them back unchanged.
     const edited = await editor.api.patch<Registration>(`/api/v1/tournaments/${tid}/registration/me`, {
       form_version_id: versionId,
-      answers: { identity_battlenet: mine.answers.identity_battlenet, roles: [{ role: "support", is_primary: true }], stream_pov: true },
+      answers: { ...mine.answers, roles: [{ role: "support", is_primary: true }], stream_pov: true },
     });
     expect(edited.roles.map((r) => r.role.role)).toEqual(["support"]);
     expect(edited.answers.stream_pov).toBe(true);

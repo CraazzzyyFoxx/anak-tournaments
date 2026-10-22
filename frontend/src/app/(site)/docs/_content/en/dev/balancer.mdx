@@ -69,7 +69,7 @@ The round count is never submitted: it is derived from the roster shape as `team
 
 The clock is server-authoritative. A supervisor runs it, ownership of a session's clock is held by a distributed lock with a 10-second TTL renewed every 3 seconds, and the client only renders the deadline it is sent.
 
-A manual pick and an autopick are the same conditional `UPDATE`, guarded by both the on-clock state and the optimistic `version` token. Exactly one writer updates the row; the loser gets **409 `pick_already_resolved`**.
+A manual pick and an autopick are the same conditional `UPDATE`, guarded by both the on-clock state and the optimistic `version` token. Exactly one writer updates the row. The loser gets **409 `pick_already_resolved`** once the pick has left the clock, or **409 `draft_pick_stale_version`** while it is still on the clock but the board moved past the caller's `expected_version` — reload and try again.
 
 ```http
 POST /api/v1/balancer/draft/picks/981/select HTTP/1.1
