@@ -90,7 +90,7 @@ the pool stay editable.
 * `/balancer/mix/<id>/lobby/<A-F>`: the room — stage stepper with elapsed time, the teams with crowns and away badges,
   Ready controls (pager, Balance again, swap, Make captain, next map, Start match, Post to Discord), Live controls
   (Win team 1 / Draw / Win team 2, Cancel match), the player's own panel, and for hosts the pool (that lobby's rotation
-  hints) and voices. A room's history lists its own lobby's matches, and its map roll skips the maps that lobby played.
+  hints) and voices. A room's history lists its own lobby's matches; its map roll skips the maps played in any lobby.
   No chat yet: a room's chat arrives with the owner-aware encounter chat in П1.
 * The player's panel on a phone: own team with **You**, the captain, the next map and the team voice (Ready); place in
   the one waiting line of the mix and every lobby's stage (Waiting); **I'm back** (Away).

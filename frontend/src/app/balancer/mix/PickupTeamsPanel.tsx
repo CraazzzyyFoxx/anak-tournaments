@@ -80,8 +80,10 @@ type PickupTeamsPanelProps = {
   onCancelMatch: () => void;
   /** Omitted -- no "Make captain" on a seat. */
   onMakeCaptain?: (workspaceMemberId: number) => void;
-  /** The permanent record of every match this mix has played, every lobby, newest first. */
+  /** The history this panel lists, newest first: the room's own lobby, or every lobby on a one-lobby overview. */
   matches: CustomGameMatch[];
+  /** Every match this mix has played, every lobby: the map roll skips their maps, whichever lobby played them. */
+  mixMatches: CustomGameMatch[];
   /** The match whose undo is in flight, so only that row spins. */
   undoingMatchId?: number | null;
   /** Omitted -- the history renders read-only, matching a page that offers no undo. */
@@ -145,6 +147,7 @@ export function PickupTeamsPanel({
   onCancelMatch,
   onMakeCaptain,
   matches,
+  mixMatches,
   undoingMatchId = null,
   onUndoMatch,
   maps,
@@ -232,7 +235,7 @@ export function PickupTeamsPanel({
               <NextMapStrip
                 nextMapId={lobby?.next_map_id ?? null}
                 maps={maps}
-                matches={matches}
+                matches={mixMatches}
                 canWrite={reshape}
                 saving={settingNextMap}
                 capturing={capturing}

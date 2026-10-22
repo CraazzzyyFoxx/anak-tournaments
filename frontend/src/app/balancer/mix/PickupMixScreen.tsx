@@ -318,6 +318,7 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
         onRecordOutcome={(input) => recordOutcome.mutate(input)}
         maps={mapsQuery.data ?? []}
         matches={roomLobby == null ? matches : matches.filter((match) => match.lobby_index === roomLobby)}
+        mixMatches={matches}
         undoingMatchId={undoMatch.isPending ? (undoMatch.variables ?? null) : null}
         onUndoMatch={(matchId) => undoMatch.mutate(matchId)}
         settingNextMap={setNextMap.isPending}

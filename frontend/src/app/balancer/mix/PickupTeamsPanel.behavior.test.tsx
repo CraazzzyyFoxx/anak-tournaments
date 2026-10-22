@@ -262,6 +262,8 @@ type PanelOptions = {
   omitSwapSeats?: boolean;
   maps?: CatalogEntityRead[];
   matches?: CustomGameMatch[];
+  /** The whole mix's history, every lobby; defaults to `matches`, a one-lobby page's history. */
+  mixMatches?: CustomGameMatch[];
   undoingMatchId?: number | null;
   omitUndoMatch?: boolean;
   omitPostToDiscord?: boolean;
@@ -295,6 +297,7 @@ function panel(current: CustomGame | undefined, props: PanelOptions) {
       recordingOutcome={false}
       onRecordOutcome={onRecordOutcome}
       matches={props.matches ?? []}
+      mixMatches={props.mixMatches ?? props.matches ?? []}
       undoingMatchId={props.undoingMatchId ?? null}
       onUndoMatch={props.omitUndoMatch ? undefined : onUndoMatch}
       maps={props.maps ?? []}
@@ -618,6 +621,25 @@ describe("PickupTeamsPanel", () => {
     await click(byName(scope, "Roll"));
     // Hybrid has exactly one competitive map, so the roll is deterministic.
     expect(onNextMapChange).toHaveBeenCalledWith(5);
+  });
+
+  it("rolls past a map another lobby played while the mode still has an unplayed one", async () => {
+    // Always the first map of the pool: without the other lobby's history that is Ilios.
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    const twoLobbies = game({ lobby_count: 2, lobbies: [lobbyRow(), lobbyRow({ lobby_index: 1 })] });
+    // Lobby A played Ilios; lobby B's room lists none of A's matches, but its roll still skips Ilios.
+    const scope = await mount(twoLobbies, {
+      lobbyIndex: 1,
+      maps: CATALOGUE,
+      matches: [],
+      mixMatches: [match({ id: 12, lobby_index: 0, map_id: 6, map_name: "Ilios" })],
+    });
+
+    await click(byName(scope, "Control"));
+    await click(byName(scope, "Roll"));
+    random.mockRestore();
+
+    expect(onNextMapChange).toHaveBeenCalledWith(7);
   });
 
   it("hides the roll controls from a read-only viewer, and the whole strip until something is rolled", async () => {
