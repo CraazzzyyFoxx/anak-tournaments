@@ -75,33 +75,44 @@ services:
     healthcheck:
       timeout: 20s
 
+  # No `--reload`: it doesn't fire on this bind mount anyway (restart a service
+  # after a backend change), and its supervisor outlives an OOM-killed worker,
+  # leaving a "running" container with no consumer (every call 504s).
   app-svc:
     <<: *e2e-db
     environment: *e2e-env
+    command: faststream run serve:app
   identity-svc:
     <<: *e2e-db
     environment: *e2e-env
+    command: faststream run serve:app
     healthcheck: !override
       test: ["CMD", "true"]
       interval: 5s
   tournament-svc:
     <<: *e2e-db
     environment: *e2e-env
+    command: faststream run serve:app
   balancer-svc:
     <<: *e2e-db
     environment: *e2e-env
+    command: faststream run serve:app
   stats-svc:
     <<: *e2e-db
     environment: *e2e-env
+    command: faststream run serve_rpc:app
   stats-worker:
     <<: *e2e-db
     environment: *e2e-env
+    command: faststream run serve_worker:app
   analytics-svc:
     <<: *e2e-db
     environment: *e2e-env
+    command: faststream run serve_rpc:app
   stream-svc:
     <<: *e2e-db
     environment: *e2e-env
+    command: faststream run serve:app
 
   gateway:
     depends_on:
