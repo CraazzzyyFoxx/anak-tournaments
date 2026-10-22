@@ -1,13 +1,20 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { HydrationBoundary } from "@tanstack/react-query";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { HydrationBoundary, type DehydratedState } from "@tanstack/react-query";
 import { isValidElement, Suspense, type ReactElement } from "react";
 
 import { ApiError } from "@/lib/api/error";
+import { mapPoolConfigsQueryOptions } from "@/lib/tournament/map-pool-query";
+import { tournamentOverviewQueryOptions } from "@/lib/tournament/overview-query";
+import { tournamentRegistrationFormQueryOptions } from "@/lib/tournament/registrations-query";
+import pickBanService from "@/services/pickBan.service";
+import registrationService from "@/services/registration.service";
+import streamService from "@/services/stream.service";
 import tournamentService from "@/services/tournament.service";
 import type { Tournament } from "@/types/tournament.types";
 
 import TournamentOverviewBoundary from "./TournamentOverviewBoundary";
 import { TournamentShellSkeleton } from "./_components/TournamentSkeletons";
+import { tournamentStreamsQueryOptions } from "./_queries/tournamentStreams";
 
 vi.mock("next-intl/server", () => ({
   getTranslations: async () => (key: string) => key
@@ -81,8 +88,14 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+beforeEach(() => {
+  vi.spyOn(registrationService, "getForm").mockResolvedValue(null);
+  vi.spyOn(pickBanService, "listPublicConfigs").mockResolvedValue({ configs: [] });
+  vi.spyOn(streamService, "getTournamentStreams").mockResolvedValue({ official: [], participants: [] });
+});
+
 afterEach(() => {
-  (tournamentService.getPublicOverview as { mockRestore?: () => void }).mockRestore?.();
+  vi.restoreAllMocks();
 });
 
 describe("TournamentLayout streaming overview", () => {
@@ -177,7 +190,7 @@ describe("TournamentLayout streaming overview", () => {
     expect(result).toBe(shell);
   });
 
-  it("hydrates a successful overview after the boundary resolves", async () => {
+  it("hydrates a successful overview with every read the shell makes", async () => {
     const overviewSpy = vi.spyOn(tournamentService, "getPublicOverview").mockResolvedValue(
       overviewFixture
     );
@@ -188,6 +201,20 @@ describe("TournamentLayout streaming overview", () => {
     expect(isValidElement(result)).toBe(true);
     if (!isValidElement(result)) throw new Error("Expected a React element");
     expect(result.type).toBe(HydrationBoundary);
+    // An unseeded shell read is created empty before the tab below resolves,
+    // and fetched in the browser before that tab hydrates: the tab then renders
+    // data the server never had. A live tournament's shell reads all four.
+    const seeded = (result.props as { state: DehydratedState }).state.queries.map(
+      (query) => query.queryKey
+    );
+    expect(seeded).toEqual(
+      expect.arrayContaining([
+        tournamentOverviewQueryOptions("summer-clash").queryKey,
+        mapPoolConfigsQueryOptions(overviewFixture.id).queryKey,
+        tournamentRegistrationFormQueryOptions(overviewFixture).queryKey,
+        tournamentStreamsQueryOptions(overviewFixture.id).queryKey
+      ])
+    );
   });
 
   // The URL segment carries no format the layout itself must validate:

@@ -85,6 +85,11 @@ export default function TournamentRegisterButton({
     );
   }
 
+  // Who is asking is unknown until the profile resolves, and the server render
+  // and hydration always see "idle" — with the form seeded server-side, a
+  // signed-in viewer would otherwise be offered "Login to register" first.
+  if (authStatus === "idle" || authStatus === "loading") return null;
+
   if (myReg) {
     const statusMap: Record<string, { icon: typeof Clock; label: string; className: string }> = {
       pending: {

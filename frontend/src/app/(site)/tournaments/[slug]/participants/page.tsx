@@ -1,17 +1,15 @@
 import TournamentTabBoundary from "../_prefetch";
 import TournamentParticipantsPage from "@/app/(site)/tournaments/[slug]/_views/TournamentParticipantsPage";
-import {
-  tournamentRegistrationFormQueryOptions,
-  tournamentRegistrationsQueryOptions
-} from "@/lib/tournament/registrations-query";
+import { tournamentRegistrationsQueryOptions } from "@/lib/tournament/registrations-query";
 
 type TournamentParticipantsRoutePageProps = {
   params: Promise<{ slug: string }>;
 };
 
 /**
- * The roster and the form that names its columns — one is unreadable without
- * the other, so both are first paint. The viewer's OWN registration
+ * The roster is first paint. The form that names its columns is too, but the
+ * layout's overview boundary already seeds it for the shell's Register button
+ * — the key the table reads. The viewer's OWN registration
  * (`tournamentQueryKeys.registration`) is deliberately not prefetched: it is
  * per-account state behind the browser's session, and baking one visitor's
  * entry into a shared render is the one mistake this whole change must not
@@ -25,12 +23,9 @@ export default async function TournamentParticipantsRoutePage({
   return (
     <TournamentTabBoundary
       slug={slug}
-      prefetch={async (queryClient, overview) => {
-        await Promise.all([
-          queryClient.prefetchQuery(tournamentRegistrationsQueryOptions(overview)),
-          queryClient.prefetchQuery(tournamentRegistrationFormQueryOptions(overview))
-        ]);
-      }}
+      prefetch={(queryClient, overview) =>
+        queryClient.prefetchQuery(tournamentRegistrationsQueryOptions(overview))
+      }
     >
       {(overview) => <TournamentParticipantsPage key={overview.id} slug={slug} />}
     </TournamentTabBoundary>

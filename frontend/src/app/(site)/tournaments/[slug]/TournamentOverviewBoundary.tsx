@@ -3,7 +3,11 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { getTournamentOverviewState } from "./_data";
+import { tournamentStreamsQueryOptions } from "./_queries/tournamentStreams";
+import { mapPoolConfigsQueryOptions } from "@/lib/tournament/map-pool-query";
 import { tournamentOverviewQueryOptions } from "@/lib/tournament/overview-query";
+import { tournamentRegistrationFormQueryOptions } from "@/lib/tournament/registrations-query";
+import { areStreamsVisible, isTournamentStatusEnded } from "@/lib/tournament/status";
 
 type TournamentOverviewBoundaryProps = {
   slug: string;
@@ -19,6 +23,16 @@ type TournamentOverviewBoundaryProps = {
 // runs on the server. Every cache-missing first visit then streamed the
 // skeleton while the browser rendered the page: a hydration mismatch that
 // threw the shell away.
+//
+// The same holds for every OTHER read the shell makes, and those also reach
+// the tab below it, so the seed carries all of them (under the shell's own
+// gates). An unseeded shell read is created empty on the server before the tab
+// resolves — the tab's own prefetch of that key then never applies there —
+// and in the browser the shell fetches it before the tab hydrates (React
+// hydrates the tab's Suspense boundary in a later pass), so the tab renders
+// the data, or an "updating" badge, the server never had. Seeded and fresh,
+// the shell makes no first-visit fetch at all. Per-viewer reads (the viewer's
+// own registration) stay out: this render is not the viewer's.
 export default async function TournamentOverviewBoundary({
   slug,
   children
@@ -37,9 +51,23 @@ export default async function TournamentOverviewBoundary({
     return children;
   }
 
+  const overview = overviewState.overview;
   const queryClient = new QueryClient();
-  const overviewOptions = tournamentOverviewQueryOptions(slug);
-  queryClient.setQueryData(overviewOptions.queryKey, overviewState.overview);
+  queryClient.setQueryData(tournamentOverviewQueryOptions(slug).queryKey, overview);
+  // A failed read is just left out (`prefetchQuery` swallows it, `dehydrate`
+  // drops it) and the shell retries it client-side.
+  await Promise.all([
+    // The Maps tab's present-or-absent gate in the nav.
+    queryClient.prefetchQuery(mapPoolConfigsQueryOptions(overview.id)),
+    // TournamentRegisterButton, rendered until the tournament ends.
+    isTournamentStatusEnded(overview.status)
+      ? null
+      : queryClient.prefetchQuery(tournamentRegistrationFormQueryOptions(overview)),
+    // The broadcast dock and the Stream tab, read only while streams show.
+    areStreamsVisible(overview.status)
+      ? queryClient.prefetchQuery(tournamentStreamsQueryOptions(overview.id))
+      : null
+  ]);
 
   return <HydrationBoundary state={dehydrate(queryClient)}>{children}</HydrationBoundary>;
 }

@@ -95,7 +95,7 @@ export function collectPoolIds(configs: PickBanConfig[]): Set<number> {
 
 /**
  * Whether any map veto config names a map — the Maps tab's present-or-absent
- * gate. Same key the Maps route prefetches, so there it is already hydrated.
+ * gate. Seeded by the layout's overview boundary.
  */
 export function useTournamentHasMapPool(tournamentId: number | undefined): boolean {
   const { data } = useQuery({
