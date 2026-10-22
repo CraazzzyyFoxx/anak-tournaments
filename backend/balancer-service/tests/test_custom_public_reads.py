@@ -288,6 +288,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
                 team1_voice_channel_id=None,
                 team2_voice_channel_id=None,
                 live_encounter_id=900,
+                live_ban_preset="hero_classic",
                 balance_result_json=document,
             ),
             SimpleNamespace(
@@ -299,6 +300,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
                 team1_voice_channel_id=None,
                 team2_voice_channel_id=None,
                 live_encounter_id=None,
+                live_ban_preset=None,
                 balance_result_json=None,
             ),
         ]
@@ -378,11 +380,21 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
         self.assertEqual(0, data["lobbies"][1]["matches_count"])
         self.assertFalse(data["lobbies"][1]["lineup_recorded"])
         self.assertIsNotNone(data["lobbies"][0]["balance_result"])
-        # Derived on read, never stored: A has a match on the floor (its clock and its seats), B shows nothing.
+        # Derived on read, never stored: A has a match on the floor (its clock, its seats and the preset it started on,
+        # so a Live room still shows its bans), B shows nothing.
         self.assertEqual(
-            [("live", 900, started_at.isoformat(), [{"id": 51, "slot": 1, "name": "A"}]), ("idle", None, None, [])],
             [
-                (lobby["state"], lobby["live_encounter_id"], lobby["live_started_at"], lobby["live_seats"])
+                ("live", 900, started_at.isoformat(), [{"id": 51, "slot": 1, "name": "A"}], "hero_classic"),
+                ("idle", None, None, [], None),
+            ],
+            [
+                (
+                    lobby["state"],
+                    lobby["live_encounter_id"],
+                    lobby["live_started_at"],
+                    lobby["live_seats"],
+                    lobby["live_ban_preset"],
+                )
                 for lobby in data["lobbies"]
             ],
         )
@@ -429,6 +441,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
             team1_voice_channel_id=None,
             team2_voice_channel_id=None,
             live_encounter_id=None,
+            live_ban_preset=None,
             balance_result_json=stored,
         )
         service = MagicMock()

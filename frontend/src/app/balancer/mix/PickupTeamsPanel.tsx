@@ -29,6 +29,7 @@ import type { CatalogEntityRead } from "@/types/catalog.types";
 import { Spinner } from "@/components/ui/spinner";
 
 import { MixBanBoard } from "./_components/MixBanBoard";
+import { MixBanSummary } from "./_components/MixBanSummary";
 import { MatchHistoryList } from "./_components/MatchHistoryList";
 import { NextMapStrip } from "./_components/NextMapStrip";
 import { RoomStepper } from "./_components/RoomStepper";
@@ -310,6 +311,14 @@ export function PickupTeamsPanel({
           seats={lobby.live_seats ?? []}
           canHost={canWrite}
           onComplete={onBansComplete}
+        />
+      ) : null}
+      {/* The ban board unmounts once the bans settle; Live keeps what they settled until Record or Cancel match. */}
+      {live && game && lobby?.live_encounter_id != null && lobby.live_ban_preset != null ? (
+        <MixBanSummary
+          encounterId={lobby.live_encounter_id}
+          discipline={game.discipline}
+          seats={lobby.live_seats ?? []}
         />
       ) : null}
 

@@ -31,7 +31,8 @@
 //     away player is still seated), a live lineup is frozen to its result and
 //     Cancel match, and each team's captain wears the crown;
 // 12. with bans, Pre-game sits between Ready and Live: the ban board on the
-//     frozen lineup, and each recorded round lists its bans.
+//     frozen lineup, Live keeps what the bans settled, and each recorded
+//     round lists its bans.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -40,6 +41,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CustomGame, CustomGameLobby, CustomGameMatch, CustomGamePlayer } from "@/services/custom-game.service";
 import { catalogMap, catalogMode } from "@/test/catalog";
 import type { CatalogEntityRead } from "@/types/catalog.types";
+import type { PickBanEntry, PickBanState } from "@/types/tournament.types";
 
 import { PickupTeamsPanel } from "./PickupTeamsPanel";
 import { DEADLOCK_OWNER, LOL_OWNER, OW_OWNER } from "./mix-owner.fixture";
@@ -62,7 +64,11 @@ vi.mock("next-intl", () => ({
         const label = String(values?.label ?? "");
         return (
           ({ edit: `Edit ${label}`, save: `Save ${label}`, cancel: `Cancel ${label} edit` } as Record<string, string>)[key] ??
-          ({ editTeamName: "Edit team name", saveTeamName: "Save team name" } as Record<string, string>)[key] ??
+          ({
+            editTeamName: "Edit team name",
+            saveTeamName: "Save team name",
+            sideAssignment: `${String(values?.side)}: ${String(values?.team)}`,
+          } as Record<string, string>)[key] ??
           key
         );
       },
@@ -121,6 +127,9 @@ vi.mock("./_components/MixBanBoard", () => ({
     <div data-testid="ban-board">{`${encounterId}: ${seats.map((seat) => seat.name).join(" vs ")}`}</div>
   ),
 }));
+// The Live summary reads the settled ban room once: the bans and the starting sides.
+const getPickBanState = vi.hoisted(() => vi.fn());
+vi.mock("@/services/pickBan.service", () => ({ default: { getPickBanState } }));
 
 const onBalance = vi.fn();
 const onVariantIndexChange = vi.fn();
@@ -258,6 +267,36 @@ function player(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
 
 /** The lobby while its match is on. */
 const LIVE = { state: "live", live_encounter_id: 50, live_started_at: "2026-01-01T20:00:00Z" } as const;
+
+/** The live match's seats, slot 1 bans first. */
+const SEATS = [
+  { id: 71, slot: 1, name: "Team 2" },
+  { id: 72, slot: 2, name: "Team 1" },
+];
+
+/** One hero of the room's pool: banned by `teamId`, or still available without one. */
+function poolEntry(id: number, itemId: number, teamId: number | null, actionIndex: number | null): PickBanEntry {
+  return {
+    id,
+    item_id: itemId,
+    round: 1,
+    order: 0,
+    action_index: actionIndex,
+    picked_by_kind: teamId == null ? null : "team",
+    picked_by_team_id: teamId,
+    protected_by_kind: null,
+    protected_by_team_id: null,
+    status: teamId == null ? "available" : "banned",
+    carried_from_round: null,
+  };
+}
+
+/** The ban room once it completed: Genji (102) banned first by slot 1, then Ana (101) by slot 2; slot 1 on blue. */
+const SETTLED_ROOM = {
+  is_complete: true,
+  pool: [poolEntry(30, 101, 72, 1), poolEntry(31, 102, 71, 0), poolEntry(32, 103, null, null)],
+  starting_sides: [{ game_id: 900, position: 1, sides: { "71": "blue", "72": "red" } }],
+} as Partial<PickBanState> as PickBanState;
 
 // The history row paints the winning team's name in the full foreground tone and the other in the dim one.
 const WINNER_TONE = "text-[color:var(--aqt-fg)]";
@@ -1166,6 +1205,39 @@ describe("PickupTeamsPanel", () => {
       "state.ready",
       "state.live",
     ]);
+  });
+
+  it("keeps the settled bans and the starting sides on screen while the match is live", async () => {
+    getPickBanState.mockResolvedValue(SETTLED_ROOM);
+    const settled = lobbyRow({ ...LIVE, live_ban_preset: "lol_side_selection", live_seats: SEATS });
+    // A viewer too: spectating is public.
+    const scope = await mount(game({ discipline: "lol", lobbies: [settled] }), { canWrite: false, owner: LOL_OWNER });
+    await act(async () => {
+      await tick();
+    });
+
+    expect(scope.querySelector('[data-testid="ban-board"]')).toBeNull();
+    expect(scope.textContent).toContain("bansTitle");
+    const strip = scope.querySelector('[aria-label="bans"]');
+    expect([...(strip?.querySelectorAll("[title]") ?? [])].map((node) => node.getAttribute("title"))).toEqual([
+      "Genji",
+      "Ana",
+    ]);
+    expect(scope.textContent).toContain("blue: Team 2");
+    expect(scope.textContent).toContain("red: Team 1");
+  });
+
+  it("shows no ban summary for a live match that started without bans", async () => {
+    getPickBanState.mockResolvedValue(SETTLED_ROOM);
+    const scope = await mount(game({ lobbies: [lobbyRow({ ...LIVE, live_ban_preset: null, live_seats: SEATS })] }));
+    await act(async () => {
+      await tick();
+    });
+
+    expect(scope.textContent).toContain("state.live");
+    expect(scope.textContent).not.toContain("bansTitle");
+    expect(scope.querySelector('[aria-label="bans"]')).toBeNull();
+    expect(scope.textContent).not.toContain("blue: Team 2");
   });
 
   it("tells a viewer a live lineup is frozen, without handing them the result or Cancel match", async () => {

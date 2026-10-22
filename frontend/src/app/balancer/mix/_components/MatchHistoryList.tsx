@@ -155,22 +155,7 @@ function MatchHistoryRow({
           <span aria-hidden="true">&middot;</span>
           <span className="shrink-0">{formatRelative(format, match.recorded_at)}</span>
         </div>
-        {match.bans.length > 0 ? (
-          <div className="mt-1 flex flex-wrap items-center gap-1" aria-label={t("bans")}>
-            {match.bans.map((ban, index) => {
-              const hero = heroById.get(ban.item_id);
-              return (
-                <span key={`${ban.item_id}-${index}`} className="flex items-center gap-0.5">
-                  <StatusDot className={cn("inline-block", teamAccent(ban.slot - 1).bar)} />
-                  <CatalogEntityImage
-                    entity={{ name: hero?.name ?? `#${ban.item_id}`, image_path: hero?.image_path ?? null }}
-                    size={20}
-                  />
-                </span>
-              );
-            })}
-          </div>
-        ) : null}
+        {match.bans.length > 0 ? <HeroBanStrip bans={match.bans} heroById={heroById} className="mt-1" /> : null}
       </div>
       {canUndo ? (
         <>
@@ -207,5 +192,34 @@ function MatchHistoryRow({
         </>
       ) : null}
     </li>
+  );
+}
+
+/** Hero bans in the order they were made, each behind its team's dot: a recorded round's, or the live match's. */
+export function HeroBanStrip({
+  bans,
+  heroById,
+  className
+}: Readonly<{
+  bans: CustomGameMatch["bans"];
+  heroById: Map<number, CatalogEntityRead>;
+  className?: string;
+}>) {
+  const t = useTranslations("mixes.lobbies");
+  return (
+    <div className={cn("flex flex-wrap items-center gap-1", className)} aria-label={t("bans")}>
+      {bans.map((ban, index) => {
+        const hero = heroById.get(ban.item_id);
+        return (
+          <span key={`${ban.item_id}-${index}`} className="flex items-center gap-0.5">
+            <StatusDot className={cn("inline-block", teamAccent(ban.slot - 1).bar)} />
+            <CatalogEntityImage
+              entity={{ name: hero?.name ?? `#${ban.item_id}`, image_path: hero?.image_path ?? null }}
+              size={20}
+            />
+          </span>
+        );
+      })}
+    </div>
   );
 }

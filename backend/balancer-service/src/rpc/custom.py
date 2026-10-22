@@ -278,7 +278,8 @@ def _dump_lobby(
 
     ``balance_result`` is detail-only -- the solver document grows with every stored option and no list row renders
     it -- and so are ``state`` (``idle`` | ``ready`` | ``pregame`` | ``live``, spec §5, derived from that document and
-    the live match), ``live_started_at`` (the cards' elapsed clock), ``live_seats`` and ``opener_index``.
+    the live match), ``live_started_at`` (the cards' elapsed clock), ``live_seats``, ``live_ban_preset`` (the preset
+    the live match started on, so a Live room still shows its settled bans) and ``opener_index``.
     ``lineup_recorded`` is false while a balanced lineup has not been played: the UI asks for confirmation before
     anything that would overwrite it.
     """
@@ -311,6 +312,7 @@ def _dump_lobby(
         # The live match's seats as its ban room names them, and who bans first in the next one (spec §8.3).
         out["live_seats"] = live_seats or []
         out["opener_index"] = opener_index
+        out["live_ban_preset"] = lobby.live_ban_preset
     return out
 
 

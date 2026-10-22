@@ -161,6 +161,8 @@ export type CustomGameLobby = {
   live_started_at?: string | null;
   /** The live match's participations in slot order (slot 1 bans first). Detail reads only. */
   live_seats?: { id: number; slot: number; name: string }[];
+  /** The ban preset the live match started on (Start froze it); null without bans or a match. Detail reads only. */
+  live_ban_preset?: string | null;
   /** The lineup team (0/1) that bans first in the next match; null without bans. Detail reads only. */
   opener_index?: number | null;
 };
