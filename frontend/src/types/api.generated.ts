@@ -18880,6 +18880,8 @@ export interface components {
             revoked_by_organizer: boolean;
             /** Slot Code */
             slot_code: string;
+            /** State */
+            state: string;
             /**
              * Target Handle
              * @default null

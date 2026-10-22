@@ -51623,6 +51623,10 @@
           "title": "Slot Code",
           "type": "string"
         },
+        "state": {
+          "title": "State",
+          "type": "string"
+        },
         "target_handle": {
           "anyOf": [
             {
@@ -51639,7 +51643,8 @@
       "required": [
         "id",
         "slot_code",
-        "is_substitute"
+        "is_substitute",
+        "state"
       ],
       "title": "RegistrationTeamInviteHistoryEntry",
       "type": "object"
