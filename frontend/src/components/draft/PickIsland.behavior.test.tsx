@@ -574,8 +574,8 @@ describe("PickIsland in a one-role game", () => {
 
     expect(body.textContent).not.toContain("island.rolePriority");
     expect(body.textContent).not.toContain("Agent");
-    expect(body.querySelector('[aria-label^="island.tile.select"]')).toBeNull();
-    expect(body.querySelector('[aria-label^="island.action.pickPlayer"]')).not.toBeNull();
+    expect(body.querySelector('[aria-label^="island.tile.select:"]')).toBeNull();
+    expect(body.querySelector('[aria-label^="island.tile.selectPlayer"]')).not.toBeNull();
     expect(body.textContent).toContain('island.action.pickPlayer:{"player":"Ana#1234"}');
   });
 });

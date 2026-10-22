@@ -132,7 +132,7 @@ export function TeamRosters({
     { value: "follow", label: t("teams.chips.follow"), count: followCount, aria: t("teams.chips.followAria", { count: followCount }), role: null },
     ...roleCodes.map((role) => {
       const count = teamsNeedingRole(teamViews, role);
-      return { value: role, label: t("teams.chips.need"), count, aria: t("teams.chips.needAria", { role: slotLabel(role), count }), role };
+      return { value: role, label: t("teams.chips.need"), count, aria: t("teams.chips.needAria", { role, label: slotLabel(role), count }), role };
     })
   ];
 

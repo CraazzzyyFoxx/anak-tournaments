@@ -6178,7 +6178,7 @@
       }
     },
     "openProfile": "Open {player}'s profile",
-    "pickAs": "Pick {player} as {role}",
+    "pickAs": "Select {player} as {role}",
     "filterBySlot": "Show {role} players",
     "selectionTaken": "{player} was just drafted by another team, so your selection was cleared.",
     "overrideDisabled": "Admin overrides are disabled for this draft.",
@@ -6434,7 +6434,7 @@
         "follow": "Following",
         "followAria": "Teams I follow: {count}",
         "need": "Needs",
-        "needAria": "Needs {role, select, tank {a tank} damage {damage} support {a support} other {a player}}: {count}"
+        "needAria": "Needs {role, select, tank {a tank} damage {damage} support {a support} other {{label}}}: {count}"
       },
       "sort": {
         "label": "Sort teams",
@@ -6557,7 +6557,8 @@
       },
       "priorityTitle": "Priority {n} of {total}",
       "tile": {
-        "select": "Pick {player} as {role}",
+        "select": "Select {player} as {role}",
+        "selectPlayer": "Select {player}",
         "noSlot": "{team} has no slot for this role",
         "maps": "{n, plural, one {# map} other {# maps}}",
         "noMaps": "no maps",

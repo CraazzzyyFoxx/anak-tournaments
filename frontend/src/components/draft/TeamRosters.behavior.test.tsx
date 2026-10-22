@@ -215,8 +215,8 @@ describe("roster cells", () => {
 
     expect(html).toContain('title="flex" class="flex justify-center" style="grid-column:span 2"');
     expect(html).toContain("repeat(5, minmax(0,1fr))");
-    expect(html).toContain("teams.chips.needAria:{&quot;role&quot;:&quot;Tank&quot;");
-    expect(html).toContain("teams.chips.needAria:{&quot;role&quot;:&quot;Damage&quot;");
+    expect(html).toContain("teams.chips.needAria:{&quot;role&quot;:&quot;tank&quot;,&quot;label&quot;:&quot;Tank&quot;");
+    expect(html).toContain("teams.chips.needAria:{&quot;role&quot;:&quot;damage&quot;,&quot;label&quot;:&quot;Damage&quot;");
     expect(html).not.toContain("&quot;role&quot;:&quot;support&quot;");
   });
 

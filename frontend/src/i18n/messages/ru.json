@@ -6178,7 +6178,7 @@
       }
     },
     "openProfile": "Открыть профиль {player}",
-    "pickAs": "Взять {player} на роль {role}",
+    "pickAs": "Выбрать {player} на роль «{role}»",
     "filterBySlot": "Показать игроков на роль {role}",
     "selectionTaken": "{player} только что ушёл в другую команду, поэтому выбор сброшен.",
     "overrideDisabled": "Ручная замена пика выключена для этого драфта.",
@@ -6434,7 +6434,7 @@
         "follow": "Слежу",
         "followAria": "Команды, за которыми я слежу: {count}",
         "need": "Нужен",
-        "needAria": "Нужен {role, select, tank {танк} damage {дамаг} support {саппорт} other {игрок}}: {count}"
+        "needAria": "Нужен {role, select, tank {танк} damage {дамаг} support {саппорт} other {{label}}}: {count}"
       },
       "sort": {
         "label": "Сортировка команд",
@@ -6558,6 +6558,7 @@
       "priorityTitle": "Приоритет {n} из {total}",
       "tile": {
         "select": "Выбрать {player} на роль «{role}»",
+        "selectPlayer": "Выбрать {player}",
         "noSlot": "у {team} нет слота на эту роль",
         "maps": "{n, plural, one {# карта} few {# карты} many {# карт} other {# карты}}",
         "noMaps": "нет карт",

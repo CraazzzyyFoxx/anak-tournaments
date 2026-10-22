@@ -252,7 +252,7 @@ export function RoleTiles({
             aria-label={
               named
                 ? t("island.tile.select", { player: displayName, role: roleLabel })
-                : t("island.action.pickPlayer", { player: displayName })
+                : t("island.tile.selectPlayer", { player: displayName })
             }
             title={title}
             onClick={() => {

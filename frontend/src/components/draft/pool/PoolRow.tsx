@@ -500,7 +500,7 @@ function RoleCell({
 
   return (
     <RowButton
-      aria-label={named ? t("pickAs", { player: name, role: roleLabel }) : t("island.action.pickPlayer", { player: name })}
+      aria-label={named ? t("pickAs", { player: name, role: roleLabel }) : t("island.tile.selectPlayer", { player: name })}
       aria-pressed={on}
       // aria-disabled, not `disabled`: the reason stays reachable and announced.
       aria-disabled={!usable || undefined}
