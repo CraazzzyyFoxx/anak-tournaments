@@ -6,9 +6,27 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
+from aiobotocore.config import AioConfig
 from aiobotocore.session import AioSession, get_session
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, HTTPClientError
+from botocore.exceptions import ConnectionError as BotoConnectionError
 from loguru import logger
+
+from shared.core.errors import ApiExc, ApiHTTPException
+
+#: An unreachable endpoint fails in seconds. botocore's defaults (60 s connect and
+#: read, five legacy-mode attempts) held an upload for ~50 s before a bare 500.
+_CONFIG = AioConfig(connect_timeout=3, read_timeout=30, retries={"total_max_attempts": 2, "mode": "standard"})
+
+
+class StorageUnavailableError(ApiHTTPException):
+    """The object store could not be reached (DNS, refused, timeout): 503 ``storage_unavailable``."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=503,
+            detail=[ApiExc(msg="File storage is unavailable. Try again in a few minutes.", code="storage_unavailable")],
+        )
 
 
 def _add_content_md5(request: Any, **_kwargs: Any) -> None:
@@ -94,9 +112,12 @@ class S3Client:
     async def _client(self) -> AsyncIterator:
         if self._session is None:
             raise RuntimeError("S3Client not started. Call await client.start() first.")
-        async with self._session.create_client("s3", **self._config) as client:
+        async with self._session.create_client("s3", config=_CONFIG, **self._config) as client:
             client.meta.events.register_first("before-sign.s3.DeleteObjects", _add_content_md5)
-            yield client
+            try:
+                yield client
+            except (BotoConnectionError, HTTPClientError) as exc:
+                raise StorageUnavailableError() from exc
 
     # ── Core operations ──────────────────────────────────────────────────
 

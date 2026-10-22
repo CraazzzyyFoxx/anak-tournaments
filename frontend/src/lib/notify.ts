@@ -23,14 +23,16 @@ export const notify = {
 
   /**
    * Show an error toast for any thrown value (ApiError / Error / unknown).
-   * Pass `title` to override the derived heading; other options pass through to Sonner.
+   * Pass `title` to override the derived heading; the server's reason then moves to the
+   * description instead of being dropped. Other options pass through to Sonner.
    */
   apiError: (error: unknown, options?: { title?: string } & ExternalToast) => {
     const described = describeApiError(error);
     const { title, ...rest } = options ?? {};
+    const reason = title && title !== described.title ? described.title : undefined;
     return sonnerToast.error(title ?? described.title, {
       duration: Infinity,
-      description: described.description,
+      description: described.description ?? reason,
       ...rest
     });
   }

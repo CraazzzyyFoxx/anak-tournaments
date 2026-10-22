@@ -1,4 +1,4 @@
-from .client import S3Client
+from .client import S3Client, StorageUnavailableError
 from .types import UploadResult
 from .upload import (
     ALLOWED_IMAGE_TYPES,
@@ -13,6 +13,7 @@ from .upload import (
 
 __all__ = [
     "S3Client",
+    "StorageUnavailableError",
     "UploadResult",
     "ALLOWED_IMAGE_TYPES",
     "MAX_ASSET_SIZE",
