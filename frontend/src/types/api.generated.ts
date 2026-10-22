@@ -4041,7 +4041,7 @@ export interface paths {
         };
         /**
          * Search users
-         * @description Permission: public; no authentication required. Returns players whose public game handle (any game's identity provider) matches a free-text query.
+         * @description Permission: public; no authentication required. Returns players whose profile name, or a game, Discord or Twitch handle shown on their public profile, matches a free-text query.
          *
          *     RPC subject: `rpc.app.users.search`
          */

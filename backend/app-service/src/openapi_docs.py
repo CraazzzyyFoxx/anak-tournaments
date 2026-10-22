@@ -146,7 +146,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.users.search": {
         "summary": "Search users",
-        "description": "Permission: public; no authentication required. Returns players whose public game handle (any game's identity provider) matches a free-text query.",
+        "description": "Permission: public; no authentication required. Returns players whose profile name, or a game, Discord or Twitch handle shown on their public profile, matches a free-text query.",
     },
     "rpc.app.users.overview": {
         "summary": "Users overview",

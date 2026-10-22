@@ -70,11 +70,11 @@ class RiotSearchResolutionTests(IsolatedAsyncioTestCase):
         await social_identity_service.upsert(self.session, user_id=owner.id, provider="riot", username=handle)
 
         found = await users.search_by_name(self.session, f"Mid-Lane {marker}")
-        assert [row.id for row in found] == [owner.id]
-        assert found[0].name == owner.name
+        # `other` matches by its own profile name; the Riot handle finds `owner`, shown under owner's name.
+        assert {row.id: row.name for row in found} == {owner.id: owner.name, other.id: other.name}
 
         # What the profile route does with the selected result: slug -> by_name.
-        slug = found[0].name.replace("#", "-")
+        slug = owner.name.replace("#", "-")
         reply = await self._by_name(slug)
         assert reply["ok"], reply
         assert reply["data"]["id"] == owner.id
@@ -86,6 +86,33 @@ class RiotSearchResolutionTests(IsolatedAsyncioTestCase):
         reply = await self._by_name(hyphenated.name.replace("#", "-"))
         assert reply["ok"], reply
         assert reply["data"]["id"] == hyphenated.id
+
+    async def test_search_reaches_profile_name_and_public_discord_and_twitch(self) -> None:
+        marker = uuid4().hex[:6]
+        player = models.User(name=f"Canon{marker}#1111")
+        self.session.add(player)
+        await self.session.flush()
+        for provider, handle in (("discord", f"disc{marker}"), ("twitch", f"twch{marker}")):
+            await social_identity_service.upsert(self.session, user_id=player.id, provider=provider, username=handle)
+        # Own marker: sharing the visible handles' marker would trigram-match them and find the player anyway.
+        unlisted = uuid4().hex[:8]
+        await social_identity_service.upsert(
+            self.session, user_id=player.id, provider="boosty", username=f"bst{unlisted}"
+        )
+        await social_identity_service.upsert(
+            self.session,
+            user_id=player.id,
+            provider="discord",
+            username=f"hid{unlisted}",
+            ensure_global_visibility=False,
+        )
+
+        for query in (f"Canon{marker}", f"disc{marker}", f"twch{marker}"):
+            found = await users.search_by_name(self.session, query)
+            assert [(row.id, row.name) for row in found] == [(player.id, player.name)], query
+        # Other socials, and accounts hidden from the profile, stay out of search.
+        for query in (f"bst{unlisted}", f"hid{unlisted}"):
+            assert await users.search_by_name(self.session, query) == [], query
 
     async def test_canonical_name_wins_over_a_game_handle_and_handles_only_back_old_links(self) -> None:
         marker = uuid4().hex[:6]

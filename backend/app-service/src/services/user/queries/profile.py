@@ -25,6 +25,9 @@ from ._scope import (
     user_entities,
 )
 
+#: Providers whose publicly visible handles find a player in the autocomplete, besides the profile name.
+_SEARCH_PROVIDERS: typing.Final = (*GAME_PROVIDERS, SocialProvider.DISCORD, SocialProvider.TWITCH)
+
 
 class UserProfileQueries(DisciplineQueries):
     """Single-user reads: identity lookups, tournaments, roles and hero statistics."""
@@ -52,53 +55,59 @@ class UserProfileQueries(DisciplineQueries):
         result_total = await session.execute(total_query)
         return result.unique().scalars().all(), result_total.scalar_one()
 
-    async def search_by_name(self, session: AsyncSession, query: str) -> typing.Sequence[models.SocialAccount]:
-        """Search game-provider ``social_account`` rows by handle (autocomplete).
+    async def search_by_name(self, session: AsyncSession, query: str) -> typing.Sequence[sa.Row[tuple[int, str]]]:
+        """Players matching ``query`` (autocomplete) as ``(id, name)`` rows, one per player.
 
-        Always on the unified ``social_account.username`` of every game identity provider.
-        Returns up to 10 matches ranked by exact / prefix / trigram similarity.
+        Matches the canonical ``players.user.name`` and the handle of every publicly visible game,
+        Discord or Twitch account. Returns up to 10 players ranked by their best exact / prefix /
+        trigram-similarity match.
         """
         query = query.strip().replace("-", "#")
         if not query or len(query) < 2:
             return []
 
-        column = models.SocialAccount.username
+        account = models.SocialAccount
+        handles = sa.union_all(
+            sa.select(models.User.id.label("user_id"), models.User.name.label("handle")),
+            sa.select(account.user_id, account.username).where(
+                account.provider.in_(_SEARCH_PROVIDERS),
+                # Accounts hidden from the public profile (no global visibility row)
+                # must not surface in search either.
+                sa.select(models.SocialAccountVisibility.id)
+                .where(
+                    models.SocialAccountVisibility.account_id == account.id,
+                    models.SocialAccountVisibility.workspace_id.is_(None),
+                )
+                .exists(),
+            ),
+        ).subquery()
+
+        column = handles.c.handle
         like_query = f"{query}%" if len(query) < 3 else f"%{query}%"
         query_lower = query.lower()
-
-        exact_score = sa.case((sa.func.lower(column) == query_lower, 0), else_=1)
-        prefix_score = sa.case((sa.func.lower(column).like(f"{query_lower}%"), 0), else_=1)
-        similarity_score = sa.func.word_similarity(column, query)
 
         conditions = [column.ilike(like_query)]
         if len(query) >= 3:
             conditions.append(column.op("%")(query))
 
+        best = (
+            sa.select(
+                handles.c.user_id,
+                sa.func.min(sa.case((sa.func.lower(column) == query_lower, 0), else_=1)).label("exact"),
+                sa.func.min(sa.case((sa.func.lower(column).like(f"{query_lower}%"), 0), else_=1)).label("prefix"),
+                sa.func.max(sa.func.word_similarity(column, query)).label("similarity"),
+            )
+            .where(sa.or_(*conditions))
+            .group_by(handles.c.user_id)
+            .subquery()
+        )
         stmt = (
-            sa.select(models.SocialAccount)
-            .options(selectinload(models.SocialAccount.user))
-            .where(
-                models.SocialAccount.provider.in_(GAME_PROVIDERS),
-                sa.or_(*conditions),
-                # Accounts hidden from the public profile (no global visibility row)
-                # must not surface in search either.
-                sa.select(models.SocialAccountVisibility.id)
-                .where(
-                    models.SocialAccountVisibility.account_id == models.SocialAccount.id,
-                    models.SocialAccountVisibility.workspace_id.is_(None),
-                )
-                .exists(),
-            )
-            .order_by(
-                exact_score.asc(),
-                prefix_score.asc(),
-                similarity_score.desc(),
-                column.asc(),
-            )
+            sa.select(models.User.id, models.User.name)
+            .join(best, best.c.user_id == models.User.id)
+            .order_by(best.c.exact, best.c.prefix, best.c.similarity.desc(), models.User.name)
             .limit(10)
         )
-        result = await session.scalars(stmt)
-        return result.unique().all()
+        return (await session.execute(stmt)).all()
 
     async def find_by_battle_tag(
         self, session: AsyncSession, battle_tag: str, entities: list[str]

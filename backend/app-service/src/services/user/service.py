@@ -1052,17 +1052,14 @@ class UserService(DisciplineQueries):
         )
 
     async def search_by_name(self, session: AsyncSession, name: str) -> list[schemas.UserSearch]:
-        """Game-handle autocomplete matches (any game identity provider) as ``UserSearch`` rows.
+        """Player autocomplete matches (profile name, game, Discord or Twitch handle) as ``UserSearch`` rows.
 
         ``name`` is the player's canonical, unique ``players.user.name`` -- what ``users.by_name`` resolves a
         profile slug by -- not the matched account's handle, which another player's name could collide with.
         Several matching accounts of one player collapse into one row.
         """
-        accounts = await self.profile.search_by_name(session, name)
-        seen: dict[int, schemas.UserSearch] = {}
-        for account in accounts:
-            seen.setdefault(account.user_id, schemas.UserSearch(id=account.user_id, name=account.user.name))
-        return list(seen.values())
+        rows = await self.profile.search_by_name(session, name)
+        return [schemas.UserSearch(id=user_id, name=user_name) for user_id, user_name in rows]
 
     async def get_read(self, session: AsyncSession, user_id: int, entities: list[str]) -> schemas.UserRead:
         """A user by ID as ``UserRead``, with ``entities`` eager-loaded."""
