@@ -159,6 +159,18 @@ async def _get_draft_session_workspace_id(session: AsyncSession, session_id: int
     return int(workspace_id)
 
 
+async def _get_tournament_draft_session_workspace_id(session: AsyncSession, tournament_id: int, session_id: int) -> int:
+    """The workspace of a session addressed under a tournament, 404 unless it is that tournament's.
+
+    The organizer routes name both ids. Authorizing on the tournament alone let a
+    holder of one workspace's grant act on any other workspace's session.
+    """
+    workspace_id = await _drafts.get_workspace_id_in_tournament(session, session_id, tournament_id=tournament_id)
+    if workspace_id is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft session not found")
+    return int(workspace_id)
+
+
 async def _get_pick_workspace_id(session: AsyncSession, pick_id: int) -> int:
     workspace_id = await _draft_picks.get_workspace_id(session, pick_id)
     if workspace_id is None:

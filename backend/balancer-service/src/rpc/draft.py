@@ -36,6 +36,7 @@ from src.core import db
 from src.core.auth import (
     _get_draft_session_workspace_id,
     _get_pick_workspace_id,
+    _get_tournament_draft_session_workspace_id,
     _get_tournament_workspace_id,
 )
 from src.core.config import config
@@ -313,8 +314,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             session_id = c.require_id(data)
-            tournament_id = c.path_int(data, "tournament_id")
-            ws_id = await _get_tournament_workspace_id(session, tournament_id)
+            ws_id = await _get_tournament_draft_session_workspace_id(
+                session, c.path_int(data, "tournament_id"), session_id
+            )
             ensure_workspace_permission(user, ws_id, "team", "create")
             payload = schemas.DraftSeedRequest.model_validate(c.payload(data))
             response = await lifecycle_service.seed_or_preview(session, session_id, payload, actor_user_id=user.id)
@@ -329,8 +331,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             session_id = c.require_id(data)
-            tournament_id = c.path_int(data, "tournament_id")
-            ws_id = await _get_tournament_workspace_id(session, tournament_id)
+            ws_id = await _get_tournament_draft_session_workspace_id(
+                session, c.path_int(data, "tournament_id"), session_id
+            )
             ensure_workspace_permission(user, ws_id, "team", "create")
             payload = schemas.DraftSessionPatchRequest.model_validate(c.payload(data))
             draft = await lifecycle_service.patch_session(session, session_id, payload, actor_user_id=user.id)
@@ -348,8 +351,9 @@ def register(broker: Any, logger: Any) -> None:
             async def op(session: Any) -> Any:
                 user = c.active_actor(data)
                 session_id = c.require_id(data)
-                tournament_id = c.path_int(data, "tournament_id")
-                ws_id = await _get_tournament_workspace_id(session, tournament_id)
+                ws_id = await _get_tournament_draft_session_workspace_id(
+                    session, c.path_int(data, "tournament_id"), session_id
+                )
                 ensure_workspace_permission(user, ws_id, "team", "create")
                 # Only ``start`` has a phase gate, and only a superuser may skip it.
                 extra = {"force": bool(user.is_superuser)} if superuser_forces else {}
@@ -400,7 +404,7 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             session_id = c.require_id(data)
             tournament_id = c.path_int(data, "tournament_id")
-            ws_id = await _get_tournament_workspace_id(session, tournament_id)
+            ws_id = await _get_tournament_draft_session_workspace_id(session, tournament_id, session_id)
             ensure_workspace_permission(user, ws_id, "team", "create")
             await lifecycle_service.delete_for_tournament(
                 session, session_id, tournament_id=tournament_id, actor_user_id=user.id
@@ -415,8 +419,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             session_id = c.require_id(data)
-            tournament_id = c.path_int(data, "tournament_id")
-            ws_id = await _get_tournament_workspace_id(session, tournament_id)
+            ws_id = await _get_tournament_draft_session_workspace_id(
+                session, c.path_int(data, "tournament_id"), session_id
+            )
             ensure_workspace_permission(user, ws_id, "team", "create")
             draft = await lifecycle_service.get_session(session, session_id)
             updated, _removed, _imported, advisories = await export_service.export(
@@ -433,8 +438,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             session_id = c.require_id(data)
-            tournament_id = c.path_int(data, "tournament_id")
-            ws_id = await _get_tournament_workspace_id(session, tournament_id)
+            ws_id = await _get_tournament_draft_session_workspace_id(
+                session, c.path_int(data, "tournament_id"), session_id
+            )
             ensure_workspace_permission(user, ws_id, "team", "create")
             draft = await lifecycle_service.get_session(session, session_id)
             updated = await export_service.export_ranks(session, draft)

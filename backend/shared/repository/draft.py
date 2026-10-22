@@ -75,6 +75,12 @@ class DraftSessionRepository(BaseRepository[models.DraftSession]):
     async def get_workspace_id(self, session: AsyncSession, id: int) -> int | None:
         return await session.scalar(sa.select(self.model.workspace_id).where(self.model.id == id))
 
+    async def get_workspace_id_in_tournament(self, session: AsyncSession, id: int, *, tournament_id: int) -> int | None:
+        """The session's workspace, or ``None`` unless the session exists AND belongs to ``tournament_id``."""
+        return await session.scalar(
+            sa.select(self.model.workspace_id).where(self.model.id == id, self.model.tournament_id == tournament_id)
+        )
+
     async def seed_row_counts(self, session: AsyncSession, session_id: int) -> tuple[int, int, int]:
         """``(teams, players, picks)`` row counts of a session, as three scalar subqueries in one round trip."""
         row = (

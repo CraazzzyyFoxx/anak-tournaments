@@ -1421,6 +1421,68 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
         denied = await broker.handlers["rpc.balancer.draft.queue_set"]({**reader, "payload": {"player_ids": []}}, None)
         self.assertEqual(denied["error"]["code"], "forbidden")
 
+    async def test_tournament_routes_refuse_a_session_of_another_tournament(self) -> None:
+        # An organizer of THIS workspace names their own tournament in the path
+        # and a session of a tournament in a workspace they hold nothing in.
+        broker = _CapturingBroker()
+        draft_rpc.register(broker, _LoudLogger())
+        async with self.Session() as s:
+            other_ws = Workspace(slug=f"ws-other-{self._suffix}", name=f"WS other {self._suffix}")
+            s.add(other_ws)
+            await s.flush()
+            other = Tournament(
+                workspace_id=other_ws.id, name=f"T other {self._suffix}", slug=f"t-other-{self._suffix}", status="draft"
+            )
+            s.add(other)
+            await s.flush()
+            foreign = await lifecycle.lifecycle_service.create_session(
+                s, tournament_id=other.id, workspace_id=other_ws.id, shape=_SHAPE
+            )
+            await s.commit()
+            foreign_id, other_id, other_ws_id = foreign.id, other.id, other_ws.id
+
+        async def _cleanup() -> None:
+            async with self.Session() as s:
+                await s.execute(
+                    sa.delete(lifecycle.DraftSession).where(lifecycle.DraftSession.tournament_id == other_id)
+                )
+                await s.execute(sa.delete(WorkspaceEvent).where(WorkspaceEvent.tournament_id == other_id))
+                await s.execute(sa.delete(Tournament).where(Tournament.id == other_id))
+                await s.execute(sa.delete(Workspace).where(Workspace.id == other_ws_id))
+                await s.commit()
+
+        self.addAsyncCleanup(_cleanup)
+
+        base = {
+            "id": foreign_id,
+            "tournament_id": self.tournament_id,
+            "identity": _identity(1, self.workspace_id, ["read", "create"]),
+        }
+        payloads = {
+            "rpc.balancer.draft.session_patch": {"pick_time_seconds": 99},
+            "rpc.balancer.draft.seed": {"pool_captains": [{"registration_id": 1}], "preview_only": True},
+        }
+        for verb in (
+            "session_patch",
+            "seed",
+            "start",
+            "pause",
+            "resume",
+            "cancel",
+            "rollback",
+            "export",
+            "export_ranks",
+            "session_delete",
+        ):
+            subject = f"rpc.balancer.draft.{verb}"
+            result = await broker.handlers[subject]({**base, "payload": payloads.get(subject, {})}, None)
+            self.assertFalse(result["ok"], subject)
+            self.assertEqual(result["error"]["code"], "not_found", subject)
+
+        async with self.Session() as s:
+            untouched = await s.get(lifecycle.DraftSession, foreign_id)
+            self.assertEqual((untouched.status, untouched.pick_time_seconds), (DraftStatus.SETUP.value, 45))
+
     async def test_all_role_input_boundaries_reject_foreign_dimensions_and_sub_roles(self) -> None:
         broker = _CapturingBroker()
         draft_rpc.register(broker, _LoudLogger())
