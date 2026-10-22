@@ -26,12 +26,14 @@ from sqlalchemy.orm import selectinload
 
 from shared import models
 from shared.core import http_status as status
+from shared.core.errors import ApiExc, ApiHTTPException
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import normalize_social_handle
 from shared.messaging.config import WORKSPACE_MEMBER_CHANGED_QUEUE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.models.mix import CustomGameRoundMember
 from shared.repository import SocialAccountRepository, UserMergeAuditRepository, get_or_create_workspace_member
+from shared.repository.draft import ACTIVE_DRAFT_STATUSES
 from shared.repository.stats import StatsMatchRepository
 from shared.schemas.events import WorkspaceMemberChangedEvent
 from shared.schemas.user_merge_auth import AuthMergeResult
@@ -263,6 +265,19 @@ class UserMergeService:
             )
             if preview.conflicts.stats_member_history_conflicts:
                 raise HTTPException(status_code=409, detail="stats_member_history_conflict")
+            if running := await self._running_draft_seat_conflicts(
+                session, request.source_user_id, request.target_user_id
+            ):
+                raise ApiHTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=[
+                        ApiExc(
+                            code="merge_draft_seat_conflict",
+                            msg=f"Both players hold a seat in running draft session(s) {running}: the merge would "
+                            "make one person two seats there. Cancel the draft or remove one seat, then merge.",
+                        )
+                    ],
+                )
             if preview.preview_fingerprint != request.preview_fingerprint:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -808,6 +823,35 @@ class UserMergeService:
         await stream.close()
         return captures
 
+    async def _running_draft_seat_conflicts(self, session: AsyncSession, source_id: int, target_id: int) -> list[int]:
+        """Draft sessions still running (setup to paused) that seat both players.
+
+        ``_move_source_members`` moves the source's seats onto the survivor's member, so there they would become one
+        person with two usable seats. A finished draft's two seats are history and move as they are.
+        """
+        source_seat = sa.orm.aliased(models.DraftPlayer)
+        target_seat = sa.orm.aliased(models.DraftPlayer)
+        source_member = sa.orm.aliased(models.WorkspaceMember)
+        target_member = sa.orm.aliased(models.WorkspaceMember)
+        return list(
+            (
+                await session.scalars(
+                    select(models.DraftSession.id)
+                    .join(source_seat, source_seat.session_id == models.DraftSession.id)
+                    .join(source_member, source_member.id == source_seat.workspace_member_id)
+                    .join(target_seat, target_seat.session_id == models.DraftSession.id)
+                    .join(target_member, target_member.id == target_seat.workspace_member_id)
+                    .where(
+                        source_member.player_id == source_id,
+                        target_member.player_id == target_id,
+                        models.DraftSession.status.in_(ACTIVE_DRAFT_STATUSES),
+                    )
+                    .distinct()
+                    .order_by(models.DraftSession.id)
+                )
+            ).all()
+        )
+
     async def _move_source_members(self, session: AsyncSession, *, source_user_id: int, target_user_id: int) -> None:
         """Hand the source player's ``workspace_member`` rows to the survivor.
 
@@ -924,7 +968,8 @@ class UserMergeService:
                 .values(workspace_member_id=target_member_id)
                 .execution_options(synchronize_session=False)
             )
-            # Draft seats hang on the member the same way; a seat is moved, never dropped, because picks name it.
+            # Draft seats hang on the member the same way; a seat is moved, never dropped, because picks name it. Two
+            # seats of one person in a running draft were refused up front (``_running_draft_seat_conflicts``).
             await session.execute(
                 sa.update(models.DraftPlayer)
                 .where(models.DraftPlayer.workspace_member_id == source_member_id)
