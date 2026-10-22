@@ -468,9 +468,18 @@ def apply_pins(
     shared a computed place keep sharing it -- a playoff's "5th-8th" stays one
     place, under the first free seat of the run. An unpinned, unranked team stays
     at 0 and takes no seat. With no pins this returns ``ranked`` unchanged.
+
+    A bracket mid-way ranks only the teams it eliminated, from the bottom up: the
+    seats above its first ranked place are held for the teams still alive, so a
+    semi loser keeps 3rd while the final is unplayed instead of closing up to 1st.
     """
     table_pins = {team_id: pins[team_id] for team_id, _position in ranked if team_id in pins}
     free = [(team_id, position) for team_id, position in ranked if team_id not in table_pins and position > 0]
+    first = min((position for _team_id, position in ranked if position > 0), default=1)
+    # A pinned team still alive already takes one of the held seats.
+    alive_pinned = sum(1 for team_id, position in ranked if team_id in table_pins and position <= 0)
+    held: list[tuple[int | None, int]] = [(None, place) for place in range(1, first - alive_pinned)]
+    free = held + free
     size = len(table_pins) + len(free)
     seats = _pin_seats(table_pins, size)
 
@@ -484,7 +493,8 @@ def apply_pins(
             continue
         team_id, computed = next(upcoming)
         position = previous[1] if previous is not None and previous[0] == computed else place
-        output.append((team_id, position, False))
+        if team_id is not None:
+            output.append((team_id, position, False))
         previous = (computed, position)
     output.extend((team_id, 0, False) for team_id, position in ranked if team_id not in table_pins and position <= 0)
     return output
@@ -638,7 +648,9 @@ def prepare_teams_for_playoffs_double_elimination(
             data[loser]["lose"] += 1
 
     lower_bracket_games: dict[int, list[StageEncounter]] = {}
-    global_placement = len(participants)
+    # Every team of the bracket, not just those that finished a match: a lower
+    # seed can be knocked out before an upper one has played.
+    global_placement = len(_participants(encounters))
 
     for encounter in [encounter for encounter in completed_encounters if encounter.round < 0]:
         lower_bracket_games.setdefault(encounter.round, []).append(encounter)
@@ -714,12 +726,14 @@ def prepare_teams_for_playoffs_single_elimination(
         if match_round is not None and data[team_id]["placement"] not in (1, 2):
             round_losers[match_round].append(team_id)
 
-    current_place = 3
-    for match_round in sorted(round_losers.keys(), reverse=True):
-        losers_in_round = round_losers[match_round]
-        for team_id in losers_in_round:
-            data[team_id]["placement"] = current_place
-        current_place += len(losers_in_round)
+    # Placed from the bottom, the way the bracket eliminates: a round's losers
+    # share the best place none of the teams still alive can take. Counting down
+    # from 3rd made quarter-final losers 3rd while the semis were unplayed.
+    place = len(_participants(encounters)) + 1
+    for match_round in sorted(round_losers):
+        place -= len(round_losers[match_round])
+        for team_id in round_losers[match_round]:
+            data[team_id]["placement"] = place
 
     output: list[schemas.StandingTeamDataWithRanking] = []
     for team_id, stats in data.items():

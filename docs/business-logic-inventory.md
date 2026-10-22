@@ -310,6 +310,8 @@ Scoring: `win_points` / `draw_points` / `loss_points` from the tournament, stage
 
 Computed: W/D/L, points, score differential, Buchholz + median Buchholz, head-to-head inside a points bucket, `tie_group`, manual positions.
 
+Elimination positions are counted from the bottom: the losers of a closed round share the best place below every team still alive (a beaten semi-finalist is 3rd while the final is unplayed, quarter-final losers 5th), and a team still alive has position 0 until it is eliminated or the final settles 1st/2nd. Pins apply on top: an unpinned eliminated team keeps that place unless a pin displaces it.
+
 Jobs: `tournament_bracket_jobs` / `tournament_standings_jobs`, prefetch 4, isolated from the RPC channel.
 
 ---
