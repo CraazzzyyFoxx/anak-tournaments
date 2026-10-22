@@ -558,10 +558,10 @@ func TestBroadcastRegistrationsDoesNotOverreachOntoSubroutes(t *testing.T) {
 	}
 }
 
-// tournament.registration_form is admin configuration: nothing here caches the
-// form route, so its manifest entry is an EMPTY pattern set and the event must
-// evict nothing. A missing entry would instead mean "drop everything".
-func TestBroadcastFormChangedEvictsNothing(t *testing.T) {
+// A form save (hide_registrations, max_participants, public questions) changes
+// what the participants list renders, so it must evict that list — anonymous
+// and signed-in viewers share the entry — and nothing else.
+func TestBroadcastFormChangedEvictsOnlyRegistrationList(t *testing.T) {
 	var tournamentCalls, listCalls, encounterCalls atomic.Int64
 	c := testCache(t)
 	tournamentHandler := c.Wrap(upstream(&tournamentCalls), Rule{Extract: FromPathValue("id")})
@@ -586,8 +586,8 @@ func TestBroadcastFormChangedEvictsNothing(t *testing.T) {
 	listReq2.SetPathValue("tournament_id", "72")
 	rec2 := httptest.NewRecorder()
 	listHandler.ServeHTTP(rec2, listReq2)
-	if rec2.Header().Get("X-Cache") != "HIT" {
-		t.Fatal("form edit must not evict the registration/list entry")
+	if rec2.Header().Get("X-Cache") == "HIT" {
+		t.Fatal("form edit must evict the registration/list entry (hide_registrations would keep serving rows)")
 	}
 }
 
