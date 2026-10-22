@@ -788,16 +788,9 @@ def register(broker: Any, logger: Any) -> None:
                 patch=body.model_dump(exclude_unset=True),
                 actor_user_id=user.id,
                 actor_is_superuser=user.is_superuser,
+                # An away flag that flips reaches the lobby's running draft (spec §9.5).
+                on_away=mix_draft_service.on_away,
             )
-            if body.away is not None:
-                # Away and back both reach the lobby's running draft (spec §9.5).
-                await mix_draft_service.on_away(
-                    session,
-                    custom_game_id=game.id,
-                    workspace_member_id=_int(data, "workspace_member_id"),
-                    away=body.away,
-                    actor_auth_user_id=user.id,
-                )
             await emit_pickup_mix_changed(
                 session, workspace_id, custom_game_id=game.id, change="roster", actor_user_id=user.id
             )
@@ -952,14 +945,8 @@ def register(broker: Any, logger: Any) -> None:
                 auth_user=user,
                 away=body.away,
                 workspace_id=_opt_int(data, "workspace_id"),
-            )
-            # Away and back both reach the lobby's running draft (spec §9.5).
-            await mix_draft_service.on_away(
-                session,
-                custom_game_id=state["custom_game_id"],
-                workspace_member_id=state["seat"]["workspace_member_id"],
-                away=body.away,
-                actor_auth_user_id=user.id,
+                # An away flag that flips reaches the lobby's running draft (spec §9.5).
+                on_away=mix_draft_service.on_away,
             )
             await session.commit()
             return state

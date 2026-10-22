@@ -331,7 +331,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.custom.update_player": {
         "summary": "Update custom game player",
-        "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Patches one seat's participation state, role order, flex flag or away flag and returns the refreshed mix; 404 when the member is not on this mix's roster. An away flag reaches the lobby's running draft: a picked player stepping away, or a pool left unable to fill every role, pauses a live draft; otherwise, a return included, its board re-reads.",
+        "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Patches one seat's participation state, role order, flex flag or away flag and returns the refreshed mix; 404 when the member is not on this mix's roster. An away flag that flips reaches the lobby's running draft: a picked player stepping away, or a pool left unable to fill every role, pauses a live draft (a return never does), and its board re-reads the seats either way.",
     },
     "rpc.balancer.custom.set_participation": {
         "summary": "Set custom game participation",
@@ -437,8 +437,9 @@ DOCS: dict[str, dict] = {
             "would seat -- with the two strongest as captains, the weaker picking first, snake order on the mix's "
             "pick clock. The lobby's lineup is cleared and its running draft cancelled; it reads `draft_setup` "
             "until a host starts the draft (`POST /api/v1/balancer/draft/sessions/{session_id}/start`). The last "
-            "pick writes the lobby's lineup; a finished mix draft is never rolled back (409 mix_draft_completed: "
-            "re-form instead). 409 match_live; 422 empty_lineup, missing_ranked_role or a split code."
+            "pick writes the lobby's lineup; a finished mix draft is never paused or rolled back (409 "
+            "mix_draft_completed: re-form instead). 409 match_live; 422 empty_lineup, missing_ranked_role or a split "
+            "code."
         ),
     },
     "rpc.balancer.custom.draft_split": {

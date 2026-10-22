@@ -3,6 +3,7 @@ lifecycle and the lineup it leaves behind."""
 
 from __future__ import annotations
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -15,9 +16,10 @@ import sqlalchemy as sa  # noqa: E402
 from sqlalchemy.exc import IntegrityError  # noqa: E402
 
 from shared import models  # noqa: E402
-from shared.core.enums import DraftPlayerStatus, DraftStatus, MixStatus  # noqa: E402
+from shared.core.enums import DraftPlayerStatus, DraftStatus, MixParticipation, MixStatus  # noqa: E402
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.domain.team_format import FormatDimension, FormatRule, TeamFormat  # noqa: E402
+from shared.models.identity.oauth import OAuthConnection  # noqa: E402
 from shared.models.platform.realtime import WorkspaceEvent  # noqa: E402
 from shared.repository import CatalogRoleRepository  # noqa: E402
 from shared.services import team_format  # noqa: E402
@@ -28,6 +30,7 @@ from src.domain.mix_lobbies import seated_member_ids  # noqa: E402
 from src.domain.mix_ranker import HiddenRating, Ranker  # noqa: E402
 from src.rpc import custom  # noqa: E402
 from src.rpc import draft as draft_rpc  # noqa: E402
+from src.services.account_links import required_link_providers  # noqa: E402
 from src.services.custom_game import CustomGameService, custom_game_service  # noqa: E402
 from src.services.draft import lifecycle, selection  # noqa: E402
 from src.services.draft import realtime as draft_rt  # noqa: E402
@@ -492,15 +495,42 @@ class MixDraftTests(EncounterWriterCase):
             return (await s.get_one(models.DraftSession, draft_id)).status
 
     async def _away(self, host: int, member_id: int, away: bool) -> None:
-        """The host marks a player away or back, and the mix's draft hears it (the RPC's two calls)."""
+        """The host marks a player away or back; a flag that flips reaches the mix's draft (as the RPC wires it)."""
         async with self.Session() as s:
             await CustomGameService().update_player(
-                s, **self._as_host(host, workspace_member_id=member_id, patch={"away": away})
-            )
-            await mix_draft_service.on_away(
-                s, custom_game_id=self.cg_id, workspace_member_id=member_id, away=away, actor_auth_user_id=host
+                s,
+                **self._as_host(host, workspace_member_id=member_id, patch={"away": away}),
+                on_away=mix_draft_service.on_away,
             )
             await s.commit()
+
+    async def _self_away(self, account: models.AuthUser, away: bool) -> None:
+        """The player steps away or back themselves (as the RPC wires it)."""
+        async with self.Session() as s:
+            await custom_game_service.self_set_away(
+                s, custom_game_id=self.cg_id, auth_user=account, away=away, on_away=mix_draft_service.on_away
+            )
+            await s.commit()
+
+    async def _account(self, user_id: int) -> models.AuthUser:
+        """A login for this mix's player ``user_id``, linked to every provider a self-service write asks for."""
+        async with self.Session() as s:
+            account = models.AuthUser(username=f"acct-{user_id}", email=f"acct-{user_id}@example.test")
+            s.add(account)
+            await s.flush()
+            self.auth_user_ids.append(account.id)
+            for provider in required_link_providers("overwatch"):
+                s.add(
+                    OAuthConnection(
+                        auth_user_id=account.id,
+                        provider=provider,
+                        provider_user_id=f"{provider}-{user_id}",
+                        username=f"{provider}-{user_id}",
+                    )
+                )
+            (await s.get_one(models.User, user_id)).auth_user_id = account.id
+            await s.commit()
+            return account
 
     async def _overview_signals(self) -> int:
         """``pickup_mix_changed`` facts this mix staged for a draft: the overview's (and the bot's) re-read."""
@@ -558,27 +588,27 @@ class MixDraftTests(EncounterWriterCase):
         # The clock's last pick tells the overview the lobby moved Draft -> Ready.
         self.assertEqual(before + 1, await self._overview_signals())
 
-    async def test_a_finished_mix_draft_is_not_rolled_back(self) -> None:
-        """R-S2: the finished draft is the lobby's lineup, maybe already on the floor; the host re-forms instead."""
+    async def test_a_finished_mix_draft_is_neither_paused_nor_rolled_back(self) -> None:
+        """R-S2: the finished draft is the lobby's lineup, maybe already on the floor; the host re-forms instead. A
+        pause would reopen it too (completed -> paused, then rollback and resume)."""
         host, _ = await self._host()
         draft_id = await self._seed_lobby(host)
         await self._start(draft_id, host)
         await self._autopick(draft_id)
         await self._autopick(draft_id)
-        async with self.Session() as s:
-            with self.assertRaises(ApiHTTPException) as caught:
-                await lifecycle.lifecycle_service.transition(
-                    s,
-                    draft_id,
-                    lifecycle.lifecycle_service.rollback,
-                    event_type="draft.rollback",
-                    audit_action="rollback",
-                    actor_auth_user_id=host,
-                )
+        refusals = []
+        for move, event_type in (
+            (lifecycle.lifecycle_service.pause, "draft.paused"),
+            (lifecycle.lifecycle_service.rollback, "draft.rollback"),
+        ):
+            async with self.Session() as s:
+                with self.assertRaises(ApiHTTPException) as caught:
+                    await lifecycle.lifecycle_service.transition(
+                        s, draft_id, move, event_type=event_type, audit_action="moved", actor_auth_user_id=host
+                    )
+            refusals.append((caught.exception.status_code, caught.exception.detail[0]["code"]))
 
-        self.assertEqual(
-            (409, "mix_draft_completed"), (caught.exception.status_code, caught.exception.detail[0]["code"])
-        )
+        self.assertEqual([(409, "mix_draft_completed")] * 2, refusals)
         self.assertEqual("completed", await self._status(draft_id))
 
     async def test_a_host_rolls_a_pick_back_and_the_player_is_draftable_again(self) -> None:
@@ -672,24 +702,18 @@ class MixDraftTests(EncounterWriterCase):
         self.assertNotIn(self.ids["m3"], pool)
 
     async def test_a_ready_draft_repairs_an_away_player_and_every_read_names_the_lobby(self) -> None:
-        """R-S1: ready -> m3 steps away (leaves the pool, the draft cannot start) -> m4 comes back and the host adds
-        them -> start. Meanwhile the busy, detail and self reads agree on who the draft holds."""
+        """R-S1: ready -> m3 steps away (leaves the pool, the draft cannot start) -> m4 comes back themselves and the
+        host adds them -> start. Meanwhile the busy, detail and self reads agree on who the draft holds."""
         host, _ = await self._host()
         waiting = await self._member("m4", "damage", 2300, away=True)
-        async with self.Session() as s:
-            account = models.AuthUser(username=f"waiting-{self.cg_id}", email=f"waiting-{self.cg_id}@example.test")
-            s.add(account)
-            await s.flush()
-            self.auth_user_ids.append(account.id)
-            (await s.get_one(models.User, self.users[-1])).auth_user_id = account.id
-            await s.commit()
+        account = await self._account(self.users[-1])
         draft_id = await self._seed_lobby(host)
 
         await self._away(host, self.ids["m3"], True)
         async with self.Session() as s:
             with self.assertRaises(ApiHTTPException):
                 await lifecycle.lifecycle_service.start(s, await s.get_one(models.DraftSession, draft_id))
-        await self._away(host, waiting, False)
+        await self._self_away(account, False)
         async with self.Session() as s:
             await mix_draft_service.add_player(s, **self._as_host(host, lobby_index=0, workspace_member_id=waiting))
             await s.commit()
@@ -706,6 +730,78 @@ class MixDraftTests(EncounterWriterCase):
             {self.ids["m0"]: 0, self.ids["m1"]: 0, self.ids["m2"]: 0, self.ids["m3"]: None, waiting: 0}, current
         )
         self.assertEqual((0, False), (seat["current_lobby"], seat["away"]))
+
+    async def test_stepping_away_takes_the_mix_lock_before_the_players_own_row(self) -> None:
+        """Owner first, as every host write: a player stepping away waits on the mix row before touching their own,
+        so a host write that holds the mix and edits that row never deadlocks with them."""
+        host, _ = await self._host()
+        account = await self._account(self.users[3])  # m3
+        async with self.Session() as holder:
+            await CustomGameService()._writable(holder, **self._as_host(host))
+            stepping = asyncio.create_task(self._self_away(account, True))
+            await asyncio.sleep(0.5)
+            waiting = not stepping.done()
+            # NOWAIT: raises if the player's write already holds the row.
+            row = await holder.scalar(
+                sa.select(models.CustomGamePlayer)
+                .where(
+                    models.CustomGamePlayer.custom_game_id == self.cg_id,
+                    models.CustomGamePlayer.workspace_member_id == self.ids["m3"],
+                )
+                .with_for_update(nowait=True)
+            )
+            row.participation = MixParticipation.MUST_PLAY
+            await holder.commit()
+        await asyncio.wait_for(stepping, 10)
+        async with self.Session() as s:
+            row = await s.scalar(
+                sa.select(models.CustomGamePlayer).where(
+                    models.CustomGamePlayer.custom_game_id == self.cg_id,
+                    models.CustomGamePlayer.workspace_member_id == self.ids["m3"],
+                )
+            )
+
+        self.assertTrue(waiting)
+        self.assertEqual((MixParticipation.MUST_PLAY, True), (row.participation, row.away))
+
+    async def test_an_away_pause_also_refreshes_the_boards_seats(self) -> None:
+        """R-S1: ``draft.paused`` is a status change to the board; the seat that left the pool needs the re-read."""
+        host, _ = await self._host()
+        draft_id = await self._seed_lobby(host)
+        await self._start(draft_id, host)
+        await self._away(host, self.ids["m3"], True)
+        async with self.Session() as s:
+            newest = (
+                await s.scalars(
+                    sa.select(WorkspaceEvent.event_type)
+                    .where(WorkspaceEvent.topic == f"draft:{draft_id}:board")
+                    .order_by(WorkspaceEvent.id.desc())
+                    .limit(2)
+                )
+            ).all()
+
+        self.assertEqual(["draft.session_updated", "draft.paused"], list(newest))
+
+    async def test_a_repeated_away_flag_does_not_pause_a_resumed_draft(self) -> None:
+        """Only a flag that flips is news: the host resumed past m2's absence, and saying it again changes nothing."""
+        host, _ = await self._host()
+        draft_id = await self._seed_lobby(host)
+        await self._start(draft_id, host)
+        await self._autopick(draft_id)  # m2 is picked
+        await self._away(host, self.ids["m2"], True)
+        async with self.Session() as s:
+            await lifecycle.lifecycle_service.transition(
+                s,
+                draft_id,
+                lifecycle.lifecycle_service.resume,
+                event_type="draft.resumed",
+                audit_action="resumed",
+                actor_auth_user_id=host,
+            )
+            await s.commit()
+        await self._away(host, self.ids["m2"], True)
+
+        self.assertEqual("live", await self._status(draft_id))
 
     async def test_reforming_the_lobby_or_closing_the_mix_cancels_its_draft(self) -> None:
         host, _ = await self._host()

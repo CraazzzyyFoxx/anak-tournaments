@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import copy
-from collections.abc import Collection, Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
@@ -952,8 +952,12 @@ class CustomGameService:
         patch: Mapping[str, Any],
         actor_user_id: int,
         actor_is_superuser: bool = False,
+        on_away: Callable[..., Awaitable[None]] | None = None,
     ) -> models.CustomGame:
-        """Patch one roster row's participation, role selection and flex mode."""
+        """Patch one roster row's participation, role selection and flex mode.
+
+        ``on_away`` (``MixDraftService.on_away``) hears an away flag that flipped, under this write's lock: the
+        lobby's running draft follows its player (spec §9.5)."""
         # Before the game read on purpose: an unknown key is a client bug, and
         # answering 422 for it must not depend on the row existing.
         _reject_unknown(patch, _PLAYER_PATCH_FIELDS)
@@ -968,10 +972,19 @@ class CustomGameService:
         row = next((item for item in roster if item.workspace_member_id == workspace_member_id), None)
         if row is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Custom game player not found")
+        was_away = row.away
         await self._apply_player_patch(
             session, row, patch, _PLAYER_PATCH_FIELDS, game=game, lobby_count=game.lobby_count
         )
         await session.flush()
+        if on_away is not None and row.away != was_away:
+            await on_away(
+                session,
+                custom_game_id=game.id,
+                workspace_member_id=workspace_member_id,
+                away=row.away,
+                actor_auth_user_id=actor_user_id,
+            )
         return game
 
     async def _apply_player_patch(
@@ -1473,20 +1486,34 @@ class CustomGameService:
         auth_user: Any,
         away: bool,
         workspace_id: int | None = None,
+        on_away: Callable[..., Awaitable[None]] | None = None,
     ) -> dict[str, Any]:
         """Step away from the mix, or come back (spec §7.4).
 
         Gated like a role edit minus the host's switch (``MixSelfPolicy.can_set_away``): a break is the player's own
         business. It never clears itself. The stored balance is left alone -- an away player already in a lineup stays
-        there with a badge, and Start match warns about them.
+        there with a badge, and Start match warns about them. ``on_away`` is ``update_player``'s: the lobby's running
+        draft hears a flag that flipped.
         """
+        # Owner first, as every host write (``_writable``): the mix row is locked before this player's own row is
+        # touched, so a host write that holds the mix and edits that row never deadlocks with this one.
+        await self.games.get(session, custom_game_id, for_update=True)
         ctx = await self._self_context(
             session, custom_game_id=custom_game_id, auth_user=auth_user, workspace_id=workspace_id
         )
         if ctx.row is None or not ctx.policy.can_set_away:
             raise _blocker(ctx.policy.away_blocker or "not_on_roster")
+        was_away = ctx.row.away
         ctx.row.away = away
         await session.flush()
+        if on_away is not None and away != was_away:
+            await on_away(
+                session,
+                custom_game_id=ctx.game.id,
+                workspace_member_id=ctx.row.workspace_member_id,
+                away=away,
+                actor_auth_user_id=auth_user.id,
+            )
         await emit_pickup_mix_changed(
             session,
             ctx.game.workspace_id,

@@ -211,9 +211,10 @@ class MixDraftService:
         away: bool,
         actor_auth_user_id: int,
     ) -> None:
-        """Apply the away policy to the member's running draft, if any (spec §9.5). Stepping away while picked -- or
-        leaving a pool that can no longer fill every role -- pauses a live draft. Otherwise, a return included, the
-        board re-reads: an unpicked player away is no longer draftable, and draftable again once back."""
+        """Apply the away policy to the member's running draft, if any (spec §9.5). Called for a flag that flipped
+        (``CustomGameService.update_player`` / ``self_set_away``). Stepping away while picked -- or leaving a pool that
+        can no longer fill every role -- pauses a live draft; a return never does. Either way the board re-reads its
+        seats after: an unpicked player away is no longer draftable, and draftable again once back."""
         for draft in await self.sessions.active_for_custom_game(session, custom_game_id):
             seat = next(
                 (
@@ -241,8 +242,7 @@ class MixDraftService:
                     audit_action="paused",
                     actor_auth_user_id=actor_auth_user_id,
                 )
-            else:
-                await _updated(session, draft, actor_auth_user_id)
+            await _updated(session, draft, actor_auth_user_id)
 
     async def _running(
         self,
