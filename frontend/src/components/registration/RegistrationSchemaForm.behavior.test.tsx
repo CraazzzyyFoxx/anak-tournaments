@@ -530,8 +530,14 @@ describe("RegistrationSchemaForm organizer edit without a questionnaire", () => 
   });
 });
 
-afterAll(() => {
+afterAll(async () => {
   act(() => root.unmount());
+  // A top-heroes form's character read can settle after `mountForm` stops waiting, and TanStack delivers that
+  // to the form on a 0 ms timer. Fired after the globals go, React reads `window.event` and throws; fired now,
+  // it lands on the unmounted form and does nothing. Timers of one delay run in order, so this one comes last.
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, 0);
+  await promise;
   for (const [key, descriptor] of previousGlobals) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor);
     else Reflect.deleteProperty(globalThis, key);
