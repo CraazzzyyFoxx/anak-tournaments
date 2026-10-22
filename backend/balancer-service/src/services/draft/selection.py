@@ -215,6 +215,11 @@ class DraftSelectionService:
             counts[tid] = counts.get(tid, 0) + 1
         return {tid: sums[tid] / counts[tid] for tid in sums}
 
+    async def _lost_race(self, session: AsyncSession, pick: DraftPick) -> Exception:
+        """The 409 for a finalize that lost: re-read the row a concurrent writer moved, then say why."""
+        await session.refresh(pick, attribute_names=["status", "version"])
+        return rules.pick_conflict(pick)
+
     async def _finalize_manual_pick(
         self,
         session: AsyncSession,
@@ -260,7 +265,7 @@ class DraftSelectionService:
             is_admin_override=is_admin_override,
         )
         if not won:
-            raise _err("pick_already_resolved", "Pick was already resolved")
+            raise await self._lost_race(session, pick)
         # Always record the resolved decision (role + its rank) on the pick, so the
         # pick is a complete (player, role, rank) record regardless of off-role. A
         # role-less roster records no role: recorded_role is None there.
@@ -283,7 +288,7 @@ class DraftSelectionService:
         actor_player_ids: Collection[int] = (),
         is_admin: bool,
     ) -> DraftResult:
-        rules.validate_current_pick(draft_session, pick)
+        rules.validate_current_pick(draft_session, pick, expected_version=expected_version)
         # captain_user_id (read in rules.is_on_clock_captain) resolves via
         # captain_member; eager-load it so the property read never triggers an
         # async lazy load.
@@ -429,7 +434,7 @@ class DraftSelectionService:
         actor_auth_user_id: int | None = None,
         reason: str = "expiry",
     ) -> DraftResult:
-        rules.validate_current_pick(draft_session, pick)
+        rules.validate_current_pick(draft_session, pick, expected_version=expected_version)
         snapshot = await self.feasibility.load_snapshot(session, draft_session)
         shape = await self.feasibility.resolve_shape(session, draft_session)
         rows = await loaders.rated_rows(session, draft_session)
@@ -451,7 +456,7 @@ class DraftSelectionService:
             is_admin_override=False,
         )
         if not won:
-            raise _err("pick_already_resolved", "Pick was already resolved")
+            raise await self._lost_race(session, pick)
         player = next(p for p in snapshot.players if p.id == choice.player_id)
         roster = snapshot.roster(player.id)
         pick.target_role_row = rows[choice.role] if shape.has_role_slots else None
@@ -489,7 +494,7 @@ class DraftSelectionService:
     ) -> DraftResult:
         if not draft_session.allow_admin_override:
             raise _err("override_disabled", "Admin override is disabled for this draft")
-        rules.validate_current_pick(draft_session, pick)
+        rules.validate_current_pick(draft_session, pick, expected_version=expected_version)
         if player_id is None:
             raise _err("override_needs_player", "Override requires a player_id", status_code=422)
         player = await self._finalize_manual_pick(

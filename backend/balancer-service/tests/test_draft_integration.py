@@ -710,6 +710,74 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
 
             self.assertEqual(res.pick.status, DraftPickStatus.COMPLETED.value)
 
+    async def _first_available(self, s, draft) -> lifecycle.DraftPlayer:
+        return (
+            await s.scalars(
+                sa.select(lifecycle.DraftPlayer)
+                .where(
+                    lifecycle.DraftPlayer.session_id == draft.id,
+                    lifecycle.DraftPlayer.status == DraftPlayerStatus.AVAILABLE.value,
+                )
+                .order_by(lifecycle.DraftPlayer.id.asc())
+            )
+        ).first()
+
+    async def test_a_stale_version_on_a_pick_still_on_the_clock_says_the_board_changed(self) -> None:
+        """Not "already resolved": the pick is still on the clock, only the token moved."""
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            await lifecycle.lifecycle_service.start(s, draft)
+            await s.commit()
+            current = await s.get(DraftPick, draft.current_pick_id)
+            chosen = await self._first_available(s, draft)
+
+            with self.assertRaises(ApiHTTPException) as ctx:
+                await selection.selection_service.select(
+                    s,
+                    draft,
+                    current,
+                    player_id=chosen.id,
+                    expected_version=current.version - 1,
+                    target_role=None,
+                    actor_user_id=None,
+                    actor_auth_user_id=None,
+                    actor_player_ids=[],
+                    is_admin=True,
+                )
+
+            self.assertEqual(ctx.exception.status_code, 409)
+            self.assertEqual(ctx.exception.detail[0]["code"], "draft_pick_stale_version")
+
+    async def test_a_version_bumped_mid_request_is_reported_as_a_changed_board(self) -> None:
+        """The race path: the row was read at v, overtime moved it to v+1 before the UPDATE ran."""
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            await lifecycle.lifecycle_service.start(s, draft)
+            await s.commit()
+            current = await s.get(DraftPick, draft.current_pick_id)
+            chosen = await self._first_available(s, draft)
+            async with self.Session() as clock:
+                await clock.execute(
+                    sa.update(DraftPick).where(DraftPick.id == current.id).values(version=DraftPick.version + 1)
+                )
+                await clock.commit()
+
+            with self.assertRaises(ApiHTTPException) as ctx:
+                await selection.selection_service.select(
+                    s,
+                    draft,
+                    current,
+                    player_id=chosen.id,
+                    expected_version=current.version,
+                    target_role=None,
+                    actor_user_id=None,
+                    actor_auth_user_id=None,
+                    actor_player_ids=[],
+                    is_admin=True,
+                )
+
+            self.assertEqual(ctx.exception.detail[0]["code"], "draft_pick_stale_version")
+
     async def test_finalize_race_only_one_winner(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)
@@ -853,6 +921,33 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await s.commit()
             with self.assertRaises(ApiHTTPException):
                 await draft_export.export_service.export(s, draft)
+
+    async def test_export_refuses_players_without_a_handle_before_writing(self) -> None:
+        """A handle-less captain used to be skipped while a team named after them was created captainless."""
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            await lifecycle.lifecycle_service.start(s, draft)
+            await s.commit()
+            while draft.status == DraftStatus.LIVE.value:
+                current = await s.get(DraftPick, draft.current_pick_id)
+                await selection.selection_service.autopick(s, draft, current, expected_version=current.version)
+                await s.commit()
+                await s.refresh(draft)
+            await self._provision_export_identities(s)
+            captain = f"Cap{self._suffix}-0#1"
+            await s.execute(sa.delete(RegistrationIdentity).where(RegistrationIdentity.handle == captain))
+            await s.commit()
+
+            with self.assertRaises(ApiHTTPException) as caught:
+                await draft_export.export_service.export(s, draft)
+
+            self.assertEqual(caught.exception.status_code, 422)
+            [detail] = caught.exception.detail
+            self.assertEqual(detail["code"], "missing_handle")
+            self.assertIn(captain, detail["msg"])
+            await s.rollback()
+            teams = await s.scalars(sa.select(models.Team).where(models.Team.tournament_id == self.tournament_id))
+            self.assertEqual(teams.all(), [])
 
     async def test_clock_fires_autopick_when_expired(self) -> None:
         async with self.Session() as s:

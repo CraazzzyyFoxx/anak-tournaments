@@ -259,14 +259,15 @@ def test_extend_of_a_paused_pick_with_no_recorded_remainder_starts_from_a_full_t
     assert pick.clock_remaining_ms == 60_000
 
 
-def test_extend_rejects_a_stale_version() -> None:
+def test_extend_with_a_stale_version_says_the_board_changed() -> None:
+    """The pick is still on the clock, so it was not "already resolved": only the version moved."""
     draft = _draft()
     pick = _pick(version=5)
 
     with pytest.raises(ApiHTTPException) as exc_info:
         _extend(draft, pick, seconds=30, expected_version=4)
 
-    assert exc_info.value.detail[0]["code"] == "pick_already_resolved"
+    assert exc_info.value.detail[0]["code"] == "draft_pick_stale_version"
     assert exc_info.value.status_code == 409
     assert pick.version == 5
 

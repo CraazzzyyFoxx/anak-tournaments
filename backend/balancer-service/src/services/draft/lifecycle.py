@@ -774,7 +774,7 @@ class DraftLifecycleService:
         if pick.id != draft_session.current_pick_id or pick.status != DraftPickStatus.ON_CLOCK.value:
             raise _err("pick_not_on_clock", "This is not the current on-clock pick")
         if pick.version != expected_version:
-            raise _err("pick_already_resolved", "Pick was already resolved")
+            raise rules.pick_conflict(pick)
 
         if draft_session.status == DraftStatus.LIVE.value:
             base = pick.clock_expires_at or datetime.now(UTC)

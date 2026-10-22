@@ -47,6 +47,7 @@ __all__ = (
     "is_on_clock_captain",
     "mark_role_shortage_paused",
     "order_captain_ids",
+    "pick_conflict",
     "preview_role_addition",
     "resolve_pick_slot",
     "role_openings",
@@ -379,11 +380,25 @@ def team_fit_config(
     return FitConfig(role_impact=impact)
 
 
-def validate_current_pick(draft_session: DraftSession, pick: DraftPick) -> None:
+def validate_current_pick(draft_session: DraftSession, pick: DraftPick, *, expected_version: int) -> None:
     if draft_session.status != DraftStatus.LIVE.value:
         raise _err("draft_not_live", "Draft is not live")
     if pick.id != draft_session.current_pick_id or pick.status != DraftPickStatus.ON_CLOCK.value:
         raise _err("pick_not_on_clock", "This is not the current on-clock pick")
+    if pick.version != expected_version:
+        raise pick_conflict(pick)
+
+
+def pick_conflict(pick: DraftPick) -> ApiHTTPException:
+    """Why a pick's ``(version, on_clock)`` guard failed, read off its CURRENT row.
+
+    Still on the clock means only the version moved (an extension, overtime): the
+    caller acted on a board it has to reload. Anything else means somebody
+    resolved the pick first.
+    """
+    if pick.status == DraftPickStatus.ON_CLOCK.value:
+        return _err("draft_pick_stale_version", "The board changed; reload and try again")
+    return _err("pick_already_resolved", "Pick was already resolved")
 
 
 def available_player_from(snapshot: DraftSnapshot, player_id: int) -> DraftPlayer:
