@@ -210,6 +210,7 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
     setMyAway,
     setSelfService,
     setBanPreset,
+    setDraftSettings,
     postSignup,
     deleteDiscordPost,
     voiceOptionsQuery,
@@ -555,6 +556,8 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
               savingSelfService={setSelfService.isPending}
               onSetBanPreset={(preset) => setBanPreset.mutate(preset)}
               savingBanPreset={setBanPreset.isPending}
+              onSetDraftSettings={(settings) => setDraftSettings.mutate(settings)}
+              savingDraftSettings={setDraftSettings.isPending}
               onPostSignup={(selfSignup) => postSignup.mutate(selfSignup)}
               postingSignup={postSignup.isPending}
               onDeleteDiscordPost={(postId) => deleteDiscordPost.mutate(postId)}

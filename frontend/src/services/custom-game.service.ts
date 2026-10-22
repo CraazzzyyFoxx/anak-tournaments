@@ -179,6 +179,9 @@ export type CustomGameDiscordPost = {
   created_at: string;
 };
 
+/** How a mix's lobbies form their teams by default (spec §4.3). */
+export type MixTeamFormation = "balance" | "draft";
+
 export type CustomGame = {
   id: number;
   workspace_id: number;
@@ -214,6 +217,10 @@ export type CustomGame = {
   self_role_edit: boolean;
   /** The hero ban preset the next Start opens a room on; null = no bans (spec §4.3). */
   hero_ban_preset: string | null;
+  /** How the lobbies form teams by default: the balancer, or a captain draft (spec §4.3). */
+  team_formation: MixTeamFormation;
+  /** A mix draft's pick clock in seconds (10..600). */
+  draft_pick_seconds: number;
   /**
    * The voice everyone waits in and is returned to, picked from the
    * workspace's general voices (`mix_general_voice_channel_ids`).
@@ -1025,6 +1032,19 @@ export const customGameService = {
       skipWorkspace: true,
       method: "PUT",
       body: { hero_ban_preset: heroBanPreset },
+    }).then((r) => r.json());
+  },
+
+  /** The mix's team formation and draft pick clock; both apply from the next formation. */
+  setDraftSettings(
+    workspaceId: number,
+    gameId: number,
+    settings: { team_formation: MixTeamFormation; draft_pick_seconds: number },
+  ): Promise<CustomGame> {
+    return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/draft-settings`, {
+      skipWorkspace: true,
+      method: "PUT",
+      body: settings,
     }).then((r) => r.json());
   },
 

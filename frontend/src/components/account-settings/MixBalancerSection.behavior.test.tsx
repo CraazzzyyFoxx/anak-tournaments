@@ -98,6 +98,7 @@ const UNSET: MixBalancerPreferencesRead = {
   points_per_win: null,
   rating_mode: "points",
   hero_ban_presets: {},
+  formation_defaults: {},
 };
 
 /** Longer than the panel's own debounce, so a settled write has fired. */
@@ -170,9 +171,19 @@ async function click(element: Element | null | undefined) {
   });
 }
 
-async function chooseBanDefault(scope: ParentNode, label: string) {
-  await click(field(scope, "mix-ban-default"));
+async function choose(scope: ParentNode, id: string, label: string) {
+  await click(field(scope, id));
   await click([...document.querySelectorAll('[role="option"]')].find((node) => node.textContent?.trim() === label));
+}
+
+/** A fake of the stored row: what a save writes is what the next read answers. */
+function storeAcrossMounts() {
+  let stored: MixBalancerPreferencesRead = UNSET;
+  getPreferences.mockImplementation(() => Promise.resolve(stored));
+  updatePreferences.mockImplementation((preferences: MixBalancerPreferencesRead) => {
+    stored = preferences;
+    return Promise.resolve(preferences);
+  });
 }
 
 beforeEach(() => {
@@ -265,19 +276,13 @@ describe("MixBalancerSection", () => {
   });
 
   it("keeps each game's ban default across save and reload", async () => {
-    // A fake of the stored row: what a save writes is what the next read answers.
-    let stored: MixBalancerPreferencesRead = UNSET;
-    getPreferences.mockImplementation(() => Promise.resolve(stored));
-    updatePreferences.mockImplementation((preferences: MixBalancerPreferencesRead) => {
-      stored = preferences;
-      return Promise.resolve(preferences);
-    });
+    storeAcrossMounts();
 
-    await chooseBanDefault(await mount(), "hero_classic");
+    await choose(await mount(), "mix-ban-default", "hero_classic");
     await settle();
     unmountAll();
     tab.game = "deadlock";
-    await chooseBanDefault(await mount(), "deadlock_hero_bans");
+    await choose(await mount(), "mix-ban-default", "deadlock_hero_bans");
     await settle();
     unmountAll();
 
@@ -286,5 +291,31 @@ describe("MixBalancerSection", () => {
     unmountAll();
     tab.game = "deadlock";
     expect(field(await mount(), "mix-ban-default").textContent?.trim()).toBe("deadlock_hero_bans");
+  });
+
+  it("keeps each game's formation and pick clock across save and reload", async () => {
+    storeAcrossMounts();
+
+    const overwatch = await mount();
+    await choose(overwatch, "mix-formation-overwatch-formation", "formationDraft");
+    const clock = field(overwatch, "mix-formation-overwatch-pick-seconds");
+    await typeInto(clock, "45");
+    // The clock commits when the field is left (React's onBlur listens for focusout).
+    await act(async () => {
+      clock.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    });
+    await settle();
+    unmountAll();
+
+    tab.game = "deadlock";
+    const deadlock = await mount();
+    expect(field(deadlock, "mix-formation-deadlock-formation").textContent?.trim()).toBe("formationBalance");
+    expect(deadlock.querySelector("#mix-formation-deadlock-pick-seconds")).toBeNull();
+    unmountAll();
+
+    tab.game = "overwatch";
+    const reloaded = await mount();
+    expect(field(reloaded, "mix-formation-overwatch-formation").textContent?.trim()).toBe("formationDraft");
+    expect(field(reloaded, "mix-formation-overwatch-pick-seconds").value).toBe("45");
   });
 });

@@ -102,6 +102,7 @@ export type MixPrefsDraft = {
   pointsPerWin: number | null;
   ratingMode: MixRatingMode;
   banPresets: Record<string, string>;
+  formationDefaults: MixBalancerPreferences["formation_defaults"];
 };
 
 /** The draft a stored row (or an empty one) opens as. */
@@ -113,6 +114,7 @@ export function draftOf(preferences: MixBalancerPreferences | null | undefined):
     pointsPerWin: pointsPerWinOf(preferences),
     ratingMode: preferences?.rating_mode === "ranker" ? "ranker" : "points",
     banPresets: { ...(preferences?.hero_ban_presets ?? {}) },
+    formationDefaults: { ...(preferences?.formation_defaults ?? {}) },
   };
 }
 
@@ -143,6 +145,12 @@ export function preferencesPayload(draft: MixPrefsDraft): MixBalancerPreferences
     // Sorted: the server's jsonb answers games in its own key order, and the panel compares serialized rows.
     hero_ban_presets: Object.fromEntries(
       Object.entries(draft.banPresets).sort(([left], [right]) => (left < right ? -1 : 1)),
+    ),
+    // Rebuilt rather than passed through: the panel compares serialized rows, so each game's own keys are ordered too.
+    formation_defaults: Object.fromEntries(
+      Object.entries(draft.formationDefaults)
+        .sort(([left], [right]) => (left < right ? -1 : 1))
+        .map(([code, { team_formation, draft_pick_seconds }]) => [code, { team_formation, draft_pick_seconds }]),
     ),
   };
 }

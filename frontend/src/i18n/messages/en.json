@@ -1096,6 +1096,10 @@
       "bans": {
         "label": "Hero bans in new mixes of this game",
         "hint": "Copied into each new mix; change it in the mix's header any time."
+      },
+      "formation": {
+        "label": "Teams in new mixes of this game",
+        "hint": "Copied into each new mix; change it in the mix's header any time."
       }
     },
     "name": {
@@ -7879,7 +7883,11 @@
       "deleteTitle": "Delete this mix?",
       "deleteDescription": "Permanently removes {name} and every match it recorded. This cannot be undone -- unlike Close, there is no way back to it afterwards.",
       "thisMix": "this mix",
-      "deleteConfirm": "Delete permanently"
+      "deleteConfirm": "Delete permanently",
+      "formation": "Teams",
+      "formationBalance": "Balancer",
+      "formationDraft": "Captain draft",
+      "pickSeconds": "Draft pick clock, seconds"
     },
     "start": {
       "title": "Get this mix going",

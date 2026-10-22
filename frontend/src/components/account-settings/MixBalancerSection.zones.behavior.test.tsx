@@ -34,6 +34,7 @@ vi.mock("@/services/mix-preferences.service", () => ({
       points_per_win: null,
       rating_mode: "points",
       hero_ban_presets: { overwatch: "hero_classic" },
+      formation_defaults: {},
     }),
     update: async (preferences: unknown) => preferences,
   },

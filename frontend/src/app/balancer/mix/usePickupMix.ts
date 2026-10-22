@@ -14,6 +14,7 @@ import {
   type CustomGamePlayerPatch,
   type MixSelfSignup,
   type MixSelfState,
+  type MixTeamFormation,
   type MixVoicePatch,
 } from "@/services/custom-game.service";
 
@@ -555,6 +556,14 @@ export function usePickupMix(
     onError: (error) => notify.apiError(error),
   });
 
+  /** The mix's team formation and pick clock. Returns the game, like every host write. */
+  const setDraftSettings = useMutation({
+    mutationFn: (settings: { team_formation: MixTeamFormation; draft_pick_seconds: number }) =>
+      customGameService.setDraftSettings(workspaceId, selectedGameId as number, settings),
+    onSuccess: applyGame,
+    onError: (error) => notify.apiError(error),
+  });
+
   /**
    * Opens signup and hands the card to the bot. The mix's own `self_signup`
    * moves server-side, so the board is refetched; the message itself is
@@ -662,6 +671,7 @@ export function usePickupMix(
     setMyAway,
     setSelfService,
     setBanPreset,
+    setDraftSettings,
     postSignup,
     deleteDiscordPost,
     setVoiceChannels,
