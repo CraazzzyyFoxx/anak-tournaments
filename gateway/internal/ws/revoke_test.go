@@ -6,9 +6,12 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/auth"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/protocol"
@@ -42,21 +45,34 @@ type roomCall struct {
 	refID int64
 }
 
-type fakeRoomInvalidator struct {
-	mu    sync.Mutex
-	calls []roomCall
+type fakeACLCache struct {
+	mu      sync.Mutex
+	calls   []roomCall
+	evicted []int64
 }
 
-func (f *fakeRoomInvalidator) InvalidateRoomSpectatorRead(roomKind string, refID int64) {
+func (f *fakeACLCache) InvalidateRoomSpectatorRead(roomKind string, refID int64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, roomCall{roomKind, refID})
 }
 
-func (f *fakeRoomInvalidator) seen() []roomCall {
+func (f *fakeACLCache) EvictUser(userID int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.evicted = append(f.evicted, userID)
+}
+
+func (f *fakeACLCache) seen() []roomCall {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]roomCall(nil), f.calls...)
+}
+
+func (f *fakeACLCache) evictedUsers() []int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]int64(nil), f.evicted...)
 }
 
 // newServerWithHub is newServer with the hub supplied by the caller, so a test
@@ -105,7 +121,7 @@ func TestTopicRevoker_DropsSubscribersNowDenied(t *testing.T) {
 		t.Fatalf("spectator expected subscribed, got %v", m)
 	}
 
-	rooms := &fakeRoomInvalidator{}
+	rooms := &fakeACLCache{}
 	revoker := NewTopicRevoker(hub, authz, rooms, discardLogger())
 
 	authz.deny(2)
@@ -132,17 +148,100 @@ func TestTopicRevoker_DropsSubscribersNowDenied(t *testing.T) {
 	}
 }
 
-// Every realtime frame passes through Broadcast, so anything that is not a
-// visibility change must cost nothing: no invalidation, no ACL pass.
+// Every realtime frame passes through Broadcast, so anything that is neither a
+// visibility change nor an RBAC change must cost nothing: no invalidation, no
+// eviction, no ACL pass.
 func TestTopicRevoker_IgnoresOtherEvents(t *testing.T) {
 	hub := NewHub()
-	rooms := &fakeRoomInvalidator{}
+	rooms := &fakeACLCache{}
 	revoker := NewTopicRevoker(hub, &perUserAuthorizer{denied: map[int64]bool{}}, rooms, discardLogger())
 
 	revoker.Broadcast("encounter:1:chat", protocol.EventFrame("encounter:1:chat", protocol.Envelope{EventType: "chat.message"}))
 	revoker.Broadcast("tournament:1:bracket", visibilityFrame("tournament:1:bracket", false))
+	revoker.Broadcast("user:1:notifications", protocol.EventFrame("user:1:notifications", protocol.Envelope{EventType: "notification.created"}))
 
 	if calls := rooms.seen(); len(calls) != 0 {
 		t.Fatalf("expected no invalidation, got %v", calls)
+	}
+
+	if users := rooms.evictedUsers(); len(users) != 0 {
+		t.Fatalf("expected no user eviction, got %v", users)
+	}
+}
+
+// workspaceAuthorizer admits workspace:1:* to its members only and every other
+// topic to anyone, standing in for the membership the ACL reads from the DB.
+type workspaceAuthorizer struct {
+	mu      sync.Mutex
+	members map[int64]bool
+}
+
+func (a *workspaceAuthorizer) Allow(_ context.Context, user *auth.User, topic string) (bool, error) {
+	if !strings.HasPrefix(topic, "workspace:1:") {
+		return true, nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return user != nil && a.members[user.ID], nil
+}
+
+func (a *workspaceAuthorizer) remove(userID int64) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.members, userID)
+}
+
+// identity-svc announces realtime:user:{id}:rbac after a membership change. A
+// removed member's cached answers must go at once, and the workspace topics
+// they already hold must stop delivering — not linger until the membership
+// cache expires or the socket reconnects. Their other topics, and every other
+// member, stay put.
+func TestTopicRevoker_RBACChangeDropsTopicsTheUserLost(t *testing.T) {
+	const wsTopic, publicTopic = "workspace:1:invalidation", "tournament:5:bracket"
+	ctx := context.Background()
+
+	hub := NewHub()
+	authz := &workspaceAuthorizer{members: map[int64]bool{1: true, 2: true}}
+	url := newServerWithHub(t, hub, authz)
+
+	subscribe := func(c *websocket.Conn, topic string) {
+		t.Helper()
+		writeJSON(t, ctx, c, map[string]any{"op": "subscribe", "topic": topic})
+		if m := readJSON(t, ctx, c); m["op"] != "subscribed" || m["topic"] != topic {
+			t.Fatalf("expected subscribed to %s, got %v", topic, m)
+		}
+	}
+	stays := dial(t, ctx, url, mintToken(t, "1"))
+	subscribe(stays, wsTopic)
+	removed := dial(t, ctx, url, mintToken(t, "2"))
+	subscribe(removed, wsTopic)
+	subscribe(removed, publicTopic)
+
+	cache := &fakeACLCache{}
+	revoker := NewTopicRevoker(hub, authz, cache, discardLogger())
+
+	authz.remove(2)
+	revoker.Broadcast("user:2:rbac", protocol.EventFrame("user:2:rbac", protocol.Envelope{EventType: "rbac.changed"}))
+
+	// Evicted before Broadcast returns: a subscribe handled after the frame
+	// must not be answered from the pre-change entry.
+	if users := cache.evictedUsers(); len(users) != 1 || users[0] != 2 {
+		t.Fatalf("expected user 2's cached ACL answers evicted, got %v", users)
+	}
+
+	m := readJSON(t, ctx, removed)
+	if m["op"] != "error" || m["code"] != "forbidden" || m["topic"] != wsTopic {
+		t.Fatalf("removed member expected a forbidden revocation frame for %s, got %v", wsTopic, m)
+	}
+
+	// The workspace frame reaches only the remaining member; the removed one's
+	// next frame is the public topic it still holds.
+	hub.Broadcast(wsTopic, protocol.EventFrame(wsTopic, protocol.Envelope{EventType: "workspace.changed"}))
+	hub.Broadcast(publicTopic, protocol.EventFrame(publicTopic, protocol.Envelope{EventType: "bracket.changed"}))
+	if m := readJSON(t, ctx, stays); m["op"] != "event" || m["topic"] != wsTopic {
+		t.Fatalf("remaining member should still receive %s, got %v", wsTopic, m)
+	}
+	if m := readJSON(t, ctx, removed); m["op"] != "event" || m["topic"] != publicTopic {
+		t.Fatalf("removed member should receive only %s now, got %v", publicTopic, m)
 	}
 }

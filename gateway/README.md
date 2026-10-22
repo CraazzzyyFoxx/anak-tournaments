@@ -35,6 +35,10 @@ world.
   the in-flight job. Replay and its subscription acknowledgement occupy one atomic job before
   live events. Queue overflow or the 2-second frame write deadline disconnects a slow peer without
   blocking Redis event processing; revoked topic frames still queued are discarded before writing.
+  The topic ACL runs at subscribe time and again whenever it may have changed: on
+  `realtime:user:{id}:rbac` the gateway drops that user's cached workspace memberships and
+  re-checks every topic their live connections hold (a removed member gets `forbidden` and stops
+  receiving the workspace); on `chat.visibility_changed` it re-checks that chat room's subscribers.
   Response-cache invalidation runs before WebSocket notification.
 - **Response cache** — an in-process, in-memory cache of anonymous public reads
   (`respcache`, default 30s TTL), invalidated by workers' Redis pub/sub.

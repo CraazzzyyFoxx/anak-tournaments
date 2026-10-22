@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/principal"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/protocol"
 	"github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/safego"
 )
@@ -17,50 +18,59 @@ import (
 // leave the goroutine (and the connection snapshot it holds) alive forever.
 const revokeTimeout = 10 * time.Second
 
-// visibilityChangedEvent is the only event this file reacts to: the chat
+// visibilityChangedEvent is the chat event this file reacts to: the chat
 // service publishes it when an organizer flips a room's spectators_can_read.
 const visibilityChangedEvent = "chat.visibility_changed"
 
-// RoomSettingsInvalidator drops a cached chat-room setting. Implemented by
-// workspace.Store; the revoker needs it because the ACL answer it is about to
-// re-compute is exactly the value this event says has just changed.
-type RoomSettingsInvalidator interface {
+// ACLCache drops cached topic-ACL answers the realtime bus says have changed.
+// Implemented by workspace.Store; the revoker needs it because the answer it
+// is about to re-compute is exactly the one the frame contradicts.
+type ACLCache interface {
 	InvalidateRoomSpectatorRead(roomKind string, refID int64)
+	EvictUser(userID int64)
 }
 
-// TopicRevoker re-authorizes a chat room's live subscribers when the organizer
-// changes who may read it.
+// TopicRevoker re-authorizes live subscribers when who may read a topic
+// changes: an organizer toggling a chat room's spectator read
+// (chat.visibility_changed on that room's topic), or identity-svc announcing
+// that a user's memberships or roles changed (realtime:user:{id}:rbac).
 //
-// The topic ACL is evaluated at SUBSCRIBE time only, so closing a chat does not
-// by itself stop a spectator who is already subscribed from receiving
-// everything said afterwards — which is precisely the case the toggle exists
-// for. A cooperative client-side unsubscribe would make the setting advisory,
-// so the revocation happens here, on the server, off the same realtime frame
-// every other subscriber receives.
+// The topic ACL is evaluated at SUBSCRIBE time only, so closing a chat or
+// removing a member does not by itself stop a connection that is already
+// subscribed from receiving everything published afterwards. A cooperative
+// client-side unsubscribe would make the revocation advisory, so it happens
+// here, on the server, off the realtime frame announcing the change.
 //
 // It implements events.Broadcaster and is registered in the existing
 // events.Fanout alongside the hub and the response cache.
 type TopicRevoker struct {
 	hub   *Hub
 	authz Authorizer
-	rooms RoomSettingsInvalidator
+	cache ACLCache
 	log   *slog.Logger
 }
 
-// NewTopicRevoker returns a revoker over hub, deciding with authz and
-// invalidating rooms' cached settings before it asks.
-func NewTopicRevoker(hub *Hub, authz Authorizer, rooms RoomSettingsInvalidator, log *slog.Logger) *TopicRevoker {
+// NewTopicRevoker returns a revoker over hub, deciding with authz and dropping
+// the contradicted cache entries before it asks.
+func NewTopicRevoker(hub *Hub, authz Authorizer, cache ACLCache, log *slog.Logger) *TopicRevoker {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &TopicRevoker{hub: hub, authz: authz, rooms: rooms, log: log}
+	return &TopicRevoker{hub: hub, authz: authz, cache: cache, log: log}
 }
 
 // Broadcast implements events.Broadcaster. It is called for EVERY realtime
-// frame, so it does the cheapest possible rejection first (a narrow JSON probe
-// for the event type, like protocol.EventFrameTopic) and never runs an ACL
-// query on the fan-out path: the re-authorization runs in its own goroutine.
+// frame, so it does the cheapest possible rejection first (a topic parse, then
+// a narrow JSON probe for the event type, like protocol.EventFrameTopic) and
+// never runs an ACL query on the fan-out path: the re-authorization runs in its
+// own goroutine. A user's cached answers are evicted synchronously, before the
+// frame reaches the next leg, so no subscribe handled after it sees them.
 func (t *TopicRevoker) Broadcast(topic string, payload []byte) {
+	if userID, ok := principal.RBACTopicUser(topic); ok {
+		t.cache.EvictUser(userID)
+		safego.Go(func() { t.reauthorizeUser(userID) })
+		return
+	}
 	if !isVisibilityChanged(payload) {
 		return
 	}
@@ -72,7 +82,7 @@ func (t *TopicRevoker) Broadcast(topic string, payload []byte) {
 }
 
 func (t *TopicRevoker) reauthorize(topic, roomKind string, refID int64) {
-	t.rooms.InvalidateRoomSpectatorRead(roomKind, refID)
+	t.cache.InvalidateRoomSpectatorRead(roomKind, refID)
 
 	subs := t.hub.SubscribersOf(topic)
 	if len(subs) == 0 {
@@ -82,23 +92,45 @@ func (t *TopicRevoker) reauthorize(topic, roomKind string, refID int64) {
 	ctx, cancel := context.WithTimeout(context.Background(), revokeTimeout)
 	defer cancel()
 
-	topicPtr := &topic
 	for _, c := range subs {
-		// Fail closed: a lookup error means we cannot show this connection is
-		// still entitled, and the event we are reacting to is a deliberate
-		// "stop showing this to people" — so the subscription goes. The client
-		// can resubscribe once the lookup works again, and the subscribe path
-		// applies the same rule.
-		allowed, err := t.authz.Allow(ctx, c.user, topic)
-		if err != nil {
-			t.log.Warn("chat visibility re-authorization failed", "topic", topic, "err", err)
-		}
-		if allowed && err == nil {
-			continue
-		}
-		c.unsubscribe(topic)
-		_ = c.send(protocol.ErrorFrame("forbidden", "You are no longer allowed to read this chat", topicPtr))
+		t.revokeUnlessAllowed(ctx, c, topic, "You are no longer allowed to read this chat")
 	}
+}
+
+// reauthorizeUser re-checks every topic the user's live connections hold. Most
+// answers are unchanged and come straight from the cache; the ones that hinge
+// on the membership or role that just changed are re-read.
+func (t *TopicRevoker) reauthorizeUser(userID int64) {
+	conns := t.hub.connsOf(userID)
+	if len(conns) == 0 {
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), revokeTimeout)
+	defer cancel()
+
+	for _, c := range conns {
+		for _, topic := range c.subscribedTopics() {
+			t.revokeUnlessAllowed(ctx, c, topic, "You are no longer allowed to subscribe to this topic")
+		}
+	}
+}
+
+func (t *TopicRevoker) revokeUnlessAllowed(ctx context.Context, c *Conn, topic, message string) {
+	// Fail closed: a lookup error means we cannot show this connection is
+	// still entitled, and the frame we are reacting to says the entitlement
+	// just changed — so the subscription goes. The client can resubscribe once
+	// the lookup works again, and the subscribe path applies the same rule.
+	allowed, err := t.authz.Allow(ctx, c.user, topic)
+	if err != nil {
+		t.log.Warn("topic re-authorization failed", "topic", topic, "err", err)
+	}
+	if allowed && err == nil {
+		return
+	}
+	c.unsubscribe(topic)
+	revoked := topic // only a revocation pays for the escaping copy
+	_ = c.send(protocol.ErrorFrame("forbidden", message, &revoked))
 }
 
 // isVisibilityChanged reports whether raw is an event frame carrying the

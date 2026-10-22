@@ -415,19 +415,26 @@ func (r *Resolver) store(token string, e entry, epoch uint64) {
 	r.cache[token] = r.order.PushFront(&cacheItem{token: token, entry: e})
 }
 
-// Broadcast implements events.Broadcaster: identity-svc publishes
-// realtime:user:{id}:rbac after dropping a user's cached RBAC, and every other
-// topic is ignored.
-func (r *Resolver) Broadcast(topic string, _ []byte) {
+// RBACTopicUser parses the realtime topic identity-svc publishes after dropping
+// a user's cached RBAC, "user:{id}:rbac", into that user's id. Any other topic
+// reports false. ws.TopicRevoker keys off the same frame.
+func RBACTopicUser(topic string) (int64, bool) {
 	rest, ok := strings.CutPrefix(topic, rbacTopicPrefix)
 	if !ok {
-		return
+		return 0, false
 	}
 	raw, ok := strings.CutSuffix(rest, rbacTopicSuffix)
 	if !ok {
-		return
+		return 0, false
 	}
-	if id, err := strconv.ParseInt(raw, 10, 64); err == nil && id > 0 {
+	id, err := strconv.ParseInt(raw, 10, 64)
+	return id, err == nil && id > 0
+}
+
+// Broadcast implements events.Broadcaster: evict on realtime:user:{id}:rbac,
+// ignore every other topic.
+func (r *Resolver) Broadcast(topic string, _ []byte) {
+	if id, ok := RBACTopicUser(topic); ok {
 		r.EvictUser(id)
 	}
 }

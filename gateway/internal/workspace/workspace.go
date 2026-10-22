@@ -119,8 +119,8 @@ const (
 	) FROM workspace w WHERE w.id = $1`
 
 	tournamentCacheTTL = 5 * time.Minute
-	// Matches the auth-service RBAC cache TTL, so membership changes propagate
-	// within roughly the same window.
+	// A backstop only: identity-svc announces every membership/role change on
+	// realtime:user:{id}:rbac and EvictUser drops that user's answers at once.
 	membershipCacheTTL = 60 * time.Second
 	// Hidden flag + preview allowlist change when an admin toggles them; keep the
 	// window short so the WS gate reflects changes within roughly a minute.
@@ -247,14 +247,27 @@ func (s *Store) IsWorkspaceMember(ctx context.Context, userID, workspaceID int64
 	if v, ok := s.members.get(key); ok {
 		return v, nil
 	}
+	gen := s.members.generation()
 
 	var member bool
 	if err := s.pool.QueryRow(ctx, isMemberSQL, userID, workspaceID).Scan(&member); err != nil {
 		return false, fmt.Errorf("membership lookup: %w", err)
 	}
 
-	s.members.set(key, member)
+	s.members.setIfCurrent(key, member, gen)
 	return member, nil
+}
+
+// EvictUser drops every cached membership and organizer answer of the auth
+// user, and keeps a lookup already in flight from storing its pre-change
+// answer. identity-svc publishes realtime:user:{id}:rbac after every change
+// to that user's memberships or roles; ws.TopicRevoker calls this before
+// re-checking the user's live subscriptions, so neither that re-check nor the
+// next subscribe is answered from the old entry.
+func (s *Store) EvictUser(userID int64) {
+	match := func(k memberKey) bool { return k.userID == userID }
+	s.members.evictWhere(match)
+	s.organizers.evictWhere(match)
 }
 
 // WorkspaceRequestsPerMinute returns the workspace-scope requests_per_minute
@@ -305,13 +318,14 @@ func (s *Store) IsWorkspaceOrganizer(ctx context.Context, userID, workspaceID in
 	if v, ok := s.organizers.get(key); ok {
 		return v, nil
 	}
+	gen := s.organizers.generation()
 
 	var organizer bool
 	if err := s.pool.QueryRow(ctx, isOrganizerSQL, userID, workspaceID).Scan(&organizer); err != nil {
 		return false, fmt.Errorf("organizer lookup: %w", err)
 	}
 
-	s.organizers.set(key, organizer)
+	s.organizers.setIfCurrent(key, organizer, gen)
 	return organizer, nil
 }
 

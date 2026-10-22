@@ -409,14 +409,16 @@ func run() error {
 	// the response cache's invalidator: the worker's tournament_changed
 	// consumer publishes realtime:tournament:{id}:bracket after every
 	// committed tournament write (via the transactional outbox), so cached
-	// public reads drop the moment the backend's own cache does. The chat
-	// leg is the revoker: a chat.visibility_changed frame re-runs the
-	// topic ACL for that room's live subscribers, because the ACL is otherwise
-	// only evaluated at subscribe time and an organizer hiding a chat must cut
-	// off the spectators already in it. safego recovers a panic here
+	// public reads drop the moment the backend's own cache does. The revoker
+	// leg re-runs the topic ACL for live subscribers, because the ACL is
+	// otherwise only evaluated at subscribe time: a chat.visibility_changed
+	// frame re-checks that room (an organizer hiding a chat must cut off the
+	// spectators already in it), realtime:user:{id}:rbac drops that user's
+	// cached memberships and re-checks every topic they hold (a removed member
+	// must stop receiving the workspace). safego recovers a panic here
 	// (unexpected Redis message format, etc.) instead of crashing the whole
-	// process. The resolver leg drops a user's cached principals when
-	// identity-svc announces an RBAC change (realtime:user:{id}:rbac).
+	// process. The resolver leg drops a user's cached principals on the same
+	// realtime:user:{id}:rbac frame.
 	// Invalidate before enqueueing notifications: clients may refetch as soon
 	// as their writer pump delivers the event.
 	legs := make([]events.Broadcaster, 0, 4)

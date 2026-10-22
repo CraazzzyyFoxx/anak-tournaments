@@ -340,6 +340,20 @@ func (h *Hub) SubscribersOf(topic string) []*Conn {
 	return subs
 }
 
+// connsOf snapshots the live connections authenticated as userID, with the
+// same staleness caveat as SubscribersOf.
+func (h *Hub) connsOf(userID int64) []*Conn {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	var conns []*Conn
+	for c := range h.conns {
+		if c.user != nil && c.user.ID == userID {
+			conns = append(conns, c)
+		}
+	}
+	return conns
+}
+
 // Route queues a pre-serialized frame for every subscriber except exclude.
 // Enqueue never waits for socket I/O; a bounded-backlog overflow disconnects
 // that client, without delaying subsequent Redis events or other rooms.
