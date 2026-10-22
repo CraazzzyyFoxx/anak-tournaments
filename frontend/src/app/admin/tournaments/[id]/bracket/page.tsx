@@ -139,7 +139,7 @@ export default function BracketTabPage() {
         <PageStateCard
           state="empty"
           title={orderedStages.length > 0 ? t("noStageSelected") : t("noStages")}
-          description={orderedStages.length > 0 ? t("pickStage") : undefined}
+          description={orderedStages.length > 0 ? t("pickStage") : t("addFirstStage")}
         />
       }
     />

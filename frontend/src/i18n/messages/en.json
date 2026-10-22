@@ -8503,6 +8503,7 @@
       "loadError": "Could not load the stages",
       "noStageSelected": "No stage selected",
       "noStages": "No stages yet",
+      "addFirstStage": "Use “Add stage” to create the first stage, then set its format, seeding and structure.",
       "pickStage": "Pick a stage on the left to edit its format, seeding, tiebreakers, best-of and structure."
     },
     "layout": {

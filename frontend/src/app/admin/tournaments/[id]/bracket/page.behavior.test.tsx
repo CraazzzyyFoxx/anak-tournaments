@@ -212,9 +212,9 @@ function Harness() {
   return <BracketTabPage />;
 }
 
-async function mount(search = "") {
+async function mount(search = "", stages: Stage[] = [groupStage(), playoffStage()]) {
   currentSearch = search;
-  getStages.mockResolvedValue([groupStage(), playoffStage()]);
+  getStages.mockResolvedValue(stages);
   getTournament.mockResolvedValue({ id: 84, name: "Cup", win_points: 1 });
   getStagesProgress.mockResolvedValue([]);
   getTeams.mockResolvedValue({ results: [{ id: 1, name: "Team One" }] });
@@ -326,6 +326,15 @@ describe("Bracket tab · URL is the state", () => {
     expect(named("button", "Groups")).toHaveLength(1);
     expect(named("button", "Playoff")).toHaveLength(1);
     expect(container.querySelector('nav[aria-label="Playoff sections"]')).toBeNull();
+  });
+
+  it("with no stages, points the organizer at Add stage instead of the public empty copy", async () => {
+    await mount("", []);
+
+    expect(bodyText()).toContain(en.adminBracket.page.noStages);
+    expect(bodyText()).toContain(en.adminBracket.page.addFirstStage);
+    expect(bodyText()).toContain(en.adminBracket.list.add);
+    expect(bodyText()).not.toContain(en.common.pageState.empty.description);
   });
 
   it("selecting a stage pushes `?stage=` and opens that stage's editor", async () => {
