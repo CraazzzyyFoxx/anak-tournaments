@@ -104,6 +104,10 @@ func Groups() (public, admin []openapi.Group) {
 			Routes: app.AnnouncementAdminRoutes},
 		{Tag: "Admin: Notifications", Description: "Notifications a workspace produced: review and retire, plus one account's notification state.",
 			Routes: concat(app.NotificationAdminRoutes, app.NotificationUserAdminRoutes)},
+		{Tag: "Admin: Workspaces", Description: "Workspace create/update/delete, members, owner, custom domain, Discord guild, notification delivery, team formats, verification tier and quota overrides.",
+			Routes: app.WorkspaceWriteRoutes},
+		{Tag: "Admin: Quota", Description: "Platform quota plans and the cost of each metered operation (superuser).",
+			Routes: app.QuotaAdminRoutes},
 	}
 	return public, admin
 }
