@@ -207,7 +207,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List jobs
+         * @description Permission: global `analytics.read`. Returns recent analytics jobs (default limit 20), optionally scoped by workspace_id and active_only.
+         *
+         *     RPC subject: `rpc.analytics.jobs_list`
+         */
+        get: operations["get__api_v1_analytics_jobs"];
         put?: never;
         /**
          * Create analytics job
@@ -339,7 +345,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List anomaly feedback
+         * @description Permission: global `analytics.read`. Returns all anomaly-feedback rows recorded for a tournament.
+         *
+         *     RPC subject: `rpc.analytics.feedback_list`
+         */
+        get: operations["get__api_v1_analytics_player_anomalies_feedback"];
         put?: never;
         /**
          * Submit anomaly feedback
@@ -1849,7 +1861,13 @@ export interface paths {
          *     RPC subject: `rpc.balancer.admin.balance_save`
          */
         put: operations["put__api_v1_balancer_tournaments__tournament_id__balance"];
-        post?: never;
+        /**
+         * Balance tournament pool
+         * @description Permission: workspace `team.create` on the tournament's workspace; an API-key caller must also be scoped to that workspace and hold the `team.create` scope. Queues an asynchronous balance job built server-side from the tournament's own pool registrations -- nothing is uploaded -- returning 202 with the job id; 422 when no pool registration has a ranked role.
+         *
+         *     RPC subject: `rpc.balancer.jobs.create_for_tournament`
+         */
+        post: operations["post__api_v1_balancer_tournaments__tournament_id__balance"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2854,7 +2872,13 @@ export interface paths {
          *     RPC subject: `rpc.tournament.regteam_image_upload`
          */
         post: operations["post__api_v1_registration_teams__team_id__image"];
-        delete?: never;
+        /**
+         * Delete registered team image
+         * @description Permission: self-service — that registration team's own captain or team manager, no workspace permission, and only while the team is still forming (mutable and unlocked). Removes a registered team's image from S3 and clears its URL.
+         *
+         *     RPC subject: `rpc.tournament.regteam_image_delete`
+         */
+        delete: operations["delete__api_v1_registration_teams__team_id__image"];
         options?: never;
         head?: never;
         patch?: never;
@@ -4443,7 +4467,13 @@ export interface paths {
          */
         get: operations["get__api_v1_workspaces"];
         put?: never;
-        post?: never;
+        /**
+         * Create workspace
+         * @description Permission: authenticated (active) user holding the allow-by-default global `workspace.self_create` capability. Creates a workspace, provisions system roles, stamps and adds the creator as owner, and busts the RBAC cache. Deny that capability for an account (negative RBAC, global scope) to revoke self-service creation from it (403). Then capped per account by `workspace_creation.max_owned_per_user`, counted over `Workspace.owner_id` (403 `workspace_create_limit_reached`); platform slugs are unclaimable (400 `slug_reserved`), 400 on a duplicate slug, and the new workspace is born `unverified`.
+         *
+         *     RPC subject: `rpc.app.workspaces.create`
+         */
+        post: operations["post__api_v1_workspaces"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4488,10 +4518,22 @@ export interface paths {
         get: operations["get__api_v1_workspaces__id_"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete workspace
+         * @description Permission: workspace `workspace.delete`. Deletes a workspace via the shared CRUD engine; returns 204, 404 if not found.
+         *
+         *     RPC subject: `rpc.app.admin.delete`
+         */
+        delete: operations["delete__api_v1_workspaces__id_"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update workspace
+         * @description Permission: workspace `workspace.update`. Updates a workspace via the shared CRUD engine, 404 if not found.
+         *
+         *     RPC subject: `rpc.app.admin.update`
+         */
+        patch: operations["patch__api_v1_workspaces__id_"];
         trace?: never;
     };
     "/api/v1/workspaces/{workspace_id}/staff": {
@@ -6758,6 +6800,62 @@ export interface paths {
          *     RPC subject: `rpc.tournament.admin.update`
          */
         patch: operations["patch__api_v1_admin_players__player_id_"];
+        trace?: never;
+    };
+    "/api/v1/admin/quota/operations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List metered operations
+         * @description Permission: superuser only. Returns the `quota.operation` catalogue — the slugs that cost heavy budget, their cost and their enabled flag. A slug with no row here costs no heavy budget; it still spends one per-minute request token. A call refused once that budget is spent answers 429 `code=rate_limited` with `Retry-After`, naming the dimension and the bucket as `details.limit_name` and `details.scope` (relayed by the gateway inside `fields[0]`).
+         *
+         *     RPC subject: `rpc.app.quota.operations`
+         */
+        get: operations["get__api_v1_admin_quota_operations"];
+        /**
+         * Create or update a metered operation
+         * @description Permission: superuser only. Sets one operation's heavy cost and its enabled flag — `enabled=false` is the per-operation kill switch, and it takes effect on the next call rather than at the end of a cache TTL. Audited as `quota.operation_upsert`. A call refused by the daily heavy budget answers 429 `code=rate_limited` with `Retry-After`, naming the dimension (`details.limit_name`, here `heavy_per_day`) and the bucket (`details.scope`), which the gateway relays inside `fields[0]`.
+         *
+         *     RPC subject: `rpc.app.quota.operation_upsert`
+         */
+        put: operations["put__api_v1_admin_quota_operations"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/quota/plans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List quota plans
+         * @description Permission: superuser only — a plan is a platform-wide tier, not tenant data. Returns every plan with its per-scope limit rows (`workspace`/`key`/`session`); a null dimension means unlimited at that scope. These are the numbers a refusal reports: a metered call over budget answers 429 `code=rate_limited` with `Retry-After`, naming the dimension and the bucket as `details.limit_name` and `details.scope` (relayed by the gateway inside `fields[0]`).
+         *
+         *     RPC subject: `rpc.app.quota.plans`
+         */
+        get: operations["get__api_v1_admin_quota_plans"];
+        /**
+         * Create or replace a quota plan
+         * @description Permission: superuser only. Creates the plan named by `slug` or replaces it, INCLUDING its scope rows wholesale — a plan is read as a complete statement of its tier, so a scope omitted from the body is deleted rather than kept. Audited as `quota.plan_upsert` with the previous and new limit rows; the policy cache is dropped immediately, so the next metered call on every affected workspace enforces the new numbers. A call these limits refuse answers 429 `code=rate_limited` with `Retry-After`, naming the dimension and the bucket as `details.limit_name` and `details.scope` (relayed by the gateway inside `fields[0]`).
+         *
+         *     RPC subject: `rpc.app.quota.plan_upsert`
+         */
+        put: operations["put__api_v1_admin_quota_plans"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/admin/rank/collect": {
@@ -9701,14 +9799,14 @@ export interface paths {
         };
         /**
          * Get my pickup mix preferences
-         * @description Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, how many balance options to keep, the roster shape its mixes field, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode) -- plus roster_shape, the read-only resolution of that shape. A null value means the setting was never saved and the default applies.
+         * @description Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, the open-slot weight, how many balance options to keep, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode). A null value means the setting was never saved and the default applies. The team format is not here: it is frozen on each mix.
          *
          *     RPC subject: `rpc.balancer.prefs.get`
          */
         get: operations["get__api_v1_balancer_me_mix_preferences"];
         /**
          * Set my pickup mix preferences
-         * @description Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all six of the caller's mix settings at once and returns the stored result with the re-resolved roster_shape; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an impossible roster shape.
+         * @description Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all six of the caller's mix settings at once and returns the stored result, exactly what the next read returns; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an unknown field or an out-of-range value.
          *
          *     RPC subject: `rpc.balancer.prefs.upsert`
          */
@@ -10812,7 +10910,7 @@ export interface paths {
         get?: never;
         /**
          * Save the workspace division grid
-         * @description Permission: workspace `division_grid.update`. Server-authoritative save: applies cosmetic edits in place, or spawns a new version, auto-generates mappings from every used source version, and auto-activates when complete.
+         * @description Permission: workspace `division_grid.update`. Server-authoritative save: applies cosmetic edits in place, or spawns a new version, auto-generates mappings from every used source version, and auto-activates when complete, but only if the grid already holds the workspace's active version for its game (another grid is activated explicitly).
          *
          *     RPC subject: `rpc.tournament.grid_save`
          */
@@ -11570,6 +11668,84 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workspaces/{workspace_id}/custom-domain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set workspace custom domain
+         * @description Permission: workspace `workspace.update`. Normalizes and stores a custom domain plus a fresh DNS TXT verification token, resetting verification; 404 if workspace missing, 400 on an invalid domain.
+         *
+         *     RPC subject: `rpc.app.workspaces.set_custom_domain`
+         */
+        post: operations["post__api_v1_workspaces__workspace_id__custom_domain"];
+        /**
+         * Clear workspace custom domain
+         * @description Permission: workspace `workspace.update`. Removes the custom domain, its verification token, and verified_at; 404 if workspace missing.
+         *
+         *     RPC subject: `rpc.app.workspaces.clear_custom_domain`
+         */
+        delete: operations["delete__api_v1_workspaces__workspace_id__custom_domain"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/custom-domain/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify workspace custom domain
+         * @description Permission: workspace `workspace.update`. Checks the `_owt-verify.<domain>` DNS TXT record against the stored token and stamps verified_at on a match; 404 if workspace missing, 400 if no domain is set or the record doesn't match yet.
+         *
+         *     RPC subject: `rpc.app.workspaces.verify_custom_domain`
+         */
+        post: operations["post__api_v1_workspaces__workspace_id__custom_domain_verify"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/discord-guild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify and bind a Discord guild
+         * @description Permission: workspace `workspace.update`, and the caller must additionally administer the Discord guild (owner or MANAGE_GUILD, proven through identity-service). Binds the guild to the workspace, stamping verified_at/verified_by; 404 if workspace missing, 403 `discord_relink_required` when the caller's Discord connection has no usable OAuth token (re-link Discord), 403 `discord_guild_not_administered` if the caller does not administer the guild, 409 if another workspace already claims it, 503 if identity-service is unreachable.
+         *
+         *     RPC subject: `rpc.app.workspaces.discord_guild_verify`
+         */
+        post: operations["post__api_v1_workspaces__workspace_id__discord_guild"];
+        /**
+         * Unbind a Discord guild
+         * @description Permission: workspace `workspace.update`, deliberately not Discord administration -- so an organiser can leave a server they were kicked from. Clears the workspace's Discord guild claim (guild id, verified_at, verified_by). 404 if workspace missing. Idempotent when nothing is bound.
+         *
+         *     RPC subject: `rpc.app.workspaces.discord_guild_clear`
+         */
+        delete: operations["delete__api_v1_workspaces__workspace_id__discord_guild"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workspaces/{workspace_id}/discord/channels": {
         parameters: {
             query?: never;
@@ -11630,6 +11806,256 @@ export interface paths {
         get: operations["get__api_v1_workspaces__workspace_id__discord_roles"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List workspace members
+         * @description Permission: workspace `workspace_member.read`. Paginated, searchable (username/email) list of a workspace's auth-linked members enriched with auth-user info and RBAC roles. `role_id` keeps holders of that role; `exclude_role_id` drops holders of any listed role. 404 if workspace missing.
+         *
+         *     RPC subject: `rpc.app.workspaces.members_list`
+         */
+        get: operations["get__api_v1_workspaces__workspace_id__members"];
+        put?: never;
+        /**
+         * Add workspace member
+         * @description Permission: workspace `workspace_member.create`. Adds an auth user to a workspace with resolved role ids and busts the member's RBAC cache; 400 if already a member.
+         *
+         *     RPC subject: `rpc.app.workspaces.member_add`
+         */
+        post: operations["post__api_v1_workspaces__workspace_id__members"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/members/autofill-roles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Autofill member roles
+         * @description Permission: workspace `workspace_member.update`. Grants the baseline 'player' role to every auth-linked member of the workspace that currently has no role; idempotent, returns the count assigned.
+         *
+         *     RPC subject: `rpc.app.workspaces.members_autofill_roles`
+         */
+        post: operations["post__api_v1_workspaces__workspace_id__members_autofill_roles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/members/{auth_user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove workspace member
+         * @description Permission: workspace `workspace_member.delete`. Removes a member from a workspace and busts their RBAC cache; refuses to remove the last owner, returns 204.
+         *
+         *     RPC subject: `rpc.app.workspaces.member_remove`
+         */
+        delete: operations["delete__api_v1_workspaces__workspace_id__members__auth_user_id_"];
+        options?: never;
+        head?: never;
+        /**
+         * Update workspace member
+         * @description Permission: workspace `workspace_member.update`. Updates a member's workspace roles and busts their RBAC cache; 404 if member missing.
+         *
+         *     RPC subject: `rpc.app.workspaces.member_update`
+         */
+        patch: operations["patch__api_v1_workspaces__workspace_id__members__auth_user_id_"];
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/notification-config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a workspace's notification delivery settings
+         * @description Permission: workspace `workspace.update` — the stored channel names a private guild. Returns where this workspace's broadcast notifications are posted (`discord_channel_id`, a snowflake as a string), the language they are written in, which kinds are posted (`broadcast_kinds`), and the full set that may be enabled (`broadcastable_kinds`) so the screen needs no second source of truth. A workspace that never saved anything reads as its defaults — no channel, `ru`, registration and check-in openings. 404 if workspace missing.
+         *
+         *     RPC subject: `rpc.app.workspaces.notification_config_get`
+         */
+        get: operations["get__api_v1_workspaces__workspace_id__notification_config"];
+        /**
+         * Update a workspace's notification delivery settings
+         * @description Permission: workspace `workspace.update`. Stores the whole form. A non-null `discord_channel_id` must be a text channel of THIS workspace's verified guild — otherwise an administrator of one workspace could make the bot post into another organiser's server: 409 `discord_guild_not_linked` when no guild is bound, 422 `discord_channel_not_in_guild` when the channel is not one of its text channels, and 503 `discord_unavailable` when discord-service cannot be asked (an unchecked channel is never stored). `broadcast_kinds` must be a subset of `broadcastable_kinds` and `locale` one of `ru`/`en`, both 422 otherwise. Returns the same shape as the read. 404 if workspace missing.
+         *
+         *     RPC subject: `rpc.app.workspaces.notification_config_update`
+         */
+        put: operations["put__api_v1_workspaces__workspace_id__notification_config"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/owner": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get the workspace owner
+         * @description Permission: workspace `workspace.update` (the public workspace model deliberately publishes no owner). Resolves `Workspace.owner_id` — the account accountable for the workspace and counted against the per-account create cap — to its username, email and avatar; returns null data when no owner is stamped, 404 if workspace missing.
+         *
+         *     RPC subject: `rpc.app.workspaces.owner_get`
+         */
+        get: operations["get__api_v1_workspaces__workspace_id__owner"];
+        /**
+         * Assign or clear the workspace owner
+         * @description Permission: superuser only — stricter than the `workspace.update` gate on the matching read, because owner_id is what the per-account create cap is counted over. Stamps `Workspace.owner_id` with the given auth account, or clears it when `auth_user_id` is null, and returns the resolved owner. RBAC roles are untouched (the stamp and the `owner` role are decoupled), the per-account cap is not re-checked (a superuser assignment is the override for it), every call is audited including a no-op, 404 if the workspace or the target account is missing.
+         *
+         *     RPC subject: `rpc.app.workspaces.owner_set`
+         */
+        put: operations["put__api_v1_workspaces__workspace_id__owner"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/owner/transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transfer workspace ownership
+         * @description Permission: the workspace's current `owner_id` or a superuser — `workspace.update` alone is not enough, a co-administrator may not give away a workspace they do not answer for. Hands the workspace over: stamps `Workspace.owner_id` with the recipient AND moves the RBAC `owner` role to them, adding them to the workspace if they are not a member yet. The outgoing owner keeps their membership and every other role (`member` steps in if `owner` was their only one); the recipient is granted `owner` before the outgoing owner loses it, so the workspace is never ownerless. The recipient's `max_owned_per_user` cap is enforced unless the actor is a superuser (403 `workspace_owner_limit_reached`), because create-then-transfer would otherwise loop past it. Audited, busts both accounts' RBAC cache, 404 if the workspace or the recipient is missing, 403 for anyone but the owner or a superuser.
+         *
+         *     RPC subject: `rpc.app.workspaces.owner_transfer`
+         */
+        post: operations["post__api_v1_workspaces__workspace_id__owner_transfer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/quota": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set a workspace quota override
+         * @description Permission: workspace `workspace.update`, but authority is asymmetric: a workspace admin may only LOWER a dimension below what the workspace's plan grants, and a superuser may raise it. Writes one scope's override (`workspace`, `key` or `session`) over the five dimensions — `requests_per_minute`, `heavy_per_day`, `concurrent_heavy`, `max_upload_bytes`, `max_items_per_request`. A null dimension inherits the plan's value; an all-null body deletes the override row and puts the workspace back on its plan. Returns the EFFECTIVE limits after the write (plan merged with the stored override), not the row. Audited as `workspace.quota_update`; the policy cache is dropped immediately. 422 `quota_above_inherited` (carrying `limit_name`, `limit` and `requested`) when a non-superuser raises a value, 404 if the workspace is missing. A metered call later refused by these numbers answers 429 `code=rate_limited` with `Retry-After`; the dimension that refused and the bucket it refused at ride the structured details as `details.limit_name` and `details.scope` (the gateway relays them inside `fields[0]`).
+         *
+         *     RPC subject: `rpc.app.workspaces.quota_set`
+         */
+        post: operations["post__api_v1_workspaces__workspace_id__quota"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/quota/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read workspace quota usage
+         * @description Permission: workspace `team.create` (i.e. a workspace admin) or superuser. Returns the workspace's plan slug and its shared pool's effective ceilings next to what has been spent — requests this minute, heavy units today, concurrent heavy slots held, and the two payload caps — with the seconds until each window resets. Per-key usage is not reported here (identity-service answers for an API key). `policy` is the editable half and covers all three scopes (`workspace`/`key`/`session`), because all three override rows belong to this tenant: each entry carries `override`, the row exactly as stored (all-null when the scope has none), and `inherited`, the ceiling `quota_set` holds a non-superuser write to. 404 if the workspace is missing. A metered call refused against these numbers answers 429 `code=rate_limited` with `Retry-After`, naming the dimension and the bucket as `details.limit_name` and `details.scope` (relayed by the gateway inside `fields[0]`).
+         *
+         *     RPC subject: `rpc.app.quota.workspace_usage`
+         */
+        get: operations["get__api_v1_workspaces__workspace_id__quota_usage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/team-formats/{discipline}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get a workspace's default team format
+         * @description Permission: workspace `workspace.update`. Returns the discipline's workspace default or module preset with its slot projection.
+         *
+         *     RPC subject: `rpc.app.workspaces.team_format_get`
+         */
+        get: operations["get__api_v1_workspaces__workspace_id__team_formats__discipline_"];
+        /**
+         * Replace a workspace's default team format
+         * @description Permission: workspace `workspace.update`. Sets the template for future tournaments and mixes; existing copies never change. Invalid formats return 422.
+         *
+         *     RPC subject: `rpc.app.workspaces.team_format_put`
+         */
+        put: operations["put__api_v1_workspaces__workspace_id__team_formats__discipline_"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/{workspace_id}/verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set workspace verification status
+         * @description Permission: superuser only (a workspace owner may not self-certify). Moves a workspace between the `unverified`/`verified`/`trusted` trust tiers — the only way a self-service workspace is unblocked for GPU compute, inline achievement recompute and the public directory; audited on every call including a no-op set, 404 if workspace missing, 422 on an unknown status.
+         *
+         *     RPC subject: `rpc.app.workspaces.verification_set`
+         */
+        post: operations["post__api_v1_workspaces__workspace_id__verification"];
         delete?: never;
         options?: never;
         head?: never;
@@ -20062,11 +20488,6 @@ export interface components {
              * @default false
              */
             required: boolean;
-            /**
-             * Rule
-             * @default null
-             */
-            rule: string | null;
             /** Verdicts */
             verdicts?: {
                 [key: string]: components["schemas"]["tournament.SubscriptionProviderVerdictRead"];
@@ -21268,6 +21689,53 @@ export interface components {
             /** Retired */
             retired: number;
         };
+        /**
+         * NotificationWorkspaceConfigRead
+         * @description Where this workspace's broadcasts go, plus what the picker needs.
+         *
+         *     Discord snowflakes are strings: they exceed 2^53 and a JSON number loses
+         *     precision in the browser, the same way ``discord_guild_id`` is already
+         *     carried.
+         */
+        "app.NotificationWorkspaceConfigRead": {
+            /** Broadcast Kinds */
+            broadcast_kinds: string[];
+            /** Broadcastable Kinds */
+            broadcastable_kinds: string[];
+            /**
+             * Discord Channel Id
+             * @default null
+             */
+            discord_channel_id: string | null;
+            /**
+             * Discord Guild Id
+             * @default null
+             */
+            discord_guild_id: string | null;
+            /** Locale */
+            locale: string;
+            /** Workspace Id */
+            workspace_id: number;
+        };
+        /**
+         * NotificationWorkspaceConfigUpdate
+         * @description The settings form, submitted whole -- it edits one row of three values.
+         */
+        "app.NotificationWorkspaceConfigUpdate": {
+            /** Broadcast Kinds */
+            broadcast_kinds?: string[];
+            /**
+             * Discord Channel Id
+             * @default null
+             */
+            discord_channel_id: string | null;
+            /**
+             * Locale
+             * @default ru
+             * @enum {string}
+             */
+            locale: AppNotificationWorkspaceConfigUpdateLocale;
+        };
         /** Paginated[AuditLogRead] */
         "app.Paginated_AuditLogRead_": {
             /** Page */
@@ -21300,6 +21768,259 @@ export interface components {
             results: components["schemas"]["app.NotificationAdminItem"][];
             /** Total */
             total: number;
+        };
+        /** Paginated[WorkspaceMemberRead] */
+        "app.Paginated_WorkspaceMemberRead_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["app.WorkspaceMemberRead"][];
+            /** Total */
+            total: number;
+        };
+        /** QuotaLimitsPayload */
+        "app.QuotaLimitsPayload": {
+            /**
+             * Concurrent Heavy
+             * @default null
+             */
+            concurrent_heavy: number | null;
+            /**
+             * Heavy Per Day
+             * @default null
+             */
+            heavy_per_day: number | null;
+            /**
+             * Max Items Per Request
+             * @default null
+             */
+            max_items_per_request: number | null;
+            /**
+             * Max Upload Bytes
+             * @default null
+             */
+            max_upload_bytes: number | null;
+            /**
+             * Requests Per Minute
+             * @default null
+             */
+            requests_per_minute: number | null;
+        };
+        /** QuotaOperationRead */
+        "app.QuotaOperationRead": {
+            /** Cost */
+            cost: number;
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+            /** Enabled */
+            enabled: boolean;
+            /** Id */
+            id: number;
+            /** Slug */
+            slug: string;
+        };
+        /** QuotaOperationWrite */
+        "app.QuotaOperationWrite": {
+            /**
+             * Cost
+             * @default 1
+             */
+            cost: number;
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+            /**
+             * Enabled
+             * @default true
+             */
+            enabled: boolean;
+            /** Slug */
+            slug: string;
+        };
+        /** QuotaPlanLimitRead */
+        "app.QuotaPlanLimitRead": {
+            /**
+             * Concurrent Heavy
+             * @default null
+             */
+            concurrent_heavy: number | null;
+            /**
+             * Heavy Per Day
+             * @default null
+             */
+            heavy_per_day: number | null;
+            /**
+             * Max Items Per Request
+             * @default null
+             */
+            max_items_per_request: number | null;
+            /**
+             * Max Upload Bytes
+             * @default null
+             */
+            max_upload_bytes: number | null;
+            /**
+             * Requests Per Minute
+             * @default null
+             */
+            requests_per_minute: number | null;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: AppQuotaPlanLimitReadScope;
+        };
+        /** QuotaPlanRead */
+        "app.QuotaPlanRead": {
+            /**
+             * Created At
+             * @default null
+             */
+            created_at: string | null;
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+            /** Id */
+            id: number;
+            /** Limits */
+            limits?: components["schemas"]["app.QuotaPlanLimitRead"][];
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * @default null
+             */
+            updated_at: string | null;
+        };
+        /** QuotaPlanWrite */
+        "app.QuotaPlanWrite": {
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+            /** Limits */
+            limits?: components["schemas"]["app.QuotaPlanLimitRead"][];
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+        };
+        /**
+         * QuotaScopePolicy
+         * @description One scope's stored override next to the ceiling a write must stay under.
+         *
+         *     ``QuotaScopeUsage`` reports the EFFECTIVE number, which cannot tell "the
+         *     plan grants 600" apart from "someone wrote 600 here". An editor needs both:
+         *     ``override`` is the row exactly as stored (all-``None`` when the scope has
+         *     no row at all), and ``inherited`` is what a null dimension falls back to.
+         *
+         *     ``inherited`` is the same bound the write path enforces for this scope, so a
+         *     screen can mark a raise as superuser-only before spending the round trip
+         *     that would answer 422 ``quota_above_inherited``.
+         */
+        "app.QuotaScopePolicy": {
+            inherited?: components["schemas"]["app.QuotaLimitsPayload"];
+            override?: components["schemas"]["app.QuotaLimitsPayload"];
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: AppQuotaScopePolicyScope;
+        };
+        /**
+         * QuotaScopeUsage
+         * @description One bucket's effective ceiling next to what has been spent against it.
+         */
+        "app.QuotaScopeUsage": {
+            /**
+             * Concurrent Heavy
+             * @default null
+             */
+            concurrent_heavy: number | null;
+            /**
+             * Concurrent Used
+             * @default 0
+             */
+            concurrent_used: number;
+            /**
+             * Heavy Per Day
+             * @default null
+             */
+            heavy_per_day: number | null;
+            /**
+             * Heavy Reset In
+             * @default null
+             */
+            heavy_reset_in: number | null;
+            /**
+             * Heavy Used
+             * @default 0
+             */
+            heavy_used: number;
+            /**
+             * Max Items Per Request
+             * @default null
+             */
+            max_items_per_request: number | null;
+            /**
+             * Max Upload Bytes
+             * @default null
+             */
+            max_upload_bytes: number | null;
+            /**
+             * Public Requests Used
+             * @default null
+             */
+            public_requests_used: number | null;
+            /**
+             * Requests Per Minute
+             * @default null
+             */
+            requests_per_minute: number | null;
+            /**
+             * Requests Reset In
+             * @default null
+             */
+            requests_reset_in: number | null;
+            /**
+             * Requests Used
+             * @default 0
+             */
+            requests_used: number;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: AppQuotaScopeUsageScope;
+        };
+        /** QuotaUsageRead */
+        "app.QuotaUsageRead": {
+            /**
+             * Plan Slug
+             * @default null
+             */
+            plan_slug: string | null;
+            /** Policy */
+            policy?: components["schemas"]["app.QuotaScopePolicy"][];
+            /** Scopes */
+            scopes?: components["schemas"]["app.QuotaScopeUsage"][];
+            /**
+             * Workspace Id
+             * @default null
+             */
+            workspace_id: number | null;
         };
         /**
          * SocialAccountCreate
@@ -21360,6 +22081,34 @@ export interface components {
         "app.StreamVisibilityUpdate": {
             /** Visible */
             visible: boolean;
+        };
+        /** TeamFormatWrite */
+        "app.TeamFormatWrite": {
+            /** Dimensions */
+            dimensions?: components["schemas"]["app.FormatDimensionWire"][];
+            /** Name */
+            name: string;
+            /**
+             * Preset Code
+             * @default null
+             */
+            preset_code: string | null;
+            /** Rules */
+            rules?: components["schemas"]["app.FormatRuleWire"][];
+            /** Starter Max */
+            starter_max: number;
+            /** Starter Min */
+            starter_min: number;
+            /**
+             * Substitute Max
+             * @default 0
+             */
+            substitute_max: number;
+            /**
+             * Substitute Min
+             * @default 0
+             */
+            substitute_min: number;
         };
         /**
          * TournamentReadiness
@@ -21599,6 +22348,33 @@ export interface components {
             /** Social Accounts */
             social_accounts: components["schemas"]["app.UserMergeIdentityOption"][];
         };
+        /** WorkspaceCreate */
+        "app.WorkspaceCreate": {
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+            /**
+             * Icon Url
+             * @default null
+             */
+            icon_url: string | null;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /**
+         * WorkspaceCustomDomainSet
+         * @description Body for ``set_custom_domain``. The domain itself (FQDN shape,
+         *     platform-zone rejection) is validated in the service layer by
+         *     ``normalize_custom_domain``.
+         */
+        "app.WorkspaceCustomDomainSet": {
+            /** Custom Domain */
+            custom_domain: string;
+        };
         /**
          * WorkspaceDiscordGuildOption
          * @description One guild the caller administers, as reported by
@@ -21620,6 +22396,17 @@ export interface components {
             /** Owner */
             owner: boolean;
         };
+        /**
+         * WorkspaceDiscordGuildVerify
+         * @description Body for ``discord_guild_verify``. The snowflake pattern gates shape
+         *     only -- the actual proof of administration happens server-side via
+         *     ``rpc.identity.oauth_discord_guilds``, not here. Clearing a verified claim
+         *     is a separate verb (``discord_guild_clear``), not a blank ``guild_id``.
+         */
+        "app.WorkspaceDiscordGuildVerify": {
+            /** Guild Id */
+            guild_id: string;
+        };
         /** WorkspaceDiscordGuildsRead */
         "app.WorkspaceDiscordGuildsRead": {
             /** Guilds */
@@ -21629,6 +22416,334 @@ export interface components {
              * @default false
              */
             relink_required: boolean;
+        };
+        /**
+         * WorkspaceMemberAutofillResult
+         * @description Result of the ``members_autofill_roles`` action: how many role-less
+         *     members were granted the baseline ``member`` role.
+         */
+        "app.WorkspaceMemberAutofillResult": {
+            /** Assigned */
+            assigned: number;
+        };
+        /** WorkspaceMemberCreate */
+        "app.WorkspaceMemberCreate": {
+            /** Auth User Id */
+            auth_user_id: number;
+            /**
+             * Role
+             * @default null
+             */
+            role: string | null;
+            /**
+             * Role Ids
+             * @default null
+             */
+            role_ids: number[] | null;
+        };
+        /** WorkspaceMemberRead */
+        "app.WorkspaceMemberRead": {
+            /** Auth User Id */
+            auth_user_id: number;
+            /**
+             * Avatar Url
+             * @default null
+             */
+            avatar_url: string | null;
+            /**
+             * Email
+             * @default null
+             */
+            email: string | null;
+            /**
+             * First Name
+             * @default null
+             */
+            first_name: string | null;
+            /** Id */
+            id: number;
+            /**
+             * Last Name
+             * @default null
+             */
+            last_name: string | null;
+            /** Rbac Roles */
+            rbac_roles?: components["schemas"]["app.WorkspaceMemberRoleRead"][];
+            /**
+             * Username
+             * @default null
+             */
+            username: string | null;
+            /** Workspace Id */
+            workspace_id: number;
+        };
+        /** WorkspaceMemberRoleRead */
+        "app.WorkspaceMemberRoleRead": {
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+            /** Id */
+            id: number;
+            /** Is System */
+            is_system: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Workspace Id
+             * @default null
+             */
+            workspace_id: number | null;
+        };
+        /** WorkspaceMemberUpdate */
+        "app.WorkspaceMemberUpdate": {
+            /**
+             * Role
+             * @default null
+             */
+            role: string | null;
+            /**
+             * Role Ids
+             * @default null
+             */
+            role_ids: number[] | null;
+        };
+        /**
+         * WorkspaceOwnerRead
+         * @description The accountable owner of a workspace (``Workspace.owner_id``), resolved to
+         *     a person.
+         *
+         *     Deliberately NOT a field on ``WorkspaceRead``: that model is served
+         *     anonymously (``GET /api/v1/workspaces/{id}``, and the list is publicly
+         *     cached at the edge), so an owner's username and email sit behind the same
+         *     ``workspace.update`` gate as the Discord role/channel reads -- for the same
+         *     reason ``discord_guild_verified_by_auth_user_id`` was kept off the public
+         *     model.
+         *
+         *     ``username``/``email`` are optional so a workspace whose owner row vanished
+         *     between the two reads still answers with the id it has, rather than 500.
+         */
+        "app.WorkspaceOwnerRead": {
+            /** Auth User Id */
+            auth_user_id: number;
+            /**
+             * Avatar Url
+             * @default null
+             */
+            avatar_url: string | null;
+            /**
+             * Email
+             * @default null
+             */
+            email: string | null;
+            /**
+             * First Name
+             * @default null
+             */
+            first_name: string | null;
+            /**
+             * Last Name
+             * @default null
+             */
+            last_name: string | null;
+            /**
+             * Username
+             * @default null
+             */
+            username: string | null;
+        };
+        /**
+         * WorkspaceOwnerSet
+         * @description Body for the superuser-only ``owner_set``. ``None`` clears the stamp --
+         *     a workspace with nobody on the hook is a real state (every workspace
+         *     predating self-service creation is in it), so it has to be reachable, not
+         *     only escapable.
+         */
+        "app.WorkspaceOwnerSet": {
+            /**
+             * Auth User Id
+             * @default null
+             */
+            auth_user_id: number | null;
+        };
+        /**
+         * WorkspaceOwnerTransfer
+         * @description Body for ``owner_transfer``. Not nullable, unlike ``WorkspaceOwnerSet``:
+         *     a hand-off has a recipient by definition, and "leave nobody accountable" is
+         *     the superuser-only clear on ``owner_set``, not a transfer.
+         */
+        "app.WorkspaceOwnerTransfer": {
+            /** Auth User Id */
+            auth_user_id: number;
+        };
+        /**
+         * WorkspaceQuotaSet
+         * @description Body for ``quota_set``: one scope's override, or its removal.
+         *
+         *     ``limits`` is the shared wire payload every quota writer speaks, so the
+         *     five dimensions are declared once; an all-null payload deletes the override
+         *     row rather than pinning five nulls, which is how a tenant gets back onto
+         *     its plan.
+         */
+        "app.WorkspaceQuotaSet": {
+            limits?: components["schemas"]["app.QuotaLimitsPayload"];
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: AppWorkspaceQuotaSetScope;
+        };
+        /** WorkspaceUpdate */
+        "app.WorkspaceUpdate": {
+            /**
+             * About
+             * @default null
+             */
+            about: string | null;
+            /**
+             * Boosty Url
+             * @default null
+             */
+            boosty_url: string | null;
+            /**
+             * Brand Accent
+             * @default null
+             */
+            brand_accent: string | null;
+            /**
+             * Brand Background
+             * @default null
+             */
+            brand_background: string | null;
+            /**
+             * Brand Border
+             * @default null
+             */
+            brand_border: string | null;
+            /**
+             * Brand Destructive
+             * @default null
+             */
+            brand_destructive: string | null;
+            /**
+             * Brand Foreground
+             * @default null
+             */
+            brand_foreground: string | null;
+            /**
+             * Brand Muted
+             * @default null
+             */
+            brand_muted: string | null;
+            /**
+             * Brand Primary
+             * @default null
+             */
+            brand_primary: string | null;
+            /**
+             * Brand Ring
+             * @default null
+             */
+            brand_ring: string | null;
+            /**
+             * Brand Secondary
+             * @default null
+             */
+            brand_secondary: string | null;
+            /**
+             * Brand Surface
+             * @default null
+             */
+            brand_surface: string | null;
+            /**
+             * Branding Enabled
+             * @default null
+             */
+            branding_enabled: boolean | null;
+            /**
+             * Description
+             * @default null
+             */
+            description: string | null;
+            /**
+             * Disciplines Enabled
+             * @default null
+             */
+            disciplines_enabled: string[] | null;
+            /**
+             * Discord Url
+             * @default null
+             */
+            discord_url: string | null;
+            /**
+             * Icon Url
+             * @default null
+             */
+            icon_url: string | null;
+            /**
+             * Is Active
+             * @default null
+             */
+            is_active: boolean | null;
+            /**
+             * Is Hidden
+             * @default null
+             */
+            is_hidden: boolean | null;
+            /**
+             * Name
+             * @default null
+             */
+            name: string | null;
+            /**
+             * Newcomer Scope
+             * @default null
+             */
+            newcomer_scope: AppWorkspaceUpdateNewcomer_scopeAnyOf0 | null;
+            /**
+             * Seo Description
+             * @default null
+             */
+            seo_description: string | null;
+            /**
+             * Seo Title
+             * @default null
+             */
+            seo_title: string | null;
+            /**
+             * Subdomain
+             * @default null
+             */
+            subdomain: string | null;
+            /**
+             * Tagline
+             * @default null
+             */
+            tagline: string | null;
+            /**
+             * Timezone
+             * @default null
+             */
+            timezone: string | null;
+            /**
+             * Twitch Url
+             * @default null
+             */
+            twitch_url: string | null;
+        };
+        /**
+         * WorkspaceVerificationSet
+         * @description Body for the superuser-only ``verification_set``. The three tiers are a
+         *     convention, not a DB enum (the column is a plain ``String(16)``) -- this
+         *     Literal is where the convention is actually enforced.
+         */
+        "app.WorkspaceVerificationSet": {
+            /**
+             * Verification Status
+             * @enum {string}
+             */
+            verification_status: AppWorkspaceVerificationSetVerification_status;
         };
         /** BalanceExportResponse */
         "balancer.BalanceExportResponse": {
@@ -29940,6 +31055,86 @@ export interface operations {
             };
         };
     };
+    get__api_v1_analytics_jobs: {
+        parameters: {
+            query?: {
+                workspace_id?: number;
+                limit?: number;
+                active_only?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["analytics.AnalyticsJobRow"][];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     post__api_v1_analytics_jobs: {
         parameters: {
             query?: {
@@ -30356,6 +31551,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["analytics.PlayerAnomalyRow"][];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_analytics_player_anomalies_feedback: {
+        parameters: {
+            query: {
+                tournament_id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["analytics.AnomalyFeedbackRow"][];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -36280,6 +37553,88 @@ export interface operations {
             };
         };
     };
+    post__api_v1_balancer_tournaments__tournament_id__balance: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tournament_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["balancer.TournamentBalanceRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["balancer.CreateJobResponse"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     get__api_v1_catalog__discipline___kind_: {
         parameters: {
             query?: {
@@ -39952,6 +41307,84 @@ export interface operations {
         };
     };
     post__api_v1_registration_teams__team_id__image: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                team_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["tournament.RegistrationTeamRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    delete__api_v1_registration_teams__team_id__image: {
         parameters: {
             query?: never;
             header?: never;
@@ -45234,6 +46667,86 @@ export interface operations {
             };
         };
     };
+    post__api_v1_workspaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.WorkspaceCreate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.WorkspaceRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     get__api_v1_workspaces_by_host: {
         parameters: {
             query?: {
@@ -45312,6 +46825,164 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["app.WorkspaceRead"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    delete__api_v1_workspaces__id_: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patch__api_v1_workspaces__id_: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.WorkspaceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.WorkspaceRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -54407,6 +56078,318 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["tournament.PlayerRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_admin_quota_operations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.QuotaOperationRead"][];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    put__api_v1_admin_quota_operations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.QuotaOperationWrite"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.QuotaOperationRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_admin_quota_plans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.QuotaPlanRead"][];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    put__api_v1_admin_quota_plans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.QuotaPlanWrite"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.QuotaPlanRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -75422,6 +77405,404 @@ export interface operations {
             };
         };
     };
+    post__api_v1_workspaces__workspace_id__custom_domain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.WorkspaceCustomDomainSet"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.WorkspaceRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    delete__api_v1_workspaces__workspace_id__custom_domain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.WorkspaceRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_workspaces__workspace_id__custom_domain_verify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.WorkspaceRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_workspaces__workspace_id__discord_guild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.WorkspaceDiscordGuildVerify"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.WorkspaceRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    delete__api_v1_workspaces__workspace_id__discord_guild: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.WorkspaceRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     get__api_v1_workspaces__workspace_id__discord_channels: {
         parameters: {
             query?: never;
@@ -75596,6 +77977,1220 @@ export interface operations {
                 };
                 content: {
                     "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_workspaces__workspace_id__members: {
+        parameters: {
+            query?: {
+                page?: number;
+                per_page?: number;
+                search?: string;
+                role_id?: number;
+                exclude_role_id?: number[];
+                sort?: string;
+                order?: string;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.Paginated_WorkspaceMemberRead_"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_workspaces__workspace_id__members: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.WorkspaceMemberCreate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.WorkspaceMemberRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_workspaces__workspace_id__members_autofill_roles: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.WorkspaceMemberAutofillResult"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    delete__api_v1_workspaces__workspace_id__members__auth_user_id_: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                auth_user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patch__api_v1_workspaces__workspace_id__members__auth_user_id_: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                auth_user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.WorkspaceMemberUpdate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.WorkspaceMemberRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_workspaces__workspace_id__notification_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.NotificationWorkspaceConfigRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    put__api_v1_workspaces__workspace_id__notification_config: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.NotificationWorkspaceConfigUpdate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.NotificationWorkspaceConfigRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_workspaces__workspace_id__owner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.WorkspaceOwnerRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    put__api_v1_workspaces__workspace_id__owner: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.WorkspaceOwnerSet"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.WorkspaceOwnerRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_workspaces__workspace_id__owner_transfer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.WorkspaceOwnerTransfer"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.WorkspaceOwnerRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_workspaces__workspace_id__quota: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.WorkspaceQuotaSet"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.QuotaPlanLimitRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_workspaces__workspace_id__quota_usage: {
+        parameters: {
+            query?: {
+                workspace_id?: number;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.QuotaUsageRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_workspaces__workspace_id__team_formats__discipline_: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                discipline: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.TeamFormatRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    put__api_v1_workspaces__workspace_id__team_formats__discipline_: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                discipline: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.TeamFormatWrite"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.TeamFormatRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_workspaces__workspace_id__verification: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["app.WorkspaceVerificationSet"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.WorkspaceRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -76330,6 +79925,25 @@ export enum AppDashboardTournamentCardPhase {
     live = "live",
     wrap_up = "wrap_up"
 }
+export enum AppNotificationWorkspaceConfigUpdateLocale {
+    ru = "ru",
+    en = "en"
+}
+export enum AppQuotaPlanLimitReadScope {
+    workspace = "workspace",
+    key = "key",
+    session = "session"
+}
+export enum AppQuotaScopePolicyScope {
+    workspace = "workspace",
+    key = "key",
+    session = "session"
+}
+export enum AppQuotaScopeUsageScope {
+    workspace = "workspace",
+    key = "key",
+    session = "session"
+}
 export enum AppUserMergeFieldPolicyAvatar_url {
     source = "source",
     target = "target"
@@ -76337,6 +79951,20 @@ export enum AppUserMergeFieldPolicyAvatar_url {
 export enum AppUserMergeFieldPolicyName {
     source = "source",
     target = "target"
+}
+export enum AppWorkspaceQuotaSetScope {
+    workspace = "workspace",
+    key = "key",
+    session = "session"
+}
+export enum AppWorkspaceUpdateNewcomer_scopeAnyOf0 {
+    global = "global",
+    workspace = "workspace"
+}
+export enum AppWorkspaceVerificationSetVerification_status {
+    unverified = "unverified",
+    verified = "verified",
+    trusted = "trusted"
 }
 export enum BalancerCustomGameBalanceRequestScope {
     lobby = "lobby",

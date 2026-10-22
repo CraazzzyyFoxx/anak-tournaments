@@ -5164,7 +5164,7 @@
       "summary": "Upsert workspace player"
     },
     "rpc.balancer.prefs.get": {
-      "description": "Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, how many balance options to keep, the roster shape its mixes field, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode) -- plus roster_shape, the read-only resolution of that shape. A null value means the setting was never saved and the default applies.",
+      "description": "Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, the open-slot weight, how many balance options to keep, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode). A null value means the setting was never saved and the default applies. The team format is not here: it is frozen on each mix.",
       "response": {
         "array": false,
         "ref": "balancer.UserMixPreferencesRead"
@@ -5172,7 +5172,7 @@
       "summary": "Get my pickup mix preferences"
     },
     "rpc.balancer.prefs.upsert": {
-      "description": "Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all six of the caller's mix settings at once and returns the stored result with the re-resolved roster_shape; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an impossible roster shape.",
+      "description": "Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all six of the caller's mix settings at once and returns the stored result, exactly what the next read returns; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an unknown field or an out-of-range value.",
       "request": {
         "array": false,
         "ref": "balancer.UserMixPreferencesUpsert"
@@ -9423,7 +9423,7 @@
       "summary": "Import a portable division grid"
     },
     "rpc.tournament.grid_save": {
-      "description": "Permission: workspace `division_grid.update`. Server-authoritative save: applies cosmetic edits in place, or spawns a new version, auto-generates mappings from every used source version, and auto-activates when complete.",
+      "description": "Permission: workspace `division_grid.update`. Server-authoritative save: applies cosmetic edits in place, or spawns a new version, auto-generates mappings from every used source version, and auto-activates when complete, but only if the grid already holds the workspace's active version for its game (another grid is activated explicitly).",
       "request": {
         "array": false,
         "ref": "tournament.DivisionGridSaveRequest"
@@ -55421,18 +55421,6 @@
           "default": false,
           "title": "Required",
           "type": "boolean"
-        },
-        "rule": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Rule"
         },
         "verdicts": {
           "additionalProperties": {
