@@ -86,7 +86,7 @@ afterEach(() => {
 });
 
 describe("TournamentLayout streaming overview", () => {
-  it("seeds the overview before the client shell reads it, without awaiting it itself", async () => {
+  it("renders the client shell inside the overview seed, without awaiting the overview itself", async () => {
     const pendingOverview = deferred<Tournament>();
     const overviewSpy = vi.spyOn(tournamentService, "getPublicOverview").mockReturnValue(
       pendingOverview.promise
@@ -108,19 +108,17 @@ describe("TournamentLayout streaming overview", () => {
     expect(firstResult.result.type).toBe(Suspense);
     const suspenseProps = firstResult.result.props as {
       fallback: ReactElement;
-      children: ReactElement[];
+      children: ReactElement;
     };
-    const [overviewBoundaryEl, clientLayoutEl] = suspenseProps.children;
+    const overviewBoundaryEl = suspenseProps.children;
     // The whole point of the boundary: the layout hands back its tree without
     // ever touching the overview itself, so the document streams immediately.
     expect(overviewSpy).not.toHaveBeenCalled();
-    // Order is the contract. The boundary seeds the request's query cache and
-    // the shell reads it, and React hydrates a boundary's children as one unit
-    // in order — a shell rendered before the seed (or outside this boundary
-    // entirely) reads an empty cache in the browser and mismatches the HTML
-    // the server produced from a warm one.
+    // The shell is the seed's CHILD. As a sibling the server rendered it before
+    // the seed resolved — an empty, pending query — while the browser rendered
+    // it from the seed: a hydration mismatch on every cache-missing visit.
     expect(overviewBoundaryEl.type).toBe(TournamentOverviewBoundary);
-    expect(clientLayoutEl.type).not.toBe(Suspense);
+    const clientLayoutEl = (overviewBoundaryEl.props as { children: ReactElement }).children;
     expect((clientLayoutEl.props as { children: unknown }).children).toBeNull();
     // Nothing can paint before the overview resolves (the tab below awaits the
     // same read), so the fallback is the shell's own skeleton rather than a
@@ -148,6 +146,7 @@ describe("TournamentLayout streaming overview", () => {
     expect(isValidElement(hydrated)).toBe(true);
     if (!isValidElement(hydrated)) throw new Error("Expected hydrated overview element");
     expect(hydrated.type).toBe(HydrationBoundary);
+    expect((hydrated.props as { children: unknown }).children).toBe(clientLayoutEl);
   });
 
   it("uses intentional streamed notFound control flow for an API 404", async () => {
@@ -157,7 +156,7 @@ describe("TournamentLayout streaming overview", () => {
 
     let thrown: unknown;
     try {
-      await TournamentOverviewBoundary({ slug: "missing-tournament" });
+      await TournamentOverviewBoundary({ slug: "missing-tournament", children: null });
     } catch (error) {
       thrown = error;
     }
@@ -166,15 +165,16 @@ describe("TournamentLayout streaming overview", () => {
     expect(thrown).toMatchObject({ digest: "NEXT_HTTP_ERROR_FALLBACK;404" });
   });
 
-  it("returns nothing for a non-404 overview failure, deferring to the client shell's own retry", async () => {
+  it("renders the shell unseeded for a non-404 overview failure, deferring to its own retry", async () => {
     const overviewSpy = vi.spyOn(tournamentService, "getPublicOverview").mockRejectedValue(
       new Error("upstream unavailable")
     );
+    const shell = <div data-shell />;
 
-    const result = await TournamentOverviewBoundary({ slug: "summer-clash" });
+    const result = await TournamentOverviewBoundary({ slug: "summer-clash", children: shell });
 
     expect(overviewSpy).toHaveBeenCalledTimes(1);
-    expect(result).toBeNull();
+    expect(result).toBe(shell);
   });
 
   it("hydrates a successful overview after the boundary resolves", async () => {
@@ -182,7 +182,7 @@ describe("TournamentLayout streaming overview", () => {
       overviewFixture
     );
 
-    const result = await TournamentOverviewBoundary({ slug: "summer-clash" });
+    const result = await TournamentOverviewBoundary({ slug: "summer-clash", children: null });
 
     expect(overviewSpy).toHaveBeenCalledTimes(1);
     expect(isValidElement(result)).toBe(true);

@@ -57,27 +57,15 @@ export default async function TournamentLayout({
 }>) {
   const resolvedParams = await params;
 
-  // `TournamentOverviewBoundary` seeds the request's query cache and
-  // `TournamentClientLayout` reads it — so the seed has to render FIRST, on the
-  // server AND in the browser. That only holds while both sit inside the SAME
-  // Suspense boundary: React hydrates a boundary's children as one unit, but a
-  // sibling OUTSIDE the boundary hydrates in the first pass, before the
-  // boundary's content exists on the client at all. With the shell outside, the
-  // server rendered it from a warm cache and the browser re-rendered it from an
-  // empty one — a guaranteed hydration mismatch that threw the whole shell away
-  // and replayed it client-side on every load.
-  //
-  // Being inside the boundary costs the shell nothing it used to have: it
-  // cannot render before the overview resolves anyway, and neither can the tab
-  // below it (`TournamentTabBoundary` awaits the same request-cached read), so
-  // the fallback is the only thing that could ever paint first. It is the same
-  // skeleton the shell itself used to render while pending, and the same one
-  // `loading.tsx` shows — now streamed from the server instead of appearing
-  // after hydration.
+  // The fallback is the only thing that can paint first: the shell renders
+  // inside the overview seed (see TournamentOverviewBoundary), and the tab
+  // below it awaits the same request-cached read. It is the same skeleton
+  // `loading.tsx` shows, streamed from the server.
   return (
     <Suspense fallback={<TournamentShellSkeleton />}>
-      <TournamentOverviewBoundary slug={resolvedParams.slug} />
-      <TournamentClientLayout slug={resolvedParams.slug}>{children}</TournamentClientLayout>
+      <TournamentOverviewBoundary slug={resolvedParams.slug}>
+        <TournamentClientLayout slug={resolvedParams.slug}>{children}</TournamentClientLayout>
+      </TournamentOverviewBoundary>
     </Suspense>
   );
 }
