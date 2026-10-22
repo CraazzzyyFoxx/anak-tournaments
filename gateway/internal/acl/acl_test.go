@@ -23,6 +23,7 @@ type fakeMembers struct {
 	organizer    bool
 	captain      bool
 	draftCaptain bool
+	mixMember    bool
 	err          error
 	calls        []memberCall
 }
@@ -47,6 +48,10 @@ func (f *fakeMembers) IsDraftSessionCaptain(context.Context, int64, int64) (bool
 	return f.draftCaptain, f.err
 }
 
+func (f *fakeMembers) IsMixRoomMember(context.Context, int64, int64) (bool, error) {
+	return f.mixMember, f.err
+}
+
 // fakeVis defaults to a visible (found, not hidden) tournament so spectating
 // topics stay public unless a test opts into hidden.
 type fakeVis struct {
@@ -55,6 +60,7 @@ type fakeVis struct {
 	preview       bool
 	encTID        int64
 	encFound      bool
+	encMix        bool
 	draftTID      int64
 	draftFound    bool
 	spectatorRead bool
@@ -69,8 +75,8 @@ func (f fakeVis) IsPreviewAllowed(context.Context, int64, int64) (bool, error) {
 	return f.preview, f.err
 }
 
-func (f fakeVis) EncounterTournamentID(context.Context, int64) (int64, bool, error) {
-	return f.encTID, f.encFound, f.err
+func (f fakeVis) EncounterOwner(context.Context, int64) (int64, bool, bool, error) {
+	return f.encTID, f.encMix, f.encFound, f.err
 }
 
 func (f fakeVis) DraftSessionTournamentID(context.Context, int64) (int64, bool, error) {
@@ -269,6 +275,40 @@ func TestAllow_RoomChatUnknownReferentDenied(t *testing.T) {
 		if ok, err := r.Allow(ctx, &auth.User{ID: 7}, topic); err != nil || ok {
 			t.Fatalf("Allow(%s) = %v (err=%v), want denied", topic, ok, err)
 		}
+	}
+}
+
+// A mix match's room (spec §4.4): its pick-ban topics are public to anyone, its chat is its seated players' and
+// hosts' only -- no spectator branch, whatever the room's settings say.
+func TestAllow_MixEncounterRoom(t *testing.T) {
+	ctx := context.Background()
+	mix := fakeVis{encFound: true, encMix: true, spectatorRead: true}
+	for _, topic := range []string{"encounter:5:pick-ban:hero", "encounter:5:map-veto"} {
+		r := New(fakeResolver{}, &fakeMembers{}, mix)
+		if ok, err := r.Allow(ctx, nil, topic); err != nil || !ok {
+			t.Fatalf("anonymous must watch a mix room (%s): ok=%v err=%v", topic, ok, err)
+		}
+	}
+	cases := []struct {
+		name    string
+		user    *auth.User
+		members *fakeMembers
+		want    bool
+	}{
+		{"seated player or host writes", &auth.User{ID: 7}, &fakeMembers{mixMember: true}, true},
+		{"superuser", &auth.User{ID: 9, IsSuperuser: true}, &fakeMembers{}, true},
+		{"workspace organizer is not enough", &auth.User{ID: 7}, &fakeMembers{organizer: true, member: true}, false},
+		{"signed-in spectator", &auth.User{ID: 7}, &fakeMembers{}, false},
+		{"anonymous spectator", nil, &fakeMembers{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := New(fakeResolver{workspaceID: 3, found: true}, tc.members, mix)
+			ok, err := r.Allow(ctx, tc.user, "encounter:5:chat")
+			if err != nil || ok != tc.want {
+				t.Fatalf("Allow(chat) = %v (err=%v), want %v", ok, err, tc.want)
+			}
+		})
 	}
 }
 
