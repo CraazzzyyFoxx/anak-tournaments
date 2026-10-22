@@ -38,10 +38,9 @@ import { cn } from "@/lib/utils";
  * The caller owns the data: nothing here holds a copy of the list, and reorder
  * is reported as a whole new array.
  *
- * Two ways in, because the two call sites lay a row out differently: the
- * `SortableRow` convenience (grip, then content) and the `useSortableRow` +
- * `SortableGrip` pair for a row that needs the grip somewhere specific — the
- * tournament sheet stacks it over a `#N` label in its own column.
+ * A row wires itself through the `useSortableRow` + `SortableGrip` pair, so the
+ * grip can sit anywhere — the tournament sheet stacks it over a `#N` label in
+ * its own column.
  */
 
 type SortableRowsProps<T> = {
@@ -106,7 +105,7 @@ export function SortableRows<T>({
  * The DOM props that turn an element into the drag affordance for a row —
  * dnd-kit's sortable attributes and pointer/keyboard listeners, merged.
  */
-export type SortableHandleProps = DraggableAttributes &
+type SortableHandleProps = DraggableAttributes &
   SyntheticListenerMap & { [key: string]: unknown };
 
 export interface SortableRowHandle {
@@ -176,31 +175,5 @@ export function SortableGrip({
     >
       <GripVertical className="size-3" aria-hidden="true" />
     </button>
-  );
-}
-
-type SortableRowProps = {
-  id: string;
-  children: ReactNode;
-  className?: string;
-  handleLabel: string;
-  disabled?: boolean;
-};
-
-/** Grip first, then the row's own content. */
-export function SortableRow({
-  id,
-  children,
-  className,
-  handleLabel,
-  disabled = false
-}: Readonly<SortableRowProps>) {
-  const { ref, style, handleProps } = useSortableRow(id, disabled);
-
-  return (
-    <div ref={ref} style={style} className={className}>
-      <SortableGrip handleProps={handleProps} label={handleLabel} disabled={disabled} />
-      {children}
-    </div>
   );
 }

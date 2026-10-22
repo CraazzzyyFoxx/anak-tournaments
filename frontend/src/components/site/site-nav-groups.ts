@@ -27,7 +27,7 @@ import type { DisciplineCapabilities, DisciplineDescriptor } from "@/types/disci
  * of the viewed scope declares it (`navItemAvailable`).
  */
 
-export type NavGroupKey = "tournaments" | "users";
+type NavGroupKey = "tournaments" | "users";
 
 export interface NavItem {
   key: string;

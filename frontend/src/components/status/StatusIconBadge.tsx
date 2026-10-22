@@ -66,5 +66,3 @@ export function StatusIconBadge({ icon: Icon, label, tone, className }: Readonly
     </span>
   );
 }
-
-export default StatusIconBadge;

@@ -77,7 +77,7 @@ const StandingsBrowser = dynamic(
   { loading: () => tabFallback }
 );
 
-export const BRACKET_SECTIONS = [
+const BRACKET_SECTIONS = [
   "general",
   "seeding",
   "ffa-scoring",

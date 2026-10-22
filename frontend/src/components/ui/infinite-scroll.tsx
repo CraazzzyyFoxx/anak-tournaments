@@ -36,7 +36,7 @@ interface InfiniteScrollOptions {
  * that leaves the sentinel already on screen keeps filling the viewport instead
  * of waiting for a scroll event that never comes.
  */
-export function useInfiniteScroll({
+function useInfiniteScroll({
   hasNextPage,
   isFetchingNextPage,
   fetchNextPage,

@@ -20,7 +20,6 @@ import {
 import type { DataTableProps } from "@/components/data-table/types";
 import { useColumnVisibility } from "@/components/data-table/useColumnVisibility";
 import { isInteractiveRowTarget, useRowSelectionGestures } from "@/components/data-table/useRowSelectionGestures";
-import { AdminTableSearchContext } from "@/components/data-table/HighlightMatch";
 import { downloadCsv } from "@/components/data-table/csv";
 import type { ColumnDndModule } from "@/components/data-table/ColumnDnd";
 import { buildColumnLayout } from "@/components/data-table/column-layout";
@@ -342,8 +341,7 @@ export function DataTable<TData>({
 
   // Right-click / long-press menu mirrors the kebab column, when a screen has one.
   const rowActions = columns.map((column) => readColumnMeta<TData>(column.meta).rowActions).find(Boolean);
-  // Only cells left on TanStack's default renderer get search highlighting;
-  // custom cells opt in through `useAdminTableSearch`.
+  // Only cells left on TanStack's default renderer get search highlighting.
   const customCellIds = useMemo(
     () => new Set(columns.filter((column) => column.cell !== undefined).map(columnDefId)),
     [columns]
@@ -391,7 +389,6 @@ export function DataTable<TData>({
   const offPageSelected = selectedData.length - selectedOnPage;
 
   return (
-    <AdminTableSearchContext.Provider value={debouncedSearchValue}>
     <div ref={cardRef} className="rounded-xl border border-border/50 bg-card/50 overflow-hidden">
       <AdminTableToolbar
         showSearch={showSearch}
@@ -527,6 +524,5 @@ export function DataTable<TData>({
         />
       )}
     </div>
-    </AdminTableSearchContext.Provider>
   );
 }

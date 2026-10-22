@@ -23,7 +23,7 @@ import { cn } from "@/lib/utils";
 import type { RolesParams } from "@/types/forms.types";
 
 /** One workspace `PlayerSubRole` row, with the id its chip is keyed by. */
-export interface CatalogEntry {
+interface CatalogEntry {
   id: number;
   slug: string;
   label: string;

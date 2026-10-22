@@ -84,7 +84,7 @@ export function StatusBadge({ status }: Readonly<{ status: string | null }>) {
 }
 
 /** Collection is considered stalled once the newest capture is this old. */
-export const RANK_STALE_AFTER_MS = 30 * 60 * 1000;
+const RANK_STALE_AFTER_MS = 30 * 60 * 1000;
 
 /**
  * Is battle-tag parsing actually down right now?

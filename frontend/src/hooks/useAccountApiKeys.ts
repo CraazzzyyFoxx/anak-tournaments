@@ -14,7 +14,7 @@ import type { PaginatedResponse } from "@/types/pagination.types";
 
 const ACCOUNT_API_KEYS_QUERY_KEY = ["account", "api-keys"] as const;
 
-export interface AccountApiKeyStatusCounts {
+interface AccountApiKeyStatusCounts {
   total: number;
   active: number;
   expired: number;
@@ -159,7 +159,7 @@ export function useRevokeAccountApiKey(workspaceId: number | null) {
  * carry machine detail (`limit_name`, `limit`, `requested`) that a plain
  * `Error` would throw away.
  */
-export async function fetchApiKeyQuota(apiKeyId: number): Promise<QuotaUsage> {
+async function fetchApiKeyQuota(apiKeyId: number): Promise<QuotaUsage> {
   const response = await fetch(`/bff/account/api-keys/${apiKeyId}/quota`, {
     method: "GET",
     cache: "no-store",

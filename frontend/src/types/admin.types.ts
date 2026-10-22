@@ -456,14 +456,14 @@ export interface EncounterSwapSlotInput {
 }
 
 /** One live seat as the bracket re-renders it after a swap. */
-export interface EncounterSeatState {
+interface EncounterSeatState {
   id: number;
   slot: number;
   team_id: number | null;
   name: string;
 }
 
-export interface EncounterSlotState {
+interface EncounterSlotState {
   id: number;
   teams: EncounterSeatState[];
   name: string;
@@ -518,9 +518,9 @@ export type TemplateSlot =
   | { source_match: number; source_position: number; seed?: null };
 
 /** One seat of a template match: `slot` is numbered `1..n` the way the encounter seats it. */
-export type TemplateMatchSlot = TemplateSlot & { slot: number };
+type TemplateMatchSlot = TemplateSlot & { slot: number };
 
-export interface TemplateMatch {
+interface TemplateMatch {
   /** Template-local and stable across edits; not an encounter id. */
   id: number;
   /** Positive upstairs and in the finals, negative downstairs; never 0. */
@@ -690,7 +690,7 @@ export interface PlayerSubRoleUpdateInput {
 export type EncounterEditableStatus = "OPEN" | "PENDING";
 
 /** One participation's line of an admin result. */
-export interface EncounterResultLineInput {
+interface EncounterResultLineInput {
   encounter_team_id: number;
   score: number;
   placement?: number | null;
@@ -708,7 +708,7 @@ export interface EncounterSetResultInput {
 }
 
 /** One participation's numbers inside a result snapshot. */
-export interface EncounterResultSnapshotLine {
+interface EncounterResultSnapshotLine {
   encounter_team_id: number;
   score: number;
   placement: number | null;
@@ -913,7 +913,7 @@ export interface PregameKindSummary {
 }
 
 /** One seat of the room (`encounter.team`), in slot order. */
-export interface PregameRoomTeam {
+interface PregameRoomTeam {
   encounter_team_id: number;
   slot: number;
   /** The source tournament team; null for a seat with none behind it. */
@@ -1004,7 +1004,7 @@ export interface AdminMatchesQuery {
 }
 
 /** One seat of a new encounter: which slot, and the team that takes it (`null` leaves it empty). */
-export interface EncounterSeatInput {
+interface EncounterSeatInput {
   slot: number;
   team_id: number | null;
 }
@@ -1073,12 +1073,12 @@ export interface UserUpdateInput {
 
 export type UserMergeFieldChoice = "source" | "target";
 
-export interface AuthMergeOAuthDestination {
+interface AuthMergeOAuthDestination {
   connection_id: number;
   auth_user_id: number;
 }
 
-export interface AuthMergeMembershipAction {
+interface AuthMergeMembershipAction {
   workspace_id: number;
   action: "transfer" | "merge";
 }
@@ -1091,20 +1091,20 @@ export interface AuthMergePolicy {
   membership_actions?: AuthMergeMembershipAction[];
 }
 
-export interface AuthMergeMembership {
+interface AuthMergeMembership {
   workspace_id: number;
   auth_user_id: number;
   role_names: string[];
   can_merge: boolean;
 }
 
-export interface AuthMergeRole {
+interface AuthMergeRole {
   id: number;
   name: string;
   workspace_id: number | null;
 }
 
-export interface AuthMergeDeny {
+interface AuthMergeDeny {
   permission_id: number;
   workspace_id: number | null;
   resource: string;
@@ -1112,7 +1112,7 @@ export interface AuthMergeDeny {
   reason: string | null;
 }
 
-export interface AuthMergeAccount {
+interface AuthMergeAccount {
   id: number;
   username: string;
   email: string;
@@ -1123,7 +1123,7 @@ export interface AuthMergeAccount {
   denies: AuthMergeDeny[];
 }
 
-export interface AuthMergeOAuthConnection {
+interface AuthMergeOAuthConnection {
   id: number;
   provider: string;
   provider_user_id: string;
@@ -1131,7 +1131,7 @@ export interface AuthMergeOAuthConnection {
   auth_user_id: number;
 }
 
-export interface AuthMergeDataConflict {
+interface AuthMergeDataConflict {
   key: string;
   resource: string;
   label: string;
@@ -1151,7 +1151,7 @@ export interface AuthMergePreview {
   state_fingerprint: string;
 }
 
-export interface AuthMergeResult {
+interface AuthMergeResult {
   surviving_auth_user_id: number;
   deleted_auth_user_id: number | null;
   moved_oauth_connection_ids: number[];
@@ -1535,7 +1535,7 @@ export interface LogProcessingRecord {
   teams: LogDocumentTeam[];
 }
 
-export interface LogIngestIssue {
+interface LogIngestIssue {
   path: (string | number)[];
   code: string;
   message: string;
@@ -1543,13 +1543,13 @@ export interface LogIngestIssue {
   raw_name?: string | null;
 }
 
-export interface LogIngestError {
+interface LogIngestError {
   code: string;
   message: string;
   issues: LogIngestIssue[];
 }
 
-export interface LogDocumentTeam {
+interface LogDocumentTeam {
   key: string;
   source_position: number;
   participants: string[];

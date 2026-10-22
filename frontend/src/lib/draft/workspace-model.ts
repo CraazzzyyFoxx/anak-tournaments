@@ -10,7 +10,7 @@ import type {
 
 /** `need`: players the ACTING team can still seat on at least one of their roles. */
 export type DraftPoolRoleFilter = DraftRole | "all" | "need";
-export type DraftPoolSort = "rank" | "name";
+type DraftPoolSort = "rank" | "name";
 /** Below the wide breakpoint the room is two tabs; the teams panel holds queue and order itself. */
 export const DRAFT_MOBILE_VIEWS = ["pool", "teams"] as const;
 export type DraftMobileView = (typeof DRAFT_MOBILE_VIEWS)[number];

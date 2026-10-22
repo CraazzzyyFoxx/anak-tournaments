@@ -78,7 +78,7 @@ export const ADMISSION_REASON_CODES = [
   "unknown"
 ] as const;
 
-export type AdmissionReasonCode = (typeof ADMISSION_REASON_CODES)[number];
+type AdmissionReasonCode = (typeof ADMISSION_REASON_CODES)[number];
 
 /** Membership test for translators without `t.has`. A `Record` rather than a
  *  `Set` per project convention for static string-keyed tables; built from the

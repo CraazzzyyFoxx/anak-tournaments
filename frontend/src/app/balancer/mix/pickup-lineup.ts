@@ -39,13 +39,6 @@ export function roleRefsOf(order: readonly string[], dimension: string): RoleRef
   return order.map((code) => toRoleRef(code, null, dimension));
 }
 
-export const PICKUP_STATUS_LABELS: Record<string, string> = {
-  draft: "Draft",
-  balanced: "Balanced",
-  completed: "Completed",
-  cancelled: "Cancelled",
-};
-
 /** A terminal mix is read-only server-side, so its write controls are hidden. */
 export const PICKUP_TERMINAL_STATUSES: Record<string, true> = { completed: true, cancelled: true };
 
@@ -163,7 +156,7 @@ export function summarizeLineup(rows: CustomGamePlayer[], roles: readonly string
  * Lobbies are two teams. A mix's format fixes the seats of ONE team, so one lobby needs twice that before a balance
  * can seat everyone, and a mix running several lobbies asks for the same shape once per lobby.
  */
-export const TEAMS_PER_LOBBY = 2;
+const TEAMS_PER_LOBBY = 2;
 
 /**
  * The mix owner's game, as the lineup reads it: the game's roles in declared order, what one lobby asks of each role
@@ -358,7 +351,7 @@ export type PickupTeam = {
   seats: PickupSeat[];
 };
 
-export type PickupVariantStats = {
+type PickupVariantStats = {
   /**
    * How this option scored against its siblings, lower is better. The mix
    * engine's own total (`mix_balancer_quality_total`), or the tournament GA's

@@ -72,7 +72,7 @@ export interface BestOfRoundSection {
   rounds: BestOfRoundOption[];
 }
 
-export type RoundLabelFormatter = (round: number, shape: BracketRoundShape) => string;
+type RoundLabelFormatter = (round: number, shape: BracketRoundShape) => string;
 
 export interface StageBestOfShape {
   stageType: StageType;

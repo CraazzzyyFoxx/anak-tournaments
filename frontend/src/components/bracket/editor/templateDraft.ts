@@ -15,12 +15,12 @@ import type { BracketTemplate, TemplateSlot } from "@/types/admin.types";
 import type { EncounterSlotSource } from "@/types/encounter.types";
 
 /** The backend model's bounds (`shared/services/bracket/template.py`), mirrored. */
-export const MAX_MATCH_ID = 10_000;
-export const MAX_ROUND = 256;
-export const MAX_SEEDS = 512;
+const MAX_MATCH_ID = 10_000;
+const MAX_ROUND = 256;
+const MAX_SEEDS = 512;
 
 /** `null` = not wired yet; a draft holding one cannot be saved. */
-export type DraftSlot = TemplateSlot | null;
+type DraftSlot = TemplateSlot | null;
 
 /** The editor draws duels: a match's two slots, slot 1 first. */
 export interface DraftMatch {

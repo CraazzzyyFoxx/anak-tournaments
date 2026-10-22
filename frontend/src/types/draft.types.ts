@@ -83,7 +83,7 @@ interface DraftPlayerCustomField {
 }
 
 /** Where a role's resolved rank came from — mirrors `shared.domain.roster.RankSource`. */
-export type DraftRankSource = "registration" | "workspace" | "native" | "none";
+type DraftRankSource = "registration" | "workspace" | "native" | "none";
 
 export interface DraftPlayer {
   id: number;

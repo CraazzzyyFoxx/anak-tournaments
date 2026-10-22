@@ -15,7 +15,7 @@ import type { EncounterResultStatus, StageType } from "@/types/tournament.types"
  * stage with no matches draw the generator's own skeleton (`bracket-preview`)
  * through the same view, so what is shown is the shape that will be generated.
  */
-export interface BracketSeat {
+interface BracketSeat {
   slot: number;
   team_id: number | null;
   name: string;

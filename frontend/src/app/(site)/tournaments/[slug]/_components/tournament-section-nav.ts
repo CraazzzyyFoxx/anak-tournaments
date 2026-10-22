@@ -11,7 +11,7 @@ type TournamentNavReasonKey =
   | "tournamentDetail.nav.reasons.noTeams";
 
 /** Every section labels itself from `common.<id>`. */
-export type TournamentSectionLabelKey = `common.${TournamentSectionId}`;
+type TournamentSectionLabelKey = `common.${TournamentSectionId}`;
 
 export type TournamentSectionNavItem = {
   id: TournamentSectionId;

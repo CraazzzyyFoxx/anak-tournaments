@@ -226,7 +226,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
 
           {tenant ? (
             // prefetch={false}: the header is on every page, so this link sits
-            // in every viewport, and `/` is force-dynamic — Next's default
+            // in every viewport, and `/` is request-time — Next's default
             // would server-render the home page for every visitor who never
             // clicks it. Measured 463 such renders in 23 minutes on 2026-08-15.
             <>

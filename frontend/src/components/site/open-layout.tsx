@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { ArrowRight, CircleAlert, Info } from "lucide-react";
 
+import Image from "@/components/ui/image";
 import { cn } from "@/lib/utils";
 import { RetryButton } from "./RetryButton";
 
@@ -314,14 +315,12 @@ export function Showcase({
         )}
         style={ratio ? ({ "--shot-ratio": ratio } as CSSProperties) : undefined}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element -- static screenshot, sized and lazy */}
-        <img
+        <Image
           src={`/showcase/${img}`}
           width={1800}
           height={1250}
+          sizes="100vw"
           alt={alt}
-          loading="lazy"
-          decoding="async"
           className="size-full object-cover object-left-top"
         />
       </div>

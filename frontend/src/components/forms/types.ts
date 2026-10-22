@@ -73,7 +73,7 @@ export interface FieldRendererProps {
   context: FieldRendererContext;
 }
 
-export type FieldRenderer = ComponentType<FieldRendererProps>;
+type FieldRenderer = ComponentType<FieldRendererProps>;
 
 /** Keyed by builtin field key first, then by {@link FormField.kind}. */
 export type RendererRegistry = Partial<Record<string, FieldRenderer>>;

@@ -32,6 +32,16 @@ import { SIDEBAR_COOKIE_NAMES } from "@/lib/site/sidebar-cookies";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { NotificationItem } from "@/types/notification.types";
 
+/** The page area's outline: a title row and one panel. Also `admin/loading.tsx`. */
+export function AdminContentSkeleton() {
+  return (
+    <>
+      <Skeleton className="h-8 w-56" />
+      <Skeleton className="h-64 w-full rounded-xl" />
+    </>
+  );
+}
+
 /** The shell's own outline (sidebar column + header bar) while permissions load. */
 function LoadingState() {
   const t = useTranslations("adminShell.layout");
@@ -42,8 +52,7 @@ function LoadingState() {
       <div className="flex flex-1 flex-col">
         <Skeleton className="h-12 w-full rounded-none" />
         <div className="flex flex-col gap-4 p-4 md:px-5">
-          <Skeleton className="h-8 w-56" />
-          <Skeleton className="h-64 w-full rounded-xl" />
+          <AdminContentSkeleton />
         </div>
       </div>
     </div>

@@ -22,7 +22,7 @@ export const FOOTER_BUTTON =
   "flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]";
 
 /** dnd-kit id of one team slot; the same string names its draggable and its droppable. */
-export function slotDragId(encounterId: number, slot: DuelSlot) {
+function slotDragId(encounterId: number, slot: DuelSlot) {
   return `slot-${encounterId}-${slot}`;
 }
 
@@ -256,7 +256,7 @@ export const MatchCard = memo(function MatchCard({
         title={attention ?? undefined}
         data-result-status={attention === null ? undefined : encounter.result_status}
       >
-        <span className="text-[9px] font-semibold tracking-label opacity-70">M</span>
+        <span className="text-[11px] font-semibold tracking-label opacity-70">M</span>
         <span className="text-caption font-bold tabular-nums">{data.matchNumber}</span>
         {attention !== null && <span className="sr-only">{attention}</span>}
       </div>

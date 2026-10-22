@@ -39,7 +39,7 @@ const TONE_VARIANT = {
   danger: "destructive"
 } as const satisfies Record<Tone, NonNullable<VariantProps<typeof badgeVariants>["variant"]>>;
 
-export interface BadgeProps
+interface BadgeProps
   extends React.HTMLAttributes<HTMLSpanElement>,
     VariantProps<typeof badgeVariants> {
   /** Semantic tone; wins over `variant` when both are set. */
@@ -61,4 +61,4 @@ function Badge({ className, variant, shape, tone, ...props }: BadgeProps) {
   );
 }
 
-export { Badge, badgeVariants };
+export { Badge };

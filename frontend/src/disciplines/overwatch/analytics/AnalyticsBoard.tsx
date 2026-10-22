@@ -32,7 +32,7 @@ function parseId(value: string | null): number | null {
 }
 
 /** The board's first paint: its toolbar row, then the standings list beside the team panel. */
-export function AnalyticsBoardSkeleton() {
+function AnalyticsBoardSkeleton() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">

@@ -11,7 +11,7 @@ import type { Tournament } from "@/types/tournament.types";
  * NOT prefetch simply starts on the client, so this is a first-paint budget,
  * not a completeness requirement.
  */
-export type TournamentTabPrefetch = (
+type TournamentTabPrefetch = (
   queryClient: QueryClient,
   overview: Tournament
 ) => Promise<unknown>;

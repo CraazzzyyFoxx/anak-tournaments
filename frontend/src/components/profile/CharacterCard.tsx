@@ -49,7 +49,7 @@ export default function CharacterCard({
 }
 
 /** A label-over-value fact (DESIGN.md §4: a `<dl>` fact, never a tile). */
-export function CardFact({ label, value, color }: Readonly<{ label: string; value: string; color?: string }>) {
+function CardFact({ label, value, color }: Readonly<{ label: string; value: string; color?: string }>) {
   return (
     <div className="min-w-0">
       <dt className="truncate text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">{label}</dt>

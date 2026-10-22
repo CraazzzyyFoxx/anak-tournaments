@@ -12,19 +12,19 @@ import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { PickBanConfig } from "@/types/tournament.types";
 import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 
-export type MapPoolGroup = {
+type MapPoolGroup = {
   /** Game mode name (Control, Hybrid…); "—" when the catalogue names none. */
   gamemode: string;
   maps: CatalogEntityRead[];
 };
 
-export type MapPoolView = {
+type MapPoolView = {
   byGamemode: MapPoolGroup[];
   total: number;
 };
 
 /** One slot of a slot-mode config: the candidates for map N of the series. */
-export type MapPoolSlotView = {
+type MapPoolSlotView = {
   position: number;
   maps: CatalogEntityRead[];
 };
@@ -74,14 +74,14 @@ export type TournamentMapPool = {
   refetch: () => void;
 };
 
-export const mapPoolQueryKeys = {
+const mapPoolQueryKeys = {
   configs: (tournamentId: number) =>
     ["public", "tournament", tournamentId, "pick-ban-configs"] as const,
   stages: (tournamentId: number) => ["public", "tournament", tournamentId, "stages"] as const
 };
 
 /** Every map id the given veto configs name, anywhere: pool, slots, reserves. */
-export function collectPoolIds(configs: PickBanConfig[]): Set<number> {
+function collectPoolIds(configs: PickBanConfig[]): Set<number> {
   const ids = new Set<number>();
   for (const config of configs) {
     for (const id of config.item_ids) ids.add(id);
@@ -105,7 +105,7 @@ export function useTournamentHasMapPool(tournamentId: number | undefined): boole
   return collectPoolIds((data?.configs ?? []).filter((config) => config.kind === "map")).size > 0;
 }
 
-export function groupByGamemode(maps: CatalogEntityRead[]): MapPoolView {
+function groupByGamemode(maps: CatalogEntityRead[]): MapPoolView {
   const buckets = new Map<string, CatalogEntityRead[]>();
   for (const map of maps) {
     const key = map.parent?.name ?? "—";

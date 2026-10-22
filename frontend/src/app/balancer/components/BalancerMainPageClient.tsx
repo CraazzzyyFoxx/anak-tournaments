@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Shuffle, Users } from "lucide-react";
 import type { ImperativePanelHandle } from "react-resizable-panels";
@@ -9,9 +10,7 @@ import {
   BalancingPoolSidebar,
   type BalancingPoolSidebarHandle
 } from "@/app/balancer/components/BalancingPoolSidebar";
-import { PlayerEditModal } from "@/app/balancer/components/PlayerEditSheet";
 import { WorkspacePlayersSidebar } from "@/app/balancer/components/WorkspacePlayersSidebar";
-import { BalancerConfigDrawer } from "@/app/balancer/components/BalancerConfigDrawer";
 import { PresetRunPanel } from "@/app/balancer/components/PresetRunPanel";
 import { TeamDistributionPanel } from "@/app/balancer/components/TeamDistributionPanel";
 import { VariantSelector } from "@/app/balancer/components/VariantSelector";
@@ -44,14 +43,12 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { BalancerActionsPanel } from "./BalancerActionsPanel";
 import { BalancerEditorPanel } from "./BalancerEditorPanel";
 import { BalancerPresenceStack } from "./BalancerPresenceStack";
-import { BalanceImageExportDialog } from "./BalanceImageExportDialog";
 import {
-  BalancerOperationDialog,
   createOperationSteps,
   updateOperationStepStatus,
   type BalancerOperationStep,
   type BalancerOperationStepStatus
-} from "./BalancerOperationDialog";
+} from "./operation-steps";
 import {
   CUSTOM_PRESET,
   areBalancerConfigsEqual,
@@ -87,6 +84,25 @@ import {
   useGroupWidth,
   useIsWideBalancerLayout
 } from "./useBalancerLayout";
+
+// Dialogs and sheets that render nothing until opened: lazy chunks, so they
+// (and the image rasteriser behind the export dialog) are not first-load JS.
+const PlayerEditModal = dynamic(
+  () => import("@/app/balancer/components/PlayerEditSheet").then((m) => m.PlayerEditModal),
+  { ssr: false }
+);
+const BalancerConfigDrawer = dynamic(
+  () => import("@/app/balancer/components/BalancerConfigDrawer").then((m) => m.BalancerConfigDrawer),
+  { ssr: false }
+);
+const BalanceImageExportDialog = dynamic(
+  () => import("./BalanceImageExportDialog").then((m) => m.BalanceImageExportDialog),
+  { ssr: false }
+);
+const BalancerOperationDialog = dynamic(
+  () => import("./BalancerOperationDialog").then((m) => m.BalancerOperationDialog),
+  { ssr: false }
+);
 
 export function BalancerMainPageClient() {
   const tournamentId = useBalancerTournamentId();

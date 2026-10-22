@@ -9,7 +9,7 @@ import tournamentService from "@/services/tournament.service";
  * admin entities and a different lifetime, and sharing one entry would let an
  * admin screen decide what the public pool renders.
  */
-export const mapPoolQueryKeys = {
+const mapPoolQueryKeys = {
   configs: (tournamentId: number) =>
     ["public", "tournament", tournamentId, "pick-ban-configs"] as const,
   stages: (tournamentId: number) => ["public", "tournament", tournamentId, "stages"] as const

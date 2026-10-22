@@ -30,7 +30,7 @@ const KEEP_LAST = 50;
 const COOKIE_TTL_DAYS = 365;
 
 /** `"31.40"` -> `[31, 40]`; anything that is not an id is dropped, never thrown. */
-export function parseDismissedAnnouncements(raw: string | undefined): number[] {
+function parseDismissedAnnouncements(raw: string | undefined): number[] {
   if (!raw) return [];
   return raw
     .split(".")

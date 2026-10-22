@@ -22,7 +22,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 // picker's own (date-fns) locale, not from `Intl` — so it needs the UI's too.
 const DAY_PICKER_LOCALES = { en: enUS, ru } as const;
 
-export type CalendarProps = React.ComponentProps<typeof DayPicker> & {
+type CalendarProps = React.ComponentProps<typeof DayPicker> & {
   buttonVariant?: React.ComponentProps<typeof Button>["variant"];
 };
 
@@ -219,4 +219,4 @@ function CalendarDayButton({
 
 Calendar.displayName = "Calendar";
 
-export { Calendar, CalendarDayButton };
+export { Calendar };

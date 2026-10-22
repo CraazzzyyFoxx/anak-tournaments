@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 import type { EvaluationRunRead } from "@/types/admin.types";
 
 /** One reason a rule was skipped, plus every rule it skipped. */
-export interface RunFailureGroup {
+interface RunFailureGroup {
   /** The engine's own sentence, verbatim. */
   cause: string;
   /** Rules skipped for that reason; empty when the run aborted as a whole. */
@@ -75,7 +75,7 @@ const ENTRY = /^([a-z\d][\w-]*(?:,\s*[a-z\d][\w-]*)*):\s+([\s\S]+)$/;
  * Only a `partial` run names rules: `failed` stores a bare `str(exc)`, whose
  * own "word: detail" shape would otherwise be mistaken for a slug.
  */
-export function parseRunFailures(
+function parseRunFailures(
   run: Pick<EvaluationRunRead, "status" | "error_message">
 ): RunFailureGroup[] {
   const message = run.error_message?.trim();
@@ -97,7 +97,7 @@ export function parseRunFailures(
 /** The one place a run's outcome is put into words; the banner and the toast share it. */
 type Translate = (key: string, values?: Record<string, string | number>) => string;
 
-export function describeEvaluationRun(run: EvaluationRunRead, t: Translate): EvaluationRunDigest {
+function describeEvaluationRun(run: EvaluationRunRead, t: Translate): EvaluationRunDigest {
   const failures = parseRunFailures(run);
   const skipped = failures.reduce((count, group) => count + group.slugs.length, 0);
   const base = { tone: STATUS_TONE[run.status], icon: STATUS_ICON[run.status], failures, skipped };

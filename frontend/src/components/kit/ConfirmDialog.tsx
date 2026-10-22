@@ -20,7 +20,7 @@ import { TONE_TEXT } from "@/components/kit/tone";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 
-export type ConfirmTone = "danger" | "warning" | "neutral";
+type ConfirmTone = "danger" | "warning" | "neutral";
 
 export interface ConfirmIntent {
   title: string;

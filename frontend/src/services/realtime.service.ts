@@ -27,7 +27,7 @@ const PONG_TIMEOUT_MS = 10_000;
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
 
-export function buildRealtimeWebSocketUrl(
+function buildRealtimeWebSocketUrl(
   realtimeBase: string | undefined = undefined,
   origin = typeof window !== "undefined" ? window.location.origin : "http://localhost"
 ): string {

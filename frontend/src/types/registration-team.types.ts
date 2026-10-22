@@ -16,7 +16,7 @@ import type { RegistrationSubmitInput } from "@/types/registration.types";
  *  still swap a player before the organizer exports. */
 export type RegistrationTeamStatus = "forming" | "complete" | "rejected" | "disbanded";
 
-export type RegistrationTeamInviteState = "pending" | "accepted" | "declined" | "revoked";
+type RegistrationTeamInviteState = "pending" | "accepted" | "declined" | "revoked";
 
 export interface RegistrationTeamMember {
   registration_id: number;
@@ -212,7 +212,7 @@ export interface RegistrationTeamInviteOfferListResponse {
  * reserve roster slots. A terminal row must never appear there — a declined
  * offer holding a place open is the bug that separation prevents.
  */
-export interface RegistrationTeamInviteHistoryEntry {
+interface RegistrationTeamInviteHistoryEntry {
   id: number;
   slot_code: string;
   is_substitute: boolean;

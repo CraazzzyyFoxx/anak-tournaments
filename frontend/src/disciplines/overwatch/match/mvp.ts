@@ -5,7 +5,7 @@ import type { MatchWithUserStats } from "@/types/user.types";
  * The overperformance score a member must reach (at the top of the match) to earn the badge. Mirrors
  * `shared.core.impact.BADGE_THRESHOLD`, which the backend no longer applies on the wire.
  */
-export const BADGE_THRESHOLD = 2.0;
+const BADGE_THRESHOLD = 2.0;
 
 export type MvpRank = "gold" | "silver" | "bronze" | "default";
 

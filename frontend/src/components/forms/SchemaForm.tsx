@@ -21,7 +21,7 @@ function isVisible(field: FormField, answers: Answers): boolean {
 
 /** The hint to render under a field the viewer may not change, keyed by answer
  *  key. A key's presence IS the lock; the value says why. */
-export type LockedFields = Readonly<Record<string, string>>;
+type LockedFields = Readonly<Record<string, string>>;
 
 /**
  * The sections that are actually a step: those with at least one VISIBLE field.

@@ -15,7 +15,7 @@ import { useTranslations } from "next-intl";
 import { useHubTournamentQuery } from "../hubQueries";
 
 /** Same key the questionnaire builder uses, so the four editors share one read. */
-export const registrationFormQueryKey = (tournamentId: number) =>
+const registrationFormQueryKey = (tournamentId: number) =>
   balancerQueryKeys.registrationForm(tournamentId);
 
 export interface RegistrationFormSection {

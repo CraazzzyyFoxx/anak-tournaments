@@ -1,12 +1,8 @@
-"use client";
-
-import { useParams } from "next/navigation";
-
 import { PregameRoom } from "./_components/PregameRoom";
 
-export default function PregameRoomPage() {
-  const params = useParams<{ id: string; encounterId: string }>();
-  const encounterId = Number(params.encounterId);
-
-  return <PregameRoom encounterId={encounterId} />;
+export default async function PregameRoomPage(props: {
+  params: Promise<{ slug: string; encounterId: string }>;
+}) {
+  const { encounterId } = await props.params;
+  return <PregameRoom encounterId={Number(encounterId)} />;
 }

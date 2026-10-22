@@ -40,14 +40,11 @@ import {
 import { mapWithModeName } from "@/lib/catalog/mode";
 import styles from "@/components/match/EncounterDetail.module.css";
 
-export const dynamic = "force-dynamic";
-
 export async function generateMetadata(props: {
   params: Promise<{ id: number }>;
 }): Promise<Metadata> {
   const params = await props.params;
-  const encounter = await encounterService.getEncounter(params.id);
-  const t = await getTranslations();
+  const [encounter, t] = await Promise.all([encounterService.getEncounter(params.id), getTranslations()]);
 
   // Both seats are empty until the bracket resolves them, so never reach
   // straight into `.name` here — this route is crawled. A lobby has no two
@@ -118,9 +115,15 @@ const EncounterPage = async (props: {
   searchParams: Promise<{ tab?: string | string[] }>;
 }) => {
   const [params, searchParams] = await Promise.all([props.params, props.searchParams]);
-  const encounter = await encounterService.getEncounter(params.id);
-  const t = await getTranslations();
-  const format = await getFormatter();
+  const queryClient = new QueryClient();
+  // The pre-game prefetch needs only the id, so it runs alongside the
+  // encounter read rather than after it; a lobby page discards it.
+  const [encounter, t, format, hasPregame] = await Promise.all([
+    encounterService.getEncounter(params.id),
+    getTranslations(),
+    getFormatter(),
+    prefetchPregame(queryClient, Number(params.id))
+  ]);
 
   // A lobby is not a duel with more teams: it has no per-map scoreboard, no
   // rosters to compare side by side and no captain reports. Its whole result
@@ -129,9 +132,6 @@ const EncounterPage = async (props: {
   if (isLobby(encounter)) {
     return <FfaLobbyPage encounter={encounter} />;
   }
-
-  const queryClient = new QueryClient();
-  const hasPregame = await prefetchPregame(queryClient, encounter.id);
 
   const [seatOne, seatTwo] = duelSeats(encounter.teams);
   const names = {

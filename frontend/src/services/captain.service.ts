@@ -6,7 +6,7 @@ interface CaptainMapCodeInput {
 }
 
 /** One participation's line of a series report: its wins in a duel, its points in a lobby. */
-export interface CaptainReportResultInput {
+interface CaptainReportResultInput {
   encounter_team_id: number;
   score: number;
   placement?: number | null;

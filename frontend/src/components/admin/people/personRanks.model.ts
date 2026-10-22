@@ -1,11 +1,11 @@
 import type { RankOverviewContext, RankOverviewRow } from "@/services/workspace-player.service";
 
 /** A role column: the game's role code, or `null` for a game whose rows carry none. */
-export type RoleKey = string | null;
+type RoleKey = string | null;
 
 /** The current layers with a row of their own, in reading order. `effective_mix` only fills an author's gaps. */
-export const MATRIX_LAYERS = ["effective_tournament", "canon", "native", "hidden"] as const;
-export type MatrixLayer = (typeof MATRIX_LAYERS)[number];
+const MATRIX_LAYERS = ["effective_tournament", "canon", "native", "hidden"] as const;
+type MatrixLayer = (typeof MATRIX_LAYERS)[number];
 
 export interface MatrixCell {
   row: RankOverviewRow;

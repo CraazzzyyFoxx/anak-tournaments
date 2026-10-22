@@ -286,7 +286,7 @@ export function fitByPlayer(
 // ---------------------------------------------------------------------------
 // The pick timeline
 
-export function isResolvedPick(pick: DraftPick): boolean {
+function isResolvedPick(pick: DraftPick): boolean {
   return pick.status === "completed" || pick.status === "autopicked";
 }
 

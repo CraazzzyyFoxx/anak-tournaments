@@ -45,7 +45,7 @@ const AvatarFallback = React.forwardRef<
 ));
 AvatarFallback.displayName = AvatarPrimitive.Fallback.displayName;
 
-export interface AvatarStackProps extends React.HTMLAttributes<HTMLDivElement> {
+interface AvatarStackProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Max avatars shown before collapsing the remainder into a "+N" bubble. Default 5. */
   max?: number;
   /** Avatar size in px — used to size the "+N" bubble and default overlap. Default 26. */

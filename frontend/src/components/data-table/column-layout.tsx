@@ -8,7 +8,7 @@ import type { AdminTableDensity } from "@/components/data-table/useTablePreferen
 
 const ADMIN_ACTION_COLUMN_MIN_WIDTH = 80;
 /** Width of the select/expand column — keep in sync with its `w-10` class. */
-export const ADMIN_LEADING_COLUMN_WIDTH = 40;
+const ADMIN_LEADING_COLUMN_WIDTH = 40;
 /** Flexible (unsized, undragged) columns split this share of the table evenly, so they read as a grid instead of shrink-wrapping to content; the filler absorbs the rest. */
 const ADMIN_FLEXIBLE_FILL_PERCENT = 75;
 

@@ -34,7 +34,7 @@ export interface Condition {
   value?: unknown;
 }
 
-export interface FieldValidation {
+interface FieldValidation {
   /** Overrides the server's default pattern for the field's key/kind. */
   regex?: string | null;
   error_message?: string | null;
@@ -107,11 +107,4 @@ export interface RegistrationFormTemplate {
   name: string;
   form_schema: FormSchema;
   updated_at: string;
-}
-
-export interface RegistrationFormTemplateUpsert {
-  name: string;
-  /** Required on create; omitted (or equal) on update. */
-  discipline?: string;
-  form_schema: FormSchema;
 }

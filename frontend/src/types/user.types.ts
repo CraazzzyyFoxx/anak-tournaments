@@ -16,10 +16,10 @@ export interface CharacterPlaytime {
 export type CharacterStatBest = Schema<"app.CharacterStatBest">;
 
 /** One stat of one character for a player: career total, best match and per-10 averages (player and everyone). */
-export type CharacterStat = Schema<"app.CharacterStat">;
+type CharacterStat = Schema<"app.CharacterStat">;
 
 /** A character's career-best game in its class's headline stat (tank: blocked, damage: hero damage, support: healing). */
-export type CharacterRecord = Schema<"app.CharacterRecord">;
+type CharacterRecord = Schema<"app.CharacterRecord">;
 
 export interface CharacterWithUserStats {
   character: CatalogEntityRead;
@@ -180,10 +180,10 @@ interface UserEncounterTeamSummary {
 }
 
 /** One native observation of a stat; `segment` 0 with null member/entity is a member's whole-match total when `workspace_member_id` is set. */
-export type UserNativeFact = Schema<"app.NativeFact">;
+type UserNativeFact = Schema<"app.NativeFact">;
 
 /** The viewer's own seat and whole-match totals in one match; absent when the viewer's seat was not observed. */
-export interface UserMatchViewer {
+interface UserMatchViewer {
   encounter_team_id: number;
   workspace_member_id: number;
   /** Segment-0, no-entity facts of the viewer by stat code; an absent key is missing, never zero. */
@@ -408,7 +408,7 @@ export interface UserOverviewRoleDivision {
   division_grid_version_id: number | null;
 }
 
-export interface UserOverviewCharacter {
+interface UserOverviewCharacter {
   character: CatalogEntityRead;
   playtime_seconds: number;
 }
@@ -445,7 +445,7 @@ export interface UserOverviewRow extends UserOverviewBase {
   averages: UserOverviewAverages;
 }
 
-export interface UserOverviewDivisionCount {
+interface UserOverviewDivisionCount {
   division: number;
   count: number;
 }

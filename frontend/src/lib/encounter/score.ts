@@ -1,11 +1,11 @@
 import type { Duel } from "@/lib/encounter/seats";
-import type { StageItemType, StageType } from "@/types/tournament.types";
+import type { StageType } from "@/types/tournament.types";
 
 /** A duel's scoreline: slot 1 is `one`, slot 2 is `two`. */
 export type EncounterScore = Duel<number>;
 
 /** The `matchEdit.presetDescriptions.*` keys. */
-export type EncounterScoreDescription =
+type EncounterScoreDescription =
   | "firstSweep"
   | "firstClose"
   | "draw"
@@ -16,14 +16,6 @@ export type EncounterScorePreset = EncounterScore & {
   label: string;
   description: EncounterScoreDescription;
 };
-
-type ScoreStageLike = {
-  stage_type?: StageType | string | null;
-} | null | undefined;
-
-type ScoreStageItemLike = {
-  type?: StageItemType | string | null;
-} | null | undefined;
 
 export const GROUP_STAGE_SCORE_PRESETS: EncounterScorePreset[] = [
   { label: "2-0", description: "firstSweep", one: 2, two: 0 },
@@ -41,14 +33,6 @@ export function clampScoreValue(value: string | number): number {
   }
 
   return Math.max(0, Math.floor(parsed));
-}
-
-export function isGroupStageScoreContext(stage?: ScoreStageLike, stageItem?: ScoreStageItemLike) {
-  return (
-    stage?.stage_type === "round_robin" ||
-    stage?.stage_type === "swiss" ||
-    stageItem?.type === "group"
-  );
 }
 
 /** Stages that cannot end level: the finalizer rejects a draw on these with a 400. */

@@ -2,7 +2,7 @@ import type { AuditLogRead } from "@/types/admin.types";
 import type { DashboardIssue } from "@/types/admin-dashboard.types";
 
 /** Rows the activity feed shows, after merging. */
-export const ACTIVITY_GROUP_LIMIT = 15;
+const ACTIVITY_GROUP_LIMIT = 15;
 
 /** One feed row: consecutive audit rows by the same actor doing the same thing. */
 export interface ActivityGroup {

@@ -156,5 +156,3 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
     </Dialog>
   );
 };
-
-export default AchievementDetailDialog;

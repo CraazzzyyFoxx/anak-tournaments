@@ -17,7 +17,7 @@ export function columnDefId<TData>(column: ColumnDef<TData>): string {
 }
 
 /** Breakpoint below which a column is hidden entirely. */
-export type AdminColumnResponsive = "always" | "sm" | "md" | "lg";
+type AdminColumnResponsive = "always" | "sm" | "md" | "lg";
 
 /** Column category, used to group the "Columns" picker. */
 export type AdminColumnCategory = "core" | "meta" | "admin";

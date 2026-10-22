@@ -98,7 +98,7 @@ export type BalancerConfigValue =
 type BalancerConfigFieldType = "boolean" | "float" | "integer" | "slider" | "roles" | "open_slot";
 
 /** One numeric column of a `roles` table; its limits are the cell's limits. */
-export interface BalancerConfigColumn {
+interface BalancerConfigColumn {
   key: string;
   label: string;
   description: string;

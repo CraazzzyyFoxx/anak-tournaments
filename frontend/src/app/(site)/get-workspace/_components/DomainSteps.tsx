@@ -6,6 +6,7 @@ import { Check, Clock, Lock } from "lucide-react";
 
 import { EYEBROW_CLASS } from "@/components/site/open-layout";
 import { owtButton } from "@/components/site/owt-button";
+import Image from "@/components/ui/image";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
 import { cn } from "@/lib/utils";
 import styles from "./domains.module.css";
@@ -180,8 +181,7 @@ export function DomainSteps({
                 </>
               ) : (
                 <>
-                  {/* eslint-disable-next-line @next/next/no-img-element -- static brand mark */}
-                  <img src="/brand-mark.svg" alt="" width={22} height={22} />
+                  <Image src="/brand-mark.svg" alt="" width={22} height={22} />
                   <b className="font-display text-[14px] font-extrabold leading-none">OWT</b>
                   <WorkspaceAvatar workspace={example.workspace} size={20} />
                   <span className="text-label text-[color:var(--aqt-fg-muted)]">

@@ -13,8 +13,6 @@ const PARTICIPANT_DIVISION_PARAM = "division";
 /** The two shapes the roster renders in; `pool` exists only for balancer/draft. */
 export type ParticipantView = "pool" | "table";
 
-export const PARTICIPANT_VIEWS: readonly ParticipantView[] = ["pool", "table"];
-
 function isParticipantView(value: string | null): value is ParticipantView {
   return value === "pool" || value === "table";
 }

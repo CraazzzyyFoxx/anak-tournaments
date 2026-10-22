@@ -10,7 +10,7 @@ import {
   type Scale
 } from "./draftReducer";
 
-export type PublishCheckMessageKey =
+type PublishCheckMessageKey =
   | "impactChecks.coverageAll"
   | "impactChecks.floors"
   | "impactChecks.coverageLinked"

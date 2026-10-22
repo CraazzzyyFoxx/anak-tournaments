@@ -68,5 +68,3 @@ export function IssueChip({
     </span>
   );
 }
-
-export default IssueChip;

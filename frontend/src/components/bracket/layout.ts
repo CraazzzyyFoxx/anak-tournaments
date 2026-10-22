@@ -31,7 +31,7 @@ export const MATCH_GAP_Y = 10;
 export const HEADER_HEIGHT = 24;
 // Breathing room between a round header and the first card under it.
 export const HEADER_GAP_Y = 14;
-export const SECTION_GAP_Y = 52;
+const SECTION_GAP_Y = 52;
 export const PADDING_X = 16;
 export const PADDING_Y = 14;
 // A Swiss pool's record chip ("1-0") above its cards, and the gap between pools.
@@ -39,7 +39,7 @@ export const POOL_HEADER_HEIGHT = 30;
 export const POOL_GAP_Y = 18;
 
 /** One row of a match card: a seat of the duel. */
-export interface MatchNodeSeat {
+interface MatchNodeSeat {
   name: string;
   /** "W M3" while the seat is TBD and its source is known. */
   source: string | null;
@@ -53,7 +53,7 @@ export interface MatchNodeSeat {
   score: number;
 }
 
-export interface MatchNodeData {
+interface MatchNodeData {
   matchNumber: number;
   /** `M<matchNumber>`: the key a TBD slot's "W M3" hint points at. */
   matchLabel: string;
@@ -72,7 +72,7 @@ export interface LayoutNode {
   encounter: BracketMatch;
 }
 
-export interface LayoutEdge {
+interface LayoutEdge {
   id: string;
   path: string;
   isCompleted: boolean;

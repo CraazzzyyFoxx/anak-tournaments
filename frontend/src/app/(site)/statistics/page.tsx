@@ -13,8 +13,6 @@ import { PlayersSection, PlayersSkeleton } from "./_components/PlayersSection";
 import { RecordsSection, RecordsSkeleton } from "./_components/RecordsSection";
 import { parsePlayersParams } from "./_components/statistics.model";
 
-export const dynamic = "force-dynamic";
-
 type Param = string | string[] | undefined;
 
 /**

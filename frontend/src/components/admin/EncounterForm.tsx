@@ -55,7 +55,7 @@ const EDITABLE_STATUSES: readonly EncounterEditableStatus[] = ["OPEN", "PENDING"
  * already finished opens as `OPEN` rather than offering a value the backend
  * would reject.
  */
-export function editableEncounterStatus(status?: string | null): EncounterEditableStatus {
+function editableEncounterStatus(status?: string | null): EncounterEditableStatus {
   const upper = status?.toUpperCase();
   return EDITABLE_STATUSES.includes(upper as EncounterEditableStatus)
     ? (upper as EncounterEditableStatus)

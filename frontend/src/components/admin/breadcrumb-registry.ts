@@ -13,7 +13,7 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
  * `workspaceId` is passed because some detail queries are workspace-scoped
  * (an achievement rule is), and the breadcrumb has no other way to reach it.
  */
-export const BREADCRUMB_ENTITIES: Record<
+const BREADCRUMB_ENTITIES: Record<
   string,
   (id: number, workspaceId: number | null) => readonly unknown[]
 > = {
@@ -32,7 +32,7 @@ export const BREADCRUMB_ENTITIES: Record<
  * "pre-game" → "Pre game" or "oauth" → "Oauth" reads as a typo in the one
  * place a user looks to know where they are.
  */
-export const SEGMENT_LABELS: Record<string, string> = {
+const SEGMENT_LABELS: Record<string, string> = {
   // Tournament hub
   overview: "breadcrumbOverview",
   registration: "breadcrumbRegistration",

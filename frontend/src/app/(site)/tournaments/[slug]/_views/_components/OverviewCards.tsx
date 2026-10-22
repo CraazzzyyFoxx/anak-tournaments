@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
+import Image from "@/components/ui/image";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { getStreamStatus, STREAM_STATUS_META } from "@/lib/social/stream-platform";
 import { cn } from "@/lib/utils";
@@ -72,12 +73,13 @@ export function OverviewStreamCard({
         className="group relative block overflow-hidden rounded-lg bg-[color:var(--aqt-overlay-2)] outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
       >
         {official.thumbnail_url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- remote poster from an arbitrary streaming host; not in `next.config` image domains.
-          <img
+          // `ui/image` serves a poster from an unconfigured streaming host as is.
+          <Image
             src={official.thumbnail_url}
             alt=""
+            width={640}
+            height={360}
             className="aspect-video w-full object-cover transition-[filter] duration-300 group-hover:brightness-110 motion-reduce:transition-none"
-            loading="lazy"
           />
         ) : (
           <span aria-hidden className="block aspect-video w-full bg-[color:var(--aqt-overlay-3)]" />

@@ -28,7 +28,7 @@ export type TabKey = (typeof TAB_KEYS)[number];
  * treating it as `overview` and rendering the wrong page under a highlighted
  * Overview tab. Each entry goes with the route it names.
  */
-export const LEGACY_TAB_SEGMENTS = ["logs"] as const;
+const LEGACY_TAB_SEGMENTS = ["logs"] as const;
 
 export type LegacyTabSegment = (typeof LEGACY_TAB_SEGMENTS)[number];
 

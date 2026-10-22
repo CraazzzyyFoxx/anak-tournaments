@@ -6,16 +6,16 @@ import { SortDirection } from "@/types/pagination.types";
 import { resolveSiteMetadata } from "@/lib/site/metadata";
 import { getPlayerSlug } from "@/lib/player";
 
-// This route is fully dynamic: `resolveSiteMetadata()` and the workspace lookup
-// below both read `headers()` so the URLs/entries reflect the current tenant
-// host on every request. The expensive part — `userService.getAll(...)`, up to
-// SITE_USER_CAP rows — is NOT re-run per request: it's wrapped in
-// `unstable_cache` keyed by workspace id and revalidated once every 24h, so the
-// backend still only sees one fetch per workspace per day. NOTE: emits up to
-// SITE_USER_CAP player profiles in a single sitemap; if the roster ever
-// approaches 50k URLs, switch to generateSitemaps() chunking (and ideally a
-// lightweight backend /users/sitemap slug endpoint).
-export const dynamic = "force-dynamic";
+// This route is fully dynamic without a segment export: `resolveSiteMetadata()`
+// and the workspace lookup below both read `headers()` (a request-time API, which
+// opts a sitemap out of build-time caching) so the URLs/entries reflect the
+// current tenant host on every request. The expensive part —
+// `userService.getAll(...)`, up to SITE_USER_CAP rows — is NOT re-run per
+// request: it's wrapped in `unstable_cache` keyed by workspace id and
+// revalidated once every 24h, so the backend still only sees one fetch per
+// workspace per day. NOTE: emits up to SITE_USER_CAP player profiles in a single
+// sitemap; if the roster ever approaches 50k URLs, switch to generateSitemaps()
+// chunking (and ideally a lightweight backend /users/sitemap slug endpoint).
 
 const SITE_USER_CAP = 5000;
 

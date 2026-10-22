@@ -68,7 +68,7 @@ export function createLadder(ranks: readonly LadderRank[]): Ladder | null {
 }
 
 /** A run of consecutive native ranks, as ladder indices. */
-export type NativeRun = NativeRankRange;
+type NativeRun = NativeRankRange;
 
 export interface Band {
   /** Present for a tier that already exists server-side; absent for a new one. */

@@ -96,4 +96,4 @@ const TimeInput = React.forwardRef<HTMLInputElement, TimeInputProps>(
 );
 TimeInput.displayName = "TimeInput";
 
-export { TimeInput, type TimeInputProps };
+export { TimeInput };

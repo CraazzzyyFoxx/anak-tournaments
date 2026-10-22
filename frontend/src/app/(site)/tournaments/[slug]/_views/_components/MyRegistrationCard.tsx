@@ -23,6 +23,7 @@ import {
   RefreshCw
 } from "lucide-react";
 
+import Image from "@/components/ui/image";
 import { StatusDot } from "@/components/ui/status-dot";
 import { LateSignUpBadge, OnCallBadge } from "@/components/status/RegistrationBadges";
 import { cn, hexToRgba } from "@/lib/utils";
@@ -124,10 +125,10 @@ const IDENTITY_ICONS: Record<
   { Icon: (props: React.SVGProps<SVGSVGElement>) => React.ReactElement; className: string }
 > = {
   // Battle.net ships as a file in /public rather than as a path in this module.
+  // Rendered at `size-3.5`, hence the 14px intrinsic size.
   battlenet: {
     Icon: (props) => (
-      // eslint-disable-next-line @next/next/no-img-element -- small static asset from /public
-      <img alt="Battle.net" className={props.className} src="/battlenet.svg" />
+      <Image alt="Battle.net" className={props.className} src="/battlenet.svg" width={14} height={14} />
     ),
     className: ""
   },
@@ -136,15 +137,13 @@ const IDENTITY_ICONS: Record<
   boosty: { Icon: BoostyIcon, className: "text-[color:var(--aqt-brand-boosty)]" },
   riot: {
     Icon: (props) => (
-      // eslint-disable-next-line @next/next/no-img-element -- small static asset from /public
-      <img alt="Riot Games" className={props.className} src="/riot.png" />
+      <Image alt="Riot Games" className={props.className} src="/riot.png" width={14} height={14} />
     ),
     className: ""
   },
   steam: {
     Icon: (props) => (
-      // eslint-disable-next-line @next/next/no-img-element -- small static asset from /public
-      <img alt="Steam" className={props.className} src="/steam.svg" />
+      <Image alt="Steam" className={props.className} src="/steam.svg" width={14} height={14} />
     ),
     className: ""
   }

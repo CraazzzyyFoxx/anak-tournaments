@@ -8,7 +8,7 @@ import { ApiError, getApiErrorMessage } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
 
 /** Inline error per form key; a key that is fine is absent. */
-export type SettingsFieldErrors = Partial<Record<string, string>>;
+type SettingsFieldErrors = Partial<Record<string, string>>;
 
 export interface ScopedSettingsFormOptions<TForm, TPayload> {
   /**

@@ -1,7 +1,7 @@
 import type { ColumnDef } from "@tanstack/react-table";
 
 /** One selectable value of a column filter. */
-export interface AdminColumnFilterOption {
+interface AdminColumnFilterOption {
   value: string;
   label: string;
 }

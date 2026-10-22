@@ -10,7 +10,7 @@ type HoverPrefetchLinkProps = Omit<ComponentProps<typeof Link>, "prefetch">;
  * viewport entry.
  *
  * Next's default prefetches every link the moment it scrolls into view. Every
- * route under `/tournaments/[id]` is `force-dynamic`, so each of those
+ * route under `/tournaments/[id]` is request-time, so each of those
  * prefetches is a full server render with nothing cached in front of it — and
  * the surfaces that carry the most links are exactly the ones that render them
  * all at once: the section rail alone is nine, the bracket adds a pair per
@@ -52,5 +52,3 @@ export function HoverPrefetchLink({ onMouseEnter, onFocus, href, ...props }: Hov
     />
   );
 }
-
-export default HoverPrefetchLink;

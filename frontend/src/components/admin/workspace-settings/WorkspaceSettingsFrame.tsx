@@ -11,7 +11,7 @@ import type { Workspace } from "@/types/workspace.types";
 import type { WorkspaceSettingsFormState } from "./fields";
 import type { WorkspaceSettingsForm } from "./useWorkspaceSettingsForm";
 
-export interface WorkspaceSettingsFrameContext {
+interface WorkspaceSettingsFrameContext {
   workspace: Workspace;
   workspaceId: number;
   form: WorkspaceSettingsFormState;

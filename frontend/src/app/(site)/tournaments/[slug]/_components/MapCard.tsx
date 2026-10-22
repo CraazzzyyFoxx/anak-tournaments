@@ -81,5 +81,3 @@ export function MapCard({ map, size = "md", className }: Readonly<MapCardProps>)
     </figure>
   );
 }
-
-export default MapCard;

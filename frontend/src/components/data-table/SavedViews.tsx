@@ -35,7 +35,7 @@ export interface SavedViewsExtra {
 
 const suffix = ":views";
 
-export function loadViews(storageKey: string): SavedView[] {
+function loadViews(storageKey: string): SavedView[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(`${storageKey}${suffix}`) ?? "null");
     return Array.isArray(parsed) ? (parsed as SavedView[]) : [];
@@ -44,7 +44,7 @@ export function loadViews(storageKey: string): SavedView[] {
   }
 }
 
-export function saveViews(storageKey: string, views: SavedView[]) {
+function saveViews(storageKey: string, views: SavedView[]) {
   try {
     localStorage.setItem(`${storageKey}${suffix}`, JSON.stringify(views));
   } catch {
@@ -52,7 +52,7 @@ export function saveViews(storageKey: string, views: SavedView[]) {
   }
 }
 
-export function applyView(view: SavedView, extra?: SavedViewsExtra) {
+function applyView(view: SavedView, extra?: SavedViewsExtra) {
   window.history.replaceState(null, "", `${window.location.pathname}${view.search}`);
   // The state MUST be null: Next's router ignores a popstate it did not push,
   // so only the table's own listener wakes up and re-reads the URL.

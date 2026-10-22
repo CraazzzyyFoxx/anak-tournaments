@@ -79,7 +79,7 @@ export const AUDIT_ENTITY_TYPES: readonly AuditEntityType[] = ENTITY_TYPES;
  * prototype, and a URL carrying `?history=toString:1:1` must not pass for a real
  * entity type.
  */
-export function isAuditEntityType(value: string | undefined | null): value is AuditEntityType {
+function isAuditEntityType(value: string | undefined | null): value is AuditEntityType {
   return value != null && (ENTITY_TYPES as readonly string[]).includes(value);
 }
 

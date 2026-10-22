@@ -2,7 +2,7 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-export interface InputProps extends Omit<React.ComponentProps<"input">, "size"> {
+interface InputProps extends Omit<React.ComponentProps<"input">, "size"> {
   /** `sm` is the 32px toolbar row (13px text), `default` the 36px form row (14px). */
   size?: "sm" | "default"
 }

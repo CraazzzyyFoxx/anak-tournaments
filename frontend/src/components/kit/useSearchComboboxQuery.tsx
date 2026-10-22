@@ -6,7 +6,7 @@ import { useDebounce } from "use-debounce";
 
 import { Skeleton } from "@/components/ui/skeleton";
 
-export interface SearchComboboxMessages {
+interface SearchComboboxMessages {
   /** Screen-reader text while the query is in flight; skeleton rows show visually. */
   loading: string;
   /** Shown when the query errors. */

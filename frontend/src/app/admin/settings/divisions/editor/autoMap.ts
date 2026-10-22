@@ -18,7 +18,7 @@ import type { DivisionGridMappingRule, DivisionTier } from "@/types/workspace.ty
 
 import { bandsFromTiers, type Band, type Ladder } from "./draftReducer";
 
-export interface MappingCandidate {
+interface MappingCandidate {
   band: Band;
   /** Rank values shared with the source division. */
   overlap: number;

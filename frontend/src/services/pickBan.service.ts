@@ -31,7 +31,7 @@ export interface PickBanSubmitInput {
   lock: boolean;
 }
 
-export interface PickBanRulesPreviewInput {
+interface PickBanRulesPreviewInput {
   kind: PickBanKind;
   mode: MapVetoMode;
   ruleset: PickBanRuleset;
@@ -46,7 +46,7 @@ interface ElectOpenerInput {
 }
 
 /** One participation's numbers inside a game claim or an admin correction. */
-export interface GameResultLineInput {
+interface GameResultLineInput {
   encounter_team_id: number;
   score?: number | null;
   placement?: number | null;

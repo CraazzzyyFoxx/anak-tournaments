@@ -13,6 +13,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import Image from "@/components/ui/image";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { normalizeAnswerText, validateAnswer } from "@/lib/forms/validate";
@@ -111,8 +112,7 @@ export default function AccountCombobox({
     : suggestions;
 
   const iconEl = icon ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={icon} alt="" className="size-3.5 object-contain opacity-50" />
+    <Image src={icon} alt="" width={14} height={14} className="size-3.5 object-contain opacity-50" />
   ) : null;
 
   return (

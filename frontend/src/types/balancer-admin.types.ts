@@ -22,7 +22,7 @@ export type BalancerRoleCode = string;
 export type BalancerRosterKey = SlotCode;
 export type BalancerRoleSubtype = string;
 /** Layers a registration role's rank can resolve from, strongest first. */
-export type RegistrationRankSource = "registration" | "workspace" | "native" | "none";
+type RegistrationRankSource = "registration" | "workspace" | "native" | "none";
 
 
 /**

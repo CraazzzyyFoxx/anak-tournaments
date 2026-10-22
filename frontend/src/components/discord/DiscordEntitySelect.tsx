@@ -12,14 +12,14 @@ import { cn } from "@/lib/utils";
 
 /** A `CommandGroup` worth of entities. Omit `heading` for a single flat group
  *  (the role picker); the channel picker groups entities by category. */
-export interface DiscordEntitySelectGroup<T> {
+interface DiscordEntitySelectGroup<T> {
   heading?: string;
   entities: T[];
 }
 
 /** The two footprints these pickers ship in: the channel picker's default
  *  size, and the role picker's tighter one for inline tier rows. */
-export type DiscordEntitySelectSize = "default" | "sm";
+type DiscordEntitySelectSize = "default" | "sm";
 
 const SIZE_CLASSES: Record<
   DiscordEntitySelectSize,
@@ -39,7 +39,7 @@ const SIZE_CLASSES: Record<
   }
 };
 
-export interface DiscordEntitySelectLabels {
+interface DiscordEntitySelectLabels {
   loading: string;
   dropdown: string;
   idAria: string;

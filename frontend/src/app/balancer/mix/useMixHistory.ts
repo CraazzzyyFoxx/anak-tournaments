@@ -11,7 +11,7 @@ import {
   type MixListPage,
 } from "@/services/custom-game.service";
 
-export const HISTORY_PAGE_SIZE = 30;
+const HISTORY_PAGE_SIZE = 30;
 
 /** Where the next page starts: below `before`, from every community not in `done`. */
 export type HistoryCursor = { before: number | null; done: number[] };

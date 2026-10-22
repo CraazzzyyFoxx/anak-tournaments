@@ -25,7 +25,7 @@ export interface KebabAction {
   href?: string;
 }
 
-export interface KebabColumnOptions<T> {
+interface KebabColumnOptions<T> {
   /**
    * Names the row in the trigger's accessible name. Without it every row's
    * menu button reads the same, so a screen-reader user hears "Actions for

@@ -5,7 +5,7 @@ import type { MatchWithStats } from "@/types/encounter.types";
  * A character counts as played in a segment past this much time on it. The module's long-standing rule: the
  * hero strips and the leaders' portraits never list a one-second swap.
  */
-export const HERO_PLAYED_SECONDS = 60;
+const HERO_PLAYED_SECONDS = 60;
 
 /** One observed member as the Overwatch match views read them: segment-keyed values, no entity grain. */
 export interface OwPlayer {

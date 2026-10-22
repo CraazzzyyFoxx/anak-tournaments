@@ -42,7 +42,7 @@ import {
 import { formatRecord, formatStreak } from "./pickup-stats";
 
 /** What Save writes into the host's own rank book: `clear` falls the role back to the workspace. */
-export type PickupRankChange = { ranks: Record<string, number>; clear: string[] };
+type PickupRankChange = { ranks: Record<string, number>; clear: string[] };
 
 type PickupPlayerSheetProps = {
   row: CustomGamePlayer | null;

@@ -1,5 +1,3 @@
-import { toBlob } from "html-to-image";
-
 /**
  * Rasterising a DOM node to a PNG — the parts that are the same wherever the
  * capture happens.
@@ -19,7 +17,7 @@ import { toBlob } from "html-to-image";
  * itself uses the token, which resolves because the clone inherits computed
  * styles from the live document.
  */
-export const EXPORT_BACKGROUND = "#090a10";
+const EXPORT_BACKGROUND = "#090a10";
 
 /**
  * A 1x1 fully transparent RGBA PNG, substituted for an image the rasteriser
@@ -52,6 +50,9 @@ const TRANSPARENT_PIXEL =
  * that fires on a host name rather than on an outcome is worse than silence.
  */
 export async function capturePngBlob(node: HTMLElement): Promise<Blob> {
+  // Dynamic on purpose (code split): the rasteriser only runs after an export
+  // click, so it stays out of the balancer's first-load bundle.
+  const { toBlob } = await import("html-to-image");
   const blob = await toBlob(node, {
     cacheBust: true,
     backgroundColor: EXPORT_BACKGROUND,

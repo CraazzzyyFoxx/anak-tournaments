@@ -18,7 +18,7 @@ export function ContentDisciplineProvider({
   return <ContentDisciplineContext value={descriptor}>{children}</ContentDisciplineContext>;
 }
 
-export function useContentDiscipline(): DisciplineDescriptor {
+function useContentDiscipline(): DisciplineDescriptor {
   const descriptor = useContext(ContentDisciplineContext);
   if (descriptor === null) throw new Error("useContentDiscipline needs the content section layout");
   return descriptor;

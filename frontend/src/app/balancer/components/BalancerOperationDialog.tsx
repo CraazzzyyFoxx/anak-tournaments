@@ -14,16 +14,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 
-export type BalancerOperationStepStatus = "pending" | "running" | "succeeded" | "failed";
-
-export type BalancerOperationStep = {
-  id: string;
-  label: string;
-  description?: string;
-  status: BalancerOperationStepStatus;
-};
-
-export type BalancerOperationStepDefinition = Omit<BalancerOperationStep, "status">;
+import type { BalancerOperationStep, BalancerOperationStepStatus } from "./operation-steps";
 
 type BalancerOperationDialogProps = {
   open: boolean;
@@ -38,20 +29,6 @@ type BalancerOperationDialogProps = {
   retryLabel?: string;
   onRetry?: () => void;
 };
-
-export function createOperationSteps(
-  definitions: BalancerOperationStepDefinition[]
-): BalancerOperationStep[] {
-  return definitions.map((step) => ({ ...step, status: "pending" }));
-}
-
-export function updateOperationStepStatus(
-  steps: BalancerOperationStep[],
-  stepId: string,
-  status: BalancerOperationStepStatus
-): BalancerOperationStep[] {
-  return steps.map((step) => (step.id === stepId ? { ...step, status } : step));
-}
 
 function OperationStepIcon({ status }: Readonly<{ status: BalancerOperationStepStatus }>) {
   if (status === "running") {

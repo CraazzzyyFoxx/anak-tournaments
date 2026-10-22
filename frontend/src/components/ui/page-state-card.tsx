@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 
-export type PageStateKind = "error" | "empty" | "filtered-empty" | "not-found";
+type PageStateKind = "error" | "empty" | "filtered-empty" | "not-found";
 
 interface PageStateCardProps {
   state: PageStateKind;

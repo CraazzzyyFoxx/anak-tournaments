@@ -11,7 +11,7 @@
  * anybody who may watch but never write. Stored per message, never derived:
  * swapping a captain must not relabel a whole history.
  */
-export type ChatRole = "home" | "away" | "captain" | "staff" | "spectator";
+type ChatRole = "home" | "away" | "captain" | "staff" | "spectator";
 
 export interface ChatMessage {
   /** The message's identity AND its total order. */
@@ -34,7 +34,7 @@ export interface ChatSettings {
   spectators_can_read: boolean;
 }
 
-export interface ChatViewer {
+interface ChatViewer {
   role: ChatRole;
   can_write: boolean;
   can_moderate: boolean;

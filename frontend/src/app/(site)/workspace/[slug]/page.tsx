@@ -6,8 +6,6 @@ import { CommunityPage, communityMetadata } from "../_components/CommunityPage";
 import workspaceService from "@/services/workspace.service";
 import type { Workspace } from "@/types/workspace.types";
 
-export const dynamic = "force-dynamic";
-
 /**
  * `all`, not the public directory: a community's own page must stay reachable
  * for its members while it is still `unverified` or hidden. Cached so the

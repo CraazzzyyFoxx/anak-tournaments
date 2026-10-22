@@ -15,8 +15,6 @@ import { NowOnPlatform, NowSkeleton } from "./_components/NowOnPlatform";
 import { OrganizerBanner } from "./_components/OrganizerBanner";
 import { PlatformLeaders, PlatformLeadersSkeleton } from "./_components/PlatformLeaders";
 
-export const dynamic = "force-dynamic";
-
 export async function generateMetadata(): Promise<Metadata> {
   // A tenant host's landing is its community page: the root layout already
   // carries that tenant's own title and description.

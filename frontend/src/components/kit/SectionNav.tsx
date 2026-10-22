@@ -17,7 +17,7 @@ import { EYEBROW_CLASS } from "@/components/kit/tone";
 import { SettingsOutlineList } from "@/components/kit/SettingsOutline";
 import { cn } from "@/lib/utils";
 
-export interface SectionNavItem {
+interface SectionNavItem {
   key: string;
   label: string;
   href: string;

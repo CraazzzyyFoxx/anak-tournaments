@@ -16,7 +16,7 @@ export type SubroleCatalog = Record<string, SubroleOption[]>;
 
 /** Which gate a requirement blocks at. Ordered: `registration` implies
  *  `check_in` as well, so a registration-stage requirement is checked twice. */
-export type AdmissionStage = "registration" | "check_in";
+type AdmissionStage = "registration" | "check_in";
 
 /** The composed decision. Mirrors `shared.services.admission.AdmissionDecision`.
  *
@@ -33,12 +33,12 @@ export type AdmissionDecision = "admitted" | "pending_check_in" | "not_admitted"
  *  mid-tournament. `not_applicable` means the tournament switched the
  *  requirement off — such verdicts still ship, because the registrant's
  *  progress steps are built by walking the whole list. */
-export type RequirementState = "satisfied" | "blocked" | "undetermined" | "not_applicable";
+type RequirementState = "satisfied" | "blocked" | "undetermined" | "not_applicable";
 
 /** Who can fix a reason. This is what makes an aggregate readable: forty
  *  `undetermined` rows are either forty players who never linked Discord or one
  *  broken role mapping, and the code alone cannot tell an organizer which. */
-export type ReasonActor = "player" | "organizer" | "system";
+type ReasonActor = "player" | "organizer" | "system";
 
 export interface AdmissionReason {
   /** Stable machine code; the UI renders `admission.reason.{code}` and falls
@@ -279,7 +279,7 @@ export interface TournamentHistoryEntry {
 
 /** Inline team summary carried by every roster row. Mirrors the backend's
  *  `RegistrationTeamBrief`; the full model lives in `registration-team.types.ts`. */
-export interface RegistrationTeamBrief {
+interface RegistrationTeamBrief {
   id: number;
   name: string;
   status: "forming" | "complete" | "rejected" | "disbanded";

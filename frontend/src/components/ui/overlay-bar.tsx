@@ -4,7 +4,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
-export type OverlayBarTone = "neutral" | "warn" | "active";
+type OverlayBarTone = "neutral" | "warn" | "active";
 
 const TONE_BORDER: Record<OverlayBarTone, string> = {
   neutral: "border-[color:var(--aqt-border-2)]",

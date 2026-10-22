@@ -24,7 +24,7 @@ export interface ConnectSource {
 }
 
 const PORT_BUTTON =
-  "flex h-5 w-5 items-center justify-center rounded border text-[10px] font-bold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]";
+  "flex h-5 w-5 items-center justify-center rounded border text-[11px] font-bold leading-none transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]";
 
 interface TemplateMatchCardProps {
   match: DraftMatch;
@@ -137,7 +137,7 @@ export function TemplateMatchCard({
         className="flex shrink-0 flex-col items-center justify-center gap-0.5 border-r border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] leading-none text-[color:var(--aqt-fg-muted)]"
         style={{ width: GUTTER_WIDTH }}
       >
-        <span className="text-[9px] font-semibold tracking-label opacity-70">M</span>
+        <span className="text-[11px] font-semibold tracking-label opacity-70">M</span>
         <span className="text-caption font-bold tabular-nums">{match.id}</span>
       </div>
 

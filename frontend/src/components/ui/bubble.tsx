@@ -38,16 +38,6 @@ const bubbleVariants = cva(
   }
 );
 
-function BubbleGroup({ className, ...props }: ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="bubble-group"
-      className={cn("flex min-w-0 flex-col gap-2", className)}
-      {...props}
-    />
-  );
-}
-
 function Bubble({
   variant = "default",
   align = "start",
@@ -78,4 +68,4 @@ function BubbleContent({ className, ...props }: ComponentProps<"div">) {
   );
 }
 
-export { Bubble, BubbleContent, BubbleGroup };
+export { Bubble, BubbleContent };

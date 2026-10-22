@@ -12626,7 +12626,6 @@
   },
   "kit": {
     "ui": {
-      "more": "More",
       "close": "Close",
       "commandPalette": "Command palette",
       "sidebar": "Sidebar",
@@ -12696,7 +12695,6 @@
       "remove": "Remove image"
     },
     "datePicker": {
-      "pick": "Pick a date",
       "pickRange": "Pick a date range",
       "select": "Select date",
       "date": "Date",

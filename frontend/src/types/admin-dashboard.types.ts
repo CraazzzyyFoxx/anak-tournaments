@@ -9,4 +9,3 @@ export type DashboardBacklog = Schema<"app.DashboardBacklog">;
 
 /** `GET /api/v1/admin/dashboard/trends`: backend/app-service/src/schemas/dashboard_trends.py. */
 export type DashboardTrends = Schema<"app.DashboardTrends">;
-export type DashboardTrendPoint = Schema<"app.DashboardTrendPoint">;

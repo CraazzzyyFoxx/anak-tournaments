@@ -24,8 +24,6 @@ const ACCENT_CLASSES = [
   "text-[color:var(--aqt-violet)]"
 ];
 
-export const dynamic = 'force-dynamic';
-
 // One read for the metadata and the page; an unknown id is the not-found page, not a 500.
 const loadMatch = cache(async (id: number) => {
   try {
@@ -40,8 +38,7 @@ export async function generateMetadata(props: {
   params: Promise<{ id: number }>;
 }): Promise<Metadata> {
   const params = await props.params;
-  const match = await loadMatch(params.id);
-  const t = await getTranslations();
+  const [match, t] = await Promise.all([loadMatch(params.id), getTranslations()]);
 
   const [home, away] = seatsBySlot(match.participants);
   const matchTitle = t("matches.meta.matchTitle", { home: home?.name ?? "—", away: away?.name ?? "—" });
@@ -70,8 +67,7 @@ export async function generateMetadata(props: {
 
 const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
   const params = await props.params;
-  const match = await loadMatch(params.id);
-  const t = await getTranslations();
+  const [match, t] = await Promise.all([loadMatch(params.id), getTranslations()]);
 
   const participants = seatsBySlot(match.participants);
   const mode = match.mode ?? match.map?.parent ?? null;

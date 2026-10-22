@@ -179,7 +179,7 @@ interface SeriesPlayerMeta {
   seriesPlacement: number | null;
 }
 
-export interface SeriesParticipation extends OwTeam {
+interface SeriesParticipation extends OwTeam {
   /** Player metadata is scoped to this participation, not the source roster. */
   meta: Record<number, SeriesPlayerMeta>;
 }

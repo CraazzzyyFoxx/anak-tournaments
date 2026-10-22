@@ -8,7 +8,7 @@ import type { CatalogKind, CatalogListFilters } from "@/types/catalog.types";
  * Reference data, edited a few times a year (an alias, a sync): five minutes of staleness costs nothing and saves
  * a request on every pregame room, registration form and compare page mount.
  */
-export const CATALOG_STALE_MS = 5 * 60 * 1000;
+const CATALOG_STALE_MS = 5 * 60 * 1000;
 
 /** Every row of a kind, name-sorted: the shape a picker or an id→entity map wants. */
 export const WHOLE_CATALOG: CatalogListFilters = { per_page: -1, sort: "name", order: "asc" };

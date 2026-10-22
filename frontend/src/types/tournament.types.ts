@@ -89,7 +89,7 @@ export interface StageBestOfConfig {
 /** One column a stage's games record per team. Mirrors `FfaColumn` of
  *  `ffa.types.ts`, which imports FROM this module — spelled out here rather
  *  than imported back. */
-export interface StageScoringColumn {
+interface StageScoringColumn {
   key: string;
   label: string;
   public: boolean;
@@ -97,7 +97,7 @@ export interface StageScoringColumn {
 }
 
 /** `wins` is a Bo-N series, `points` a lobby scored by the organizer's columns. */
-export type StageScoringPreset = "wins" | "points";
+type StageScoringPreset = "wins" | "points";
 
 /**
  * How a stage scores (backend `StageScoring`). `win`/`draw`/`loss` are what one
@@ -105,7 +105,7 @@ export type StageScoringPreset = "wins" | "points";
  * the rest is the `scoring_rule` every encounter of the stage is played and
  * ranked by. Every rule field is nullable and means "the preset's default".
  */
-export interface StageScoring {
+interface StageScoring {
   win: number | null;
   draw: number | null;
   loss: number | null;
@@ -309,11 +309,6 @@ export type VetoUnavailableReason =
    * activates the stage (`Stage.is_published`). */
   | "bracket_preview";
 
-
-/** Side-agnostic step tokens stored on veto configs. */
-export type VetoSequenceToken =
-  "ban_first" | "ban_second" | "pick_first" | "pick_second" | "decider";
-
 /** Which pool shape a pick-ban config uses. Mirrors the backend `MapVetoMode`. */
 export type MapVetoMode = "pool" | "slots";
 
@@ -366,7 +361,7 @@ export type PickBanStepAction = PickBanAction | "decider";
 export type PickBanEntryStatus = "available" | "picked" | "banned" | "protected";
 
 /** Who performed a board action: `team` names a participation, the rest are the engine, an organizer or a tiebreak. */
-export type PickBanActorKind = "team" | "decider" | "admin" | "system";
+type PickBanActorKind = "team" | "decider" | "admin" | "system";
 
 export interface PickBanEntry {
   id: number;
@@ -415,10 +410,10 @@ export type PickBanActors =
   | `slot:${number}`
   | `side:${string}`;
 export type PickBanTimeoutPolicy = "random_fill" | "lock_draft" | "wait";
-export type PickBanStepTarget = "opponent_player";
+type PickBanStepTarget = "opponent_player";
 export type PickBanGenerator = "bracket" | "slot_veto";
 
-export interface PickBanDisputeRule {
+interface PickBanDisputeRule {
   enabled: boolean;
   /** How many times a revealed step may be reopened. */
   max: number;
@@ -491,7 +486,7 @@ export interface PickBanSubmissionItem {
   target_player_id: number | null;
 }
 
-export type PickBanSubmissionState = "draft" | "locked" | "revealed";
+type PickBanSubmissionState = "draft" | "locked" | "revealed";
 
 /** A submission the viewer may see: revealed ones, any of an open step, and the viewer's own drafts. */
 export interface PickBanSubmission {
@@ -575,13 +570,13 @@ export type EncounterGameState =
   | "cancelled";
 
 /** Who put the accepted score on a game. A Match score is never one of them. */
-export type GameResultSource = "captain_agreement" | "admin" | "admin_log";
+type GameResultSource = "captain_agreement" | "admin" | "admin_log";
 
 /**
  * One participation's accepted numbers and side in one game (`EncounterGameTeamRead`).
  * A game's lines are one per participation seated in it.
  */
-export interface EncounterGameTeam {
+interface EncounterGameTeam {
   encounter_team_id: number;
   /** The game's raw score (map rounds); null for a game that has none. */
   score: number | null;
@@ -611,7 +606,7 @@ export interface EncounterGame {
 }
 
 /** One participation's numbers inside the room's game payload. */
-export interface PickBanGameResult {
+interface PickBanGameResult {
   encounter_team_id: number;
   score: number | null;
   placement: number | null;
@@ -650,7 +645,7 @@ export interface PickBanGame {
  * `EncounterTeam.id`, as a string): `ended` once the encounter's rule is
  * settled on them, `games` how many positions reached a result.
  */
-export interface PickBanSeries {
+interface PickBanSeries {
   ended: boolean;
   games: number;
   totals: Record<string, number>;
@@ -812,7 +807,7 @@ export interface PickBanLeafSpec {
   relative: boolean;
 }
 
-export interface PickBanConstraintSpec {
+interface PickBanConstraintSpec {
   type: string;
   params: PickBanParamSpec[];
   requires_target: boolean;
@@ -851,7 +846,7 @@ export interface PickBanRulesValidation {
   issues: PickBanRulesIssue[];
 }
 
-export interface PickBanPreviewMap {
+interface PickBanPreviewMap {
   map_index: number;
   /** null when no phase matches this map. */
   phase_id: string | null;

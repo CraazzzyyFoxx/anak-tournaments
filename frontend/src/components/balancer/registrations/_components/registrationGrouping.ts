@@ -10,7 +10,7 @@ export interface RegistrationGroup {
   registrations: AdminRegistration[];
 }
 /** Group headers, named by the caller in its own language (the `grouping` messages). */
-export type RegistrationGroupLabelKey =
+type RegistrationGroupLabelKey =
   | "all"
   | "checkedIn"
   | "notCheckedIn"

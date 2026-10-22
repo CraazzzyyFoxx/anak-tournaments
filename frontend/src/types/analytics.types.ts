@@ -119,7 +119,7 @@ export interface StandingsDistribution {
   position_histogram: Record<string, number>; // {"1": count, "2": count, ...}
 }
 
-export type AnomalyKind = "smurf" | "troll" | "throw" | "sandbag";
+type AnomalyKind = "smurf" | "troll" | "throw" | "sandbag";
 
 interface AnomalyFlag {
   player_id: number;

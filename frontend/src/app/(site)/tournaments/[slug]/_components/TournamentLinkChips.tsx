@@ -139,5 +139,3 @@ export function TournamentLinkChips({ links, className }: Readonly<TournamentLin
     </nav>
   );
 }
-
-export default TournamentLinkChips;

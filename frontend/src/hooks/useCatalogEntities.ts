@@ -29,7 +29,7 @@ export function useCatalogEntities(
   });
 }
 
-export function useCatalogEntity(
+function useCatalogEntity(
   discipline: DisciplineScope,
   kind: CatalogKind,
   id: number | null | undefined,

@@ -124,7 +124,7 @@ export function seriesClaimErrors({
  * `matchReport.errors.<code>`: the claim's own six, plus the two 409s that
  * mean "reload, the result moved on".
  */
-export const SERIES_REPORT_ERROR_CODES = [
+const SERIES_REPORT_ERROR_CODES = [
   "series_claim_teams",
   "series_claim_games_played",
   "series_claim_not_final",

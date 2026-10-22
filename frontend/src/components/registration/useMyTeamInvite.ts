@@ -11,7 +11,7 @@ import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import registrationTeamService from "@/services/registration-team.service";
 import type { RegistrationFreeAgent } from "@/types/registration-team.types";
 
-export type InviteMode = "link" | "targeted";
+type InviteMode = "link" | "targeted";
 
 /** Everything the invite dialog renders and drives. */
 export interface MyTeamInviteController {

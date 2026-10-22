@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import type { WorkspaceMember, WorkspaceSystemRole } from "@/types/workspace.types";
 
 export const SYSTEM_ROLES: WorkspaceSystemRole[] = ["owner", "admin", "referee", "host", "player"];
-export function isSystemRoleName(name: string): name is WorkspaceSystemRole {
+function isSystemRoleName(name: string): name is WorkspaceSystemRole {
   return (SYSTEM_ROLES as string[]).includes(name);
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { CalendarIcon, ChevronDownIcon, X } from "lucide-react";
+import { ChevronDownIcon, X } from "lucide-react";
 import { type DateTimeFormatOptions, useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
@@ -18,13 +18,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
  */
 interface DateFormatter {
   dateTime: (value: Date, options?: DateTimeFormatOptions) => string;
-}
-
-interface DatePickerProps {
-  value?: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  id?: string;
 }
 
 interface DateTimePickerProps {
@@ -51,11 +44,11 @@ interface DateTimePickerProps {
 /**
  * Calendar fields of a local-time Date, re-anchored to UTC.
  *
- * The triggers below print a calendar day, but the app formatter carries the
+ * The trigger below prints a calendar day, but the app formatter carries the
  * zone the SERVER rendered in — the viewer's once their browser has reported
  * it, the workspace default before that — not necessarily the browser's own.
- * Formatting these Dates raw (local midnight from `parseDateValue`, or a local
- * wall clock from `parseDateTimeValue`) could print the neighbouring day,
+ * Formatting these Dates raw (a local wall clock from `parseDateTimeValue`)
+ * could print the neighbouring day,
  * disagreeing with the highlighted calendar cell and with the adjacent
  * `TimeInput`, which reads local hours.
  */
@@ -64,25 +57,9 @@ function calendarDayInUtc(date: Date): Date {
 }
 
 /**
- * Takes the formatter rather than pinning a locale: an `en-US` literal here
- * printed English dates into the `ru` default UI. Callers pass `useFormatter()`.
- */
-function formatDisplay(format: DateFormatter, date: Date | undefined): string {
-  if (!date) return "";
-  return format.dateTime(calendarDayInUtc(date), {
-    day: "2-digit",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC"
-  });
-}
-
-/**
- * NOTE: identical to `formatDisplay` — the date-and-time trigger shows only the
- * date part. Pre-existing behaviour, preserved verbatim; the `DateTimePicker`
- * puts the clock in its own adjacent `TimeInput`, so this may well be
- * intentional. Flagged rather than "fixed", since changing it would alter every
- * `DateTimePicker` trigger's rendered text.
+ * Date part only — the `DateTimePicker` puts the clock in its own adjacent
+ * `TimeInput`. Pre-existing behaviour, preserved verbatim; flagged rather than
+ * "fixed", since changing it would alter every trigger's rendered text.
  */
 function formatDateTimeDisplay(format: DateFormatter, date: Date | undefined): string {
   if (!date) return "";
@@ -94,23 +71,10 @@ function formatDateTimeDisplay(format: DateFormatter, date: Date | undefined): s
   });
 }
 
-function parseDateValue(value?: string): Date | undefined {
-  if (!value) return undefined;
-  const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
 function parseDateTimeValue(value?: string | null): Date | undefined {
   if (!value) return undefined;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
-function toIsoDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function toLocalDateTime(date: Date): string {
@@ -141,52 +105,6 @@ function isBeforeMinDate(date: Date, minDate: Date | undefined): boolean {
   const min = new Date(minDate);
   min.setHours(0, 0, 0, 0);
   return target < min;
-}
-
-export function DatePicker({ value, onChange, placeholder, id }: Readonly<DatePickerProps>) {
-  const t = useTranslations("kit.datePicker");
-  const format = useFormatter();
-  const [open, setOpen] = React.useState(false);
-  const selected = React.useMemo(() => parseDateValue(value), [value]);
-
-  const currentYear = new Date().getFullYear();
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          id={id}
-          variant="outline"
-          data-empty={!selected}
-          className={cn(
-            "w-full justify-start text-left",
-            "data-[empty=true]:text-muted-foreground"
-          )}
-        >
-          <CalendarIcon className="mr-2 h-4 w-4" />
-          {selected ? formatDisplay(format, selected) : <span>{placeholder ?? t("pick")}</span>}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          mode="single"
-          captionLayout="dropdown"
-          selected={selected}
-          defaultMonth={selected}
-          onSelect={(date) => {
-            if (date) {
-              onChange(toIsoDate(date));
-            } else {
-              onChange("");
-            }
-            setOpen(false);
-          }}
-          startMonth={new Date(currentYear - 10, 0)}
-          endMonth={new Date(currentYear + 10, 11)}
-        />
-      </PopoverContent>
-    </Popover>
-  );
 }
 
 export function DateTimePicker({

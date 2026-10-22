@@ -34,7 +34,7 @@ export type MixParticipation = "must_play" | "pool" | "benched";
  * `roles` is the host's own ordered list -- an empty list included, which is
  * "plays nothing" rather than "plays everything".
  */
-export type MixRoleSelectionMode = "all_ranked" | "explicit";
+type MixRoleSelectionMode = "all_ranked" | "explicit";
 
 export type CustomGamePlayer = {
   id: number;
@@ -65,7 +65,7 @@ export type CustomGamePlayer = {
   author_ranks: Record<string, number>;
 };
 
-export type CustomGameStatus = "draft" | "balanced" | "completed" | "cancelled";
+type CustomGameStatus = "draft" | "balanced" | "completed" | "cancelled";
 
 /**
  * How a match ended. `winner` is a 1-based team number, `null` a draw.
@@ -75,7 +75,7 @@ export type CustomGameOutcome = {
 };
 
 /** An account with the same write access as the mix's host. */
-export type CustomGameCoHost = {
+type CustomGameCoHost = {
   /** `auth.user.id` -- the identity every write endpoint addresses, host included. */
   user_id: number;
   display_name: string | null;
@@ -223,7 +223,7 @@ export type CustomGame = {
 };
 
 /** A map a mix has played, as the directory row previews it. */
-export type MixMapPreview = { name: string; image_path: string | null };
+type MixMapPreview = { name: string; image_path: string | null };
 
 /** A directory row: the mix plus the activity columns only the list read computes. */
 export type CustomGameListItem = CustomGame & {
@@ -238,7 +238,7 @@ export type CustomGameListItem = CustomGame & {
 };
 
 /** `open` = draft or balanced; `history` = completed or cancelled. */
-export type MixListStatus = "open" | "history";
+type MixListStatus = "open" | "history";
 
 export type MixListFilter = {
   status?: MixListStatus;
@@ -311,7 +311,7 @@ export type MixVoicePatch = {
 };
 
 /** One team of a recorded round, by slot (1 = the lineup's first team). */
-export type CustomGameMatchTeam = { slot: number; name: string; score: number };
+type CustomGameMatchTeam = { slot: number; name: string; score: number };
 
 /**
  * One round recorded by `recordOutcome` -- an encounter owned by the mix. `teams` is in slot order;
@@ -389,7 +389,7 @@ export type MixSelfSeat = {
 };
 
 /** What the caller may do, and the first reason they may not. */
-export type MixSelfPolicy = {
+type MixSelfPolicy = {
   can_join: boolean;
   can_leave: boolean;
   can_edit_roles: boolean;
@@ -430,7 +430,7 @@ export type CustomGameParticipationEntry = {
 };
 
 /** A pool member's fairness-rotation verdict for the next map, from `rotation`. */
-export type RotationStatus = "must_play" | "should_rest" | "neutral";
+type RotationStatus = "must_play" | "should_rest" | "neutral";
 
 /**
  * One roster row's rotation-fairness read, computed server-side from this

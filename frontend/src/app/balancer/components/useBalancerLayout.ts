@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type RefObject } from "react";
 
-import { type BalancerOperationStepDefinition } from "./BalancerOperationDialog";
+import type { BalancerOperationStepDefinition } from "./operation-steps";
 
 export const EXPORT_TO_TOURNAMENT_STEPS: BalancerOperationStepDefinition[] = [
   {

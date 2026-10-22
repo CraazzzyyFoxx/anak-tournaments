@@ -32,7 +32,7 @@ export const MAX_RESULT_VARIANTS = DEFAULT_RESULT_VARIANTS;
 export const MAX_POINTS_PER_WIN = 1000;
 
 /** Stored tilt, clamped to the range the server enforces. */
-export function tiltOf(preferences: MixBalancerPreferences | null | undefined): number {
+function tiltOf(preferences: MixBalancerPreferences | null | undefined): number {
   const stored = preferences?.mix_comfort_tilt;
   if (typeof stored !== "number" || !Number.isFinite(stored)) {
     return DEFAULT_COMFORT_TILT;
@@ -41,7 +41,7 @@ export function tiltOf(preferences: MixBalancerPreferences | null | undefined): 
 }
 
 /** Stored weights, with anything unusable dropped rather than rendered as NaN. */
-export function roleWeightsOf(
+function roleWeightsOf(
   preferences: MixBalancerPreferences | null | undefined,
 ): Record<string, number> {
   const stored = {
@@ -59,7 +59,7 @@ export function roleWeightsOf(
 }
 
 /** Stored option count, clamped; unset reads as the engine's own number. */
-export function variantsOf(preferences: MixBalancerPreferences | null | undefined): number {
+function variantsOf(preferences: MixBalancerPreferences | null | undefined): number {
   const stored = preferences?.max_result_variants;
   if (typeof stored !== "number" || !Number.isFinite(stored)) {
     return DEFAULT_RESULT_VARIANTS;
@@ -69,7 +69,7 @@ export function variantsOf(preferences: MixBalancerPreferences | null | undefine
 
 
 /** Stored points-per-win; `null` (and a stored `0`) means the knob is off. */
-export function pointsPerWinOf(
+function pointsPerWinOf(
   preferences: MixBalancerPreferences | null | undefined,
 ): number | null {
   const stored = preferences?.points_per_win;

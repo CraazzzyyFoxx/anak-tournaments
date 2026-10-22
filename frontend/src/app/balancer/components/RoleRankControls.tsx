@@ -31,9 +31,6 @@ export function roleRankAccent(ontology: RoleOntology | null | undefined, code: 
   return { color: roleColor(ontology, code) };
 }
 
-/** For a rank that belongs to no single role — a whole-player override, say. */
-export const NEUTRAL_RANK_ACCENT: RoleRankAccent = { color: null };
-
 const tint = (color: string, percent: number) =>
   `color-mix(in srgb, ${color} ${percent}%, transparent)`;
 

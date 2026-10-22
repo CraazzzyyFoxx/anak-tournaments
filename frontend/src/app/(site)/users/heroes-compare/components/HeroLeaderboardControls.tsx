@@ -12,7 +12,7 @@ import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { cn } from "@/lib/utils";
 
 /** The sample floor's choices in the popover. */
-export const MIN_GAMES_OPTIONS = [1, 3, 5, 10, 20] as const;
+const MIN_GAMES_OPTIONS = [1, 3, 5, 10, 20] as const;
 
 /**
  * The floor until the reader picks one. An all-time per-10 average needs a few games to mean anything, but one

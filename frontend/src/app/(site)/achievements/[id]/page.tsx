@@ -9,17 +9,14 @@ import AchievementUsers from "@/app/(site)/achievements/[id]/components/Achievem
 import AchievementDetailHeader from "@/app/(site)/achievements/[id]/components/AchievementDetailHeader";
 import AchievementConditionsCard from "@/app/(site)/achievements/[id]/components/AchievementConditionsCard";
 
-export const dynamic = "force-dynamic";
-
 const AchievementPage = async (props: { params: Promise<{ id: string }> }) => {
   const params = await props.params;
   // `/achievements/<slug>.webp` art guesses for missing public files land here too.
   if (!/^\d+$/.test(params.id)) notFound();
   // In the all-workspaces scope the catalogue links one copy per slug with the
-  // slug's pooled numbers; the detail asks for the same pooling.
-  const scope = await resolveStatsScope();
-  // The viewing workspace axis (a tenant host's own; never `all` there): condition role names resolve in it.
-  const { axis } = await resolveServerDisciplineScope();
+  // slug's pooled numbers; the detail asks for the same pooling. The viewing
+  // workspace axis (a tenant host's own; never `all` there): condition role names resolve in it.
+  const [scope, { axis }] = await Promise.all([resolveStatsScope(), resolveServerDisciplineScope()]);
   const data = await achievementsService.getOne(Number(params.id), scope);
   // Nobody holds it yet: 0% would tint it mythic, so it stays neutral.
   const rarity = (data.count ?? 0) > 0 ? classifyRarity(data.rarity * 100) : "common";

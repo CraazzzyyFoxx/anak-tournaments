@@ -203,5 +203,3 @@ export function Dock({
     stack
   );
 }
-
-export default Dock;

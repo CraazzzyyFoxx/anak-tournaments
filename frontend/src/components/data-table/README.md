@@ -38,13 +38,10 @@ project, satisfy `host.ts`, and it works.
 
 ```ts
 import {
-  DataTable, type DataTableProps, type DataTableGroup,
-  columnMeta, type AdminColumnMeta,          // column meta: filter, category, sticky, align, valign, ellipsis, nowrap, onCell, headerTooltip, searchValue…
+  DataTable, type DataTableGroup,
+  columnMeta, readColumnMeta,                     // column meta: filter, category, sticky, align, valign, ellipsis, nowrap, onCell, headerTooltip, searchValue…
   readAdminColumnFilter, type AdminTableFilters,  // filter contract shared with a filter bar
   createKebabColumn, type KebabAction,            // row actions column
-  HighlightMatch, useAdminTableSearch,            // for custom cells that want search highlighting
-  type PaginatedResponse, type SortDir,
-  downloadCsv,
 } from "@/components/data-table";
 ```
 

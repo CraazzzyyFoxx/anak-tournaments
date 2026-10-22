@@ -70,7 +70,10 @@ const RULES = [
       // Reads `formatToParts` and parses the parts back to numbers. ASCII digits
       // are a correctness requirement there and nothing reaches the UI, so a
       // pinned locale is the fix rather than the bug. See the comment in-file.
-      [/lib[\\/]timezone\.ts$/, "machine-readable parts, never rendered"],
+      [/lib[\\/]workspace[\\/]timezone\.ts$/, "machine-readable parts, never rendered"],
+      // `resolveTimeZone` builds a formatter only to see whether the zone
+      // name throws; it never formats anything, so the locale is irrelevant.
+      [/lib[\\/]datetime[\\/]index\.ts$/, "time-zone validation only, never formats"],
     ],
   },
   {

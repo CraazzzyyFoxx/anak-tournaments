@@ -553,7 +553,7 @@ function leagueDetail(isLeague: unknown, o: ConditionTextOptions): string | null
 }
 
 /** Any node, named: the catalogue label, or the node name read as words. */
-export function conditionTypeLabel(type: string | undefined, o: ConditionTextOptions): string {
+function conditionTypeLabel(type: string | undefined, o: ConditionTextOptions): string {
   if (!type) return msg(o, "unnamed");
   const key = `achievements.condition.${type}`;
   return o.t.has(key) ? o.t(key) : humanize(type);

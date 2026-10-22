@@ -29,7 +29,7 @@ const field = <T,>(
   wire?: (value: T) => T
 ) => ({ section, from, wire }) as const;
 
-export const FIELD_DEFS = {
+const FIELD_DEFS = {
   name: field("general", (ws) => ws.name),
   description: field("general", (ws) => ws.description ?? ""),
   tagline: field("general", (ws) => ws.tagline ?? ""),
@@ -189,7 +189,7 @@ const hexIssue = (value: string | null): FieldIssue | null =>
   value?.trim() && !HEX_RE.test(value.trim()) ? { key: "hex" } : null;
 
 /** `validate_subdomain_label`; blank means "no subdomain" and is fine. */
-export function subdomainIssue(value: string | null): FieldIssue | null {
+function subdomainIssue(value: string | null): FieldIssue | null {
   const label = value?.trim().toLowerCase() ?? "";
   if (!label) return null;
   if (label.length > 63) return { key: "subdomainLength" };

@@ -75,7 +75,7 @@ export function collectStages(encounters: Encounter[], tournament: Tournament): 
   return [...byId.values()].sort((left, right) => right.order - left.order);
 }
 
-export type MatchListRow = {
+type MatchListRow = {
   encounter: Encounter;
   /** Mono leading cell: a match number, a clock time. */
   leading?: string;

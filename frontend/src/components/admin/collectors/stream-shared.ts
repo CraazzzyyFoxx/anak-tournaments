@@ -27,7 +27,7 @@ export const STREAM_STATUS_TONES: Record<StreamPollStatus, Tone> = {
 
 /** Message key under `collectors.streams.status`: a recorded outcome, or one of
  *  the two states that precede any outcome at all. */
-export type StreamDiagnosisKey = StreamPollStatus | "off" | "no_tick";
+type StreamDiagnosisKey = StreamPollStatus | "off" | "no_tick";
 
 export interface StreamDiagnosis {
   tone: Tone;

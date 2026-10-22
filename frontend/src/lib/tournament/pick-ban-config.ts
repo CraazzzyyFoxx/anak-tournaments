@@ -25,7 +25,6 @@ import { projectStage } from "@/lib/bracket/projection";
 import type {
   MapVetoMode,
   PickBanActors,
-  PickBanCondition,
   PickBanConfig,
   PickBanConfigUpsertInput,
   PickBanFirstBanRotation,
@@ -142,9 +141,6 @@ export interface PickBanDraft {
 }
 
 // ── ruleset factories ────────────────────────────────────────────────────────
-
-/** The default step timer a new ruleset offers, in seconds (§12 uses 90). */
-export const DEFAULT_TIMER_SECONDS = 90;
 
 /**
  * A fresh ruleset for `kind`, in the shape that reproduces what the scope used
@@ -394,11 +390,6 @@ function updatePhaseSteps(
       phase.id === phaseId ? { ...phase, steps: edit(phase.steps) } : phase
     ),
   };
-}
-
-/** Is this condition tree "anything"? `{}` is the DSL's always-true. */
-export function isEmptyCondition(condition: PickBanCondition): boolean {
-  return Object.keys(condition ?? {}).length === 0;
 }
 
 /**

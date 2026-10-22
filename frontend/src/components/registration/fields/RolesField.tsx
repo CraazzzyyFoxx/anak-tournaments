@@ -34,7 +34,7 @@ export function rolesParams(field: FormField): RolesParams {
 
 /** How the tournament presents the priority choice. `flex_allowed: false` is
  *  the old `flex_role.enabled: false`, i.e. no flex on offer at all. */
-export function roleFlexMode(params: RolesParams): FlexMode {
+function roleFlexMode(params: RolesParams): FlexMode {
   return params.flex_allowed ? params.flex_mode : "off";
 }
 

@@ -6,7 +6,7 @@ import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 
-import TournamentBroadcastDock from "./TournamentBroadcastDock";
+import { TournamentBroadcastDock } from "./TournamentBroadcastDock";
 import { TOURNAMENT_ACTION_CLASS } from "./tournamentActionClass";
 import TournamentRegisterButton from "./TournamentRegisterButton";
 import { NextPhaseChip } from "./NextPhaseChip";
@@ -45,7 +45,7 @@ type TournamentClientLayoutProps = {
  * is only populated then) the rostered players are the tournament's players —
  * the header and the overview's numbers must not disagree by the withdrawn.
  */
-export function tournamentPlayersCount(
+function tournamentPlayersCount(
   tournament: Pick<Tournament, "participants_count" | "registrations_count" | "teams_count">
 ): number {
   const rostered = tournament.participants_count ?? 0;

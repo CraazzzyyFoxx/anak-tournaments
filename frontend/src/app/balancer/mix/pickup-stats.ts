@@ -31,7 +31,7 @@ export function sinceFor(period: StatsPeriodKey, now: Date): string | null {
 export const LEADERBOARD_MIN_GAMES = 3;
 
 /** The server sends at most this many results per member; a merged form keeps the same window. */
-export const FORM_LIMIT = 10;
+const FORM_LIMIT = 10;
 
 /** One person on the scoreboard: a player's records from every community read, added up. */
 export type RatedPlayer = {

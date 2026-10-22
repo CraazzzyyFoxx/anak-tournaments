@@ -4,7 +4,7 @@ export interface TokenPair {
   token_type?: "bearer" | string;
 }
 
-export type AccountSessionStatus = "active" | "revoked" | "expired";
+type AccountSessionStatus = "active" | "revoked" | "expired";
 
 export interface AccountSession {
   session_id: string;

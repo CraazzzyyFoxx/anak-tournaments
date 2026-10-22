@@ -33,7 +33,7 @@ import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-
  * `phase_schedule` is not here: it travels through `setTournamentSchedule`,
  * and only the `schedule` section sends it.
  */
-export const SETTINGS_SECTION_FIELDS = {
+const SETTINGS_SECTION_FIELDS = {
   // How teams form and which grid seeds them are read on every screen that
   // describes the tournament, so they sit with its name rather than with the
   // points a result is worth.

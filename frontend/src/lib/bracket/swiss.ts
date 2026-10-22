@@ -20,13 +20,13 @@ interface SwissRecord {
   losses: number;
 }
 
-export interface SwissPool {
+interface SwissPool {
   /** "1-0", or "1-0-0" (W-D-L) once the stage has a draw anywhere. */
   label: string;
   matches: BracketMatch[];
 }
 
-export interface SwissRound {
+interface SwissRound {
   round: number;
   /** Best record first: 2-0, 1-1, 0-2. */
   pools: SwissPool[];

@@ -26,7 +26,7 @@ export function winrateColor(wonShare: number, maps: number): string {
   return "var(--aqt-rose-text)";
 }
 
-export function placeColor(place: number | null): string {
+function placeColor(place: number | null): string {
   if (place === 1) return "var(--aqt-medal-gold)";
   if (place === 2) return "var(--aqt-medal-silver)";
   if (place === 3) return "var(--aqt-medal-bronze)";

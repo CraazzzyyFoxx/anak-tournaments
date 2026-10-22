@@ -12,7 +12,7 @@ export interface PreGameScope {
   round: number | null;
 }
 
-export const TOURNAMENT_SCOPE_VALUE = "tournament";
+const TOURNAMENT_SCOPE_VALUE = "tournament";
 
 /** Steps of one scope's configuration, in the order they are authored (F9 ·3). */
 export const PRE_GAME_STEPS = ["pool", "rules", "sides"] as const;

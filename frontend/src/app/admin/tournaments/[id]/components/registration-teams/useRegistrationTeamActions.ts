@@ -25,7 +25,7 @@ import type {
 
 /** Both admin variants plus the public roster: a reject or an export changes
  *  every one of them, and the two admin flags are separate cache entries. */
-export function invalidateRegistrationTeams(
+function invalidateRegistrationTeams(
   queryClient: QueryClient,
   workspaceId: number,
   tournamentId: number

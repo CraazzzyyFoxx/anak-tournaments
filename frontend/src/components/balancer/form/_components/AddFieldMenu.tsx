@@ -31,7 +31,7 @@ import type { FieldKind, FormField } from "@/types/forms.types";
  * builtin is chosen by KEY, because the server owns its behaviour, and offering
  * "kind: builtin" with a free-text key would be an invitation to invent one.
  */
-export const CUSTOM_FIELD_KINDS = [
+const CUSTOM_FIELD_KINDS = [
   "text",
   "textarea",
   "number",

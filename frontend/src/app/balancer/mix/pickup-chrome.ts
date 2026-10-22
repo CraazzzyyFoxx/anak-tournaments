@@ -56,7 +56,7 @@ export const METRIC_NEUTRAL_CLASS =
  * Team accents. Index is the 0-based team position, matching the design's
  * teal/amber pair; a third team would wrap rather than invent a colour.
  */
-export const TEAM_ACCENTS = [
+const TEAM_ACCENTS = [
   {
     bar: "bg-[color:var(--aqt-teal)]",
     crestPanel: "bg-[color:color-mix(in_srgb,var(--aqt-teal)_14%,transparent)]",

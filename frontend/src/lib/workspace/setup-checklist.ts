@@ -10,7 +10,7 @@ import type { Workspace } from "@/types/workspace.types";
  * guess: the timezone is NOT NULL with a default, so "timezone set" would
  * always be true and is deliberately not an item.
  */
-export const SETUP_ITEM_KEYS = [
+const SETUP_ITEM_KEYS = [
   "icon",
   "profile",
   "links",
@@ -21,13 +21,13 @@ export const SETUP_ITEM_KEYS = [
   "verification"
 ] as const;
 
-export type SetupItemKey = (typeof SETUP_ITEM_KEYS)[number];
+type SetupItemKey = (typeof SETUP_ITEM_KEYS)[number];
 
 /** The settings section the item is fixed in, as a path segment under the
  * shell's base path (`/admin/settings` or `/admin/workspaces/8`). `null` for
  * the one item the organiser cannot act on: platform verification is set by
  * a superuser. */
-export type SetupSection = "general" | "branding" | "domain" | "discord" | null;
+type SetupSection = "general" | "branding" | "domain" | "discord" | null;
 
 export interface SetupItem {
   key: SetupItemKey;

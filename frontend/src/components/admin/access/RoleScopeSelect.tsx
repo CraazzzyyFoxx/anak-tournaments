@@ -14,7 +14,7 @@ import { useQueryParams } from "@/hooks/useQueryParams";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 /** The `?scope=` value for roles with `workspace_id IS NULL`. */
-export const GLOBAL_SCOPE = "global";
+const GLOBAL_SCOPE = "global";
 
 export interface RoleScopeOption {
   value: string;

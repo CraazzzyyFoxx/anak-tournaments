@@ -154,5 +154,3 @@ export function TournamentBroadcastDock({
     </Dock>
   );
 }
-
-export default TournamentBroadcastDock;

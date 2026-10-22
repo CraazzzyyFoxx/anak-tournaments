@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 import { Filter, RotateCcw } from "lucide-react";
 
@@ -12,7 +13,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { RuleBuilder, LOGICAL_COLORS, type RuleLeafFieldsProps, type RulePaletteGroup } from "@/components/rule-builder";
+import type { RuleLeafFieldsProps, RulePaletteGroup } from "@/components/rule-builder";
+import { LOGICAL_COLORS } from "@/components/rule-builder/rule-tree";
+import { Skeleton } from "@/components/ui/skeleton";
 import type {
   PickBanCondition,
   PickBanConditionContext,
@@ -23,6 +26,13 @@ import type {
 
 import type { CatalogueItem } from "../CataloguePicker";
 import { ParamFields } from "./ParamFields";
+
+// @xyflow/react and its stylesheet only matter once the editor dialog opens,
+// so the canvas is a client-only chunk (same split as the public achievement page).
+const RuleBuilder = dynamic(
+  () => import("@/components/rule-builder").then((m) => m.RuleBuilder),
+  { ssr: false, loading: () => <Skeleton className="h-125 w-full rounded-lg" /> }
+);
 
 /**
  * One condition tree of the ruleset, edited in the shared rule builder.

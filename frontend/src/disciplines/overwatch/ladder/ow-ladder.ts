@@ -37,9 +37,6 @@ export interface LadderTier {
 /** Sub-tiers per division, tier 1 the top and tier `TIERS_PER_DIVISION` the bottom. */
 const TIERS_PER_DIVISION: number = generated.tiers_per_division;
 
-/** Site-relative directory of the default OW2 rank icons (`bronze-5.png` … `champion-1.png`). */
-export const DIVISION_ICON_BASE: string = generated.division_icon_base;
-
 /**
  * Native OverFast division names, highest first — `ultimate` where the division
  * grid says `champion`. The two never meet: the OverFast name is only ever a key

@@ -4,6 +4,7 @@ import { useId, useState } from "react";
 import { X } from "lucide-react";
 import type { FormField as FormFieldSchema } from "@/types/forms.types";
 import { useTranslations } from "next-intl";
+import Image from "@/components/ui/image";
 import { normalizeAnswerText, validateAnswer } from "@/lib/forms/validate";
 import FormField from "./FormField";
 
@@ -87,12 +88,9 @@ export default function ExtraHandlesInput({
         id={inputId}
         label={label ?? t("registration.accounts.smurfs")}
         icon={
-          icon
-            ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={icon} alt="" className="size-3.5 object-contain opacity-50" />
-              )
-            : undefined
+          icon ? (
+            <Image src={icon} alt="" width={14} height={14} className="size-3.5 object-contain opacity-50" />
+          ) : undefined
         }
         beforeControl={
           handles.length > 0 ? (

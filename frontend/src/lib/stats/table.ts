@@ -5,7 +5,7 @@ import type { MatchWithStats } from "@/types/encounter.types";
 import { aggregateFacts, selectFacts, type FactGrain, type Observation } from "./facts";
 
 /** One observed member's row: `values` holds only the stats the match actually recorded for them (missing ≠ 0). */
-export interface StatsTableRow {
+interface StatsTableRow {
   key: string;
   workspaceMemberId: number;
   playerId: number;
@@ -20,7 +20,7 @@ export interface StatsTableRow {
 }
 
 /** One participation (`encounter_team_id`) with its observed members. */
-export interface StatsTableSection {
+interface StatsTableSection {
   key: string;
   encounterTeamId: number;
   /** The participation's name snapshot. */

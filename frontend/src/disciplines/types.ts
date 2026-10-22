@@ -47,7 +47,7 @@ export interface PregameCharacterAction {
 }
 
 /** One character off on a map, as the final bans list shows it. */
-export interface PregameBannedCharacter extends PickBanClassItem {
+interface PregameBannedCharacter extends PickBanClassItem {
   /** Undefined until the character catalog resolves — the thumb falls back to initials. */
   item: PickBanItemLike | undefined;
 }

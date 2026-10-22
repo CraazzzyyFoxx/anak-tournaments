@@ -29,7 +29,7 @@ import type { MixOwner } from "./pickup-lineup";
  * here and a player's own panel only reads them -- the player owns `roles` and
  * `is_flex` and nothing else on their row.
  */
-export type PickupRoleRank = {
+type PickupRoleRank = {
   rankValue: number | null;
   /** Which layer the shown rank came from, badged beside it. */
   sourceLabel: string | null;

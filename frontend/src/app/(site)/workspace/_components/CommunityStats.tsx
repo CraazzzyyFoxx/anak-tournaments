@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Column, ColumnHead, LoadError, Section, SectionHead } from "@/components/site/open-layout";
+import Image from "@/components/ui/image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFormatter } from "@/lib/datetime/server";
 import { orderedRoleCodes, roleName, roleTint, slotLabel } from "@/lib/roster/ontology";
@@ -327,14 +328,20 @@ async function CharactersColumn({ characters }: Readonly<{ characters: Character
               key={row.entity.id}
               className="grid min-h-8 grid-cols-[28px_84px_minmax(0,1fr)_52px] items-center gap-2.5 text-caption"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element -- character portraits live on the asset host next/image is not configured for */}
-              <img
-                src={row.entity.image_path ?? undefined}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                className="size-7 rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card-2)] object-cover"
-              />
+              {row.entity.image_path ? (
+                <Image
+                  src={row.entity.image_path}
+                  alt=""
+                  width={28}
+                  height={28}
+                  className="size-7 rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card-2)] object-cover"
+                />
+              ) : (
+                <span
+                  aria-hidden
+                  className="size-7 rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card-2)]"
+                />
+              )}
               <span className="truncate text-[color:var(--aqt-fg)]">{row.entity.name}</span>
               <span
                 role="img"

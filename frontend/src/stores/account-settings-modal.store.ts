@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
-export type SettingsTab = "profile" | "privacy" | "security" | "notifications" | "favorites" | "mixes" | "logs";
+export const SETTINGS_TABS = ["profile", "privacy", "security", "notifications", "favorites", "mixes", "logs"] as const;
+export type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 type AccountSettingsModalStore = {
   isOpen: boolean;

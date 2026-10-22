@@ -7,6 +7,7 @@ import { type ComponentProps, type ReactNode } from "react";
 
 import CookieSettingsButton from "@/components/CookieSettingsButton";
 import Github from "@/components/icons/Github";
+import Image from "@/components/ui/image";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
 import { APP_VERSION, BRAND_NAME, SITE_URL } from "@/config/site";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
@@ -30,8 +31,8 @@ const REPO_URL = "https://github.com/CraazzzyyFoxx/overwatch-tournaments";
 
 /**
  * The footer renders on every page, so its links sit in the viewport of every
- * page — and Next prefetches links on viewport entry by default. Under
- * `force-dynamic` that means a full server render of the privacy policy, the
+ * page — and Next prefetches links on viewport entry by default. With every
+ * route request-time that means a full server render of the privacy policy, the
  * terms and the whole section column for every visitor who scrolls, none of
  * which anyone asked for. Production on 2026-08-15 rendered /privacy 463 times
  * in 23 minutes, 12-19 per visitor, and that traffic helped saturate the edge.
@@ -94,8 +95,7 @@ export function Footer({ tenant }: Readonly<{ tenant: Workspace | null }>) {
               </>
             ) : (
               <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src="/brand-mark.svg" alt="" width={28} height={28} className="rounded-[7px]" />
+                <Image src="/brand-mark.svg" alt="" width={28} height={28} className="rounded-[7px]" />
                 <span className="font-display text-[17px] font-extrabold leading-none tracking-[0.02em]">
                   {BRAND_NAME}
                 </span>
@@ -191,8 +191,7 @@ export function Footer({ tenant }: Readonly<{ tenant: Workspace | null }>) {
               href={SITE_URL}
               className="inline-flex items-center gap-1.5 font-semibold text-[color:var(--aqt-fg)]"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand-mark.svg" alt="" width={18} height={18} className="rounded-[4px]" />
+              <Image src="/brand-mark.svg" alt="" width={18} height={18} className="rounded-[4px]" />
               {BRAND_NAME}
             </FooterLink>
             {version}

@@ -199,5 +199,3 @@ export function AnswerValue({
 
   return <span className={MUTED}>{String(value)}</span>;
 }
-
-export default AnswerValue;

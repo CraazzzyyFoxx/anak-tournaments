@@ -68,7 +68,7 @@ export type WorkspacePlayerListParams = {
  * The three history layers are what they were rated at in a past registration,
  * roster or mix seat. Omitting the filter asks for the current six.
  */
-export const CURRENT_RANK_LAYERS = [
+const CURRENT_RANK_LAYERS = [
   "canon",
   "author",
   "native",

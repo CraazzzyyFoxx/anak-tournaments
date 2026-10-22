@@ -6,6 +6,7 @@ import { UserPlus } from "lucide-react";
 
 import { EYEBROW_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import { Button } from "@/components/ui/button";
+import Image from "@/components/ui/image";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
@@ -87,7 +88,7 @@ export function AddPlayerIdentityPopover({
           )}
         >
           <UserPlus className="size-3.5" aria-hidden="true" />
-          {config?.icon ? <img src={config.icon} alt="" className="size-3.5" /> : null}
+          {config?.icon ? <Image src={config.icon} alt="" width={14} height={14} className="size-3.5" /> : null}
           New {config?.label ?? "game"} identity
         </button>
       </PopoverTrigger>

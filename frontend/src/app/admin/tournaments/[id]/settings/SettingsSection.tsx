@@ -14,7 +14,7 @@ import { tabFallback, useHubTournamentQuery } from "../hubQueries";
 import { allowedSettingsSection, type SettingsSection, type TabAccess } from "../tab-guards";
 import { SETTINGS_SECTION_LABEL_KEYS } from "./settings-sections";
 
-export interface SettingsSectionContext {
+interface SettingsSectionContext {
   tournament: Tournament;
   tournamentId: number;
   workspaceId: number;

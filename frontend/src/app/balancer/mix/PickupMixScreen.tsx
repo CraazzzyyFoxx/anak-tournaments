@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -7,15 +8,12 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { ChevronLeft } from "lucide-react";
 
-import { PickupAccessDialog } from "@/app/balancer/mix/PickupAccessDialog";
-import { PickupAddPlayersDialog } from "@/app/balancer/mix/PickupAddPlayersDialog";
 import { PickupGettingStarted } from "@/app/balancer/mix/PickupGettingStarted";
 import { PickupLeaderboard } from "@/app/balancer/mix/PickupLeaderboard";
 import { PickupLobbyCards } from "@/app/balancer/mix/PickupLobbyCards";
 import { PickupLobbyPanel } from "@/app/balancer/mix/PickupLobbyPanel";
 import { PickupMixHeader } from "@/app/balancer/mix/PickupMixHeader";
 import { PickupMySeatPanel } from "@/app/balancer/mix/PickupMySeatPanel";
-import { PickupPlayerSheet } from "@/app/balancer/mix/PickupPlayerSheet";
 import { PickupTeamsPanel } from "@/app/balancer/mix/PickupTeamsPanel";
 import { PickupVoicePanel } from "@/app/balancer/mix/PickupVoicePanel";
 import { MatchHistoryList } from "@/app/balancer/mix/_components/MatchHistoryList";
@@ -49,6 +47,20 @@ import { cn } from "@/lib/utils";
 import { customGameKeys, customGameService, type CustomGame } from "@/services/custom-game.service";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
+
+// Closed until the host or a row opens them: lazy chunks, not first-load JS.
+const PickupAddPlayersDialog = dynamic(
+  () => import("@/app/balancer/mix/PickupAddPlayersDialog").then((m) => m.PickupAddPlayersDialog),
+  { ssr: false }
+);
+const PickupAccessDialog = dynamic(
+  () => import("@/app/balancer/mix/PickupAccessDialog").then((m) => m.PickupAccessDialog),
+  { ssr: false }
+);
+const PickupPlayerSheet = dynamic(
+  () => import("@/app/balancer/mix/PickupPlayerSheet").then((m) => m.PickupPlayerSheet),
+  { ssr: false }
+);
 
 /**
  * One mix, as its overview or as one lobby's room (spec §7.5) -- one screen, so the host controls and the phone layout

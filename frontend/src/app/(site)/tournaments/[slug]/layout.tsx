@@ -8,8 +8,6 @@ import { getTournamentOverviewState } from "./_data";
 import TournamentOverviewBoundary from "./TournamentOverviewBoundary";
 import { resolveSiteMetadata } from "@/lib/site/metadata";
 
-export const dynamic = "force-dynamic";
-
 export async function generateMetadata(props: {
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {

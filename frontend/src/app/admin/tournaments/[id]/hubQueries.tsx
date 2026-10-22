@@ -18,7 +18,7 @@ import { adminQueryKeys } from "@/lib/admin/query-keys";
  * hub already invalidates on realtime events and TanStack refetches on focus,
  * so a hidden tab polling every minute only bills the API for nothing.
  */
-export const TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS = 60_000;
+const TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS = 60_000;
 
 /** Shared loading fallback of every hub tab route. */
 export const tabFallback = (

@@ -4,6 +4,7 @@ import { ExternalLink } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { SocialIcon } from "@/components/social/SocialIcon";
+import Image from "@/components/ui/image";
 import { formatStreamUptime, streamPlatformLabel } from "@/lib/social/stream-platform";
 import { cn } from "@/lib/utils";
 import type { StreamEntry } from "@/types/stream.types";
@@ -67,12 +68,12 @@ export function StreamRow({ entry, isSelected, onSelect, now }: Readonly<StreamR
           the surface underneath and read as dirt on the thumbnail edge. */}
       <span className="relative aspect-video w-[104px] shrink-0 overflow-hidden rounded-[4px] bg-[color:var(--aqt-overlay-3)] outline outline-1 -outline-offset-1 outline-[oklch(1_0_0_/_0.1)]">
         {entry.thumbnail_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={entry.thumbnail_url}
             alt=""
             aria-hidden
-            loading="lazy"
+            width={104}
+            height={59}
             className="size-full object-cover"
           />
         ) : (
@@ -172,5 +173,3 @@ export function StreamRow({ entry, isSelected, onSelect, now }: Readonly<StreamR
     </button>
   );
 }
-
-export default StreamRow;

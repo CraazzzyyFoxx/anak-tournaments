@@ -88,7 +88,7 @@ export function confidenceWord(confidence: number): { label: string; tone: Confi
   return { label: "Low", tone: "low" };
 }
 
-export interface VerdictClause {
+interface VerdictClause {
   /** i18n key under the `analytics.verdict` namespace. */
   key: string;
   params: Record<string, string | number>;
@@ -307,7 +307,7 @@ export function buildCommunityVerdict(teams: VerdictTeamSource[]): CommunityVerd
 
 export type KpiTone = "up" | "down" | "warn" | "info" | "neutral";
 
-export type KpiId =
+type KpiId =
   | "climbing"
   | "dropping"
   | "watch"

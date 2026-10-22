@@ -8,6 +8,7 @@ import type {
   UserMergeFieldPolicy,
   UserMergePreviewResponse
 } from "@/types/admin.types";
+import Image from "@/components/ui/image";
 import { cn } from "@/lib/utils";
 
 export type FieldKey = keyof UserMergeFieldPolicy;
@@ -42,7 +43,7 @@ export function FieldChoiceButtons({
       <div className="grid grid-cols-2 gap-2" role="group" aria-labelledby={groupId}>
         {options.map(([choice, caption, raw]) => {
           const selected = value === choice;
-          const photo = fieldKey === "avatar_url" && raw && /^https?:\/\//.test(raw);
+          const photo = fieldKey === "avatar_url" && raw && /^https?:\/\//.test(raw) ? raw : null;
           return (
             <button
               key={choice}
@@ -56,7 +57,7 @@ export function FieldChoiceButtons({
             >
               <span className="block truncate text-xs">{caption}</span>
               {photo ? (
-                <img src={raw} alt="" className="mt-1 h-8 w-8 rounded-full object-cover" />
+                <Image src={photo} alt="" width={32} height={32} className="mt-1 h-8 w-8 rounded-full object-cover" />
               ) : (
                 <span className={cn("mt-0.5 block truncate text-sm", selected && "text-foreground")}>
                   {raw || t("none")}
