@@ -134,6 +134,9 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
     applyRotationHints,
     balance,
     recordOutcome,
+    startMatch,
+    cancelMatch,
+    setCaptain,
     undoMatch,
     setNextMap,
     setVariantIndex,
@@ -327,8 +330,13 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
               balancing={balance.isPending}
               activeCount={summarizeLineup(rows, owner.roles).active}
               onBalance={() => balance.mutate({ scope: "lobby", lobbyIndex: activeLobby })}
-              shufflingAll={balance.isPending && balance.variables?.scope === "all"}
-              onShuffleAll={() => balance.mutate({ scope: "all" })}
+              startingMatch={startMatch.isPending}
+              onStartMatch={() => startMatch.mutate(activeLobby)}
+              cancellingMatch={cancelMatch.isPending}
+              onCancelMatch={() => cancelMatch.mutate(activeLobby)}
+              onMakeCaptain={(workspaceMemberId) =>
+                setCaptain.mutate({ lobbyIndex: activeLobby, workspaceMemberId })
+              }
               variantIndex={lobby?.selected_variant_index ?? 0}
               onVariantIndexChange={(index) =>
                 setVariantIndex.mutate({ lobbyIndex: activeLobby, variantIndex: index })

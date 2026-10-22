@@ -20,7 +20,9 @@ export function VariantView({
   canWrite,
   capturing,
   onRenameTeam,
-  onSwapSeats
+  onSwapSeats,
+  awayUuids,
+  onMakeCaptain
 }: Readonly<{
   variant: PickupVariant;
   /** The mix owner's game: names, glyphs and the grid of every seat. */
@@ -31,6 +33,10 @@ export function VariantView({
   onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
   /** Omitted -- seats render without drag handles, matching a `canWrite=false` viewer. */
   onSwapSeats?: (firstUuid: string, secondUuid: string) => void | Promise<unknown>;
+  /** Seats whose player stepped away, badged (spec §7.4). */
+  awayUuids?: ReadonlySet<string>;
+  /** Omitted -- no "Make captain" on any seat. */
+  onMakeCaptain?: (uuid: string) => void;
 }>) {
   const twoTeams = variant.teams.length === 2;
   const canDrag = canWrite && onSwapSeats != null;
@@ -83,6 +89,9 @@ export function VariantView({
               onRenameTeam={capturing ? undefined : onRenameTeam}
               canDrag={canDrag}
               activeDrag={activeDrag}
+              awayUuids={awayUuids}
+              // The screenshot carries no buttons.
+              onMakeCaptain={capturing ? undefined : onMakeCaptain}
             />
           ))}
         </div>
@@ -103,7 +112,9 @@ function TeamColumnAndDivider({
   canWrite,
   onRenameTeam,
   canDrag,
-  activeDrag
+  activeDrag,
+  awayUuids,
+  onMakeCaptain
 }: Readonly<{
   team: PickupTeam;
   owner: MixOwner;
@@ -113,6 +124,8 @@ function TeamColumnAndDivider({
   onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
   canDrag: boolean;
   activeDrag: ActiveSeatDrag | null;
+  awayUuids?: ReadonlySet<string>;
+  onMakeCaptain?: (uuid: string) => void;
 }>) {
   return (
     <>
@@ -123,6 +136,8 @@ function TeamColumnAndDivider({
         canWrite={canWrite}
         onRenameTeam={onRenameTeam}
         canDrag={canDrag}
+        awayUuids={awayUuids}
+        onMakeCaptain={onMakeCaptain}
         activeDrag={activeDrag}
       />
       {showDivider ? (
@@ -146,7 +161,9 @@ function TeamColumn({
   canWrite,
   onRenameTeam,
   canDrag,
-  activeDrag
+  activeDrag,
+  awayUuids,
+  onMakeCaptain
 }: Readonly<{
   team: PickupTeam;
   owner: MixOwner;
@@ -155,6 +172,8 @@ function TeamColumn({
   onRenameTeam?: (teamIndex: number, name: string) => void | Promise<unknown>;
   canDrag: boolean;
   activeDrag: ActiveSeatDrag | null;
+  awayUuids?: ReadonlySet<string>;
+  onMakeCaptain?: (uuid: string) => void;
 }>) {
   const accent = teamAccent(teamIndex);
 
@@ -190,6 +209,8 @@ function TeamColumn({
             teamIndex={teamIndex}
             canDrag={canDrag}
             activeDrag={activeDrag}
+            away={awayUuids?.has(seat.uuid) ?? false}
+            onMakeCaptain={onMakeCaptain && !seat.isCaptain ? () => onMakeCaptain(seat.uuid) : undefined}
           />
         ))}
       </ul>
