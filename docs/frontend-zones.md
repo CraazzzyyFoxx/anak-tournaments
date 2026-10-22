@@ -181,3 +181,13 @@ keys are built from template literals, so no analysis can *prove* which namespac
 needs. An extra namespace in a bundle costs payload; a missing one renders the raw dotted key
 to a user. Only the safe direction of that error is acceptable, which is also why
 `request.ts` now warns on `MISSING_MESSAGE` outside production instead of swallowing it.
+
+Two refinements narrow it where the cost was real. Query-key factories (`*/query-keys.ts`) are
+not scanned: `["teams", id]` is a cache key, not the `teams` namespace. And a namespace listed in
+the generator's `SPLIT` (today `pickBan`, ~33 kB of constructor and room copy) ships by subtree:
+a module's dotted literal (`"pickBan.rules.preset"`, or the static head of
+`` `pickBan.room.${key}` ``) is what it needs, a zone ships the union of its modules' subtrees,
+and the whole namespace only when one of them names it bare. `pickMessages` projects a dotted
+entry into fresh nodes under the same key path, so `useTranslations("pickBan.rules.preset")`
+reads it unchanged. That keeps the mix settings in the root chrome and the mix header in `tools`
+to the preset names and two labels.
