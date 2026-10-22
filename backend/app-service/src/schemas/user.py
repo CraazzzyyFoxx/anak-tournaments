@@ -599,8 +599,9 @@ class UserOverviewResponse(pagination.Paginated[UserOverviewRow]):
     division_grids: list[DivisionGridVersionRead] = Field(default_factory=list)
 
 
-#: A division chip value. Repeated param: ``?divisions=3&divisions=5``.
-DivisionNumber = typing.Annotated[int, Field(ge=1, le=20)]
+#: A division chip value: a tier number of the read's grid, which a native ladder numbers past 20. Repeated param:
+#: ``?divisions=3&divisions=5``.
+DivisionNumber = typing.Annotated[int, Field(ge=1)]
 
 
 class UserOverviewQueryParams(
@@ -776,8 +777,8 @@ class UserCompareQueryParams(BaseModel):
     baseline: UserCompareBaselineMode = "global"
     target_user_id: int | None = Field(default=None, ge=1)
     role: RoleQuery = None
-    div_min: int | None = Field(default=None, ge=1, le=20)
-    div_max: int | None = Field(default=None, ge=1, le=20)
+    div_min: int | None = Field(default=None, ge=1)
+    div_max: int | None = Field(default=None, ge=1)
     tournament_id: int | None = Field(default=None, ge=1)
 
 
@@ -824,8 +825,8 @@ class UserCharacterCompareQueryParams(BaseModel):
     right_entity_id: int | None = Field(default=None, ge=1)
     map_id: int | None = Field(default=None, ge=1)
     role: RoleQuery = None
-    div_min: int | None = Field(default=None, ge=1, le=20)
-    div_max: int | None = Field(default=None, ge=1, le=20)
+    div_min: int | None = Field(default=None, ge=1)
+    div_max: int | None = Field(default=None, ge=1)
     tournament_id: int | None = Field(default=None, ge=1)
     stats: list[str] | None = None
 
