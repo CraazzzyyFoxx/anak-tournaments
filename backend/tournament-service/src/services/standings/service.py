@@ -162,6 +162,10 @@ class StageEncounter:
     completed: bool
     #: The LIVE seats, in slot order.
     seats: tuple[Seat, ...]
+    #: An upper-round encounter every link into which carries a LOSING place
+    #: (``encounter_link.source_position > 1``): a third-place match. It decides
+    #: 3rd and 4th, so it is never the final however high its round.
+    third_place: bool = False
 
     @property
     def is_duel(self) -> bool:
@@ -226,30 +230,44 @@ def _assign_final_round_placements(
     encounters: typing.Sequence[StageEncounter],
     data: dict[int, dict[str, float | int]],
 ) -> None:
-    """Hand out 1st/2nd from the bracket's structural final round.
+    """Hand out 1st/2nd from the bracket's structural final, 3rd/4th from a third-place match.
 
     The final is the highest positive round that *exists*, not the highest one
     already played: the latter hands out two firsts and two seconds the moment
     both semi-finals are done while the final is still open. Placements are
     assigned only once every encounter of that round is completed. For double
     elimination the lazily created Grand Final Reset lands in GF+1 and so
-    becomes the final as soon as it exists.
+    becomes the final as soon as it exists. A third-place match is left out of
+    that round -- it may share it -- and places its own seats once completed.
     """
-    positive = [encounter for encounter in encounters if encounter.round > 0]
-    if not positive:
-        return
-    final_round = max(encounter.round for encounter in positive)
-    final_matches = [encounter for encounter in positive if encounter.round == final_round]
-    if not all(is_completed_encounter(encounter) for encounter in final_matches):
-        return
-    for match in final_matches:
+    positive = [encounter for encounter in encounters if encounter.round > 0 and not encounter.third_place]
+    if positive:
+        final_round = max(encounter.round for encounter in positive)
+        final_matches = [encounter for encounter in positive if encounter.round == final_round]
+        if all(is_completed_encounter(encounter) for encounter in final_matches):
+            _place_match(final_matches, data, best=1)
+    _place_match(
+        [encounter for encounter in encounters if encounter.third_place and is_completed_encounter(encounter)],
+        data,
+        best=3,
+    )
+
+
+def _place_match(
+    matches: typing.Sequence[StageEncounter],
+    data: dict[int, dict[str, float | int]],
+    *,
+    best: int,
+) -> None:
+    """The winner of each match takes ``best``, everyone else ``best + 1``; a drawn match places no one."""
+    for match in matches:
         winner = match.winner()
         if winner is None:
             continue
-        data[winner]["placement"] = 1
+        data[winner]["placement"] = best
         for seat in match.seats:
             if seat.team_id != winner:
-                data[seat.team_id]["placement"] = 2
+                data[seat.team_id]["placement"] = best + 1
 
 
 def _stage_max_rounds(stage: models.Stage) -> int:
@@ -723,7 +741,7 @@ def prepare_teams_for_playoffs_single_elimination(
 
     round_losers: dict[int, list[int]] = defaultdict(list)
     for team_id, match_round in round_of_loss.items():
-        if match_round is not None and data[team_id]["placement"] not in (1, 2):
+        if match_round is not None and data[team_id]["placement"] == 0:
             round_losers[match_round].append(team_id)
 
     # Placed from the bottom, the way the bracket eliminates: a round's losers
@@ -1127,9 +1145,10 @@ class StandingsService:
     async def load_stage_encounters(self, session: AsyncSession, stage_id: int) -> list[StageEncounter]:
         """One stage's encounters, flattened for the ranking engine.
 
-        Two queries for the whole stage: the cards with their bracket positions,
-        then every live participation of them. The engine never touches an ORM
-        row afterwards, which is what keeps it testable without a database.
+        Three queries for the whole stage: the cards with their bracket positions,
+        every live participation of them, and the upper-round cards only losers
+        feed (third-place matches). The engine never touches an ORM row
+        afterwards, which is what keeps it testable without a database.
         """
         rows = (
             (
@@ -1144,6 +1163,18 @@ class StandingsService:
             .all()
         )
         seats = await self._seats_by_encounter(session, [encounter.id for encounter, _position in rows])
+        third_place = set(
+            await session.scalars(
+                sa.select(models.EncounterLink.target_encounter_id)
+                .join(
+                    models.BracketEncounter,
+                    models.BracketEncounter.encounter_id == models.EncounterLink.target_encounter_id,
+                )
+                .where(models.BracketEncounter.stage_id == stage_id, models.BracketEncounter.round > 0)
+                .group_by(models.EncounterLink.target_encounter_id)
+                .having(sa.func.min(models.EncounterLink.source_position) > 1)
+            )
+        )
         return [
             StageEncounter(
                 id=encounter.id,
@@ -1152,6 +1183,7 @@ class StandingsService:
                 stage_item_id=position.stage_item_id,
                 completed=is_completed_encounter(encounter),
                 seats=tuple(seats.get(encounter.id, ())),
+                third_place=encounter.id in third_place,
             )
             for encounter, position in rows
         ]

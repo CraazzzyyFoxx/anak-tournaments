@@ -15,7 +15,7 @@ from shared.models.encounter import Encounter
 from shared.models.tournament import Standing
 from shared.services.encounter import participants
 from src.domain.bracket import engine
-from src.domain.bracket.types import BracketSkeleton
+from src.domain.bracket.types import AdvancementEdge, BracketSkeleton, Pairing
 from src.services.bracket import advancement
 from src.services.standings.service import standings_service
 from tests.test_bracket_positions import BracketCase
@@ -88,6 +88,48 @@ class SingleEliminationQuarterFinalTests(_PlayoffTableCase):
 
         self.assertEqual(
             {team_id: (5, 5) if team_id in quarter_losers else (0, 0) for team_id in self.team_ids},
+            await self.table(),
+        )
+
+
+class SingleEliminationThirdPlaceTests(_PlayoffTableCase):
+    async def test_the_third_place_match_decides_third_and_fourth_not_the_title(self) -> None:
+        # A Challonge "hold third place match" bracket: the semi losers meet in
+        # a match that shares the final's round, wired to their LOSING places.
+        plain = engine.generate_bracket(enums.StageType.SINGLE_ELIMINATION, self.team_ids)
+        semis = [pairing for pairing in plain.pairings if pairing.round_number == 1]
+        bronze = Pairing(team_ids=(None, None), round_number=2, local_id=len(plain.pairings))
+        skeleton = BracketSkeleton(
+            pairings=[*plain.pairings, bronze],
+            total_rounds=plain.total_rounds,
+            advancement_edges=[
+                *plain.advancement_edges,
+                *(
+                    AdvancementEdge(
+                        source_local_id=semi.local_id,
+                        source_position=2,
+                        target_local_id=bronze.local_id,
+                        target_slot=slot,
+                    )
+                    for slot, semi in enumerate(semis, 1)
+                ),
+            ],
+        )
+        ids = await self.persisted(skeleton)
+        (final_id,) = (ids[pairing.local_id] for pairing in plain.pairings if pairing.round_number == 2)
+        semi_losers = await self.play(_round(plain, ids, 1))
+
+        (fourth,) = await self.play([ids[bronze.local_id]])
+        (third,) = semi_losers - {fourth}
+        self.assertEqual(
+            {team_id: {third: (3, 3), fourth: (4, 4)}.get(team_id, (0, 0)) for team_id in self.team_ids},
+            await self.table(),
+        )
+
+        (second,) = await self.play([final_id])
+        (first,) = set(self.team_ids) - semi_losers - {second}
+        self.assertEqual(
+            {first: (1, 1), second: (2, 2), third: (3, 3), fourth: (4, 4)},
             await self.table(),
         )
 
