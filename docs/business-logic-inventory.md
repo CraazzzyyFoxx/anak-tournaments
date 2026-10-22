@@ -218,7 +218,7 @@ Captains: top N by `(-max_rating, uuid)`.
 
 Session: `setup → ready → live ⇄ paused → completed | cancelled`.
 
-A session is created only for a `team_formation="draft"` tournament (409 `tournament_not_draft_formation`).
+A session is created only for a `team_formation="draft"` tournament (409 `tournament_not_draft_formation`). Its settings (pick time, overtime, autopick strategy, override flag) change only in `setup | ready`; once the draft starts a patch is 409 `draft_settings_locked`.
 
 Formats: `snake | linear | custom`. Custom round rules: linear / reverse / weakest / strongest / `team_avg_asc` / `team_avg_desc`. Captain order: manual / weakest / strongest / random (Mulberry32, seed in settings).
 

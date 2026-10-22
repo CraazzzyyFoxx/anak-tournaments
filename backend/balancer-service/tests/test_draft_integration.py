@@ -419,6 +419,24 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await s.commit()
             self.assertEqual(draft.status, DraftStatus.SETUP.value)
 
+    async def test_session_settings_lock_once_the_draft_starts(self) -> None:
+        patch = schemas.DraftSessionPatchRequest(pick_time_seconds=90)
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            await lifecycle.lifecycle_service.patch_session(s, draft.id, patch, actor_user_id=1)
+            await s.commit()
+            self.assertEqual(draft.pick_time_seconds, 90)
+
+            await lifecycle.lifecycle_service.start(s, draft)
+            await s.commit()
+            with self.assertRaises(ApiHTTPException) as ctx:
+                await lifecycle.lifecycle_service.patch_session(
+                    s, draft.id, schemas.DraftSessionPatchRequest(pick_time_seconds=30), actor_user_id=1
+                )
+            self.assertEqual(ctx.exception.status_code, 409)
+            self.assertEqual(ctx.exception.detail[0]["code"], "draft_settings_locked")
+            self.assertEqual(draft.pick_time_seconds, 90)
+
     async def test_select_advances_board(self) -> None:
         async with self.Session() as s:
             draft = await self._new_session(s)

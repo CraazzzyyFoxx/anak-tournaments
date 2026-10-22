@@ -290,6 +290,8 @@ class DraftLifecycleService:
     ) -> DraftSession:
         """Apply an organizer's settings patch; a re-seat publishes ``draft.session_updated``."""
         draft = await self.get_session(session, session_id)
+        if draft.status not in (DraftStatus.SETUP.value, DraftStatus.READY.value):
+            raise _err("draft_settings_locked", "Draft settings can only change before the draft starts")
         if payload.pick_time_seconds is not None:
             draft.pick_time_seconds = payload.pick_time_seconds
         if payload.overtime_seconds is not None:
