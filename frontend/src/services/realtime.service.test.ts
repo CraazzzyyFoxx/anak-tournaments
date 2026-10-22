@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { realtimeClient } from "@/services/realtime.service";
 import { useRealtimeStore } from "@/stores/realtime.store";
 import { useAuthModalStore } from "@/stores/auth-modal.store";
+import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import type { ServerRealtimeFrame } from "@/types/realtime.types";
 
 const getAccessTokenCookie = vi.fn<() => Promise<string | undefined>>();
@@ -80,6 +81,10 @@ describe("realtime subscribed confirmations", () => {
       topicErrors: {},
     });
     useAuthModalStore.setState({ isOpen: false, nextPath: "/" });
+    // A signed-in viewer unless a case says otherwise: only they have a session to recover or lose.
+    useAuthProfileStore.setState({ status: "authenticated" });
+    getAccessTokenCookie.mockReset();
+    refreshAccessToken.mockReset();
   });
 
   afterEach(() => {
@@ -353,5 +358,42 @@ describe("realtime subscribed confirmations", () => {
       code: "forbidden",
       message: "no"
     });
+  });
+
+  it("neither refreshes nor prompts a visitor who never signed in", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    useAuthProfileStore.setState({ status: "anonymous" });
+    const topic = "workspace:3:invalidation";
+    trackCleanup(realtimeClient.subscribe(topic, () => undefined));
+    const socket = currentSocket();
+    socket.open();
+
+    socket.receive({ op: "error", topic, code: "auth_required", message: "Log in" });
+
+    expect(useAuthModalStore.getState().isOpen).toBe(false);
+    expect(getAccessTokenCookie).not.toHaveBeenCalled();
+    expect(refreshAccessToken).not.toHaveBeenCalled();
+    expect(currentSocket()).toBe(socket);
+    // Not swallowed: the consumer still sees its topic refused.
+    expect(useRealtimeStore.getState().topicErrors[topic]).toEqual({ code: "auth_required", message: "Log in" });
+  });
+
+  it("does not prompt a visitor still being identified whose session turns out dead", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    useAuthProfileStore.setState({ status: "loading" });
+    getAccessTokenCookie.mockResolvedValue(undefined);
+    const refresh = Promise.withResolvers<{ status: "unauthenticated" }>();
+    refreshAccessToken.mockReturnValue(refresh.promise);
+    const topic = "workspace:3:invalidation";
+    trackCleanup(realtimeClient.subscribe(topic, () => undefined));
+    currentSocket().open();
+
+    currentSocket().receive({ op: "error", topic, code: "auth_required", message: "Log in" });
+
+    await vi.waitFor(() => expect(refreshAccessToken).toHaveBeenCalled());
+    refresh.resolve({ status: "unauthenticated" });
+    // The recovery awaited this same promise first, so its continuation has run by the time this one does.
+    await refresh.promise;
+    expect(useAuthModalStore.getState().isOpen).toBe(false);
   });
 });
