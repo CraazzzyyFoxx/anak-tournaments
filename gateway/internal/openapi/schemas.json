@@ -4575,6 +4575,14 @@
       },
       "summary": "Make custom game captain"
     },
+    "rpc.balancer.custom.set_draft_settings": {
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Sets how the mix's lobbies form teams by default -- 'balance' (the solver) or 'draft' (a captain draft) -- and the draft's pick clock in seconds (10..600), then returns the refreshed mix. A running draft keeps its clock; both apply from the next formation. 422 for any other value.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameDraftSettingsPatch"
+      },
+      "summary": "Set custom game team formation"
+    },
     "rpc.balancer.custom.set_lobby_count": {
       "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Runs the mix as 1..6 lobbies. Growing opens the new lobbies empty, leaving the running ones untouched; shrinking deletes every lobby past the new count together with its stored matchup and clears the pins that named them. Matches already recorded for a deleted lobby stay in the history and in the statistics. 409 match_live when a lobby it would drop has a live match.",
       "request": {
@@ -5189,7 +5197,7 @@
       "summary": "Upsert workspace player"
     },
     "rpc.balancer.prefs.get": {
-      "description": "Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, the open-slot weight, how many balance options to keep, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode). A null value means the setting was never saved and the default applies. The team format is not here: it is frozen on each mix. hero_ban_presets maps a game to the hero ban preset a new mix of it starts with.",
+      "description": "Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, the open-slot weight, how many balance options to keep, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode). A null value means the setting was never saved and the default applies. The team format is not here: it is frozen on each mix. hero_ban_presets maps a game to the hero ban preset a new mix of it starts with. formation_defaults maps a game to how a new mix of it forms teams (team_formation, draft_pick_seconds).",
       "response": {
         "array": false,
         "ref": "balancer.UserMixPreferencesRead"
@@ -5197,7 +5205,7 @@
       "summary": "Get my pickup mix preferences"
     },
     "rpc.balancer.prefs.upsert": {
-      "description": "Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all seven of the caller's mix settings at once and returns the stored result, exactly what the next read returns; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an unknown field or an out-of-range value. 422 when a hero_ban_presets entry is not a hero preset of its own game.",
+      "description": "Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all eight of the caller's mix settings at once and returns the stored result, exactly what the next read returns; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an unknown field or an out-of-range value. 422 when a hero_ban_presets entry is not a hero preset of its own game. 422 when formation_defaults names a game that is not installed or a pick clock outside 10..600.",
       "request": {
         "array": false,
         "ref": "balancer.UserMixPreferencesUpsert"
@@ -26986,6 +26994,32 @@
       "title": "CustomGameCreate",
       "type": "object"
     },
+    "balancer.CustomGameDraftSettingsPatch": {
+      "additionalProperties": false,
+      "description": "How the mix's lobbies form their teams by default, and the draft's pick clock (spec \u00a74.3).",
+      "properties": {
+        "draft_pick_seconds": {
+          "maximum": 600,
+          "minimum": 10,
+          "title": "Draft Pick Seconds",
+          "type": "integer"
+        },
+        "team_formation": {
+          "enum": [
+            "balance",
+            "draft"
+          ],
+          "title": "Team Formation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "team_formation",
+        "draft_pick_seconds"
+      ],
+      "title": "CustomGameDraftSettingsPatch",
+      "type": "object"
+    },
     "balancer.CustomGameHostTransfer": {
       "additionalProperties": false,
       "properties": {
@@ -29668,6 +29702,30 @@
       "title": "JobStatusResponse",
       "type": "object"
     },
+    "balancer.MixFormationDefault": {
+      "additionalProperties": false,
+      "description": "How a new mix of one game forms its teams (spec \u00a74.3).",
+      "properties": {
+        "draft_pick_seconds": {
+          "default": 30,
+          "maximum": 600,
+          "minimum": 10,
+          "title": "Draft Pick Seconds",
+          "type": "integer"
+        },
+        "team_formation": {
+          "default": "balance",
+          "enum": [
+            "balance",
+            "draft"
+          ],
+          "title": "Team Formation",
+          "type": "string"
+        }
+      },
+      "title": "MixFormationDefault",
+      "type": "object"
+    },
     "balancer.MixParticipation": {
       "enum": [
         "must_play",
@@ -30688,6 +30746,14 @@
     "balancer.UserMixPreferencesRead": {
       "description": "Stored preferences; unset knobs use the engine defaults.",
       "properties": {
+        "formation_defaults": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/balancer.MixFormationDefault"
+          },
+          "description": "Per game (discipline code): how a new mix of that game forms its teams -- 'balance' (the solver) or 'draft' (captains pick) -- and the draft's pick clock in seconds (10..600). A game left out starts with the balancer and 30 seconds.",
+          "title": "Formation Defaults",
+          "type": "object"
+        },
         "hero_ban_presets": {
           "additionalProperties": {
             "type": "string"
@@ -30786,6 +30852,14 @@
       "additionalProperties": false,
       "description": "A full replacement; nullable knobs unset the corresponding override.",
       "properties": {
+        "formation_defaults": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/balancer.MixFormationDefault"
+          },
+          "description": "Per game (discipline code): how a new mix of that game forms its teams -- 'balance' (the solver) or 'draft' (captains pick) -- and the draft's pick clock in seconds (10..600). A game left out starts with the balancer and 30 seconds.",
+          "title": "Formation Defaults",
+          "type": "object"
+        },
         "hero_ban_presets": {
           "additionalProperties": {
             "type": "string"
@@ -30878,7 +30952,8 @@
         "open_slot_settings",
         "points_per_win",
         "rating_mode",
-        "hero_ban_presets"
+        "hero_ban_presets",
+        "formation_defaults"
       ],
       "title": "UserMixPreferencesUpsert",
       "type": "object"

@@ -96,6 +96,8 @@ class WithRosterIdentityTests(IsolatedAsyncioTestCase):
                     self_signup="closed",
                     self_role_edit=False,
                     hero_ban_preset=None,
+                    team_formation="balance",
+                    draft_pick_seconds=30,
                     general_voice_channel_id=None,
                     created_at=None,
                 )

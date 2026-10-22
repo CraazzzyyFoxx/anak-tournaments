@@ -20,6 +20,7 @@ __all__ = (
     "CustomGameCreate",
     "CustomGameDiscordLineup",
     "CustomGameDiscordView",
+    "CustomGameDraftSettingsPatch",
     "CustomGameHostTransfer",
     "CustomGameListQuery",
     "CustomGameLobbyCountPatch",
@@ -244,6 +245,13 @@ class CustomGameBanPresetPatch(_Request):
     """The mix's hero ban preset; ``null`` turns bans off."""
 
     hero_ban_preset: str | None = Field(max_length=64)
+
+
+class CustomGameDraftSettingsPatch(_Request):
+    """How the mix's lobbies form their teams by default, and the draft's pick clock (spec §4.3)."""
+
+    team_formation: Literal["balance", "draft"]
+    draft_pick_seconds: int = Field(ge=10, le=600)
 
 
 class CustomGamePostSignup(_Request):

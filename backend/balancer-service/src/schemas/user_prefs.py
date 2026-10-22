@@ -12,11 +12,13 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field
 
+from shared.disciplines import DISCIPLINES
 from shared.domain.pick_ban_rules import mix_ban_preset
 from src.domain.balancer.config.defaults import MAX_RESULT_VARIANTS, validate_role_settings
 
 __all__ = (
     "MAX_POINTS_PER_WIN",
+    "MixFormationDefault",
     "MixRoleSettings",
     "UserMixPreferencesRead",
     "UserMixPreferencesUpsert",
@@ -59,6 +61,31 @@ def _valid_ban_presets(value: dict[str, str]) -> dict[str, str]:
 
 _BanPresets = Annotated[dict[str, str], AfterValidator(_valid_ban_presets)]
 
+_FORMATION_DOC = (
+    "Per game (discipline code): how a new mix of that game forms its teams -- 'balance' (the solver) or 'draft' "
+    "(captains pick) -- and the draft's pick clock in seconds (10..600). A game left out starts with the balancer "
+    "and 30 seconds."
+)
+
+
+class MixFormationDefault(BaseModel):
+    """How a new mix of one game forms its teams (spec §4.3)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    team_formation: Literal["balance", "draft"] = "balance"
+    draft_pick_seconds: int = Field(default=30, ge=10, le=600)
+
+
+def _valid_formation_games(value: dict[str, MixFormationDefault]) -> dict[str, MixFormationDefault]:
+    unknown = sorted(set(value) - set(DISCIPLINES))
+    if unknown:
+        raise ValueError(f"not installed games: {unknown}")
+    return value
+
+
+_FormationDefaults = Annotated[dict[str, MixFormationDefault], AfterValidator(_valid_formation_games)]
+
 RatingMode = Literal["points", "ranker"]
 
 
@@ -88,6 +115,7 @@ class UserMixPreferencesRead(BaseModel):
     points_per_win: int | None = Field(default=None, ge=0, le=MAX_POINTS_PER_WIN, description=_POINTS_DOC)
     rating_mode: RatingMode = Field(default="points", description=_MODE_DOC)
     hero_ban_presets: dict[str, str] = Field(default_factory=dict, description=_BANS_DOC)
+    formation_defaults: dict[str, MixFormationDefault] = Field(default_factory=dict, description=_FORMATION_DOC)
 
 
 class UserMixPreferencesUpsert(BaseModel):
@@ -102,3 +130,4 @@ class UserMixPreferencesUpsert(BaseModel):
     points_per_win: int | None = Field(ge=0, le=MAX_POINTS_PER_WIN, description=_POINTS_DOC)
     rating_mode: RatingMode = Field(description=_MODE_DOC)
     hero_ban_presets: _BanPresets = Field(description=_BANS_DOC)
+    formation_defaults: _FormationDefaults = Field(description=_FORMATION_DOC)

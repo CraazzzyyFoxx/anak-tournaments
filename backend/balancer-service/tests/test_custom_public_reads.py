@@ -58,6 +58,8 @@ def _list_row(**fields) -> SimpleNamespace:
             "self_signup": "pool",
             "self_role_edit": True,
             "hero_ban_preset": None,
+            "team_formation": "balance",
+            "draft_pick_seconds": 30,
             "general_voice_channel_id": None,
             "created_at": datetime(2026, 1, 1, tzinfo=UTC),
             **fields,
@@ -273,6 +275,8 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
             self_signup="closed",
             self_role_edit=False,
             hero_ban_preset="hero_classic",
+            team_formation="draft",
+            draft_pick_seconds=45,
             general_voice_channel_id=None,
             created_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
@@ -363,6 +367,8 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
         self.assertEqual("overwatch", data["discipline"])
         # Public like the rest of the read: a viewer sees which bans the next Start opens.
         self.assertEqual("hero_classic", data["hero_ban_preset"])
+        # ... and how the next lineup forms, with the draft's pick clock.
+        self.assertEqual(("draft", 45), (data["team_formation"], data["draft_pick_seconds"]))
         self.assertNotIn("balance_result", data)
         by_member = {row["workspace_member_id"]: row for row in data["players"]}
         self.assertEqual(
@@ -429,6 +435,8 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
             self_signup="closed",
             self_role_edit=False,
             hero_ban_preset=None,
+            team_formation="balance",
+            draft_pick_seconds=30,
             general_voice_channel_id=None,
             created_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
@@ -524,6 +532,8 @@ class DiscordPostsPayloadTests(IsolatedAsyncioTestCase):
             self_signup="pool",
             self_role_edit=False,
             hero_ban_preset=None,
+            team_formation="balance",
+            draft_pick_seconds=30,
             general_voice_channel_id=None,
             created_at=datetime(2026, 1, 1, tzinfo=UTC),
         )

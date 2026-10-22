@@ -746,7 +746,8 @@ class CustomGameService:
         the clone. The points knob and Discord target belong to the host and workspace.
         The team format is frozen per mix: a clone keeps its source's,
         otherwise the host's preset or the workspace default.
-        The hero ban preset is the source's on a clone, else the host's default for the game.
+        The hero ban preset, the team formation and the pick clock are the source's on a clone, else the host's
+        defaults for the game.
         """
         _require_host(actor_user_id, host_user_id)
         trimmed = name.strip() if isinstance(name, str) else ""
@@ -795,14 +796,18 @@ class CustomGameService:
                 workspace_id=workspace_id, preset="wins", game_formula="win", end_formula=WINS_END_FORMULA
             ),
         )
-        # A clone keeps its source's bans; a new mix starts from its host's default for this game (spec §4.3). A
-        # stored default the game no longer offers is no default.
+        # A clone keeps its source's bans and formation; a new mix starts from its host's defaults for this game
+        # (spec §4.3). A stored ban default the game no longer offers is no default.
         if source is not None:
             ban_preset = source.hero_ban_preset
+            team_formation, draft_pick_seconds = source.team_formation, source.draft_pick_seconds
         else:
             host_config = await self._host_config(session, host_user_id)
             default = (host_config.hero_ban_presets or {}).get(effective) if host_config is not None else None
             ban_preset = default if default is not None and mix_ban_preset(effective, default) is not None else None
+            formation = (host_config.formation_defaults or {}).get(effective, {}) if host_config is not None else {}
+            team_formation = formation.get("team_formation", "balance")
+            draft_pick_seconds = formation.get("draft_pick_seconds", 30)
         game = models.CustomGame(
             scoring_rule_id=rule.id,
             workspace_id=workspace_id,
@@ -818,6 +823,8 @@ class CustomGameService:
             # the clone; the matchups played in them do not.
             lobby_count=source.lobby_count if source is not None else 1,
             hero_ban_preset=ban_preset,
+            team_formation=team_formation,
+            draft_pick_seconds=draft_pick_seconds,
         )
         await self.games.create(session, game)
         await copy_for_custom_game(
@@ -1529,6 +1536,31 @@ class CustomGameService:
         if hero_ban_preset is not None and mix_ban_preset(game.discipline, hero_ban_preset) is None:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="unknown_ban_preset")
         game.hero_ban_preset = hero_ban_preset
+        await session.flush()
+        return game
+
+    async def set_draft_settings(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+        team_formation: str,
+        draft_pick_seconds: int,
+        actor_user_id: int,
+        actor_is_superuser: bool = False,
+    ) -> models.CustomGame:
+        """How the lobbies form their teams by default and the draft's pick clock (spec §4.3). A running draft keeps
+        the clock it was seeded with; both apply from the next formation."""
+        game = await self._writable(
+            session,
+            workspace_id=workspace_id,
+            custom_game_id=custom_game_id,
+            actor_user_id=actor_user_id,
+            actor_is_superuser=actor_is_superuser,
+        )
+        game.team_formation = team_formation
+        game.draft_pick_seconds = draft_pick_seconds
         await session.flush()
         return game
 

@@ -102,6 +102,10 @@ class UserBalancerConfig(db.TimeStampIntegerMixin):
     rating_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="points", server_default="points")
     # ``{discipline code: preset code}``: the hero ban preset a new mix of that game starts with (spec §4.3).
     hero_ban_presets: Mapped[dict[str, str]] = mapped_column(JSONB, nullable=False, server_default="{}", default=dict)
+    # ``{discipline code: {"team_formation": ..., "draft_pick_seconds": ...}}``: how a new mix of that game forms teams.
+    formation_defaults: Mapped[dict[str, dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, server_default="{}", default=dict
+    )
 
 
 class BalancerBalance(db.TimeStampIntegerMixin):

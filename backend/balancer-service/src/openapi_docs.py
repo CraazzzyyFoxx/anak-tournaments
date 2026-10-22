@@ -415,6 +415,15 @@ DOCS: dict[str, dict] = {
             "started with. 422 unknown_ban_preset for any other code."
         ),
     },
+    "rpc.balancer.custom.set_draft_settings": {
+        "summary": "Set custom game team formation",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
+            "Sets how the mix's lobbies form teams by default -- 'balance' (the solver) or 'draft' (a captain "
+            "draft) -- and the draft's pick clock in seconds (10..600), then returns the refreshed mix. A running "
+            "draft keeps its clock; both apply from the next formation. 422 for any other value."
+        ),
+    },
     "rpc.balancer.custom.balance": {
         "summary": "Balance custom game",
         "description": (
@@ -755,6 +764,7 @@ DOCS: dict[str, dict] = {
             "(rating_mode). A null value means the setting was never saved and the default applies. "
             "The team format is not here: it is frozen on each mix."
             " hero_ban_presets maps a game to the hero ban preset a new mix of it starts with."
+            " formation_defaults maps a game to how a new mix of it forms teams (team_formation, draft_pick_seconds)."
         ),
     },
     "rpc.balancer.prefs.upsert": {
@@ -762,12 +772,13 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: self-service -- any authenticated (active) account writes its own "
             "preferences only. "
-            "Replaces all seven of the caller's mix settings at once and returns the stored result, "
+            "Replaces all eight of the caller's mix settings at once and returns the stored result, "
             "exactly what the next read returns; a null clears one back to the default, and 0 points "
             "per win stores as unset. They apply to every mix this account hosts -- a mix runs on "
             "its host's preferences whoever presses the button. 422 on an unknown field or an "
             "out-of-range value."
             " 422 when a hero_ban_presets entry is not a hero preset of its own game."
+            " 422 when formation_defaults names a game that is not installed or a pick clock outside 10..600."
         ),
     },
     "rpc.balancer.draft.chat_history": {

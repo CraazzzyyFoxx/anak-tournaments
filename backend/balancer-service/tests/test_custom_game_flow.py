@@ -163,6 +163,7 @@ class _HostPrefs:
             points_per_win=fields.get("points_per_win"),
             rating_mode=fields.get("rating_mode", "points"),
             hero_ban_presets=fields.get("hero_ban_presets", {}),
+            formation_defaults=fields.get("formation_defaults", {}),
         )
 
     async def get_by_user(self, _session: Any, user_id: int) -> Any:

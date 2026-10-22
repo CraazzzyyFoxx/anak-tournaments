@@ -9821,14 +9821,14 @@ export interface paths {
         };
         /**
          * Get my pickup mix preferences
-         * @description Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, the open-slot weight, how many balance options to keep, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode). A null value means the setting was never saved and the default applies. The team format is not here: it is frozen on each mix. hero_ban_presets maps a game to the hero ban preset a new mix of it starts with.
+         * @description Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, the open-slot weight, how many balance options to keep, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode). A null value means the setting was never saved and the default applies. The team format is not here: it is frozen on each mix. hero_ban_presets maps a game to the hero ban preset a new mix of it starts with. formation_defaults maps a game to how a new mix of it forms teams (team_formation, draft_pick_seconds).
          *
          *     RPC subject: `rpc.balancer.prefs.get`
          */
         get: operations["get__api_v1_balancer_me_mix_preferences"];
         /**
          * Set my pickup mix preferences
-         * @description Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all seven of the caller's mix settings at once and returns the stored result, exactly what the next read returns; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an unknown field or an out-of-range value. 422 when a hero_ban_presets entry is not a hero preset of its own game.
+         * @description Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all eight of the caller's mix settings at once and returns the stored result, exactly what the next read returns; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an unknown field or an out-of-range value. 422 when a hero_ban_presets entry is not a hero preset of its own game. 422 when formation_defaults names a game that is not installed or a pick clock outside 10..600.
          *
          *     RPC subject: `rpc.balancer.prefs.upsert`
          */
@@ -10226,6 +10226,28 @@ export interface paths {
          *     RPC subject: `rpc.balancer.custom.post_signup`
          */
         post: operations["post__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__discord_signup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set custom game team formation
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Sets how the mix's lobbies form teams by default -- 'balance' (the solver) or 'draft' (a captain draft) -- and the draft's pick clock in seconds (10..600), then returns the refreshed mix. A running draft keeps its clock; both apply from the next formation. 422 for any other value.
+         *
+         *     RPC subject: `rpc.balancer.custom.set_draft_settings`
+         */
+        put: operations["put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__draft_settings"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -23121,6 +23143,19 @@ export interface components {
              */
             team_format_preset: string | null;
         };
+        /**
+         * CustomGameDraftSettingsPatch
+         * @description How the mix's lobbies form their teams by default, and the draft's pick clock (spec §4.3).
+         */
+        "balancer.CustomGameDraftSettingsPatch": {
+            /** Draft Pick Seconds */
+            draft_pick_seconds: number;
+            /**
+             * Team Formation
+             * @enum {string}
+             */
+            team_formation: BalancerCustomGameDraftSettingsPatchTeam_formation;
+        };
         /** CustomGameHostTransfer */
         "balancer.CustomGameHostTransfer": {
             /** New Host User Id */
@@ -23384,6 +23419,23 @@ export interface components {
             lobby_index: number | null;
         };
         /**
+         * MixFormationDefault
+         * @description How a new mix of one game forms its teams (spec §4.3).
+         */
+        "balancer.MixFormationDefault": {
+            /**
+             * Draft Pick Seconds
+             * @default 30
+             */
+            draft_pick_seconds: number;
+            /**
+             * Team Formation
+             * @default balance
+             * @enum {string}
+             */
+            team_formation: BalancerMixFormationDefaultTeam_formation;
+        };
+        /**
          * MixParticipation
          * @enum {string}
          */
@@ -23579,6 +23631,13 @@ export interface components {
          */
         "balancer.UserMixPreferencesRead": {
             /**
+             * Formation Defaults
+             * @description Per game (discipline code): how a new mix of that game forms its teams -- 'balance' (the solver) or 'draft' (captains pick) -- and the draft's pick clock in seconds (10..600). A game left out starts with the balancer and 30 seconds.
+             */
+            formation_defaults?: {
+                [key: string]: components["schemas"]["balancer.MixFormationDefault"];
+            };
+            /**
              * Hero Ban Presets
              * @description Per game (discipline code): the hero ban preset a new mix of that game starts with. A game left out starts without bans.
              */
@@ -23626,6 +23685,13 @@ export interface components {
          * @description A full replacement; nullable knobs unset the corresponding override.
          */
         "balancer.UserMixPreferencesUpsert": {
+            /**
+             * Formation Defaults
+             * @description Per game (discipline code): how a new mix of that game forms its teams -- 'balance' (the solver) or 'draft' (captains pick) -- and the draft's pick clock in seconds (10..600). A game left out starts with the balancer and 30 seconds.
+             */
+            formation_defaults: {
+                [key: string]: components["schemas"]["balancer.MixFormationDefault"];
+            };
             /**
              * Hero Ban Presets
              * @description Per game (discipline code): the hero ban preset a new mix of that game starts with. A game left out starts without bans.
@@ -71633,6 +71699,89 @@ export interface operations {
             };
         };
     };
+    put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__draft_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["balancer.CustomGameDraftSettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__host: {
         parameters: {
             query?: never;
@@ -80367,6 +80516,10 @@ export enum BalancerCustomGameBalanceRequestScope {
     lobby = "lobby",
     all = "all"
 }
+export enum BalancerCustomGameDraftSettingsPatchTeam_formation {
+    balance = "balance",
+    draft = "draft"
+}
 export enum BalancerCustomGameOutcomeWinnerAnyOf0 {
     Value1 = 1,
     Value2 = 2
@@ -80374,6 +80527,10 @@ export enum BalancerCustomGameOutcomeWinnerAnyOf0 {
 export enum BalancerCustomGamePostSignupSelf_signup {
     pool = "pool",
     benched = "benched"
+}
+export enum BalancerMixFormationDefaultTeam_formation {
+    balance = "balance",
+    draft = "draft"
 }
 export enum BalancerMixParticipation {
     must_play = "must_play",
