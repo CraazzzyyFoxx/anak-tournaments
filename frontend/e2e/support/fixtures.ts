@@ -7,14 +7,18 @@ import { signIn, createUser, type TestUser } from "./users";
 type StoredUser = Omit<TestUser, "api">;
 
 // Console noise that is not a product failure: the dev overlay's HMR socket,
-// React DevTools hints, and resources the isolated stack cannot serve
-// (S3 images point at an unreachable bucket on purpose).
+// React DevTools hints, resources the isolated stack cannot serve (S3 images
+// point at an unreachable bucket on purpose), and the signed-out session
+// probe: AuthBootstrap asks `/auth/me`, then tries `/auth/refresh`, and a
+// visitor without a session gets 401 from both by design. Matched against
+// "<message> @ <resource url>".
 const IGNORED_CONSOLE = [
   /Download the React DevTools/,
   /\[HMR\]/,
   /\[Fast Refresh\]/,
   /webpack-hmr|turbopack-hmr|_next\/webpack-hmr/,
   /Failed to load resource: .*(s3\.invalid|favicon)/,
+  /Failed to load resource: .*401.* @ \S*\/(api\/v1\/auth\/me|auth\/refresh)(\?|$)/,
 ];
 
 type Fixtures = {
@@ -24,8 +28,8 @@ type Fixtures = {
   anonApi: Api;
   /** Fresh non-admin user per call; disposed after the test. */
   makeUser: (prefix?: string) => Promise<TestUser>;
-  /** A page signed in as `user` in its own browser context. */
-  pageAs: (user: Pick<TestUser, "accessToken" | "refreshToken">) => Promise<Page>;
+  /** A page signed in as `user` in its own browser context, on a session of its own. */
+  pageAs: (user: Pick<TestUser, "email">) => Promise<Page>;
   /** Uncaught page errors and console errors collected during the test. */
   pageErrors: string[];
 };
@@ -79,6 +83,11 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
       expect(errors, "page errors / console errors during the test").toEqual([]);
     }
   },
+  // The default page is the platform admin, on a session of its own.
+  context: async ({ context, admin }, use) => {
+    await signIn(context, admin);
+    await use(context);
+  },
   page: async ({ page, pageErrors }, use) => {
     watchErrors(page, pageErrors);
     await use(page);
@@ -90,7 +99,8 @@ function watchErrors(page: Page, sink: string[]) {
   page.on("console", (msg) => {
     if (msg.type() !== "error") return;
     const text = msg.text();
-    if (IGNORED_CONSOLE.some((re) => re.test(text))) return;
+    const where = `${text} @ ${msg.location().url ?? ""}`;
+    if (IGNORED_CONSOLE.some((re) => re.test(where))) return;
     sink.push(`console ${page.url()}: ${text.slice(0, 500)}`);
   });
 }

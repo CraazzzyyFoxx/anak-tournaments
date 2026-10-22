@@ -19,7 +19,7 @@ x-e2e-env: &e2e-env
   S3_ENDPOINT_URL: http://s3.invalid
   OWT_APPLY_LEGACY_DROP: "1"
   # One login lasts the whole run: the suite holds plain bearer tokens.
-  JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "720"
+  ACCESS_TOKEN_EXPIRE_MINUTES: "720"
   # DEBUG logs every RPC payload (whole division grids): noise and memory.
   LOG_LEVEL: INFO
 

@@ -11,7 +11,7 @@ player statistics, registration, and admin tooling on top of the OWT backend API
 - [TanStack Query](https://tanstack.com/query) and [TanStack Table](https://tanstack.com/table) for data
 - [Zustand](https://github.com/pmndrs/zustand) for client state
 - [Recharts](https://recharts.org/) and [XYFlow](https://reactflow.dev/) for visualizations
-- [Vitest](https://vitest.dev) (happy-dom) for unit / smoke tests, [Sentry](https://sentry.io/) for monitoring
+- [Vitest](https://vitest.dev) (happy-dom) for unit / smoke tests, [Playwright](https://playwright.dev) for end-to-end tests, [Sentry](https://sentry.io/) for monitoring
 
 ## Getting started
 
@@ -25,6 +25,34 @@ bun run dev
 The repository uses [Bun](https://bun.sh/) (`bun.lock`); `npm install` / `npm run dev` also work.
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## End-to-end tests
+
+`e2e/` drives the whole system — gateway API and browser — against an isolated stack
+(`docker-compose.e2e.yml`: project `owt-e2e`, an empty tmpfs database, nginx on
+`127.0.0.1:8090` only). From the repository root:
+
+```bash
+make e2e-up                                   # build, start, migrate the empty DB
+make e2e                                      # every project
+make e2e E2E_ARGS="--project=api"             # one project, or a spec path / -g filter
+make e2e-down                                 # the database is gone with it
+```
+
+- Projects: `api` (gateway contract, auth matrix over every route), `web` (desktop
+  1440×900, signed in as a platform admin), `mobile` (Pixel 7, tests tagged `@mobile`),
+  `readonly` (anonymous GETs, safe against any deployment:
+  `E2E_BASE_URL=https://… bunx playwright test --project=readonly`).
+- `e2e/global.setup.ts` registers a platform superuser per run (password login, promoted
+  in SQL); specs create their own workspaces, so they are order-independent.
+- A passing web test fails if the page logged an uncaught error or a console error
+  (`e2e/support/fixtures.ts`).
+- `e2e/support/route-table.ts` is generated from the gateway's `RouteSpec` tables:
+  `bun e2e/scripts/gen-route-table.ts` after adding a route; the auth matrix fails on drift.
+- `e2e/support/routes.ts` lists every `page.tsx`; the page smoke fails on a page it doesn't list.
+- Python workers in this stack don't hot-reload: restart a service after a backend change
+  (`docker compose -p owt-e2e -f docker-compose.yml -f docker-compose.e2e.yml restart tournament-svc`).
+- Running several Playwright processes at once? Give each its own `--output` directory.
 
 ## Route zones
 

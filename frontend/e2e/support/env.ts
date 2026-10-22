@@ -6,7 +6,6 @@ export const COOKIE_PREFIX = process.env.E2E_COOKIE_PREFIX ?? "owt";
 export const AUTH_DIR = path.join(import.meta.dirname, "..", ".auth");
 export const REPO_ROOT = path.join(import.meta.dirname, "..", "..", "..");
 export const ADMIN_FILE = path.join(AUTH_DIR, "admin.json");
-export const ADMIN_STATE = path.join(AUTH_DIR, "admin-state.json");
 
 const COMPOSE = ["compose", "-p", "owt-e2e", "-f", "docker-compose.yml", "-f", "docker-compose.e2e.yml"];
 

@@ -1,10 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
-import path from "node:path";
 
 // Runs against the isolated stack from docker-compose.e2e.yml (`make e2e`).
 // `readonly` alone may target any deployment: E2E_BASE_URL=https://… bunx playwright test --project=readonly
+// Web tests get the platform admin signed in by the `context` fixture (e2e/support/fixtures.ts),
+// one fresh session per test: there is no shared storageState.
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:8090";
-const ADMIN_STATE = path.join(import.meta.dirname, "e2e", ".auth", "admin-state.json");
 const desktop = { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } };
 
 export default defineConfig({
@@ -31,14 +31,14 @@ export default defineConfig({
       name: "web",
       testMatch: /web\/.*\.spec\.ts/,
       dependencies: ["setup"],
-      use: { ...desktop, storageState: ADMIN_STATE },
+      use: desktop,
     },
     {
       name: "mobile",
       testMatch: /web\/.*\.spec\.ts/,
       grep: /@mobile/,
       dependencies: ["setup"],
-      use: { ...devices["Pixel 7"], storageState: ADMIN_STATE },
+      use: devices["Pixel 7"],
     },
     // Anonymous GETs only; safe against a stack with real data.
     { name: "readonly", testMatch: /readonly\/.*\.spec\.ts/, use: desktop },
