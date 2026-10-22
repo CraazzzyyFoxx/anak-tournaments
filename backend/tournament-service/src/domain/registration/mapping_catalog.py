@@ -44,7 +44,7 @@ ANSWER_TARGET_KEYS: tuple[str, ...] = (
 #: Data, not branches: a new provider in ``IDENTITY_PROVIDERS`` only needs a row
 #: here to become mappable (and is mappable without one, minus the suggester).
 _IDENTITY_HEADERS: dict[str, tuple[str, tuple[str, ...]]] = {
-    SocialProvider.BATTLENET: ("Battle tag", ("battle tag", "battletag", "ваш battle tag", "smurf", "alt", "смурф")),
+    SocialProvider.BATTLENET: ("Battle.net", ("battle tag", "battletag", "ваш battle tag", "smurf", "alt", "смурф")),
     SocialProvider.RIOT: ("Riot ID", ("riot id", "riotid")),
     SocialProvider.DISCORD: ("Discord", ("discord", "дискорд", "дискор")),
     SocialProvider.TWITCH: ("Twitch", ("twitch", "твич")),
@@ -83,7 +83,7 @@ class ParserSpec:
 
 PARSER_CATALOG: tuple[ParserSpec, ...] = (
     ParserSpec(PARSER_STRING, "Text", "single", "string"),
-    ParserSpec(PARSER_BATTLE_TAG, "Battle tag", "single", "string"),
+    ParserSpec(PARSER_BATTLE_TAG, "Battle.net", "single", "string"),
     ParserSpec(PARSER_BATTLE_TAG_LIST, "Game handle list", "multi", "list"),
     ParserSpec(PARSER_BOOLEAN, "Yes / No", "single", "bool"),
     ParserSpec(PARSER_INTEGER, "Number", "single", "int"),

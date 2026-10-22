@@ -27,7 +27,7 @@ import type { SubroleCatalog } from "@/types/registration.types";
  * other builtins are named in the UI language (`builtinAnswerLabel`).
  */
 export const BUILTIN_ANSWER_LABELS: Record<string, string> = {
-  identity_battlenet: "BattleTags",
+  identity_battlenet: "Battle.net",
   identity_discord: "Discord",
   identity_twitch: "Twitch",
   identity_boosty: "Boosty",

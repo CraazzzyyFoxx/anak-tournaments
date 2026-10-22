@@ -47,8 +47,8 @@ export const PACKAGE_NOTES: Record<string, Note> = {
   ranks: {
     title: { ru: "Телеметрия рангов", en: "Rank telemetry" },
     description: {
-      ru: "Ранги Overwatch, собираемые по привязанным BattleTag: ряд снимков, состояние опроса по каждому BattleTag и журнал запросов.",
-      en: "Overwatch ranks polled for linked BattleTags: the snapshot series, the per-BattleTag fetch state and the fetch log.",
+      ru: "Ранги Overwatch, собираемые по привязанным аккаунтам Battle.net: ряд снимков, состояние опроса по каждому аккаунту и журнал запросов.",
+      en: "Overwatch ranks polled for linked Battle.net accounts: the snapshot series, the per-account fetch state and the fetch log.",
     },
   },
   tournament: {

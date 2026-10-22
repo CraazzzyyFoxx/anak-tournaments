@@ -17,6 +17,7 @@ import { HomeProfileLink, TEXT_LINK_CLASS } from "./HomeProfileLink";
  */
 export function HomeHero() {
   const t = useTranslations("home.hero");
+  const tSearch = useTranslations("nav.search");
 
   return (
     <HeroFrame
@@ -42,7 +43,7 @@ export function HomeHero() {
         <div className="mt-6 flex flex-wrap items-center gap-3">
           <PlayerSearchCombobox
             size="lg"
-            placeholder={t("searchPlaceholder")}
+            placeholder={tSearch("placeholder")}
             className="min-w-0 max-w-[520px] flex-[1_1_280px] [&_input]:text-base sm:[&_input]:text-ui"
           />
           <Link

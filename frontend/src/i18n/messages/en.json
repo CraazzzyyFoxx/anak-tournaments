@@ -254,8 +254,8 @@
     "searchDivision": "Search division...",
     "stageWithId": "Stage {id}",
     "showingRange": "Showing {start}–{end} of {total}",
-    "smurfBattleTags": "Smurf BattleTags",
-    "smurfDesc": "All registered smurf BattleTags for this participant.",
+    "smurfBattleTags": "Smurf Battle.net accounts",
+    "smurfDesc": "All registered smurf Battle.net accounts for this participant.",
     "history": "History",
     "status": "Status",
     "actions": "Actions",
@@ -430,7 +430,7 @@
         "details": "Details"
       },
       "validation": {
-        "battleTagRequired": "BattleTag is required.",
+        "battleTagRequired": "Battle.net is required.",
         "smurfTagsRequired": "Add at least one smurf account.",
         "discordRequired": "Discord is required.",
         "twitchRequired": "Twitch is required.",
@@ -447,7 +447,7 @@
       }
     },
     "accounts": {
-      "battlenet": "BattleTag",
+      "battlenet": "Battle.net",
       "battlenetPlaceholder": "Player#1234",
       "riot": "Riot ID",
       "riotPlaceholder": "Name#TAG",
@@ -456,7 +456,7 @@
       "smurfs": "Smurf Accounts",
       "discord": "Discord",
       "twitch": "Twitch",
-      "addSmurfPlaceholder": "Add smurf BattleTag",
+      "addSmurfPlaceholder": "Add smurf Battle.net account",
       "addSmurfButton": "Add",
       "removeSmurf": "Remove {tag}",
       "verifiedHint": "Choose one of your OAuth-verified accounts.",
@@ -766,15 +766,15 @@
         "roster": "Roster"
       },
       "placePlayerPick": "Pick a player",
-      "placeBattleTag": "BattleTag",
-      "placeHint": "Pick a registered free agent, or type a BattleTag to add a player who has not signed up."
+      "placeBattleTag": "Battle.net",
+      "placeHint": "Pick a registered free agent, or type a Battle.net account to add a player who has not signed up."
     },
     "errors": {
       "request_failed": "Unable to complete the action. Try again.",
       "team_name_required": "Enter a team name.",
       "team_name_invalid": "A team name cannot contain “#”.",
       "team_name_taken": "A team with this name is already registered.",
-      "battle_tag_required": "Enter a BattleTag.",
+      "battle_tag_required": "Enter a Battle.net account.",
       "already_registered": "You are already registered for this tournament.",
       "registration_closed": "Registration for this tournament is closed.",
       "team_not_found": "Team not found.",
@@ -861,7 +861,7 @@
     },
     "picker": {
       "label": "Invite a registered player",
-      "search": "Search by battle tag",
+      "search": "Search by Battle.net",
       "required": "Pick a player, or switch to a shareable link invite.",
       "loadError": "Unable to load the free agents list.",
       "empty": "Nobody is registered without a team right now.",
@@ -1094,7 +1094,7 @@
     "name": {
       "title": "Name",
       "label": "Your name",
-      "hint": "How you appear across the site. In tournaments you are shown by the BattleTag you registered with.",
+      "hint": "How you appear across the site. In tournaments you are shown by the Battle.net account you registered with.",
       "disabled": "Changing your name has been disabled by an administrator.",
       "rules": "3–32 characters: letters in any alphabet, digits, and _ - .",
       "save": "Save",
@@ -1729,7 +1729,7 @@
     "allowPartialAria": "Apply partially",
     "previewUpdating": "Updating preview…",
     "previewTitle": "Preview",
-    "previewDescription": "Priority fallback per role. Main BattleTag only.",
+    "previewDescription": "Priority fallback per role. Main Battle.net account only.",
     "searchPlaceholder": "Search players…",
     "mismatchOnly": "Mismatches only",
     "mismatchOnlyAria": "Show only players whose current rank differs from the suggestion",
@@ -1849,7 +1849,7 @@
       "predictedRange": "Predicted {mean} (p10–p90 {p10}–{p90})",
       "manual": "Manual adjustment",
       "colRole": "Role",
-      "colBattleTag": "Battle tag",
+      "colBattleTag": "Battle.net",
       "colCurrent": "Current",
       "colForecast": "Forecast",
       "colMove2": "Move 2",
@@ -2293,7 +2293,7 @@
   "teams": {
     "roster": {
       "role": "Role",
-      "battleTag": "Battle tag",
+      "battleTag": "Battle.net",
       "rank": "Rank",
       "newcomer": "New",
       "newcomerHint": "First tournament on the platform",
@@ -3021,7 +3021,7 @@
         "pool": "By role",
         "table": "Table"
       },
-      "searchLabel": "Search by BattleTag",
+      "searchLabel": "Search by Battle.net",
       "divisionFilterLabel": "Division",
       "allDivisions": "All divisions",
       "divisionOption": "D{division}",
@@ -3113,7 +3113,6 @@
       "eyebrow": "OWT · Community tournaments",
       "title": "Community tournaments and player <accent>statistics</accent>",
       "lede": "Schedules, brackets and matches from every community - and a player's whole history in one profile.",
-      "searchPlaceholder": "Player or BattleTag",
       "browseTournaments": "Browse tournaments",
       "myProfile": "My profile and statistics",
       "hostTournament": "Run a tournament on OWT"
@@ -3256,7 +3255,7 @@
         "form": {
           "title": "Registration form",
           "text": "A questionnaire of steps and questions with required fields and a preview. Save it as a template - every tournament of the community starts from it.",
-          "alt": "The “Form with ranks” registration form builder in the admin panel: the Accounts, Roles, Ranks, Scrims and Extra info steps and the Accounts questions - BattleTag, Discord, Twitch, Boosty"
+          "alt": "The “Form with ranks” registration form builder in the admin panel: the Accounts, Roles, Ranks, Scrims and Extra info steps and the Accounts questions - Battle.net, Discord, Twitch, Boosty"
         },
         "registration": {
           "title": "Registration",
@@ -6113,7 +6112,7 @@
       "selected": "Selected"
     },
     "captainRankOnRole": "Rank on {role}",
-    "searchCaptainsPlaceholder": "BattleTag or name"
+    "searchCaptainsPlaceholder": "Battle.net or name"
   },
   "draftRedesign": {
     "room": {
@@ -6834,7 +6833,7 @@
       "staleHint": "Those answers were filed against an earlier version of this form. Editing them re-files them against the current one."
     },
     "builtins": {
-      "identity_battlenet": "BattleTag",
+      "identity_battlenet": "Battle.net",
       "identity_riot": "Riot ID",
       "identity_steam": "Steam account",
       "roles": "Roles",
@@ -6897,7 +6896,7 @@
       "op_in": "is one of",
       "editable": "Allow changes after submitting",
       "editableHint": "The registrant may change this answer in their own application after submitting. Every other question stays frozen.",
-      "editableHintBattleTag": "The registrant may change this until the application is reviewed. After review the BattleTag re-locks anyway, because every rank layer and the profile link hang off it.",
+      "editableHintBattleTag": "The registrant may change this until the application is reviewed. After review the Battle.net account re-locks anyway, because every rank layer and the profile link hang off it.",
       "editableHintRoles": "The registrant may change their roles until the application enters the balancer pool or a team roster. After that the roles re-lock anyway.",
       "requireVerified": "Require a verified account",
       "requireVerifiedHint": "The registrant must pick one of their OAuth-verified accounts instead of typing a handle.",
@@ -7370,13 +7369,13 @@
       "subscription": "Subscription"
     },
     "reason": {
-      "no_battle_tag": "Add your BattleTag",
+      "no_battle_tag": "Add your Battle.net account",
       "never_fetched": "Profile has not been checked yet",
       "collection_pending": "Profile check in progress",
       "collection_failed": "Profile check failed",
       "collection_disabled": "Profile checks are switched off",
       "profile_private": "Make your Overwatch career profile public",
-      "profile_not_found": "Overwatch profile not found — check the BattleTag",
+      "profile_not_found": "Overwatch profile not found — check the Battle.net account",
       "no_linked_discord_account": "Link your Discord account",
       "no_linked_twitch_account": "Link your Twitch account",
       "missing_scope": "Link the account again — the saved permissions are not enough",
@@ -8196,7 +8195,7 @@
         "collection": {
           "title": "Collection",
           "scope": "Whose ranks to collect",
-          "scopeHint": "Registered players: the battle tags entered in a registration, main and smurfs.",
+          "scopeHint": "Registered players: the Battle.net accounts entered in a registration, main and smurfs.",
           "scopeRegistrations": "Registered players",
           "scopeAll": "All users",
           "extraAccounts": "Extra accounts per registration",
@@ -8205,26 +8204,26 @@
         "pace": {
           "title": "Pace",
           "interval": "Interval, seconds",
-          "intervalHint": "Each battle tag is fetched again every {duration}.",
+          "intervalHint": "Each Battle.net account is fetched again every {duration}.",
           "autoPace": "Auto-pace",
-          "autoPaceHint": "Spread every tag evenly across the interval instead of claiming a fixed batch per tick.",
+          "autoPaceHint": "Spread every account evenly across the interval instead of claiming a fixed batch per tick.",
           "maxPerTick": "Max fetches per tick",
           "maxPerTickHint": "A hard ceiling under auto-pace. Leave it blank to derive it from the rate limit.",
           "auto": "auto",
           "jitter": "Jitter",
-          "jitterHint": "Random delay on rescheduling, as a share of the interval: 0 is exact, 0.15 is up to 15% later. Keeps tags fetched together from recurring together."
+          "jitterHint": "Random delay on rescheduling, as a share of the interval: 0 is exact, 0.15 is up to 15% later. Keeps accounts fetched together from recurring together."
         },
         "limits": {
           "title": "OverFast limits",
           "rate": "Requests per minute",
           "rateHint": "Ceiling on OverFast requests. A fetch over it waits for the next free slot.",
           "batch": "Batch size",
-          "batchHint": "Tags claimed per tick with auto-pace off; the per-tick cap with it on."
+          "batchHint": "Accounts claimed per tick with auto-pace off; the per-tick cap with it on."
         },
         "failures": {
           "title": "Failures",
           "maxFailures": "Disable after failures in a row",
-          "maxFailuresHint": "Counts only failures of the tag itself, such as a battle tag that does not exist. OverFast outages back off but never disable.",
+          "maxFailuresHint": "Counts only failures of the account itself, such as a Battle.net account that does not exist. OverFast outages back off but never disable.",
           "backoff": "Backoff base, seconds",
           "backoffHint": "First retry after {duration}, doubled after every further failure."
         }

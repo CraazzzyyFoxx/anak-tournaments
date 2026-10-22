@@ -254,8 +254,8 @@
     "searchDivision": "Поиск дивизиона…",
     "stageWithId": "Этап {id}",
     "showingRange": "Показано {start}–{end} из {total}",
-    "smurfBattleTags": "Смурф BattleTags",
-    "smurfDesc": "Все зарегистрированные смурф BattleTags этого участника.",
+    "smurfBattleTags": "Смурф-аккаунты Battle.net",
+    "smurfDesc": "Все зарегистрированные смурф-аккаунты Battle.net этого участника.",
     "history": "История",
     "status": "Статус",
     "actions": "Действия",
@@ -430,7 +430,7 @@
         "details": "Детали"
       },
       "validation": {
-        "battleTagRequired": "Укажите BattleTag.",
+        "battleTagRequired": "Укажите Battle.net.",
         "smurfTagsRequired": "Добавьте хотя бы один смурф-аккаунт.",
         "discordRequired": "Укажите Discord.",
         "twitchRequired": "Укажите Twitch.",
@@ -447,7 +447,7 @@
       }
     },
     "accounts": {
-      "battlenet": "BattleTag",
+      "battlenet": "Battle.net",
       "battlenetPlaceholder": "Player#1234",
       "riot": "Riot ID",
       "riotPlaceholder": "Name#TAG",
@@ -456,7 +456,7 @@
       "smurfs": "Смурф-аккаунты",
       "discord": "Discord",
       "twitch": "Twitch",
-      "addSmurfPlaceholder": "Добавить смурф BattleTag",
+      "addSmurfPlaceholder": "Добавить смурф-аккаунт Battle.net",
       "addSmurfButton": "Добавить",
       "removeSmurf": "Удалить {tag}",
       "verifiedHint": "Выберите один из ваших подтверждённых через OAuth аккаунтов.",
@@ -766,15 +766,15 @@
         "roster": "Состав"
       },
       "placePlayerPick": "Выберите игрока",
-      "placeBattleTag": "BattleTag",
-      "placeHint": "Выберите свободного игрока или введите BattleTag — можно поставить игрока без заявки."
+      "placeBattleTag": "Battle.net",
+      "placeHint": "Выберите свободного игрока или введите аккаунт Battle.net — можно поставить игрока без заявки."
     },
     "errors": {
       "request_failed": "Не удалось выполнить действие. Повторите попытку.",
       "team_name_required": "Введите название команды.",
       "team_name_invalid": "Название команды не может содержать «#».",
       "team_name_taken": "Команда с таким названием уже зарегистрирована.",
-      "battle_tag_required": "Введите BattleTag.",
+      "battle_tag_required": "Введите аккаунт Battle.net.",
       "already_registered": "Вы уже зарегистрированы на этот турнир.",
       "registration_closed": "Регистрация на турнир закрыта.",
       "team_not_found": "Команда не найдена.",
@@ -861,7 +861,7 @@
     },
     "picker": {
       "label": "Пригласить зарегистрированного игрока",
-      "search": "Поиск по BattleTag",
+      "search": "Поиск по Battle.net",
       "required": "Выберите игрока или переключитесь на приглашение по ссылке.",
       "loadError": "Не удалось загрузить список свободных игроков.",
       "empty": "Сейчас нет игроков без команды.",
@@ -1094,7 +1094,7 @@
     "name": {
       "title": "Имя",
       "label": "Ваше имя",
-      "hint": "Так вас видят на сайте. На турнирах показывается BattleTag, с которым вы зарегистрировались.",
+      "hint": "Так вас видят на сайте. На турнирах показывается аккаунт Battle.net, с которым вы зарегистрировались.",
       "disabled": "Изменение имени отключено администратором.",
       "rules": "3–32 символа: буквы любого алфавита, цифры и _ - .",
       "save": "Сохранить",
@@ -1729,7 +1729,7 @@
     "allowPartialAria": "Частичное применение",
     "previewUpdating": "Обновление превью…",
     "previewTitle": "Превью",
-    "previewDescription": "Резервный порядок источников по приоритету для каждой роли. Только главный BattleTag.",
+    "previewDescription": "Резервный порядок источников по приоритету для каждой роли. Только основной аккаунт Battle.net.",
     "searchPlaceholder": "Поиск игроков…",
     "mismatchOnly": "Только расхождения",
     "mismatchOnlyAria": "Показывать только игроков, у которых текущий ранг отличается от предложенного",
@@ -1849,7 +1849,7 @@
       "predictedRange": "Прогноз {mean} (p10–p90 {p10}–{p90})",
       "manual": "Ручная корректировка",
       "colRole": "Роль",
-      "colBattleTag": "BattleTag",
+      "colBattleTag": "Battle.net",
       "colCurrent": "Текущий",
       "colForecast": "Прогноз",
       "colMove2": "Сдвиг 2",
@@ -2293,7 +2293,7 @@
   "teams": {
     "roster": {
       "role": "Роль",
-      "battleTag": "BattleTag",
+      "battleTag": "Battle.net",
       "rank": "Ранг",
       "newcomer": "Новичок",
       "newcomerHint": "Первый турнир на платформе",
@@ -3021,7 +3021,7 @@
         "pool": "По ролям",
         "table": "Таблица"
       },
-      "searchLabel": "Поиск по BattleTag",
+      "searchLabel": "Поиск по Battle.net",
       "divisionFilterLabel": "Дивизион",
       "allDivisions": "Все дивизионы",
       "divisionOption": "D{division}",
@@ -3113,7 +3113,6 @@
       "eyebrow": "OWT · турниры сообществ",
       "title": "Турниры сообществ и <accent>статистика</accent> игроков",
       "lede": "Расписание, сетки и матчи всех сообществ - и вся история игрока в одном профиле.",
-      "searchPlaceholder": "Игрок или BattleTag",
       "browseTournaments": "Смотреть турниры",
       "myProfile": "Мой профиль и статистика",
       "hostTournament": "Провести турнир на OWT"
@@ -3256,7 +3255,7 @@
         "form": {
           "title": "Форма регистрации",
           "text": "Анкета из шагов и вопросов с обязательными полями и предпросмотром. Сохраните её шаблоном - любой турнир сообщества начнётся с него.",
-          "alt": "Конструктор формы регистрации «Форма с рангами» в админке: шаги Аккаунты, Роли, Ранги, Скримы, Доп. информация и вопросы шага Аккаунты - BattleTag, Discord, Twitch, Boosty"
+          "alt": "Конструктор формы регистрации «Форма с рангами» в админке: шаги Аккаунты, Роли, Ранги, Скримы, Доп. информация и вопросы шага Аккаунты - Battle.net, Discord, Twitch, Boosty"
         },
         "registration": {
           "title": "Регистрация",
@@ -6113,7 +6112,7 @@
       "selected": "Выбранные"
     },
     "captainRankOnRole": "Ранг на роли: {role}",
-    "searchCaptainsPlaceholder": "BattleTag или имя"
+    "searchCaptainsPlaceholder": "Battle.net или имя"
   },
   "draftRedesign": {
     "room": {
@@ -6834,7 +6833,7 @@
       "staleHint": "Эти ответы заполнены по более ранней версии формы. При редактировании они перепривязываются к текущей."
     },
     "builtins": {
-      "identity_battlenet": "BattleTag",
+      "identity_battlenet": "Battle.net",
       "identity_riot": "Riot ID",
       "identity_steam": "Аккаунт Steam",
       "roles": "Роли",
@@ -6897,7 +6896,7 @@
       "op_in": "один из",
       "editable": "Разрешить менять после отправки",
       "editableHint": "Игрок сможет изменить этот ответ в своей заявке после отправки. Остальные вопросы останутся закрытыми.",
-      "editableHintBattleTag": "Игрок сможет менять ответ, пока заявка не проверена. После проверки BattleTag всё равно закрывается: на него завязаны все ранги и связь с профилем.",
+      "editableHintBattleTag": "Игрок сможет менять ответ, пока заявка не проверена. После проверки аккаунт Battle.net всё равно закрывается: на него завязаны все ранги и связь с профилем.",
       "editableHintRoles": "Игрок сможет менять роли, пока заявка не попала в пул балансировщика или в состав команды. После этого роли всё равно закрываются.",
       "requireVerified": "Требовать подтверждённый аккаунт",
       "requireVerifiedHint": "Игрок выбирает один из своих подтверждённых через OAuth аккаунтов, а не вводит ник вручную.",
@@ -7370,13 +7369,13 @@
       "subscription": "Подписка"
     },
     "reason": {
-      "no_battle_tag": "Укажите свой BattleTag",
+      "no_battle_tag": "Укажите свой аккаунт Battle.net",
       "never_fetched": "Профиль ещё не проверялся",
       "collection_pending": "Профиль проверяется",
       "collection_failed": "Не удалось проверить профиль",
       "collection_disabled": "Проверка профилей отключена",
       "profile_private": "Откройте профиль карьеры Overwatch",
-      "profile_not_found": "Профиль Overwatch не найден — проверьте BattleTag",
+      "profile_not_found": "Профиль Overwatch не найден — проверьте аккаунт Battle.net",
       "no_linked_discord_account": "Привяжите аккаунт Discord",
       "no_linked_twitch_account": "Привяжите аккаунт Twitch",
       "missing_scope": "Привяжите аккаунт заново — выданных прав недостаточно",
@@ -8196,7 +8195,7 @@
         "collection": {
           "title": "Сбор",
           "scope": "Чьи ранги собирать",
-          "scopeHint": "Зарегистрированные игроки — BattleTag'и из заявки: основной и смурфы.",
+          "scopeHint": "Зарегистрированные игроки — аккаунты Battle.net из заявки: основной и смурфы.",
           "scopeRegistrations": "Зарегистрированные игроки",
           "scopeAll": "Все пользователи",
           "extraAccounts": "Доп. аккаунтов на заявку",
@@ -8205,26 +8204,26 @@
         "pace": {
           "title": "Темп",
           "interval": "Интервал, секунды",
-          "intervalHint": "Каждый BattleTag запрашивается заново раз в {duration}.",
+          "intervalHint": "Каждый аккаунт Battle.net запрашивается заново раз в {duration}.",
           "autoPace": "Автотемп",
-          "autoPaceHint": "Распределять все BattleTag'и равномерно по интервалу, а не брать фиксированный батч за тик.",
+          "autoPaceHint": "Распределять все аккаунты Battle.net равномерно по интервалу, а не брать фиксированный батч за тик.",
           "maxPerTick": "Максимум запросов за тик",
           "maxPerTickHint": "Жёсткий потолок при автотемпе. Оставьте пустым, чтобы он считался из лимита запросов.",
           "auto": "авто",
           "jitter": "Разброс",
-          "jitterHint": "Случайная задержка при перепланировании, доля интервала: 0 — точно в срок, 0.15 — до 15% позже. Не даёт BattleTag'ам, запрошенным вместе, и дальше приходить пачкой."
+          "jitterHint": "Случайная задержка при перепланировании, доля интервала: 0 — точно в срок, 0.15 — до 15% позже. Не даёт аккаунтам, запрошенным вместе, и дальше приходить пачкой."
         },
         "limits": {
           "title": "Лимиты OverFast",
           "rate": "Запросов в минуту",
           "rateHint": "Потолок запросов к OverFast. Запрос сверх него ждёт следующего свободного слота.",
           "batch": "Размер батча",
-          "batchHint": "Сколько BattleTag'ов брать за тик без автотемпа; с автотемпом — потолок за тик."
+          "batchHint": "Сколько аккаунтов Battle.net брать за тик без автотемпа; с автотемпом — потолок за тик."
         },
         "failures": {
           "title": "Ошибки",
           "maxFailures": "Отключать после ошибок подряд",
-          "maxFailuresHint": "Считаются только ошибки самого BattleTag'а — например, если такого нет. Сбои OverFast дают бэкофф, но не отключают.",
+          "maxFailuresHint": "Считаются только ошибки самого аккаунта Battle.net — например, если такого нет. Сбои OverFast дают бэкофф, но не отключают.",
           "backoff": "Базовый бэкофф, секунды",
           "backoffHint": "Первый повтор через {duration}, после каждой следующей ошибки — вдвое дольше."
         }

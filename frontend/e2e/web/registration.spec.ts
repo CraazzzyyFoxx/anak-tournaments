@@ -17,7 +17,7 @@ test("player registers through the wizard and lands on Pending review; the parti
   await openPage(page, `/tournaments/${t.slug}`);
   await page.getByRole("button", { name: "Register", exact: true }).first().click();
   const dialog = page.getByRole("dialog", { name: `Register for ${t.name}` });
-  await dialog.getByRole("textbox", { name: /BattleTag/ }).fill(handle);
+  await dialog.getByRole("textbox", { name: /Battle\.net/ }).fill(handle);
   await dialog.getByRole("button", { name: "Next" }).click();
   await dialog.getByRole("radiogroup", { name: "Tank priority" }).getByRole("radio", { name: "Main" }).click();
   await dialog.getByRole("textbox", { name: /^Tank/ }).fill("3100");
@@ -51,7 +51,7 @@ test("player edits only open questions, then withdraws from the participants car
 
   await page.getByRole("button", { name: "Edit", exact: true }).click();
   const edit = page.getByRole("dialog", { name: "Edit your registration" });
-  await expect(edit.getByRole("combobox", { name: /BattleTag/ }), "the BattleTag is frozen after submit").toBeDisabled();
+  await expect(edit.getByRole("combobox", { name: /Battle\.net/ }), "the Battle.net account is frozen after submit").toBeDisabled();
   await expect(edit.getByText("Frozen after submitting")).toBeVisible();
   await edit.getByRole("button", { name: "Cancel" }).click();
   await expect(edit).toBeHidden();
@@ -128,6 +128,6 @@ test("@mobile registration CTA opens a usable wizard", async ({ adminApi, page }
   await openPage(page, `/tournaments/${t.slug}`);
   await page.getByRole("button", { name: "Register", exact: true }).first().click();
   const dialog = page.getByRole("dialog", { name: `Register for ${t.name}` });
-  await expect(dialog.getByRole("textbox", { name: /BattleTag/ })).toBeInViewport();
+  await expect(dialog.getByRole("textbox", { name: /Battle\.net/ })).toBeInViewport();
   await expect(dialog.getByRole("button", { name: "Submit" })).toBeVisible();
 });
