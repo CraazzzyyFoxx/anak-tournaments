@@ -6,7 +6,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import { WizardShell, type WizardStep } from "@/components/kit/WizardShell";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -287,7 +287,7 @@ export default function DivisionGridImportPage() {
             </div>
 
             <fieldset className="flex flex-col gap-2">
-              <legend className={EYEBROW_CLASS}>{t("whatToCopy")}</legend>
+              <legend className={eyebrowClass("muted")}>{t("whatToCopy")}</legend>
               <div className="flex items-center gap-2">
                 <Checkbox
                   id="import-icons"
@@ -326,7 +326,7 @@ export default function DivisionGridImportPage() {
               />
             ) : preflightQuery.data ? (
               <div className="rounded-xl border border-border bg-card p-3 text-sm">
-                <p className={EYEBROW_CLASS}>{t("preview")}</p>
+                <p className={eyebrowClass("muted")}>{t("preview")}</p>
                 <p className="mt-1">
                   {t("previewSummary", { divisions: preflightQuery.data.tiers_count, mappings: preflightQuery.data.mappings_count, crests: preflightQuery.data.assets_to_copy })}
                 </p>

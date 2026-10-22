@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { Trash2 } from "lucide-react";
 
 import { ffaErrorEntries, useFfaErrorMessage } from "@/components/admin/ffa/FfaGameResultsDialog";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -117,7 +117,7 @@ export function FfaScoringSection({
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
-          <h3 className={EYEBROW_CLASS}>{t("columns")}</h3>
+          <h3 className={eyebrowClass("muted")}>{t("columns")}</h3>
           <Button
             type="button"
             variant="link"
@@ -250,7 +250,7 @@ export function FfaScoringSection({
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
-          <h3 className={EYEBROW_CLASS}>{t("pointsPerPlace")}</h3>
+          <h3 className={eyebrowClass("muted")}>{t("pointsPerPlace")}</h3>
           <Button
             type="button"
             variant="link"

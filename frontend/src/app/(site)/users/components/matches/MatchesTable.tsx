@@ -5,6 +5,8 @@ import { useTranslations } from "next-intl";
 import { useDebounce } from "use-debounce";
 import { EncounterWithUserStats } from "@/types/user.types";
 import { DataPagination } from "@/components/ui/data-pagination";
+import { eyebrowClass } from "@/components/ui/eyebrow";
+import { cn } from "@/lib/utils";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import { CardSurface } from "@/components/profile/atoms";
 import MatchRow from "@/app/(site)/users/components/matches/MatchRow";
@@ -125,7 +127,10 @@ const MatchesTable = ({
                   {headers.map((h) => (
                     <th
                       key={h}
-                      className="aqt-tnum border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-3.5 py-3 text-left text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
+                      className={cn(
+                        eyebrowClass(),
+                        "aqt-tnum border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-3.5 py-3 text-left"
+                      )}
                     >
                       {h}
                     </th>
@@ -151,7 +156,7 @@ const MatchesTable = ({
             totalPages={pages}
             onPageChange={handlePageChange}
             className="border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-[18px] py-3.5"
-            summary={
+            leading={
               <span className="aqt-tnum text-caption text-[color:var(--aqt-fg-dim)]">
                 {t("common.showingRange", {
                   start: String((page - 1) * perPage + 1),

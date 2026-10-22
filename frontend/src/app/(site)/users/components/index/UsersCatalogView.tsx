@@ -5,6 +5,8 @@ import { useTranslations } from "next-intl";
 
 import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
+import PlayerName from "@/components/PlayerName";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,14 +14,7 @@ import { cn } from "@/lib/utils";
 import type { UserCatalogEntry, UserOverviewRow } from "@/types/user.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
-import {
-  CompareCheckbox,
-  GameMarks,
-  LastActive,
-  PlayerName,
-  RolesCrests,
-  WinrateCell
-} from "./users-index.atoms";
+import { CompareCheckbox, GameMarks, LastActive, RolesCrests, WinrateCell } from "./users-index.atoms";
 import { ALPHABET } from "./users-index.model";
 import type { CompareSelection } from "./UsersCompareBar";
 import type { UsersIndexData } from "./useUsersIndexData";
@@ -54,7 +49,7 @@ export function PlayerCard({
       <div className="flex items-start gap-2.5">
         <PlayerAvatar user={user} size={40} />
         <div className="min-w-0 flex-1">
-          <PlayerName name={user.name} className="block" />
+          <PlayerName player={{ name: user.name }} />
           <LastActive at={user.last_active_at} className="mt-0.5" />
         </div>
         <CompareCheckbox
@@ -78,21 +73,15 @@ export function PlayerCard({
 
       <div className="grid grid-cols-3 gap-2 border-t border-[color:var(--aqt-border)] pt-2.5">
         <div className="flex flex-col items-center gap-0.5">
-          <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-            {t("users.list.table.tournaments")}
-          </span>
+          <Eyebrow>{t("users.list.table.tournaments")}</Eyebrow>
           <span className="font-semibold tabular-nums">{user.tournaments_count}</span>
         </div>
         <div className="flex flex-col items-center gap-0.5">
-          <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-            {t("users.list.table.winrate")}
-          </span>
+          <Eyebrow>{t("users.list.table.winrate")}</Eyebrow>
           <WinrateCell user={user} minEncounters={minEncounters} record={game.discipline === null} />
         </div>
         <div className="flex flex-col items-center gap-0.5">
-          <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-            {t("users.list.table.bestPlacement")}
-          </span>
+          <Eyebrow>{t("users.list.table.bestPlacement")}</Eyebrow>
           {user.best_placement ? (
             <PlaceBadge place={user.best_placement} />
           ) : (
@@ -127,9 +116,7 @@ export function UsersCatalogView({
         aria-label={t("users.list.catalog.jumpTo")}
         className="flex flex-wrap items-center gap-1 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2"
       >
-        <span className="mr-1 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-          {t("users.list.catalog.jumpTo")}
-        </span>
+        <Eyebrow className="mr-1">{t("users.list.catalog.jumpTo")}</Eyebrow>
         <LetterButton active={!letter} onClick={() => controls.setLetter(null)}>
           {t("common.all")}
         </LetterButton>

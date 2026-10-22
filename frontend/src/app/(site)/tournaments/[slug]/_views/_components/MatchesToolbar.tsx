@@ -4,7 +4,7 @@ import { CalendarClock, ListOrdered } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
-import { Combobox } from "@/components/kit/Combobox";
+import { Combobox } from "@/components/ui/combobox";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { FilterChip } from "@/components/ui/filter-chip";
 

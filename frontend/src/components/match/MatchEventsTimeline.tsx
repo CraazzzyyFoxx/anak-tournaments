@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { useSegmentLabel } from "@/components/match/segment-label";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { buildEventRows, type EventParty } from "@/lib/stats/events";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
@@ -83,16 +84,16 @@ export default function MatchEventsTimeline({
   const segments = [...new Set(rows.map((row) => row.segment))];
   return (
     <div className="rounded-[12px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-4">
-      <h3 className="aqt-tnum mb-3 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+      <Eyebrow as="h3" className="aqt-tnum mb-3">
         {t("matches.native.timeline.title")}
-      </h3>
+      </Eyebrow>
       <div className="flex max-h-[600px] flex-col gap-5 overflow-y-auto pr-1">
         {segments.map((segment) => (
           <section key={segment} aria-label={segmentLabel(segment)}>
             {segments.length > 1 ? (
-              <h4 className="mb-2 border-b border-[color:var(--aqt-border)] pb-1.5 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
+              <Eyebrow as="h4" tone="muted" className="mb-2 border-b border-[color:var(--aqt-border)] pb-1.5">
                 {segmentLabel(segment)}
-              </h4>
+              </Eyebrow>
             ) : null}
             <ol className="flex flex-col">
               {rows

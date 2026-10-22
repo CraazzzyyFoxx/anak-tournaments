@@ -13,6 +13,12 @@ export interface FilterChipProps
   count?: number | string | null;
   /** Optional leading dot colour token, e.g. `var(--aqt-rose)` for "live". */
   dotColor?: string;
+  /**
+   * Colour of the active state, replacing teal: a CSS colour or token such as
+   * a role's tint (`var(--role-tank)`, `hsl(…)`). The chip derives its fill,
+   * border and text from it, so a set of role filters reads as their roles.
+   */
+  accent?: string;
 }
 
 /**
@@ -27,12 +33,13 @@ export interface FilterChipProps
  * language does not change; only the semantics and the focus ring do.
  */
 export const FilterChip = React.forwardRef<HTMLButtonElement, FilterChipProps>(
-  ({ active = false, count, dotColor, className, children, ...props }, ref) => (
+  ({ active = false, count, dotColor, accent, className, style, children, ...props }, ref) => (
     <button
       ref={ref}
       type="button"
       aria-pressed={active}
       className={cn("aqt-filter-chip", active && "active", className)}
+      style={accent ? ({ "--chip-accent": accent, ...style } as React.CSSProperties) : style}
       {...props}
     >
       {dotColor ? <StatusDot style={{ color: dotColor }} /> : null}

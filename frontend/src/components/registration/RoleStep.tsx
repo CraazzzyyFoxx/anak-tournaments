@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import FlexIcon from "@/components/icons/FlexIcon";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import { useRoleName } from "@/hooks/useRoleName";
 import { roleAccent } from "@/lib/registration/role-accent";
 import { cn } from "@/lib/utils";
@@ -281,9 +282,7 @@ export default function RoleStep({
 
       {isAllRoles && (
         <div className="grid gap-1.5">
-          <span className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
-            {t("registration.roles.matrix.choiceLabel")}
-          </span>
+          <Eyebrow tone="muted">{t("registration.roles.matrix.choiceLabel")}</Eyebrow>
           <SegmentedRadio
             label={t("registration.roles.matrix.choiceLabel")}
             value={priorityChoice(selections)}
@@ -296,10 +295,7 @@ export default function RoleStep({
       {named && (
         <div
           aria-hidden
-          className={cn(
-            "hidden gap-2 px-2 text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)] sm:grid",
-            columnClass,
-          )}
+          className={cn(eyebrowClass("muted"), "hidden gap-2 px-2 sm:grid", columnClass)}
         >
           <span>{t("registration.roles.matrix.columnRole")}</span>
           {showPriority && <span>{t("registration.roles.matrix.columnPriority")}</span>}

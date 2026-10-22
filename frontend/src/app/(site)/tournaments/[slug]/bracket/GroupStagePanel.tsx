@@ -4,7 +4,6 @@ import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
-import type { SegmentedLinkItem } from "@/components/ui/segmented";
 import StandingsTable from "@/components/StandingsTable";
 import type { BracketSlotRef } from "@/components/bracket/BracketView";
 import type { Encounter } from "@/types/encounter.types";
@@ -12,6 +11,7 @@ import type { StreamEntry } from "@/types/stream.types";
 import type { Stage, StageItem, Standings } from "@/types/tournament.types";
 
 import { isStagePreview } from "./bracketData";
+import type { BracketTabs } from "./bracketStages.model";
 import { BracketScroller } from "./BracketScroller";
 import { ResponsiveBracket } from "./ResponsiveBracket";
 import { StagePanelHeader, ViewTabs } from "./StagePanelChrome";
@@ -30,7 +30,7 @@ type GroupStagePanelProps = {
     source: BracketSlotRef<Encounter>,
     target: BracketSlotRef<Encounter>
   ) => Promise<unknown>;
-  bracketTabs?: readonly SegmentedLinkItem[];
+  bracketTabs?: BracketTabs;
   liveTeamStreams?: ReadonlyMap<number, StreamEntry>;
   /** `?view=standings` opens the table first; anything else opens the matches, unless there are none yet. */
   defaultView?: "matches" | "standings";

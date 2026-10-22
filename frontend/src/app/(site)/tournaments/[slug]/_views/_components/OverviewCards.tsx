@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import Image from "@/components/ui/image";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { getStreamStatus, STREAM_STATUS_META } from "@/lib/social/stream-platform";
@@ -44,7 +45,7 @@ export function CardLink({ href, children }: Readonly<{ href: string; children: 
   return (
     <HoverPrefetchLink
       href={href}
-      className="text-label uppercase tracking-label text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-teal)]"
+      className={cn(eyebrowClass("muted"), "transition-colors hover:text-[color:var(--aqt-teal)]")}
     >
       {children}
     </HoverPrefetchLink>
@@ -110,9 +111,9 @@ export function OverviewStreamCard({
 export function KeyValue({ term, children }: Readonly<{ term: string; children: React.ReactNode }>) {
   return (
     <div className="grid gap-0.5 sm:grid-cols-[9rem_minmax(0,1fr)] sm:gap-3">
-      <dt className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)] sm:pt-0.5">
+      <Eyebrow as="dt" className="sm:pt-0.5">
         {term}
-      </dt>
+      </Eyebrow>
       <dd className="min-w-0 text-ui text-[color:var(--aqt-fg-muted)]">{children}</dd>
     </div>
   );

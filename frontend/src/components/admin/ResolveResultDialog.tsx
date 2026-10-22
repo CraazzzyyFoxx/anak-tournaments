@@ -27,7 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { notify } from "@/lib/notify";
 import adminService from "@/services/admin.service";
 import type { EncounterReportsRow, EncounterSetResultInput } from "@/types/admin.types";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
@@ -193,7 +193,7 @@ export function ResolveResultDialog({
               <h3>
                 <CollapsibleTrigger
                   className={cn(
-                    EYEBROW_CLASS,
+                    eyebrowClass("muted"),
                     "group flex w-full items-center gap-1.5 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   )}
                 >
@@ -374,7 +374,7 @@ function ResolveForm({
       <fieldset className="space-y-2">
         <legend
           id={`${modeFieldId}-legend`}
-          className={EYEBROW_CLASS}
+          className={eyebrowClass("muted")}
         >
           {t("whichScore")}
         </legend>

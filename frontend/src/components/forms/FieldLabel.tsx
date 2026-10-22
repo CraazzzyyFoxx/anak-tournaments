@@ -3,6 +3,8 @@
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
+import { Eyebrow } from "@/components/ui/eyebrow";
+import { FieldLabel as UiFieldLabel } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 
 interface FieldLabelProps {
@@ -20,9 +22,9 @@ interface FieldLabelProps {
 }
 
 /**
- * Registration field label. This used to render a `<span>`, which meant every
- * field in the public registration flow was visually labelled and
- * programmatically anonymous.
+ * Form field label: the uppercase eyebrow over a schema-form control. This
+ * used to render a `<span>`, which meant every field in the public registration
+ * flow was visually labelled and programmatically anonymous.
  */
 export default function FieldLabel({
   label,
@@ -32,11 +34,10 @@ export default function FieldLabel({
   className,
 }: Readonly<FieldLabelProps>) {
   const t = useTranslations();
-  const Tag = htmlFor ? "label" : "span";
-  return (
-    <Tag htmlFor={htmlFor} className={cn("inline-flex items-center gap-2", className)}>
+  const content = (
+    <>
       {icon ? <span className="flex shrink-0 items-center justify-center">{icon}</span> : null}
-      <span className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
+      <Eyebrow tone="muted">
         {label}
         {required && (
           <span className="ml-0.5 text-destructive">
@@ -44,7 +45,15 @@ export default function FieldLabel({
             <span className="sr-only">{t("common.required")}</span>
           </span>
         )}
-      </span>
-    </Tag>
+      </Eyebrow>
+    </>
+  );
+  const labelClass = cn("inline-flex items-center gap-2", className);
+  return htmlFor ? (
+    <UiFieldLabel htmlFor={htmlFor} className={labelClass}>
+      {content}
+    </UiFieldLabel>
+  ) : (
+    <span className={labelClass}>{content}</span>
   );
 }

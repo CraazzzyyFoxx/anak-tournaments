@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import DivisionIcon from "@/components/DivisionIcon";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { NumberInput } from "@/components/ui/number-input";
 import {
   getDivisionLabel,
@@ -119,9 +120,6 @@ function gridBounds(grid: DivisionGrid): { min: number; max: number | undefined 
   };
 }
 
-const LABEL_CLASS =
-  "text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]";
-
 type RoleRankControlsProps = {
   /** The rank these controls read and write; `null` renders as unset. */
   rankValue: number | null;
@@ -176,7 +174,7 @@ export function RoleRankControls({
     <>
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-2">
-          <span className={LABEL_CLASS}>Skill rating</span>
+          <Eyebrow tone="dim">Skill rating</Eyebrow>
           {rankValue == null ? (
             <span className="text-label text-[color:var(--aqt-fg-dim)]">No rank</span>
           ) : (
@@ -248,7 +246,7 @@ export function RoleRankControls({
       </div>
 
       <div className="space-y-1">
-        <span className={LABEL_CLASS}>Rank</span>
+        <Eyebrow tone="dim">Rank</Eyebrow>
         <div
           className={cn(
             "flex min-h-[36px] items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 py-1",

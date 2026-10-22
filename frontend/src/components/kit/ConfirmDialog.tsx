@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { TONE_TEXT } from "@/components/kit/tone";
+import { TONE_TEXT } from "@/components/ui/tone";
 import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 

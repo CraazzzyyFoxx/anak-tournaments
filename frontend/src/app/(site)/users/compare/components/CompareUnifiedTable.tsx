@@ -4,7 +4,9 @@ import { RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { CardSurface } from "@/components/profile/atoms";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 import { CompareRow } from "@/app/(site)/users/compare/types";
 import { formatDuration, formatMetricValue } from "@/app/(site)/users/compare/utils";
 import TrendDelta from "@/app/(site)/users/compare/components/TrendDelta";
@@ -233,8 +235,10 @@ const ColumnIdentity = ({
 /*  Main component                                                     */
 /* ------------------------------------------------------------------ */
 
-const headBase =
-  "aqt-tnum border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] py-3 align-bottom text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
+const headBase = cn(
+  eyebrowClass(),
+  "aqt-tnum border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] py-3 align-bottom"
+);
 
 const CompareUnifiedTable = ({
   subjectName,

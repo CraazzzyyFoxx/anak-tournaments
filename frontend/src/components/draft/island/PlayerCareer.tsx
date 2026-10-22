@@ -3,12 +3,11 @@
 import type { UseQueryResult } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import DivisionIcon from "@/components/DivisionIcon";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { useFormatter } from "@/lib/datetime/client";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
-import Image from "@/components/ui/image";
-import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
+import { RankCrest } from "@/components/RankCrest";
 import { roleOf } from "@/lib/roster/role-ref";
 import type { RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
@@ -279,12 +278,13 @@ export function CareerTables({
               const color = winrateColor(share, entry.maps);
               return (
                 <li key={entry.character.id} className={`${HERO_GRID} py-1`}>
-                  <Image
-                    src={getHeroIconUrl(entry.character.slug, entry.character.image_path)}
-                    alt=""
-                    width={28}
-                    height={28}
-                    className="h-7 w-7 rounded-full object-cover"
+                  <CatalogEntityImage
+                    entity={{
+                      name: entry.character.name,
+                      image_path: getHeroIconUrl(entry.character.slug, entry.character.image_path)
+                    }}
+                    size={28}
+                    decorative
                   />
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className="truncate text-[13px] font-medium">{entry.character.name}</span>
@@ -322,10 +322,7 @@ export function CareerTables({
             <span className="text-right">{t("island.recent.place")}</span>
           </div>
           <ul>
-            {card.recent_tournaments.map((entry) => {
-              const division = resolveDivisionFromRank(divisionGrid, entry.rank);
-              const crestLabel = division != null ? getDivisionLabel(divisionGrid, division) : null;
-              return (
+            {card.recent_tournaments.map((entry) => (
                 <li key={entry.id} className={HISTORY_ROW}>
                   <span className="min-w-0">
                     <span className="block truncate text-[13px] font-medium" title={entry.name}>
@@ -341,20 +338,13 @@ export function CareerTables({
                   <span className="flex justify-center">
                     {entry.role && <PlayerRoleIcon role={roleOf(entry.role)} ontology={ontology} size={16} />}
                   </span>
-                  <span className="flex items-center justify-end gap-1.5" title={crestLabel ?? undefined}>
-                    {division != null && (
-                      <DivisionIcon
-                        division={division}
-                        tournamentGrid={divisionGrid}
-                        width={20}
-                        height={20}
-                        className="h-5 w-5 shrink-0 object-contain"
-                      />
-                    )}
-                    <span className="text-[13px] tabular-nums text-[color:var(--aqt-fg-muted)]">
-                      {entry.rank ?? "—"}
-                    </span>
-                  </span>
+                  <RankCrest
+                    rank={entry.rank}
+                    grid={divisionGrid}
+                    size={20}
+                    showValue
+                    className="justify-end text-[13px] text-[color:var(--aqt-fg-muted)]"
+                  />
                   <span
                     className="whitespace-nowrap text-right text-[13px] font-semibold tabular-nums"
                     style={{ color: placeColor(entry.placement) }}
@@ -365,8 +355,7 @@ export function CareerTables({
                     )}
                   </span>
                 </li>
-              );
-            })}
+            ))}
           </ul>
         </section>
       )}

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { ArrowRight, CircleAlert, Info } from "lucide-react";
 
+import { Eyebrow } from "@/components/ui/eyebrow";
 import Image from "@/components/ui/image";
 import { cn } from "@/lib/utils";
 import { RetryButton } from "./RetryButton";
@@ -15,10 +16,6 @@ import { RetryButton } from "./RetryButton";
  * Presentational and hook-light (`useTranslations` only), so every export here
  * renders from a Server Component as well as from a client one.
  */
-
-/** Uppercase data label (mock `.eyebrow`). */
-export const EYEBROW_CLASS =
-  "font-[family-name:var(--aqt-data)] text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 
 /** Lead paragraph under a hero title (mock `.lede`). */
 export const LEDE_CLASS =
@@ -107,7 +104,7 @@ export function SectionHead({
   return (
     <div className="mb-4 flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
       <div>
-        {rubric ? <span className={cn(EYEBROW_CLASS, "mb-1.5 block")}>{rubric}</span> : null}
+        {rubric ? <Eyebrow className="mb-1.5 block">{rubric}</Eyebrow> : null}
         <h2 id={titleId} className={SECTION_TITLE_CLASS}>
           {title}
         </h2>
@@ -126,9 +123,9 @@ export function Column({ children, className }: Readonly<{ children: ReactNode; 
 export function ColumnHead({ title, sub }: Readonly<{ title: ReactNode; sub?: ReactNode }>) {
   return (
     <div className="flex min-h-11 items-center justify-between gap-3 border-y border-t-[color:var(--aqt-border-3)] border-b-[color:var(--aqt-border)]">
-      <h3 className="font-[family-name:var(--aqt-data)] text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
+      <Eyebrow as="h3" tone="muted">
         {title}
-      </h3>
+      </Eyebrow>
       {sub ? <span className="whitespace-nowrap text-caption text-[color:var(--aqt-fg-dim)]">{sub}</span> : null}
     </div>
   );
@@ -141,7 +138,7 @@ export function Fact({ value, label }: Readonly<{ value: ReactNode; label: React
       <b className="block font-[family-name:var(--aqt-data)] text-ui font-bold leading-[1.2] tabular-nums text-[color:var(--aqt-fg)]">
         {value}
       </b>
-      <span className={cn(EYEBROW_CLASS, "font-semibold")}>{label}</span>
+      <Eyebrow>{label}</Eyebrow>
     </span>
   );
 }
@@ -218,15 +215,6 @@ export function LiveDot({ className }: Readonly<{ className?: string }>) {
   return (
     <span aria-hidden className={cn("relative inline-flex size-[7px] shrink-0 rounded-full bg-current shadow-[0_0_0_3px_color-mix(in_srgb,currentColor_18%,transparent)]", className)}>
       <span className="absolute inset-0 rounded-full bg-current motion-safe:animate-ping" />
-    </span>
-  );
-}
-
-/** Neutral label pill (mock `.pill--plain`), e.g. "Лига". */
-export function PlainPill({ children }: Readonly<{ children: ReactNode }>) {
-  return (
-    <span className="inline-flex items-center whitespace-nowrap rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-[9px] py-[3px] font-[family-name:var(--aqt-data)] text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
-      {children}
     </span>
   );
 }

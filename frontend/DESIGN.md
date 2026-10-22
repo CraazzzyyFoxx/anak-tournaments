@@ -265,6 +265,7 @@ code are migration debt, not precedent.
 | Checkbox / switch / radio   | `ui/checkbox.tsx`, `ui/switch.tsx`, `ui/radio-group.tsx`                                                                |
 | Colour                      | `ui/color-swatch.tsx` — the one native `<input type="color">`; a blank value paints its fallback, dashed                |
 | Select                      | `ui/select.tsx` — never a native `<select>`                                                                             |
+| Searchable picker           | `ui/combobox.tsx`; with images or multi-select `ui/searchable-image-select.tsx`; server search `kit/ServerSearchCombobox` |
 | Panels of different content | `ui/tabs.tsx` (Radix), `TabsTrigger badge` for a count                                                                  |
 | Tabs that are addresses     | `kit/LinkTabs.tsx` (`aria-current="page"`, `level={2}` for sub-tabs)                                                    |
 | View/mode of the same data  | `ui/toggle-group.tsx` pill; on tournament sections `ViewSegment` (`?view=` / `?tab=`, default never written to the URL) |
@@ -281,7 +282,9 @@ code are migration debt, not precedent.
 | Lifecycle status   | `TournamentStatusPill` (public), `kit/StatusPill` (admin)                  |
 | Boolean state icon | `StatusIconBadge` (`components/status/StatusIconBadge.tsx`)                |
 | Live / recency dot | `StatusDot` (`ui/status-dot.tsx`), always `aria-hidden`                    |
-| Placement medal    | `PlaceBadge` (`ui/place-badge.tsx`, `--aqt-medal-*`)                       |
+| Placement medal    | `PlaceBadge` (`ui/place-badge.tsx`, `--aqt-medal-*`); `size` `sm`/`md`/`lg` for the 28/36/44px squares, `null` draws "—" |
+| Tinted label chip  | `Badge` (`ui/badge.tsx`): `tone` + `palette="aqt"` for `--aqt-*` hues, `voice="label"` for the uppercase data voice, `size="sm"` for dense tables |
+| Eyebrow / uppercase label | `Eyebrow` / `eyebrowClass(tone)` (`ui/eyebrow.tsx`), tone `faint` (default) · `dim` · `muted` |
 | W/L/D square       | `ResTag` (`components/match/cells.tsx`)                                    |
 | MVP placement      | `MvpOrdinal` (`users/components/shared/MvpOrdinal.tsx`): gold for 1st only |
 | Platform totals    | `LeadersContent` (`components/site/leaders.tsx`) on `/` and the community page; `HeroStat` figures in the `/statistics` hero (`statistics/_components/OverallFigures.tsx`) |
@@ -530,7 +533,7 @@ Rules on every admin screen:
 | `kit/PhaseStrip.tsx`                         | lifecycle position, indicator only                             |
 | `kit/MasterDetail.tsx`                       | T4 split with the narrow-viewport switch; `MasterList` / `MasterListSkeleton` for the plain list column |
 | `kit/NextActionHero.tsx`                     | the single "do this next" on T1 and hub Overview               |
-| `kit/tone.ts` / `ui/tone.ts`                 | `TONE_CLASS` / `TONE_TEXT` tint recipes                        |
+| `ui/tone.ts`                                 | `Tone`, `TONE_CLASS` / `TONE_TEXT` tint recipes                |
 | `admin/AdminDetailTable.tsx`                 | styling for a dense table inside an editor, not a browser      |
 
 ## 15. Never

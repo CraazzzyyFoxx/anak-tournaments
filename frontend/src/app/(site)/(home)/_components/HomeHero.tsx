@@ -4,8 +4,9 @@ import { useTranslations } from "next-intl";
 
 import { PlayerSearchCombobox } from "@/components/PlayerSearchCombobox";
 import { HeroFrame } from "@/components/site/PageHero";
-import { EYEBROW_CLASS, HERO_TITLE_SIZE_CLASS, LEDE_CLASS } from "@/components/site/open-layout";
+import { HERO_TITLE_SIZE_CLASS, LEDE_CLASS } from "@/components/site/open-layout";
 import { owtButton } from "@/components/site/owt-button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
 
 import { HomeProfileLink, TEXT_LINK_CLASS } from "./HomeProfileLink";
@@ -24,7 +25,7 @@ export function HomeHero() {
       className="bg-[linear-gradient(135deg,var(--aqt-bg-2),var(--aqt-bg))]"
     >
       <div className="px-[clamp(20px,3.2vw,40px)] py-[clamp(24px,3.2vw,40px)]">
-        <p className={EYEBROW_CLASS}>{t("eyebrow")}</p>
+        <Eyebrow as="p">{t("eyebrow")}</Eyebrow>
         <h1
           id="home-hero-title"
           className={cn(

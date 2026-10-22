@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
 import { PANEL_CLASS, TEAM_BADGE_ACCENTS } from "@/components/balancer/balancer-page-helpers";
 import { calculateTeamAverageFromPayload } from "@/components/balancer/balancer-page-helpers";
@@ -82,9 +83,7 @@ export function TeamDistributionPanel({ variant, variantSelector }: Readonly<Tea
       {variantSelector ? <div className="mb-2">{variantSelector}</div> : null}
       <div className="flex items-center gap-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-            Team distribution
-          </span>
+          <Eyebrow>Team distribution</Eyebrow>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs tabular-nums text-[color:var(--aqt-fg-muted)]">
             <span>
               <span className="text-[color:var(--aqt-fg-dim)]">Avg</span>{" "}

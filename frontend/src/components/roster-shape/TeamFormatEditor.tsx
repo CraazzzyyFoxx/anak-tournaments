@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { ChevronRight, X } from "lucide-react";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -19,7 +19,7 @@ import { teamFormatPayload, type TeamFormatDimension, type TeamFormatRule, type 
 import { cn } from "@/lib/utils";
 
 const MODES = ["off", "informational", "preference", "enforced"] as const;
-const HEAD = cn("h-8 px-0 pr-3", EYEBROW_CLASS);
+const HEAD = cn("h-8 px-0 pr-3", eyebrowClass("muted"));
 const CELL = "px-0 py-2 pr-3";
 const ROW = "border-border/60 hover:bg-transparent";
 

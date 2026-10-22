@@ -3,11 +3,10 @@
 import { Ban, Repeat2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { RankCrest } from "@/components/RankCrest";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
-import { getDivisionLabel } from "@/lib/divisions/grid";
 import { findRole, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { PickBanTarget } from "@/types/tournament.types";
@@ -107,17 +106,7 @@ export function PickBanTargetBoard({
                       : "cursor-pointer focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
                   )}
                 >
-                  <span
-                    className="shrink-0"
-                    title={getDivisionLabel(divisionGrid, target.division) ?? undefined}
-                  >
-                    <DivisionIcon
-                      division={target.division}
-                      tournamentGrid={divisionGrid}
-                      width={30}
-                      height={30}
-                    />
-                  </span>
+                  <RankCrest division={target.division} grid={divisionGrid} size={30} />
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate text-sm font-semibold">{target.name}</span>
                     <span className="flex min-w-0 items-center gap-2.5 text-xs text-[color:var(--aqt-fg-muted)]">

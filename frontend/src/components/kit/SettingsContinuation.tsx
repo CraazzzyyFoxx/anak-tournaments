@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useEffectEvent,
   useId,
   useLayoutEffect,
   useRef,
@@ -17,7 +18,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp } from "lucide-react";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { holdScrollPosition } from "@/lib/scroll-hold";
 
@@ -79,11 +80,9 @@ const ENTER_MS = 320;
 const LEAVE_MS = 180;
 const SHIFT_PX = 32;
 
-const motionAllowed = () => !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
 /** `edge` is where the new page lands: "top" going on, "bottom" coming back. */
 function playLeave(page: HTMLElement | null, edge: Edge) {
-  if (!page || !motionAllowed()) return;
+  if (!page) return;
   const shift = edge === "top" ? -SHIFT_PX / 2 : SHIFT_PX / 2;
   page.animate?.(
     [
@@ -95,7 +94,7 @@ function playLeave(page: HTMLElement | null, edge: Edge) {
 }
 
 function playEnter(page: HTMLElement | null, edge: Edge) {
-  if (!page || !motionAllowed()) return;
+  if (!page) return;
   const shift = edge === "top" ? SHIFT_PX : -SHIFT_PX;
   page.animate?.(
     [
@@ -170,6 +169,11 @@ export function SettingsContinuation({
   const nextHref = next?.href ?? null;
   const previousHref = previous?.href ?? null;
 
+  // An Effect Event: the mount effect below reads the current preference and stays one-shot.
+  const enter = useEffectEvent((edge: Edge) => {
+    if (!reduced) playEnter(pageRef.current, edge);
+  });
+
   // Before paint, so the page never shows a frame at the old scroll offset
   // and the entrance starts from its first keyframe. The edge is kept in a
   // ref: a Strict Mode remount must land the same way.
@@ -179,7 +183,7 @@ export function SettingsContinuation({
       continued = null;
     }
     if (!landing.current) return;
-    playEnter(pageRef.current, landing.current);
+    enter(landing.current);
     if (landing.current === "top") {
       window.scrollTo({ top: 0 });
       return;
@@ -301,7 +305,9 @@ export function SettingsContinuation({
             next={next}
             hint={hint}
             ghostRef={aheadRef}
-            onLeave={() => playLeave(pageRef.current, "top")}
+            onLeave={() => {
+              if (!reduced) playLeave(pageRef.current, "top");
+            }}
           />
         ) : null}
       </div>
@@ -364,7 +370,7 @@ function NextPageGhost({
     >
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
         <div className="min-w-0">
-          <p className={EYEBROW_CLASS}>{t("next")}</p>
+          <p className={eyebrowClass("muted")}>{t("next")}</p>
           {/* The link's box covers the whole ghost: one target, one link. */}
           <Link
             id={titleId}

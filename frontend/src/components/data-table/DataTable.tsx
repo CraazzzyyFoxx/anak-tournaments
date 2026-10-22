@@ -11,6 +11,8 @@ import type { Row } from "@tanstack/react-table";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InfiniteScrollFooter } from "@/components/ui/infinite-scroll";
+import { DataPagination } from "@/components/ui/data-pagination";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useIsMobile, usePathname } from "@/components/data-table/host";
 import {
   ADMIN_ACTION_COLUMN_ID,
@@ -27,7 +29,6 @@ import { renderBodyItem, type RowHandlers, type SharedRowProps } from "@/compone
 import { AdminRowContextMenu } from "@/components/data-table/AdminRowContextMenu";
 import { AdminTableHeader } from "@/components/data-table/AdminTableHeader";
 import { AdminTableToolbar, type PickerColumn } from "@/components/data-table/AdminTableToolbar";
-import { AdminTablePagination } from "@/components/data-table/AdminTablePagination";
 import { AdminTableEmptyState } from "@/components/data-table/AdminTableEmptyState";
 import { AdminTableMobileList } from "@/components/data-table/AdminTableMobileList";
 import { useAdminTableState } from "@/components/data-table/useAdminTableState";
@@ -46,7 +47,7 @@ const DEFAULT_PAGE_SIZE_OPTIONS = [10, 15, 25, 50, 100];
  * rows. Everything with a seam of its own lives next to it: the URL state
  * (`useAdminTableState`), the two data modes (`useAdminTableData`), column
  * geometry (`column-layout`), the cells (`head-cell`, `body-cells`) and the
- * chrome (`AdminTableToolbar`, `AdminTablePagination`, `AdminTableMobileList`).
+ * chrome (`AdminTableToolbar`, `AdminTableMobileList`, the `DataPagination` footer).
  */
 export function DataTable<TData>({
   queryKey,
@@ -80,6 +81,7 @@ export function DataTable<TData>({
   renderMobileCard,
 }: Readonly<DataTableProps<TData>>) {
   const t = useTranslations("kitTable.dataTableExtra");
+  const tTable = useTranslations("kitTable.table");
   const isClientMode = rows !== undefined;
   // Server mode has no accumulating query to grow, so it always paginates.
   const isInfinite = isClientMode && paging === "infinite";
@@ -511,16 +513,39 @@ export function DataTable<TData>({
       </div>
 
       {safeTotal > 0 && !isInfinite && !showAll && (
-        <AdminTablePagination
-          total={safeTotal}
-          rangeStart={rangeStart}
-          rangeEnd={rangeEnd}
-          currentPage={currentPage}
-          totalPageCount={totalPageCount}
+        <DataPagination
+          page={currentPage}
+          totalPages={totalPageCount}
           onPageChange={setCurrentPage}
-          pageSize={effectivePageSize}
-          pageSizeOptions={availablePageSizeOptions}
-          onPageSizeChange={(next) => { setCurrentPage(1); setPageSize(next); }}
+          className="border-t border-border/40 px-4 py-2"
+          // One page: the count and the page size stay (a larger page is how a
+          // reader gets back a split list); only the pager goes.
+          leading={
+            <div className="flex items-center gap-3">
+              <span className="tabular-nums">{tTable("range", { start: rangeStart, end: rangeEnd, total: safeTotal })}</span>
+              <div className="flex items-center gap-1.5">
+                <span>{tTable("rows")}</span>
+                <Select
+                  value={String(effectivePageSize)}
+                  onValueChange={(value) => {
+                    setCurrentPage(1);
+                    setPageSize(Number(value));
+                  }}
+                >
+                  <SelectTrigger aria-label={tTable("rowsPerPage")} size="sm" className="w-auto gap-1 px-2.5 tabular-nums">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availablePageSizeOptions.map((option) => (
+                      <SelectItem key={option} value={String(option)} className="tabular-nums">
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          }
         />
       )}
     </div>

@@ -5,7 +5,6 @@ import {
   useEffect,
   useRef,
   useState,
-  useSyncExternalStore,
   type PointerEvent as ReactPointerEvent,
   type ReactNode
 } from "react";
@@ -14,6 +13,7 @@ import { useTranslations } from "next-intl";
 
 import { SectionHead } from "@/components/site/open-layout";
 import { owtButton } from "@/components/site/owt-button";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { cn } from "@/lib/utils";
 
 /**
@@ -57,18 +57,6 @@ const INITIAL: RailMetrics = {
   overflow: false
 };
 
-// Reduced motion decides the DEFAULT autoplay state, which the pause/play
-// button renders, so it is read through `useSyncExternalStore`: the server
-// snapshot (motion allowed) hydrates without a mismatch and the real value
-// lands on the first client render.
-const REDUCE_MOTION = "(prefers-reduced-motion: reduce)";
-
-function subscribeReduceMotion(onChange: () => void) {
-  const query = window.matchMedia(REDUCE_MOTION);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-}
-
 export function DirectoryRail({
   titleId,
   children
@@ -76,11 +64,10 @@ export function DirectoryRail({
   const t = useTranslations("home.directory");
   const railRef = useRef<HTMLDivElement>(null);
   const [metrics, setMetrics] = useState<RailMetrics>(INITIAL);
-  const reduceMotion = useSyncExternalStore(
-    subscribeReduceMotion,
-    () => window.matchMedia(REDUCE_MOTION).matches,
-    () => false
-  );
+  // Reduced motion decides the DEFAULT autoplay state, which the pause/play
+  // button renders: the server answer (motion allowed) hydrates without a
+  // mismatch and the real value lands on the first client render.
+  const reduceMotion = usePrefersReducedMotion();
   // `null` = still following the reduced-motion default; a boolean is the
   // visitor's own decision, and a take-over is a stop that sticks.
   const [override, setOverride] = useState<boolean | null>(null);

@@ -29,7 +29,7 @@ import {
   SidebarUserDropdown,
   SidebarWorkspaceLogoItem
 } from "@/components/admin/sidebar-shared";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
 
 export function AdminSidebar() {
@@ -98,7 +98,7 @@ export function AdminSidebar() {
                 sidebar ramp rather than the page one. */}
             {group.title ? (
               <div className="flex items-center gap-2 px-3 py-1.5 group-data-[collapsible=icon]:hidden">
-                <span className={cn(EYEBROW_CLASS, "text-sidebar-foreground/60")}>
+                <span className={cn(eyebrowClass("muted"), "text-sidebar-foreground/60")}>
                   {t(group.title as never)}
                 </span>
               </div>

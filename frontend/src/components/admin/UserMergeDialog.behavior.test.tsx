@@ -38,7 +38,7 @@ vi.mock("@/services/admin.service", () => ({
 vi.mock("@/stores/auth-profile.store", () => ({
   useAuthProfileStore: { getState: () => ({ fetchMe }) }
 }));
-vi.mock("@/components/admin/UserSearchCombobox", () => ({
+vi.mock("@/components/kit/ServerSearchCombobox", () => ({
   UserSearchCombobox: ({ id, value, onSelect }: {
     id: string;
     value?: number;

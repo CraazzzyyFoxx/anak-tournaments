@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { ScrollText, FileDown, FileX } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import type { RawSourceStatus } from "@/types/encounter.types";
@@ -128,9 +129,9 @@ const MatchLogIndicator = ({ hasLogs, logs, size = 15, className }: MatchLogIndi
         </button>
       </PopoverTrigger>
       <PopoverContent className="w-56 p-1.5" onClick={stop}>
-        <div className="px-2 pb-1.5 pt-1 text-label font-bold uppercase tracking-label text-muted-foreground">
+        <Eyebrow as="div" tone="muted" className="px-2 pb-1.5 pt-1">
           {t("common.matchLogs.title")}
-        </div>
+        </Eyebrow>
         <div className="flex flex-col">
           {downloadable.map((log, i) => (
             <a

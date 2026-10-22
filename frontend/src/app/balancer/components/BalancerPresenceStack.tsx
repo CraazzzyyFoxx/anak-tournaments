@@ -4,12 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { PlayerAvatar } from "@/components/PlayerAvatar";
 import workspaceService from "@/services/workspace.service";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import type { WorkspaceMember } from "@/types/workspace.types";
 import { memberDisplayName } from "@/lib/workspace/member";
-import { initials } from "@/lib/utils";
 import { workspaceQueryKeys } from "@/lib/workspace/query-keys";
 
 /** Portal target rendered by {@link BalancerToolTopBar}. */
@@ -78,16 +77,13 @@ export function BalancerPresenceStack({ userIds, workspaceId }: BalancerPresence
         const member = membersById.get(userId);
         const name = memberDisplayName(member, userId);
         return (
-          <Avatar
+          <PlayerAvatar
             key={userId}
-            title={name}
-            className="h-7 w-7 border-2 border-background bg-muted text-xs"
-          >
-            {member?.avatar_url ? <AvatarImage src={member.avatar_url} alt={name} /> : null}
-            <AvatarFallback className="text-label font-medium text-foreground">
-              {initials(name)}
-            </AvatarFallback>
-          </Avatar>
+            user={{ name, avatar_url: member?.avatar_url ?? null }}
+            size={28}
+            named
+            className="border-2 border-background"
+          />
         );
       })}
       {overflow > 0 ? (

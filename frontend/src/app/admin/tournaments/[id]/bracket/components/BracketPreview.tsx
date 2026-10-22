@@ -4,7 +4,8 @@ import { useCallback, useMemo } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { EYEBROW_CLASS, TONE_TEXT } from "@/components/kit/tone";
+import { TONE_TEXT } from "@/components/ui/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { BracketView, type BracketSlotRef } from "@/components/bracket/BracketView";
 import { previewToBracketMatches, type BracketMatch } from "@/lib/bracket/view";
 import { seatAt } from "@/lib/encounter/seats";
@@ -172,7 +173,7 @@ export function BracketPreview({
         <h3 id="bracket-preview-heading" className="text-sm font-semibold text-foreground">
           {t("title")}
         </h3>
-        <p className={EYEBROW_CLASS}>
+        <p className={eyebrowClass("muted")}>
           {generated.length > 0
             ? t("generated")
             : canReseed
@@ -230,7 +231,7 @@ export function BracketPreview({
           <div className="space-y-4">
             {groupSections.map((section) => (
               <div key={section.key}>
-                <p className={cn(EYEBROW_CLASS, "mb-1")}>{section.label}</p>
+                <p className={cn(eyebrowClass("muted"), "mb-1")}>{section.label}</p>
                 <BracketView
                   encounters={section.matches}
                   type={stage.stage_type}

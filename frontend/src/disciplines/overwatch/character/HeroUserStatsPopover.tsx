@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import CharacterCard, { CharacterMapStats, signedPoints } from "@/components/profile/CharacterCard";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import type { SlotProps } from "@/disciplines/types";
 import { characterClass } from "@/lib/catalog/attrs";
 import { LOW_SAMPLE_GAMES, winrateColor } from "@/lib/colors";
@@ -57,7 +58,7 @@ function StatRow({
   const max = average == null ? 0 : Math.max(you, average) * 1.15;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3">
-      <dt className="truncate text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">{label}</dt>
+      <Eyebrow as="dt" className="truncate">{label}</Eyebrow>
       <dd className="aqt-tnum text-caption font-bold text-[color:var(--aqt-fg)]">
         {value}
         {averageText ? <span className="sr-only">, {averageText}</span> : null}
@@ -163,9 +164,7 @@ export function HeroStatsPopover({ hero, metadata }: Readonly<{ hero: CharacterS
 
       {record ? (
         <dl className="border-t border-[color:var(--aqt-border)] pt-3">
-          <dt className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-            {t("users.heroes.card.bestGame")}
-          </dt>
+          <Eyebrow as="dt">{t("users.heroes.card.bestGame")}</Eyebrow>
           <dd className="mt-0.5 truncate text-caption font-bold text-[color:var(--aqt-fg)]">
             {t("users.heroes.card.recordValue", {
               stat: record.stat,

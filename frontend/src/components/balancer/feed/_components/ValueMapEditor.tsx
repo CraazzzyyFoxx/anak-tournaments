@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import type { ValueMapRow } from "@/types/balancer-admin.types";
 import type { SubroleCatalog, SubroleOption } from "@/types/registration.types";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
@@ -320,10 +320,10 @@ export function ValueMapEditor({
       ) : (
         <div className="space-y-2">
           <div className={`grid items-center gap-2 ${kind === "role_subrole" ? "grid-cols-[1fr_2fr_auto]" : "grid-cols-[1fr_1fr_auto]"}`}>
-            <Label className={EYEBROW_CLASS}>
+            <Label className={eyebrowClass("muted")}>
               {t("sheetText")}
             </Label>
-            <Label className={EYEBROW_CLASS}>
+            <Label className={eyebrowClass("muted")}>
               {t("mappedValue")}
             </Label>
             <span />

@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { StatusPill } from "@/components/kit/StatusPill";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { NumberInput } from "@/components/ui/number-input";
 import { Switch } from "@/components/ui/switch";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -39,7 +39,7 @@ export default function RegistrationSettingsPage() {
             <RegistrationForm tournamentId={tournamentId} disabled={!canTeamCreate} />
           </div>
           <section className="flex flex-col gap-3">
-            <h2 className={EYEBROW_CLASS}>{t("questionnaire.title")}</h2>
+            <h2 className={eyebrowClass("muted")}>{t("questionnaire.title")}</h2>
             <RegistrationFormBuilder
               tournamentId={tournamentId}
               identityProvider={tournament.identity_provider}

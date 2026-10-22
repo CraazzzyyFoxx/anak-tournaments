@@ -6,6 +6,7 @@ import { ArrowDown, Crown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogStatsName } from "../stat-names";
 import { formatDelta, formatStatValue } from "./utils";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { SearchField } from "@/components/ui/search-field";
 
 export type StatSortKey = "delta" | "overall" | "avg10" | "name";
@@ -53,9 +54,10 @@ const HeroStatsTable = ({
         type="button"
         onClick={() => onSortChange(k)}
         className={cn(
-          "aqt-tnum inline-flex select-none items-center gap-1 rounded-sm text-label font-bold uppercase tracking-label outline-none transition-colors",
+          eyebrowClass(),
+          "aqt-tnum inline-flex select-none items-center gap-1 rounded-sm outline-none transition-colors",
           "focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
-          sort === k ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-faint)] hover:text-[color:var(--aqt-fg-muted)]"
+          sort === k ? "text-[color:var(--aqt-teal)]" : "hover:text-[color:var(--aqt-fg-muted)]"
         )}
       >
         {srLabel ? (
@@ -92,11 +94,11 @@ const HeroStatsTable = ({
             <tr>
               {sortTh(t("users.heroes.col.stat"), "name", "left")}
               {sortTh(t("users.heroes.col.overall"), "overall")}
-              <th scope="col" className="aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">{t("users.heroes.col.bestYou")}</th>
+              <th scope="col" className={cn(eyebrowClass(), "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right")}>{t("users.heroes.col.bestYou")}</th>
               {sortTh(t("users.heroes.col.avg10"), "avg10")}
               {sortTh("Δ", "delta", "right", t("users.heroes.col.delta"))}
-              <th scope="col" className="aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">{t("users.heroes.col.bestAll")}</th>
-              <th scope="col" className="aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">{t("users.heroes.col.global10")}</th>
+              <th scope="col" className={cn(eyebrowClass(), "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right")}>{t("users.heroes.col.bestAll")}</th>
+              <th scope="col" className={cn(eyebrowClass(), "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right")}>{t("users.heroes.col.global10")}</th>
             </tr>
           </thead>
           <tbody>

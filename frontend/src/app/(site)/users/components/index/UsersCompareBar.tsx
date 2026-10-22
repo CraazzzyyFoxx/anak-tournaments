@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { PlayerAvatar, type PlayerIdentity } from "@/components/PlayerAvatar";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { OverlayBar } from "@/components/ui/overlay-bar";
 
 /** The compare tool takes exactly two players. */
@@ -59,9 +60,7 @@ export function UsersCompareBar({ compare }: Readonly<{ compare: CompareSelectio
   return (
     <OverlayBar tone={ready ? "active" : "neutral"} ariaLabel={t("users.list.compare.barLabel")}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-          {t("users.list.compare.title")}
-        </span>
+        <Eyebrow>{t("users.list.compare.title")}</Eyebrow>
         {compare.selected.map((user) => (
           <span
             key={user.id}

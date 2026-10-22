@@ -16,6 +16,7 @@ import { useTranslations } from "next-intl";
 import { TeamLogo, type TeamNameInput } from "@/components/TeamName";
 import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 import { seatAt, seatTeam, type Duel } from "@/lib/encounter/seats";
@@ -152,10 +153,10 @@ export function PregameHeader({
         <h1 className="font-onest text-xl font-semibold tracking-[-0.01em]">{t("title")}</h1>
         {session != null ? <StatusMark status={session.status} /> : null}
         {round != null ? (
-          <span className="ml-auto text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+          <Eyebrow className="ml-auto">
             {t("round.label", { n: round })}
             {bestOf != null ? ` / ${t("board.bestOf", { n: bestOf })}` : ""}
-          </span>
+          </Eyebrow>
         ) : null}
       </div>
 
@@ -309,14 +310,12 @@ function Scoreboard({
         {toWin != null ? (
           <>
             <SeriesPips scoreOne={scoreOne} scoreTwo={scoreTwo} toWin={toWin} />
-            <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-              {t("board.toWin", { n: toWin })}
-            </span>
+            <Eyebrow>{t("board.toWin", { n: toWin })}</Eyebrow>
           </>
         ) : (
-          <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+          <Eyebrow>
             {bestOf != null && bestOf > 1 ? t("board.bestOf", { n: bestOf }) : t("board.score")}
-          </span>
+          </Eyebrow>
         )}
         {official != null ? (
           <span
@@ -387,7 +386,8 @@ function TeamSide({
         </span>
         <span
           className={cn(
-            "flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]",
+            eyebrowClass(),
+            "flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1",
             align === "end" ? "flex-row-reverse" : null
           )}
         >
@@ -513,13 +513,10 @@ function PhaseRail({
         })}
       </ol>
       {activeEntry != null ? (
-        <span
-          aria-hidden
-          className="text-label uppercase tracking-label text-[color:var(--aqt-fg-muted)]"
-        >
+        <Eyebrow aria-hidden tone="muted">
           <span className="text-[color:var(--aqt-teal)]">{t(`phase.${activeEntry.phase}`)}</span>
           {` · ${t("phase.current")}`}
-        </span>
+        </Eyebrow>
       ) : null}
     </div>
   );

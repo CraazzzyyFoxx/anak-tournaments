@@ -14,9 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
-import FieldLabel from "./FieldLabel";
-import { fieldControlClass, fieldInvalidClass } from "./FormField";
+import FieldShell from "@/components/forms/FieldShell";
 
 interface VerifiedAccountSelectProps {
   label: string;
@@ -46,8 +44,6 @@ export default function VerifiedAccountSelect({
 }: Readonly<VerifiedAccountSelectProps>) {
   const t = useTranslations();
   const controlId = useId();
-  const errorId = `${controlId}-error`;
-  const hintId = `${controlId}-hint`;
   const config = getSocialProviderConfig(provider);
   const verified = accounts.filter((a) => a.provider === provider && a.is_verified);
   const usernames = verified.map((a) => a.username);
@@ -70,8 +66,7 @@ export default function VerifiedAccountSelect({
     const next = typeof window !== "undefined" ? window.location.pathname + window.location.search : "/";
     const connectHref = `/auth/${provider}/login?action=link&next=${encodeURIComponent(next)}`;
     return (
-      <div className="space-y-2">
-        <FieldLabel label={label} required={required} icon={iconEl} />
+      <FieldShell id={controlId} label={label} required={required} icon={iconEl} error={error} layout="group">
         <div className="rounded-lg border border-warning/30 bg-warning/5 p-3">
           <p className="text-xs text-warning">
             {t("registration.accounts.verifiedNone", { label })}
@@ -87,43 +82,41 @@ export default function VerifiedAccountSelect({
             <ExternalLink className="size-3 opacity-60" aria-hidden />
           </a>
         </div>
-        {error && <p className="text-xs text-destructive">{error}</p>}
-      </div>
+      </FieldShell>
     );
   }
 
   return (
-    <div className="space-y-2">
-      <FieldLabel label={label} htmlFor={controlId} required={required} icon={iconEl} />
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger
-          id={controlId}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? errorId : hintId}
-          className={cn(fieldControlClass, error && fieldInvalidClass)}
-        >
-          <SelectValue placeholder={config.placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {verified.map((account) => (
-            <SelectItem key={account.id} value={account.username}>
-              <span className="flex items-center gap-2">
-                <SocialIcon provider={provider} size={13} />
-                <span className="truncate">{account.username}</span>
-                <ShieldCheck
-                  className="size-3.5 text-[color:var(--aqt-emerald)]"
-                  aria-label={t("registration.accounts.verified")}
-                />
-                {value === account.username && <Check className="size-3.5 opacity-60" aria-hidden />}
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      <p id={hintId} className="text-label text-[color:var(--aqt-fg-dim)]">
-        {t("registration.accounts.verifiedHint")}
-      </p>
-      {error && <p id={errorId} className="text-xs text-destructive">{error}</p>}
-    </div>
+    <FieldShell
+      id={controlId}
+      label={label}
+      required={required}
+      icon={iconEl}
+      help={t("registration.accounts.verifiedHint")}
+      error={error}
+    >
+      {(control) => (
+        <Select value={value} onValueChange={onChange}>
+          <SelectTrigger {...control} variant="surface">
+            <SelectValue placeholder={config.placeholder} />
+          </SelectTrigger>
+          <SelectContent>
+            {verified.map((account) => (
+              <SelectItem key={account.id} value={account.username}>
+                <span className="flex items-center gap-2">
+                  <SocialIcon provider={provider} size={13} />
+                  <span className="truncate">{account.username}</span>
+                  <ShieldCheck
+                    className="size-3.5 text-[color:var(--aqt-emerald)]"
+                    aria-label={t("registration.accounts.verified")}
+                  />
+                  {value === account.username && <Check className="size-3.5 opacity-60" aria-hidden />}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
+    </FieldShell>
   );
 }

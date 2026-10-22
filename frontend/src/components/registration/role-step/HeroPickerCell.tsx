@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RoleAccent } from "@/lib/registration/role-accent";
 import { cn } from "@/lib/utils";
@@ -106,9 +107,9 @@ export function HeroPickerCell({
         }
         className="w-[min(22rem,calc(100vw-2rem))] space-y-2 p-3"
       >
-        <p className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
+        <Eyebrow as="p" tone="muted">
           {showRole ? roleLabel : t("registration.roles.topHeroes.title")}
-        </p>
+        </Eyebrow>
         <HeroPickerBlock
           heroes={heroes}
           selected={selected}

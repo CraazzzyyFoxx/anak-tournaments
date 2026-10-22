@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Star } from "lucide-react";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { EncounterScoreControls } from "@/components/tournaments/EncounterScoreControls";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -326,7 +326,7 @@ function EncounterEditDialogBody({
           {isConfirmed ? (
             <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-muted/10 p-4">
               <div>
-                <p className={EYEBROW_CLASS}>{t("matchEdit.matchScore")}</p>
+                <p className={eyebrowClass("muted")}>{t("matchEdit.matchScore")}</p>
                 <p className="mt-0.5 text-xs text-muted-foreground">{t("matchEdit.confirmedHint")}</p>
               </div>
               <div className="rounded-lg border border-border/60 bg-background px-3.5 py-1.5 text-lg font-bold tracking-label text-foreground tabular-nums">

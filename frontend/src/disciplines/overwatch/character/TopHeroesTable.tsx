@@ -12,6 +12,7 @@ import { formatSeconds } from "@/lib/format";
 import { formatStatValue, getOverall, heroWinrate, statAvg10 } from "./utils";
 import { LOW_SAMPLE_GAMES, winrateColor } from "@/lib/colors";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import { HeroStatsPopover } from "./HeroUserStatsPopover";
 import { useHeroClass } from "./classes";
 import { cn } from "@/lib/utils";
@@ -39,8 +40,7 @@ interface Row {
  *  mix an em dash (winrate) with an en dash (vs-avg) in the same row. */
 const EMPTY = "—";
 
-const numHeader = "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
-const textHeader = "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-left text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
+const numHeader = cn(eyebrowClass(), "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-right");
 const numCell = "aqt-tnum px-3 py-2.5 text-right text-caption text-[color:var(--aqt-fg-muted)]";
 
 /** Overwatch's most-played heroes on the profile overview (the `topCharacters` slot). */
@@ -103,8 +103,8 @@ const TopHeroesTable = ({ characters, userSlug, metadata }: SlotProps["topCharac
         <table className="w-full border-collapse text-caption">
           <thead>
             <tr>
-              <th className={textHeader}>{t("users.overview.topHeroes.col.hero")}</th>
-              <th className={cn(textHeader, "text-center")}>{t("users.overview.topHeroes.col.role")}</th>
+              <th className={cn(eyebrowClass(), "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-left")}>{t("users.overview.topHeroes.col.hero")}</th>
+              <th className={cn(eyebrowClass(), "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-center")}>{t("users.overview.topHeroes.col.role")}</th>
               {columns.games ? <th className={numHeader}>{t("users.overview.topHeroes.col.games")}</th> : null}
               {columns.playtime ? <th className={numHeader}>{t("users.overview.topHeroes.col.time")}</th> : null}
               {columns.share ? (
@@ -139,12 +139,9 @@ const TopHeroesTable = ({ characters, userSlug, metadata }: SlotProps["topCharac
                           {r.hero.character.name}
                         </div>
                         {r.lowSample ? (
-                          <span
-                            className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
-                            title={lowSampleTitle}
-                          >
+                          <Eyebrow className="aqt-tnum" title={lowSampleTitle}>
                             {t("users.overview.topHeroes.lowSample")}
-                          </span>
+                          </Eyebrow>
                         ) : null}
                       </div>
                     </div>

@@ -21,6 +21,7 @@ import InfoDot from "@/disciplines/overwatch/analytics/components/InfoDot";
 import { analyticsQueryKeys } from "@/lib/analytics/query-keys";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { duelSeats } from "@/lib/encounter/seats";
+import { splitHandle } from "@/lib/player";
 
 interface MatchQualityCardProps {
   tournamentId: number;
@@ -244,7 +245,7 @@ export default function MatchQualityCard({ tournamentId, onExplain, playerNames 
                             <AnomalyFlag kind={flag.kind} reasons={flag.reasons} label="short" />
                             {playerNames?.get(flag.player_id) ? (
                               <span className="text-caption text-[color:var(--aqt-fg-muted)]">
-                                {playerNames.get(flag.player_id)?.split("#")[0]}
+                                {splitHandle(playerNames.get(flag.player_id)!).name}
                               </span>
                             ) : null}
                             {canReview ? (

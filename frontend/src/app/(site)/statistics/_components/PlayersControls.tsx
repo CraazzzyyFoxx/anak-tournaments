@@ -51,7 +51,7 @@ export function PlayersPagination({
     <DataPagination
       page={page}
       totalPages={totalPages}
-      summary={summary}
+      leading={summary}
       onPageChange={(next) => setParams({ page: next > 1 ? next : null })}
       className="mt-3"
     />

@@ -110,11 +110,13 @@ export function PlayerEditModal({
     >
       <SheetContent
         side="right"
-        className="flex w-full flex-col overflow-hidden border-border bg-popover/95 p-0 text-[color:var(--aqt-fg)] shadow-2xl shadow-black/50 backdrop-blur-xl sm:max-w-[640px] [&>button:last-child]:right-4 [&>button:last-child]:top-4 [&>button:last-child]:z-20 [&>button:last-child]:flex [&>button:last-child]:h-8 [&>button:last-child]:w-8 [&>button:last-child]:items-center [&>button:last-child]:justify-center [&>button:last-child]:rounded-lg [&>button:last-child]:border [&>button:last-child]:border-[color:var(--aqt-border-2)] [&>button:last-child]:bg-[color:var(--aqt-bg-2)] [&>button:last-child]:p-0 [&>button:last-child]:text-[color:var(--aqt-fg-muted)] [&>button:last-child]:backdrop-blur-sm [&>button:last-child]:hover:bg-[color:var(--aqt-overlay-3)] [&>button:last-child]:hover:text-[color:var(--aqt-fg)] [&>button:last-child]:data-[state=open]:bg-[color:var(--aqt-bg-2)] [&>button:last-child]:data-[state=open]:text-[color:var(--aqt-fg-muted)]"
+        variant="panel"
+        className="w-full bg-popover/95 backdrop-blur-xl sm:max-w-[640px] [&>button:last-child]:right-4 [&>button:last-child]:top-4 [&>button:last-child]:z-20 [&>button:last-child]:flex [&>button:last-child]:h-8 [&>button:last-child]:w-8 [&>button:last-child]:items-center [&>button:last-child]:justify-center [&>button:last-child]:rounded-lg [&>button:last-child]:border [&>button:last-child]:border-[color:var(--aqt-border-2)] [&>button:last-child]:bg-[color:var(--aqt-bg-2)] [&>button:last-child]:p-0 [&>button:last-child]:text-[color:var(--aqt-fg-muted)] [&>button:last-child]:backdrop-blur-sm [&>button:last-child]:hover:bg-[color:var(--aqt-overlay-3)] [&>button:last-child]:hover:text-[color:var(--aqt-fg)] [&>button:last-child]:data-[state=open]:bg-[color:var(--aqt-bg-2)] [&>button:last-child]:data-[state=open]:text-[color:var(--aqt-fg-muted)]"
       >
         <SheetHeader
+          variant="panel"
           className={cn(
-            "shrink-0 border-b border-[color:var(--aqt-border)] px-4 pb-2.5 pt-3 sm:px-5 sm:pb-3 sm:pt-3.5",
+            "px-4 pb-2.5 pt-3 sm:px-5 sm:pb-3 sm:pt-3.5",
             onRemove ? "pr-20 sm:pr-24" : "pr-14 sm:pr-16"
           )}
         >

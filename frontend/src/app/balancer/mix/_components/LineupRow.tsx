@@ -6,11 +6,11 @@ import { useTranslations } from "next-intl";
 import { useDraggable } from "@dnd-kit/core";
 import { Armchair, GripVertical, RotateCw, SlidersHorizontal, X } from "lucide-react";
 
-import { PANEL_CLASS, splitHandle } from "@/components/balancer/balancer-page-helpers";
+import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { AWAY_CHIP_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
-import DivisionIcon from "@/components/DivisionIcon";
+import { HandleLabel } from "@/components/HandleLabel";
+import { RankCrest } from "@/components/RankCrest";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
-import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { cn } from "@/lib/utils";
 import type {
   CustomGamePlayer,
@@ -144,10 +144,8 @@ export function LineupRow({
   const tRoom = useTranslations("mixes.room");
   const { grid } = owner;
   const label = playerLabel(row);
-  const { name, suffix } = splitHandle(label);
   const issue = getLineupIssue(row, owner.roles);
   const rank = averageRank(row, owner.roles);
-  const division = resolveDivisionFromRank(grid, rank);
   const canDrag = canWrite && !saving;
   const draggable = useDraggable({
     id: String(row.workspace_member_id),
@@ -188,14 +186,11 @@ export function LineupRow({
         aria-hidden="true"
       />
 
-      <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-        <span className="truncate text-caption font-semibold text-[color:var(--aqt-fg)]">
-          {name}
-        </span>
-        {suffix ? (
-          <span className="shrink-0 text-xs text-[color:var(--aqt-fg-faint)]">{suffix}</span>
-        ) : null}
-      </span>
+      <HandleLabel
+        handle={label}
+        className="flex-1 text-caption font-semibold text-[color:var(--aqt-fg)]"
+        tagClassName="text-xs"
+      />
 
       {row.away ? <span className={AWAY_CHIP_CLASS}>{tRoom("away")}</span> : null}
       {lobbyCount > 1 ? <LineupLobbyBadge currentLobby={row.current_lobby} /> : null}
@@ -215,11 +210,7 @@ export function LineupRow({
       ) : null}
 
       <div className="flex w-[92px] shrink-0 items-center justify-end gap-1.5">
-        {division == null ? null : (
-          <IconTooltip label={getDivisionLabel(grid, division) ?? String(division)}>
-            <DivisionIcon division={division} tournamentGrid={grid} width={22} height={22} />
-          </IconTooltip>
-        )}
+        <RankCrest rank={rank} grid={grid} />
         {/* One number, one meaning: the mean of the effective ranks the balancer
             will use. The `*` that used to mark a per-mix pin is gone with the pin
             itself — which layer each role resolved from is named in the sheet. */}
@@ -264,7 +255,6 @@ export function LineupRow({
 /** The dragged row's own card, detached from its column, following the pointer. */
 export function LineupDragPreview({ row, owner }: Readonly<{ row: CustomGamePlayer; owner: MixOwner }>) {
   const label = playerLabel(row);
-  const { name, suffix } = splitHandle(label);
   const rank = averageRank(row, owner.roles);
 
   return (
@@ -278,12 +268,11 @@ export function LineupDragPreview({ row, owner }: Readonly<{ row: CustomGamePlay
         className="size-3.5 shrink-0 text-[color:var(--aqt-fg-faint)]"
         aria-hidden="true"
       />
-      <span className="min-w-0 flex-1 truncate text-caption font-semibold text-[color:var(--aqt-fg)]">
-        {name}
-        {suffix ? (
-          <span className="ml-1 text-xs text-[color:var(--aqt-fg-faint)]">{suffix}</span>
-        ) : null}
-      </span>
+      <HandleLabel
+        handle={label}
+        className="flex-1 text-caption font-semibold text-[color:var(--aqt-fg)]"
+        tagClassName="text-xs"
+      />
       <span className="shrink-0 text-caption font-semibold tabular-nums text-[color:var(--aqt-fg)]">
         {rank ?? "\u2014"}
       </span>

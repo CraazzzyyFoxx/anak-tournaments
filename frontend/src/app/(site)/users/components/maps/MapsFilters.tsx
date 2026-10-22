@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp } from "lucide-react";
 
-import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
+import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
 import { SearchField } from "@/components/ui/search-field";
 import { AqtSelect } from "@/app/(site)/users/components/maps/atoms";
 

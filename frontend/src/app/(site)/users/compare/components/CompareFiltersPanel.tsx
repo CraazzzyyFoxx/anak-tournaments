@@ -9,13 +9,14 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { useRoleName } from "@/hooks/useRoleName";
 import { registrationRoles, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import type { DivisionGridLike } from "@/lib/divisions/grid";
-import UserSearchCombobox from "@/app/(site)/users/compare/components/UserSearchCombobox";
+import { UserSearchCombobox } from "@/components/kit/ServerSearchCombobox";
 import SearchableImageSelect, {
   type SearchableImageOption,
 } from "@/components/ui/searchable-image-select";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { DivisionCombobox } from "@/components/DivisionCombobox";
-import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
+import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import { Tournament } from "@/types/tournament.types";
 
@@ -50,9 +51,6 @@ interface CompareFiltersPanelProps {
   isTournamentsError: boolean;
   updateParams: (updates: Record<string, string | number | undefined>) => void;
 }
-
-const SECTION_LABEL =
-  "aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 
 const FilterField = ({ label, children }: Readonly<{ label: string; children: ReactNode }>) => (
   <div className="flex min-w-0 flex-col gap-1.5">
@@ -135,19 +133,20 @@ const CompareFiltersPanel = ({
   return (
     <div className="space-y-5">
       <section className="space-y-3">
-        <h2 className={SECTION_LABEL}>{t("common.playersLabel")}</h2>
+        <Eyebrow as="h2" className="aqt-tnum">{t("common.playersLabel")}</Eyebrow>
         <div className="grid gap-3 md:grid-cols-2">
           <FilterField label={t("users.compare.selectedUser")}>
             <UserSearchCombobox
               value={subjectUserId}
-              selectedName={selectedSubjectName}
-              isLabelLoading={subjectNameLoading}
+              selectedLabel={selectedSubjectName}
+              labelLoading={subjectNameLoading}
               placeholder={t("users.compare.selectSubjectUser")}
-              allowClear={false}
-              onSelect={(nextUserId) => {
-                if (typeof nextUserId === "number" && nextUserId > 0) {
-                  updateParams({ user_id: nextUserId });
-                }
+              triggerAriaLabel={t("users.compare.selectedUser")}
+              clearLabel={null}
+              variant="toolbar"
+              size="sm"
+              onSelect={(user) => {
+                if (user) updateParams({ user_id: user.id });
               }}
             />
           </FilterField>
@@ -155,21 +154,20 @@ const CompareFiltersPanel = ({
           <FilterField label={t("users.compare.compareAgainst")}>
             <UserSearchCombobox
               value={targetUserId}
-              selectedName={selectedTargetName}
-              isLabelLoading={targetNameLoading}
+              selectedLabel={selectedTargetName}
+              labelLoading={targetNameLoading}
               placeholder={t("users.compare.allPlayersAverage")}
-              onSelect={(nextUserId) => {
-                if (typeof nextUserId === "number" && nextUserId > 0) {
-                  updateParams({
-                    target_user_id: nextUserId,
-                    div_min: undefined,
-                    div_max: undefined
-                  });
-                  return;
-                }
-
-                updateParams({ target_user_id: undefined });
-              }}
+              triggerAriaLabel={t("users.compare.compareAgainst")}
+              clearLabel={t("users.compare.compareWithAllAvg")}
+              variant="toolbar"
+              size="sm"
+              onSelect={(user) =>
+                updateParams(
+                  user
+                    ? { target_user_id: user.id, div_min: undefined, div_max: undefined }
+                    : { target_user_id: undefined }
+                )
+              }
             />
           </FilterField>
         </div>
@@ -177,7 +175,7 @@ const CompareFiltersPanel = ({
 
       <section className="space-y-3 border-t border-[color:var(--aqt-border)] pt-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className={SECTION_LABEL}>{t("users.compare.filters.title")}</h2>
+          <Eyebrow as="h2" className="aqt-tnum">{t("users.compare.filters.title")}</Eyebrow>
           <ToggleGroup
             type="single"
             variant="pill"
@@ -258,7 +256,7 @@ const CompareFiltersPanel = ({
       >
         <div className="overflow-hidden">
           <section className="space-y-3 border-t border-[color:var(--aqt-border)] pt-5 pb-0.5">
-            <h2 className={SECTION_LABEL}>{t("users.compare.filters.heroAndMap")}</h2>
+            <Eyebrow as="h2" className="aqt-tnum">{t("users.compare.filters.heroAndMap")}</Eyebrow>
             <div className="grid gap-3 md:grid-cols-3">
               <FilterField label={t("users.compare.filters.primaryHero")}>
                 <SearchableImageSelect

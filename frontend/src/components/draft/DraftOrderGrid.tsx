@@ -4,12 +4,13 @@ import { ArrowRight, Hourglass, Shuffle, Star } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMemo, useRef } from "react";
 
-import { splitHandle } from "@/components/balancer/balancer-page-helpers";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { useDraftLayerPad } from "@/hooks/useDraftLayerPad";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { currentRound, orderGrid, pickState, picksAway, type RoundDirection } from "@/lib/draft/room-model";
 import { showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { roleOf } from "@/lib/roster/role-ref";
+import { splitHandle } from "@/lib/player";
 import { cn } from "@/lib/utils";
 import type { DraftBoard } from "@/types/draft.types";
 
@@ -59,8 +60,10 @@ export function DraftOrderGrid({
       <p className="border-b border-[color:var(--aqt-border)] px-4 py-2.5 text-caption text-[color:var(--aqt-fg-muted)] [text-wrap:pretty]">
         {t(`teams.order.note.${kind}`)}
       </p>
-      <div
-        className="sticky top-0 z-[1] grid gap-1 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-4 py-2 text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]"
+      <Eyebrow
+        as="div"
+        tone="muted"
+        className="sticky top-0 z-[1] grid gap-1 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-4 py-2"
         style={{ gridTemplateColumns }}
       >
         <span>#</span>
@@ -89,7 +92,7 @@ export function DraftOrderGrid({
             </span>
           );
         })}
-      </div>
+      </Eyebrow>
       {rows.map(({ team, cells }) => {
         const isMe = team.id === myTeamId;
         const isFollowed = followed.has(team.id);

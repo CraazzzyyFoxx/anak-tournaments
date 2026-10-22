@@ -7,8 +7,9 @@ import { useFormatter } from "@/lib/datetime/client";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { StatusPill } from "@/components/kit/StatusPill";
-import { TONE_CLASS } from "@/components/kit/tone";
+import { TONE_CLASS } from "@/components/ui/tone";
 import { Badge } from "@/components/ui/badge";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { formatAdmissionReason, primaryAdmissionReason } from "@/lib/registration/admission";
 import { cn } from "@/lib/utils";
 import { getSubroleLabel } from "@/lib/roster/roles";
@@ -213,9 +214,9 @@ export function RolesCell({
             >
               <PlayerRoleIcon role={role.role} ontology={ontology} size={20} />
             </span>
-            <span className="text-center text-label font-semibold uppercase leading-none tracking-label text-[color:var(--aqt-fg-dim)]">
+            <Eyebrow tone="dim" className="text-center leading-none">
               {subroleLabel ?? role.rank_value ?? ""}
-            </span>
+            </Eyebrow>
           </div>
         );
       })}

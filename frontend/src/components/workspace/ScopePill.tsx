@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowUpRight, Check, ChevronsUpDown, Gamepad2, Globe, Lock, Plus, type LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { GameMark } from "@/components/workspace/GameMark";
 import { useScopePillOpen } from "@/components/workspace/scope-pill-store";
@@ -41,8 +42,6 @@ const MENU_ITEM_CLASS =
   "focus-visible:bg-[color:var(--aqt-overlay-3)] focus-visible:shadow-[inset_0_0_0_2px_var(--aqt-teal)] " +
   "aria-[pressed=true]:bg-[color:var(--aqt-overlay-2)] disabled:cursor-not-allowed disabled:opacity-50 " +
   "disabled:hover:bg-transparent";
-const HEADING_CLASS =
-  "px-2.5 pb-1.5 pt-2 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 const NOTE_CLASS = "px-2.5 py-1.5 text-caption text-[color:var(--aqt-fg-dim)]";
 
 function SymbolMark({ icon: Icon }: Readonly<{ icon: LucideIcon }>) {
@@ -207,9 +206,9 @@ export function ScopePill() {
           <div className={cn("grid gap-1.5", !tenant && showsGame && "sm:grid-cols-2")}>
             {tenant ? null : (
               <div role="group" aria-labelledby={communitiesId}>
-                <p id={communitiesId} className={HEADING_CLASS}>
+                <Eyebrow as="p" id={communitiesId} className="px-2.5 pb-1.5 pt-2">
                   {t("nav.workspaces")}
-                </p>
+                </Eyebrow>
                 <button
                   type="button"
                   onClick={() => commit("all", () => setStatsScope("all"))}
@@ -250,9 +249,9 @@ export function ScopePill() {
             )}
             {showsGame ? (
               <div role="group" aria-labelledby={gamesId}>
-                <p id={gamesId} className={HEADING_CLASS}>
+                <Eyebrow as="p" id={gamesId} className="px-2.5 pb-1.5 pt-2">
                   {t("common.discipline.select")}
-                </p>
+                </Eyebrow>
                 <button
                   type="button"
                   disabled={gamesDisabled}

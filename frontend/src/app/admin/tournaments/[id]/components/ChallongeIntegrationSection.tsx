@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import type { DateFormatter } from "@/components/kit/format-time";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -203,7 +203,7 @@ export function ChallongeIntegrationSection({
 
       {hasChallongeSource ? (
         <div>
-          <p className={`${EYEBROW_CLASS} mb-2`}>{t("syncLog")}</p>
+          <p className={`${eyebrowClass("muted")} mb-2`}>{t("syncLog")}</p>
 
           {isLoading ? (
             <div className="space-y-2" aria-busy>

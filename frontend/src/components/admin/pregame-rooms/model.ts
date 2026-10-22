@@ -1,4 +1,4 @@
-import type { Tone } from "@/components/kit/tone";
+import type { Tone } from "@/components/ui/tone";
 import type {
   PregameKindSummary,
   PregameRoomAttention,

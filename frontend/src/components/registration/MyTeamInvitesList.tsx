@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 
 import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { useFormatter } from "@/lib/datetime/client";
 import type { RoleOntology } from "@/lib/roster/ontology";
 import type { RegistrationTeam } from "@/types/registration-team.types";
@@ -37,9 +38,7 @@ export default function MyTeamInvitesList({
 
   return (
     <div className="grid gap-2">
-      <span className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
-        {t("invite.title")}
-      </span>
+      <Eyebrow tone="muted">{t("invite.title")}</Eyebrow>
       {pendingInvites.length === 0 ? (
         <p className="text-xs text-[color:var(--aqt-fg-muted)]">{t("invite.pendingEmpty")}</p>
       ) : (

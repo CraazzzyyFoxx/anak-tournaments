@@ -1,7 +1,7 @@
 "use client";
 
 import { HandleCopyButton } from "@/app/balancer/components/HandleCopyControls";
-import { splitHandle } from "@/components/balancer/balancer-page-helpers";
+import { HandleLabel } from "@/components/HandleLabel";
 import {
   RoleRankControls,
   accentRowStyle,
@@ -11,6 +11,7 @@ import {
 } from "@/app/balancer/components/RoleRankControls";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import RankHistory from "@/components/RankHistory";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Label } from "@/components/ui/label";
 import {
   Sheet,
@@ -24,9 +25,6 @@ import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
 import type { RosterMember } from "@/services/workspace-player.service";
 import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { DivisionGrid } from "@/types/workspace.types";
-
-const EYEBROW_CLASS =
-  "text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]";
 
 // The panel that mounts this sheet only ever reads/writes the workspace
 // canon (`WorkspacePlayersSidebar`'s sole caller is the tournament balancer
@@ -76,7 +74,6 @@ export function WorkspacePlayerSheet({
   onSaveRank,
 }: Readonly<WorkspacePlayerSheetProps>) {
   const label = member ? member.display_name || member.identity?.handle || `#${member.member_id}` : "";
-  const { name, suffix } = splitHandle(label);
   // Only a game that collects native ranks has a live rank to show.
   const nativeRankName = ontology?.discipline.capabilities.native_rank_collection ? ontology.discipline.name : null;
   const roles = registrationRoles(ontology).map((role) => role.code);
@@ -88,14 +85,9 @@ export function WorkspacePlayerSheet({
         className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-[560px]"
       >
         <SheetHeader className="space-y-0 border-b border-[color:var(--aqt-border)] px-5 pb-4 pt-5 text-left">
-          <span className={EYEBROW_CLASS}>Player ranks</span>
+          <Eyebrow tone="dim">Player ranks</Eyebrow>
           <SheetTitle className="flex items-baseline gap-1.5 pt-1.5 font-display text-xl">
-            <span className="truncate">{name}</span>
-            {suffix ? (
-              <span className="text-caption font-normal text-[color:var(--aqt-fg-faint)]">
-                {suffix}
-              </span>
-            ) : null}
+            <HandleLabel handle={label} tagClassName="text-caption" />
             {member?.identity?.handle ? (
               <HandleCopyButton handle={member.identity.handle} className="ml-0.5 shrink-0" />
             ) : null}

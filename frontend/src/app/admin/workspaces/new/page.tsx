@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { WizardShell } from "@/components/kit/WizardShell";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -282,7 +282,7 @@ export default function NewWorkspacePage() {
         }}
       >
         <div className="space-y-1">
-          <p className={`${EYEBROW_CLASS} tabular-nums`}>
+          <p className={`${eyebrowClass("muted")} tabular-nums`}>
             {t("stepOf", {
               current: WIZARD_STEPS.indexOf(activeStep) + 1,
               total: WIZARD_STEPS.length

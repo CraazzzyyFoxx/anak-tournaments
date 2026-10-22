@@ -9,7 +9,7 @@ import { StatusIcon } from "@/components/admin/StatusIcon";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { invalidProps, settingErrorId } from "@/components/kit/SettingRow";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { SocialIcon } from "@/components/social/SocialIcon";
 import { Button } from "@/components/ui/button";
 import {
@@ -409,7 +409,7 @@ export function SocialAccountsEditor({
         groups.map((group, index) => (
           <div key={group.provider}>
             <div className="flex items-end gap-x-3">
-              <h3 className={`${EYEBROW_CLASS} flex min-w-0 flex-1 items-center gap-1.5`}>
+              <h3 className={`${eyebrowClass("muted")} flex min-w-0 flex-1 items-center gap-1.5`}>
                 <SocialIcon provider={group.provider} size={14} decorative />
                 {getSocialProviderConfig(group.provider).label}
               </h3>
@@ -420,7 +420,7 @@ export function SocialAccountsEditor({
                   {scopes.map((scope) => (
                     <span
                       key={scope.workspaceId ?? "public"}
-                      className={`${EYEBROW_CLASS} ${SCOPE_CELL} flex text-center`}
+                      className={`${eyebrowClass("muted")} ${SCOPE_CELL} flex text-center`}
                     >
                       {scope.label}
                     </span>

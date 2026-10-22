@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 
 import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
-import { EYEBROW_CLASS, MAX_LOBBIES, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
+import { MAX_LOBBIES, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { InlineEditText } from "@/components/kit/InlineEditText";
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { segmentedFrame, toggleVariants } from "@/components/ui/toggle";
@@ -246,7 +247,7 @@ export function PickupMixHeader({
             <DropdownMenuContent align="end" className="w-56">
               {canWrite && onLobbyCountChange ? (
                 <>
-                  <DropdownMenuLabel className={EYEBROW_CLASS}>
+                  <DropdownMenuLabel className={eyebrowClass()}>
                     {tl("countLabel")}
                   </DropdownMenuLabel>
                   {/* The slider lives inside a menu that owns the arrow keys
@@ -380,7 +381,7 @@ function SignupSettings({
           aria-label={t("signupTrigger", { mode: stateLabel })}
           className="shrink-0 gap-2"
         >
-          <span className={EYEBROW_CLASS}>{t("signupLabel")}</span>
+          <Eyebrow>{t("signupLabel")}</Eyebrow>
           <span
             aria-hidden="true"
             className={cn("size-1.5 shrink-0 rounded-full", SIGNUP_DOT[mode])}
@@ -406,7 +407,7 @@ function SignupSettings({
 
         {open ? (
           <div className="space-y-2">
-            <span className={EYEBROW_CLASS}>{t("signupWhere")}</span>
+            <Eyebrow>{t("signupWhere")}</Eyebrow>
             <Segmented
               label={t("signupWhere")}
               options={SIGNUP_DESTINATIONS.map((value) => ({ value, label: t(`signup.${value}`) }))}
@@ -551,7 +552,7 @@ function DiscordMenu({
               failed && "border-[color:color-mix(in_srgb,var(--aqt-rose)_40%,transparent)]"
             )}
           >
-            <span className={EYEBROW_CLASS}>{t("discord.label")}</span>
+            <Eyebrow>{t("discord.label")}</Eyebrow>
             {status === "pending" || status === "deleting" ? (
               <Spinner className="size-3.5" />
             ) : null}
@@ -570,7 +571,7 @@ function DiscordMenu({
         <PopoverContent align="end" className="w-[22rem] space-y-3 p-3">
           {onPostSignup ? (
             <div className="space-y-2">
-              <span className={EYEBROW_CLASS}>{t("posts.signup")}</span>
+              <Eyebrow>{t("posts.signup")}</Eyebrow>
               <p className="text-label text-[color:var(--aqt-fg-dim)]">{t("discord.hint")}</p>
               <SignupPostStatus post={signupPost} />
               {hasChannel ? (
@@ -607,7 +608,7 @@ function DiscordMenu({
                 onPostSignup && "border-t border-[color:var(--aqt-border)] pt-3"
               )}
             >
-              <span className={EYEBROW_CLASS}>{t("discord.allPosts")}</span>
+              <Eyebrow>{t("discord.allPosts")}</Eyebrow>
               <ul
                 aria-label={t("discord.allPosts")}
                 className="max-h-60 space-y-0.5 overflow-y-auto"

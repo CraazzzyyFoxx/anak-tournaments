@@ -1,8 +1,9 @@
+import { splitHandle } from "@/lib/player";
 import type { AuthAdminUser } from "@/types/rbac.types";
 
 /** Access searches accounts by text, so the link carries the handle without its `#tag`. */
 export function accessAccountsHref(name: string): string {
-  return `/admin/access/accounts?q=${encodeURIComponent(name.split("#")[0] || name)}`;
+  return `/admin/access/accounts?q=${encodeURIComponent(splitHandle(name).name)}`;
 }
 
 /**

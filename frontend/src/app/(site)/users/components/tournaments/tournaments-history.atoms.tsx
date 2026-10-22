@@ -1,38 +1,9 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
-import { placementMedal, type PlacementMedal } from "@/app/(site)/users/components/tournaments/tournaments-history.helpers";
 import { SummaryCellBox } from "@/components/profile/atoms";
 
 // ─── Master-detail (Event dossier) atoms ────────────────────────────────────────
-
-const MEDAL_STYLE: Record<PlacementMedal, React.CSSProperties> = {
-  gold: { background: "hsl(42 63% 60% / 0.14)", border: "1px solid hsl(42 63% 60% / 0.4)", color: "var(--aqt-gold)" },
-  silver: { background: "hsl(212 21% 73% / 0.12)", border: "1px solid hsl(212 21% 73% / 0.35)", color: "var(--aqt-silver)" },
-  bronze: { background: "hsl(26 49% 54% / 0.12)", border: "1px solid hsl(26 49% 54% / 0.35)", color: "var(--aqt-bronze)" },
-  none: { border: "1px solid var(--aqt-border-2)", color: "var(--aqt-fg-muted)" }
-};
-
-/** Square placement badge with medal colours (gold/silver/bronze) for the top 3. */
-export const PlaceBadge = ({ placement, size = "md" }: { placement: number | null; size?: "sm" | "md" | "lg" }) => {
-  const px = size === "lg" ? 44 : size === "sm" ? 28 : 36;
-  const font = size === "lg" ? 20 : size === "sm" ? 13 : 16;
-  return (
-    <span
-      className="aqt-display aqt-tnum inline-flex shrink-0 items-center justify-center rounded-[7px] font-bold leading-none"
-      style={{ ...MEDAL_STYLE[placementMedal(placement)], width: px, height: px, fontSize: font }}
-    >
-      {placement && placement > 0 ? placement : "—"}
-    </span>
-  );
-};
-
-/** Neutral "League" tag. */
-export const LeagueBadge = ({ children }: { children: React.ReactNode }) => (
-  <span className="aqt-tnum shrink-0 rounded-[5px] border border-[color:var(--aqt-border-2)] px-1.5 py-0.5 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
-    {children}
-  </span>
-);
 
 /** W-D-L record as coloured mono text. Draws are hidden when zero. */
 export const WdlText = ({

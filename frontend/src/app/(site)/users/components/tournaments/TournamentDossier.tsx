@@ -11,10 +11,11 @@ import ProfileWidget from "@/components/profile/ProfileWidget";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Badge } from "@/components/ui/badge";
+import { Eyebrow } from "@/components/ui/eyebrow";
+import { PlaceBadge } from "@/components/ui/place-badge";
 import EncounterRow from "@/app/(site)/users/components/tournaments/EncounterRow";
 import {
-  LeagueBadge,
-  PlaceBadge,
   SummaryStrip,
   WdlText,
   type SummaryCell
@@ -50,9 +51,9 @@ const MEDAL_COLOR: Record<string, string> = {
 };
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
-  <div className="mb-2.5 aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+  <Eyebrow as="div" className="mb-2.5 aqt-tnum">
     {children}
-  </div>
+  </Eyebrow>
 );
 
 const summaryCells = (
@@ -173,9 +174,9 @@ const EventBody = ({
             {stages.map((stage) => (
               <div key={stage.key} className="py-2 first:pt-0 last:pb-0">
                 <div className="flex items-center justify-between gap-2 py-1">
-                  <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
+                  <Eyebrow tone="muted" className="aqt-tnum">
                     {stage.name}
-                  </span>
+                  </Eyebrow>
                   <WdlText
                     won={stage.won}
                     lost={stage.lost}
@@ -226,7 +227,7 @@ const SingleDossier = ({
     <div className="aqt-card-surface">
       <div className="p-4">
         <div className="flex items-start gap-3.5">
-          <PlaceBadge placement={t.placement ?? null} size="lg" />
+          <PlaceBadge place={t.placement ?? null} size="lg" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <HoverPrefetchLink
@@ -236,7 +237,9 @@ const SingleDossier = ({
                 {t.name}
               </HoverPrefetchLink>
               {t.is_league ? (
-                <LeagueBadge>{tr("users.tournaments.leagueBadge")}</LeagueBadge>
+                <Badge palette="aqt" tone="neutral" voice="label">
+                  {tr("users.tournaments.leagueBadge")}
+                </Badge>
               ) : null}
             </div>
             <div className="mt-1.5 flex items-center gap-2 text-caption text-[color:var(--aqt-fg-muted)]">
@@ -278,7 +281,7 @@ const DivisionHeader = ({ t }: { t: UserTournament }) => {
       >
         {divisionLabel(t)}
       </HoverPrefetchLink>
-      <PlaceBadge placement={t.placement ?? null} size="sm" />
+      <PlaceBadge place={t.placement ?? null} size="sm" />
       <WdlText won={agg.won} lost={agg.lost} draw={agg.draw} className="text-label" />
     </div>
   );
@@ -330,13 +333,15 @@ const LeagueDossier = ({
     <div className="aqt-card-surface">
       <div className="p-4">
         <div className="flex items-start gap-3.5">
-          <PlaceBadge placement={best} size="lg" />
+          <PlaceBadge place={best} size="lg" />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="aqt-display text-title font-bold leading-tight text-[color:var(--aqt-fg)]">
                 {groupDisplayName(entries)}
               </span>
-              <LeagueBadge>{tr("users.tournaments.leagueBadge")}</LeagueBadge>
+              <Badge palette="aqt" tone="neutral" voice="label">
+                {tr("users.tournaments.leagueBadge")}
+              </Badge>
             </div>
             <div className="mt-1.5 aqt-tnum text-caption text-[color:var(--aqt-fg-muted)]">
               {tr("users.tournaments.divisionsCount", { count: String(entries.length) })}

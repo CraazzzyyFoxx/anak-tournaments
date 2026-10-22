@@ -12,6 +12,7 @@ import { CardSurface, ProfileStat } from "@/components/profile/atoms";
 import MapRow from "@/app/(site)/users/components/maps/MapRow";
 import MapsFilters from "@/app/(site)/users/components/maps/MapsFilters";
 import { DataPagination } from "@/components/ui/data-pagination";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { winrateColor } from "@/lib/colors";
 import { userQueryKeys } from "@/lib/users/query-keys";
@@ -254,14 +255,17 @@ const MapsView = ({ userId, scope, discipline, axis }: Props) => {
 
       {/* Map rows */}
       <CardSurface flush>
-        <div className="grid grid-cols-[64px_1fr_1fr_minmax(0,1.2fr)_60px_50px] items-center gap-3.5 border-b border-[color:var(--aqt-border)] px-[18px] py-3 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+        <Eyebrow
+          as="div"
+          className="grid grid-cols-[64px_1fr_1fr_minmax(0,1.2fr)_60px_50px] items-center gap-3.5 border-b border-[color:var(--aqt-border)] px-[18px] py-3"
+        >
           <div />
           <div>{t("users.maps.colMap")}</div>
           <div>{t("users.maps.colWinrate")}</div>
           <div>{t("common.characters")}</div>
           <div className="text-right">{t("users.maps.colRecord")}</div>
           <div className="text-right">{t("users.maps.colGames")}</div>
-        </div>
+        </Eyebrow>
         {pageMaps.map((row) => (
           <MapRow key={row.map.id} row={row} discipline={discipline} axis={axis} />
         ))}
@@ -292,7 +296,7 @@ const MapsView = ({ userId, scope, discipline, axis }: Props) => {
             totalPages={pages}
             onPageChange={setPage}
             className="border-t border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.012)] px-[18px] py-3.5"
-            summary={
+            leading={
               <span className="aqt-tnum text-caption text-[color:var(--aqt-fg-dim)]">
                 {t("common.showingRange", {
                   start: String((page - 1) * perPage + 1),

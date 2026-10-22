@@ -4,7 +4,7 @@ import { useId, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
@@ -257,7 +257,7 @@ export function SeedingSection({
 
       {isGroups && groups.length > 0 ? (
         <div className="flex flex-col gap-1.5 border-t border-border pt-3">
-          <p className={EYEBROW_CLASS}>{t("advancePerGroup")}</p>
+          <p className={eyebrowClass("muted")}>{t("advancePerGroup")}</p>
           {groups.map((item) => (
             <div key={item.id} className="flex items-center gap-2">
               <Label

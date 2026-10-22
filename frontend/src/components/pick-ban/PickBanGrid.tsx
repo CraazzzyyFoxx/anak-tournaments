@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
+import { catalogInitials } from "@/lib/catalog/initials";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import type { PickBanEntry, PickBanEntryStatus, PickBanKind } from "@/types/tournament.types";
 
@@ -155,12 +156,7 @@ export function PickBanGrid({
     const StatusIcon = STATUS_STYLE[entry.status].icon;
     const selected = selectedItemId === entry.item_id || status.drafted;
     const dimmed = entry.status === "banned";
-    const initials = itemName(entry.item_id)
-      .split(/\s+/)
-      .map((word) => word[0])
-      .slice(0, 2)
-      .join("")
-      .toUpperCase();
+    const initials = catalogInitials(itemName(entry.item_id));
 
     return (
       <button

@@ -4,12 +4,12 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { UserPlus } from "lucide-react";
 
-import { EYEBROW_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import { Button } from "@/components/ui/button";
-import Image from "@/components/ui/image";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
+import { SocialIcon } from "@/components/social/SocialIcon";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { notify } from "@/lib/notify";
 import { displaySocialHandle, getSocialProviderConfig } from "@/lib/social/providers";
@@ -88,7 +88,7 @@ export function AddPlayerIdentityPopover({
           )}
         >
           <UserPlus className="size-3.5" aria-hidden="true" />
-          {config?.icon ? <Image src={config.icon} alt="" width={14} height={14} className="size-3.5" /> : null}
+          {provider ? <SocialIcon provider={provider} size={14} decorative className="size-3.5" /> : null}
           New {config?.label ?? "game"} identity
         </button>
       </PopoverTrigger>
@@ -100,7 +100,7 @@ export function AddPlayerIdentityPopover({
             submitIdentity();
           }}
         >
-          <p className={EYEBROW_CLASS}>Add someone new</p>
+          <Eyebrow as="p">Add someone new</Eyebrow>
           <div className="flex gap-1.5">
             <Input
               value={handle}

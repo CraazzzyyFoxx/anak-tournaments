@@ -7,6 +7,7 @@ import { type ComponentProps, type ReactNode } from "react";
 
 import CookieSettingsButton from "@/components/CookieSettingsButton";
 import Github from "@/components/icons/Github";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import Image from "@/components/ui/image";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
 import { APP_VERSION, BRAND_NAME, SITE_URL } from "@/config/site";
@@ -14,8 +15,6 @@ import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { getAuthProfileHref } from "@/lib/auth/profile-links";
 import type { Workspace } from "@/types/workspace.types";
 
-const COLUMN_HEADING_CLASS =
-  "mb-3 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 const LINK_CLASS =
   "inline-flex min-h-8 items-center gap-1.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 const META_CLASS =
@@ -211,7 +210,7 @@ export function Footer({ tenant }: Readonly<{ tenant: Workspace | null }>) {
 function Column({ heading, children }: Readonly<{ heading: string; children: ReactNode }>) {
   return (
     <div>
-      <h3 className={COLUMN_HEADING_CLASS}>{heading}</h3>
+      <Eyebrow as="h3" className="mb-3">{heading}</Eyebrow>
       <div className="flex flex-col gap-1">{children}</div>
     </div>
   );

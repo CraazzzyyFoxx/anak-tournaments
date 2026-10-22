@@ -18,6 +18,3 @@ export { useIsMobile } from "@/hooks/useMobile";
 
 // `useState` persisted under a localStorage key; drives density, widths, order.
 export { useLocalStorageState } from "@/hooks/useLocalStorageState";
-
-// Eyebrow label style for group-header rows.
-export { EYEBROW_CLASS } from "@/components/kit/tone";

@@ -10,7 +10,7 @@ import type { FieldRendererContext } from "@/components/forms/types";
 import {
   AuthUserSearchCombobox,
   type AuthUserOption
-} from "@/components/kit/AuthUserSearchCombobox";
+} from "@/components/kit/ServerSearchCombobox";
 import {
   Select,
   SelectContent,
@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { identityProvider } from "@/lib/forms/builtin-keys";
 import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { visibleFields } from "@/lib/forms/visible-when";
@@ -43,8 +44,8 @@ import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useRoleName } from "@/hooks/useRoleName";
 import type { DisciplineMetadata } from "@/types/discipline.types";
 
-import FieldLabel from "./FieldLabel";
-import TextField, { fieldControlClass } from "./FormField";
+import FieldLabel from "@/components/forms/FieldLabel";
+import TextField from "@/components/forms/FormField";
 import SubscriptionRuleNotice from "./SubscriptionRuleNotice";
 import { defaultRoleAnswer, rolesParams } from "./fields/RolesField";
 import { registrationRenderers } from "./registrationRenderers";
@@ -652,9 +653,9 @@ function RegistrationSchemaFormBody({
 
   const organizerPanel = (
     <section className="grid gap-4 rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4">
-      <h3 className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
+      <Eyebrow as="h3" tone="muted">
         {t("registrationOrganizer.form.organizer")}
-      </h3>
+      </Eyebrow>
 
       <div className="space-y-2">
         <FieldLabel label={t("registrationOrganizer.form.linkedAccount")} />
@@ -913,7 +914,7 @@ function AdminStatusSelect({
     <div className="space-y-2">
       <FieldLabel label={label} icon={<BadgeInfo className="size-3.5 opacity-50" />} />
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className={fieldControlClass}>
+        <SelectTrigger variant="surface">
           <SelectValue placeholder={t("form.select", { label: label.toLowerCase() })} />
         </SelectTrigger>
         <SelectContent>

@@ -5,9 +5,8 @@ import { ArrowRight, Link2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { SubscriptionProviderBadge } from "@/components/status/RegistrationBadges";
+import { FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
-import { fieldControlClass, fieldInvalidClass } from "./FormField";
 import type { SubscriptionStatus } from "@/types/registration.types";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -127,7 +126,7 @@ export default function SubscriptionRow({
               disabled={pending}
               aria-invalid={Boolean(error)}
               aria-describedby={error ? errorId : undefined}
-              className={cn(fieldControlClass, error && fieldInvalidClass)}
+              variant="surface"
             />
             <button
               type="button"
@@ -144,11 +143,9 @@ export default function SubscriptionRow({
               {t("common.subscription.codeSubmit")}
             </button>
           </div>
-          {error && (
-            <p id={errorId} role="alert" className="text-xs text-destructive">
-              {error}
-            </p>
-          )}
+          <FieldError id={errorId} role="alert" size="sm">
+            {error}
+          </FieldError>
         </div>
       )}
     </div>

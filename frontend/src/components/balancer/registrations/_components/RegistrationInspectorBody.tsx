@@ -10,7 +10,7 @@ import {
   admissionDecisionLabel,
   builtinAnswerLabel
 } from "@/components/balancer/registrations/_components/registrationsTranslator";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { useFormatter } from "@/lib/datetime/client";
@@ -105,7 +105,7 @@ export default function RegistrationInspectorBody({
   return (
     <div className="space-y-5 text-sm">
       <section className="space-y-1.5">
-        <h3 className={EYEBROW_CLASS}>{i18n("inspector.admission")}</h3>
+        <h3 className={eyebrowClass("muted")}>{i18n("inspector.admission")}</h3>
         <p className="text-foreground">
           {admissionDecisionLabel(registration.admission.decision, i18n)}
         </p>
@@ -125,13 +125,13 @@ export default function RegistrationInspectorBody({
       </section>
 
       <section className="space-y-1.5">
-        <h3 className={EYEBROW_CLASS}>{i18n("inspector.declaredRoles")}</h3>
+        <h3 className={eyebrowClass("muted")}>{i18n("inspector.declaredRoles")}</h3>
         <RolesCell roles={registration.roles} catalog={catalog} discipline={discipline} ontology={ontology} />
       </section>
 
       {asked.length > 0 || orphaned.length > 0 ? (
         <section className="space-y-1.5">
-          <h3 className={EYEBROW_CLASS}>{i18n("inspector.questionnaire")}</h3>
+          <h3 className={eyebrowClass("muted")}>{i18n("inspector.questionnaire")}</h3>
           <dl className="space-y-2 text-xs">
             {asked.map((field) => (
               <div key={field.key}>
@@ -166,7 +166,7 @@ export default function RegistrationInspectorBody({
       ) : null}
 
       <section className="space-y-1.5">
-        <h3 className={EYEBROW_CLASS}>{i18n("inspector.details")}</h3>
+        <h3 className={eyebrowClass("muted")}>{i18n("inspector.details")}</h3>
         <dl className="space-y-2 text-xs text-muted-foreground">
           <div className="flex justify-between gap-3">
             <dt>{i18n("inspector.source")}</dt>

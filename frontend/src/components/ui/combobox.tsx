@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { type ReactElement, type ReactNode } from "react";
 import { Check, ChevronsUpDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
   CommandList,
   CommandSeparator
 } from "@/components/ui/command";
+import { controlSurfaceClass } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
@@ -25,11 +26,23 @@ interface ComboboxClearAction {
   onSelect: () => void;
 }
 
-export interface ComboboxProps {
+/**
+ * Trigger surface: `default` the admin field, `toolbar` the public toolbar control
+ * (the `SearchField` border and fill), `surface` the public form control skin
+ * (`Input variant="surface"`; red once `aria-invalid`).
+ */
+export type ComboboxVariant = "default" | "toolbar" | "surface";
+
+const VARIANT_CLASS: Record<ComboboxVariant, string> = {
+  default: "border-border/60 bg-background/80 hover:bg-background/90",
+  toolbar: "border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]",
+  surface: cn(controlSurfaceClass, "hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]")
+};
+
+interface ComboboxDefaultTrigger {
+  trigger?: undefined;
   /** Forwarded to the trigger so a `<Label htmlFor>` can point at it. */
   id?: string;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   /** Trigger content — the selected label, or the placeholder when nothing is selected. */
   label: ReactNode;
   /**
@@ -44,15 +57,31 @@ export interface ComboboxProps {
    * `<Label htmlFor>` wherever one exists.
    */
   triggerAriaLabel?: string;
-  /** Merged after the trigger's own classes, so height and width can be overridden. */
+  /** Merged after the trigger's own classes, so width and surface can be overridden. */
   triggerClassName?: string;
-  /** `sm` is the 32px toolbar row (13px text); `default` the 40px form trigger (14px). */
+  variant?: ComboboxVariant;
+  /** `sm` is the 32px toolbar row (13px text); `default` the 36px form row (14px). */
   size?: "sm" | "default";
   disabled?: boolean;
   "aria-invalid"?: boolean;
   "aria-describedby"?: string;
-  searchValue: string;
-  onSearchValueChange: (value: string) => void;
+}
+
+interface ComboboxCustomTrigger {
+  /**
+   * Replaces the input-like trigger — a toolbar toggle, a chip. One element
+   * that forwards its ref; Radix wires `aria-expanded`/`aria-controls` onto it.
+   */
+  trigger: ReactElement;
+}
+
+export type ComboboxProps = (ComboboxDefaultTrigger | ComboboxCustomTrigger) & {
+  /** Omit both for an uncontrolled popover (a multi-select that stays open while toggling). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Omit both for an uncontrolled search field; it resets whenever the popover closes. */
+  searchValue?: string;
+  onSearchValueChange?: (value: string) => void;
   searchPlaceholder: string;
   /**
    * Accessible name for the search field. Defaults to `searchPlaceholder` — a
@@ -64,77 +93,81 @@ export interface ComboboxProps {
   /** Pass `false` for server-filtered results so cmdk does not filter them again. */
   shouldFilter?: boolean;
   clear?: ComboboxClearAction;
+  /** Rendered above the search field, e.g. a facet filter row or a back button. */
+  header?: ReactNode;
+  /** `end` for a trigger at the right edge of a toolbar. */
+  align?: "start" | "end";
   /** `CommandGroup`s holding the options. */
   children: ReactNode;
-}
+};
 
 /**
- * Trigger + popover shell shared by every admin combobox. Owns the ARIA
+ * The one searchable picker: trigger + popover + cmdk list. Owns the ARIA
  * contract — the `combobox` trigger wired to the popup it controls, and a real
- * accessible name on the search field — so the domain comboboxes only have to
+ * accessible name on the search field — so domain pickers only have to
  * describe their own options.
  */
-export function Combobox({
-  id,
-  open,
-  onOpenChange,
-  label,
-  labelTitle,
-  triggerAriaLabel,
-  triggerClassName,
-  size = "default",
-  disabled = false,
-  "aria-invalid": ariaInvalid,
-  "aria-describedby": ariaDescribedBy,
-  searchValue,
-  onSearchValueChange,
-  searchPlaceholder,
-  searchLabel,
-  emptyMessage,
-  shouldFilter,
-  clear,
-  children
-}: Readonly<ComboboxProps>) {
-  // `aria-controls` is supplied by Radix's PopoverTrigger (it points at the
-  // content id it also stamps on PopoverContent). Overriding it here would
-  // break that link, and cmdk ignores an `id` passed to CommandList.
+export function Combobox(props: Readonly<ComboboxProps>) {
+  const {
+    open,
+    onOpenChange,
+    searchValue,
+    onSearchValueChange,
+    searchPlaceholder,
+    searchLabel,
+    emptyMessage,
+    shouldFilter,
+    clear,
+    header,
+    align = "start",
+    children
+  } = props;
+
+  // `aria-expanded`/`aria-controls` come from Radix's PopoverTrigger (it points
+  // at the content id it also stamps on PopoverContent). Overriding them here
+  // would break that link, and cmdk ignores an `id` passed to CommandList.
+  const trigger =
+    props.trigger === undefined ? (
+      <Button
+        id={props.id}
+        type="button"
+        variant="outline"
+        size={props.size === "sm" ? "sm" : "default"}
+        role="combobox"
+        aria-label={props.triggerAriaLabel}
+        aria-haspopup="listbox"
+        disabled={props.disabled}
+        aria-invalid={props["aria-invalid"]}
+        aria-describedby={props["aria-describedby"]}
+        className={cn(
+          "w-full justify-between",
+          VARIANT_CLASS[props.variant ?? "default"],
+          props.triggerClassName
+        )}
+      >
+        <span
+          className="truncate"
+          title={props.labelTitle ?? (typeof props.label === "string" ? props.label : undefined)}
+        >
+          {props.label}
+        </span>
+        <ChevronsUpDown aria-hidden className="h-4 w-4 shrink-0 opacity-50" />
+      </Button>
+    ) : (
+      props.trigger
+    );
+
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>
-        <Button
-          id={id}
-          type="button"
-          variant="outline"
-          size={size}
-          role="combobox"
-          aria-label={triggerAriaLabel}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          disabled={disabled}
-          aria-invalid={ariaInvalid}
-          aria-describedby={ariaDescribedBy}
-          className={cn(
-            "w-full justify-between border-border/60 bg-background/80 hover:bg-background/90",
-            size === "default" && "h-10",
-            triggerClassName
-          )}
-        >
-          <span
-            className="truncate"
-            title={labelTitle ?? (typeof label === "string" ? label : undefined)}
-          >
-            {label}
-          </span>
-          <ChevronsUpDown aria-hidden className="h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent
-        align="start"
+        align={align}
         // Trigger-width by default, but a compact trigger must not produce a
         // list too narrow to read; the inner min() keeps it inside the viewport.
         className="w-[var(--radix-popover-trigger-width)] min-w-[min(16rem,var(--radix-popover-content-available-width))] p-0"
       >
         <Command shouldFilter={shouldFilter}>
+          {header}
           <CommandInput
             value={searchValue}
             onValueChange={onSearchValueChange}

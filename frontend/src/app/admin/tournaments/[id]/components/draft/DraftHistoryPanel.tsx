@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { type Tone } from "@/components/kit/tone";
+import { type Tone } from "@/components/ui/tone";
 import { notify } from "@/lib/notify";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import draftService from "@/services/draft.service";

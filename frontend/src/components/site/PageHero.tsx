@@ -1,5 +1,6 @@
 import React from "react";
 
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
 
 /**
@@ -360,16 +361,7 @@ export function HeroCoord({
   children: React.ReactNode;
   className?: string;
 }>) {
-  return (
-    <span
-      className={cn(
-        "text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]",
-        className
-      )}
-    >
-      {children}
-    </span>
-  );
+  return <Eyebrow className={className}>{children}</Eyebrow>;
 }
 
 /** Mono stamp: a small uppercase label with a normal-case value beneath it. */
@@ -383,7 +375,7 @@ export function HeroStamp({
   valueClassName?: string;
 }>) {
   return (
-    <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+    <Eyebrow>
       {label}
       <b
         className={cn(
@@ -393,7 +385,7 @@ export function HeroStamp({
       >
         {value}
       </b>
-    </span>
+    </Eyebrow>
   );
 }
 
@@ -411,9 +403,7 @@ export function HeroStat({
 }>) {
   return (
     <div className={cn("flex flex-col gap-1", className)}>
-      <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-        {label}
-      </span>
+      <Eyebrow>{label}</Eyebrow>
       <span className="font-onest text-[clamp(1.7rem,2.2vw,2.15rem)] font-bold leading-none tabular-nums text-[color:var(--aqt-fg)]">
         {value}
       </span>

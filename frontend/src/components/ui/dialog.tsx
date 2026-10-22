@@ -28,10 +28,22 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+/**
+ * `panel` is a work surface rather than a message: flush (no padding or gap),
+ * popover fill, deep shadow, a flex column that clips, so the body runs its own
+ * scroller under a header ruled off by `DialogHeader variant="panel"`.
+ * `SheetContent` takes the same variant.
+ */
+type PanelVariant = "default" | "panel";
+
+const PANEL_CONTENT_CLASS =
+  "flex flex-col gap-0 overflow-hidden border-border bg-popover p-0 text-[color:var(--aqt-fg)] shadow-2xl shadow-black/50";
+const PANEL_HEADER_CLASS = "shrink-0 border-b border-[color:var(--aqt-border)] px-5 py-4 text-left";
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => {
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { variant?: PanelVariant }
+>(({ className, children, variant = "default", ...props }, ref) => {
   const t = useTranslations();
   return (
   <DialogPortal>
@@ -45,6 +57,7 @@ const DialogContent = React.forwardRef<
           // surfaces that manage their own scrolling (`overflow-hidden` + an
           // inner scroller) still override it; `overflow-y-*` would not.
           "fixed left-[50%] top-[50%] z-50 grid max-h-[calc(100dvh-2rem)] w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-auto overscroll-contain rounded-2xl border border-border/70 bg-card/95 p-6 shadow-xl transition-all duration-200 ease-out data-[state=closed]:pointer-events-none data-[state=closed]:opacity-0 data-[state=closed]:scale-95 data-[state=open]:opacity-100 data-[state=open]:scale-100",
+          variant === "panel" && PANEL_CONTENT_CLASS,
           className
         )}
         {...props}
@@ -60,8 +73,19 @@ const DialogContent = React.forwardRef<
 });
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
-const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)} {...props} />
+const DialogHeader = ({
+  className,
+  variant = "default",
+  ...props
+}: React.HTMLAttributes<HTMLDivElement> & { variant?: PanelVariant }) => (
+  <div
+    className={cn(
+      "flex flex-col space-y-1.5 text-center sm:text-left",
+      variant === "panel" && PANEL_HEADER_CLASS,
+      className
+    )}
+    {...props}
+  />
 );
 DialogHeader.displayName = "DialogHeader";
 
@@ -104,5 +128,8 @@ export {
   DialogHeader,
   DialogFooter,
   DialogTitle,
-  DialogDescription
+  DialogDescription,
+  PANEL_CONTENT_CLASS,
+  PANEL_HEADER_CLASS
 };
+export type { PanelVariant };

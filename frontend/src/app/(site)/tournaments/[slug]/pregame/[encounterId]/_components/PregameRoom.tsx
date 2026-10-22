@@ -10,6 +10,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EncounterRostersModal } from "@/components/EncounterRostersModal";
 import { MatchImport } from "@/components/pick-ban/MatchImport";
@@ -186,9 +187,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
         <Card>
           <CardContent className="flex flex-col gap-4 p-6">
             <div className="flex flex-col gap-1">
-              <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                {t("matchImport.title")}
-              </span>
+              <Eyebrow>{t("matchImport.title")}</Eyebrow>
               <h1 className="font-display text-title font-semibold">{encounter.name}</h1>
             </div>
             {/* An organizer files through the organizer route, whose rows carry the warnings. */}

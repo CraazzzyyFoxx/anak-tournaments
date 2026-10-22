@@ -4,6 +4,7 @@ import * as React from "react";
 import { AlertCircle, Inbox, SearchX, FileQuestion } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type PageStateKind = "error" | "empty" | "filtered-empty" | "not-found";
@@ -96,13 +97,9 @@ export function PageStateCard({
         </p>
       </div>
       {onAction ? (
-        <button
-          type="button"
-          onClick={onAction}
-          className="mt-1 inline-flex h-9 items-center rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-4 text-caption font-medium text-[color:var(--aqt-fg)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-card)]"
-        >
+        <Button type="button" variant="subtle" size="sm" className="mt-1" onClick={onAction}>
           {resolvedActionLabel}
-        </button>
+        </Button>
       ) : null}
     </section>
   );

@@ -21,7 +21,7 @@ import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { SearchField } from "@/components/ui/search-field";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { CardSurface } from "@/components/profile/atoms";
-import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
+import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
 import { GameIcon } from "@/components/workspace/GameIcon";
 
 const TOURNAMENT_QUERY_KEY = "achievementTournamentId";

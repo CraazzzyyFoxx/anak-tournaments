@@ -5,8 +5,9 @@ import { useTranslations } from "next-intl";
 import type { Row } from "@tanstack/react-table";
 import type { VirtualItem } from "@tanstack/react-virtual";
 
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { cn, EYEBROW_CLASS } from "@/components/data-table/host";
+import { cn } from "@/components/data-table/host";
 import { renderBodyCell, renderLeadingCell } from "@/components/data-table/body-cells";
 import type { ColumnLayout } from "@/components/data-table/column-layout";
 import type { BodyItem } from "@/components/data-table/useVirtualBody";
@@ -147,7 +148,7 @@ export function renderBodyItem<TData>(item: BodyItem<TData>, ctx: BodyItemContex
     return (
       // Not a row: right-click keeps the browser's menu instead of the row menu on `<tbody>`.
       <TableRow key={item.key} {...measure} className="hover:bg-transparent" onContextMenu={(event) => event.stopPropagation()}>
-        <TableCell colSpan={ctx.shared.layout.bodyColumnCount} className={cn(EYEBROW_CLASS, "border-b border-border/40 bg-muted/30 py-2 pl-4")}>
+        <TableCell colSpan={ctx.shared.layout.bodyColumnCount} className={cn(eyebrowClass("muted"), "border-b border-border/40 bg-muted/30 py-2 pl-4")}>
           {item.group.label}
         </TableCell>
       </TableRow>

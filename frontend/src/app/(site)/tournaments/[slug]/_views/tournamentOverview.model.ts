@@ -1,5 +1,6 @@
 import type { RoundGroup } from "@/lib/bracket/view";
 import { isEncounterCompleted, isEncounterLive } from "@/lib/encounter/status";
+import { splitHandle } from "@/lib/player";
 import type { Encounter } from "@/types/encounter.types";
 import type { Team } from "@/types/team.types";
 import type { Standings, TournamentStatus } from "@/types/tournament.types";
@@ -138,7 +139,7 @@ export function rosterBattletags(team: Team | null | undefined): string {
   return players
     .map((player) => player.name)
     .filter((name): name is string => typeof name === "string" && name.length > 0)
-    .map((name) => name.split("#")[0])
+    .map((name) => splitHandle(name).name)
     .join(" · ");
 }
 

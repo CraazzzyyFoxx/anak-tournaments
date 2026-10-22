@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 
-import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
-import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
+import { UserSearchCombobox } from "@/components/kit/ServerSearchCombobox";
+import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -96,9 +96,8 @@ export function RuleOverrideDialog({
         <UserSearchCombobox
           id="override-user"
           value={draft.userId}
-          selectedName={draft.userName}
+          selectedLabel={draft.userName}
           onSelect={(user) => onDraftChange({ ...draft, userId: user?.id, userName: user?.name ?? "" })}
-          allowClear
         />
       </div>
       <div className="space-y-2">
@@ -123,8 +122,10 @@ export function RuleOverrideDialog({
           id="override-tournament"
           tournaments={tournaments}
           value={draft.tournamentId}
-          onSelect={(tournament) => onDraftChange({ ...draft, tournamentId: tournament?.id })}
+          onValueChange={(tournamentId) => onDraftChange({ ...draft, tournamentId })}
           placeholder={t("overrideDialog.none")}
+          variant="default"
+          size="default"
         />
       </div>
       <div className="space-y-2">

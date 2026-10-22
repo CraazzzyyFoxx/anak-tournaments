@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { InspectorField } from "@/components/kit/InspectorField";
 import { Button } from "@/components/ui/button";
+import { FileButton } from "@/components/ui/file-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -54,7 +55,6 @@ export function AchievementFormDialog({
     setFormData,
     imagePreview,
     imageError,
-    imageInputRef,
     isDirty,
     isSubmitting,
     error,
@@ -202,24 +202,14 @@ export function AchievementFormDialog({
                 />
               )}
               <div className="flex flex-col gap-2">
-                <input
-                  ref={imageInputRef}
-                  type="file"
+                <FileButton
                   accept={ACHIEVEMENT_IMAGE_ACCEPT}
-                  className="hidden"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) pickImage(file);
-                  }}
-                />
-                <Button
-                  type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => imageInputRef.current?.click()}
+                  onFiles={([file]) => pickImage(file)}
                 >
                   {imagePreview || formData.image_url ? t("form.changeImage") : t("form.uploadImage")}
-                </Button>
+                </FileButton>
                 {(imagePreview || formData.image_url) && (
                   <Button
                     type="button"

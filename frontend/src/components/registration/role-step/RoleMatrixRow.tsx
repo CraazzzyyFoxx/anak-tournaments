@@ -4,6 +4,7 @@ import { useId } from "react";
 import { useTranslations } from "next-intl";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import {
   Select,
   SelectContent,
@@ -126,9 +127,9 @@ export function RoleMatrixRow({
           carries its own labels instead of leaving bare controls. */}
       {subroleOptions.length > 0 ? (
         <div className="grid gap-1">
-          <span className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)] sm:hidden">
+          <Eyebrow tone="muted" className="sm:hidden">
             {t("registration.roles.specialization")}
-          </span>
+          </Eyebrow>
           <Select
             value={selection.subrole || ANY_SUBROLE}
             disabled={!active}
@@ -161,9 +162,9 @@ export function RoleMatrixRow({
 
       {topHeroesEnabled ? (
         <div className="grid gap-1">
-          <span className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)] sm:hidden">
+          <Eyebrow tone="muted" className="sm:hidden">
             {t("registration.roles.topHeroes.title")}
-          </span>
+          </Eyebrow>
           <HeroPickerCell
             accent={accent}
             roleLabel={roleLabel}

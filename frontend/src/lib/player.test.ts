@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decodePlayerSlug, getPlayerSlug, sortTeamPlayers, type SortableRosterPlayer } from "@/lib/player";
+import { decodePlayerSlug, getPlayerSlug, sortTeamPlayers, splitHandle, type SortableRosterPlayer } from "@/lib/player";
 import type { RoleOntology } from "@/lib/roster/ontology";
 import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 
@@ -17,6 +17,25 @@ describe("player slug helpers", () => {
 
   it("falls back gracefully on malformed percent-encoding", () => {
     expect(decodePlayerSlug("%E0%A4%A-21713")).toBe("%E0%A4%A#21713");
+  });
+});
+
+describe("splitHandle", () => {
+  it("splits the discriminator off a BattleTag", () => {
+    expect(splitHandle("Fox#2130")).toEqual({ name: "Fox", suffix: "#2130" });
+  });
+
+  it("returns a handle without a tag whole", () => {
+    expect(splitHandle("Fox")).toEqual({ name: "Fox", suffix: null });
+  });
+
+  it("splits at the last # so a name that contains one keeps it", () => {
+    expect(splitHandle("A#B#2130")).toEqual({ name: "A#B", suffix: "#2130" });
+  });
+
+  it("returns an empty or tag-only handle whole", () => {
+    expect(splitHandle("")).toEqual({ name: "", suffix: null });
+    expect(splitHandle("#2130")).toEqual({ name: "#2130", suffix: null });
   });
 });
 

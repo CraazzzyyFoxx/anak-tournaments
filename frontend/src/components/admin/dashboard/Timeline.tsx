@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { formatRelative } from "@/components/kit/format-time";
 import { StatusPill } from "@/components/kit/StatusPill";
-import { TONE_CLASS } from "@/components/kit/tone";
+import { TONE_CLASS } from "@/components/ui/tone";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GameIcon } from "@/components/workspace/GameIcon";
 import { useFormatter } from "@/lib/datetime/client";

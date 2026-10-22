@@ -15,8 +15,8 @@ import {
 import {
   ICON_BUTTON_CLASS,
   PANEL_CLASS,
-  splitHandle,
 } from "@/components/balancer/balancer-page-helpers";
+import { HandleLabel } from "@/components/HandleLabel";
 import {
   HandleContextMenuItems,
   HandleCopyButton,
@@ -26,6 +26,7 @@ import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { DataPagination } from "@/components/ui/data-pagination";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -117,7 +118,6 @@ type RosterMemberRowProps = {
 const RosterMemberRow = memo(function RosterMemberRow({ member, ontology, grid, onOpen }: RosterMemberRowProps) {
   const slotLabel = useSlotLabel(ontology);
   const label = memberLabel(member);
-  const { name, suffix } = splitHandle(label);
   const effective = member.ranks;
 
   // The owner game's rated roles, in declared order, that the member has a rank for.
@@ -164,9 +164,6 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, ontology, grid, 
                 ) : (
                   <span className="shrink-0 text-label text-[color:var(--aqt-fg-dim)]">No roles</span>
                 )}
-                {/* One truncating line, not a flex pair: with the discriminator as
-                    its own `shrink-0` item, a narrow sidebar clipped the whole name
-                    away and left a row identified only by `#1111`. */}
                 <button
                   type="button"
                   data-card-action
@@ -174,10 +171,7 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, ontology, grid, 
                   title={`Edit ${label}`}
                   className="flex min-w-0 items-baseline rounded text-left"
                 >
-                  <span className="min-w-0 truncate text-caption font-medium text-[color:var(--aqt-fg)]">
-                    {name}
-                    {suffix ? <span className="text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
-                  </span>
+                  <HandleLabel handle={label} className="text-caption font-medium text-[color:var(--aqt-fg)]" />
                 </button>
               </div>
 
@@ -304,12 +298,14 @@ export function WorkspacePlayersSidebar({
           <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-muted)]">
             <Users className="h-4 w-4" aria-hidden="true" />
           </div>
-          <div
+          <Eyebrow
+            as="div"
             aria-hidden="true"
-            className="text-center text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)] [writing-mode:vertical-rl]"
+            tone="dim"
+            className="text-center [writing-mode:vertical-rl]"
           >
             Players
-          </div>
+          </Eyebrow>
         </div>
         {/* `?? 0` used to claim an empty workspace for as long as the first page
             was in flight, and a bare dash announces as "em dash". */}
@@ -361,9 +357,9 @@ export function WorkspacePlayersSidebar({
         <div className="min-w-0">
           {/* Short enough to hold one line at the narrowest sidebar width; the
               workspace is already the tool's context, and the rail says the same. */}
-          <div className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+          <Eyebrow as="div" tone="dim">
             Players
-          </div>
+          </Eyebrow>
           <div className="mt-1 text-sm tabular-nums text-[color:var(--aqt-fg-muted)]">
             {total == null ? (
               <div role="status">
@@ -400,12 +396,9 @@ export function WorkspacePlayersSidebar({
                     submitHandle();
                   }}
                 >
-                  <label
-                    htmlFor={handleId}
-                    className="block text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]"
-                  >
+                  <Eyebrow as="label" htmlFor={handleId} tone="dim" className="block">
                     Add by {identityConfig?.label ?? "game"} identity
-                  </label>
+                  </Eyebrow>
                   <div className="flex gap-1.5">
                     <Input
                       ref={handleRef}
@@ -588,7 +581,7 @@ export function WorkspacePlayersSidebar({
           page={page}
           totalPages={totalPages}
           onPageChange={setPage}
-          summary={
+          leading={
             pageData
               ? pageData.total === 0
                 ? "0 players"

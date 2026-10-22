@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { Check } from "lucide-react";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FilterChip } from "@/components/ui/filter-chip";
@@ -242,7 +242,7 @@ export function PermissionPicker({
   return (
     <div className={mode === "chips" ? "space-y-3" : "space-y-2"}>
       <div className="flex flex-wrap items-center gap-2">
-        <p className={EYEBROW_CLASS}>{t("permissions")}</p>
+        <p className={eyebrowClass("muted")}>{t("permissions")}</p>
         <span className="text-caption tabular-nums text-muted-foreground">
           {t("selectedSummary", { selected: selectedCount, total: catalog.length })}
         </span>
@@ -381,7 +381,7 @@ export function PermissionPicker({
         <div className="max-h-[52dvh] space-y-3 overflow-y-auto rounded-md border border-border p-2">
           {groups.map((group) => (
             <div key={group.resource} className="space-y-1">
-              <p className={EYEBROW_CLASS}>
+              <p className={eyebrowClass("muted")}>
                 {group.resource === "*" ? ti("all") : humanize(group.resource)}
               </p>
               <ul className="grid gap-x-3 gap-y-1 sm:grid-cols-2">

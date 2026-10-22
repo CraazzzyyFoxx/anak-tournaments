@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import type { ColumnDef } from "@tanstack/react-table";
 
-import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
+import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
 import { DataTable } from "@/components/data-table";
 import { Button } from "@/components/ui/button";
 import { useFormatter } from "@/lib/datetime/client";
@@ -114,8 +114,9 @@ export function AchievementUsersTable({
               <TournamentCombobox
                 tournaments={tournaments}
                 value={tournamentId}
-                onSelect={(tournament) => setTournamentId(tournament?.id)}
+                onValueChange={setTournamentId}
                 placeholder={t("detail.allTournaments")}
+                variant="default"
               />
             </div>
           ) : undefined

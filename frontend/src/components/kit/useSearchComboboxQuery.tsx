@@ -6,7 +6,7 @@ import { useDebounce } from "use-debounce";
 
 import { Skeleton } from "@/components/ui/skeleton";
 
-interface SearchComboboxMessages {
+export interface SearchComboboxMessages {
   /** Screen-reader text while the query is in flight; skeleton rows show visually. */
   loading: string;
   /** Shown when the query errors. */
@@ -35,11 +35,9 @@ export interface UseSearchComboboxQueryOptions<TItem, TSelected> {
 }
 
 /**
- * Open/search-value/debounce/query/select scaffolding shared by every
- * server-searched admin combobox (`AuthUserSearchCombobox`,
- * `UserSearchCombobox`). Callers own the `<Combobox>` shell, the row
- * rendering, and any selection-shape mapping; this hook owns the plumbing
- * that reaches the server.
+ * Open/search-value/debounce/query/select scaffolding behind
+ * `ServerSearchCombobox`. The caller owns the `<Combobox>` shell and the row
+ * rendering; this hook owns the plumbing that reaches the server.
  */
 export function useSearchComboboxQuery<TItem, TSelected>({
   queryKeyPrefix,

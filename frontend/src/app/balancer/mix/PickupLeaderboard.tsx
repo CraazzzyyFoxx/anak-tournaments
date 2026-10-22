@@ -5,11 +5,13 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { PANEL_CLASS, splitHandle } from "@/components/balancer/balancer-page-helpers";
+import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
+import { HandleLabel } from "@/components/HandleLabel";
 import { formatRelative } from "@/components/kit/format-time";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { FormStreak } from "@/components/profile/atoms";
 import { DataPagination } from "@/components/ui/data-pagination";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { SearchField } from "@/components/ui/search-field";
@@ -95,14 +97,10 @@ function PlayerName({
 }: Readonly<{ player: RatedPlayer; ontology: RoleOntology | null; you: boolean }>) {
   const t = useTranslations("mixes.leaderboard");
   const role = ontology ? mainRole(player) : null;
-  const { name, suffix } = splitHandle(player.name);
   return (
     <span className="flex min-w-0 items-center gap-2">
       {role ? <PlayerRoleIcon role={role} ontology={ontology} size={16} /> : null}
-      <span title={player.name} className="min-w-0 truncate font-medium text-[color:var(--aqt-fg)]">
-        <bdi>{name}</bdi>
-        {suffix ? <span className="font-normal text-[color:var(--aqt-fg-faint)]">{suffix}</span> : null}
-      </span>
+      <HandleLabel handle={player.name} title={player.name} className="font-medium text-[color:var(--aqt-fg)]" />
       {you ? (
         <span className="shrink-0 text-caption font-semibold text-[color:var(--aqt-teal)]">{t("you")}</span>
       ) : null}
@@ -275,7 +273,7 @@ export function PickupLeaderboard({
           <table className="w-full table-fixed border-collapse">
             <caption className="sr-only">{t("ranking")}</caption>
             <thead>
-              <tr className="whitespace-nowrap text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+              <tr className={cn(eyebrowClass(), "whitespace-nowrap")}>
                 <th scope="col" className="w-10 py-2 ps-4 text-start font-medium">
                   <span className="sr-only">{t("rank")}</span>
                 </th>
@@ -410,7 +408,7 @@ export function PickupRatingTable({
         <table className="w-full min-w-[34rem] border-collapse">
           <caption className="sr-only">{t("ranking")}</caption>
           <thead>
-            <tr className="whitespace-nowrap text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+            <tr className={cn(eyebrowClass(), "whitespace-nowrap")}>
               <th scope="col" className="w-14 py-2.5 ps-4 text-start font-medium">
                 <span className="sr-only">{t("rank")}</span>
               </th>

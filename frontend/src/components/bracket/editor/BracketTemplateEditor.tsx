@@ -8,6 +8,7 @@ import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import { cn } from "@/lib/utils";
 import type { StageType } from "@/types/tournament.types";
 
+import { HEADER_CHIP } from "../BracketCanvas";
 import { buildLayout, CARD_HEIGHT, CARD_WIDTH, PADDING_Y } from "../layout";
 import { useBracketViewport } from "../useBracketViewport";
 import { TemplateMatchCard, type ConnectSource } from "./TemplateMatchCard";
@@ -142,7 +143,7 @@ export function BracketTemplateEditor({
               className="absolute flex items-center gap-1.5"
               style={{ left: header.x, top: header.y, width: CARD_WIDTH }}
             >
-              <span className="inline-flex items-center gap-2 rounded-full border border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_0%/0.55)] px-2.5 py-0.5 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
+              <span className={cn(HEADER_CHIP, "gap-2")}>
                 <span
                   aria-hidden
                   className="h-2 w-2 rounded-full"

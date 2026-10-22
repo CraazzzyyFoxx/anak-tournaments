@@ -28,14 +28,10 @@ export const AWAY_CHIP_CLASS =
  * The recurring chrome of the mix surface, named once.
  *
  * The mix screen, the fullscreen lobby board, the player pool and the player
- * sheet all repeat the same three shapes — a mono eyebrow, a mono metric pill
- * and a card head. Inlining them meant a density or tracking change was eight
+ * sheet all repeat the same shapes — a mono metric pill and a card head.
+ * Inlining them meant a density or tracking change was eight
  * edits in five files, and they had already drifted by a pixel in two places.
  */
-
-/** Mono, wide-tracked, uppercase: the "tactical voice" label above a heading. */
-export const EYEBROW_CLASS =
-  "text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 
 /** Same voice one step tighter, for a caption that sits beside a label. */
 export const CAPTION_CLASS = "text-xs tabular-nums text-[color:var(--aqt-fg-dim)]";

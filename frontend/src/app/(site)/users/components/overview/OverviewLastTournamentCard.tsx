@@ -10,6 +10,7 @@ import type { DisciplineMetadata } from "@/types/discipline.types";
 import { type MapResultPip } from "@/app/(site)/users/components/overview/map-results";
 import { UserTournamentStat } from "@/types/statistics.types";
 import { CardSurface } from "@/components/profile/atoms";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { isRankedEntry, LobbyStatGrid, type LobbyStatTile } from "@/components/profile/LobbyStatGrid";
 import ProfileWidget from "@/components/profile/ProfileWidget";
 import DivisionIcon from "@/components/DivisionIcon";
@@ -20,7 +21,7 @@ import { useFormatter } from "@/lib/datetime/client";
 import { formatStat } from "@/lib/stats/format";
 import { findRole } from "@/lib/roster/ontology";
 import { tournamentHref } from "@/lib/tournament/url";
-import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
+import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
 import LobbyLeaderboardModal from "@/app/(site)/users/components/overview/LobbyLeaderboardModal";
 
 interface Props {
@@ -209,9 +210,7 @@ const OverviewLastTournamentCard = ({ tournament, metadata, tournaments, userId,
         {tournament.maps > 0 ? (
           <div className="flex flex-col gap-2 border-t border-[color:var(--aqt-border)] pt-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                {t("users.overview.lastTournament.mapResults")}
-              </span>
+              <Eyebrow>{t("users.overview.lastTournament.mapResults")}</Eyebrow>
               <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
                 {t("users.overview.mapsCount", { count: tournament.maps })}
               </span>
@@ -237,9 +236,7 @@ const OverviewLastTournamentCard = ({ tournament, metadata, tournaments, userId,
         {ranked.length > 0 ? (
           <div className="flex flex-col gap-4 border-t border-[color:var(--aqt-border)] pt-4">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                {t("users.overview.lastTournament.lobbyRank")}
-              </span>
+              <Eyebrow>{t("users.overview.lastTournament.lobbyRank")}</Eyebrow>
               {lobbySize ? (
                 <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
                   {t("users.overview.lastTournament.players", { count: lobbySize })}

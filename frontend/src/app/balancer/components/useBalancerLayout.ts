@@ -2,6 +2,8 @@
 
 import { useEffect, useState, type RefObject } from "react";
 
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+
 import type { BalancerOperationStepDefinition } from "./operation-steps";
 
 export const EXPORT_TO_TOURNAMENT_STEPS: BalancerOperationStepDefinition[] = [
@@ -51,17 +53,7 @@ export function getErrorMessage(error: unknown, fallback: string): string {
  * so the common case matches between server render and hydration.
  */
 export function useIsWideBalancerLayout(): boolean {
-  const [isWide, setIsWide] = useState(true);
-
-  useEffect(() => {
-    const mql = window.matchMedia("(min-width: 1280px)");
-    const sync = () => setIsWide(mql.matches);
-    sync();
-    mql.addEventListener("change", sync);
-    return () => mql.removeEventListener("change", sync);
-  }, []);
-
-  return isWide;
+  return useMediaQuery("(min-width: 1280px)", true);
 }
 
 /**

@@ -12,7 +12,7 @@ import { useTranslations } from "next-intl";
 
 import { MappingFieldRow } from "./MappingFieldRow";
 import { orderedRoleSubgroups, roleSubgroupOf } from "./mappingConfig";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import type { RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
@@ -99,7 +99,7 @@ export function MappingGroupSection({
           }
           return (
             <div key={subgroup.id} className="overflow-hidden rounded-lg border">
-              <div className={cn(EYEBROW_CLASS, "border-b bg-muted/40 px-4 py-2")}>
+              <div className={cn(eyebrowClass("muted"), "border-b bg-muted/40 px-4 py-2")}>
                 {subgroup.labelKey !== null
                   ? t(`roleGroups.${subgroup.labelKey}`)
                   : slotLabel(subgroup.role as string)}

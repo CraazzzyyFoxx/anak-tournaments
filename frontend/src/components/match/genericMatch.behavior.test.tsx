@@ -246,7 +246,8 @@ describe("the generic statistics view", () => {
     );
     const links = [...container.querySelectorAll<HTMLAnchorElement>('a[href^="/users/"]')];
     expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
-      ["Ann", "/users/Canonical Ann"],
+      // The whole handle is the link; its `#tag` renders as faint text inside it.
+      ["Ann#1", "/users/Canonical Ann"],
       ["Canonical Ann", "/users/Real Bob"]
     ]);
     // Cy has no canonical name: shown, not linked.

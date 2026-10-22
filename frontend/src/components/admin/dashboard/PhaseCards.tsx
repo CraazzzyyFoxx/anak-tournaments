@@ -8,7 +8,8 @@ import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { buildChecklist, type ChecklistItem } from "@/components/admin/tournament-checklist";
 import { formatRelative } from "@/components/kit/format-time";
 import { StatusPill } from "@/components/kit/StatusPill";
-import { EYEBROW_CLASS, TONE_TEXT, type Tone } from "@/components/kit/tone";
+import { TONE_TEXT, type Tone } from "@/components/ui/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -93,7 +94,7 @@ function PhaseCard({ card }: Readonly<{ card: DashboardTournamentCard }>) {
   return (
     <Card className="flex flex-col">
       <CardHeader className="gap-1.5 space-y-0 pb-4">
-        <p className={EYEBROW_CLASS}>{phaseLine}</p>
+        <p className={eyebrowClass("muted")}>{phaseLine}</p>
         <div className="flex min-w-0 items-center gap-2">
           <GameIcon slug={card.discipline} size={16} />
           <CardTitle asChild className="min-w-0 truncate text-base">

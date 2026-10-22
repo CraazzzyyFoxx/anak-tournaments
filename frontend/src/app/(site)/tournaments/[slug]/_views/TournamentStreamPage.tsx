@@ -7,6 +7,7 @@ import { ConnectionIndicator } from "@/components/realtime/ConnectionIndicator";
 import { StreamRow } from "@/components/stream/StreamRow";
 import { StreamTheater } from "@/components/stream/StreamTheater";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import {
@@ -134,9 +135,9 @@ const TournamentStreamPage = ({ tournamentId }: { tournamentId: number }) => {
       ) : (
         <div className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--aqt-border)] px-5 py-3">
-            <h2 className="aqt-tnum m-0 text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+            <Eyebrow as="h2" className="aqt-tnum m-0">
               {t("common.stream")}
-            </h2>
+            </Eyebrow>
             <span className="flex shrink-0 items-center gap-2.5">
               {liveCount > 0 ? (
                 <TournamentStatusPill status="live">

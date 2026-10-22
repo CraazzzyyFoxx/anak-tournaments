@@ -2,20 +2,13 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
-import { Check, ChevronLeft, Plus, X } from "lucide-react";
+import { ChevronLeft, Plus, X } from "lucide-react";
 import { useDebounce } from "use-debounce";
 
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList
-} from "@/components/ui/command";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SearchField } from "@/components/ui/search-field";
 import {
   isFilterActive,
@@ -70,8 +63,9 @@ export function FilterBar({
   const t = useTranslations("kit.actions");
   const [open, setOpen] = useState(false);
   const [pickerKey, setPickerKey] = useState<string | null>(null);
-  const [entityQuery, setEntityQuery] = useState("");
-  const [debouncedEntityQuery] = useDebounce(entityQuery, 250);
+  /** The picker's search field, shared by both levels; reset whenever the level changes. */
+  const [query, setQuery] = useState("");
+  const [debouncedEntityQuery] = useDebounce(query, 250);
   const [entityResults, setEntityResults] = useState<FilterOption[]>([]);
   /**
    * Labels for entity values, learnt when the user picks one. The URL carries
@@ -110,10 +104,14 @@ export function FilterBar({
     };
   }, [picker, debouncedEntityQuery]);
 
+  const openLevel = (key: string | null) => {
+    setPickerKey(key);
+    setQuery("");
+  };
+
   const closePicker = () => {
     setOpen(false);
-    setPickerKey(null);
-    setEntityQuery("");
+    openLevel(null);
     setEntityResults([]);
   };
 
@@ -246,48 +244,21 @@ export function FilterBar({
         ))}
 
         {available.length > 0 ? (
-        <Popover
-          open={open}
-          onOpenChange={(next) => (next ? setOpen(true) : closePicker())}
-        >
-          <PopoverTrigger asChild>
-            <button type="button" className="aqt-filter-chip" aria-label={t("addFilter")}>
-              <Plus aria-hidden className="size-3" />
-              {t("filter")}
-            </button>
-          </PopoverTrigger>
-          <PopoverContent align="start" className="w-72 p-0">
-            {picker === null ? (
-              <Command>
-                <CommandInput placeholder={t("filterBy")} />
-                <CommandList>
-                  <CommandEmpty>{t("noFilters")}</CommandEmpty>
-                  <CommandGroup>
-                    {available.map((def) => (
-                      <CommandItem
-                        key={def.key}
-                        value={def.label}
-                        onSelect={() => {
-                          if (def.kind === "toggle") {
-                            write(def, true);
-                            closePicker();
-                            return;
-                          }
-                          setPickerKey(def.key);
-                        }}
-                      >
-                        {def.label}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            ) : (
-              <Command shouldFilter={picker.kind !== "entity"}>
+          <Combobox
+            open={open}
+            onOpenChange={(next) => (next ? setOpen(true) : closePicker())}
+            trigger={
+              <button type="button" className="aqt-filter-chip" aria-label={t("addFilter")}>
+                <Plus aria-hidden className="size-3" />
+                {t("filter")}
+              </button>
+            }
+            header={
+              picker === null ? null : (
                 <div className="flex items-center gap-1 border-b border-border/60 px-2 py-1.5">
                   <button
                     type="button"
-                    onClick={() => setPickerKey(null)}
+                    onClick={() => openLevel(null)}
                     aria-label={t("backToFilterList")}
                     className="flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
                   >
@@ -295,41 +266,50 @@ export function FilterBar({
                   </button>
                   <span className="text-xs font-medium text-foreground">{picker.label}</span>
                 </div>
-                <CommandInput
-                  placeholder={t("searchPicker", { label: picker.label.toLowerCase() })}
-                  value={picker.kind === "entity" ? entityQuery : undefined}
-                  onValueChange={picker.kind === "entity" ? setEntityQuery : undefined}
-                />
-                <CommandList>
-                  <CommandEmpty>{t("nothingMatchesShort")}</CommandEmpty>
-                  <CommandGroup>
-                    {pickerOptions.map((option) => (
-                      <CommandItem
-                        key={option.value}
-                        value={option.label}
-                        onSelect={() => selectOption(picker, option)}
-                      >
-                        {picker.kind === "multi" ? (
-                          <Check
-                            aria-hidden
-                            className={cn("size-4", isPicked(option) ? "opacity-100" : "opacity-0")}
-                          />
-                        ) : null}
-                        {option.icon}
-                        <span className="truncate">{option.label}</span>
-                        {option.count !== undefined ? (
-                          <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-                            {option.count}
-                          </span>
-                        ) : null}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            )}
-          </PopoverContent>
-        </Popover>
+              )
+            }
+            searchValue={query}
+            onSearchValueChange={setQuery}
+            searchPlaceholder={
+              picker === null ? t("filterBy") : t("searchPicker", { label: picker.label.toLowerCase() })
+            }
+            emptyMessage={picker === null ? t("noFilters") : t("nothingMatchesShort")}
+            shouldFilter={picker?.kind !== "entity"}
+          >
+            <CommandGroup>
+              {picker === null
+                ? available.map((def) => (
+                    <CommandItem
+                      key={def.key}
+                      value={def.label}
+                      onSelect={() => {
+                        if (def.kind === "toggle") {
+                          write(def, true);
+                          closePicker();
+                          return;
+                        }
+                        openLevel(def.key);
+                      }}
+                    >
+                      {def.label}
+                    </CommandItem>
+                  ))
+                : pickerOptions.map((option) => (
+                    <CommandItem
+                      key={option.value}
+                      value={option.label}
+                      onSelect={() => selectOption(picker, option)}
+                    >
+                      {option.icon}
+                      <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                      {option.count !== undefined ? (
+                        <span className="text-xs tabular-nums text-muted-foreground">{option.count}</span>
+                      ) : null}
+                      {picker.kind === "multi" ? <ComboboxCheck selected={isPicked(option)} /> : null}
+                    </CommandItem>
+                  ))}
+            </CommandGroup>
+          </Combobox>
         ) : null}
 
         {chips.length > 1 ? (

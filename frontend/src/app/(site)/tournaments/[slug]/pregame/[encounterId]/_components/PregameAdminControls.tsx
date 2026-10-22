@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { cn } from "@/lib/utils";
@@ -349,9 +350,7 @@ export function PregameAdminControls({
                 }}
               />
               <div className="flex flex-col gap-1">
-                <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                  {t("admin.actionLabel")}
-                </span>
+                <Eyebrow>{t("admin.actionLabel")}</Eyebrow>
                 <span className="text-sm font-medium capitalize">{t(`action.${action}`)}</span>
               </div>
               {step?.blind ? (
@@ -368,9 +367,7 @@ export function PregameAdminControls({
                     />
                   ) : null}
                   <div className="flex flex-col gap-1">
-                    <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                      {t("admin.submitLabel")}
-                    </span>
+                    <Eyebrow>{t("admin.submitLabel")}</Eyebrow>
                     {blind != null && blind.items.length > 0 ? (
                       <div className="flex flex-wrap items-center gap-1">
                         {blind.items.map((item, index) => (
@@ -423,12 +420,7 @@ export function PregameAdminControls({
               ) : sideStep ? (
                 <>
                   <div className="flex flex-col gap-1">
-                    <span
-                      id={sideChoiceId}
-                      className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
-                    >
-                      {t("admin.sideChoiceLabel")}
-                    </span>
+                    <Eyebrow id={sideChoiceId}>{t("admin.sideChoiceLabel")}</Eyebrow>
                     <PickBanSideChoice
                       labelledBy={sideChoiceId}
                       labels={sideLabels}
@@ -492,9 +484,7 @@ export function PregameAdminControls({
 
           {awaitingChoice ? (
             <div className="flex flex-col gap-1">
-              <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                {t("admin.electLabel")}
-              </span>
+              <Eyebrow>{t("admin.electLabel")}</Eyebrow>
               <div className="flex gap-1">
                 {seats.map((seat) => (
                   <Button
@@ -525,9 +515,7 @@ export function PregameAdminControls({
             "mt-4 border-t border-dashed border-[color:var(--aqt-amber)]/35 pt-3"
         )}
       >
-        <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-          {t("admin.sessionLabel")}
-        </span>
+        <Eyebrow>{t("admin.sessionLabel")}</Eyebrow>
         {active ? (
           <Button
             size="sm"
@@ -701,9 +689,7 @@ export function PregameAdminControls({
 
       {correctable.length > 0 ? (
         <div className="mt-4 flex flex-col gap-2 border-t border-dashed border-[color:var(--aqt-amber)]/35 pt-3">
-          <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-            {t("admin.correctLabel")}
-          </span>
+          <Eyebrow>{t("admin.correctLabel")}</Eyebrow>
           {correctable.map((game) => (
             <GameCorrection
               key={game.id}
@@ -827,9 +813,7 @@ function ChoiceGroup<TValue extends string>({
 }>) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-        {label}
-      </span>
+      <Eyebrow>{label}</Eyebrow>
       <div className="flex gap-1">
         {options.map((option) => (
           <Button

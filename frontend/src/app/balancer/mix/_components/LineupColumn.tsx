@@ -3,7 +3,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { Pin } from "lucide-react";
 
-import { EYEBROW_CLASS } from "@/app/balancer/mix/pickup-chrome";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
 import type {
   CustomGamePlayer,
@@ -72,8 +72,7 @@ export function LineupColumn({
         ) : null}
         <span
           className={cn(
-            EYEBROW_CLASS,
-            "tracking-label",
+            eyebrowClass(),
             bucket === "must_play" && "text-[color:var(--aqt-amber)]"
           )}
         >

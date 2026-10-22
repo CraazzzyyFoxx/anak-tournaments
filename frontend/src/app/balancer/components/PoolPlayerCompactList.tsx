@@ -20,7 +20,7 @@ import type { AdminRegistration, BalancerPlayerRecord } from "@/types/balancer-a
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { roleTint, type RoleOntology } from "@/lib/roster/ontology";
 import type { DivisionGrid } from "@/types/workspace.types";
-import { splitHandle } from "@/components/balancer/balancer-page-helpers";
+import { HandleLabel } from "@/components/HandleLabel";
 import { BalancerStatusContextMenuItems, BalancerStatusMenu, type StatusOptionGroups } from "./BalancerStatusMenu";
 import { AdditionalHandleStrip, HandleContextMenuItems, HandleCopyButton } from "./HandleCopyControls";
 import { IssueChip, issueChipKey } from "./IssueChip";
@@ -106,7 +106,6 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
     .filter((roleCode, index, all) => all.indexOf(roleCode) === index);
   const primaryEntry = rankedEntries[0] ?? sortedEntries[0] ?? null;
   const divisionNumber = primaryEntry?.division_number ?? null;
-  const { name, suffix } = splitHandle(player.identity);
   const primaryRole = primaryEntry?.role ?? null;
   const issueSummary = issues.map((issue) => issue.message).join(" | ");
   const handles = [player.identity, ...player.additional_handles];
@@ -160,8 +159,11 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
                   title={`Edit ${player.identity}`}
                   className="flex min-w-0 items-baseline gap-1 rounded text-left"
                 >
-                  <span className="truncate text-caption font-medium text-[color:var(--aqt-fg)]">{name}</span>
-                  {suffix ? <span className="shrink-0 text-label text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
+                  <HandleLabel
+                    handle={player.identity}
+                    className="text-caption font-medium text-[color:var(--aqt-fg)]"
+                    tagClassName="text-label"
+                  />
                 </button>
               </div>
 

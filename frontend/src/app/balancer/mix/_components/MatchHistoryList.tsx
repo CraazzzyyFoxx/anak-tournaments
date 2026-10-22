@@ -2,16 +2,16 @@
 
 import { useState } from "react";
 
-import Image from "@/components/ui/image";
-
 import { useTranslations } from "next-intl";
 
 import { History, Undo2 } from "lucide-react";
 
-import { EYEBROW_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
+import { lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { formatRelative } from "@/components/kit/format-time";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { Spinner } from "@/components/ui/spinner";
 import { StatusDot } from "@/components/ui/status-dot";
@@ -49,10 +49,10 @@ export function MatchHistoryList({
 
   return (
     <div className="flex flex-col gap-2 border-t border-[color:var(--aqt-border)] pt-3">
-      <span className={cn(EYEBROW_CLASS, "flex items-center gap-1.5 tracking-label")}>
+      <Eyebrow className="flex items-center gap-1.5">
         <History className="size-3.5" aria-hidden="true" />
         Match history
-      </span>
+      </Eyebrow>
       <ul className="flex flex-col gap-1.5">
         {matches.map((match) => (
           <MatchHistoryRow
@@ -67,16 +67,6 @@ export function MatchHistoryList({
       </ul>
     </div>
   );
-}
-
-/** Two-letter fallback for a map with no thumbnail yet, same rule `MapRow` uses. */
-export function mapInitials(name: string): string {
-  return name
-    .split(/\s+/)
-    .map((word) => word[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
 }
 
 function MatchHistoryRow({
@@ -119,15 +109,12 @@ function MatchHistoryRow({
           </span>
         </IconTooltip>
       ) : null}
-      <div className="relative h-8 w-14 shrink-0 overflow-hidden rounded-md border border-[color:var(--aqt-border-2)] bg-[linear-gradient(135deg,var(--aqt-card-2),var(--aqt-bg-2))]">
-        {match.map_image_path ? (
-          <Image src={match.map_image_path} alt="" fill sizes="56px" className="object-cover" />
-        ) : (
-          <span className="flex h-full w-full items-center justify-center font-display text-label font-extrabold text-[color:var(--aqt-fg-faint)]">
-            {match.map_name ? mapInitials(match.map_name) : "?"}
-          </span>
-        )}
-      </div>
+      <CatalogEntityImage
+        entity={{ name: match.map_name ?? "", image_path: match.map_image_path ?? null }}
+        size={32}
+        shape="wide"
+        decorative
+      />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-1.5 text-caption font-semibold leading-tight">
           <StatusDot className={cn("inline-block", firstAccent.bar)} />

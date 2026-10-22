@@ -5,6 +5,7 @@ import { useId } from "react";
 import { ArrowRight, Check } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { SettingRow } from "@/components/kit/SettingRow";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -57,41 +58,6 @@ export function rolesParamsOf(params: Record<string, unknown>): RolesParams {
 }
 
 /**
- * One switch setting: what it is and why on the left, the control on the right.
- *
- * Shared with `FieldEditor` — the question panel and this params editor are one
- * surface to the organizer, and two copies of the row is how their label sizes
- * and hint spacing start to drift.
- */
-export function SwitchRow({
-  id,
-  label,
-  hint,
-  checked,
-  onCheckedChange,
-  disabled = false
-}: Readonly<{
-  id: string;
-  label: string;
-  hint?: string;
-  checked: boolean;
-  onCheckedChange: (next: boolean) => void;
-  disabled?: boolean;
-}>) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="min-w-0">
-        <Label htmlFor={id} className="text-xs">
-          {label}
-        </Label>
-        {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p> : null}
-      </div>
-      <Switch id={id} checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
-    </div>
-  );
-}
-
-/**
  * Everything the `roles` builtin decides: role composition, the flex rule, the
  * sub-roles this tournament offers and the top-heroes pickers.
  *
@@ -125,25 +91,29 @@ export function RolesParamsEditor({
   return (
     <div className="grid gap-4">
       <div className="grid gap-3">
-        <SwitchRow
-          id={`${ids}-primary`}
-          label={t("primaryRequired")}
-          checked={params.primary_required}
-          onCheckedChange={(primary_required) => onChange({ ...params, primary_required })}
-        />
-        <SwitchRow
-          id={`${ids}-additional`}
-          label={t("additionalRequired")}
-          checked={params.additional_required}
-          onCheckedChange={(additional_required) => onChange({ ...params, additional_required })}
-        />
-        <SwitchRow
-          id={`${ids}-flex`}
-          label={t("flexAllowed")}
-          hint={t("flexAllowedHint")}
-          checked={params.flex_allowed}
-          onCheckedChange={(flex_allowed) => onChange({ ...params, flex_allowed })}
-        />
+        <div>
+          <SettingRow htmlFor={`${ids}-primary`} label={t("primaryRequired")}>
+            <Switch
+              id={`${ids}-primary`}
+              checked={params.primary_required}
+              onCheckedChange={(primary_required) => onChange({ ...params, primary_required })}
+            />
+          </SettingRow>
+          <SettingRow htmlFor={`${ids}-additional`} label={t("additionalRequired")}>
+            <Switch
+              id={`${ids}-additional`}
+              checked={params.additional_required}
+              onCheckedChange={(additional_required) => onChange({ ...params, additional_required })}
+            />
+          </SettingRow>
+          <SettingRow htmlFor={`${ids}-flex`} label={t("flexAllowed")} hint={t("flexAllowedHint")}>
+            <Switch
+              id={`${ids}-flex`}
+              checked={params.flex_allowed}
+              onCheckedChange={(flex_allowed) => onChange({ ...params, flex_allowed })}
+            />
+          </SettingRow>
+        </div>
         <div className="grid gap-1.5">
           <Label htmlFor={`${ids}-mode`} className="text-xs">
             {t("flexMode")}
@@ -253,24 +223,27 @@ export function RolesParamsEditor({
       </div>
 
       <div className="grid gap-3 border-t pt-4">
-        <SwitchRow
-          id={`${ids}-heroes`}
-          label={t("topHeroesEnabled")}
-          hint={t("topHeroesHint")}
-          checked={params.top_heroes.enabled}
-          onCheckedChange={(enabled) =>
-            onChange({ ...params, top_heroes: { ...params.top_heroes, enabled } })
-          }
-        />
-        <SwitchRow
-          id={`${ids}-heroes-required`}
-          label={t("topHeroesRequired")}
-          checked={params.top_heroes.required}
-          disabled={!params.top_heroes.enabled}
-          onCheckedChange={(required) =>
-            onChange({ ...params, top_heroes: { ...params.top_heroes, required } })
-          }
-        />
+        <div>
+          <SettingRow htmlFor={`${ids}-heroes`} label={t("topHeroesEnabled")} hint={t("topHeroesHint")}>
+            <Switch
+              id={`${ids}-heroes`}
+              checked={params.top_heroes.enabled}
+              onCheckedChange={(enabled) =>
+                onChange({ ...params, top_heroes: { ...params.top_heroes, enabled } })
+              }
+            />
+          </SettingRow>
+          <SettingRow htmlFor={`${ids}-heroes-required`} label={t("topHeroesRequired")}>
+            <Switch
+              id={`${ids}-heroes-required`}
+              checked={params.top_heroes.required}
+              disabled={!params.top_heroes.enabled}
+              onCheckedChange={(required) =>
+                onChange({ ...params, top_heroes: { ...params.top_heroes, required } })
+              }
+            />
+          </SettingRow>
+        </div>
         <div className="grid gap-1.5">
           <Label htmlFor={`${ids}-heroes-max`} className="text-xs">
             {t("topHeroesMax")}

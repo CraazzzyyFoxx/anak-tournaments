@@ -21,7 +21,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
-import { EYEBROW_CLASS, TONE_TEXT } from "@/components/kit/tone";
+import { TONE_TEXT } from "@/components/ui/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import balancerAdminService from "@/services/balancer-admin.service";
 import type {
   RegistrationRankAutofillRequest,
@@ -301,7 +302,7 @@ export default function RankAutofillPage({
             <div className="flex shrink-0 items-center divide-x divide-[color:var(--aqt-border)] rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]">
               {stats.map(({ label, value, color }) => (
                 <div key={label} className="px-3 py-2 text-center">
-                  <div className={EYEBROW_CLASS}>{label}</div>
+                  <div className={eyebrowClass("muted")}>{label}</div>
                   <div
                     className={cn(
                       "text-base font-semibold tabular-nums",

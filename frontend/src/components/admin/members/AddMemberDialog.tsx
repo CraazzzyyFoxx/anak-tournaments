@@ -1,17 +1,9 @@
 "use client";
 
 import { useId, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { AuthUserSearchCombobox, type AuthUserOption } from "@/components/kit/ServerSearchCombobox";
 import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList
-} from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
@@ -21,7 +13,6 @@ import {
   DialogTitle
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -30,11 +21,8 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
-import { rbacService } from "@/services/rbac.service";
 import workspaceService from "@/services/workspace.service";
 import type { WorkspaceSystemRole } from "@/types/workspace.types";
-import { workspaceQueryKeys } from "@/lib/workspace/query-keys";
 import { useTranslations } from "next-intl";
 
 import { SYSTEM_ROLES } from "./model";
@@ -57,21 +45,15 @@ export function AddMemberDialog({
   const tm = useTranslations("adminAccess.member");
   const userFieldId = useId();
   const roleFieldId = useId();
-  const [userId, setUserId] = useState<string>("");
+  const [user, setUser] = useState<AuthUserOption | null>(null);
   // One system role to start with; any further roles are added from the row's editor.
   const [role, setRole] = useState<WorkspaceSystemRole>("player");
-  const [userComboOpen, setUserComboOpen] = useState(false);
-
-  const { data: allUsers } = useQuery({
-    queryKey: workspaceQueryKeys.rbacUsersAll(workspaceId),
-    queryFn: () => rbacService.listUsersAll({ workspace_id: workspaceId }),
-    enabled: open
-  });
 
   const addMemberMutation = useMutation({
-    mutationFn: (roleId: number) => workspaceService.addMember(workspaceId, Number(userId), roleId),
+    mutationFn: ({ userId, roleId }: { userId: number; roleId: number }) =>
+      workspaceService.addMember(workspaceId, userId, roleId),
     onSuccess: () => {
-      setUserId("");
+      setUser(null);
       setRole("player");
       notify.success(tw("memberAdded"));
       onAdded();
@@ -79,12 +61,10 @@ export function AddMemberDialog({
     onError: (error) => notify.apiError(error)
   });
 
-  const selectedUsername = allUsers?.find((u) => u.id === Number(userId))?.username;
-
   // Validated on submit rather than by disabling the button, so the reason the
   // form will not go through is spoken instead of silently greyed out.
   const submit = () => {
-    if (!userId) {
+    if (!user) {
       notify.error(tw("pickUser"));
       return;
     }
@@ -93,7 +73,7 @@ export function AddMemberDialog({
       notify.error(tw("roleNotConfigured"));
       return;
     }
-    addMemberMutation.mutate(roleId);
+    addMemberMutation.mutate({ userId: user.id, roleId });
   };
 
   return (
@@ -107,50 +87,15 @@ export function AddMemberDialog({
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor={userFieldId}>{t("user")}</Label>
-            <Popover open={userComboOpen} onOpenChange={setUserComboOpen}>
-              <PopoverTrigger asChild>
-                <Button
-                  id={userFieldId}
-                  variant="outline"
-                  role="combobox"
-                  aria-haspopup="listbox"
-                  aria-expanded={userComboOpen}
-                  className="justify-between"
-                >
-                  <span className="truncate">{selectedUsername ?? tm("selectUser")}</span>
-                  <ChevronsUpDown aria-hidden className="ml-2 size-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0">
-                <Command>
-                  <CommandInput placeholder={t("searchUser")} />
-                  <CommandList>
-                    <CommandEmpty>{t("noUser")}</CommandEmpty>
-                    <CommandGroup>
-                      {(allUsers ?? []).map((u) => (
-                        <CommandItem
-                          key={u.id}
-                          value={u.username}
-                          onSelect={() => {
-                            setUserId(String(u.id));
-                            setUserComboOpen(false);
-                          }}
-                        >
-                          <Check
-                            aria-hidden
-                            className={cn(
-                              "mr-2 size-4",
-                              userId === String(u.id) ? "opacity-100" : "opacity-0"
-                            )}
-                          />
-                          {u.username}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
+            <AuthUserSearchCombobox
+              id={userFieldId}
+              workspaceId={workspaceId}
+              value={user?.id}
+              selectedLabel={user?.label}
+              onSelect={(picked) => setUser(picked ?? null)}
+              placeholder={tm("selectUser")}
+              searchPlaceholder={t("searchUser")}
+            />
           </div>
 
           <div className="flex flex-col gap-1.5">

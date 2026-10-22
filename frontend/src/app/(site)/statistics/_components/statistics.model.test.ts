@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { clock, parsePlayersParams, playersSortHref, splitBattleTag } from "./statistics.model";
+import { clock, parsePlayersParams, playersSortHref } from "./statistics.model";
 
 describe("statistics page model", () => {
   it("reads the players table state, falling back to the defaults", () => {
@@ -20,10 +20,8 @@ describe("statistics page model", () => {
     );
   });
 
-  it("formats a map length and splits a BattleTag", () => {
+  it("formats a map length", () => {
     expect(clock(754)).toBe("12:34");
     expect(clock(59.6)).toBe("1:00");
-    expect(splitBattleTag("Fox#2130")).toEqual(["Fox", "#2130"]);
-    expect(splitBattleTag("Fox")).toEqual(["Fox", null]);
   });
 });

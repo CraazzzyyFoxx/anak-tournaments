@@ -9,6 +9,7 @@ import { LogStatsName } from "../stat-names";
 import type { CharacterStatBest, CharacterWithUserStats } from "@/types/user.types";
 import { getHumanizedStats } from "../stat-names";
 import { CardSurface } from "@/components/profile/atoms";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { formatStatValue } from "./utils";
 import {
   Tooltip,
@@ -66,7 +67,7 @@ const HeroBestGames = ({ hero }: { hero: CharacterWithUserStats }) => {
                   href={`/encounters/${best.encounter_id}`}
                   className="-m-2 flex flex-col gap-1 rounded-lg p-2 transition-colors hover:bg-[hsl(0_0%_100%/0.03)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
                 >
-                  <span className="flex items-center gap-1.5 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+                  <Eyebrow className="flex items-center gap-1.5">
                     {getHumanizedStats(name)}
                     {isGlobalRecord ? (
                       <Crown
@@ -75,7 +76,7 @@ const HeroBestGames = ({ hero }: { hero: CharacterWithUserStats }) => {
                         className="h-3 w-3 text-[color:var(--aqt-amber)]"
                       />
                     ) : null}
-                  </span>
+                  </Eyebrow>
                   <span className="aqt-display text-[24px] font-bold leading-none text-[color:var(--aqt-fg)]">
                     {formatStatValue(format, name, best.value)}
                   </span>

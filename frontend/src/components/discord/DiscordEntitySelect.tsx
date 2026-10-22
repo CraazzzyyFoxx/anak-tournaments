@@ -3,7 +3,7 @@
 import { type ReactNode } from "react";
 import { Code2, RefreshCw } from "lucide-react";
 
-import { Combobox, ComboboxCheck } from "@/components/kit/Combobox";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";

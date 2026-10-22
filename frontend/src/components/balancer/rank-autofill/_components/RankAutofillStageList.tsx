@@ -14,7 +14,7 @@ import {
   STAGE_WINDOW_KIND,
   stageWindowValue
 } from "../rank-autofill-stages";
-import { TONE_TEXT } from "@/components/kit/tone";
+import { TONE_TEXT } from "@/components/ui/tone";
 import { NumberInput } from "@/components/ui/number-input";
 import {
   Select,

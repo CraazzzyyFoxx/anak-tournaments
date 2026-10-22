@@ -4,7 +4,9 @@ import { useTranslations } from "next-intl";
 import { getTranslations } from "next-intl/server";
 import { ArrowDown } from "lucide-react";
 
+import { HandleLabel } from "@/components/HandleLabel";
 import { EmptyNote, LoadError, Section, SectionHead } from "@/components/site/open-layout";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { winrateColor } from "@/lib/colors";
@@ -16,7 +18,7 @@ import statisticsService from "@/services/statistics.service";
 import type { PlayerSort } from "@/types/statistics.types";
 
 import { PlayersNotFound, PlayersPagination, PlayersSearch } from "./PlayersControls";
-import { PLAYERS_PER_PAGE, playersSortHref, splitBattleTag, type PlayersParams } from "./statistics.model";
+import { PLAYERS_PER_PAGE, playersSortHref, type PlayersParams } from "./statistics.model";
 
 const TITLE_ID = "stats-players-title";
 const SKELETON_ROWS = 10;
@@ -25,8 +27,6 @@ const SKELETON_ROWS = 10;
 const FRAME_CLASS =
   "overflow-x-auto rounded-[12px] border border-[color:var(--aqt-overlay-border)] bg-[color:var(--aqt-overlay-1)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]";
 const TABLE_CLASS = "w-full min-w-[34rem] text-caption";
-const HEAD_ROW_CLASS =
-  "whitespace-nowrap border-b border-[color:var(--aqt-overlay-border)] text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 const ROW_CLASS = "border-b border-[color:var(--aqt-overlay-border)] last:border-b-0";
 
 /** The numeric columns, left to right; each sorts the table by itself. */
@@ -107,7 +107,7 @@ export async function PlayersSection({
       <div role="region" aria-labelledby={TITLE_ID} tabIndex={0} className={FRAME_CLASS}>
         <table className={TABLE_CLASS}>
           <thead>
-            <tr className={HEAD_ROW_CLASS}>
+            <tr className={cn(eyebrowClass(), "whitespace-nowrap border-b border-[color:var(--aqt-overlay-border)]")}>
               <th scope="col" className="w-14 py-2.5 pl-3.5 pr-2 text-left font-medium">
                 {t("col.rank")}
               </th>
@@ -141,9 +141,7 @@ export async function PlayersSection({
             </tr>
           </thead>
           <tbody>
-            {data.results.map((row) => {
-              const [nick, tag] = splitBattleTag(row.name);
-              return (
+            {data.results.map((row) => (
                 <tr
                   key={row.id}
                   className={cn(ROW_CLASS, "transition-colors hover:bg-[color:var(--aqt-overlay-2)]")}
@@ -162,8 +160,7 @@ export async function PlayersSection({
                       title={row.name}
                       className="block truncate rounded-sm text-body font-semibold text-[color:var(--aqt-fg)] transition-colors hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
                     >
-                      {nick}
-                      {tag ? <span className="font-normal text-[color:var(--aqt-fg-faint)]">{tag}</span> : null}
+                      <HandleLabel handle={row.name} />
                     </Link>
                   </td>
                   <td
@@ -200,8 +197,7 @@ export async function PlayersSection({
                         })}
                   </td>
                 </tr>
-              );
-            })}
+            ))}
           </tbody>
         </table>
       </div>
@@ -218,7 +214,7 @@ export function PlayersSkeleton({ sort }: Readonly<{ sort: PlayerSort }>) {
   return (
     <Shell sort={sort} aside={<Skeleton className="h-8 w-full sm:w-64" />}>
       <div aria-hidden className={FRAME_CLASS}>
-        <div className={cn(HEAD_ROW_CLASS, "h-10")} />
+        <div className="h-10 border-b border-[color:var(--aqt-overlay-border)]" />
         {Array.from({ length: SKELETON_ROWS }, (_, index) => (
           <div key={index} className={cn(ROW_CLASS, "flex h-11 items-center gap-4 px-3.5")}>
             <Skeleton className="h-5 w-7" />

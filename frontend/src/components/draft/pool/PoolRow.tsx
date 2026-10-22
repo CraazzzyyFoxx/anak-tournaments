@@ -4,9 +4,9 @@ import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import { Check, ChevronDown, ChevronUp, Crown, Heart } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import DivisionIcon from "@/components/DivisionIcon";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import Image from "@/components/ui/image";
+import { RankCrest } from "@/components/RankCrest";
 import { getImpactColor } from "@/lib/colors";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import {
@@ -440,16 +440,8 @@ function RoleCell({
           />
         </span>
       )}
-      <span className="ml-0.5 mr-1 inline-flex h-[22px] w-[22px] shrink-0" title={divisionLabel ?? undefined}>
-        {division != null && (
-          <DivisionIcon
-            division={division}
-            tournamentGrid={divisionGrid}
-            width={22}
-            height={22}
-            className="h-[22px] w-[22px] object-contain"
-          />
-        )}
+      <span className="ml-0.5 mr-1 inline-flex h-[22px] w-[22px] shrink-0">
+        <RankCrest division={division} grid={divisionGrid} tooltip={false} />
       </span>
       <span className="flex min-w-0 flex-auto flex-col gap-0.5 text-left" title={subRole ?? undefined}>
         <span className="whitespace-nowrap text-body font-semibold leading-tight tabular-nums">{rank ?? "—"}</span>
@@ -460,22 +452,14 @@ function RoleCell({
           query on the cell, so it tracks the panel width, not the viewport). */}
       {heroes.length > 0 && (
         <span className="hidden shrink-0 @[176px]/cell:flex">
-          {heroes.map((hero, heroIndex) => {
-            const heroName = hero.slug.replace(/-/g, " ");
-            return (
-              <Image
-                key={hero.slug}
-                src={getHeroIconUrl(hero.slug, hero.imagePath)}
-                alt={heroName}
-                title={heroName}
-                width={26}
-                height={26}
-                loading="lazy"
-                className="h-[26px] w-[26px] shrink-0 rounded-full border-2 border-[color:var(--aqt-card)] object-cover capitalize"
-                style={{ marginLeft: heroIndex ? -15 : 0 }}
-              />
-            );
-          })}
+          {heroes.map((hero, heroIndex) => (
+            <CatalogEntityImage
+              key={hero.slug}
+              entity={{ name: hero.slug.replace(/-/g, " "), image_path: getHeroIconUrl(hero.slug, hero.imagePath) }}
+              size={26}
+              className={cn("border-2 border-[color:var(--aqt-card)]", heroIndex > 0 && "-ml-[15px]")}
+            />
+          ))}
         </span>
       )}
     </>

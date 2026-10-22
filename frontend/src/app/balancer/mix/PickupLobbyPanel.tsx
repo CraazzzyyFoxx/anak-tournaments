@@ -15,6 +15,7 @@ import { CAPTION_CLASS, CARD_TITLE_CLASS } from "@/app/balancer/mix/pickup-chrom
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { useDragSensors } from "@/hooks/useDragSensors";
@@ -240,9 +241,7 @@ export function PickupLobbyPanel({
             >
               <div className="flex items-center gap-1.5">
                 <PlayerRoleIcon role={entry.role} ontology={owner.ontology} size={16} decorative />
-                <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-                  {slotLabel(entry.role)}
-                </span>
+                <Eyebrow tone="dim">{slotLabel(entry.role)}</Eyebrow>
                 <span
                   className={cn(
                     "ml-auto text-caption font-semibold tabular-nums",

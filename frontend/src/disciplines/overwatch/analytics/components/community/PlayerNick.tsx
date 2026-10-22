@@ -3,6 +3,7 @@
 import { Shuffle, Sprout } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { HandleLabel } from "@/components/HandleLabel";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { cn } from "@/lib/utils";
 import type { PlayerVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
@@ -19,14 +20,13 @@ interface PlayerNickProps {
  */
 export default function PlayerNick({ player, className }: Readonly<PlayerNickProps>) {
   const t = useTranslations();
-  const [nick, tag] = player.name.split("#");
-
   return (
     <span className="flex min-w-0 items-center gap-1.5">
-      <span className={cn("min-w-0 truncate text-[color:var(--aqt-fg)]", className)} title={player.name}>
-        {nick}
-        {tag ? <span className="font-normal text-[color:var(--aqt-fg-faint)]">#{tag}</span> : null}
-      </span>
+      <HandleLabel
+        handle={player.name}
+        title={player.name}
+        className={cn("text-[color:var(--aqt-fg)]", className)}
+      />
       {player.is_newcomer ? (
         <IconTooltip label={t("teams.roster.newcomer")} hint={t("teams.roster.newcomerHint")} className="shrink-0">
           <Sprout aria-hidden className="size-4 text-[color:var(--aqt-rose)]" />

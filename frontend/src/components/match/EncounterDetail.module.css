@@ -123,43 +123,6 @@
   color: var(--ed-faint);
 }
 
-.pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  border: 1px solid var(--ed-border-2);
-  background: var(--aqt-overlay-3);
-  font-size: var(--text-label);
-  color: var(--ed-muted);
-  white-space: nowrap;
-}
-
-.pillAccent {
-  border-color: color-mix(in srgb, var(--ed-teal) 30%, transparent);
-  background: color-mix(in srgb, var(--ed-teal) 12%, transparent);
-  color: var(--ed-teal);
-}
-
-.pillWarn {
-  border-color: color-mix(in srgb, var(--ed-amber) 30%, transparent);
-  background: color-mix(in srgb, var(--ed-amber) 12%, transparent);
-  color: var(--ed-amber);
-}
-
-.pillDanger {
-  border-color: color-mix(in srgb, var(--ed-rose) 30%, transparent);
-  background: color-mix(in srgb, var(--ed-rose) 12%, transparent);
-  color: var(--ed-rose);
-}
-
-.pillGood {
-  border-color: color-mix(in srgb, var(--ed-emerald) 30%, transparent);
-  background: color-mix(in srgb, var(--ed-emerald) 12%, transparent);
-  color: var(--ed-emerald);
-}
-
 .livePulse {
   width: 6px;
   height: 6px;

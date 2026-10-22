@@ -46,7 +46,6 @@ export const userQueryKeys = {
   /** The index drawer's per-player career read in one game. */
   draftCard: (userId: KeyPart, axis: UserAxis, discipline: string) =>
     ["user-stats", userId, axis, discipline, "draft-card"] as const,
-  searchMinimized: (query: KeyPart) => ["users-search-minimized", query] as const,
   compare: (subjectUserId: KeyPart, axis: UserAxis, discipline: string, filters: unknown) =>
     ["user-stats", subjectUserId, axis, discipline, "compare", filters] as const,
   characterCompare: (subjectUserId: KeyPart, axis: UserAxis, discipline: string, filters: unknown) =>

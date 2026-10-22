@@ -1,15 +1,17 @@
 "use client";
 
 import { useState } from "react";
-
-import Image from "@/components/ui/image";
+import { useTranslations } from "next-intl";
 
 import { Dices } from "lucide-react";
 
 import { rollNextMap, rollableModes } from "@/app/balancer/mix/pickup-map-roll";
-import { CAPTION_CLASS, EYEBROW_CLASS } from "@/app/balancer/mix/pickup-chrome";
-import { MapCombobox } from "@/components/MapCombobox";
+import { CAPTION_CLASS } from "@/app/balancer/mix/pickup-chrome";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { Button } from "@/components/ui/button";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Spinner } from "@/components/ui/spinner";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
@@ -44,7 +46,9 @@ export function NextMapStrip({
   capturing: boolean;
   onNextMapChange: (mapId: number | null) => void;
 }>) {
+  const t = useTranslations("mixes.room");
   const [modeId, setModeId] = useState<number | null>(null);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
   const modes = rollableModes(maps);
   const nextMap = nextMapId == null ? null : (maps.find((map) => map.id === nextMapId) ?? null);
 
@@ -62,6 +66,11 @@ export function NextMapStrip({
     onNextMapChange(rolled.id);
   };
 
+  const pickMap = (mapId: number | null) => {
+    onNextMapChange(mapId);
+    setMapPickerOpen(false);
+  };
+
   return (
     <div
       className={cn(
@@ -69,18 +78,15 @@ export function NextMapStrip({
         capturing && nextMap == null && "hidden"
       )}
     >
-      <div className="relative h-10 w-[72px] shrink-0 overflow-hidden rounded-md border border-[color:var(--aqt-border-2)] bg-[linear-gradient(135deg,var(--aqt-card-2),var(--aqt-bg-2))]">
-        {nextMap?.image_path ? (
-          <Image src={nextMap.image_path} alt="" fill sizes="72px" className="object-cover" />
-        ) : (
-          <Dices
-            className="absolute inset-0 m-auto size-4 text-[color:var(--aqt-fg-faint)]"
-            aria-hidden="true"
-          />
-        )}
-      </div>
+      {nextMap ? (
+        <CatalogEntityImage entity={nextMap} size={40} shape="wide" decorative />
+      ) : (
+        <span className="relative flex h-10 w-[53px] shrink-0 items-center justify-center rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card-2)]">
+          <Dices className="size-4 text-[color:var(--aqt-fg-faint)]" aria-hidden="true" />
+        </span>
+      )}
       <div className="min-w-0 flex-1">
-        <span className={EYEBROW_CLASS}>Next map</span>
+        <Eyebrow>Next map</Eyebrow>
         <div className="flex flex-wrap items-baseline gap-x-2">
           <span
             className={cn(
@@ -130,7 +136,28 @@ export function NextMapStrip({
             )}
             Roll
           </Button>
-          <MapCombobox maps={maps} mapId={nextMapId} onMapIdChange={onNextMapChange} />
+          <Combobox
+            open={mapPickerOpen}
+            onOpenChange={setMapPickerOpen}
+            label={nextMap?.name ?? t("noMap")}
+            size="sm"
+            triggerClassName="w-[160px] rounded-lg border-[color:var(--aqt-border-2)] bg-black/15"
+            searchPlaceholder={t("searchMaps")}
+            emptyMessage={t("noMapsMatch")}
+          >
+            <CommandGroup>
+              <CommandItem value={t("noMap")} onSelect={() => pickMap(null)}>
+                <span className="min-w-0 flex-1 truncate">{t("noMap")}</span>
+                <ComboboxCheck selected={nextMapId == null} />
+              </CommandItem>
+              {maps.map((map) => (
+                <CommandItem key={map.id} value={map.name} onSelect={() => pickMap(map.id)}>
+                  <span className="min-w-0 flex-1 truncate">{map.name}</span>
+                  <ComboboxCheck selected={nextMapId === map.id} />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </Combobox>
         </div>
       ) : null}
     </div>

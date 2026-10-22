@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { Eyebrow } from "@/components/ui/eyebrow";
+
 const SIZE = 64;
 const STROKE = 5;
 const R = (SIZE - STROKE) / 2;
@@ -66,9 +68,7 @@ export function PickBanCountdown({ deadline, totalSeconds }: Readonly<PickBanCou
         </span>
       </div>
       <div className="flex flex-col">
-        <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-          {t("timer.label")}
-        </span>
+        <Eyebrow>{t("timer.label")}</Eyebrow>
         {expired ? (
           <span className="text-sm font-semibold text-[color:var(--aqt-amber)]">{t("timer.expired")}</span>
         ) : null}

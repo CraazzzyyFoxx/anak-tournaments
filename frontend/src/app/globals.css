@@ -603,10 +603,12 @@
   color: var(--aqt-fg);
 }
 
+/* `--chip-accent` is `FilterChip accent`: a role-tinted filter set reuses the
+   chip with its own colour instead of teal. */
 .aqt-filter-chip.active {
-  background: color-mix(in srgb, var(--aqt-teal) 12%, transparent);
-  border-color: color-mix(in srgb, var(--aqt-teal) 35%, transparent);
-  color: var(--aqt-teal);
+  background: color-mix(in srgb, var(--chip-accent, var(--aqt-teal)) 12%, transparent);
+  border-color: color-mix(in srgb, var(--chip-accent, var(--aqt-teal)) 35%, transparent);
+  color: var(--chip-accent, var(--aqt-teal));
 }
 
 .aqt-filter-chip .aqt-count {
@@ -619,8 +621,8 @@
 }
 
 .aqt-filter-chip.active .aqt-count {
-  background: color-mix(in srgb, var(--aqt-teal) 16%, transparent);
-  color: var(--aqt-teal);
+  background: color-mix(in srgb, var(--chip-accent, var(--aqt-teal)) 16%, transparent);
+  color: var(--chip-accent, var(--aqt-teal));
 }
 
 .aqt-filter-divider {
@@ -642,10 +644,6 @@
     background: hsl(var(--popover));
     border-color: hsl(var(--border));
     box-shadow: 0 18px 50px rgb(0 0 0 / 0.45);
-  }
-
-  .liquid-glass-surface {
-    background: hsl(var(--background));
   }
 }
 

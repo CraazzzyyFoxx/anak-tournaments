@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { HandleLabel } from "@/components/HandleLabel";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { useTranslations } from "next-intl";
@@ -8,8 +9,10 @@ import { ArrowRight } from "lucide-react";
 import { UserBestTeammate } from "@/types/user.types";
 import { CardSurface } from "@/components/profile/atoms";
 import { winrateColor } from "@/lib/colors";
+import { cn } from "@/lib/utils";
 import { getPlayerSlug } from "@/lib/player";
 import { DataPagination } from "@/components/ui/data-pagination";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { SearchField } from "@/components/ui/search-field";
 import {
   Dialog,
@@ -85,7 +88,6 @@ const TeammateRows = ({
   return (
     <div data-players>
       {top.map((tm) => {
-        const [nm, tag] = tm.user.name.split("#");
         const wrPct = Math.max(0, Math.min(100, tm.winrate * 100));
         const color = winrateColor(wrPct);
         return (
@@ -96,12 +98,11 @@ const TeammateRows = ({
           >
             <PlayerAvatar user={tm.user} size={26} />
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="truncate text-caption font-semibold text-[color:var(--aqt-fg)] group-hover:text-[color:var(--aqt-teal)]">
-                  {nm}
-                </span>
-                {tag ? <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]">#{tag}</span> : null}
-              </div>
+              <HandleLabel
+                handle={tm.user.name}
+                className="block text-caption font-semibold text-[color:var(--aqt-fg)] group-hover:text-[color:var(--aqt-teal)]"
+                tagClassName="aqt-tnum text-label"
+              />
               <div className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
                 {t("users.overview.teammates.playedMaps", { count: tm.tournaments, maps: tm.maps })}
               </div>
@@ -184,21 +185,29 @@ const AllTeammatesTable = ({
                 ...(hasKda ? [{ id: "kda", label: t("users.overview.teammates.col.kda"), left: false }] : []),
                 ...(hasMvp ? [{ id: "mvp", label: t("users.overview.teammates.col.mvp"), left: false }] : [])
               ].map((h) => (
-                <th key={h.id} className={cnHeader(h.left)}>
+                <th
+                  key={h.id}
+                  className={cn(
+                    eyebrowClass(),
+                    "aqt-tnum border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)] px-3 py-2.5",
+                    h.left ? "text-left" : "text-right"
+                  )}
+                >
                   {h.label}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {paged.map((tm) => {
-              const [tmName, tmTag] = tm.user.name.split("#");
-              return (
+            {paged.map((tm) => (
                 <tr key={tm.user.id} className="border-b border-[color:var(--aqt-border)] last:border-b-0 hover:bg-[hsl(0_0%_100%/0.02)]">
                   <td className="px-3 py-2">
-                    <HoverPrefetchLink href={`/users/${getPlayerSlug(tm.user.name)}`} className="inline-flex items-center gap-1.5 hover:text-[color:var(--aqt-teal)]">
-                      <span className="font-semibold text-[color:var(--aqt-fg)]">{tmName}</span>
-                      {tmTag ? <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]">#{tmTag}</span> : null}
+                    <HoverPrefetchLink href={`/users/${getPlayerSlug(tm.user.name)}`} className="hover:text-[color:var(--aqt-teal)]">
+                      <HandleLabel
+                        handle={tm.user.name}
+                        className="font-semibold text-[color:var(--aqt-fg)]"
+                        tagClassName="aqt-tnum text-label"
+                      />
                     </HoverPrefetchLink>
                   </td>
                   <td className="aqt-tnum px-3 py-2 text-right text-[color:var(--aqt-fg-muted)]">{tm.tournaments}</td>
@@ -220,8 +229,7 @@ const AllTeammatesTable = ({
                     </td>
                   ) : null}
                 </tr>
-              );
-            })}
+            ))}
             {filtered.length === 0 ? (
               <tr>
                 <td colSpan={4 + Number(hasKda) + Number(hasMvp)} className="px-3 py-6 text-center text-caption text-[color:var(--aqt-fg-dim)]">
@@ -238,7 +246,7 @@ const AllTeammatesTable = ({
           totalPages={pages}
           onPageChange={setPage}
           className="border-t border-[color:var(--aqt-border)] px-5 py-2.5"
-          summary={
+          leading={
             <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">
               {t("users.overview.teammates.pageRange", {
                 start: String((safePage - 1) * perPage + 1),
@@ -252,10 +260,5 @@ const AllTeammatesTable = ({
     </div>
   );
 };
-
-const cnHeader = (left: boolean) =>
-  `aqt-tnum border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)] px-3 py-2.5 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)] ${
-    left ? "text-left" : "text-right"
-  }`;
 
 export default OverviewTeammatesSynergy;

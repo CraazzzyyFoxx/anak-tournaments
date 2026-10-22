@@ -6,7 +6,6 @@ import { Calendar, Clock, Network, Trophy } from "lucide-react";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
 import {
-  EYEBROW_CLASS,
   EmptyNote,
   Fact,
   Facts,
@@ -21,6 +20,7 @@ import {
   SectionHead
 } from "@/components/site/open-layout";
 import { owtButton } from "@/components/site/owt-button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFormatter } from "@/lib/datetime/server";
 import { getPlayerSlug } from "@/lib/player";
@@ -347,7 +347,7 @@ async function LastFinishedFeat({
       }
       head={
         <>
-          <span className={cn(EYEBROW_CLASS, "mb-2 block")}>{t("lastTournament")}</span>
+          <Eyebrow className="mb-2 block">{t("lastTournament")}</Eyebrow>
           <Link
             href={tournamentHref(tournament)}
             prefetch={false}

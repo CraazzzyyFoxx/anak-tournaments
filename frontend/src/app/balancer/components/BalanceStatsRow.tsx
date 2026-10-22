@@ -3,6 +3,7 @@
 import { AlertCircle, BarChart2, CheckCircle2, ChevronDown, Shuffle, Sparkles, UserX } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { FeasibilityReport } from "@/types/balancer.types";
@@ -184,9 +185,9 @@ function PoolDiagnostics({
 
   return (
     <div className="text-xs">
-      <div className="border-b border-border/60 px-3 py-2 text-label font-medium uppercase tracking-label text-muted-foreground">
+      <Eyebrow as="div" tone="muted" className="border-b border-border/60 px-3 py-2">
         Role supply
-      </div>
+      </Eyebrow>
       <table className="w-full">
         <tbody>
           {feasibility.roles.map((role) => {

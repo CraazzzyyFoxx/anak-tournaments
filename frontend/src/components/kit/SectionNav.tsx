@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { SettingsOutlineList } from "@/components/kit/SettingsOutline";
 import { cn } from "@/lib/utils";
 
@@ -93,7 +93,7 @@ export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
       >
         {visibleGroups.map((group) => (
           <div key={group.label ?? "ungrouped"} className="mb-4 last:mb-0">
-            {group.label ? <p className={cn(EYEBROW_CLASS, "mb-1.5 px-2")}>{group.label}</p> : null}
+            {group.label ? <p className={cn(eyebrowClass("muted"), "mb-1.5 px-2")}>{group.label}</p> : null}
             <ul className="space-y-0.5">
               {group.items.map((item) => {
                 const isActive = item.key === activeKey;

@@ -2,7 +2,7 @@ import type { ComponentPropsWithoutRef, ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/ui/status-dot";
-import type { Tone } from "@/components/kit/tone";
+import type { Tone } from "@/components/ui/tone";
 
 export interface StatusPillProps extends ComponentPropsWithoutRef<"span"> {
   tone: Tone;

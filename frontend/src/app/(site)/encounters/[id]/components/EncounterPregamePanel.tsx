@@ -9,7 +9,8 @@ import pickBanService from "@/services/pickBan.service";
 import type { EncounterTeam } from "@/types/encounter.types";
 import type { PickBanKind, PickBanState } from "@/types/tournament.types";
 import { duelSeats, seatsBySlot } from "@/lib/encounter/seats";
-import { Fact, Pill } from "@/components/match/EncounterAtoms";
+import { Fact } from "@/components/match/EncounterAtoms";
+import { Badge } from "@/components/ui/badge";
 import styles from "@/components/match/EncounterDetail.module.css";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 
@@ -112,9 +113,10 @@ function PregameSection({
         <h3 className={styles.cardTitle}>{title}</h3>
         {/* Only the running session keeps a chip: it is the one state that moves. */}
         {session && !state.is_complete ? (
-          <Pill tone="accent" live>
+          <Badge palette="aqt" shape="pill" tone="accent">
+            <span aria-hidden className={styles.livePulse} />
             {t("encounters.veto.room.statusChip.active")}
-          </Pill>
+          </Badge>
         ) : (
           <span className={cn(styles.cardSub, session && styles.metaGood)}>
             {session

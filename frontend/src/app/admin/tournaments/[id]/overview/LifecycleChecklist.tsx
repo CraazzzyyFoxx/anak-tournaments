@@ -7,7 +7,7 @@ import { StatusIcon } from "@/components/admin/StatusIcon";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import type { ChecklistItem, ChecklistPhase, ChecklistState } from "@/components/admin/tournament-checklist";
 
 const PHASE_KEYS: ChecklistPhase[] = ["setup", "registration", "formation", "bracket", "matches", "wrap_up"];
@@ -96,7 +96,7 @@ export function LifecycleChecklist({
           <div className="grid gap-x-6 gap-y-4 md:grid-cols-2 xl:grid-cols-3">
             {groups.map((group) => (
               <section key={group.phase}>
-                <h3 className={EYEBROW_CLASS}>{t(`phases.${group.phase}`)}</h3>
+                <h3 className={eyebrowClass("muted")}>{t(`phases.${group.phase}`)}</h3>
                 <div className="mt-1">
                   {group.rows.map((item) => (
                     <ChecklistRow key={item.key} item={item} />

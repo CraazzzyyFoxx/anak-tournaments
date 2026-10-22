@@ -7,6 +7,7 @@ import { LayoutGrid, SlidersHorizontal, Table2 } from "lucide-react";
 
 import { DivisionCombobox } from "@/components/DivisionCombobox";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SearchField } from "@/components/ui/search-field";
@@ -114,7 +115,7 @@ export function UsersIndexFilters({
               counts={divisionCounts}
               placeholder={t("users.list.filters.divisions")}
               ariaLabel={t("users.list.filters.divisions")}
-              triggerClassName="w-auto gap-2 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]"
+              triggerClassName="w-auto gap-2"
             />
           )}
 
@@ -131,9 +132,7 @@ export function UsersIndexFilters({
               </Button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-60 space-y-2">
-              <p className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                {t("users.list.filters.minEncounters")}
-              </p>
+              <Eyebrow as="p">{t("users.list.filters.minEncounters")}</Eyebrow>
               <ToggleGroup
                 type="single"
                 variant="pill"

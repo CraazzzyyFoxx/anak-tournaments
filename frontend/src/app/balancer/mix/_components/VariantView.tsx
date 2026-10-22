@@ -6,6 +6,7 @@ import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent } from 
 
 import { teamAccent } from "@/app/balancer/mix/pickup-chrome";
 import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { InlineEditText } from "@/components/kit/InlineEditText";
 import { useDragSensors } from "@/hooks/useDragSensors";
 import { cn } from "@/lib/utils";
@@ -188,14 +189,7 @@ function TeamColumn({
           onSave={(next) => onRenameTeam?.(teamIndex, next)}
           textClassName="truncate font-display text-xl font-bold tracking-[0.01em] text-[color:var(--aqt-fg)]"
         />
-        <span
-          className={cn(
-            "ml-auto shrink-0 text-label uppercase tracking-label",
-            "text-[color:var(--aqt-fg-faint)]"
-          )}
-        >
-          avg
-        </span>
+        <Eyebrow className="ml-auto shrink-0">avg</Eyebrow>
         <span className="shrink-0 text-xl font-bold tabular-nums text-[color:var(--aqt-fg)]">
           {team.averageRank == null ? "\u2014" : Math.round(team.averageRank)}
         </span>

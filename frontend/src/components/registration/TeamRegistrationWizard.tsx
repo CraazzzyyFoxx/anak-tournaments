@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { EditableAvatar } from "@/components/ui/editable-avatar";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
@@ -180,12 +181,9 @@ export default function TeamRegistrationWizard({
         aria-labelledby="regteam-identity-heading"
         className="grid gap-4 rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4"
       >
-        <h3
-          id="regteam-identity-heading"
-          className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]"
-        >
+        <Eyebrow as="h3" id="regteam-identity-heading" tone="muted">
           {t("create.identityHeading")}
-        </h3>
+        </Eyebrow>
 
         {/* Stacks below `sm`, where a 72px logo beside the name input crushed the
             input to ~50px and wrapped its label and error over four lines. The
@@ -214,9 +212,7 @@ export default function TeamRegistrationWizard({
               onError={(message) => notify.error(message)}
               labels={avatarLabels}
             />
-            <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-              {t("create.logoLabel")}
-            </span>
+            <Eyebrow tone="dim">{t("create.logoLabel")}</Eyebrow>
           </div>
 
           <div className="grid w-full min-w-0 gap-1.5 sm:flex-1">

@@ -7,6 +7,7 @@ import { ArrowLeft, MessageSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { HeroCoord, HeroStamp, PageHero } from "@/components/site/PageHero";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
 import { EntityWorkspace } from "@/components/workspace/EntityWorkspace";
 import { SITE_NAME, SITE_URL } from "@/config/site";
@@ -28,7 +29,7 @@ import EncounterSeriesStats from "./components/EncounterSeriesStats";
 import EncounterCaptainReports from "./components/EncounterCaptainReports";
 import EncounterPregamePanel from "./components/EncounterPregamePanel";
 import { PregameRoomLink } from "./components/PregameRoomLink";
-import { Pill } from "@/components/match/EncounterAtoms";
+import { Badge } from "@/components/ui/badge";
 import { acceptedScore } from "@/components/pick-ban/pick-ban-model";
 import {
   buildSeriesSlots,
@@ -293,14 +294,15 @@ const EncounterPage = async (props: {
             state === "Live" || openResult ? (
               <>
                 {state === "Live" ? (
-                  <Pill tone="danger" live>
+                  <Badge palette="aqt" shape="pill" tone="danger">
+                    <span aria-hidden className={styles.livePulse} />
                     {t(`encounters.state.${STATE_KEY[state]}` as never)}
-                  </Pill>
+                  </Badge>
                 ) : null}
                 {openResult ? (
-                  <Pill tone={encounter.result_status === "disputed" ? "danger" : "warn"}>
+                  <Badge palette="aqt" shape="pill" tone={encounter.result_status === "disputed" ? "danger" : "warning"}>
                     {t(`encounters.result.${RESULT_KEY[encounter.result_status]}` as never)}
-                  </Pill>
+                  </Badge>
                 ) : null}
               </>
             ) : null
@@ -446,7 +448,10 @@ const FfaLobbyPage = async ({ encounter }: Readonly<{ encounter: Encounter }>) =
           <>
             <Link
               href="/encounters"
-              className="inline-flex items-center gap-1.5 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)] transition-colors hover:text-[color:var(--aqt-teal)]"
+              className={cn(
+                eyebrowClass(),
+                "inline-flex items-center gap-1.5 transition-colors hover:text-[color:var(--aqt-teal)]"
+              )}
             >
               <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
               {t("encounters.detail.back")}
@@ -465,31 +470,33 @@ const FfaLobbyPage = async ({ encounter }: Readonly<{ encounter: Encounter }>) =
         title={lobby.name}
         meta={
           <>
-            <Pill
+            <Badge
+              palette="aqt"
+              shape="pill"
               tone={
                 state === "Live"
                   ? "danger"
                   : state === "Final"
-                    ? "good"
+                    ? "success"
                     : state === "Upcoming"
-                      ? "warn"
+                      ? "warning"
                       : "neutral"
               }
-              live={state === "Live"}
             >
+              {state === "Live" ? <span aria-hidden className={styles.livePulse} /> : null}
               {/* "Final" is a duel's word and reads as the bracket's final here. */}
               {state === "Final"
                 ? t("ffa.lobbyCompleted")
                 : t(`encounters.state.${STATE_KEY[state]}` as never)}
-            </Pill>
-            <Pill>
+            </Badge>
+            <Badge palette="aqt" shape="pill" tone="neutral">
               <span className={styles.label}>{t("ffa.gamesPerLobby")}</span>
               <span className={styles.mono}>{lobby.best_of}</span>
-            </Pill>
+            </Badge>
             {encounter.result_status !== "none" ? (
-              <Pill tone={encounter.result_status === "confirmed" ? "good" : "warn"}>
+              <Badge palette="aqt" shape="pill" tone={encounter.result_status === "confirmed" ? "success" : "warning"}>
                 {t(`encounters.result.${RESULT_KEY[encounter.result_status]}` as never)}
-              </Pill>
+              </Badge>
             ) : null}
           </>
         }

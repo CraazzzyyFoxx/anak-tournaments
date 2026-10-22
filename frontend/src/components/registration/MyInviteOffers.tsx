@@ -6,6 +6,7 @@ import { useFormatter } from "@/lib/datetime/client";
 
 import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
@@ -103,9 +104,7 @@ export default function MyInviteOffers({ tournament }: Readonly<{ tournament: To
 
   return (
     <section className="relative grid gap-3 overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4 shadow-md backdrop-blur-md sm:p-5">
-      <span className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
-        {t("offers.title")}
-      </span>
+      <Eyebrow tone="muted">{t("offers.title")}</Eyebrow>
       <ul className="grid gap-1.5">
         {offers.map((offer) => (
           <li

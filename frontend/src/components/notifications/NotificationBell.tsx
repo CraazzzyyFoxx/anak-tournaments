@@ -3,7 +3,6 @@
 import { Bell } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
 
 import { useBellSignal } from "@/components/notifications/bell-signal";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -11,6 +10,7 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 // The panel renders only once the bell is opened: its rows, actions and
 // tooltips load with that first open, not with every page.
@@ -48,15 +48,7 @@ function SignedInBell({ authUserId }: Readonly<{ authUserId: number }>) {
   // Shared: the floating stack's "Ещё N" opens this same panel.
   const open = useBellSignal((state) => state.open);
   const setOpen = useBellSignal((state) => state.setOpen);
-  const [isPhone, setIsPhone] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia(PHONE_QUERY);
-    const sync = () => setIsPhone(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
+  const isPhone = useMediaQuery(PHONE_QUERY);
 
   const unread = inbox.unreadCount ?? 0;
   const trigger = (

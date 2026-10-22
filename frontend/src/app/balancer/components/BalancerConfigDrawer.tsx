@@ -3,6 +3,7 @@
 import { Fragment } from "react";
 import { Save, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import {
@@ -131,13 +132,15 @@ function ConfigRolesTable({
     >
       <div />
       {columns.map((column) => (
-        <div
+        <Eyebrow
+          as="div"
           key={column.key}
           title={column.description}
-          className="text-center text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]"
+          tone="dim"
+          className="text-center"
         >
           {column.label}
-        </div>
+        </Eyebrow>
       ))}
       {roles.map((role) => (
         <Fragment key={role}>
@@ -265,8 +268,8 @@ export function BalancerConfigDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden border-border bg-popover p-0 text-[color:var(--aqt-fg)] sm:max-w-2xl">
-        <SheetHeader className="border-b border-[color:var(--aqt-border-2)] px-5 py-4">
+      <SheetContent variant="panel" className="w-full sm:max-w-2xl">
+        <SheetHeader variant="panel">
           <SheetTitle className="text-[color:var(--aqt-fg)]">Balancer settings</SheetTitle>
           <SheetDescription className="text-[color:var(--aqt-fg-muted)]">
             Active preset: {selectedPresetLabel}. Changes are saved for this tournament.
@@ -277,9 +280,9 @@ export function BalancerConfigDrawer({
           <div className="space-y-5">
             {fieldsByGroup.map(({ group, fields: groupFields }) => (
               <section key={group} className="space-y-3">
-                <div className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+                <Eyebrow as="div" tone="dim">
                   {group}
-                </div>
+                </Eyebrow>
                 <div className="space-y-3">
                   {groupFields.map((field) => {
                     const value = config[field.key] ?? field.default;

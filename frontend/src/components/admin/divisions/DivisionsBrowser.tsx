@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
@@ -19,6 +19,7 @@ import { EmptyNote } from "@/components/kit/EmptyNote";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters } from "@/components/kit/useFilters";
 import { Button } from "@/components/ui/button";
+import { useFilePicker } from "@/components/ui/file-button";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GameScopeControl } from "@/components/workspace/GameScopeControl";
@@ -73,7 +74,6 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
   const getCurrentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace);
   const fetchWorkspaces = useWorkspaceStore((state) => state.fetchWorkspaces);
   const workspace = getCurrentWorkspace();
-  const portableInputRef = useRef<HTMLInputElement>(null);
   const [confirming, setConfirming] = useState<Confirming | null>(null);
   const [gridForm, setGridForm] = useState<GridForm | null>(null);
 
@@ -228,6 +228,10 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
     onDeleted: (grid) => {
       if (gridParam === grid.id) setParams({ grid: null });
     }
+  });
+  const portablePicker = useFilePicker({
+    accept: "application/json,.json",
+    onFiles: ([file]) => void actions.importFile(file)
   });
 
   const cloneMutation = useMutation({
@@ -428,7 +432,7 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
       <DivisionsHeaderActions
         canCreate={canCreate}
         onNewGrid={() => setGridForm({ mode: "create", game: discipline })}
-        onImportJson={() => portableInputRef.current?.click()}
+        onImportJson={portablePicker.open}
         importPending={actions.importPortable.isPending}
       />
       {gameDefs.length > 0 ? <FilterBar defs={gameDefs} filters={filters} /> : null}
@@ -485,21 +489,7 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
         </>
       )}
 
-      {canCreate ? (
-        <input
-          ref={portableInputRef}
-          type="file"
-          accept="application/json,.json"
-          className="hidden"
-          aria-hidden
-          tabIndex={-1}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            event.target.value = "";
-            if (file) void actions.importFile(file);
-          }}
-        />
-      ) : null}
+      {canCreate ? portablePicker.input : null}
 
       {gridForm ? (
         <GridFormDialog

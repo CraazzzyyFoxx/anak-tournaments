@@ -117,6 +117,16 @@ export const getPlayerSlug = (battleTag: string | null | undefined) => {
   return battleTag.replace("#", "-");
 };
 
+/**
+ * `Name#1234` → `{ name: "Name", suffix: "#1234" }`, splitting at the LAST `#` so a name that itself contains one
+ * keeps it. A handle without a discriminator (or one that is only `#…`) comes back whole with a `null` suffix.
+ */
+export const splitHandle = (handle: string): { name: string; suffix: string | null } => {
+  const index = handle.lastIndexOf("#");
+  if (index <= 0) return { name: handle, suffix: null };
+  return { name: handle.slice(0, index), suffix: handle.slice(index) };
+};
+
 /** Reverse of getPlayerSlug: converts a URL slug back to the stored player name.
  *  "CraazzzyyFox-2130" → "CraazzzyyFox#2130"
  *  Names without a numeric suffix are returned unchanged.

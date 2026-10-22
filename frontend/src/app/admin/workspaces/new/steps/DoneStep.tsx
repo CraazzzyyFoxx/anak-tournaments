@@ -7,7 +7,7 @@ import { ChevronRight } from "lucide-react";
 
 import { SetupChecklist } from "@/components/admin/workspace-settings/SetupChecklist";
 import { WorkspaceIcon } from "@/components/admin/workspaces/WorkspaceCells";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import {
   Item,
   ItemActions,
@@ -56,14 +56,14 @@ export function DoneStep({ workspace }: Readonly<{ workspace: Workspace }>) {
       </Item>
 
       <section className="flex flex-col gap-2">
-        <h3 className={EYEBROW_CLASS}>{t("setupTitle")}</h3>
+        <h3 className={eyebrowClass("muted")}>{t("setupTitle")}</h3>
         <div className="rounded-lg border border-border px-4 py-3">
           <SetupChecklist workspace={workspace} basePath="/admin/settings" />
         </div>
       </section>
 
       <section className="flex flex-col gap-2">
-        <h3 className={EYEBROW_CLASS}>{t("nextTitle")}</h3>
+        <h3 className={eyebrowClass("muted")}>{t("nextTitle")}</h3>
         <ItemGroup className="rounded-lg border border-border">
           {NEXT_LINKS.map(({ key, href }, index) => (
             <div key={key} role="listitem">

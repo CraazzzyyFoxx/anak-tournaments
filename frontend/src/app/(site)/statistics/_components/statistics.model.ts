@@ -43,9 +43,3 @@ export function clock(seconds: number): string {
   const whole = Math.max(0, Math.round(seconds));
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 }
-
-/** `Nick#1234` → `["Nick", "#1234"]`; a name without a discriminator has none. */
-export function splitBattleTag(name: string): [string, string | null] {
-  const at = name.indexOf("#");
-  return at === -1 ? [name, null] : [name.slice(0, at), name.slice(at)];
-}

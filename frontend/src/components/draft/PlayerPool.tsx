@@ -1,22 +1,16 @@
 "use client";
 
 import { useMemo, useRef, useState, type CSSProperties } from "react";
-import { AlertCircle, AlertTriangle, Check, Search } from "lucide-react";
+import { AlertCircle, AlertTriangle, Search } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { Avatar, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList
-} from "@/components/ui/command";
+import { eyebrowClass } from "@/components/ui/eyebrow";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   draftSummary,
@@ -282,8 +276,9 @@ export function PlayerPool({
                   );
                 })}
               </div>
-              <Popover>
-                <PopoverTrigger asChild>
+              {/* Uncontrolled: it stays open while heroes are toggled. */}
+              <Combobox
+                trigger={
                   <Button
                     type="button"
                     variant="ghost"
@@ -298,46 +293,33 @@ export function PlayerPool({
                     {t("heroFilter")}
                     {heroFilter.size > 0 && <span className="tabular-nums">{heroFilter.size}</span>}
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-72 p-0">
-                  <Command>
-                    <CommandInput placeholder={t("heroFilter")} />
-                    <CommandList>
-                      <CommandEmpty>{t("pool.heroEmpty")}</CommandEmpty>
-                      <CommandGroup>
-                        {heroOptions.map((hero) => (
-                          <CommandItem key={hero.slug} value={hero.slug} onSelect={() => toggleHero(hero.slug)}>
-                            <Avatar className="h-5 w-5" title={hero.slug}>
-                              <AvatarImage src={getHeroIconUrl(hero.slug, hero.imagePath)} alt={hero.slug} />
-                            </Avatar>
-                            <span className="truncate capitalize">{hero.slug.replace(/-/g, " ")}</span>
-                            {/* cmdk's aria-selected follows the highlighted row, not the
-                                filter, so the filter state is spelled out. */}
-                            {heroFilter.has(hero.slug) && <span className="sr-only">{t("heroFilterOn")}</span>}
-                            <Check
-                              aria-hidden
-                              className={cn("ml-auto h-4 w-4", heroFilter.has(hero.slug) ? "opacity-100" : "opacity-0")}
-                            />
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                    {heroFilter.size > 0 && (
-                      <div className="border-t border-[color:var(--aqt-border)] p-1">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="min-h-9 w-full"
-                          onClick={() => setHeroFilter(new Set())}
-                        >
-                          {t("heroFilterClear")}
-                        </Button>
-                      </div>
-                    )}
-                  </Command>
-                </PopoverContent>
-              </Popover>
+                }
+                align="end"
+                searchPlaceholder={t("heroFilter")}
+                emptyMessage={t("pool.heroEmpty")}
+                clear={
+                  heroFilter.size > 0
+                    ? { label: t("heroFilterClear"), value: "__clear__", onSelect: () => setHeroFilter(new Set()) }
+                    : undefined
+                }
+              >
+                <CommandGroup>
+                  {heroOptions.map((hero) => (
+                    <CommandItem key={hero.slug} value={hero.slug} onSelect={() => toggleHero(hero.slug)}>
+                      <CatalogEntityImage
+                        entity={{ name: hero.slug, image_path: getHeroIconUrl(hero.slug, hero.imagePath) }}
+                        size={20}
+                        decorative
+                      />
+                      <span className="min-w-0 flex-1 truncate capitalize">{hero.slug.replace(/-/g, " ")}</span>
+                      {/* cmdk's aria-selected follows the highlighted row, not the
+                          filter, so the filter state is spelled out. */}
+                      {heroFilter.has(hero.slug) && <span className="sr-only">{t("heroFilterOn")}</span>}
+                      <ComboboxCheck selected={heroFilter.has(hero.slug)} />
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </Combobox>
             </div>
           </div>
 
@@ -461,7 +443,8 @@ export function PlayerPool({
             aria-hidden="true"
             className={cn(
               POOL_GRID,
-              "sticky top-[var(--draft-tabs-h,0px)] z-10 hidden border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-4 py-2 text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)] sm:grid"
+              eyebrowClass("muted"),
+              "sticky top-[var(--draft-tabs-h,0px)] z-10 hidden border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-4 py-2 sm:grid"
             )}
           >
             <span>{t("pool.col.player")}</span>

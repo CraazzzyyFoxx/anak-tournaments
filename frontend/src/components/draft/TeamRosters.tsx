@@ -4,9 +4,9 @@ import { Star } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, type CSSProperties } from "react";
 
-import { splitHandle } from "@/components/balancer/balancer-page-helpers";
-import DivisionIcon from "@/components/DivisionIcon";
+import { RankCrest } from "@/components/RankCrest";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { useDraftLayerPad } from "@/hooks/useDraftLayerPad";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import {
@@ -18,6 +18,7 @@ import {
   type TeamView
 } from "@/lib/draft/room-model";
 import { slotRankForPlayer } from "@/lib/draft/workspace-model";
+import { splitHandle } from "@/lib/player";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { roleTint, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { isRoleSlot, OPEN_SLOT_CODE, slotCodesOf, type SlotCode } from "@/lib/roster/shape";
@@ -193,8 +194,10 @@ export function TeamRosters({
         </div>
       </div>
 
-      <div
-        className="grid grid-cols-[22px_minmax(0,1fr)_66px] items-center gap-1 overflow-hidden border-b border-[color:var(--aqt-border)] px-4 py-[7px] text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)] [scrollbar-gutter:stable] @[640px]/roster:grid-cols-[var(--roster-cols)]"
+      <Eyebrow
+        as="div"
+        tone="muted"
+        className="grid grid-cols-[22px_minmax(0,1fr)_66px] items-center gap-1 overflow-hidden border-b border-[color:var(--aqt-border)] px-4 py-[7px] [scrollbar-gutter:stable] @[640px]/roster:grid-cols-[var(--roster-cols)]"
         style={rowVars}
       >
         <span>#</span>
@@ -222,7 +225,7 @@ export function TeamRosters({
         <span className="text-right" title={t("teams.col.avgTitle")}>
           {t("teams.col.avg")}
         </span>
-      </div>
+      </Eyebrow>
 
       <div
         ref={listRef}
@@ -349,15 +352,7 @@ export function TeamRosters({
                 }
                 className="col-start-3 row-start-1 flex items-center justify-end gap-1 whitespace-nowrap text-caption font-medium tabular-nums text-[color:var(--aqt-fg-muted)] @[640px]/roster:col-start-auto @[640px]/roster:row-start-auto"
               >
-                {avgDivision != null && (
-                  <DivisionIcon
-                    division={avgDivision}
-                    tournamentGrid={divisionGrid}
-                    width={20}
-                    height={20}
-                    className="h-5 w-5 flex-none object-contain"
-                  />
-                )}
+                <RankCrest division={avgDivision} grid={divisionGrid} size={20} tooltip={false} />
                 {view.avgRank == null ? "—" : Math.round(view.avgRank)}
               </span>
             </div>
@@ -465,15 +460,7 @@ function RosterCell({
         } as CSSProperties
       }
     >
-      {division != null && (
-        <DivisionIcon
-          division={division}
-          tournamentGrid={divisionGrid}
-          width={18}
-          height={18}
-          className="h-[18px] w-[18px] flex-none object-contain"
-        />
-      )}
+      <RankCrest division={division} grid={divisionGrid} size={18} tooltip={false} />
       <span className="min-w-0 truncate">{splitHandle(tag).name}</span>
     </button>
   );

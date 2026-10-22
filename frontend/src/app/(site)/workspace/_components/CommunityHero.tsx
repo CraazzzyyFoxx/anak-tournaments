@@ -5,7 +5,8 @@ import { ArrowRight, ArrowUpRight, ChartColumn, Globe, TriangleAlert } from "luc
 
 import { HeroFrame } from "@/components/site/PageHero";
 import { owtButton } from "@/components/site/owt-button";
-import { EYEBROW_CLASS, HERO_TITLE_SIZE_CLASS, LEDE_CLASS } from "@/components/site/open-layout";
+import { HERO_TITLE_SIZE_CLASS, LEDE_CLASS } from "@/components/site/open-layout";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import Image from "@/components/ui/image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrustedBadge } from "@/components/workspace/TrustedBadge";
@@ -158,7 +159,7 @@ async function HeroEyebrow({ workspace }: Readonly<{ workspace: Workspace }>) {
   const parts = [since, workspace.tagline].filter(Boolean);
   if (parts.length === 0) return null;
 
-  return <p className={EYEBROW_CLASS}>{parts.join(" · ")}</p>;
+  return <Eyebrow as="p">{parts.join(" · ")}</Eyebrow>;
 }
 
 function HeroCtaSkeleton() {

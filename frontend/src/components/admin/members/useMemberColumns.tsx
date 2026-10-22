@@ -3,21 +3,13 @@
 import { useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Check, ChevronsUpDown, Trash2 } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { createKebabColumn } from "@/components/data-table";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList
-} from "@/components/ui/command";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { notify } from "@/lib/notify";
-import { cn, initials } from "@/lib/utils";
+import { initials } from "@/lib/utils";
 import { workspaceQueryKeys } from "@/lib/workspace/query-keys";
 import workspaceService from "@/services/workspace.service";
 import type { RbacRole } from "@/types/rbac.types";
@@ -58,52 +50,40 @@ function MemberRolesCell({
     update.mutate(held.includes(roleId) ? held.filter((id) => id !== roleId) : [...held, roleId]);
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="max-w-full justify-between gap-2 font-normal"
-          aria-label={tm("userRoles", { member: memberLabel(member) })}
-        >
-          {held.length > 0 ? (
-            <span className="truncate">{sortRoles(member.rbac_roles).map(roleLabel).join(" · ")}</span>
-          ) : (
-            <span className="text-muted-foreground">{t("noRole")}</span>
-          )}
-          <ChevronsUpDown aria-hidden className="size-3 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-64 p-0" align="start">
-        <Command>
-          <CommandInput placeholder={t("searchRoles")} />
-          <CommandList>
-            <CommandEmpty>{tm("noRolesMatch")}</CommandEmpty>
-            <CommandGroup>
-              {roles.map((role) => (
-                <CommandItem
-                  key={role.id}
-                  value={roleLabel(role)}
-                  disabled={update.isPending}
-                  onSelect={() => toggle(role.id)}
-                >
-                  <Check
-                    aria-hidden
-                    className={cn("mr-2 size-4", held.includes(role.id) ? "opacity-100" : "opacity-0")}
-                  />
-                  <div className="min-w-0">
-                    <p className="truncate">{roleLabel(role)}</p>
-                    {!role.is_system && role.description ? (
-                      <p className="truncate text-xs text-muted-foreground">{role.description}</p>
-                    ) : null}
-                  </div>
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <Combobox
+      label={
+        held.length > 0 ? (
+          sortRoles(member.rbac_roles).map(roleLabel).join(" · ")
+        ) : (
+          <span className="text-muted-foreground">{t("noRole")}</span>
+        )
+      }
+      labelTitle={held.length > 0 ? undefined : t("noRole")}
+      triggerAriaLabel={tm("userRoles", { member: memberLabel(member) })}
+      size="sm"
+      triggerClassName="w-auto max-w-full gap-2"
+      searchPlaceholder={t("searchRoles")}
+      emptyMessage={tm("noRolesMatch")}
+    >
+      <CommandGroup>
+        {roles.map((role) => (
+          <CommandItem
+            key={role.id}
+            value={roleLabel(role)}
+            disabled={update.isPending}
+            onSelect={() => toggle(role.id)}
+          >
+            <div className="min-w-0 flex-1">
+              <p className="truncate">{roleLabel(role)}</p>
+              {!role.is_system && role.description ? (
+                <p className="truncate text-xs text-muted-foreground">{role.description}</p>
+              ) : null}
+            </div>
+            <ComboboxCheck selected={held.includes(role.id)} />
+          </CommandItem>
+        ))}
+      </CommandGroup>
+    </Combobox>
   );
 }
 

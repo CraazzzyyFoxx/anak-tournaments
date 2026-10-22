@@ -6,6 +6,7 @@ import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { cva, type VariantProps } from "class-variance-authority"
 import { X } from "lucide-react"
 
+import { PANEL_CONTENT_CLASS, PANEL_HEADER_CLASS, type PanelVariant } from "@/components/ui/dialog"
 import { cn } from "@/lib/utils"
 
 const Sheet = SheetPrimitive.Root
@@ -59,19 +60,21 @@ interface SheetContentProps
     VariantProps<typeof sheetVariants> {
   /** Panels that put their own (translated) close control in a header pass `false`. */
   closeButton?: boolean
+  /** `panel`: the flush work-surface chrome `DialogContent variant="panel"` documents. */
+  variant?: PanelVariant
 }
 
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, closeButton = true, ...props }, ref) => {
+>(({ side = "right", variant = "default", className, children, closeButton = true, ...props }, ref) => {
   const t = useTranslations("kit.ui")
   return (
   <SheetPortal>
     <SheetOverlay />
     <SheetPrimitive.Content
       ref={ref}
-      className={cn(sheetVariants({ side }), className)}
+      className={cn(sheetVariants({ side }), variant === "panel" && PANEL_CONTENT_CLASS, className)}
       {...props}
     >
       {children}
@@ -89,11 +92,13 @@ SheetContent.displayName = SheetPrimitive.Content.displayName
 
 const SheetHeader = ({
   className,
+  variant = "default",
   ...props
-}: React.HTMLAttributes<HTMLDivElement>) => (
+}: React.HTMLAttributes<HTMLDivElement> & { variant?: PanelVariant }) => (
   <div
     className={cn(
       "flex flex-col space-y-2 text-center sm:text-left",
+      variant === "panel" && PANEL_HEADER_CLASS,
       className
     )}
     {...props}

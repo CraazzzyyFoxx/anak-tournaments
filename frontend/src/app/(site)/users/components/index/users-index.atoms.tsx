@@ -3,7 +3,6 @@
 import { useTranslations } from "next-intl";
 import type { RoleOntology } from "@/lib/roster/ontology";
 
-import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import type { PlayerIdentity } from "@/components/PlayerAvatar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusDot } from "@/components/ui/status-dot";
@@ -12,31 +11,12 @@ import { GameMarkButton } from "@/components/workspace/GameMarkButton";
 import { useGameDescriptors } from "@/hooks/useGameDescriptors";
 import { useFormatter } from "@/lib/datetime/client";
 import { winrateColor } from "@/lib/colors";
-import { getPlayerSlug } from "@/lib/player";
 import { cn } from "@/lib/utils";
 import type { UserOverviewRoleDivision } from "@/types/user.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
 import { DivisionHex } from "./DivisionHex";
-import { gridForRole, isRecentlyActive, mapsWinratePct, splitTag } from "./users-index.model";
-
-/** `handle` as a profile link with a faint `#tag`. */
-export function PlayerName({ name, className }: Readonly<{ name: string; className?: string }>) {
-  const { handle, tag } = splitTag(name);
-  return (
-    <HoverPrefetchLink
-      href={`/users/${getPlayerSlug(name)}`}
-      title={name}
-      className={cn(
-        "truncate font-semibold text-[color:var(--aqt-fg)] transition-colors hover:text-[color:var(--aqt-teal)]",
-        className
-      )}
-    >
-      {handle}
-      {tag ? <span className="font-normal text-[color:var(--aqt-fg-faint)]">{tag}</span> : null}
-    </HoverPrefetchLink>
-  );
-}
+import { gridForRole, isRecentlyActive, mapsWinratePct } from "./users-index.model";
 
 /** "3 нед. назад", with a live dot only while the player is active this month. */
 export function LastActive({ at, className }: Readonly<{ at: string | null; className?: string }>) {

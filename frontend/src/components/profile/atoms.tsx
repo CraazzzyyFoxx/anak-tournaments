@@ -1,6 +1,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
+import { Eyebrow } from "@/components/ui/eyebrow";
 
 // ─── Profile-only atoms (no cross-page consumer; kept local) ──────────────────
 
@@ -100,9 +101,7 @@ export const ProfileStat = ({
   children?: React.ReactNode;
 }) => (
   <div className={cn("flex min-w-0 flex-col gap-1", className)} title={title}>
-    <span className="aqt-tnum truncate text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-      {label}
-    </span>
+    <Eyebrow className="aqt-tnum truncate">{label}</Eyebrow>
     <span
       className={cn(
         "font-onest font-bold leading-none tabular-nums",
@@ -128,9 +127,7 @@ export const SummaryCellBox = ({
   color?: string;
 }) => (
   <div className="flex flex-col gap-1 border-l border-[color:var(--aqt-border)] px-3 py-2.5 first:border-l-0">
-    <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-      {label}
-    </span>
+    <Eyebrow className="aqt-tnum">{label}</Eyebrow>
     <span className="aqt-display aqt-tnum text-base font-bold leading-none" style={{ color: color ?? "var(--aqt-fg)" }}>
       {value}
     </span>

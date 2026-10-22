@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 
-import { TONE_TEXT, type Tone } from "@/components/kit/tone";
+import { TONE_TEXT, type Tone } from "@/components/ui/tone";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 

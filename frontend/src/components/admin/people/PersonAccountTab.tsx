@@ -20,7 +20,7 @@ import { PersonSection } from "@/components/admin/people/PersonSection";
 import {
   AuthUserSearchCombobox,
   type AuthUserOption
-} from "@/components/kit/AuthUserSearchCombobox";
+} from "@/components/kit/ServerSearchCombobox";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Button } from "@/components/ui/button";
@@ -83,7 +83,6 @@ function LinkAccount({ personId }: Readonly<{ personId: number }>) {
       </div>
       <Button
         variant="outline"
-        className="h-10"
         disabled={picked == null || link.isPending}
         onClick={() => picked && link.mutate(picked.id)}
       >

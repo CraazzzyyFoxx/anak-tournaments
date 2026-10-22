@@ -22,7 +22,7 @@ import type { SubroleCatalog } from "@/types/registration.types";
 import { HeaderCombobox } from "./HeaderCombobox";
 import { HeaderMultiCombobox } from "./HeaderMultiCombobox";
 import { ModeToggle } from "./ModeToggle";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 
 const AUTO_FIELD_MODES: MappingTargetMode[] = ["auto", "columns"];
 const STANDARD_FIELD_MODES: MappingTargetMode[] = ["columns", "constant", "disabled"];
@@ -184,7 +184,7 @@ export function MappingFieldRow({
 
           {showParser ? (
             <div className="flex items-center gap-2">
-              <span className={EYEBROW_CLASS}>
+              <span className={eyebrowClass("muted")}>
                 {t("parser")}
               </span>
               <Select value={activeParser} onValueChange={onParserChange} disabled={disabled}>

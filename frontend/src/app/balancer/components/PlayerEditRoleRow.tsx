@@ -7,6 +7,7 @@ import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import {
   Select,
   SelectContent,
@@ -173,9 +174,7 @@ export function SortableRoleEntry({
           {/* Sub-roles specialise one of several roles; a one-role game's card names neither. */}
           {showsRole ? (
             <div className="space-y-1">
-              <span className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-                Sub-role
-              </span>
+              <Eyebrow tone="dim">Sub-role</Eyebrow>
               <Select
                 value={entry.subtype ?? "none"}
                 disabled={!hasSubtypeOptions}
@@ -240,9 +239,7 @@ export function SortableRoleEntry({
             className="flex w-full items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 py-1.5 text-left transition hover:border-[color:var(--aqt-border-2)] hover:bg-[color:var(--aqt-overlay-3)]"
           >
             <Sparkles className="h-3 w-3 shrink-0 text-amber-300/70" />
-            <span className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-              {nativeRankName}
-            </span>
+            <Eyebrow tone="dim">{nativeRankName}</Eyebrow>
             {owSuggestionDivision != null ? (
               <DivisionIcon
                 division={owSuggestionDivision}
@@ -267,9 +264,7 @@ export function SortableRoleEntry({
         ) : (
           <div className="flex w-full items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-2 py-1.5 text-left">
             <Sparkles className="h-3 w-3 shrink-0 text-[color:var(--aqt-fg-faint)]" />
-            <span className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-              {nativeRankName}
-            </span>
+            <Eyebrow tone="dim">{nativeRankName}</Eyebrow>
             <span className="text-label text-[color:var(--aqt-fg-dim)]">No live {nativeRankName} rank</span>
           </div>
         )}

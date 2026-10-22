@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { TeamLogo, type TeamNameInput } from "@/components/TeamName";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { MapReportDialog } from "@/components/pick-ban/MapReportDialog";
 import { acceptedScore, pickBanSeats } from "@/components/pick-ban/pick-ban-model";
 import type { PregameCharacterBoard } from "@/disciplines/types";
@@ -383,10 +384,9 @@ function ClaimTile({
       <span
         aria-hidden
         className={cn(
-          "inline-flex items-center gap-1 text-label uppercase tracking-label",
-          state === "waiting"
-            ? "text-[color:var(--aqt-fg-faint)]"
-            : "text-[color:var(--aqt-positive)]"
+          eyebrowClass(),
+          "inline-flex items-center gap-1",
+          state !== "waiting" && "text-[color:var(--aqt-positive)]"
         )}
       >
         <StateIcon className="h-3 w-3" />
@@ -422,12 +422,13 @@ function Verdict({ bothFiled, disputed }: Readonly<{ bothFiled: boolean; dispute
       </span>
       <span
         className={cn(
-          "max-w-[7.5rem] text-center text-label uppercase leading-tight tracking-label",
+          eyebrowClass(),
+          "max-w-[7.5rem] text-center leading-tight",
           tone === "good"
             ? "text-[color:var(--aqt-positive)]"
             : tone === "bad"
               ? "text-[color:var(--aqt-amber)]"
-              : "text-[color:var(--aqt-fg-faint)]"
+              : null
         )}
       >
         {label}

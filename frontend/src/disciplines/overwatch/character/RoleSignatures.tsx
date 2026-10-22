@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import type { SlotProps } from "@/disciplines/types";
 import { characterClass } from "@/lib/catalog/attrs";
 import { LOW_SAMPLE_GAMES, winrateColor } from "@/lib/colors";
@@ -41,9 +42,7 @@ const RoleSignatures = ({ characters, roles, metadata }: SlotProps["roleSignatur
 
   return (
     <div className="flex flex-col gap-2 border-t border-[color:var(--aqt-border)] pt-3.5">
-      <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-        {t("users.overview.roleSplit.signatureTitle")}
-      </span>
+      <Eyebrow className="aqt-tnum">{t("users.overview.roleSplit.signatureTitle")}</Eyebrow>
       {signatures.map((sig) => {
         const roleName = heroClass.label(sig.code);
         const hero = sig.top.character;

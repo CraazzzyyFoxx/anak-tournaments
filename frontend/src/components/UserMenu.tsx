@@ -6,12 +6,12 @@ import { LayoutDashboard, LogOut, Settings, User } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { useCanAccessAdminEntry } from "@/components/site/useCanAccessAdminEntry";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { getAuthProfileHref } from "@/lib/auth/profile-links";
 import { logout } from "@/lib/auth/logout";
-import { cn, initials } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useAccountSettingsModalStore } from "@/stores/account-settings-modal.store";
 import { useAuthProfileStore, type AuthProfile } from "@/stores/auth-profile.store";
 
@@ -74,12 +74,11 @@ export function AccountMenuPanel({
       {...props}
     >
       <div className="flex items-center gap-3 px-2.5 pb-3 pt-2">
-        <Avatar aria-hidden className="size-9 rounded-full border-2 border-[color:var(--aqt-border-2)]">
-          <AvatarImage src={user.avatarUrl ?? undefined} alt="" />
-          <AvatarFallback className="bg-[color:var(--aqt-card-2)] text-xs font-bold text-[color:var(--aqt-fg-muted)]">
-            {initials(user.username)}
-          </AvatarFallback>
-        </Avatar>
+        <PlayerAvatar
+          user={{ name: user.username, avatar_url: user.avatarUrl ?? null }}
+          size={36}
+          className="border-2 border-[color:var(--aqt-border-2)]"
+        />
         <span className="min-w-0">
           <span id={nameId} className="block truncate font-semibold" title={user.username}>
             {user.username}
@@ -163,12 +162,7 @@ const UserMenu = ({ user }: Readonly<{ user: AuthProfile }>) => {
           aria-label={t("common.openMenu")}
           className="relative flex size-9 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card-2)] text-xs font-bold text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:border-[color:var(--aqt-border-3)] focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:border-[color:var(--aqt-border-3)]"
         >
-          <Avatar className="size-full rounded-full">
-            <AvatarImage src={user.avatarUrl ?? undefined} alt="" />
-            <AvatarFallback className="bg-transparent text-xs font-bold">
-              {initials(user.username)}
-            </AvatarFallback>
-          </Avatar>
+          <PlayerAvatar user={{ name: user.username, avatar_url: user.avatarUrl ?? null }} size={32} className="border-0" />
         </button>
       </PopoverTrigger>
       <AccountMenuPanel

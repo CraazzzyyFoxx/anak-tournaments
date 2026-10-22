@@ -20,6 +20,7 @@ import balancerAdminService from "@/services/balancer-admin.service";
 import { DivisionGridNormalizer } from "@/lib/divisions/grid-normalizer";
 import { answerFlag, answerList, answerText } from "@/lib/forms/answers";
 import { identityKey } from "@/lib/forms/builtin-keys";
+import { splitHandle } from "@/lib/player";
 import { normalizeSocialHandle } from "@/lib/social/providers";
 
 /** Names a slot code for display: the owner game's role name, or the open-slot label (`useSlotLabel(ontology)`). */
@@ -509,7 +510,7 @@ export function buildTeamNamesText(payload: InternalBalancePayload | null): stri
   if (!payload) {
     return "";
   }
-  return payload.teams.map((team) => team.name.split("#")[0]).join("\n");
+  return payload.teams.map((team) => splitHandle(team.name).name).join("\n");
 }
 
 export function downloadPayload(payload: InternalBalancePayload, tournamentId: number | null) {

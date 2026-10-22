@@ -3,18 +3,12 @@
 import { useId, useMemo, useState, type ReactNode } from "react";
 import Image from "@/components/ui/image";
 import { useTranslations } from "next-intl";
-import { Check, ChevronsUpDown, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList
-} from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -320,86 +314,57 @@ export function CataloguePicker(props: Readonly<CataloguePickerProps>) {
       filter.setOpen(false);
     };
 
+    const selectedName = selected ? selected.name : t("slotReserveNone");
+
     return (
-      <Popover open={filter.open} onOpenChange={filter.onOpenChange}>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            role="combobox"
-            aria-expanded={filter.open}
-            aria-label={props.triggerLabel}
-            disabled={disabled}
-            className="w-56 justify-between gap-2"
-          >
-            <span className="truncate">
-              <span className="text-muted-foreground">{props.triggerPrefix} </span>
-              {selected ? selected.name : t("slotReserveNone")}
-            </span>
-            <ChevronsUpDown aria-hidden className="size-4 shrink-0 opacity-50" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-72 p-0">
-          <Command shouldFilter={false}>
-            <GroupFilterRow
-              groups={filter.groups}
-              value={filter.groupFilter}
-              onChange={filter.setGroupFilter}
-            />
-            <CommandInput
-              value={filter.query}
-              onValueChange={filter.setQuery}
-              placeholder={searchPlaceholder}
-            />
-            <CommandList>
-              <CommandEmpty>{t("catalogueEmpty")}</CommandEmpty>
-              <CommandGroup>
-                <CommandItem value={t("slotReserveNone")} onSelect={() => choose(null)}>
-                  <span>{t("slotReserveNone")}</span>
-                  <Check
-                    aria-hidden
-                    className={cn(
-                      "ms-auto size-4",
-                      props.value == null ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                </CommandItem>
-                {filter.visibleOptions.map((option) => (
-                  <CommandItem
-                    key={option.id}
-                    value={option.name}
-                    onSelect={() => choose(option.id)}
-                  >
-                    {option.imageSrc ? (
-                      <Image
-                        src={option.imageSrc}
-                        alt=""
-                        width={24}
-                        height={24}
-                        className="size-6 shrink-0 rounded-sm object-cover outline outline-black/10 dark:outline-white/10"
-                      />
-                    ) : (
-                      <span aria-hidden className="size-6 shrink-0 rounded-sm bg-muted" />
-                    )}
-                    <span className="truncate">{option.name}</span>
-                    {option.group ? (
-                      <span className="truncate text-xs text-muted-foreground">{option.group}</span>
-                    ) : null}
-                    <Check
-                      aria-hidden
-                      className={cn(
-                        "ms-auto size-4 shrink-0",
-                        props.value === option.id ? "opacity-100" : "opacity-0"
-                      )}
-                    />
-                  </CommandItem>
-                ))}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+      <Combobox
+        open={filter.open}
+        onOpenChange={filter.onOpenChange}
+        label={
+          <>
+            <span className="text-muted-foreground">{props.triggerPrefix} </span>
+            {selectedName}
+          </>
+        }
+        labelTitle={`${props.triggerPrefix} ${selectedName}`}
+        triggerAriaLabel={props.triggerLabel}
+        size="sm"
+        triggerClassName="w-56 gap-2"
+        disabled={disabled}
+        header={
+          <GroupFilterRow groups={filter.groups} value={filter.groupFilter} onChange={filter.setGroupFilter} />
+        }
+        searchValue={filter.query}
+        onSearchValueChange={filter.setQuery}
+        searchPlaceholder={searchPlaceholder}
+        emptyMessage={t("catalogueEmpty")}
+        shouldFilter={false}
+      >
+        <CommandGroup>
+          <CommandItem value={t("slotReserveNone")} onSelect={() => choose(null)}>
+            <span className="min-w-0 flex-1">{t("slotReserveNone")}</span>
+            <ComboboxCheck selected={props.value == null} />
+          </CommandItem>
+          {filter.visibleOptions.map((option) => (
+            <CommandItem key={option.id} value={option.name} onSelect={() => choose(option.id)}>
+              {option.imageSrc ? (
+                <Image
+                  src={option.imageSrc}
+                  alt=""
+                  width={24}
+                  height={24}
+                  className="size-6 shrink-0 rounded-sm object-cover outline outline-black/10 dark:outline-white/10"
+                />
+              ) : (
+                <span aria-hidden className="size-6 shrink-0 rounded-sm bg-muted" />
+              )}
+              <span className="truncate">{option.name}</span>
+              <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{option.group}</span>
+              <ComboboxCheck selected={props.value === option.id} />
+            </CommandItem>
+          ))}
+        </CommandGroup>
+      </Combobox>
     );
   }
 

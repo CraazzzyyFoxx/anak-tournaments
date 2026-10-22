@@ -9,7 +9,7 @@ import {
   type VersionHistoryProps
 } from "@/app/admin/settings/divisions/VersionHistory";
 import { EmptyNote } from "@/components/kit/EmptyNote";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import {
   Select,
   SelectContent,
@@ -73,7 +73,7 @@ export function GridSection({
         <div className="flex min-w-0 items-center gap-2">
           {grids.length > 1 ? (
             <>
-              <label className={EYEBROW_CLASS} htmlFor="division-grid-select">
+              <label className={eyebrowClass("muted")} htmlFor="division-grid-select">
                 {t("grid")}
               </label>
               <Select value={String(selectedGrid.id)} onValueChange={onSelectGrid}>
@@ -91,7 +91,7 @@ export function GridSection({
             </>
           ) : (
             <>
-              <span className={EYEBROW_CLASS}>{t("grid")}</span>
+              <span className={eyebrowClass("muted")}>{t("grid")}</span>
               <span className="truncate text-ui font-semibold text-foreground" title={selectedGrid.name}>
                 {gridLabel(selectedGrid)}
               </span>

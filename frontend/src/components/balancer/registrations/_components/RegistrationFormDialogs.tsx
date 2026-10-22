@@ -16,9 +16,9 @@ import type {
 } from "@/types/balancer-admin.types";
 import type { RegistrationForm } from "@/types/registration.types";
 
-const DIALOG_CLASS =
-  "max-w-3xl gap-0 overflow-hidden border-border bg-popover p-0 text-[color:var(--aqt-fg)] shadow-2xl shadow-black/50 sm:rounded-xl";
-const HEADER_CLASS = "border-b border-[color:var(--aqt-border-2)] px-4 py-3.5 text-left sm:px-5";
+const DIALOG_CLASS = "max-w-3xl sm:rounded-xl";
+// The body's own inset, so the header text lines up with the form under it.
+const HEADER_CLASS = "px-4 py-3.5 sm:px-5";
 const TITLE_CLASS = "text-xl font-semibold tracking-tight text-[color:var(--aqt-fg)]";
 const DESCRIPTION_CLASS =
   "mt-1 max-w-2xl text-sm leading-5 text-[color:var(--aqt-fg-muted)]";
@@ -61,8 +61,8 @@ export default function RegistrationFormDialogs({
   return (
     <>
       <Dialog open={createOpen} onOpenChange={onCreateOpenChange}>
-        <DialogContent className={DIALOG_CLASS}>
-          <DialogHeader className={HEADER_CLASS}>
+        <DialogContent variant="panel" className={DIALOG_CLASS}>
+          <DialogHeader variant="panel" className={HEADER_CLASS}>
             <DialogTitle className={TITLE_CLASS}>Create Manual Registration</DialogTitle>
             <DialogDescription className={DESCRIPTION_CLASS}>
               Registers a player on your behalf: every field stays available regardless of the
@@ -95,8 +95,8 @@ export default function RegistrationFormDialogs({
           }
         }}
       >
-        <DialogContent className={DIALOG_CLASS}>
-          <DialogHeader className={HEADER_CLASS}>
+        <DialogContent variant="panel" className={DIALOG_CLASS}>
+          <DialogHeader variant="panel" className={HEADER_CLASS}>
             <DialogTitle className={TITLE_CLASS}>Edit Registration</DialogTitle>
             <DialogDescription className={DESCRIPTION_CLASS}>
               Update balancer-facing participant data in the fixed admin editor, while keeping the

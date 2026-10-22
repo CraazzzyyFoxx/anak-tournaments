@@ -2,7 +2,9 @@
 
 import { useTranslations } from "next-intl";
 import { CardSurface } from "@/components/profile/atoms";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { winrateColor } from "@/lib/colors";
+import { cn } from "@/lib/utils";
 import { ArrowRight } from "lucide-react";
 import {
   Dialog,
@@ -55,8 +57,7 @@ const OpponentRecord = ({ o }: { o: OpponentStat }) => (
   </>
 );
 
-const thLeft =
-  "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2 text-left text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
+const thLeft = cn(eyebrowClass(), "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2 text-left");
 const thRight = `${thLeft} text-right`;
 
 const MatchesSidebars = ({ opponentStats, stageStats }: MatchesSidebarsProps) => {

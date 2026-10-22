@@ -6,16 +6,17 @@ import { ImageOff } from "lucide-react";
 import { EmptyNote, LoadError, Section, SectionHead } from "@/components/site/open-layout";
 import { TournamentTeamCardFrame } from "@/components/TournamentTeamCard";
 import Image from "@/components/ui/image";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFormatter } from "@/lib/datetime/server";
 import { isTenantHost } from "@/lib/site/tenant-host";
+import { cn } from "@/lib/utils";
 import statisticsService from "@/services/statistics.service";
 
 import { clock } from "./statistics.model";
 
 const TITLE_ID = "stats-maps-title";
 const GRID_CLASS = "grid grid-cols-1 gap-3 lg:grid-cols-2 lg:items-start";
-const HEAD_ROW_CLASS = "whitespace-nowrap text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 const SKELETON_MODES = 2;
 const SKELETON_ROWS = 5;
 
@@ -75,7 +76,7 @@ export async function MapsSection({ discipline }: Readonly<{ discipline: string 
             >
               <table className="w-full text-caption">
                 <thead>
-                  <tr className={HEAD_ROW_CLASS}>
+                  <tr className={cn(eyebrowClass(), "whitespace-nowrap")}>
                     <th scope="col" className="py-2 pl-3.5 pr-3 text-left font-medium">
                       {t("col.map")}
                     </th>

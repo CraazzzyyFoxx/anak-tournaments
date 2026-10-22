@@ -19,6 +19,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import UserMenu from "@/components/UserMenu";
 import { WorkspaceAvatar, type WorkspaceAvatarSource } from "@/components/workspace/WorkspaceAvatar";
@@ -51,9 +52,6 @@ const MENU_ITEM_CLASS =
 const POP_CLASS =
   "min-w-[240px] max-w-[min(360px,calc(100vw-24px))] rounded-xl border-[color:var(--aqt-border-2)] " +
   "bg-[color:var(--aqt-card-2)] p-1.5 shadow-[0_18px_50px_rgb(0_0_0/0.5)]";
-
-const EYEBROW_CLASS =
-  "px-2.5 pb-1.5 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 
 interface HeaderProps {
   /**
@@ -160,7 +158,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
 
               {navGroups.map((group) => (
                 <div key={group.key} className="mt-[18px]">
-                  <p className={EYEBROW_CLASS}>{t(`nav.groups.${group.key}`)}</p>
+                  <Eyebrow as="p" className="px-2.5 pb-1.5">{t(`nav.groups.${group.key}`)}</Eyebrow>
                   {group.items.map((item) => (
                     <SheetClose asChild key={item.key}>
                       <HoverPrefetchLink
@@ -179,7 +177,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
               ))}
 
               <div className="mt-[18px]">
-                <p className={EYEBROW_CLASS}>{t("nav.groups.play")}</p>
+                <Eyebrow as="p" className="px-2.5 pb-1.5">{t("nav.groups.play")}</Eyebrow>
                 {NAV_LINKS.map((item) => (
                   <SheetClose asChild key={item.key}>
                     <HoverPrefetchLink
@@ -205,7 +203,7 @@ const Header = ({ tenantMode, tenantWorkspace }: HeaderProps) => {
                 </SheetClose>
               ) : (
                 <div className="mt-[18px]">
-                  <p className={EYEBROW_CLASS}>{t("nav.groups.organizers")}</p>
+                  <Eyebrow as="p" className="px-2.5 pb-1.5">{t("nav.groups.organizers")}</Eyebrow>
                   <SheetClose asChild>
                     <Link href="/get-workspace" className={MENU_ITEM_CLASS}>
                       <Plus className="size-4 shrink-0" aria-hidden />

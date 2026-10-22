@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useInvalidation } from "@/hooks/useInvalidation";
@@ -223,12 +224,9 @@ export default function MLAdminToolbar({ tournamentId, workspaceId }: Readonly<M
 
             <div className="space-y-4">
               <div className="space-y-3">
-                <p
-                  id={`${fieldId}-scope`}
-                  className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
-                >
+                <Eyebrow as="p" id={`${fieldId}-scope`}>
                   {t("analytics.job.trainingSample")}
-                </p>
+                </Eyebrow>
                 <RadioGroup
                   aria-labelledby={`${fieldId}-scope`}
                   value={trainScope}
@@ -267,12 +265,9 @@ export default function MLAdminToolbar({ tournamentId, workspaceId }: Readonly<M
                   aria-labelledby={`${fieldId}-workspaces`}
                   className="space-y-3 border-t border-[color:var(--aqt-border)] pt-4"
                 >
-                  <p
-                    id={`${fieldId}-workspaces`}
-                    className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
-                  >
+                  <Eyebrow as="p" id={`${fieldId}-workspaces`}>
                     {t("analytics.job.workspaces")}
-                  </p>
+                  </Eyebrow>
                   {workspaces.length ? (
                     <div className="-m-1 grid max-h-56 gap-3 overflow-auto p-1">
                       {workspaces.map((workspace) => {

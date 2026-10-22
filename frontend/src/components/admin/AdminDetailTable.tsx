@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 
 /**
  * Shared class sets for the small hand-built `<Table>`s that live INSIDE
@@ -48,7 +48,7 @@ const STYLES: Record<AdminDetailTableVariant, AdminDetailTableStyles> = {
   comfortable: {
     shell: "overflow-hidden rounded-xl border border-border/60 bg-background/40",
     headerRow: "border-border/60 hover:bg-transparent",
-    head: `h-11 bg-muted/15 ${EYEBROW_CLASS} first:pl-4 last:pr-4`,
+    head: `h-11 bg-muted/15 ${eyebrowClass("muted")} first:pl-4 last:pr-4`,
     row: "border-border/50 transition-colors duration-200 hover:bg-muted/20",
     cell: COMFORTABLE_CELL,
     numericCell: `${COMFORTABLE_CELL} tabular-nums`

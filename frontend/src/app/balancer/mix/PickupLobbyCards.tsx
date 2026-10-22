@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { ChevronDown, DoorOpen, Shuffle } from "lucide-react";
 
-import { CAPTION_CLASS, EYEBROW_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
+import { CAPTION_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
 import { LineupRow } from "@/app/balancer/mix/_components/LineupRow";
 import { StartMatchButton } from "@/app/balancer/mix/_components/StartMatchButton";
 import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
@@ -17,6 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Spinner } from "@/components/ui/spinner";
 import { StatusDot } from "@/components/ui/status-dot";
 import { useMinuteClock } from "@/hooks/useMinuteClock";
@@ -251,7 +252,7 @@ function UnseatedGroups({
           className="flex flex-col gap-1.5 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-2.5 py-2.5"
         >
           <div className="flex items-baseline gap-1.5 px-0.5">
-            <span className={EYEBROW_CLASS}>{t(`groups.${group.key}`)}</span>
+            <Eyebrow>{t(`groups.${group.key}`)}</Eyebrow>
             <span className="text-label text-[color:var(--aqt-fg-dim)]">{group.rows.length}</span>
           </div>
           {group.rows.length > 0 ? (

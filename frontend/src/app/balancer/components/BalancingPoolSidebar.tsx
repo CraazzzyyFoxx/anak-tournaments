@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { SearchField } from "@/components/ui/search-field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -301,9 +302,9 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
             <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-muted)]">
               <Columns3 className="h-4 w-4" aria-hidden="true" />
             </div>
-            <div className="text-center text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)] [writing-mode:vertical-rl]">
+            <Eyebrow as="div" tone="dim" className="text-center [writing-mode:vertical-rl]">
               Pool
-            </div>
+            </Eyebrow>
           </div>
           <div className="flex flex-col items-center gap-1.5">
             <div className="rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-2 py-1 text-label tabular-nums text-[color:var(--aqt-fg-muted)]">
@@ -326,9 +327,9 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
       <div className={cn(PANEL_CLASS, "flex min-h-0 min-w-0 flex-col p-4")}>
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
-            <div className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+            <Eyebrow as="div" tone="dim">
               Balancing Pool
-            </div>
+            </Eyebrow>
             <div className="mt-1 text-sm tabular-nums text-[color:var(--aqt-fg-muted)]">
               {poolPlayers.length} players
             </div>

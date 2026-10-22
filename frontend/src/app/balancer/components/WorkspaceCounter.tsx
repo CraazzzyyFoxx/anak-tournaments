@@ -1,5 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 
+import { Eyebrow } from "@/components/ui/eyebrow";
+
 type WorkspaceCounterProps = {
   label: string;
   value: number;
@@ -14,7 +16,7 @@ export function WorkspaceCounter({ label, value, icon: Icon }: Readonly<Workspac
       <span className="text-sm font-semibold leading-none tabular-nums text-[color:var(--aqt-fg)]">
         {value}
       </span>
-      <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">{label}</span>
+      <Eyebrow tone="dim">{label}</Eyebrow>
     </div>
   );
 }

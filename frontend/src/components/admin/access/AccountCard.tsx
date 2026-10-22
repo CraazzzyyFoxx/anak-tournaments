@@ -6,7 +6,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 
 import { StatusPill } from "@/components/kit/StatusPill";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { accessQueryKeys } from "@/lib/access/query-keys";
 import { getSingleLinkedPlayer } from "@/lib/auth/profile-links";
@@ -32,7 +32,7 @@ export function AccountSection({
   return (
     <section className="space-y-2.5">
       <div className="flex min-h-7 items-center justify-between gap-2">
-        <h3 className={EYEBROW_CLASS}>
+        <h3 className={eyebrowClass("muted")}>
           {title}
           {summary != null ? <span className={`ml-2 ${SUMMARY_CLASS}`}>{summary}</span> : null}
         </h3>
@@ -72,7 +72,7 @@ export function AccountDisclosure({
               aria-hidden
               className="size-3.5 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"
             />
-            <span className={EYEBROW_CLASS}>{title}</span>
+            <span className={eyebrowClass("muted")}>{title}</span>
             {summary != null ? <span className={SUMMARY_CLASS}>{summary}</span> : null}
           </CollapsibleTrigger>
         </h3>

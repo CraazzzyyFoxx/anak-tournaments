@@ -3,6 +3,8 @@ import { getTranslations } from "next-intl/server";
 import { CalendarSearch, Medal, Sparkles, Swords, Trophy, Users } from "lucide-react";
 
 import { HeroFrame } from "@/components/site/PageHero";
+import { Eyebrow } from "@/components/ui/eyebrow";
+import { splitHandle } from "@/lib/player";
 
 /**
  * Shown in place of the profile tab strip when a player has never entered a
@@ -24,7 +26,7 @@ const UNLOCKS = [
 /** `name` is the raw `BattleTag#1234`; the copy reads better without the tag. */
 const UserProfileEmpty = async ({ name }: { name: string }) => {
   const t = await getTranslations();
-  const displayName = name.split("#")[0];
+  const displayName = splitHandle(name).name;
 
   return (
     <HeroFrame variant="profile">
@@ -42,9 +44,9 @@ const UserProfileEmpty = async ({ name }: { name: string }) => {
         </span>
 
         <div className="space-y-2.5">
-          <p className="aqt-tnum text-label font-semibold tracking-label uppercase text-[color:var(--aqt-fg-faint)]">
+          <Eyebrow as="p" className="aqt-tnum">
             {t("users.profile.empty.eyebrow")}
-          </p>
+          </Eyebrow>
           <h2 className="aqt-display text-2xl font-semibold tracking-tight text-[color:var(--aqt-fg)] md:text-headline">
             {t("users.profile.empty.title")}
           </h2>

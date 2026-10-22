@@ -4,12 +4,12 @@ import { ArrowRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useMemo, useRef, useState } from "react";
 
-import { splitHandle } from "@/components/balancer/balancer-page-helpers";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { useDraftLayerPad } from "@/hooks/useDraftLayerPad";
 import { usePickCountdown } from "@/hooks/usePickCountdown";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { pickHistory, type TeamView } from "@/lib/draft/room-model";
+import { splitHandle } from "@/lib/player";
 import { showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { roleOf } from "@/lib/roster/role-ref";
 import type { DraftBoard, DraftPick } from "@/types/draft.types";

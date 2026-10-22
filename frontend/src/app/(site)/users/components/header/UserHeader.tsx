@@ -6,12 +6,13 @@ import { getSocialProviderConfig, socialProfileUrl, sortSocialAccounts } from "@
 import { findRole, registrationRoles, roleName, rolePresentation } from "@/lib/roster/ontology";
 import disciplineService from "@/services/discipline.service";
 import { SocialIcon } from "@/components/social/SocialIcon";
-import { getPlayerImage } from "@/lib/player";
+import { getPlayerImage, splitHandle } from "@/lib/player";
 import DivisionIcon from "@/components/DivisionIcon";
 import { FormStreak, ProfileStat, type FormResult } from "@/components/profile/atoms";
 import ProfileToolbar from "@/app/(site)/users/components/header/ProfileToolbar";
 import userService from "@/services/user.service";
 import { HeroFrame } from "@/components/site/PageHero";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import type { StatsScope } from "@/lib/site/stats-scope";
 import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 import {
@@ -69,7 +70,7 @@ const primaryRoleOf = (profile: UserProfile) => {
 
 const UserHeader = async ({ profile, user, scope, discipline, axis }: UserHeaderProps) => {
   const [t, tRoles] = await Promise.all([getTranslations(), getTranslations("common.roles")]);
-  const [name, tag] = user.name.split("#");
+  const { name, suffix: tag } = splitHandle(user.name);
   const primaryRole = primaryRoleOf(profile);
   const avatarSrc = getPlayerImage(profile, user);
 
@@ -141,7 +142,7 @@ const UserHeader = async ({ profile, user, scope, discipline, axis }: UserHeader
             <span className="min-w-0 truncate" title={name}>{name}</span>
             {tag ? (
               <span className="whitespace-nowrap text-[0.46em] font-medium tracking-[0.02em] text-[color:var(--aqt-fg-faint)]">
-                #{tag}
+                {tag}
               </span>
             ) : null}
           </h1>
@@ -249,9 +250,7 @@ const UserHeader = async ({ profile, user, scope, discipline, axis }: UserHeader
           </div>
 
           <div className="flex w-full flex-wrap items-center gap-3 border-t border-[color:var(--aqt-border)] pt-3">
-            <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-              {t("users.profile.header.formLast", { count: String(formStreak.length) })}
-            </span>
+            <Eyebrow>{t("users.profile.header.formLast", { count: String(formStreak.length) })}</Eyebrow>
             {formStreak.length > 0 ? (
               <FormStreak results={formStreak} />
             ) : (

@@ -5,7 +5,8 @@ import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { LEADER_STATS, STAT_META, findLeader, formatStat, type MatchStatsTeam } from "./stats";
 import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
-import { getPlayerSlug } from "@/lib/player";
+import { Eyebrow } from "@/components/ui/eyebrow";
+import { getPlayerSlug, splitHandle } from "@/lib/player";
 import { cn } from "@/lib/utils";
 
 interface LeadersProps {
@@ -29,14 +30,12 @@ const Leaders = ({ home, away, round, gridClassName }: LeadersProps) => {
 
   return (
     <div>
-      <span className="aqt-tnum mb-2 block text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-        {t("matches.leaders.title")}
-      </span>
+      <Eyebrow className="aqt-tnum mb-2 block">{t("matches.leaders.title")}</Eyebrow>
       <div className={cn("grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6", gridClassName)}>
         {cards.map(({ name, leader }) => {
           if (!leader) return null;
           const accent = leader.side === "home" ? "var(--aqt-teal)" : "var(--aqt-rose)";
-          const displayName = leader.player.name.split("#")[0];
+          const displayName = splitHandle(leader.player.name).name;
           const heroes = leader.player.heroes[round] ?? [];
           return (
             <div

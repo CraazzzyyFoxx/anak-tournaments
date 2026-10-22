@@ -4,9 +4,12 @@ import type { ReactNode } from "react";
 import { ListOrdered, Network } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { LinkTabs } from "@/components/kit/LinkTabs";
 import { Badge } from "@/components/ui/badge";
-import { SegmentedLinks, type SegmentedLinkItem } from "@/components/ui/segmented";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+import type { BracketTabs } from "./bracketStages.model";
 
 /**
  * Standings ⇄ bracket switch, icon-only like the tournaments list's view
@@ -36,7 +39,7 @@ export function ViewTabs({
 
 type StagePanelHeaderProps = {
   /** The stage tab rail, when there is more than one stage to switch between. */
-  bracketTabs?: readonly SegmentedLinkItem[];
+  bracketTabs?: BracketTabs;
   /** Heading for the single-stage case: the stage item's name, else the stage's. */
   title: string;
   /** The mono line under it — the stage type, optionally prefixed by the stage. */
@@ -65,23 +68,24 @@ export function StagePanelHeader({
   viewTabs
 }: Readonly<StagePanelHeaderProps>) {
   const t = useTranslations();
-  const hasRail = bracketTabs !== undefined && bracketTabs.length > 1;
+  const hasRail = bracketTabs !== undefined && bracketTabs.items.length > 1;
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4 sm:items-center">
       {hasRail ? (
         <div className="flex min-w-0 flex-col items-start gap-2">
           <div className="flex flex-wrap items-center gap-3">
-            <SegmentedLinks
-              items={bracketTabs}
-              label={t("tournamentDetail.stageTabsLabel")}
-              size="default"
+            <LinkTabs
+              variant="pill"
+              items={bracketTabs.items}
+              activeKey={bracketTabs.activeKey}
+              ariaLabel={t("tournamentDetail.stageTabsLabel")}
             />
             {railSuffix}
           </div>
-          <p className="text-xs uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+          <Eyebrow as="p" tone="dim">
             {subtitle}
-          </p>
+          </Eyebrow>
         </div>
       ) : (
         <div className="min-w-0">
@@ -93,9 +97,9 @@ export function StagePanelHeader({
               </Badge>
             )}
           </h3>
-          <p className="mt-1 text-xs uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+          <Eyebrow as="p" tone="dim" className="mt-1">
             {subtitle}
-          </p>
+          </Eyebrow>
         </div>
       )}
 

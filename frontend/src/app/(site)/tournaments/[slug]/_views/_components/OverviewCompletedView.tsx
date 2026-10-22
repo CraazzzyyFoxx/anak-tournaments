@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import type { BracketRoundShape } from "@/lib/bracket/round-name";
 import { useFormatter } from "@/lib/datetime/client";
@@ -53,16 +53,7 @@ function TopHeroesCard({
               <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]" aria-hidden>
                 {String(index + 1).padStart(2, "0")}
               </span>
-              <Avatar className="size-6 border-none bg-transparent">
-                {entry.entity.image_path ? (
-                  <AvatarImage
-                    src={entry.entity.image_path}
-                    alt={entry.entity.name}
-                    className="object-contain"
-                  />
-                ) : null}
-                <AvatarFallback className="bg-transparent" />
-              </Avatar>
+              <CatalogEntityImage entity={entry.entity} size={24} decorative />
               <span className="min-w-0 truncate text-caption" title={entry.entity.name}>
                 {entry.entity.name}
               </span>

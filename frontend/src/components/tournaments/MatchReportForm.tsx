@@ -10,6 +10,7 @@ import { getApiErrorMessage } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
@@ -131,12 +132,7 @@ function BlockHeading({
             {label}
           </p>
         )}
-        <span
-          className={cn(
-            "shrink-0 text-label font-bold uppercase tracking-label",
-            required ? "text-[color:var(--aqt-gold)]" : "text-[color:var(--aqt-fg-faint)]"
-          )}
-        >
+        <span className={cn(eyebrowClass(), "shrink-0", required && "text-[color:var(--aqt-gold)]")}>
           {required ? t("common.required") : t("matchReport.optional")}
         </span>
       </div>

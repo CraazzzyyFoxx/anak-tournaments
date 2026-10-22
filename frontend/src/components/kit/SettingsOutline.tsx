@@ -13,6 +13,7 @@ import {
 } from "react";
 import { useTranslations } from "next-intl";
 
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { cn } from "@/lib/utils";
 import { holdScrollPosition } from "@/lib/scroll-hold";
 import { useInSettingsPreview } from "./SettingsContinuation";
@@ -76,10 +77,6 @@ export function useSettingsOutlineEntry(
     if (!register || inPreview || !element) return;
     return register({ id, title, element });
   }, [register, inPreview, id, title, ref]);
-}
-
-function prefersReducedMotion() {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 /**
@@ -167,6 +164,7 @@ export function SettingsOutlineList() {
   const { active, jumpTo } = useActiveGroup(listed ? entries : NO_ENTRIES);
   const arrivedAt = useRef<string | null>(null);
   const releaseHold = useRef<(() => void) | null>(null);
+  const reduceMotion = usePrefersReducedMotion();
 
   useEffect(() => () => releaseHold.current?.(), []);
 
@@ -189,7 +187,7 @@ export function SettingsOutlineList() {
     event.preventDefault();
     window.history.replaceState(null, "", `#${entry.id}`);
     arrivedAt.current = window.location.href;
-    jumpTo(entry, prefersReducedMotion() ? "auto" : "smooth");
+    jumpTo(entry, reduceMotion ? "auto" : "smooth");
   };
 
   return (

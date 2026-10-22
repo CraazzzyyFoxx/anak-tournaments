@@ -17,6 +17,7 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { FilterChip } from "@/components/ui/filter-chip";
 import {
   Select,
@@ -769,10 +770,10 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
           aria-label={t("tournamentDetail.participants.hidden.title")}
           className="relative overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4 shadow-md backdrop-blur-md sm:p-5"
         >
-          <div className="mb-3 flex items-center gap-1.5 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+          <Eyebrow as="div" tone="dim" className="mb-3 flex items-center gap-1.5">
             <EyeOff aria-hidden className="size-3.5" />
             {t("tournamentDetail.participants.hidden.title")}
-          </div>
+          </Eyebrow>
           <RegistrationSummary
             workspaceId={tournament.workspace_id}
             discipline={tournament.discipline}

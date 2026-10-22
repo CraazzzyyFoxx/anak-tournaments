@@ -13,11 +13,13 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { HandleLabel } from "@/components/HandleLabel";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import TeamName from "@/components/TeamName";
 import { TeamPlacement } from "@/components/TournamentTeamCard";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import {
   Table,
@@ -30,7 +32,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useFormatter } from "@/lib/datetime/client";
-import { sortTeamPlayers } from "@/lib/player";
+import { sortTeamPlayers, splitHandle } from "@/lib/player";
 import type { RoleOntology } from "@/lib/roster/ontology";
 import { groupDisplayName, groupHue } from "@/lib/tournament/group";
 import { cn } from "@/lib/utils";
@@ -68,19 +70,11 @@ interface AnalyticsStandingsProps {
   onExplain?: (term: GlossaryTerm) => void;
 }
 
-const HEAD_CLASS =
-  "h-9 whitespace-nowrap px-3 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 const CELL_CLASS = "px-3 py-2";
 const NUM_CLASS = "aqt-tnum text-right";
 const ROW_CLASS = "border-[color:var(--aqt-overlay-border)] hover:bg-[color:var(--aqt-overlay-2)]";
 
 const SIGNED = { maximumFractionDigits: 2, signDisplay: "exceptZero" } as const;
-
-/** "Nick#1234" → ["Nick", "#1234"]. */
-const splitTag = (name: string): [string, string | null] => {
-  const hash = name.indexOf("#");
-  return hash < 0 ? [name, null] : [name.slice(0, hash), name.slice(hash)];
-};
 
 function Head({
   children,
@@ -94,7 +88,7 @@ function Head({
   numeric?: boolean;
 }>) {
   return (
-    <TableHead scope="col" className={cn(HEAD_CLASS, numeric && "text-right")}>
+    <TableHead scope="col" className={cn(eyebrowClass(), "h-9 whitespace-nowrap px-3", numeric && "text-right")}>
       {term ? (
         <span className="inline-flex items-center gap-1">
           {children}
@@ -141,14 +135,10 @@ function TeamForecast({ shift }: Readonly<{ shift: number }>) {
 /** Nick, faint `#tag`, then the newcomer / new-role marks as `RosterPlayer` draws them. */
 function PlayerIdentity({ player }: Readonly<{ player: PlayerAnalytics }>) {
   const t = useTranslations();
-  const [nick, tag] = splitTag(player.name);
 
   return (
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-      <span className="font-medium text-[color:var(--aqt-fg)]">
-        {nick}
-        {tag ? <span className="font-normal text-[color:var(--aqt-fg-faint)]">{tag}</span> : null}
-      </span>
+      <HandleLabel handle={player.name} className="font-medium text-[color:var(--aqt-fg)]" />
       {player.is_newcomer ? (
         <IconTooltip label={t("teams.roster.newcomer")} hint={t("teams.roster.newcomerHint")}>
           <Sprout aria-hidden className="size-3.5 text-[color:var(--aqt-rose)]" />
@@ -270,7 +260,7 @@ function TeamRows({
               {/* The roster at a glance: role glyph + nick, as the Teams list draws it. */}
               <span
                 className="block max-w-[24rem] truncate text-caption text-[color:var(--aqt-fg-muted)]"
-                title={players.map((player) => splitTag(player.name)[0]).join(", ")}
+                title={players.map((player) => splitHandle(player.name).name).join(", ")}
               >
                 {players.map((player) => (
                   <span key={player.id} className="mr-3 last:mr-0">
@@ -278,7 +268,7 @@ function TeamRows({
                     <span className="mr-1 inline-block align-[-2px]">
                       <PlayerRoleIcon role={player.role} ontology={ontology} size={13} decorative />
                     </span>
-                    {splitTag(player.name)[0]}
+                    {splitHandle(player.name).name}
                   </span>
                 ))}
               </span>

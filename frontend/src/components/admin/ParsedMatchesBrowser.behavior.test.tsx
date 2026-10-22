@@ -327,7 +327,7 @@ describe("ParsedMatchesBrowser", () => {
     listAdminMatches.mockResolvedValue(pageOf([row()], 60));
     const container = await mount(() => <ParsedMatchesBrowser tournamentId={null} discipline="lol" workspaceId={4} />);
     const second = await waitFor(
-      () => container.querySelector('[aria-label="Page 2"]'),
+      () => container.querySelector('[aria-label="Go to page 2"]'),
       "the second page button"
     );
 

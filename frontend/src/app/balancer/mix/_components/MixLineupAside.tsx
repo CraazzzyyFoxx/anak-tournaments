@@ -1,9 +1,9 @@
 import { X } from "lucide-react";
 
-import { EYEBROW_CLASS } from "@/app/balancer/mix/pickup-chrome";
-import { splitHandle } from "@/components/balancer/balancer-page-helpers";
+import { HandleLabel } from "@/components/HandleLabel";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { cn } from "@/lib/utils";
@@ -52,7 +52,7 @@ export function MixLineupAside({
   return (
     <aside className="flex min-h-0 flex-col border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] lg:border-l lg:border-t-0">
       <div className="flex shrink-0 items-baseline gap-2 px-4 pb-2.5 pt-3.5">
-        <h3 className={EYEBROW_CLASS}>In this mix</h3>
+        <Eyebrow as="h3">In this mix</Eyebrow>
         <span className="ml-auto flex items-baseline gap-1 tabular-nums">
           <span
             className={cn(
@@ -176,7 +176,6 @@ function LineupChip({
 }: Readonly<{ row: CustomGamePlayer; owner: MixOwner; canWrite: boolean; onRemove: () => void }>) {
   const slotLabel = useSlotLabel(owner.ontology);
   const label = playerLabel(row);
-  const { name, suffix } = splitHandle(label);
   const order = resolveRoleOrder(row, owner.roles);
   const rank = averageRank(row, owner.roles);
 
@@ -187,17 +186,12 @@ function LineupChip({
         row.participation === "benched" && "opacity-55"
       )}
     >
-      <span className="flex min-w-0 flex-1 items-baseline gap-1">
-        <span
-          className="truncate text-caption font-semibold text-[color:var(--aqt-fg)]"
-          title={label}
-        >
-          {name}
-        </span>
-        {suffix ? (
-          <span className="shrink-0 text-label text-[color:var(--aqt-fg-faint)]">{suffix}</span>
-        ) : null}
-      </span>
+      <HandleLabel
+        handle={label}
+        title={label}
+        className="flex-1 text-caption font-semibold text-[color:var(--aqt-fg)]"
+        tagClassName="text-label"
+      />
 
       {owner.showsRoles ? (
         <span aria-hidden="true" className="flex shrink-0 items-center gap-0.5">

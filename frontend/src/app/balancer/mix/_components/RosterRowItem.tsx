@@ -1,7 +1,7 @@
 import { Check, CornerDownLeft, Plus } from "lucide-react";
 
-import { splitHandle } from "@/components/balancer/balancer-page-helpers";
 import DivisionIcon from "@/components/DivisionIcon";
+import { HandleLabel } from "@/components/HandleLabel";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
@@ -37,7 +37,6 @@ export function RosterRowItem({
 }>) {
   const slotLabel = useSlotLabel(owner.ontology);
   const label = row.displayName || row.handle || `#${row.memberId}`;
-  const { name, suffix } = splitHandle(label);
   const { grid } = owner;
 
   return (
@@ -73,15 +72,12 @@ export function RosterRowItem({
         </span>
 
         <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
-          <span
-            className="truncate text-caption font-semibold text-[color:var(--aqt-fg)]"
+          <HandleLabel
+            handle={label}
             title={label}
-          >
-            {name}
-          </span>
-          {suffix ? (
-            <span className="shrink-0 text-label text-[color:var(--aqt-fg-faint)]">{suffix}</span>
-          ) : null}
+            className="text-caption font-semibold text-[color:var(--aqt-fg)]"
+            tagClassName="text-label"
+          />
           {isCursor && canWrite ? (
             <span
               aria-hidden="true"

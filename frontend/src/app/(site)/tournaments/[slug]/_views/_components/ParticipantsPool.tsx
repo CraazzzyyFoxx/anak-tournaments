@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import type { CSSProperties } from "react";
 import { useTranslations } from "next-intl";
 
+import { HandleLabel } from "@/components/HandleLabel";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import DivisionIcon from "@/components/DivisionIcon";
 import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
@@ -157,12 +158,6 @@ function PoolRow({
   const rank = role.rank_value ?? null;
   const heroes = topHeroes(role, heroesMap, 3);
   const battleTag = registration.primary_handle ?? "\u2014";
-  // BattleTags are `Name#1234`; the discriminator is how you tell two Kennys
-  // apart and nothing else, so it stays present and stops competing with the
-  // name for attention.
-  const hash = battleTag.indexOf("#");
-  const name = hash > 0 ? battleTag.slice(0, hash) : battleTag;
-  const discriminator = hash > 0 ? battleTag.slice(hash) : "";
   // A multi-role player is listed in every role column; in the columns of their
   // secondary roles the name is dimmed. That says "also plays this" without a
   // glyph — in a flex tournament nearly every row would carry the glyph and it
@@ -176,14 +171,10 @@ function PoolRow({
       })
     : null;
 
-  const label = (
-    <>
-      <span className="truncate">{name}</span>
-      {discriminator ? (
-        <span className="shrink-0 text-[color:var(--aqt-fg-faint)]">{discriminator}</span>
-      ) : null}
-    </>
-  );
+  // BattleTags are `Name#1234`; the discriminator is how you tell two Kennys
+  // apart and nothing else, so it stays present and stops competing with the
+  // name for attention.
+  const label = <HandleLabel handle={battleTag} />;
 
   return (
     <li

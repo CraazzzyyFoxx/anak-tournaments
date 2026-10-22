@@ -2,6 +2,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { headingText, slugifyHeading } from "@/lib/markdown-toc";
 import { cn } from "@/lib/utils";
 
@@ -135,7 +136,7 @@ const MARKDOWN_COMPONENTS: Components = {
   th: ({ node: _node, ...props }) => (
     <th
       {...props}
-      className="border-b border-border bg-muted/40 px-3 py-2 text-left text-label font-semibold uppercase tracking-label text-muted-foreground"
+      className={cn(eyebrowClass("muted"), "border-b border-border bg-muted/40 px-3 py-2 text-left")}
     />
   ),
   td: ({ node: _node, ...props }) => (

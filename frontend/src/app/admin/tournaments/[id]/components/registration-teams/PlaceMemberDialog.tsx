@@ -5,7 +5,7 @@ import { useId, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { Combobox, ComboboxCheck } from "@/components/kit/Combobox";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Checkbox } from "@/components/ui/checkbox";

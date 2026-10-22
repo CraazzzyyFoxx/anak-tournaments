@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { DivisionGridReadinessSource, DivisionTier } from "@/types/workspace.types";
@@ -106,7 +106,7 @@ export function MappingsView({
       {mapped.map(({ readiness, rows }) => {
         return (
           <section key={readiness.version_id} className="flex min-w-0 flex-col gap-2">
-            <p className={EYEBROW_CLASS}>
+            <p className={eyebrowClass("muted")}>
               {t("mappingLabels.header", {
                 source: readiness.version_label,
                 target: targetLabel,

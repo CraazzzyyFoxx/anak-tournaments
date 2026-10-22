@@ -6,7 +6,9 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronUp } from "lucide-react";
 
 import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
+import PlayerName from "@/components/PlayerName";
 import { DataPagination } from "@/components/ui/data-pagination";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,21 +20,13 @@ import type { DivisionGridVersion } from "@/types/workspace.types";
 
 import { PlayerCard } from "./UsersCatalogView";
 import { UserExpandedRow } from "./UserExpandedRow";
-import {
-  CompareCheckbox,
-  GameMarks,
-  LastActive,
-  PlayerName,
-  RolesCrests,
-  WinrateCell
-} from "./users-index.atoms";
+import { CompareCheckbox, GameMarks, LastActive, RolesCrests, WinrateCell } from "./users-index.atoms";
 import { PER_PAGE_OPTIONS, type SortValue } from "./users-index.model";
 import type { CompareSelection } from "./UsersCompareBar";
 import type { UsersIndexData } from "./useUsersIndexData";
 import type { UsersIndexParamControls } from "./useUsersIndexParams";
 
-const headCellClass =
-  "px-2 py-2 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
+const headCellClass = cn(eyebrowClass(), "px-2 py-2");
 
 /** A sortable column head: a real button inside a `th` that reports `aria-sort`. */
 function SortHead({
@@ -313,7 +307,7 @@ function PlayerRow({
         <div className="flex items-center gap-2.5">
           <PlayerAvatar user={user} size={32} />
           <div className="min-w-0">
-            <PlayerName name={user.name} className="block max-w-[16rem]" />
+            <PlayerName player={{ name: user.name }} className="max-w-[16rem]" />
             <LastActive at={user.last_active_at} />
           </div>
         </div>

@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { Switch } from "@/components/ui/switch";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { getUtcOffsetLabel } from "@/lib/workspace/timezone";
@@ -92,8 +92,8 @@ function ScheduleForm({
           >
             <div aria-hidden className="hidden lg:contents">
               <span />
-              <span className={EYEBROW_CLASS}>{t("starts")}</span>
-              <span className={EYEBROW_CLASS}>{t("ends")}</span>
+              <span className={eyebrowClass("muted")}>{t("starts")}</span>
+              <span className={eyebrowClass("muted")}>{t("ends")}</span>
             </div>
 
             {visiblePhases.map((phase) => (

@@ -7,7 +7,9 @@ import type { MatchEvents } from "@/types/killfeed.types";
 import type { MatchWithStats } from "@/types/encounter.types";
 import encounterService from "@/services/encounter.service";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
+import { splitHandle } from "@/lib/player";
 import { readTimeline, type TimelineKill, type TimelineMark } from "./timeline";
 import type { OwTeam } from "./view";
 
@@ -111,7 +113,7 @@ const KillFeedTimeline = ({ matchId, members, home, away }: KillFeedTimelineProp
   }, [matchId]);
 
   const nameByMemberId = useMemo(
-    () => new Map(members.map((member) => [member.workspace_member_id, member.handle_snapshot.split("#")[0]])),
+    () => new Map(members.map((member) => [member.workspace_member_id, splitHandle(member.handle_snapshot).name])),
     [members]
   );
 
@@ -305,7 +307,7 @@ const KillFeedTimeline = ({ matchId, members, home, away }: KillFeedTimelineProp
         <span className="truncate text-label font-medium" style={{ color: sideColor(side) }}>
           {nameOf(event.member_id)}
         </span>
-        <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-dim)]">{label}</span>
+        <Eyebrow tone="dim">{label}</Eyebrow>
         {isRez && event.related_member_id != null ? (
           <span className="truncate text-label text-[color:var(--aqt-fg-faint)]">
             {/* Relation separator between reviver and target, not an icon — the
@@ -320,9 +322,7 @@ const KillFeedTimeline = ({ matchId, members, home, away }: KillFeedTimelineProp
   return (
     <div className="rounded-[12px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-          {t("matches.timeline.title")}
-        </span>
+        <Eyebrow className="aqt-tnum">{t("matches.timeline.title")}</Eyebrow>
         {status === "ready" && totalKills > 0 ? legend : null}
       </div>
 
@@ -348,9 +348,7 @@ const KillFeedTimeline = ({ matchId, members, home, away }: KillFeedTimelineProp
                 {/* Header: per-round kill score. Round label only when the match
                     actually has more than one round (else it's a single feed). */}
                 <div className="mb-2 flex items-center justify-between gap-3 border-b border-[color:var(--aqt-border)] pb-1.5">
-                  <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
-                    {multiRound ? t("matches.round", { round: block.round }) : ""}
-                  </span>
+                  <Eyebrow tone="muted">{multiRound ? t("matches.round", { round: block.round }) : ""}</Eyebrow>
                   <ScoreSplit home={block.home} away={block.away} />
                 </div>
 
@@ -369,9 +367,9 @@ const KillFeedTimeline = ({ matchId, members, home, away }: KillFeedTimelineProp
                       <React.Fragment key={`k-${i}`}>
                         {showFight && item.fight != null ? (
                           <div className="mb-0.5 mt-2 flex items-center gap-2 first:mt-0">
-                            <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+                            <Eyebrow className="aqt-tnum">
                               {t("matches.timeline.fight", { n: block.fightOrder.get(item.fight) ?? item.fight })}
-                            </span>
+                            </Eyebrow>
                             <span className="aqt-tnum text-label text-[color:var(--aqt-fg-faint)]">
                               {formatClock(item.time)}
                             </span>

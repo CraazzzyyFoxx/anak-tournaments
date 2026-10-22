@@ -6,6 +6,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import {
   InputGroup,
@@ -397,7 +398,7 @@ function DnsRecords({
   const t = useTranslations("adminWorkspace.workspaceSettings.domain");
   return (
     <table className="w-full table-fixed text-left text-xs">
-      <thead className="text-label uppercase tracking-label text-muted-foreground">
+      <thead className={eyebrowClass("muted")}>
         <tr>
           <th scope="col" className="w-16 pb-1.5 font-semibold">
             {t("dnsType")}

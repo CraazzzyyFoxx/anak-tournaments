@@ -1,5 +1,5 @@
 import type { Tournament, TournamentStatus } from "@/types/tournament.types";
-import type { Tone } from "@/components/kit/tone";
+import type { Tone } from "@/components/ui/tone";
 import type { TournamentPhaseScheduleEntryInput, TournamentUpdateInput } from "@/types/admin.types";
 import { utcToZonedInput, zonedInputToUtc } from "@/lib/workspace/timezone";
 import {

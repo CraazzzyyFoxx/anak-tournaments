@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 
-import { TournamentCombobox } from "@/components/admin/TournamentCombobox";
+import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -82,8 +82,10 @@ export function EvaluateAchievementsDialog({
               id="eval-tournament"
               tournaments={tournaments}
               value={tournamentId}
-              onSelect={(t) => onTournamentChange(t?.id)}
+              onValueChange={onTournamentChange}
               placeholder={t("evaluateDialog.allTournaments")}
+              variant="default"
+              size="default"
             />
           </div>
 

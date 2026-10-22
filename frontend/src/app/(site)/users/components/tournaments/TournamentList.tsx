@@ -8,7 +8,9 @@ import { UserTournament } from "@/types/user.types";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { GameIcon } from "@/components/workspace/GameIcon";
-import { PlaceBadge, LeagueBadge, WdlText, WdlBar } from "@/app/(site)/users/components/tournaments/tournaments-history.atoms";
+import { WdlText, WdlBar } from "@/app/(site)/users/components/tournaments/tournaments-history.atoms";
+import { Badge } from "@/components/ui/badge";
+import { PlaceBadge } from "@/components/ui/place-badge";
 import {
   type TournamentGroup,
   groupAggregate,
@@ -98,12 +100,16 @@ const TournamentRow = ({
       )}
       style={selected ? { boxShadow: "inset 2px 0 0 0 var(--aqt-teal)" } : undefined}
     >
-      <PlaceBadge placement={best} />
+      <PlaceBadge place={best} size="md" />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           {showGames ? <GameIcon slug={lead.discipline} /> : null}
           <span className="truncate text-body font-semibold text-[color:var(--aqt-fg)]">{groupDisplayName(group)}</span>
-          {league ? <LeagueBadge>{t("users.tournaments.leagueBadge")}</LeagueBadge> : null}
+          {league ? (
+            <Badge palette="aqt" tone="neutral" voice="label">
+              {t("users.tournaments.leagueBadge")}
+            </Badge>
+          ) : null}
         </div>
         <div className="mt-0.5 flex items-center gap-1.5 text-label text-[color:var(--aqt-fg-dim)]">
           {league ? (

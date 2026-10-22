@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 
 import { DataTable } from "@/components/data-table";
-import { AuthUserSearchCombobox } from "@/components/kit/AuthUserSearchCombobox";
+import { AuthUserSearchCombobox } from "@/components/kit/ServerSearchCombobox";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { PlayerProfileDialog } from "@/components/admin/PlayerProfileDialog";
 import { UserMergeDialog } from "@/components/admin/UserMergeDialog";

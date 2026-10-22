@@ -6,6 +6,7 @@ import { ArrowUpRight, ChevronDown } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { withReturnTo } from "@/lib/auth/return-to";
 import { encounterSeatScore } from "@/lib/encounter/detail";
 import { getEncounterWinner, isEncounterCompleted } from "@/lib/encounter/status";
@@ -154,13 +155,13 @@ export function MatchRow({
         {summary}
       </summary>
       <div className="mx-3.5 mb-2 border-l-2 border-[color:var(--aqt-border)] py-1 pl-3 text-caption sm:ml-[6rem]">
-        <div className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_4rem_4rem_auto] gap-2 py-0.5 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+        <Eyebrow as="div" className="grid grid-cols-[minmax(8rem,14rem)_minmax(0,1fr)_4rem_4rem_auto] gap-2 py-0.5">
           <span>{t("tournamentDetail.matchRow.map")}</span>
           <span>{t("tournamentDetail.matchRow.mode")}</span>
           <span className="text-right">{t("tournamentDetail.matchRow.score")}</span>
           <span className="text-right">{t("tournamentDetail.matchRow.duration")}</span>
           <span />
-        </div>
+        </Eyebrow>
         {maps.map((map) => (
           <div
             key={map.id}

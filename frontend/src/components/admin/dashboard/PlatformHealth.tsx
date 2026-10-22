@@ -8,7 +8,7 @@ import { openMissCountQuery } from "@/app/admin/content/miss-queue";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { collectsRanks, rankHealthDot } from "@/components/admin/collectors/rank-shared";
 import { diagnoseStreamHealth } from "@/components/admin/collectors/stream-shared";
-import { TONE_TEXT, type Tone } from "@/components/kit/tone";
+import { TONE_TEXT, type Tone } from "@/components/ui/tone";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";

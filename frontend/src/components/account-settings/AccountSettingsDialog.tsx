@@ -5,6 +5,7 @@ import { Bell, EyeOff, type LucideIcon, ScrollText, ShieldCheck, Shuffle, Star, 
 import { useTranslations } from "next-intl";
 
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { type SettingsTab, useAccountSettingsModalStore } from "@/stores/account-settings-modal.store";
@@ -66,7 +67,7 @@ const AccountSettingsDialog = () => {
           <div className="shrink-0 border-b border-border/40 bg-[color:var(--aqt-overlay-1)] md:flex md:w-1/3 md:max-w-[280px] md:flex-col md:items-end md:border-b-0 md:pb-8 md:pt-14">
             <div className="w-full px-3 py-3 md:max-w-[220px] md:py-0">
               {/* The one visible title; below `md` the tab strip is the chrome. */}
-              <DialogTitle className="sr-only text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-muted)] md:not-sr-only md:block md:px-3 md:pb-3">
+              <DialogTitle className={cn(eyebrowClass("muted"), "sr-only md:not-sr-only md:block md:px-3 md:pb-3")}>
                 {t("title")}
               </DialogTitle>
               {/* pr-14 on mobile keeps the last tab from scrolling under the close button */}

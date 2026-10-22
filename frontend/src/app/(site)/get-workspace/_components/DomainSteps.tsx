@@ -4,8 +4,8 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties, type Reac
 import { useTranslations } from "next-intl";
 import { Check, Clock, Lock } from "lucide-react";
 
-import { EYEBROW_CLASS } from "@/components/site/open-layout";
 import { owtButton } from "@/components/site/owt-button";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import Image from "@/components/ui/image";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
 import { cn } from "@/lib/utils";
@@ -208,9 +208,7 @@ export function DomainSteps({
                 className="absolute inset-x-0 top-0 h-0.5 bg-[color:var(--aqt-teal)]"
               />
               {example.firstYear ? (
-                <span className={EYEBROW_CLASS}>
-                  {t("preview.since", { year: example.firstYear })}
-                </span>
+                <Eyebrow>{t("preview.since", { year: example.firstYear })}</Eyebrow>
               ) : null}
               <div className="flex items-center gap-3 font-display text-[26px] font-semibold leading-[1.1]">
                 <WorkspaceAvatar workspace={example.workspace} size={40} />
@@ -300,7 +298,7 @@ export function DomainSteps({
 function Swatches({ example, label }: Readonly<{ example: DomainExample; label: string }>) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
-      <span className={EYEBROW_CLASS}>{label}</span>
+      <Eyebrow>{label}</Eyebrow>
       <span className="flex gap-1.5">
         {example.swatches.map((swatch) => (
           <span
@@ -333,10 +331,7 @@ function Dns({
     <div role="table" aria-label={labels.caption}>
       <div
         role="row"
-        className={cn(
-          DNS_ROW,
-          "font-[family-name:var(--aqt-data)] text-label font-semibold uppercase leading-[1.25] tracking-label text-[color:var(--aqt-fg-faint)]"
-        )}
+        className={cn(DNS_ROW, eyebrowClass(), "leading-[1.25]")}
       >
         <span role="columnheader">{labels.type}</span>
         <span role="columnheader">{labels.name}</span>

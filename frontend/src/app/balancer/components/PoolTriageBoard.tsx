@@ -34,10 +34,10 @@ import {
   derivePoolLane,
   hasBlockingIssues,
   getPoolDropPatch,
-  splitHandle,
   type PlayerValidationState,
   type PoolLane,
 } from "@/components/balancer/balancer-page-helpers";
+import { HandleLabel } from "@/components/HandleLabel";
 import { AdditionalHandleStrip, HandleContextMenuItems, HandleCopyButton } from "./HandleCopyControls";
 import { isRoleEntryActive } from "@/components/balancer/workspace-helpers";
 import { IssueChip, issueChipKey } from "./IssueChip";
@@ -125,7 +125,6 @@ function TriagePlayerCard({
   const rankedRoleCodes = uniqueRoleCodes(rankedEntries.map((entry) => entry.role));
   const primaryEntry = rankedEntries[0] ?? sortedEntries[0] ?? null;
   const primaryRole = primaryEntry?.role ?? null;
-  const { name, suffix } = splitHandle(state.player.identity);
   const isSelected = selectedPlayerId === state.player.id;
   const handles = [state.player.identity, ...state.player.additional_handles];
   const isReady = state.player.is_in_pool && !hasBlockingIssues(state.issues);
@@ -173,10 +172,11 @@ function TriagePlayerCard({
                   ) : (
                     <span className="text-label text-[color:var(--aqt-fg-faint)]">No roles</span>
                   )}
-                  <span className="truncate text-caption font-semibold text-[color:var(--aqt-fg)]">
-                    {name}
-                  </span>
-                  {suffix ? <span className="shrink-0 text-label text-[color:var(--aqt-fg-dim)]">{suffix}</span> : null}
+                  <HandleLabel
+                    handle={state.player.identity}
+                    className="text-caption font-semibold text-[color:var(--aqt-fg)]"
+                    tagClassName="text-label"
+                  />
                 </span>
               </button>
               {state.player.is_flex || isReady || state.issues.length > 0 || state.player.additional_handles.length > 0 ? (
@@ -416,8 +416,8 @@ export function PoolTriageBoard({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[min(760px,calc(100vh-3rem))] w-[min(1180px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden border-border bg-popover p-0 text-[color:var(--aqt-fg)] shadow-2xl shadow-black/50">
-        <DialogHeader className="shrink-0 border-b border-[color:var(--aqt-border)] px-5 py-4">
+      <DialogContent variant="panel" className="h-[min(760px,calc(100vh-3rem))] w-[min(1180px,calc(100vw-2rem))] max-w-none">
+        <DialogHeader variant="panel">
           <DialogTitle className="text-base text-[color:var(--aqt-fg)]">Balancing Pool triage</DialogTitle>
           <DialogDescription className="text-xs text-[color:var(--aqt-fg-dim)]">
             Drag players into Excluded to remove them from the run; excluded players come back through a balancer status change. Need Fix and Ready are computed from validation, so included players settle into the correct lane automatically.

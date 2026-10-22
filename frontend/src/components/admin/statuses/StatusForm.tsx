@@ -1,20 +1,14 @@
 "use client";
 
 import { createElement, useId, useMemo, useState } from "react";
-import { Check, ChevronsUpDown, Pipette } from "lucide-react";
+import { Pipette } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import StatusMetaBadge from "@/components/status/StatusMetaBadge";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList
-} from "@/components/ui/command";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -128,7 +122,7 @@ function StatusColorPicker({
           className="z-[60] w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-popover-trigger-width)] space-y-4"
         >
           <div className="space-y-2">
-            <p className={EYEBROW_CLASS} id={`${triggerId}-presets`}>
+            <p className={eyebrowClass("muted")} id={`${triggerId}-presets`}>
               {t("presets")}
             </p>
             <div
@@ -157,7 +151,7 @@ function StatusColorPicker({
           </div>
 
           <div className="space-y-2">
-            <p className={EYEBROW_CLASS}>{t("custom")}</p>
+            <p className={eyebrowClass("muted")}>{t("custom")}</p>
             <div className="flex items-center gap-2">
               <span className="flex h-10 w-12 items-center justify-center rounded-md border border-input bg-background">
                 <input
@@ -268,63 +262,41 @@ export function StatusForm({
         </div>
         <div className="space-y-2">
           <Label htmlFor={`${fieldId}-icon`}>{t("icon")}</Label>
-          <Popover open={iconPickerOpen} onOpenChange={setIconPickerOpen} modal={false}>
-            <PopoverTrigger asChild>
-              <Button
-                id={`${fieldId}-icon`}
-                variant="outline"
-                role="combobox"
-                aria-haspopup="listbox"
-                aria-expanded={iconPickerOpen}
-                className="w-full justify-between"
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  {selectedIcon}
-                  <span className="truncate">{selectedIconSlug}</span>
-                </span>
-                <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" aria-hidden />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              className="z-[60] w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-popover-trigger-width)] p-0"
-              align="start"
-            >
-              <Command>
-                <CommandInput placeholder={t("searchIcons")} />
-                <CommandList className="max-h-64">
-                  <CommandEmpty>{t("noIconMatches")}</CommandEmpty>
-                  <CommandGroup>
-                    {STATUS_ICON_OPTIONS.map(({ slug, Icon }) => (
-                      <CommandItem
-                        key={slug}
-                        value={slug}
-                        onSelect={(nextSlug) => {
-                          onChange({ ...value, icon_slug: nextSlug });
-                          setIconPickerOpen(false);
-                        }}
-                      >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <Icon
-                            className="size-4"
-                            aria-hidden
-                            style={value.icon_color ? { color: value.icon_color } : undefined}
-                          />
-                          <span className="truncate">{slug}</span>
-                        </span>
-                        <Check
-                          aria-hidden
-                          className={cn(
-                            "ml-auto size-4",
-                            value.icon_slug === slug ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
-            </PopoverContent>
-          </Popover>
+          <Combobox
+            id={`${fieldId}-icon`}
+            open={iconPickerOpen}
+            onOpenChange={setIconPickerOpen}
+            label={
+              <span className="flex min-w-0 items-center gap-2">
+                {selectedIcon}
+                <span className="truncate">{selectedIconSlug}</span>
+              </span>
+            }
+            labelTitle={selectedIconSlug}
+            searchPlaceholder={t("searchIcons")}
+            emptyMessage={t("noIconMatches")}
+          >
+            <CommandGroup>
+              {STATUS_ICON_OPTIONS.map(({ slug, Icon }) => (
+                <CommandItem
+                  key={slug}
+                  value={slug}
+                  onSelect={(nextSlug) => {
+                    onChange({ ...value, icon_slug: nextSlug });
+                    setIconPickerOpen(false);
+                  }}
+                >
+                  <Icon
+                    className="size-4"
+                    aria-hidden
+                    style={value.icon_color ? { color: value.icon_color } : undefined}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{slug}</span>
+                  <ComboboxCheck selected={value.icon_slug === slug} />
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </Combobox>
         </div>
         <StatusColorPicker
           value={value.icon_color}

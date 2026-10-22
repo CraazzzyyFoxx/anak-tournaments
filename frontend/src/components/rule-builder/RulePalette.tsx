@@ -5,7 +5,7 @@ import { GripVertical, Search } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
 import { StatusDot } from "@/components/ui/status-dot";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 
 import { LEAF_COLOR, type RulePaletteGroup, type RulePaletteItem } from "./rule-tree";
 import type { RuleBuilderEditLabels } from "./RuleNodes";
@@ -54,7 +54,7 @@ export function RulePalette({
       ) : null}
       {filtered.map((group) => (
         <div key={group.label}>
-          <p className={`${EYEBROW_CLASS} mb-1`}>{group.label}</p>
+          <p className={`${eyebrowClass("muted")} mb-1`}>{group.label}</p>
           <div className="space-y-0.5">
             {group.items.map((item) => (
               <button

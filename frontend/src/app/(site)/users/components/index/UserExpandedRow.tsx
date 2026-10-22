@@ -10,6 +10,7 @@ import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import type { PlayerIdentity } from "@/components/PlayerAvatar";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { winrateColor } from "@/lib/colors";
@@ -18,12 +19,6 @@ import { formatOptional } from "@/app/(site)/users/components/shared/list-utils"
 import userService from "@/services/user.service";
 import { userQueryKeys } from "@/lib/users/query-keys";
 import type { UserDraftCard } from "@/types/user.types";
-
-const Label = ({ children }: Readonly<{ children: ReactNode }>) => (
-  <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-    {children}
-  </span>
-);
 
 const sharePct = (won: number, total: number): number | null =>
   total > 0 ? (won / total) * 100 : null;
@@ -98,7 +93,7 @@ export function UserExpandedRow({
 
       <div className="grid gap-5 lg:grid-cols-3">
         <section className="space-y-2">
-          <Label>{t("users.list.expanded.roles")}</Label>
+          <Eyebrow>{t("users.list.expanded.roles")}</Eyebrow>
           {data.roles.length === 0 ? (
             <p className="text-caption text-[color:var(--aqt-fg-faint)]">
               {t("users.list.expanded.noRoleData")}
@@ -128,7 +123,7 @@ export function UserExpandedRow({
         </section>
 
         <section className="space-y-2">
-          <Label>{t("users.list.expanded.recentTournaments")}</Label>
+          <Eyebrow>{t("users.list.expanded.recentTournaments")}</Eyebrow>
           {data.recent_tournaments.length === 0 ? (
             <p className="text-caption text-[color:var(--aqt-fg-faint)]">
               {t("users.list.expanded.noTournaments")}
@@ -156,7 +151,7 @@ export function UserExpandedRow({
         </section>
 
         <section className="space-y-2">
-          <Label>{t("users.list.expanded.heroes")}</Label>
+          <Eyebrow>{t("users.list.expanded.heroes")}</Eyebrow>
           {!data.characters?.length ? (
             <p className="text-caption text-[color:var(--aqt-fg-faint)]">
               {t("users.list.expanded.noHeroData")}
@@ -239,7 +234,7 @@ function KpiGrid({ card }: Readonly<{ card: UserDraftCard }>) {
           key={cell.label}
           className="flex flex-col gap-1 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-3 py-2"
         >
-          <Label>{cell.label}</Label>
+          <Eyebrow>{cell.label}</Eyebrow>
           <span className="font-semibold tabular-nums text-[color:var(--aqt-fg)]">{cell.value}</span>
         </div>
       ))}

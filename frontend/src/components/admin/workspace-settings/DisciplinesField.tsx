@@ -5,7 +5,7 @@ import { AlertTriangle } from "lucide-react";
 
 import { Switch } from "@/components/ui/switch";
 import { SortableGrip, SortableRows, useSortableRow } from "@/components/kit/SortableRows";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { GameMark } from "@/components/workspace/GameMark";
 import { useDisciplines } from "@/hooks/useDisciplineMetadata";
 import { resolveOwnerGrid } from "@/lib/divisions/grid";
@@ -81,7 +81,7 @@ export function DisciplinesField({
 
       {available.length > 0 ? (
         <div className="mt-3 border-t border-border/60 pt-3">
-          <p className={cn(EYEBROW_CLASS, "px-2 pb-1")}>{t("available")}</p>
+          <p className={cn(eyebrowClass("muted"), "px-2 pb-1")}>{t("available")}</p>
           <div className="divide-y divide-border/60">
             {available.map((item) => (
               <div key={item.code} className={ROW_CLASS}>

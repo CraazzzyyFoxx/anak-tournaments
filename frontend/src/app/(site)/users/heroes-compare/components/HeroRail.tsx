@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { characterClassOf, classRank } from "@/components/pick-ban/pick-ban-model";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { useRoleName } from "@/hooks/useRoleName";
 import { findRole, ratedDimension } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
@@ -60,13 +61,13 @@ export default function HeroRail({
             aria-label={label}
             className="grid gap-2 md:grid-cols-[8rem_minmax(0,1fr)] md:items-center md:gap-3"
           >
-            <span className="flex items-center gap-2 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
+            <Eyebrow tone="muted" className="flex items-center gap-2">
               {role && dimension && group ? (
                 <PlayerRoleIcon role={{ dimension, role: group }} ontology={ontology} size={16} decorative />
               ) : null}
               {label}
               <span className="font-semibold tabular-nums tracking-normal text-[color:var(--aqt-fg-faint)]">{list.length}</span>
-            </span>
+            </Eyebrow>
             <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0 [&::-webkit-scrollbar]:hidden">
               {list.map((hero) => {
                 const selected = hero.id === selectedId;

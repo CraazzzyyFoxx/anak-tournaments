@@ -5,9 +5,9 @@ import { Check } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { aggregateRoleStats } from "@/lib/roster/role-ref";
 
-import DivisionIcon from "@/components/DivisionIcon";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import Image from "@/components/ui/image";
+import { RankCrest } from "@/components/RankCrest";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { canSeat, type RoomSelection, type TeamView } from "@/lib/draft/room-model";
 import { playerRoles, roleTopHeroes } from "@/lib/draft/workspace-model";
@@ -148,15 +148,7 @@ export function RoleTiles({
                   </span>
                 )}
                 <span className="whitespace-nowrap text-ui font-semibold tabular-nums">{rank ?? "—"}</span>
-                {division != null && (
-                  <DivisionIcon
-                    division={division}
-                    tournamentGrid={divisionGrid}
-                    width={28}
-                    height={28}
-                    className="h-7 w-7 shrink-0 object-contain"
-                  />
-                )}
+                <RankCrest division={division} grid={divisionGrid} size={28} tooltip={false} />
               </span>
             </span>
             {(heroes.length > 0 || withStats) && (
@@ -178,12 +170,10 @@ export function RoleTiles({
                               }`;
                       return (
                         <span key={hero.slug} className="flex w-8 flex-col items-center gap-0.5" title={heroTitle}>
-                          <Image
-                            src={getHeroIconUrl(hero.slug, hero.imagePath)}
-                            alt={name}
-                            width={32}
-                            height={32}
-                            className="h-8 w-8 rounded-full object-cover"
+                          <CatalogEntityImage
+                            entity={{ name, image_path: getHeroIconUrl(hero.slug, hero.imagePath) }}
+                            size={32}
+                            title={heroTitle}
                           />
                           {withStats && (
                             <span

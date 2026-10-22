@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AccountSection, invalidateAccount } from "@/components/admin/access/AccountCard";
 import { ProviderMark } from "@/components/admin/OAuthProviderMark";
-import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
+import { UserSearchCombobox } from "@/components/kit/ServerSearchCombobox";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -93,7 +93,7 @@ export function AccountLinkedPlayer({
           <div className="min-w-0 flex-1">
             <UserSearchCombobox
               value={picked?.id}
-              selectedName={picked?.name}
+              selectedLabel={picked?.name}
               placeholder={tc("findPlayer")}
               searchPlaceholder={tc("searchPlayerIdentity")}
               onSelect={(user) => setPicked(user ?? null)}
@@ -101,7 +101,6 @@ export function AccountLinkedPlayer({
           </div>
           <Button
             variant="outline"
-            className="h-10"
             disabled={picked == null || link.isPending}
             onClick={() => picked && link.mutate(picked.id)}
           >

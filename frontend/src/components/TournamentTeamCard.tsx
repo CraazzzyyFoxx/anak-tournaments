@@ -8,7 +8,7 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { Crown, Shuffle, Sprout } from "lucide-react";
-import { sortTeamPlayers, type SortableRosterPlayer, type TeamRosterPlayer } from "@/lib/player";
+import { sortTeamPlayers, splitHandle, type SortableRosterPlayer, type TeamRosterPlayer } from "@/lib/player";
 import PlayerName from "@/components/PlayerName";
 import { Team } from "@/types/team.types";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -106,7 +106,7 @@ export function RosterRole({
           label={t("teams.roster.substitution")}
           hint={
             original
-              ? t("teams.roster.substituteFor", { name: original.name.split("#")[0] })
+              ? t("teams.roster.substituteFor", { name: splitHandle(original.name).name })
               : undefined
           }
           className={cn(

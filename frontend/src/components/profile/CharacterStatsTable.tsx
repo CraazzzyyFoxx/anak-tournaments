@@ -5,14 +5,13 @@ import { useTranslations } from "next-intl";
 
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { CardSurface } from "@/components/profile/atoms";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useFormatter } from "@/lib/datetime/client";
 import { formatStat } from "@/lib/stats/format";
 import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 import type { CharacterSummary } from "@/types/user.types";
-
-const headCell =
-  "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
+import { cn } from "@/lib/utils";
 
 /**
  * A player's characters as a plain definition-driven table: one column per active stat the game declares and the
@@ -54,11 +53,11 @@ export default function CharacterStatsTable({
           <table className="w-full border-collapse text-caption">
             <thead>
               <tr>
-                <th scope="col" className={`${headCell} text-left`}>
+                <th scope="col" className={cn(eyebrowClass(), "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-left")}>
                   {t("common.characters")}
                 </th>
                 {columns.map((def) => (
-                  <th key={def.code} scope="col" className={`${headCell} whitespace-nowrap text-right`}>
+                  <th key={def.code} scope="col" className={cn(eyebrowClass(), "aqt-tnum border-b border-[color:var(--aqt-border)] px-3 py-2.5 whitespace-nowrap text-right")}>
                     {def.name}
                   </th>
                 ))}

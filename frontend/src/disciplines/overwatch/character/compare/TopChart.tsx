@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 
+import { HandleLabel } from "@/components/HandleLabel";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -48,7 +49,6 @@ export default function TopChart({
       ) : (
         <ol className="grid gap-1">
           {top.map(({ entry, rank }, i) => {
-            const at = entry.username.lastIndexOf("#");
             const value = def.getValue(entry);
             return (
               <li
@@ -56,12 +56,11 @@ export default function TopChart({
                 className="grid grid-cols-[26px_minmax(0,1fr)_64px] items-center gap-x-3 gap-y-1 py-1 text-caption md:grid-cols-[26px_minmax(0,11rem)_minmax(0,1fr)_64px_72px]"
               >
                 <RankBadge rank={rank} />
-                <span className="min-w-0 truncate font-semibold text-[color:var(--aqt-fg)]" title={entry.username}>
-                  {at > 0 ? entry.username.slice(0, at) : entry.username}
-                  {at > 0 ? (
-                    <span className="font-medium text-[color:var(--aqt-fg-faint)]">{entry.username.slice(at)}</span>
-                  ) : null}
-                </span>
+                <HandleLabel
+                  handle={entry.username}
+                  title={entry.username}
+                  className="font-semibold text-[color:var(--aqt-fg)]"
+                />
                 <span
                   aria-hidden
                   className="relative col-span-2 col-start-2 row-start-2 h-1.5 rounded-full md:col-span-1 md:col-start-auto md:row-start-auto md:h-3.5"

@@ -1,4 +1,4 @@
-import type { SegmentedLinkItem } from "@/components/ui/segmented";
+import type { LinkTabItem } from "@/components/kit/LinkTabs";
 import { FFA_STAGE_TYPES, GROUP_STAGE_TYPES } from "@/lib/bracket/projection";
 import { tournamentHref } from "@/lib/tournament/url";
 import type { Encounter } from "@/types/encounter.types";
@@ -107,6 +107,9 @@ export function buildGroupStagePanels(
   });
 }
 
+/** The stage rail: its links, and the key of the one being viewed ("" for none). */
+export type BracketTabs = { items: LinkTabItem[]; activeKey: string };
+
 type BracketTabsInput = {
   tournament: Tournament;
   groupStages: readonly Stage[];
@@ -134,8 +137,9 @@ export function buildBracketTabs({
   matchCountsKnown,
   stageIdsWithMatches,
   labels
-}: BracketTabsInput): SegmentedLinkItem[] {
-  const tabs: SegmentedLinkItem[] = [];
+}: BracketTabsInput): BracketTabs {
+  const tabs: LinkTabItem[] = [];
+  let activeKey = "";
 
   // An FFA stage is ONE scope however many groups it has: its panel renders
   // every lobby of the stage at once, so its groups are not separate tabs.
@@ -168,6 +172,7 @@ export function buildBracketTabs({
     !isActive && matchCountsKnown && !hasContent;
 
   if (groupScopeCount > 1) {
+    if (isGroupViewActive) activeKey = "group-stage";
     tabs.push({
       key: "group-stage",
       href:
@@ -175,32 +180,31 @@ export function buildBracketTabs({
           ? tournamentHref(tournament, `/bracket?stage=${groupStages[0].id}`)
           : tournamentHref(tournament, "/bracket?view=groups"),
       label: labels.groupStage,
-      isActive: isGroupViewActive,
       disabled: isDead(isGroupViewActive, groupStages.some(groupHasContent))
     });
   } else if (groupStages.length === 1) {
     const stage = groupStages[0];
     const isActive = !viewParam && stage.id === activeStageId;
+    if (isActive) activeKey = `stage-${stage.id}`;
     tabs.push({
       key: `stage-${stage.id}`,
       href: tournamentHref(tournament, `/bracket?stage=${stage.id}`),
       label: stage.name,
-      isActive,
       disabled: isDead(isActive, groupHasContent(stage))
     });
   }
 
   for (const stage of eliminationStages) {
     const isActive = !viewParam && stage.id === activeStageId;
+    if (isActive) activeKey = `stage-${stage.id}`;
     tabs.push({
       key: `stage-${stage.id}`,
       href: tournamentHref(tournament, `/bracket?stage=${stage.id}`),
       label:
         eliminationStages.length === 1 && groupStages.length > 0 ? labels.playoff : stage.name,
-      isActive,
       disabled: isDead(isActive, stageIdsWithMatches.has(stage.id) || !stage.is_completed)
     });
   }
 
-  return tabs;
+  return { items: tabs, activeKey };
 }

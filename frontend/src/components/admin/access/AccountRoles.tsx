@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 
 import { AccountSection, invalidateAccount } from "@/components/admin/access/AccountCard";
-import { Combobox } from "@/components/kit/Combobox";
+import { Combobox } from "@/components/ui/combobox";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { Skeleton } from "@/components/ui/skeleton";

@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 
 import type { CompareScope } from "@/app/(site)/users/compare/types";
 import { PageHero, HeroCoord } from "@/components/site/PageHero";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
 import type { UserCompareBaselineMode } from "@/types/user.types";
@@ -122,9 +123,7 @@ const ComparePageHero = ({
         <div className="grid grid-cols-2 gap-x-7 gap-y-5 text-left lg:text-right">
           {stats.map((stat) => (
             <div key={stat.label} className="min-w-0 lg:flex lg:flex-col lg:items-end">
-              <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                {stat.label}
-              </span>
+              <Eyebrow>{stat.label}</Eyebrow>
               <span className="mt-1 block max-w-full truncate font-onest text-[clamp(1.35rem,2vw,1.9rem)] font-bold leading-none tabular-nums text-[color:var(--aqt-fg)]">
                 {stat.value}
               </span>

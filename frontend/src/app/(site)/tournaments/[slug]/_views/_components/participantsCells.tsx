@@ -12,6 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { useFormatter } from "@/lib/datetime/client";
@@ -81,9 +82,9 @@ export function RolesCell({
               <PlayerRoleIcon role={r.role} ontology={ontology} size={22} />
             </span>
             {subroleLabel ? (
-              <span className="text-center text-label font-semibold leading-none tracking-label text-[color:var(--aqt-fg-dim)] uppercase">
+              <Eyebrow tone="dim" className="text-center leading-none">
                 {subroleLabel}
-              </span>
+              </Eyebrow>
             ) : null}
             {showRanks && division != null ? (
               <DivisionIcon

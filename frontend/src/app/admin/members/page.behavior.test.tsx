@@ -28,6 +28,7 @@ const listRolesAll = vi.fn();
 const updateMemberRole = vi.fn();
 const removeMember = vi.fn();
 const addMember = vi.fn();
+const listUsers = vi.fn();
 
 let permitted = true;
 
@@ -57,7 +58,7 @@ vi.mock("@/stores/workspace.store", () => ({
 vi.mock("@/services/rbac.service", () => ({
   rbacService: {
     listRolesAll: (...args: unknown[]) => listRolesAll(...args),
-    listUsersAll: () => Promise.resolve([{ id: 7, username: "nova" }])
+    listUsers: (...args: unknown[]) => listUsers(...args)
   }
 }));
 vi.mock("@/services/workspace.service", () => ({
@@ -148,6 +149,17 @@ function commandItem(label: string) {
   );
 }
 
+/** Types into the open picker's search box, then waits out its debounce. */
+async function search(text: string) {
+  const input = document.querySelector<HTMLInputElement>("[cmdk-input]");
+  expect(input).toBeTruthy();
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, text);
+    input!.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await settle(3, 300);
+}
+
 function lastRoleId(): unknown {
   return (getMembers.mock.calls.at(-1)?.[1] as { role_id?: unknown } | undefined)?.role_id;
 }
@@ -169,6 +181,12 @@ beforeEach(() => {
   updateMemberRole.mockReset().mockResolvedValue(undefined);
   removeMember.mockReset().mockResolvedValue(undefined);
   addMember.mockReset().mockResolvedValue(undefined);
+  listUsers.mockReset().mockResolvedValue({
+    results: [{ id: 7, username: "nova", email: "nova@example.test" }],
+    total: 1,
+    page: 1,
+    per_page: 20
+  });
 });
 
 afterEach(async () => {
@@ -263,6 +281,10 @@ describe("admin Members", () => {
     await click(button("Add member"));
     const dialog = document.querySelector('[role="dialog"]')!;
     await click(button("Select user…", dialog));
+    // The picker searches the server: nothing is listed until two characters are typed.
+    expect(commandItem("nova")).toBeUndefined();
+    await search("no");
+    expect(listUsers).toHaveBeenLastCalledWith(expect.objectContaining({ search: "no", workspace_id: 1 }));
     await click(commandItem("nova"));
     const roleLabel = Array.from(dialog.querySelectorAll("label")).find(
       (label) => label.textContent === "Role"

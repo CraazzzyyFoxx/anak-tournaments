@@ -7,6 +7,7 @@ import { Crown } from "lucide-react";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import {
   TableBody,
   TableCell,
@@ -157,12 +158,9 @@ function BalanceEditorPlayerTableRow({
             </span>
           </div>
           {subRoleLabel ? (
-            <span
-              className="truncate text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-dim)]"
-              title={subRoleLabel}
-            >
+            <Eyebrow tone="dim" className="truncate" title={subRoleLabel}>
               {subRoleLabel}
-            </span>
+            </Eyebrow>
           ) : null}
         </div>
       </TableCell>
@@ -348,7 +346,7 @@ export function DroppableRoleSection({
         <TableRow className="border-[color:var(--aqt-border)] hover:bg-transparent">
           <TableCell
             colSpan={4}
-            className="px-3 py-2.5 text-center text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
+            className={cn(eyebrowClass(), "px-3 py-2.5 text-center")}
           >
             Drop {slotLabel(roleKey).toLowerCase()} here
           </TableCell>

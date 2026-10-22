@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { Check, Circle, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { TONE_TEXT } from "@/components/kit/tone";
+import { TONE_TEXT } from "@/components/ui/tone";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

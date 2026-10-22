@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 import { ChevronDown, ChevronUp, ExternalLink, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
 
 export interface InspectorProps {
@@ -26,20 +27,6 @@ export interface InspectorProps {
 
 /** `lg` in `globals.css`'s `@theme` — the width at which the panel fits beside a table. */
 const PANEL_MEDIA_QUERY = "(min-width: 1024px)";
-
-function useIsWideViewport(): boolean {
-  const [isWide, setIsWide] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia(PANEL_MEDIA_QUERY);
-    const sync = () => setIsWide(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
-
-  return isWide;
-}
 
 /** Arrow keys must not steal caret movement inside a field in the inspector. */
 function isTextEntry(target: EventTarget | null): boolean {
@@ -70,7 +57,7 @@ export function Inspector({
   openHref
 }: Readonly<InspectorProps>) {
   const t = useTranslations("kit.actions");
-  const isWide = useIsWideViewport();
+  const isWide = useMediaQuery(PANEL_MEDIA_QUERY);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const isOpen = openId !== null;
 

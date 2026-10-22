@@ -5,8 +5,8 @@ import { Crown, Heart, WifiOff, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
 
-import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { RankCrest } from "@/components/RankCrest";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,7 +14,6 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDraftPlayerCardQuery, type DraftMutations } from "@/hooks/useDraftData";
 import { usePickCountdown } from "@/hooks/usePickCountdown";
 import { describeApiError } from "@/lib/api/error";
-import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import type { DraftGating } from "@/lib/draft/logic";
 import {
   turnsUntil,
@@ -100,7 +99,6 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
   const displayName = player.identity?.handle ?? `#${player.id}`;
   const available = player.status === "available";
   const profileSlug = player.player_name ? getPlayerSlug(player.player_name) : null;
-  const headerDivision = resolveDivisionFromRank(divisionGrid, player.effective_rank);
   const myTurn = isMyTurnFor(gating, actingTeam);
   const hasAccount = player.user_id != null;
   const cardPending = hasAccount && cardQuery.isPending;
@@ -159,17 +157,7 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
         style={{ borderColor: actionBorder(board, myTurn, overrideMode) }}
       >
         <div className="flex flex-wrap items-center gap-3 px-3.5 pb-2.5 pt-3">
-          {headerDivision != null && (
-            <span className="shrink-0" title={getDivisionLabel(divisionGrid, headerDivision) ?? undefined}>
-              <DivisionIcon
-                division={headerDivision}
-                tournamentGrid={divisionGrid}
-                width={52}
-                height={52}
-                className="h-[52px] w-[52px] object-contain"
-              />
-            </span>
-          )}
+          <RankCrest rank={player.effective_rank} grid={divisionGrid} size={52} />
           <div className="min-w-0 flex-1">
             <p
               className="flex min-w-0 items-center gap-1.5 text-label font-semibold"

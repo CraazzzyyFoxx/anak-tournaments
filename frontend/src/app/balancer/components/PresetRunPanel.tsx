@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Download,
@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { FileButton } from "@/components/ui/file-button";
 import { Progress } from "@/components/ui/progress";
 import {
   Select,
@@ -85,7 +86,6 @@ export function PresetRunPanel({
   jobProgress
 }: Readonly<PresetRunPanelProps>) {
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
-  const importFileRef = useRef<HTMLInputElement>(null);
   const [includePrivate, setIncludePrivate] = useState(false);
 
   /* eslint-disable react-hooks/set-state-in-effect -- The portal target is outside this client component and is only available after hydration. */
@@ -159,22 +159,11 @@ export function PresetRunPanel({
         )}
         Run balance
       </Button>
-      <input
-        ref={importFileRef}
-        type="file"
+      <FileButton
         accept="application/json"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) onImportBalance(file);
-          event.target.value = "";
-        }}
-      />
-      <Button
-        type="button"
         variant="outline"
         size="sm"
-        onClick={() => importFileRef.current?.click()}
+        onFiles={([file]) => onImportBalance(file)}
         disabled={isImportPending}
         title="Load a balance JSON downloaded from this tool as a preview variant — nothing is written to the tournament"
         className={TOOLBAR_BUTTON_CLASS}
@@ -185,7 +174,7 @@ export function PresetRunPanel({
           <FolderInput className="mr-1.5 h-3.5 w-3.5" />
         )}
         Load balance JSON
-      </Button>
+      </FileButton>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button

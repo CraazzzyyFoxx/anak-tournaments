@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
 
 /**
@@ -18,7 +18,7 @@ export function InspectorField({
   if (children === null || children === undefined || children === "" || children === false) return null;
   return (
     <div className={cn("min-w-0", className)}>
-      <p className={EYEBROW_CLASS}>{label}</p>
+      <p className={eyebrowClass("muted")}>{label}</p>
       <div className="mt-1 text-sm text-foreground">{children}</div>
     </div>
   );
@@ -36,7 +36,7 @@ export function InspectorSection({
 }: Readonly<{ title: string; children: ReactNode; className?: string }>) {
   return (
     <section className={cn("border-t border-border/60 pt-3 first:border-t-0 first:pt-0", className)}>
-      <h3 className={EYEBROW_CLASS}>{title}</h3>
+      <h3 className={eyebrowClass("muted")}>{title}</h3>
       <div className="mt-2">{children}</div>
     </section>
   );

@@ -8,6 +8,8 @@ import { useFormatter } from "@/lib/datetime/client";
 import { HeroFrame, HeroStat } from "@/components/site/PageHero";
 import { AchievementArt } from "@/components/achievements/AchievementArt";
 import { Badge } from "@/components/ui/badge";
+import { eyebrowClass } from "@/components/ui/eyebrow";
+import { cn } from "@/lib/utils";
 import type { Achievement } from "@/types/achievement.types";
 import { classifyRarity, localizedText } from "@/lib/achievements/rarity";
 
@@ -29,7 +31,10 @@ const AchievementDetailHeader = ({ achievement }: { achievement: Achievement }) 
           <div className="flex min-w-0 flex-col gap-3">
             <Link
               href="/achievements"
-              className="inline-flex items-center gap-1.5 self-start text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)] transition-colors hover:text-[color:var(--aqt-teal)]"
+              className={cn(
+                eyebrowClass(),
+                "inline-flex items-center gap-1.5 self-start transition-colors hover:text-[color:var(--aqt-teal)]"
+              )}
             >
               <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
               {t("achievements.detail.backToCatalog")}

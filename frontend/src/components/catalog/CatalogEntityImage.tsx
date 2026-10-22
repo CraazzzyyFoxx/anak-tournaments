@@ -20,13 +20,19 @@ type ImageEntity = Pick<CatalogEntityRead, "name" | "image_path">;
 interface CatalogEntityImageProps {
   /** `null` renders the neutral placeholder (an unresolved or missing reference). */
   entity: ImageEntity | null;
-  /** Named size ("sm" | "md" | "lg") or an explicit pixel size. */
+  /** Named size ("sm" | "md" | "lg") or an explicit pixel size; the height of a `wide` image. */
   size?: CatalogEntityImageSize | number;
   /** Next to its own name in the surrounding text: hide it from assistive technology instead of repeating the name. */
   decorative?: boolean;
   className?: string;
   title?: string;
+  /** Ignored by `wide`, which is always `rounded-md`. */
   rounded?: "full" | "lg";
+  /**
+   * `square` for a portrait; `wide` for a map still, 4:3 at `size` tall and cropped to fill: a square crops a map
+   * to an unrecognisable patch of skybox.
+   */
+  shape?: "square" | "wide";
   /** Hover/focus content (a statistics card); makes the image an interactive trigger. */
   popover?: React.ReactNode;
 }
@@ -45,10 +51,13 @@ export default function CatalogEntityImage({
   className,
   title,
   rounded = "full",
+  shape = "square",
   popover
 }: Readonly<CatalogEntityImageProps>) {
   const px = typeof size === "number" ? size : SIZE_PX[size];
-  const radiusClass = rounded === "full" ? "rounded-full" : "rounded-md";
+  const wide = shape === "wide";
+  const width = wide ? Math.round((px * 4) / 3) : px;
+  const radiusClass = rounded === "full" && !wide ? "rounded-full" : "rounded-md";
   const src = entity?.image_path || null;
   // Keyed by src so a row recycled onto another entity re-tries its portrait.
   const [brokenSrc, setBrokenSrc] = React.useState<string | null>(null);
@@ -62,7 +71,7 @@ export default function CatalogEntityImage({
         radiusClass,
         className
       )}
-      style={{ width: px, height: px }}
+      style={{ width, height: px }}
       title={decorative ? undefined : (title ?? (name || undefined))}
       aria-hidden={decorative || entity === null ? true : undefined}
     >
@@ -70,12 +79,12 @@ export default function CatalogEntityImage({
         <Image
           src={src}
           alt={decorative ? "" : name}
-          width={px}
+          width={width}
           height={px}
           loading="lazy"
           decoding="async"
           onError={() => setBrokenSrc(src)}
-          className={cn("h-full w-full select-none object-contain", radiusClass)}
+          className={cn("h-full w-full select-none", wide ? "object-cover" : "object-contain", radiusClass)}
         />
       ) : (
         <span

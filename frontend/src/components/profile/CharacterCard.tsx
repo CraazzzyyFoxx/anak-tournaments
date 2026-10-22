@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { LOW_SAMPLE_GAMES, winrateColor } from "@/lib/colors";
 import { formatSeconds } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -52,7 +53,7 @@ export default function CharacterCard({
 function CardFact({ label, value, color }: Readonly<{ label: string; value: string; color?: string }>) {
   return (
     <div className="min-w-0">
-      <dt className="truncate text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">{label}</dt>
+      <Eyebrow as="dt" className="truncate">{label}</Eyebrow>
       <dd className="aqt-tnum text-ui font-bold" style={{ color: color ?? "var(--aqt-fg)" }}>
         {value}
       </dd>
@@ -102,9 +103,7 @@ export function CharacterMapStats({
 
       <div className="border-t border-[color:var(--aqt-border)] pt-3">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="truncate text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-            {t("playtimeOnMap")}
-          </span>
+          <Eyebrow className="truncate">{t("playtimeOnMap")}</Eyebrow>
           <span className="aqt-tnum shrink-0 text-caption font-bold text-[color:var(--aqt-fg)]">
             {formatSeconds(stats.playtime_seconds)} · {(stats.playtime_share_on_map * 100).toFixed(0)}%
           </span>

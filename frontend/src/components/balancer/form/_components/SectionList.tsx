@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 
 import { SortableGrip, useSortableRow } from "@/components/kit/SortableRows";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { FormSection } from "@/types/forms.types";
@@ -103,7 +103,7 @@ export function SectionList({
 
   return (
     <div className="flex w-full shrink-0 flex-col gap-2 rounded-xl border border-border bg-card p-3 md:w-64">
-      <h3 className={EYEBROW_CLASS}>{t("sections")}</h3>
+      <h3 className={eyebrowClass("muted")}>{t("sections")}</h3>
       <SortableContext
         items={sections.map((section) => `${SECTION_DRAG_PREFIX}${section.key}`)}
         strategy={verticalListSortingStrategy}

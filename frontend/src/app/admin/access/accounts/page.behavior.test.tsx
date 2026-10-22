@@ -111,7 +111,7 @@ vi.mock("@/services/notification.service", () => ({
 }));
 
 // Its own query stack is irrelevant here; the panel around it is what matters.
-vi.mock("@/components/admin/UserSearchCombobox", () => ({
+vi.mock("@/components/kit/ServerSearchCombobox", () => ({
   UserSearchCombobox: () => null
 }));
 

@@ -2,6 +2,7 @@
 
 import { useId } from "react";
 
+import { Eyebrow } from "@/components/ui/eyebrow";
 import {
   Select,
   SelectContent,
@@ -27,12 +28,9 @@ export default function LabelledSelect({
   const labelId = useId();
   return (
     <div className="flex items-center gap-2">
-      <span
-        id={labelId}
-        className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
-      >
+      <Eyebrow id={labelId} className="aqt-tnum">
         {label}
-      </span>
+      </Eyebrow>
       <Select value={value} onValueChange={onValueChange}>
         <SelectTrigger aria-labelledby={labelId} size="sm" className={className}>
           <SelectValue />

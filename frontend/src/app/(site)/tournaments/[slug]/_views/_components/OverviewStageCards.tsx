@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import type { BracketRoundShape } from "@/lib/bracket/round-name";
 import type { RoundGroup } from "@/lib/bracket/view";
@@ -52,9 +53,7 @@ export function OverviewMiniBracket({
       <div className="flex gap-2 overflow-x-auto pb-1">
         {pickRoundWindow(roundGroups, currentRoundOf(roundGroups)).map((group) => (
           <div className="min-w-[13rem] flex-1 space-y-1.5" key={group.round}>
-            <div className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-              {roundLabel(group.round, roundShape)}
-            </div>
+            <Eyebrow as="div">{roundLabel(group.round, roundShape)}</Eyebrow>
             {group.matches.map((match) => {
               const encounter = stageEncounters.find((item) => item.id === match.id);
               if (!encounter) return null;
@@ -115,7 +114,7 @@ export function OverviewGroupTable({
                 "text-left",
                 group.name === null
                   ? "sr-only"
-                  : "pb-1.5 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
+                  : cn(eyebrowClass(), "pb-1.5")
               )}
             >
               {group.name === null
@@ -123,7 +122,7 @@ export function OverviewGroupTable({
                 : groupDisplayName(group.name, t("common.group"))}
             </caption>
             <thead>
-              <tr className="border-b border-[color:var(--aqt-border)] text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+              <tr className={cn(eyebrowClass(), "border-b border-[color:var(--aqt-border)]")}>
                 <th scope="col" className="w-8 py-1.5 pr-2 text-left font-medium">
                   <span aria-hidden>{t("tournamentDetail.overview.groupTable.pos")}</span>
                   <span className="sr-only">
@@ -209,14 +208,14 @@ export function OverviewFfaTable({
               className={cn(
                 "text-left",
                 seated.length > 1
-                  ? "pb-1.5 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
+                  ? cn(eyebrowClass(), "pb-1.5")
                   : "sr-only"
               )}
             >
               {lobby.name}
             </caption>
             <thead>
-              <tr className="border-b border-[color:var(--aqt-border)] text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+              <tr className={cn(eyebrowClass(), "border-b border-[color:var(--aqt-border)]")}>
                 <th scope="col" className="w-8 py-1.5 pr-2 text-left font-medium">
                   <span aria-hidden>{t("tournamentDetail.overview.groupTable.pos")}</span>
                   <span className="sr-only">

@@ -7,7 +7,7 @@ import {
   BrandPalettePreview,
   previewPalette
 } from "@/components/admin/workspace-settings/BrandPalettePreview";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
@@ -50,7 +50,7 @@ export function BrandingStep({
       </div>
 
       <div>
-        <h3 className={EYEBROW_CLASS}>{t("seedColours")}</h3>
+        <h3 className={eyebrowClass("muted")}>{t("seedColours")}</h3>
         <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {BRAND_SEED_KEYS.map((key) => (
             <BrandColorField
@@ -66,7 +66,7 @@ export function BrandingStep({
 
       {palette ? (
         <div>
-          <h3 className={EYEBROW_CLASS}>{t("preview")}</h3>
+          <h3 className={eyebrowClass("muted")}>{t("preview")}</h3>
           <div className="mt-2">
             <BrandPalettePreview palette={palette} />
           </div>

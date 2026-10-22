@@ -5,7 +5,8 @@ import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
 import { StatusPill } from "@/components/kit/StatusPill";
-import { EYEBROW_CLASS, type Tone } from "@/components/kit/tone";
+import { type Tone } from "@/components/ui/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -168,7 +169,7 @@ export function SourceSyncTab({
 
         {headers.length > 0 ? (
           <details className="group">
-            <summary className={`${EYEBROW_CLASS} inline-flex cursor-pointer list-none items-center gap-1 rounded focus-visible:outline-2 focus-visible:outline-offset-2`}>
+            <summary className={`${eyebrowClass("muted")} inline-flex cursor-pointer list-none items-center gap-1 rounded focus-visible:outline-2 focus-visible:outline-offset-2`}>
               <ChevronRight className="size-3 transition-transform group-open:rotate-90" aria-hidden />
               {t("detectedHeaders", { count: headers.length })}
             </summary>
@@ -193,7 +194,7 @@ export function SourceSyncTab({
                 { label: t("total"), value: syncResult.total },
               ].map((stat) => (
                 <div key={stat.label} className="flex items-baseline gap-1.5">
-                  <dt className={EYEBROW_CLASS}>{stat.label}</dt>
+                  <dt className={eyebrowClass("muted")}>{stat.label}</dt>
                   <dd className="text-lg font-semibold tabular-nums">{stat.value}</dd>
                 </div>
               ))}

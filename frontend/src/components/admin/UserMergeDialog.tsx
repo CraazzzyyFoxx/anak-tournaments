@@ -16,7 +16,7 @@ import type {
   UserMergePreviewRequest,
   UserMergePreviewResponse
 } from "@/types/admin.types";
-import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
+import { UserSearchCombobox } from "@/components/kit/ServerSearchCombobox";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -304,7 +304,7 @@ function UserMergeDialogSession({
               <UserSearchCombobox
                 id="merge-target-user"
                 value={targetUser?.id}
-                selectedName={targetUser?.name}
+                selectedLabel={targetUser?.name}
                 onSelect={handleTargetSelect}
                 placeholder={t("targetPlaceholder")}
                 searchPlaceholder={t("targetSearch")}

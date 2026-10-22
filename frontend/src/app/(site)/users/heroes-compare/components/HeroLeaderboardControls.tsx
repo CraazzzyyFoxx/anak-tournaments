@@ -3,8 +3,9 @@
 import { SlidersHorizontal } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
+import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import SearchableImageSelect, { type SearchableImageOption } from "@/components/ui/searchable-image-select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -115,9 +116,7 @@ const HeroLeaderboardControls = ({
           </Button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-64 space-y-2">
-          <p className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-            {t("users.heroesCompare.filters.minGames")}
-          </p>
+          <Eyebrow as="p">{t("users.heroesCompare.filters.minGames")}</Eyebrow>
           <ToggleGroup
             type="single"
             variant="pill"

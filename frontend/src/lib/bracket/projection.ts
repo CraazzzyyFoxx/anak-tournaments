@@ -10,7 +10,7 @@
  * `services/bracket/*`; nothing new is derived here, so the preview and the
  * best-of editor cannot disagree.
  */
-import type { Tone } from "@/components/kit/tone";
+import type { Tone } from "@/components/ui/tone";
 import { resolveBestOf, stageBestOfRoundSections } from "@/lib/tournament/best-of";
 import { bracketRoundLabelEn, type BracketRoundShape } from "@/lib/bracket/round-name";
 import type {

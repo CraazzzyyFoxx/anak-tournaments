@@ -12,13 +12,13 @@ import { previewToBracketMatches } from "@/lib/bracket/view";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { tournamentTeamsQueryOptions } from "@/lib/tournament/teams-query";
 import tournamentService from "@/services/tournament.service";
-import type { SegmentedLinkItem } from "@/components/ui/segmented";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import type { Encounter } from "@/types/encounter.types";
 import type { StreamEntry } from "@/types/stream.types";
 import type { Stage, Standings } from "@/types/tournament.types";
 
 import { isStagePreview } from "./bracketData";
+import type { BracketTabs } from "./bracketStages.model";
 import { BracketScroller } from "./BracketScroller";
 import { ResponsiveBracket } from "./ResponsiveBracket";
 import { StagePanelHeader, ViewTabs } from "./StagePanelChrome";
@@ -31,7 +31,7 @@ type EliminationStagePanelProps = {
   /** This stage's playoff standings, already filtered by the caller. */
   standings: Standings[];
   stages: Stage[];
-  bracketTabs: readonly SegmentedLinkItem[];
+  bracketTabs: BracketTabs;
   /** `?view=standings` opens the table first; anything else opens the bracket. */
   defaultView: "bracket" | "standings";
   /** The champion gets a crown only once the tournament is over. */

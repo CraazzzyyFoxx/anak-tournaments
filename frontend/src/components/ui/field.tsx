@@ -118,12 +118,16 @@ function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
+/** `size="sm"` is the 12px message line the public registration skin uses. */
+type FieldTextSize = { size?: "sm" | "default" };
+
+function FieldDescription({ className, size = "default", ...props }: React.ComponentProps<"p"> & FieldTextSize) {
   return (
     <p
       data-slot="field-description"
       className={cn(
-        "text-muted-foreground text-sm font-normal leading-normal group-has-[[data-orientation=horizontal]]/field:text-balance",
+        "text-muted-foreground font-normal leading-normal group-has-[[data-orientation=horizontal]]/field:text-balance",
+        size === "sm" ? "text-xs" : "text-sm",
         "nth-last-2:-mt-1 last:mt-0 [[data-variant=legend]+&]:-mt-1.5",
         "[&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4",
         className
@@ -133,10 +137,25 @@ function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
   );
 }
 
+/** A field's validation message; renders nothing without one. Point the control's `aria-describedby` at its `id`. */
+function FieldError({ className, size = "default", children, ...props }: React.ComponentProps<"p"> & FieldTextSize) {
+  if (!children) return null;
+  return (
+    <p
+      data-slot="field-error"
+      className={cn("text-destructive font-normal", size === "sm" ? "text-xs" : "text-sm", className)}
+      {...props}
+    >
+      {children}
+    </p>
+  );
+}
+
 export {
   Field,
   FieldContent,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
   FieldSet,

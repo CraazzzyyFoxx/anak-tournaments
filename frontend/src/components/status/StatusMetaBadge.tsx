@@ -3,23 +3,20 @@
 import { createElement } from "react";
 
 import { getStatusIcon } from "@/lib/registration/status-icons";
-import {
-  STATUS_CHIP_CLASS,
-  STATUS_TONE_PILL,
-  type StatusTone
-} from "@/components/status/StatusIconBadge";
-import { cn, hexToRgba } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import type { Tone } from "@/components/ui/tone";
+import { hexToRgba } from "@/lib/utils";
 import type { StatusMeta } from "@/types/registration.types";
 
 /** Built-in status value → tone, used when the status carries no `icon_color`. */
-function getFallbackTone(scope: string, value: string): StatusTone {
+function getFallbackTone(scope: string, value: string): Tone {
   if (scope === "registration") {
-    if (value === "approved") return "positive";
-    if (value === "rejected" || value === "banned") return "negative";
+    if (value === "approved") return "success";
+    if (value === "rejected" || value === "banned") return "danger";
     if (value === "insufficient_data" || value === "pending") return "warning";
     return "neutral";
   }
-  if (value === "ready") return "positive";
+  if (value === "ready") return "success";
   if (value === "incomplete") return "warning";
   return "neutral";
 }
@@ -28,14 +25,12 @@ type StatusMetaBadgeProps = {
   meta: StatusMeta | null | undefined;
   fallbackValue?: string;
   className?: string;
-  compact?: boolean;
 };
 
 export default function StatusMetaBadge({
   meta,
   fallbackValue = "unknown",
   className,
-  compact = false,
 }: Readonly<StatusMetaBadgeProps>) {
   const resolvedMeta: StatusMeta = meta ?? {
     value: fallbackValue,
@@ -67,18 +62,16 @@ export default function StatusMetaBadge({
     : undefined;
 
   return (
-    <span
+    <Badge
+      palette="aqt"
+      size="sm"
+      tone={getFallbackTone(resolvedMeta.scope, resolvedMeta.value)}
       title={resolvedMeta.description ?? resolvedMeta.name}
       style={tintedStyle}
-      className={cn(
-        STATUS_CHIP_CLASS,
-        STATUS_TONE_PILL[getFallbackTone(resolvedMeta.scope, resolvedMeta.value)],
-        compact && "px-1.5",
-        className,
-      )}
+      className={className}
     >
       <span className="inline-flex shrink-0 items-center justify-center">{iconElement}</span>
       {resolvedMeta.name}
-    </span>
+    </Badge>
   );
 }

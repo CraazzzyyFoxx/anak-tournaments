@@ -95,15 +95,6 @@ export const parseDivisions = (value: string | null): number[] => {
   return [...seen].sort((a, b) => a - b);
 };
 
-/** Splits `Player#1234` into the handle and its BattleTag discriminator. */
-export function splitTag(name: string): { handle: string; tag: string | null } {
-  const idx = name.lastIndexOf("#");
-  if (idx === -1) {
-    return { handle: name, tag: null };
-  }
-  return { handle: name.slice(0, idx), tag: name.slice(idx) };
-}
-
 /**
  * The grid version a row's division number belongs to, from the grids the
  * response shipped alongside the rows. `null` means "fall back to the

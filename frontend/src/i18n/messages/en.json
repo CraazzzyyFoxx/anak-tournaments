@@ -5621,11 +5621,6 @@
         "searchHero": "Search hero...",
         "searchMap": "Search map..."
       },
-      "loadingUsers": "Loading users...",
-      "usersLoadError": "Failed to load users.",
-      "typeToSearch": "Type at least 2 characters.",
-      "noUsers": "No users found.",
-      "searchUser": "Search user...",
       "compareWithAllAvg": "Compare with all players avg",
       "invalidSelection": {
         "title": "That selection is not in this game",
@@ -7957,6 +7952,9 @@
       "you": "You",
       "yourTeam": "Lobby {letter} · {team}",
       "nextMap": "Next map: {map}",
+      "noMap": "No map",
+      "searchMaps": "Search maps…",
+      "noMapsMatch": "No maps match that search.",
       "voice": "Team voice",
       "goAway": "Step away",
       "back": "I'm back",
@@ -9494,12 +9492,6 @@
       "importHideWarning": "Imported from Challonge, but hiding it failed",
       "importHideDescription": "The tournament is temporarily public. Hide it in Settings › Preview allowlist if needed."
     },
-    "combobox": {
-      "all": "All tournaments",
-      "search": "Search tournament…",
-      "empty": "No tournaments match that search. Try a shorter name or the numeric id.",
-      "clear": "Clear selection"
-    },
     "arrange": {
       "empty": "No standings to arrange yet. Recalculate to build them first.",
       "description": "Drag a team to a place to pin it there. Pinned places hold through any later result or recalculation; the other teams keep following results.",
@@ -9835,7 +9827,6 @@
       "searchAccounts": "Search accounts…",
       "searchWorkspaces": "Search workspaces…",
       "noRole": "No role",
-      "noUser": "No user matches that search.",
       "searchUser": "Search user…",
       "addMember": "Add member",
       "removeMember": "Remove member",
@@ -11729,16 +11720,6 @@
       "select": "Select team",
       "search": "Search team…"
     },
-    "userSearch": {
-      "loadError": "Could not load users. Try again.",
-      "clear": "Clear selection",
-      "select": "Select user",
-      "search": "Search user…",
-      "loading": "Loading users…",
-      "minChars": "Type at least 2 characters to search.",
-      "empty": "No users match that search. Try a shorter name.",
-      "userId": "User #{id}"
-    },
     "account": {
       "find": "Find the login…",
       "link": "Link",
@@ -12680,6 +12661,16 @@
       "clearSelection": "Clear selection",
       "userId": "User #{id}"
     },
+    "userSearch": {
+      "placeholder": "Select user",
+      "searchPlaceholder": "Search user…",
+      "loading": "Loading users…",
+      "error": "Could not load users. Try again.",
+      "minChars": "Type at least 2 characters to search.",
+      "empty": "No users match that search. Try a shorter name.",
+      "clearSelection": "Clear selection",
+      "userId": "User #{id}"
+    },
     "entityForm": {
       "couldNotSave": "Could not save your changes.",
       "discardChanges": "Discard changes",
@@ -12910,11 +12901,8 @@
       "copyRow": "Copy row",
       "copy": "Copy “{value}”",
       "rows": "Rows",
-      "page": "Page {page}",
       "range": "{start}–{end} of {total}",
-      "rowsPerPage": "Rows per page",
-      "previousPage": "Previous page",
-      "nextPage": "Next page"
+      "rowsPerPage": "Rows per page"
     },
     "dataTableExtra": {
       "noRecords": "Nothing here yet.",

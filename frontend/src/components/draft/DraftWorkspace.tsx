@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -12,6 +12,7 @@ import {
 } from "@/hooks/useDraftData";
 import { DRAFT_WIDE_QUERY } from "@/hooks/useDraftLayerPad";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { canConfirmPick, type DraftGating } from "@/lib/draft/logic";
 import {
   actingTeamId,
@@ -71,16 +72,6 @@ interface DraftWorkspaceProps {
   onlineCaptainIds: ReadonlySet<number>;
 }
 
-// One tree at a time: the pool is the heaviest list in the app, and mounting it
-// twice (desktop + tabs) doubled every re-render.
-const subscribeWide = (onChange: () => void) => {
-  const query = window.matchMedia(DRAFT_WIDE_QUERY);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-};
-const isWideNow = () => window.matchMedia(DRAFT_WIDE_QUERY).matches;
-const NOT_WIDE_ON_SERVER = () => false;
-
 /** Enter already activates these; the confirm shortcut must not fire on top. */
 const INTERACTIVE =
   "a,button,input,textarea,select,summary,[role=button],[role=tab],[role=radio],[role=option],[role=checkbox],[contenteditable=true]";
@@ -114,7 +105,9 @@ export function DraftWorkspace({
   const t = useTranslations("draftRedesign");
   const sessionId = board.session.id;
   const seat = seatOf(gating);
-  const wide = useSyncExternalStore(subscribeWide, isWideNow, NOT_WIDE_ON_SERVER);
+  // One tree at a time: the pool is the heaviest list in the app, and mounting it
+  // twice (desktop + tabs) doubled every re-render.
+  const wide = useMediaQuery(DRAFT_WIDE_QUERY);
 
   const [pendingSelection, setSelection] = useState<RoomSelection | null>(null);
   const [profileId, setProfileId] = useState<number | null>(null);

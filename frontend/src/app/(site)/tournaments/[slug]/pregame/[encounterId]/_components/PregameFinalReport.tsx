@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { MatchReportForm, matchReportDraftKey } from "@/components/tournaments/MatchReportForm";
 import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
 import type { PregameCharacterRound } from "@/disciplines/types";
@@ -137,9 +138,7 @@ export function PregameFinalReport({
                         size={60}
                       />
                       <div className="flex min-w-0 flex-col">
-                        <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                          {t("round.label", { n: block.round })}
-                        </span>
+                        <Eyebrow>{t("round.label", { n: block.round })}</Eyebrow>
                         <span
                           title={block.mapName}
                           className="truncate font-onest text-sm font-semibold"

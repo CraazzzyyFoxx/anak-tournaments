@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
 import { Card } from "@/components/ui/card";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { useFormatter } from "@/lib/datetime/client";
 import { sortTeamPlayers } from "@/lib/player";
 import type { RoleOntology } from "@/lib/roster/ontology";
@@ -17,8 +18,6 @@ import type { TeamVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewM
 import DeltaText from "../DeltaText";
 import InfoDot from "../InfoDot";
 import RosterRow from "./RosterRow";
-
-const LABEL = "text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 
 interface TeamDetailProps {
   team: TeamVM;
@@ -47,7 +46,7 @@ function MonteCarlo({ distribution }: Readonly<{ distribution: StandingsDistribu
 
   return (
     <section className="border-t border-[color:var(--aqt-border)] px-4 py-3">
-      <h3 className={LABEL}>{t("analytics.distribution.title")}</h3>
+      <Eyebrow as="h3">{t("analytics.distribution.title")}</Eyebrow>
       <dl className="mt-2 grid grid-cols-3 gap-3">
         {(
           [
@@ -100,7 +99,7 @@ export default function TeamDetail({
     <Card className="overflow-hidden">
       <header className="flex items-start justify-between gap-3 px-4 pt-4 pb-3">
         <div className="min-w-0">
-          <p className={`${LABEL} aqt-tnum`}>
+          <Eyebrow as="p" className="aqt-tnum">
             {showGroup && team.group?.name
               ? t("analytics.community.team.groupRecord", {
                   group: team.group.name,
@@ -108,7 +107,7 @@ export default function TeamDetail({
                   losses: team.losses
                 })
               : record}
-          </p>
+          </Eyebrow>
           <h2 className="mt-1.5 flex min-w-0 items-baseline gap-2.5">
             {team.placement != null ? (
               <span className="aqt-tnum shrink-0 font-onest text-title font-semibold text-[color:var(--aqt-fg)]">
@@ -137,9 +136,9 @@ export default function TeamDetail({
       {distribution ? <MonteCarlo distribution={distribution} /> : null}
 
       <section className="border-t border-[color:var(--aqt-border)]">
-        <h3 className={`${LABEL} px-4 pt-3 pb-1`}>
+        <Eyebrow as="h3" className="px-4 pt-3 pb-1">
           {t("analytics.community.team.rosterCount", { count: players.length })}
-        </h3>
+        </Eyebrow>
         <ul className="divide-y divide-[color:var(--aqt-border)]">
           {players.map((player) => (
             <li key={player.id}>

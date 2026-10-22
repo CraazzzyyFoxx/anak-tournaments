@@ -10,7 +10,7 @@ import { useFormatter } from "@/lib/datetime/client";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { TeamPlacement, TournamentTeamTable } from "@/components/TournamentTeamCard";
 import TeamName from "@/components/TeamName";
-import { sortTeamPlayers } from "@/lib/player";
+import { sortTeamPlayers, splitHandle } from "@/lib/player";
 import { groupDisplayName, groupHue } from "@/lib/tournament/group";
 import { cn } from "@/lib/utils";
 import type { CatalogEntityChip } from "@/types/catalog.types";
@@ -106,7 +106,7 @@ export const TeamListRow = ({
                     {matched ? (
                       <mark className={MARK_CLASS}>{player.name}</mark>
                     ) : (
-                      player.name.split("#")[0]
+                      splitHandle(player.name).name
                     )}
                     {player.user_id === team.captain_id ? (
                       <Crown

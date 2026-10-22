@@ -3,9 +3,9 @@
 import Image from "@/components/ui/image";
 import { useTranslations } from "next-intl";
 
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { useQueryParams } from "@/hooks/useQueryParams";
-import { cn } from "@/lib/utils";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 
 import styles from "../TournamentDetail.module.css";
@@ -24,8 +24,6 @@ import { getPublicPageQueryPresentation } from "@/lib/public-page-query-presenta
 
 const EYEBROW =
   "aqt-tnum block text-label uppercase tracking-[0.06em] text-[color:var(--aqt-fg-faint)]";
-const LABEL =
-  "text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 
 type Gamemode = CatalogEntityRead;
 
@@ -155,7 +153,7 @@ export default function TournamentMapsPage({
               <div className="grid gap-5">
                 {pool.byGamemode.map((group) => (
                   <div key={group.gamemode}>
-                    <h3 className={cn(LABEL, "mb-2 flex items-center gap-1.5")}>
+                    <Eyebrow as="h3" className="mb-2 flex items-center gap-1.5">
                       {group.maps[0]?.parent?.image_path ? (
                         <Image
                           src={group.maps[0].parent.image_path}
@@ -169,7 +167,7 @@ export default function TournamentMapsPage({
                       <span className="aqt-tnum text-[color:var(--aqt-fg-dim)]">
                         {group.maps.length}
                       </span>
-                    </h3>
+                    </Eyebrow>
                     <div
                       className="grid gap-2"
                       style={{ gridTemplateColumns: "repeat(auto-fill, minmax(11rem, 1fr))" }}
@@ -226,12 +224,12 @@ export default function TournamentMapsPage({
                                       className="grid grid-cols-1 gap-2 px-3.5 py-3 sm:grid-cols-[minmax(4.5rem,5.5rem)_minmax(0,1fr)] sm:items-center sm:gap-3"
                                     >
                                       {slot.position > 0 ? (
-                                        <div className={cn(LABEL, "flex items-center gap-1.5")}>
+                                        <Eyebrow as="div" className="flex items-center gap-1.5">
                                           <ModeIcon gamemode={slotMode} />
                                           {t("tournamentDetail.mapPool.slot", {
                                             n: slot.position
                                           })}
-                                        </div>
+                                        </Eyebrow>
                                       ) : (
                                         <span className="hidden sm:block" />
                                       )}

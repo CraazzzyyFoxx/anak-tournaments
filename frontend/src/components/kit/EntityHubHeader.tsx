@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
 import { StatusPill } from "@/components/kit/StatusPill";
-import type { Tone } from "@/components/kit/tone";
+import type { Tone } from "@/components/ui/tone";
 import { cn } from "@/lib/utils";
 
 export interface EntityHubHeaderProps {

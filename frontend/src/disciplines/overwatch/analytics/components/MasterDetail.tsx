@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { ChevronLeft } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import type { RoleOntology } from "@/lib/roster/ontology";
 import type { PerformanceV2, StandingsDistribution } from "@/types/analytics.types";
@@ -41,19 +42,6 @@ type StandingsView = "list" | "table";
 /** The split's breakpoint (`lg`): below it the list and the panels take turns. */
 const DESKTOP_QUERY = "(min-width: 1024px)";
 
-/** Desktop-first media query (defaults true, so the server render and the first client render agree). */
-function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState(true);
-  useEffect(() => {
-    const mql = window.matchMedia(query);
-    const sync = () => setMatches(mql.matches);
-    sync();
-    mql.addEventListener("change", sync);
-    return () => mql.removeEventListener("change", sync);
-  }, [query]);
-  return matches;
-}
-
 /**
  * The single team spine: the standings list beside a sticky team/player panel
  * (desktop) or taking turns with it (mobile push-nav). A List / Table switch,
@@ -76,7 +64,8 @@ export default function MasterDetail({
   onExplain
 }: Readonly<MasterDetailProps>) {
   const t = useTranslations();
-  const isDesktop = useMediaQuery(DESKTOP_QUERY);
+  // Desktop-first: the server render and the first client render agree on the common case.
+  const isDesktop = useMediaQuery(DESKTOP_QUERY, true);
   // Client-only state: the History API, not a server round trip; the default is never written.
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const view: StandingsView = searchParams?.get("view") === "table" ? "table" : "list";

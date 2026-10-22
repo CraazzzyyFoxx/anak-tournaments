@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
 
 export interface NextActionHeroProps {
@@ -25,7 +25,7 @@ export function NextActionHero({ eyebrow, title, href, cta }: Readonly<NextActio
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
       <div className="min-w-0 flex-1">
-        <p className={EYEBROW_CLASS}>{eyebrow}</p>
+        <p className={eyebrowClass("muted")}>{eyebrow}</p>
         <p className="mt-0.5 text-sm font-medium text-foreground">{title}</p>
       </div>
       <Link

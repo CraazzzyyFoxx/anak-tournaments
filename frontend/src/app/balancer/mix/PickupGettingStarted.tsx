@@ -5,9 +5,9 @@ import { useTranslations } from "next-intl";
 import { CheckCircle2, Send, UserPlus } from "lucide-react";
 
 import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
-import { EYEBROW_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import { postModeOf, signupPostOf } from "@/app/balancer/mix/PickupMixHeader";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import type { CustomGame } from "@/services/custom-game.service";
@@ -38,7 +38,7 @@ export function PickupGettingStarted({
 
   return (
     <section aria-label={t("title")} className={cn(PANEL_CLASS, "space-y-4 px-5 py-5")}>
-      <span className={EYEBROW_CLASS}>{t("title")}</span>
+      <Eyebrow>{t("title")}</Eyebrow>
       <ol className="space-y-4">
         <Step
           number={1}

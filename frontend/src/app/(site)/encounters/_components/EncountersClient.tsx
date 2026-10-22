@@ -176,7 +176,7 @@ export default function EncountersClient({
               page={page}
               totalPages={totalPages}
               onPageChange={controls.setPage}
-              summary={t("encounters.list.showing", {
+              leading={t("encounters.list.showing", {
                 start: String(showingStart),
                 end: String(showingEnd),
                 total: countLabel(format, total)

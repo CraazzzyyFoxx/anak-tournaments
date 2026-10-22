@@ -10,7 +10,7 @@ import {
   getAdminDetailTableStyles
 } from "@/components/admin/AdminDetailTable";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
-import { UserSearchCombobox } from "@/components/admin/UserSearchCombobox";
+import { UserSearchCombobox } from "@/components/kit/ServerSearchCombobox";
 import DivisionIcon from "@/components/DivisionIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -162,7 +162,7 @@ export function TeamRosterEditor({
         >
           <UserSearchCombobox
             value={draft.userId || undefined}
-            selectedName={draft.userName || undefined}
+            selectedLabel={draft.userName}
             placeholder={t("linkUser")}
             onSelect={(user) =>
               setDraft((current) =>

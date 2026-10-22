@@ -4,9 +4,9 @@ import { useId, useState } from "react";
 import { X } from "lucide-react";
 import type { FormField as FormFieldSchema } from "@/types/forms.types";
 import { useTranslations } from "next-intl";
-import Image from "@/components/ui/image";
+import { SocialIcon } from "@/components/social/SocialIcon";
 import { normalizeAnswerText, validateAnswer } from "@/lib/forms/validate";
-import FormField from "./FormField";
+import FormField from "@/components/forms/FormField";
 
 interface ExtraHandlesInputProps {
   /** The handles BESIDE the primary one, in order. */
@@ -16,7 +16,8 @@ interface ExtraHandlesInputProps {
   max: number;
   suggestions: string[];
   label?: string;
-  icon?: string;
+  /** The identity provider whose brand icon labels the field. */
+  provider?: string;
   /** The schema field these handles answer; drives the per-handle format check. */
   field?: FormFieldSchema;
 }
@@ -35,7 +36,7 @@ export default function ExtraHandlesInput({
   max,
   suggestions,
   label,
-  icon,
+  provider,
   field,
 }: Readonly<ExtraHandlesInputProps>) {
   const t = useTranslations();
@@ -88,8 +89,8 @@ export default function ExtraHandlesInput({
         id={inputId}
         label={label ?? t("registration.accounts.smurfs")}
         icon={
-          icon ? (
-            <Image src={icon} alt="" width={14} height={14} className="size-3.5 object-contain opacity-50" />
+          provider ? (
+            <SocialIcon provider={provider} size={14} decorative className="size-3.5 object-contain opacity-50" />
           ) : undefined
         }
         beforeControl={

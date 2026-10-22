@@ -24,7 +24,7 @@ import { formatSeriesClock, type SeriesSlot } from "@/lib/encounter/detail";
 import { mapWithModeName } from "@/lib/catalog/mode";
 import type { Duel } from "@/lib/encounter/seats";
 import type { Encounter } from "@/types/encounter.types";
-import { Pill } from "@/components/match/EncounterAtoms";
+import { Badge } from "@/components/ui/badge";
 import styles from "@/components/match/EncounterDetail.module.css";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 
@@ -78,9 +78,10 @@ export default function EncounterMapRow({
         <span className={styles.mapIdentity}>
           <span className={styles.mapName}>{t("encounters.detail.mapInProgress")}</span>
           <span className={styles.mapMode}>
-            <Pill tone="danger" live>
+            <Badge palette="aqt" shape="pill" tone="danger">
+              <span aria-hidden className={styles.livePulse} />
               {t("encounters.state.live")}
-            </Pill>
+            </Badge>
           </span>
         </span>
       </div>
@@ -137,9 +138,10 @@ export default function EncounterMapRow({
             t("encounters.match.gamemodeAlt")
           )}
           {slot.isLive ? (
-            <Pill tone="danger" live>
+            <Badge palette="aqt" shape="pill" tone="danger">
+              <span aria-hidden className={styles.livePulse} />
               {t("encounters.state.live")}
-            </Pill>
+            </Badge>
           ) : null}
           {parsedDiffers ? (
             <span className={cn(shown != null && styles.metaWarn)}>

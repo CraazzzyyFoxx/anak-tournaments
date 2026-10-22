@@ -6,6 +6,7 @@ import {
   calculateTeamTotalFromPayload,
 } from "@/components/balancer/balancer-page-helpers";
 import { Badge } from "@/components/ui/badge";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import {
   Table,
   TableHead,
@@ -116,16 +117,16 @@ export function BalanceEditorTeamCard({
       <Table wrapperClassName="overflow-x-auto overflow-y-visible" className="min-w-90">
         <TableHeader>
           <TableRow className="border-[color:var(--aqt-border)] hover:bg-transparent">
-            <TableHead className="h-8 w-13 px-4 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+            <TableHead className={cn(eyebrowClass("dim"), "h-8 w-13 px-4")}>
               Role
             </TableHead>
-            <TableHead className="h-8 min-w-45 px-0 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+            <TableHead className={cn(eyebrowClass("dim"), "h-8 min-w-45 px-0")}>
               Player
             </TableHead>
-            <TableHead className="h-8 w-18 px-2 text-center text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+            <TableHead className={cn(eyebrowClass("dim"), "h-8 w-18 px-2 text-center")}>
               Rank
             </TableHead>
-            <TableHead className="h-8 w-22 px-3 text-center text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+            <TableHead className={cn(eyebrowClass("dim"), "h-8 w-22 px-3 text-center")}>
               Prefs
             </TableHead>
           </TableRow>

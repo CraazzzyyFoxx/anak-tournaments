@@ -3,8 +3,11 @@
 import { useId, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { SettingRow } from "@/components/kit/SettingRow";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -14,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue
 } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   MAX_IDENTITY_COUNT,
@@ -26,12 +30,7 @@ import { cn } from "@/lib/utils";
 import type { Condition, FormField, Visibility } from "@/types/forms.types";
 import type { RoleOntology } from "@/lib/roster/ontology";
 
-import {
-  RolesParamsEditor,
-  SwitchRow,
-  rolesParamsOf,
-  type SubroleCatalogByRole
-} from "./RolesParamsEditor";
+import { RolesParamsEditor, rolesParamsOf, type SubroleCatalogByRole } from "./RolesParamsEditor";
 import {
   MAX_REGEX_LENGTH,
   fieldDisplayLabel,
@@ -64,7 +63,7 @@ const EDITABLE_HINT_KEY: Record<string, "editableHintBattleTag" | "editableHintR
 function Group({ title, children }: Readonly<{ title: string; children: ReactNode }>) {
   return (
     <section className="grid gap-3">
-      <h4 className={EYEBROW_CLASS}>{title}</h4>
+      <h4 className={eyebrowClass("muted")}>{title}</h4>
       {children}
     </section>
   );
@@ -106,10 +105,9 @@ function ConditionValueInput({
                 key={option}
                 className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs"
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={on}
-                  onChange={() =>
+                  onCheckedChange={() =>
                     onChange(
                       on ? selected.filter((item) => item !== option) : [...selected, option]
                     )
@@ -253,7 +251,8 @@ export function FieldEditor({
   const setCondition = (next: Condition | null) => onChange({ ...field, visible_when: next });
 
   return (
-    <div className="grid gap-5 border-t pt-4">
+    // The container the switch rows (`SettingRow`) size their two columns against.
+    <div className="@container grid gap-5 border-t pt-4">
       {serverError ? (
         <p
           role="alert"
@@ -339,34 +338,38 @@ export function FieldEditor({
               aria-describedby={issues.options ? `${ids}-options-error` : undefined}
               onChange={(event) => onChange({ ...field, options: event.target.value.split("\n") })}
             />
-            {issues.options ? (
-              <p id={`${ids}-options-error`} className="text-xs text-destructive">
-                {t(`issues.${issues.options}`)}
-              </p>
-            ) : null}
+            <FieldError id={`${ids}-options-error`} size="sm">
+              {issues.options ? t(`issues.${issues.options}`) : null}
+            </FieldError>
           </div>
         ) : null}
       </Group>
 
       <Group title={t("groupAnswer")}>
-        <SwitchRow
-          id={`${ids}-required`}
-          label={t("required")}
-          checked={field.required}
-          onCheckedChange={(required) => onChange({ ...field, required })}
-        />
-
-        {identityConfig?.canBeVerified === true ? (
-          <SwitchRow
-            id={`${ids}-verified`}
-            label={t("requireVerified")}
-            hint={t("requireVerifiedHint")}
-            checked={field.params.require_verified === true}
-            onCheckedChange={(require_verified) =>
-              onChange({ ...field, params: { ...field.params, require_verified } })
-            }
-          />
-        ) : null}
+        <div>
+          <SettingRow htmlFor={`${ids}-required`} label={t("required")}>
+            <Switch
+              id={`${ids}-required`}
+              checked={field.required}
+              onCheckedChange={(required) => onChange({ ...field, required })}
+            />
+          </SettingRow>
+          {identityConfig?.canBeVerified === true ? (
+            <SettingRow
+              htmlFor={`${ids}-verified`}
+              label={t("requireVerified")}
+              hint={t("requireVerifiedHint")}
+            >
+              <Switch
+                id={`${ids}-verified`}
+                checked={field.params.require_verified === true}
+                onCheckedChange={(require_verified) =>
+                  onChange({ ...field, params: { ...field.params, require_verified } })
+                }
+              />
+            </SettingRow>
+          ) : null}
+        </div>
 
         {identity ? (
           <div className="grid gap-1.5">
@@ -477,13 +480,17 @@ export function FieldEditor({
           </p>
         </div>
 
-        <SwitchRow
-          id={`${ids}-editable`}
+        <SettingRow
+          htmlFor={`${ids}-editable`}
           label={t("editable")}
           hint={t(EDITABLE_HINT_KEY[field.key] ?? "editableHint")}
-          checked={field.editable === true}
-          onCheckedChange={(editable) => onChange({ ...field, editable })}
-        />
+        >
+          <Switch
+            id={`${ids}-editable`}
+            checked={field.editable === true}
+            onCheckedChange={(editable) => onChange({ ...field, editable })}
+          />
+        </SettingRow>
       </Group>
 
       <Group title={t("groupCondition")}>

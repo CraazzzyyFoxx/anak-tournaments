@@ -1,7 +1,8 @@
 import type { ElementType, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
-import { EYEBROW_CLASS, TONE_TEXT, type Tone } from "@/components/kit/tone";
+import { TONE_TEXT, type Tone } from "@/components/ui/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 
 interface StatTileProps {
   /** Uppercase eyebrow naming what is measured. */
@@ -46,7 +47,7 @@ export function StatTile({
       )}
     >
       <div className="min-w-0 flex-1">
-        <p className={EYEBROW_CLASS}>{label}</p>
+        <p className={eyebrowClass("muted")}>{label}</p>
         <p className={cn("mt-2 truncate text-2xl font-semibold tabular-nums", attention && TONE_TEXT[tone])}>
           {value}
         </p>

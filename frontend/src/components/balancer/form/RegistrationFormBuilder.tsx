@@ -16,7 +16,7 @@ import type { FieldRendererContext } from "@/components/forms/types";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { SortableGrip, useSortableRow } from "@/components/kit/SortableRows";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { registrationRenderers } from "@/components/registration/registrationRenderers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -398,7 +398,7 @@ export function SchemaEditor({
                   </div>
 
                   <div className="flex items-center justify-between gap-2">
-                    <h3 className={cn(EYEBROW_CLASS, "flex flex-wrap items-baseline gap-x-2")}>
+                    <h3 className={cn(eyebrowClass("muted"), "flex flex-wrap items-baseline gap-x-2")}>
                       {t("questions")}
                       <span className="font-normal normal-case tracking-normal">
                         {t("fieldCount", { count: section.fields.length })}

@@ -15,7 +15,7 @@ import {
   ItemSeparator,
   ItemTitle
 } from "@/components/ui/item";
-import { TONE_TEXT } from "@/components/kit/tone";
+import { TONE_TEXT } from "@/components/ui/tone";
 import { PLATFORM_ZONE } from "@/lib/site/host";
 import { cn } from "@/lib/utils";
 import { workspaceSetupChecklist } from "@/lib/workspace/setup-checklist";

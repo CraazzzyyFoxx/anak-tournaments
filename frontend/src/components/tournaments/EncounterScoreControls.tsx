@@ -2,7 +2,7 @@ import { Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "next-intl";
 import {
@@ -66,7 +66,7 @@ export function EncounterScoreControls({
     <div className="space-y-4 rounded-xl border border-border/60 bg-muted/10 p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className={EYEBROW_CLASS}>{t("matchEdit.matchScore")}</p>
+          <p className={eyebrowClass("muted")}>{t("matchEdit.matchScore")}</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
             {showGroupStageHint ? scoreT("groupStageQuickResults") : t("matchEdit.manualEntry")}
           </p>

@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import type { AchievementRarity, AchievementMatchLink } from "@/types/achievement.types";
 import { cn } from "@/lib/utils";
 import { classifyRarity, localizedText, rarityVarClass, type Rarity } from "@/lib/achievements/rarity";
@@ -110,9 +111,7 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
                   <>
                     {ach.tournaments.length > 0 ? (
                       <section className="flex flex-col gap-1.5">
-                        <h3 className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                          {tr("users.achievements.detail.earnedIn")}
-                        </h3>
+                        <Eyebrow as="h3">{tr("users.achievements.detail.earnedIn")}</Eyebrow>
                         <div className="flex flex-wrap gap-1.5">
                           {ach.tournaments.map((t) => (
                             <HoverPrefetchLink
@@ -130,9 +129,7 @@ export const AchievementDetailDialog = ({ achievement, onClose }: Props) => {
 
                     {ach.matches.length > 0 ? (
                       <section className="flex flex-col gap-1.5">
-                        <h3 className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-                          {tr("common.matches")}
-                        </h3>
+                        <Eyebrow as="h3">{tr("common.matches")}</Eyebrow>
                         <div className="flex flex-col">
                           {ach.matches.map((m) => (
                             <MatchRow key={m.id} match={m} />

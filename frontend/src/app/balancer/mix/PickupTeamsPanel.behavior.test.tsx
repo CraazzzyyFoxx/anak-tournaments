@@ -659,7 +659,8 @@ describe("PickupTeamsPanel", () => {
   it("lets the host pick the next map by hand through the combobox", async () => {
     const scope = await mount(game(), { maps: CATALOGUE });
 
-    await click(byName(scope, "No map"));
+    // The mocked translator returns the key: the trigger reads `noMap` until a map is set.
+    await click(byName(scope, "noMap"));
     const option = [...document.body.querySelectorAll<HTMLElement>("[cmdk-item]")].find(
       (node) => node.textContent?.trim() === "Ilios",
     );

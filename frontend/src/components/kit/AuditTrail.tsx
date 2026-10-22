@@ -29,7 +29,7 @@ import { ApiError } from "@/lib/api/error";
 import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type { AuditLogRead } from "@/types/admin.types";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -72,7 +72,7 @@ function AuditDiffList({
           <dt className="flex items-baseline gap-1.5">
             <span className="font-mono text-xs text-foreground">{row.field}</span>
             {row.kind === parentKind ? null : (
-              <span className={EYEBROW_CLASS}>{t(`diffKind.${row.kind}`)}</span>
+              <span className={eyebrowClass("muted")}>{t(`diffKind.${row.kind}`)}</span>
             )}
           </dt>
           {row.children ? (

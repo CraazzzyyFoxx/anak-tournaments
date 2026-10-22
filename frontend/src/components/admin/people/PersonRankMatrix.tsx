@@ -16,6 +16,7 @@ import {
 } from "@/components/admin/people/personRanks.model";
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { formatDate } from "@/components/kit/format-time";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
@@ -127,9 +128,9 @@ function MatrixTable({
           {authors.length > 0 ? (
             <tr>
               <th scope="colgroup" colSpan={roles.length + 1} className="pt-5 pb-1.5 text-left font-normal">
-                <span className="sticky left-0 text-label font-medium uppercase tracking-label text-muted-foreground">
+                <Eyebrow tone="muted" className="sticky left-0">
                   {t("authors", { count: authors.length })}
-                </span>
+                </Eyebrow>
               </th>
             </tr>
           ) : null}

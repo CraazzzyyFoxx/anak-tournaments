@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import TeamName, { type TeamNameInput } from "@/components/TeamName";
 import EncounterRosterPanel from "@/components/match/EncounterRosterPanel";
 import { Button } from "@/components/ui/button";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
 import { seatAt, seatTeam, seatsBySlot } from "@/lib/encounter/seats";
 import type { Encounter } from "@/types/encounter.types";
@@ -144,8 +145,9 @@ function ReadyRow({
       />
       <span
         className={cn(
-          "inline-flex shrink-0 items-center gap-1.5 text-label uppercase tracking-label",
-          ready ? "text-[color:var(--aqt-positive)]" : "text-[color:var(--aqt-fg-faint)]"
+          eyebrowClass(),
+          "inline-flex shrink-0 items-center gap-1.5",
+          ready && "text-[color:var(--aqt-positive)]"
         )}
       >
         <StateIcon className="h-3.5 w-3.5" aria-hidden />

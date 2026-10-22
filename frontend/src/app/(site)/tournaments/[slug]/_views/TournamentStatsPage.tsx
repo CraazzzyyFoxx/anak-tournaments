@@ -8,7 +8,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { ImageOff } from "lucide-react";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { characterClassOf, classRank } from "@/components/pick-ban/pick-ban-model";
 import { TournamentTeamCardFrame } from "@/components/TournamentTeamCard";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
@@ -197,16 +198,7 @@ function CharactersTab({ tournament }: Readonly<{ tournament: Tournament }>) {
                         >
                           {String(index + 1).padStart(2, "0")}
                         </span>
-                        <Avatar className="size-7 border-none bg-transparent">
-                          {row.entity.image_path ? (
-                            <AvatarImage
-                              src={row.entity.image_path}
-                              alt=""
-                              className="object-contain"
-                            />
-                          ) : null}
-                          <AvatarFallback className="bg-transparent" />
-                        </Avatar>
+                        <CatalogEntityImage entity={row.entity} size={28} decorative />
                         <span className="flex min-w-0 flex-col gap-1">
                           <span className="truncate text-caption font-semibold">
                             {row.entity.name}
@@ -333,7 +325,7 @@ function MapsTab({ tournament, slug }: Readonly<{ tournament: Tournament; slug: 
         >
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-[color:var(--aqt-overlay-border)] text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+              <tr className={cn(eyebrowClass(), "border-b border-[color:var(--aqt-overlay-border)]")}>
                 <th scope="col" className="py-2.5 pl-3.5 pr-3 text-left font-medium">
                   {t("tournamentDetail.mapPool.col.map")}
                 </th>

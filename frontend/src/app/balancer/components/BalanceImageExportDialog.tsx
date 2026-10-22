@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import { resolveDivisionFromRank, getDivisionIconSrc, getDivisionLabel } from "@/lib/divisions/grid";
 import {
   capturePngBlob,
@@ -219,8 +220,8 @@ export function BalanceImageExportDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="flex h-[min(860px,calc(100vh-2rem))] w-[min(1180px,calc(100vw-2rem))] max-w-none flex-col gap-0 overflow-hidden border-border bg-popover p-0 text-[color:var(--aqt-fg)] shadow-2xl shadow-black/60">
-          <DialogHeader className="shrink-0 border-b border-[color:var(--aqt-border)] px-5 py-4 text-left">
+        <DialogContent variant="panel" className="h-[min(860px,calc(100vh-2rem))] w-[min(1180px,calc(100vw-2rem))] max-w-none">
+          <DialogHeader variant="panel">
             <div className="flex flex-col gap-3 pr-8 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <DialogTitle className="flex items-center gap-2 text-base font-semibold text-[color:var(--aqt-fg)]">
@@ -286,9 +287,9 @@ export function BalanceImageExportDialog({
                     className="overflow-hidden rounded-xl border border-border bg-card"
                   >
                     <div className="flex items-center justify-between gap-3 border-b border-[color:var(--aqt-border)] px-3 py-2.5">
-                      <div className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
+                      <Eyebrow as="div" tone="muted">
                         {image.label}
-                      </div>
+                      </Eyebrow>
                       <Button
                         type="button"
                         variant="outline"
@@ -438,16 +439,16 @@ function BalanceExportTeamCard({
       <table className="w-full min-w-90 caption-bottom text-sm">
         <thead>
           <tr className="border-b border-[color:var(--aqt-border)]">
-            <th className="h-8 w-13 px-4 text-left align-middle text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+            <th className={cn(eyebrowClass("dim"), "h-8 w-13 px-4 text-left align-middle")}>
               Role
             </th>
-            <th className="h-8 min-w-45 px-0 text-left align-middle text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+            <th className={cn(eyebrowClass("dim"), "h-8 min-w-45 px-0 text-left align-middle")}>
               Player
             </th>
-            <th className="h-8 w-18 px-2 text-center align-middle text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+            <th className={cn(eyebrowClass("dim"), "h-8 w-18 px-2 text-center align-middle")}>
               Rank
             </th>
-            <th className="h-8 w-22 px-3 text-center align-middle text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+            <th className={cn(eyebrowClass("dim"), "h-8 w-22 px-3 text-center align-middle")}>
               Prefs
             </th>
           </tr>
@@ -472,9 +473,9 @@ function BalanceExportTeamCard({
                       </span>
                     </div>
                     {formatSubRoleLabel(player.sub_role) ? (
-                      <span className="truncate text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+                      <Eyebrow tone="dim" className="truncate">
                         {formatSubRoleLabel(player.sub_role)}
-                      </span>
+                      </Eyebrow>
                     ) : null}
                   </div>
                 </td>
@@ -504,7 +505,7 @@ function BalanceExportTeamCard({
               <tr className="border-b border-[color:var(--aqt-border)]">
                 <td
                   colSpan={4}
-                  className="px-3 py-2.5 text-center text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]"
+                  className={cn(eyebrowClass(), "px-3 py-2.5 text-center")}
                 >
                   Empty {slotLabel(roleKey).toLowerCase()}
                 </td>

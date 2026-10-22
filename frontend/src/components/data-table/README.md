@@ -92,7 +92,6 @@ next to it.
 | `AdminTableHeader.tsx` | The sticky header row, select-all, and the dnd-kit boundary the reorder chunk fills in. |
 | `AdminTableHead.tsx` / `ColumnDnd.tsx` | The resizable header cell, and its draggable variant in a lazily imported chunk. |
 | `AdminTableToolbar.tsx` | Search, the screen's `toolbar` slot, bulk actions, CSV, density, saved views, column picker, `actions`. |
-| `AdminTablePagination.tsx` | The footer: range, rows-per-page, page numbers. |
 | `AdminTableMobileList.tsx` | Rows as cards below `md`. |
 | `AdminTableEmptyState.tsx` | No rows, and the way out of the search/filter that emptied them. |
 | `AdminRowContextMenu.tsx` / `kebab-column.tsx` | Row actions as one right-click / long-press menu per table (the `<tbody>` is its trigger; it resolves the row when it opens) and as the `⋯` column. |

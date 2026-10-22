@@ -106,17 +106,6 @@ export const TOOLBAR_BUTTON_CLASS = `px-3 ${MUTED_BUTTON_CLASS}`;
 export const ICON_BUTTON_CLASS =
   "h-8 w-8 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]";
 
-/**
- * `Name#1234` → a bright name plus a dim `#1234`, so a row reads as one
- * identity instead of one long string with the discriminator competing for
- * attention. Handles without a discriminator come back whole.
- */
-export function splitHandle(handle: string): { name: string; suffix: string | null } {
-  const index = handle.lastIndexOf("#");
-  if (index <= 0) return { name: handle, suffix: null };
-  return { name: handle.slice(0, index), suffix: handle.slice(index) };
-}
-
 export function createVariantLabel(index: number): string {
   return `Balance ${index}`;
 }

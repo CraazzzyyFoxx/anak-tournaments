@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { EncounterWithUserStats, UserProfile, UserTournament } from "@/types/user.types";
 import userService from "@/services/user.service";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import {
   type TournamentGroup,
   groupRepId,
@@ -27,6 +28,7 @@ interface Props {
 const TournamentsHistory = ({ tournaments, selfUserId, profile = null, showGames = false }: Props) => {
   const searchParams = useSearchParams();
   const dossierRef = useRef<HTMLDivElement>(null);
+  const reduceMotion = usePrefersReducedMotion();
 
   const groups = useMemo(() => groupTournamentsByLeague(tournaments), [tournaments]);
 
@@ -118,8 +120,7 @@ const TournamentsHistory = ({ tournaments, selfUserId, profile = null, showGames
   const scrollToDossier = () => {
     const el = dossierRef.current;
     if (!el || typeof window === "undefined") return;
-    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    el.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
   };
 
   const selectEvent = (tournamentId: number) => {

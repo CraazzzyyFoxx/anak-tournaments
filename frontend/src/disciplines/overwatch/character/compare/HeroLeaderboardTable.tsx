@@ -5,6 +5,7 @@ import { EyeOff, RotateCcw, Sword } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { SearchField } from "@/components/ui/search-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -19,7 +20,6 @@ const SKELETON_ROWS = 15;
 const TITLE_ID = "hero-leaderboard-title";
 
 const HEAD_CELL = "border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-3 py-2.5 align-middle";
-const HEAD_LABEL = "text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 /** The legend's swatches: the heat map's three tinted tiers, palest first. */
 const LEGEND = [
   { label: "50%", swatch: "bg-[color:color-mix(in_srgb,var(--aqt-teal)_8%,transparent)]" },
@@ -166,10 +166,10 @@ const HeroLeaderboardTable = ({
               <th scope="col" className={cn(HEAD_CELL, STICKY_RANK)}>
                 <span className="sr-only">{t("users.heroesCompare.table.rank")}</span>
               </th>
-              <th scope="col" className={cn(HEAD_CELL, STICKY_PLAYER, HEAD_LABEL, "text-left")}>
+              <th scope="col" className={cn(HEAD_CELL, STICKY_PLAYER, eyebrowClass(), "text-left")}>
                 {t("users.heroesCompare.table.player")}
               </th>
-              <th scope="col" className={cn(HEAD_CELL, HEAD_LABEL, "text-right")}>
+              <th scope="col" className={cn(HEAD_CELL, eyebrowClass(), "text-right")}>
                 {t("users.heroesCompare.table.games")}
               </th>
               {columnKeys.map((key, i) => (

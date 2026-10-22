@@ -2,10 +2,11 @@
 
 import { Search } from "lucide-react";
 
-import { CAPTION_CLASS, CARD_TITLE_CLASS, EYEBROW_CLASS } from "@/app/balancer/mix/pickup-chrome";
+import { CAPTION_CLASS, CARD_TITLE_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { Input } from "@/components/ui/input";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -145,7 +146,7 @@ export function PickupAddPlayersDialog({
                 />
                 <span
                   className={cn(
-                    EYEBROW_CLASS,
+                    eyebrowClass(),
                     "pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 tabular-nums"
                   )}
                 >
@@ -173,7 +174,7 @@ export function PickupAddPlayersDialog({
                 host reads a rank column without a text label per row. */}
             <div className="flex shrink-0 items-center gap-2.5 border-y border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-1.5">
               <span aria-hidden="true" className="size-6 shrink-0" />
-              <span className={cn(EYEBROW_CLASS, "min-w-0 flex-1")}>Player</span>
+              <Eyebrow className="min-w-0 flex-1">Player</Eyebrow>
               {owner.showsRoles ? (
                 <div aria-hidden="true" className="flex shrink-0 items-center gap-1.5">
                   {owner.roles.map((role) => (
@@ -250,7 +251,7 @@ export function PickupAddPlayersDialog({
                 totalPages={picker.totalPages}
                 onPageChange={picker.setPage}
                 className="w-full"
-                summary={
+                leading={
                   pageData
                     ? pageData.total === 0
                       ? "0 players"

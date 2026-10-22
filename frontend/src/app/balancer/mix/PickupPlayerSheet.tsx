@@ -6,10 +6,11 @@ import { Pin, Save, UserMinus } from "lucide-react";
 
 import { HandleCopyButton } from "@/app/balancer/components/HandleCopyControls";
 import { PickupRoleOrderEditor } from "@/app/balancer/mix/PickupRoleOrderEditor";
-import { splitHandle } from "@/components/balancer/balancer-page-helpers";
-import { CAPTION_CLASS, EYEBROW_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
+import { HandleLabel } from "@/components/HandleLabel";
+import { CAPTION_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
 import RankHistory from "@/components/RankHistory";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { Label } from "@/components/ui/label";
 import {
@@ -142,7 +143,6 @@ export function PickupPlayerSheet({
   const label = row ? playerLabel(row) : "";
   const t = useTranslations("mixes.lobbies");
   const tRoom = useTranslations("mixes.room");
-  const { name, suffix } = splitHandle(label);
   // The record across every mix, not this one: a caption, because it is
   // context for the settings below it and nothing here edits it.
   const mixStreak = mixStats ? formatStreak(mixStats.streak) : null;
@@ -216,14 +216,9 @@ export function PickupPlayerSheet({
         className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-[640px]"
       >
         <SheetHeader className="space-y-0 border-b border-[color:var(--aqt-border)] px-5 pb-4 pt-5 text-left">
-          <span className={EYEBROW_CLASS}>Advanced settings</span>
+          <Eyebrow>Advanced settings</Eyebrow>
           <SheetTitle className="flex items-baseline gap-1.5 pt-1.5 font-display text-xl">
-            <span className="truncate">{name}</span>
-            {suffix ? (
-              <span className="text-caption font-normal text-[color:var(--aqt-fg-faint)]">
-                {suffix}
-              </span>
-            ) : null}
+            <HandleLabel handle={label} tagClassName="text-caption" />
             {row?.identity?.handle ? (
               <HandleCopyButton handle={row.identity.handle} className="ml-0.5 shrink-0" />
             ) : null}

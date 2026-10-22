@@ -50,7 +50,7 @@ vi.mock("next/image", () => ({
   default: ({ src, alt }: { src: string; alt: string }) => <img src={src} alt={alt} />
 }));
 vi.mock("@/hooks/useCurrentWorkspace", () => ({ useDivisionGrid: () => DIVISION_GRID }));
-vi.mock("@/components/admin/UserSearchCombobox", () => ({
+vi.mock("@/components/kit/ServerSearchCombobox", () => ({
   UserSearchCombobox: () => <div data-testid="user-search" />
 }));
 

@@ -4,7 +4,7 @@ import { useId } from "react";
 import { useTranslations } from "next-intl";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -152,7 +152,7 @@ export function TiebreakersSection({
 
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-2">
-          <h3 className={EYEBROW_CLASS}>{t("tiebreakOrder")}</h3>
+          <h3 className={eyebrowClass("muted")}>{t("tiebreakOrder")}</h3>
           <Button
             type="button"
             variant="link"
@@ -192,7 +192,7 @@ export function TiebreakersSection({
                   <span className="tabular-nums">{index + 1}.</span>
                   <span className="text-foreground">{metricLabel}</span>
                   {isRankingMetric ? (
-                    <span className={EYEBROW_CLASS}>{t("rankingMetric")}</span>
+                    <span className={eyebrowClass("muted")}>{t("rankingMetric")}</span>
                   ) : null}
                 </span>
                 <span className="flex items-center gap-0.5">
@@ -227,7 +227,7 @@ export function TiebreakersSection({
         </ol>
         {inactive.length > 0 ? (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-dashed border-border px-3 py-2">
-            <span className={EYEBROW_CLASS}>{t("notEvaluated")}</span>
+            <span className={eyebrowClass("muted")}>{t("notEvaluated")}</span>
             {inactive.map((metric) => (
               <span key={metric.id} className="flex items-center gap-2 text-xs opacity-70">
                 <Checkbox

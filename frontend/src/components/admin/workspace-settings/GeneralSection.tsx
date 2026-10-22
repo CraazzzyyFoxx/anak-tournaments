@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownEditor } from "@/components/admin/MarkdownEditor";
 import { AuditTrailButton } from "@/components/kit/AuditTrailSheet";
-import { Combobox, ComboboxCheck } from "@/components/kit/Combobox";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { SettingGroup, SettingRow, invalidProps } from "@/components/kit/SettingRow";
 import {

@@ -7,7 +7,8 @@ import { useFormatter } from "@/lib/datetime/client";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { StatusPill } from "@/components/kit/StatusPill";
-import { EYEBROW_CLASS, TONE_CLASS, TONE_TEXT, type Tone } from "@/components/kit/tone";
+import { TONE_CLASS, TONE_TEXT, type Tone } from "@/components/ui/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import type { DateFormatter } from "@/components/kit/format-time";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
@@ -337,7 +338,7 @@ export function RankAutofillPreviewTables({
             disabled={selectableIds.length === 0 || loading}
             aria-label={t("rankAutofill.selectAllAria")}
           />
-          <span className={EYEBROW_CLASS}>{t("rankAutofill.sections.assign")}</span>
+          <span className={eyebrowClass("muted")}>{t("rankAutofill.sections.assign")}</span>
           <span className="text-caption tabular-nums text-muted-foreground">
             {selectedIds.size}/{updatablePlayers.length}
           </span>
@@ -401,7 +402,7 @@ export function RankAutofillPreviewTables({
       {/* Column 2 — Skipped */}
       <section className="flex min-w-0 flex-col md:min-h-0">
         <div className="mb-2 flex shrink-0 items-center gap-2">
-          <span className={EYEBROW_CLASS}>{t("rankAutofill.sections.skipped")}</span>
+          <span className={eyebrowClass("muted")}>{t("rankAutofill.sections.skipped")}</span>
           {skippedPlayers.length > 0 && (
             <span className="text-caption tabular-nums text-muted-foreground">
               {skippedPlayers.length}
@@ -443,7 +444,7 @@ export function RankAutofillPreviewTables({
       {/* Column 3 — Already set */}
       <section className="flex min-w-0 flex-col md:min-h-0">
         <div className="mb-2 flex shrink-0 items-center gap-2">
-          <span className={EYEBROW_CLASS}>{t("rankAutofill.sections.alreadySet")}</span>
+          <span className={eyebrowClass("muted")}>{t("rankAutofill.sections.alreadySet")}</span>
           {unchangedPlayers.length > 0 && (
             <span className="text-caption tabular-nums text-muted-foreground">
               {unchangedPlayers.length}

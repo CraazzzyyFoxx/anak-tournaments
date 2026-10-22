@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useRoleName } from "@/hooks/useRoleName";
 import { getImpactColor } from "@/lib/colors";
@@ -26,7 +27,6 @@ import ChangeShiftDialog from "./ChangeShiftDialog";
 import ImpactBar from "./ImpactBar";
 import PlayerNick from "./PlayerNick";
 
-const LABEL = "text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
 const SECTION = "border-t border-[color:var(--aqt-border)] px-4 py-3";
 
 interface PlayerDetailProps {
@@ -139,10 +139,10 @@ export default function PlayerDetail({
       </header>
 
       <section className={SECTION}>
-        <h3 className={`${LABEL} flex items-center gap-0.5`}>
+        <Eyebrow as="h3" className="flex items-center gap-0.5">
           {t("analytics.community.player.predictedMove")}
           <InfoDot term="predicted_move" onExplain={onExplain} />
-        </h3>
+        </Eyebrow>
         <div className="mt-1.5 flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-ui font-semibold" style={{ color: moveColor }}>
@@ -166,10 +166,10 @@ export default function PlayerDetail({
 
       <dl className="grid grid-cols-2 border-t border-[color:var(--aqt-border)]">
         <div className="px-4 py-3">
-          <dt className={`${LABEL} flex items-center gap-0.5`}>
+          <Eyebrow as="dt" className="flex items-center gap-0.5">
             {t("analytics.community.player.impact")}
             <InfoDot term="impact" onExplain={onExplain} />
-          </dt>
+          </Eyebrow>
           <dd className="mt-1">
             <span
               className="aqt-tnum block font-onest text-title font-semibold"
@@ -181,10 +181,10 @@ export default function PlayerDetail({
           </dd>
         </div>
         <div className="border-l border-[color:var(--aqt-border)] px-4 py-3">
-          <dt className={`${LABEL} flex items-center gap-0.5`}>
+          <Eyebrow as="dt" className="flex items-center gap-0.5">
             {t("analytics.community.player.confidence")}
             <InfoDot term="confidence" onExplain={onExplain} />
-          </dt>
+          </Eyebrow>
           <dd className="mt-1">
             <span className="aqt-tnum block font-onest text-title font-semibold text-[color:var(--aqt-fg)]">
               {format.number(player.confidence, { style: "percent", maximumFractionDigits: 0 })}
@@ -196,7 +196,7 @@ export default function PlayerDetail({
 
       <section className={SECTION}>
         <div className="flex items-baseline justify-between gap-3">
-          <h3 className={LABEL}>{t("analytics.community.player.percentileTitle")}</h3>
+          <Eyebrow as="h3">{t("analytics.community.player.percentileTitle")}</Eyebrow>
           <span className="text-caption text-[color:var(--aqt-fg-muted)]">
             {t("analytics.community.player.percentileVs", { division: player.division, role: roleLower })}
           </span>
@@ -219,7 +219,7 @@ export default function PlayerDetail({
 
       <section className={SECTION}>
         <div className="flex items-center justify-between gap-3">
-          <h3 className={LABEL}>{t("analytics.community.player.whyTitle")}</h3>
+          <Eyebrow as="h3">{t("analytics.community.player.whyTitle")}</Eyebrow>
           {canReadV2 ? <ExplanationPopover playerId={player.id} tournamentId={player.tournament_id} /> : null}
         </div>
         <ul className="mt-2 space-y-1.5">

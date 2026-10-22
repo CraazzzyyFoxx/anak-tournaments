@@ -41,7 +41,7 @@ import type {
 } from "@/types/draft.types";
 
 import { availableRolesForPlayer, canCommitRoleEdit, roleEditImpact } from "./admin-control-model";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 
 interface ResolveRoleConflictDialogProps {
   open: boolean;
@@ -314,7 +314,7 @@ function ImpactValue({
 }>) {
   return (
     <div>
-      <p className={EYEBROW_CLASS}>
+      <p className={eyebrowClass("muted")}>
         {label}
       </p>
       <p

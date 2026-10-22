@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Plus, Save, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
@@ -333,7 +333,7 @@ export function MatchReportFormBuilder({ tournamentId }: Readonly<{ tournamentId
       <CardContent className="space-y-6 pt-6">
         <section aria-labelledby={`${idBase}-built-in`} className="space-y-3">
           <div className="space-y-1">
-            <h3 id={`${idBase}-built-in`} className={EYEBROW_CLASS}>
+            <h3 id={`${idBase}-built-in`} className={eyebrowClass("muted")}>
               {t("builtInHeading")}
             </h3>
             <p className="text-xs text-muted-foreground">{t("builtInDescription")}</p>
@@ -376,7 +376,7 @@ export function MatchReportFormBuilder({ tournamentId }: Readonly<{ tournamentId
           className="space-y-3 border-t border-border/30 pt-6"
         >
           <div className="space-y-1">
-            <h3 id={`${idBase}-custom`} className={EYEBROW_CLASS}>
+            <h3 id={`${idBase}-custom`} className={eyebrowClass("muted")}>
               {t("customHeading")}
             </h3>
             <p className="text-xs text-muted-foreground">{t("customDescription")}</p>

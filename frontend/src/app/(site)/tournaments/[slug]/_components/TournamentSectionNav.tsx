@@ -18,6 +18,7 @@ import {
   Users
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { cn } from "@/lib/utils";
 import type { StageSummary, TournamentStatus } from "@/types/tournament.types";
 
@@ -47,10 +48,6 @@ const initialRailState: TournamentRailScrollState = {
   canScrollPrevious: false,
   canScrollNext: false
 };
-
-function preferredScrollBehavior(): ScrollBehavior {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
-}
 
 type TournamentSectionNavProps = {
   tournamentId: string;
@@ -93,6 +90,7 @@ export default function TournamentSectionNav({
   const activeRef = useRef<HTMLElement>(null);
   const refreshRailRef = useRef<() => void>(() => undefined);
   const [railState, setRailState] = useState(initialRailState);
+  const scrollBehavior = usePrefersReducedMotion() ? "auto" : "smooth";
   const items = useMemo(
     () =>
       buildTournamentSectionNav({
@@ -129,18 +127,18 @@ export default function TournamentSectionNav({
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({
-      behavior: preferredScrollBehavior(),
+      behavior: scrollBehavior,
       block: "nearest",
       inline: "center"
     });
     refreshRailRef.current();
-  }, [items, pathname]);
+  }, [items, pathname, scrollBehavior]);
 
   const scrollRail = (direction: -1 | 1) => {
     const rail = railRef.current;
     if (!rail) return;
 
-    scrollTournamentRail(rail, direction, preferredScrollBehavior());
+    scrollTournamentRail(rail, direction, scrollBehavior);
   };
 
   return (

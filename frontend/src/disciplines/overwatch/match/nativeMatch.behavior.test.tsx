@@ -208,7 +208,8 @@ describe("historical observed participations", () => {
         (link) => [link.textContent, link.getAttribute("href")]
       );
     // The scoreboard: Archived B's member is shown, not linked.
-    expect(links()).toEqual([["Observed 101", "/users/Canonical 101"]]);
+    // The whole handle is the link; its `#tag` renders as faint text inside it.
+    expect(links()).toEqual([["Observed 101#1", "/users/Canonical 101"]]);
     expect(container.textContent).toContain("Observed 102");
 
     const extended = Array.from(container.querySelectorAll("button")).find(

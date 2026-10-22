@@ -13,6 +13,8 @@ import {
   ResponsiveContainer,
   Cell
 } from "recharts";
+import { Eyebrow } from "@/components/ui/eyebrow";
+import { splitHandle } from "@/lib/player";
 import { LogStatsName } from "../stat-names";
 import { STAT_META, activePlayers, formatStat, playerStat, type MatchStatsTeam } from "./stats";
 
@@ -48,13 +50,13 @@ const ContributionChart = ({ home, away, round }: ContributionChartProps) => {
   const data: Datum[] = [
     ...activePlayers(home, round).map((player) => ({
       id: `${home.id}:${player.workspace_member_id}`,
-      name: player.name.split("#")[0],
+      name: splitHandle(player.name).name,
       value: playerStat(player, round, metric),
       side: "home" as const
     })),
     ...activePlayers(away, round).map((player) => ({
       id: `${away.id}:${player.workspace_member_id}`,
-      name: player.name.split("#")[0],
+      name: splitHandle(player.name).name,
       value: playerStat(player, round, metric),
       side: "away" as const
     }))
@@ -67,9 +69,7 @@ const ContributionChart = ({ home, away, round }: ContributionChartProps) => {
   return (
     <div className="rounded-[12px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-          {t("matches.contribution.title")}
-        </span>
+        <Eyebrow className="aqt-tnum">{t("matches.contribution.title")}</Eyebrow>
         <div className="flex flex-wrap gap-1.5">
           {METRICS.map((name) => {
             const active = name === metric;

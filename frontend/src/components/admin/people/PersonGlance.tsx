@@ -10,7 +10,7 @@ import { StatusIcon } from "@/components/admin/StatusIcon";
 import { PROVIDER_LABELS } from "@/components/admin/collectors/subscription-shared";
 import { useLinkedAccount } from "@/components/admin/people/PersonAccountTab";
 import { SubscriptionStateIcon } from "@/components/admin/people/PersonSubscriptionPanel";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDisciplineMetadata, useDisciplines } from "@/hooks/useDisciplineMetadata";
@@ -45,7 +45,7 @@ function GlanceRow({
 }: Readonly<{ label: string; href: string; linkLabel: string; children: ReactNode }>) {
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-1 py-3 first:pt-0 last:pb-0">
-      <dt className={EYEBROW_CLASS}>{label}</dt>
+      <dt className={eyebrowClass("muted")}>{label}</dt>
       <dd>
         <Link
           href={href}

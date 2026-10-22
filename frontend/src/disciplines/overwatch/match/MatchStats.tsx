@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import type { SlotProps } from "@/disciplines/types";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -45,12 +46,6 @@ interface MatchStatsViewProps {
 type ViewMode = "simple" | "extended";
 type ExtendedTab = "tables" | "comparison" | "timeline";
 
-const ControlLabel = ({ children }: { children: React.ReactNode }) => (
-  <span className="aqt-tnum text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-    {children}
-  </span>
-);
-
 const MatchStatsView = ({ match, home, away }: MatchStatsViewProps) => {
   const t = useTranslations<never>();
 
@@ -75,7 +70,7 @@ const MatchStatsView = ({ match, home, away }: MatchStatsViewProps) => {
   const showRound = rounds.length > 1 && (mode === "simple" || tab !== "timeline");
   const roundControl = showRound ? (
     <div className="flex items-center gap-2">
-      <ControlLabel>{t("matches.roundLabel")}</ControlLabel>
+      <Eyebrow className="aqt-tnum">{t("matches.roundLabel")}</Eyebrow>
       <Select value={String(activeRound)} onValueChange={(value) => setRound(Number(value))}>
         <SelectTrigger size="sm" className="w-[150px]">
           <SelectValue />
@@ -147,7 +142,7 @@ const MatchStatsView = ({ match, home, away }: MatchStatsViewProps) => {
 
           <TabsContent value="tables" className="flex flex-col gap-3">
             <div className="flex items-center gap-2">
-              <ControlLabel>{t("matches.tableView")}</ControlLabel>
+              <Eyebrow className="aqt-tnum">{t("matches.tableView")}</Eyebrow>
               <Select value={preset} onValueChange={(value) => setPreset(value as PresetKey)}>
                 <SelectTrigger size="sm" className="w-[160px]">
                   <SelectValue />

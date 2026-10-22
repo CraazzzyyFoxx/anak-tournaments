@@ -2,17 +2,15 @@
 
 import { useId, useMemo } from "react";
 
-import DivisionIcon from "@/components/DivisionIcon";
+import FieldLabel from "@/components/forms/FieldLabel";
+import FieldShell from "@/components/forms/FieldShell";
 import type { FieldRendererProps } from "@/components/forms/types";
+import { RankCrest } from "@/components/RankCrest";
 import { NumberInput } from "@/components/ui/number-input";
 import { useRoleName } from "@/hooks/useRoleName";
-import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
+import { resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { registrationRoles, showsRoles } from "@/lib/roster/ontology";
-import { cn } from "@/lib/utils";
 import type { DivisionGrid } from "@/types/workspace.types";
-
-import FieldLabel from "../FieldLabel";
-import { fieldControlClass, fieldInvalidClass } from "../FormField";
 
 /** The answer this control edits: `{ [roleCode]: rank }`, blanks absent. */
 function ranksOf(value: unknown): Record<string, unknown> {
@@ -63,7 +61,6 @@ export default function RoleRanksField({
 }: Readonly<FieldRendererProps>) {
   const id = useId();
   const nameOf = useRoleName();
-  const errorId = `${id}-error`;
   const ranks = ranksOf(value);
   const roles = registrationRoles(context.metadata);
   // One role: the block's own label names its one field, and the block is that role's whatever was declared.
@@ -84,14 +81,14 @@ export default function RoleRanksField({
   };
 
   return (
-    <fieldset
-      className="m-0 min-w-0 space-y-2 border-0 p-0"
-      aria-invalid={Boolean(error)}
-      aria-describedby={error ? errorId : undefined}
+    <FieldShell
+      id={id}
+      label={field.label || field.key}
+      required={field.required}
+      help={field.help}
+      error={error}
+      layout="group"
     >
-      <legend className="contents">
-        <FieldLabel label={field.label || field.key} required={field.required} />
-      </legend>
       <div className="grid gap-3 sm:grid-cols-3">
         {roles.map((role) => {
           const controlId = `${id}-${role.code}`;
@@ -124,24 +121,12 @@ export default function RoleRanksField({
                   value={rank}
                   onValueChange={(next) => setRank(role.code, next)}
                   aria-invalid={atFault}
-                  className={cn(
-                    fieldControlClass,
-                    division != null && "pr-11",
-                    atFault && fieldInvalidClass,
-                  )}
+                  variant="surface"
+                  className={division != null ? "pr-11" : undefined}
                 />
                 {division != null ? (
-                  <span
-                    className="pointer-events-none absolute inset-y-0 right-2 flex items-center"
-                    title={getDivisionLabel(nativeLadder, division) ?? undefined}
-                  >
-                    <DivisionIcon
-                      division={division}
-                      tournamentGrid={nativeLadder}
-                      width={22}
-                      height={22}
-                      className="size-[22px] object-contain"
-                    />
+                  <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center">
+                    <RankCrest division={division} grid={nativeLadder} tooltip={false} />
                   </span>
                 ) : null}
               </div>
@@ -149,14 +134,6 @@ export default function RoleRanksField({
           );
         })}
       </div>
-      {field.help ? (
-        <p className="text-xs leading-5 text-[color:var(--aqt-fg-muted)]">{field.help}</p>
-      ) : null}
-      {error ? (
-        <p id={errorId} className="text-xs text-destructive">
-          {error}
-        </p>
-      ) : null}
-    </fieldset>
+    </FieldShell>
   );
 }

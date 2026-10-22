@@ -5,13 +5,13 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { mapInitials } from "@/app/balancer/mix/_components/MatchHistoryList";
 import { lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
 import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
+import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { formatRelative } from "@/components/kit/format-time";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { Button } from "@/components/ui/button";
-import Image from "@/components/ui/image";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { SearchField } from "@/components/ui/search-field";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -160,9 +160,9 @@ function ActiveMixCard({
         <dl className="flex flex-wrap gap-x-6 gap-y-2">
           {game.lobbies.map((lobby) => (
             <div key={lobby.lobby_index} className="min-w-0">
-              <dt className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+              <Eyebrow as="dt">
                 {single ? t("game") : lobbies("tab", { letter: lobbyLetter(lobby.lobby_index) })}
-              </dt>
+              </Eyebrow>
               <dd className="mt-0.5 text-ui font-semibold tabular-nums text-[color:var(--aqt-fg)]">
                 {single
                   ? format.number((lobby.matches_count ?? 0) + 1)
@@ -171,7 +171,7 @@ function ActiveMixCard({
             </div>
           ))}
           <div className="min-w-0">
-            <dt className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">{t("signedUp")}</dt>
+            <Eyebrow as="dt">{t("signedUp")}</Eyebrow>
             <dd className="mt-0.5 text-ui font-semibold tabular-nums text-[color:var(--aqt-fg)]">
               {format.number(game.roster_count)}
             </dd>
@@ -390,9 +390,9 @@ function HistoryRow({
               <span className="font-display text-heading font-bold leading-none tabular-nums text-[color:var(--aqt-fg)]">
                 {format.dateTime(created, { day: "numeric" })}
               </span>
-              <span className="mt-1 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+              <Eyebrow className="mt-1">
                 {format.dateTime(created, { weekday: "short" })}
-              </span>
+              </Eyebrow>
             </>
           ) : null}
         </span>
@@ -467,19 +467,14 @@ function MapStack({ game }: Readonly<{ game: CustomGameListItem }>) {
     <span title={names} className="hidden min-w-0 items-center md:flex">
       <span className="sr-only">{t("maps", { names })}</span>
       {game.maps.map((map) => (
-        <span
+        <CatalogEntityImage
           key={map.name}
-          aria-hidden="true"
-          className="relative -ms-3 h-7 w-11 shrink-0 overflow-hidden rounded-md border-2 border-[color:var(--aqt-card)] bg-[color:var(--aqt-card-2)] first:ms-0"
-        >
-          {map.image_path ? (
-            <Image src={map.image_path} alt="" fill sizes="44px" className="object-cover" />
-          ) : (
-            <span className="flex size-full items-center justify-center font-display text-label font-extrabold text-[color:var(--aqt-fg-faint)]">
-              {mapInitials(map.name)}
-            </span>
-          )}
-        </span>
+          entity={map}
+          size={28}
+          shape="wide"
+          decorative
+          className="-ms-3 border-2 border-[color:var(--aqt-card)] first:ms-0"
+        />
       ))}
       {extra > 0 ? (
         <span aria-hidden="true" className="ms-1.5 text-caption tabular-nums text-[color:var(--aqt-fg-faint)]">

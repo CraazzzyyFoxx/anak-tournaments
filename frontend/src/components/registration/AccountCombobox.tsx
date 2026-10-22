@@ -1,25 +1,16 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
+import { useEffect, useId, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { FormField } from "@/types/forms.types";
 
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import Image from "@/components/ui/image";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
-import { normalizeAnswerText, validateAnswer } from "@/lib/forms/validate";
+import FieldLabel from "@/components/forms/FieldLabel";
+import { SocialIcon } from "@/components/social/SocialIcon";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
+import { CommandGroup, CommandItem } from "@/components/ui/command";
+import { FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import FieldLabel from "./FieldLabel";
-import { fieldControlClass, fieldInvalidClass } from "./FormField";
+import { normalizeAnswerText, validateAnswer } from "@/lib/forms/validate";
 
 interface AccountComboboxProps {
   label: string;
@@ -27,7 +18,8 @@ interface AccountComboboxProps {
   value: string;
   onChange: (v: string) => void;
   suggestions: string[];
-  icon?: string;
+  /** Social provider whose brand icon leads the label. */
+  provider?: string;
   required?: boolean;
   /** The schema field this control answers. Drives the live format check and
    *  the canonical form of what is stored. */
@@ -42,7 +34,7 @@ export default function AccountCombobox({
   value,
   onChange,
   suggestions,
-  icon,
+  provider,
   required = false,
   field,
   error = null,
@@ -51,9 +43,6 @@ export default function AccountCombobox({
   const tErrors = useTranslations("forms.errors");
   const [open, setOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);
-  const [contentWidth, setContentWidth] = useState<number>();
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const listboxId = useId();
   const controlId = useId();
   const errorId = `${controlId}-error`;
 
@@ -71,16 +60,6 @@ export default function AccountCombobox({
   useEffect(() => {
     setInputValue(value);
   }, [value]);
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    const nextWidth = triggerRef.current?.offsetWidth;
-    if (nextWidth) {
-      setContentWidth(nextWidth);
-    }
-  }, [open]);
 
   const handleSelect = (selected: string) => {
     if (formatError(selected)) {
@@ -111,88 +90,63 @@ export default function AccountCombobox({
     ? suggestions.filter((s) => s.toLowerCase().includes(inputValue.toLowerCase()))
     : suggestions;
 
-  const iconEl = icon ? (
-    <Image src={icon} alt="" width={14} height={14} className="size-3.5 object-contain opacity-50" />
+  const iconEl = provider ? (
+    <SocialIcon provider={provider} size={14} className="size-3.5 object-contain opacity-50" decorative />
   ) : null;
 
   return (
     <div className="space-y-2">
       <FieldLabel label={label} htmlFor={controlId} required={required} icon={iconEl} />
       {hasSuggestions ? (
-        <Popover open={open} onOpenChange={setOpen}>
-          <PopoverTrigger asChild>
-            <button
-              ref={triggerRef}
-              id={controlId}
-              type="button"
-              role="combobox"
-              aria-controls={listboxId}
-              aria-expanded={open}
-              aria-invalid={Boolean(shownError)}
-              aria-describedby={shownError ? errorId : undefined}
-              className={cn(
-                fieldControlClass,
-                "flex h-9 items-center justify-between text-base sm:text-sm",
-                value ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]",
-                shownError && fieldInvalidClass,
-              )}
-            >
-              <span className="truncate">{value || placeholder}</span>
-              <ChevronsUpDown className="ml-2 size-3.5 shrink-0 text-[color:var(--aqt-fg-dim)]" aria-hidden />
-            </button>
-          </PopoverTrigger>
-          <PopoverContent
-            id={listboxId}
-            align="start"
-            className="p-0"
-            style={{ width: contentWidth }}
-          >
-            <Command>
-              <CommandInput
-                value={inputValue}
-                onValueChange={handleInputChange}
-                placeholder={placeholder}
-              />
-              <CommandList>
-                <CommandEmpty>
-                  {inputValue
-                    ? t("registration.accounts.typeToUseCustom")
-                    : t("registration.accounts.noLinkedAccounts")}
-                </CommandEmpty>
-                <CommandGroup heading={t("registration.accounts.linkedAccounts")}>
-                  {filtered.map((s) => (
-                    <CommandItem key={s} value={s} onSelect={() => handleSelect(s)}>
-                      <span className="flex-1 truncate">{s}</span>
-                      <Check className={cn("ml-2 size-4", value === s ? "opacity-100" : "opacity-0")} aria-hidden />
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-                {inputValue && !suggestions.includes(inputValue) && !liveError && (
-                  <CommandGroup heading={t("registration.accounts.custom")}>
-                    <CommandItem value={normalizedInputValue} onSelect={() => handleSelect(inputValue)}>
-                      {t("registration.accounts.useValue", { value: normalizedInputValue })}
-                    </CommandItem>
-                  </CommandGroup>
-                )}
-              </CommandList>
-            </Command>
-          </PopoverContent>
-        </Popover>
+        <Combobox
+          id={controlId}
+          open={open}
+          onOpenChange={setOpen}
+          label={value || <span className="text-[color:var(--aqt-fg-dim)]">{placeholder}</span>}
+          labelTitle={value || placeholder}
+          variant="surface"
+          aria-invalid={Boolean(shownError)}
+          aria-describedby={shownError ? errorId : undefined}
+          searchValue={inputValue}
+          onSearchValueChange={handleInputChange}
+          searchPlaceholder={placeholder}
+          emptyMessage={
+            inputValue
+              ? t("registration.accounts.typeToUseCustom")
+              : t("registration.accounts.noLinkedAccounts")
+          }
+        >
+          <CommandGroup heading={t("registration.accounts.linkedAccounts")}>
+            {filtered.map((s) => (
+              <CommandItem key={s} value={s} onSelect={() => handleSelect(s)}>
+                <span className="min-w-0 flex-1 truncate">{s}</span>
+                <ComboboxCheck selected={value === s} />
+              </CommandItem>
+            ))}
+          </CommandGroup>
+          {inputValue && !suggestions.includes(inputValue) && !liveError && (
+            <CommandGroup heading={t("registration.accounts.custom")}>
+              <CommandItem value={normalizedInputValue} onSelect={() => handleSelect(inputValue)}>
+                {t("registration.accounts.useValue", { value: normalizedInputValue })}
+              </CommandItem>
+            </CommandGroup>
+          )}
+        </Combobox>
       ) : (
         <Input
           id={controlId}
           type="text"
+          variant="surface"
           placeholder={placeholder}
           value={inputValue}
           onChange={(e) => handleInputChange(e.target.value)}
           aria-invalid={Boolean(shownError)}
           aria-describedby={shownError ? errorId : undefined}
-          className={cn(fieldControlClass, shownError && fieldInvalidClass)}
         />
       )}
-      {shownError && (
-        <p id={errorId} className="text-xs text-destructive">{shownError}</p>
-      )}
+      <FieldError id={errorId} size="sm">
+        {shownError}
+      </FieldError>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useFormatter } from "@/lib/datetime/client";
 import { LogStatsName } from "../stat-names";
 import { COMPARISON_STATS, STAT_META, formatStat, teamTotal, type MatchStatsTeam } from "./stats";
 import TeamName from "@/components/TeamName";
+import { Eyebrow } from "@/components/ui/eyebrow";
 
 interface TeamComparisonProps {
   home: MatchStatsTeam;
@@ -58,9 +59,7 @@ const TeamComparison = ({ home, away, round }: TeamComparisonProps) => {
           size="xs"
           nameClassName="aqt-tnum text-sm font-semibold text-[color:var(--aqt-teal)]"
         />
-        <span className="aqt-tnum px-2 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-          {t("matches.comparison.title")}
-        </span>
+        <Eyebrow className="aqt-tnum px-2">{t("matches.comparison.title")}</Eyebrow>
         <TeamName
           team={away}
           size="xs"
@@ -82,9 +81,9 @@ const TeamComparison = ({ home, away, round }: TeamComparisonProps) => {
               {formatStat(row.name, row.home, format)}
             </span>
             <div className="flex flex-col gap-1">
-              <span className="text-center text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+              <Eyebrow tone="dim" className="text-center">
                 {row.label}
-              </span>
+              </Eyebrow>
               <div className="flex items-center">
                 <div className="flex flex-1 justify-end">
                   <div

@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
@@ -151,16 +152,20 @@ export function Dock({
 
   if (!isOpen) {
     return createPortal(
-      <button
+      // A floating pill over arbitrary page content: the `subtle` border, but an
+      // opaque card fill (also on hover) so the page never shows through it.
+      <Button
         ref={restoreRef}
         type="button"
+        variant="subtle"
+        size="sm"
         onClick={() => toggle(true)}
-        className="inline-flex items-center gap-2 rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card)]/95 px-3.5 py-2.5 text-caption font-semibold text-[color:var(--aqt-fg)] shadow-xl backdrop-blur outline-none transition-colors hover:border-[color:var(--aqt-teal)] hover:text-[color:var(--aqt-teal)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+        className="h-10 rounded-full bg-[color:var(--aqt-card)]/95 px-3.5 shadow-xl backdrop-blur hover:border-[color:var(--aqt-teal)] hover:bg-[color:var(--aqt-card)]/95 hover:text-[color:var(--aqt-teal)]"
       >
         <span className="text-[color:var(--aqt-teal)]">{icon}</span>
         {showLabel ?? title}
         {badge}
-      </button>,
+      </Button>,
       stack
     );
   }
@@ -186,17 +191,19 @@ export function Dock({
           <span className="truncate">{title}</span>
         </h2>
         {actions}
-        <button
+        <Button
           ref={closeRef}
           type="button"
+          variant="ghost"
+          size="icon"
           onClick={() => toggle(false)}
           aria-label={hideLabel}
           // 32px square: over the WCAG 2.5.8 24px floor without turning the
           // header into a toolbar.
-          className="absolute end-2 top-2 inline-flex size-8 shrink-0 items-center justify-center rounded-[8px] text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+          className="absolute end-2 top-2 size-8"
         >
-          <X className="size-4" aria-hidden />
-        </button>
+          <X aria-hidden />
+        </Button>
       </div>
       {children}
     </aside>,

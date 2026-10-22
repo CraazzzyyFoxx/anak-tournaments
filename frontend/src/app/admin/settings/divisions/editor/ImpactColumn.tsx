@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { AlertTriangle, Check, Info } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { TONE_TEXT } from "@/components/kit/tone";
+import { TONE_TEXT } from "@/components/ui/tone";
 import { cn } from "@/lib/utils";
 import type { DivisionGridReadinessSource } from "@/types/workspace.types";
 

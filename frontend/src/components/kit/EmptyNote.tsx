@@ -1,6 +1,6 @@
 import type { ElementType, ReactNode } from "react";
 
-import { TONE_TEXT, type Tone } from "@/components/kit/tone";
+import { TONE_TEXT, type Tone } from "@/components/ui/tone";
 import { cn } from "@/lib/utils";
 
 export interface EmptyNoteProps {

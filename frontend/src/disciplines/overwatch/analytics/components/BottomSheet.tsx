@@ -1,8 +1,7 @@
 "use client";
 
-import React from "react";
-
 import { useTranslations } from "next-intl";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import {
   Sheet,
   SheetContent,
@@ -19,17 +18,11 @@ interface BottomSheetProps {
   onClose: () => void;
 }
 
-function Kicker({ children }: Readonly<{ children: React.ReactNode }>) {
-  return (
-    <span className="text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">{children}</span>
-  );
-}
-
 function TermBody({ term }: Readonly<{ term: GlossaryTerm }>) {
   const t = useTranslations();
   return (
     <SheetHeader>
-      <Kicker>{t("analytics.sheet.glossaryKicker")}</Kicker>
+      <Eyebrow>{t("analytics.sheet.glossaryKicker")}</Eyebrow>
       <SheetTitle className="text-heading font-semibold">{t(`analytics.glossary.${term}.label`)}</SheetTitle>
       <SheetDescription className="text-body text-[color:var(--aqt-fg-muted)]">
         {t(`analytics.glossary.${term}.plain`)}
@@ -44,7 +37,7 @@ function HowBody() {
   return (
     <>
       <SheetHeader>
-        <Kicker>{t("analytics.howItWorks.kicker")}</Kicker>
+        <Eyebrow>{t("analytics.howItWorks.kicker")}</Eyebrow>
         <SheetTitle className="text-heading font-semibold">{t("analytics.howItWorks.title")}</SheetTitle>
         <SheetDescription className="text-body text-[color:var(--aqt-fg-muted)]">
           {t("analytics.howItWorks.intro")}

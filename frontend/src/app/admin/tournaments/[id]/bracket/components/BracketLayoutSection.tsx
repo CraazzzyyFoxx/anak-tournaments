@@ -12,7 +12,8 @@ import {
   type Draft
 } from "@/components/bracket/editor/templateDraft";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
-import { EYEBROW_CLASS, TONE_TEXT } from "@/components/kit/tone";
+import { TONE_TEXT } from "@/components/ui/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { NumberInput } from "@/components/ui/number-input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -140,7 +141,7 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
         <h3 id="bracket-layout-heading" className="text-sm font-semibold text-foreground">
           {t("title")}
         </h3>
-        <p className={EYEBROW_CLASS}>
+        <p className={eyebrowClass("muted")}>
           {templateQuery.data?.custom ? t("custom") : t("generated")}
         </p>
       </div>

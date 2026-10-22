@@ -4,6 +4,7 @@ import * as React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
@@ -38,18 +39,21 @@ interface DataPaginationProps {
   totalPages: number;
   onPageChange: (page: number) => void;
   className?: string;
-  /** Optional "Showing 1–20 of 340" style summary rendered before the controls. */
-  summary?: React.ReactNode;
+  /**
+   * Content before the page buttons: a "Showing 1–20 of 340" range, a
+   * rows-per-page select. Set in the muted label style, and kept when there is
+   * only one page.
+   */
+  leading?: React.ReactNode;
 }
 
-const buttonClass =
-  "aqt-tnum inline-flex h-8 min-w-8 items-center justify-center rounded-[6px] border px-2 text-caption font-medium tabular-nums transition-colors outline-none " +
-  "focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)] " +
-  "disabled:cursor-not-allowed disabled:opacity-40";
+const PAGE_BUTTON_CLASS = "aqt-tnum min-w-8 px-2 tabular-nums";
+const CURRENT_PAGE_CLASS =
+  "border-[color:color-mix(in_srgb,var(--aqt-teal)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_12%,transparent)] text-[color:var(--aqt-teal)] hover:bg-[color:color-mix(in_srgb,var(--aqt-teal)_12%,transparent)]";
 
 /**
- * The single pagination control for the public site. Replaces five
- * implementations that between them lost `aria-label` on the arrows,
+ * The single pagination control for the site and the admin tables. Replaces
+ * six implementations that between them lost `aria-label` on the arrows,
  * `aria-current` on the active page, and used bare `‹`/`›`/`←`/`→` glyphs
  * (which screen readers read literally) instead of icons.
  */
@@ -58,12 +62,12 @@ export function DataPagination({
   totalPages,
   onPageChange,
   className,
-  summary
+  leading
 }: Readonly<DataPaginationProps>) {
   const t = useTranslations();
 
   const hasControls = totalPages > 1;
-  if (!hasControls && !summary) return null;
+  if (!hasControls && !leading) return null;
 
   // One shell for both branches. These used to diverge: with a single page the
   // component returned a bare `<div className={className}>{summary}</div>`, so
@@ -78,25 +82,24 @@ export function DataPagination({
       aria-label={hasControls ? t("common.pagination.label") : undefined}
       className={cn("flex flex-wrap items-center justify-between gap-3", className)}
     >
-      {summary ? (
-        <div className="text-label text-[color:var(--aqt-fg-dim)]">{summary}</div>
+      {leading ? (
+        <div className="text-label text-[color:var(--aqt-fg-dim)]">{leading}</div>
       ) : (
         <span />
       )}
       {hasControls ? (
         <div className="flex flex-wrap items-center gap-1.5">
-          <button
+          <Button
             type="button"
-            className={cn(
-              buttonClass,
-              "border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] hover:enabled:text-[color:var(--aqt-fg)]"
-            )}
+            variant="subtle"
+            size="sm"
+            className={PAGE_BUTTON_CLASS}
             disabled={safePage <= 1}
             aria-label={t("common.pagination.previous")}
             onClick={() => onPageChange(safePage - 1)}
           >
-            <ChevronLeft aria-hidden className="size-4" />
-          </button>
+            <ChevronLeft aria-hidden />
+          </Button>
 
           {pageWindow.map((entry, index) =>
             entry === null ? (
@@ -108,36 +111,32 @@ export function DataPagination({
                 &hellip;
               </span>
             ) : (
-              <button
+              <Button
                 key={entry}
                 type="button"
+                variant="subtle"
+                size="sm"
                 aria-current={entry === safePage ? "page" : undefined}
                 aria-label={t("common.pagination.goToPage", { page: entry })}
-                className={cn(
-                  buttonClass,
-                  entry === safePage
-                    ? "border-[color:color-mix(in_srgb,var(--aqt-teal)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_12%,transparent)] text-[color:var(--aqt-teal)]"
-                    : "border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
-                )}
+                className={cn(PAGE_BUTTON_CLASS, entry === safePage && CURRENT_PAGE_CLASS)}
                 onClick={() => onPageChange(entry)}
               >
                 {entry}
-              </button>
+              </Button>
             )
           )}
 
-          <button
+          <Button
             type="button"
-            className={cn(
-              buttonClass,
-              "border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] hover:enabled:text-[color:var(--aqt-fg)]"
-            )}
+            variant="subtle"
+            size="sm"
+            className={PAGE_BUTTON_CLASS}
             disabled={safePage >= totalPages}
             aria-label={t("common.pagination.next")}
             onClick={() => onPageChange(safePage + 1)}
           >
-            <ChevronRight aria-hidden className="size-4" />
-          </button>
+            <ChevronRight aria-hidden />
+          </Button>
         </div>
       ) : null}
     </Shell>

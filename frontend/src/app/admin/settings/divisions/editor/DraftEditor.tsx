@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useMemo, useReducer, useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
@@ -8,6 +8,8 @@ import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialo
 import { EntityHubHeader } from "@/components/kit/EntityHubHeader";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { useGameDescriptors } from "@/hooks/useGameDescriptors";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useFilePicker } from "@/components/ui/file-button";
 import { useQueryParams } from "@/hooks/useQueryParams";
 import type { DisciplineCapabilities } from "@/types/discipline.types";
 import { notify } from "@/lib/notify";
@@ -124,21 +126,13 @@ export function DraftEditor({
   const [manualChoice, setManualChoice] = useState<MappingChoices>(() => initialChoices ?? {});
   const [confirming, setConfirming] = useState<"publish" | "delete" | "scale" | null>(null);
   const [iconTarget, setIconTarget] = useState<number | null>(null);
-  const iconInputRef = useRef<HTMLInputElement>(null);
   // What the ladder draws for a version that stores no native link is the backend's
   // rank-range fallback, not a decision anyone made — the column says so.
   const implicitLinks = !version.tiers.some(
     (tier) => tier.native_rank_min != null && tier.native_rank_max != null
   );
 
-  const [isWide, setIsWide] = useState(true);
-  useEffect(() => {
-    const query = window.matchMedia(RAIL_MEDIA_QUERY);
-    const sync = () => setIsWide(query.matches);
-    sync();
-    query.addEventListener("change", sync);
-    return () => query.removeEventListener("change", sync);
-  }, []);
+  const isWide = useMediaQuery(RAIL_MEDIA_QUERY, true);
 
   const sources = readiness?.sources ?? [];
   const tiersDirty = state.history.length > 0;
@@ -198,10 +192,19 @@ export function DraftEditor({
       onReload
     });
 
-  const onPickIcon = useCallback((bandIndex: number) => {
-    setIconTarget(bandIndex);
-    iconInputRef.current?.click();
-  }, []);
+  const { input: iconInput, open: openIconPicker } = useFilePicker({
+    accept: "image/png,image/webp,image/svg+xml",
+    onFiles: ([file]) => {
+      if (iconTarget !== null) iconMutation.mutate({ bandIndex: iconTarget, file });
+    }
+  });
+  const onPickIcon = useCallback(
+    (bandIndex: number) => {
+      setIconTarget(bandIndex);
+      openIconPicker();
+    },
+    [openIconPicker]
+  );
 
   const selectedSlug = searchParams?.get("band") ?? null;
   const requestedTab = (searchParams?.get("tab") ?? "divisions") as TabKey;
@@ -312,19 +315,7 @@ export function DraftEditor({
         </p>
       ) : null}
 
-      <input
-        ref={iconInputRef}
-        type="file"
-        accept="image/png,image/webp,image/svg+xml"
-        className="hidden"
-        aria-hidden
-        tabIndex={-1}
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file && iconTarget !== null) iconMutation.mutate({ bandIndex: iconTarget, file });
-          event.target.value = "";
-        }}
-      />
+      {iconInput}
 
       <div
         className={cn(

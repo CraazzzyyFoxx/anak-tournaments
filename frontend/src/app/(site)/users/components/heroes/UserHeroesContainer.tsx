@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import userService from "@/services/user.service";
-import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
+import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
 import CharacterStatsTable from "@/components/profile/CharacterStatsTable";
 import ProfileWidget from "@/components/profile/ProfileWidget";
 import { Skeleton } from "@/components/ui/skeleton";

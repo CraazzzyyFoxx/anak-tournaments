@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
+import { HandleLabel } from "@/components/HandleLabel";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { getDivisionLabel } from "@/lib/divisions/grid";
 import { formatSeconds } from "@/lib/format";
@@ -75,9 +76,6 @@ const LeaderboardRow = ({
   onHoverUser
 }: LeaderboardRowProps) => {
   const t = useTranslations();
-  const at = entry.username.lastIndexOf("#");
-  const handle = at > 0 ? entry.username.slice(0, at) : entry.username;
-  const tag = at > 0 ? entry.username.slice(at) : "";
   const bg = isHighlighted ? ROW_HIGHLIGHT : ROW_BG;
 
   return (
@@ -95,8 +93,7 @@ const LeaderboardRow = ({
             onBlur={() => onHoverUser(null)}
             className="min-w-0 truncate rounded-sm text-caption font-semibold text-[color:var(--aqt-fg)] outline-none hover:text-[color:var(--aqt-teal)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
           >
-            {handle}
-            <span className="font-medium text-[color:var(--aqt-fg-faint)]">{tag}</span>
+            <HandleLabel handle={entry.username} />
           </Link>
         </div>
       </td>

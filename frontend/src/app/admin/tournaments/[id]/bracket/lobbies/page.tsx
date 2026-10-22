@@ -8,7 +8,7 @@ import { useTranslations } from "next-intl";
 import { FfaGameResultsDialog, useFfaErrorMessage } from "@/components/admin/ffa/FfaGameResultsDialog";
 import FfaLobbyTable, { lobbyGamePositions } from "@/components/ffa/FfaLobbyTable";
 import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -132,7 +132,7 @@ function LobbyCard({ lobby }: Readonly<{ lobby: FfaLobby }>) {
           <>
             <FfaLobbyTable lobby={lobby} />
             <div className="flex flex-wrap items-center gap-2">
-              <span className={EYEBROW_CLASS}>{t("games")}</span>
+              <span className={eyebrowClass("muted")}>{t("games")}</span>
               {positions.map((position) => (
                 <span key={position} className="flex items-center gap-1">
                   <Button
@@ -206,7 +206,7 @@ function GamesCountForm({ lobby }: Readonly<{ lobby: FfaLobby }>) {
 
   return (
     <div className="flex items-center gap-2">
-      <label className={EYEBROW_CLASS} htmlFor={`ffa-games-${lobby.encounter_id}`}>
+      <label className={eyebrowClass("muted")} htmlFor={`ffa-games-${lobby.encounter_id}`}>
         {t("games")}
       </label>
       <NumberInput
@@ -287,7 +287,7 @@ function VoidGameDialog({
       errorMessage={error ?? undefined}
     >
       <div className="space-y-1">
-        <label className={EYEBROW_CLASS} htmlFor={`ffa-void-reason-${lobby.encounter_id}`}>
+        <label className={eyebrowClass("muted")} htmlFor={`ffa-void-reason-${lobby.encounter_id}`}>
           {t("reason")}
         </label>
         <Input

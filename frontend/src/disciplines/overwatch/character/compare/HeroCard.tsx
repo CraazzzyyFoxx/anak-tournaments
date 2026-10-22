@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { useRoleName } from "@/hooks/useRoleName";
 import { characterClass } from "@/lib/catalog/attrs";
 import { useFormatter } from "@/lib/datetime/client";
@@ -82,12 +83,12 @@ export default function HeroCard({
         <CatalogEntityImage entity={character} size={84} rounded="lg" decorative className="rounded-xl" />
         <div className="min-w-0">
           {heroClass ? (
-            <span className="inline-flex items-center gap-1.5 text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
+            <Eyebrow tone="muted" className="inline-flex items-center gap-1.5">
               {role && dimension ? (
                 <PlayerRoleIcon role={{ dimension, role: role.code }} ontology={metadata} size={14} decorative />
               ) : null}
               {role ? nameOf(role) : heroClass}
-            </span>
+            </Eyebrow>
           ) : null}
           <h2 className="mt-1 truncate font-onest text-[2.25rem] font-bold leading-none text-[color:var(--aqt-fg)]">
             {character.name}
@@ -123,9 +124,7 @@ export default function HeroCard({
       </div>
 
       <div className="relative flex flex-col gap-2.5">
-        <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
-          {t("users.heroesCompare.hero.rankBy")}
-        </span>
+        <Eyebrow>{t("users.heroesCompare.hero.rankBy")}</Eyebrow>
         <div className="-mx-5 flex gap-1.5 overflow-x-auto px-5 [scrollbar-width:none] md:mx-0 md:flex-wrap md:px-0 [&::-webkit-scrollbar]:hidden">
           {columnKeys.map((key, i) => {
             const active = i === sortIndex;

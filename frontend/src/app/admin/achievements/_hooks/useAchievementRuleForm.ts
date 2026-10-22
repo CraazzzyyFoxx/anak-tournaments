@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -33,7 +33,6 @@ export interface AchievementRuleForm {
   setFormData: (data: AchievementRuleCreateInput | AchievementRuleUpdateInput) => void;
   imagePreview: string | null;
   imageError: string | null;
-  imageInputRef: React.RefObject<HTMLInputElement | null>;
   isDirty: boolean;
   isSubmitting: boolean;
   /** Message of the failed create or update, whichever the dialog is running. */
@@ -76,7 +75,6 @@ export function useAchievementRuleForm(
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const invalidateRules = (discipline: string) => {
     queryClient.invalidateQueries({ queryKey: achievementQueryKeys.adminList(workspaceId, discipline) });
@@ -189,7 +187,6 @@ export function useAchievementRuleForm(
     setFormData,
     imagePreview,
     imageError,
-    imageInputRef,
     isDirty: open && hasUnsavedChanges(formData, formInitial),
     isSubmitting: createMutation.isPending || updateMutation.isPending,
     error: (editingRule ? updateMutation.error : createMutation.error) instanceof Error

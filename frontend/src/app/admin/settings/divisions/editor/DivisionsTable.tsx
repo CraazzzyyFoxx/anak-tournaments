@@ -8,7 +8,7 @@ import { useTranslations } from "next-intl";
 
 import { DataTable, createKebabColumn } from "@/components/data-table";
 import { InlineEditText } from "@/components/kit/InlineEditText";
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
@@ -242,7 +242,7 @@ export function DivisionsTable({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 rounded-xl border border-border bg-card px-3 py-2">
         <div className="flex min-w-0 max-w-prose flex-col gap-0.5">
-          <span className={EYEBROW_CLASS}>{t("table.rankScale")}</span>
+          <span className={eyebrowClass("muted")}>{t("table.rankScale")}</span>
           <p className="text-xs text-muted-foreground">
             {custom
               ? t("table.customScaleHint")

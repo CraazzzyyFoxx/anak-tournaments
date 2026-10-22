@@ -18,6 +18,7 @@ import MapsForHero from "./MapsForHero";
 import HeroRail, { type HeroRow } from "./HeroRail";
 import HeroBestGames from "./HeroBestGames";
 import RadarAxisPicker from "./RadarAxisPicker";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 
 /** Overwatch's characters tab (the profile's `characterStats` slot). */
@@ -286,9 +287,7 @@ const HeroesView = ({ characters, filterSlot, maps, metadata }: SlotProps["chara
                 <HeroRadar radarData={radarData} />
                 {radarCandidates.length > 0 ? (
                   <div className="flex flex-col gap-1.5">
-                    <span className="text-center text-label font-bold uppercase tracking-label text-(--aqt-fg-faint)">
-                      {t("users.heroes.radarAxes")}
-                    </span>
+                    <Eyebrow className="text-center">{t("users.heroes.radarAxes")}</Eyebrow>
                     <RadarAxisPicker selected={radarStats} candidates={radarCandidates} onToggle={toggleRadarStat} />
                   </div>
                 ) : null}

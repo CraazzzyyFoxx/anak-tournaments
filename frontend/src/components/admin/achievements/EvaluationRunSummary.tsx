@@ -13,7 +13,8 @@ import {
   type LucideIcon
 } from "lucide-react";
 
-import { EYEBROW_CLASS, TONE_TEXT, type Tone } from "@/components/kit/tone";
+import { TONE_TEXT, type Tone } from "@/components/ui/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { notify } from "@/lib/notify";
@@ -178,7 +179,7 @@ function signed(value: number, sign: string, format: (value: number) => string):
 function Figure({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div>
-      <dt className={EYEBROW_CLASS}>{label}</dt>
+      <dt className={eyebrowClass("muted")}>{label}</dt>
       <dd className="mt-1 text-heading font-semibold tabular-nums">{value}</dd>
     </div>
   );

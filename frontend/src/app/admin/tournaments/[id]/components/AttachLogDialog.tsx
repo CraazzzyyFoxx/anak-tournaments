@@ -169,7 +169,8 @@ export function AttachLogDialog({
             }))}
             placeholder={tx("pickTournament")}
             searchPlaceholder={tx("searchTournament")}
-            triggerClassName="h-9"
+            variant="default"
+            size="default"
           />
         ) : null}
         <SearchableImageSelect
@@ -187,7 +188,8 @@ export function AttachLogDialog({
           }))}
           placeholder={t("pickEncounter")}
           searchPlaceholder={t("searchEncounter")}
-          triggerClassName="h-9"
+          variant="default"
+          size="default"
         />
         <SearchableImageSelect
           value={selectedGame ? String(selectedGame.id) : undefined}
@@ -207,7 +209,8 @@ export function AttachLogDialog({
           ariaLabel={t("pickGame")}
           searchPlaceholder={t("searchGame")}
           disabled={encounterId === undefined || gamesQuery.isFetching || gamesQuery.isError || isPending}
-          triggerClassName="h-9"
+          variant="default"
+          size="default"
         />
         {encounterId !== undefined && loading ? (
           <div role="status">
@@ -269,7 +272,8 @@ export function AttachLogDialog({
                     placeholder={tx("pickSeat")}
                     ariaLabel={tx("seatFor", { team: team.key })}
                     searchPlaceholder={tx("searchSeat")}
-                    triggerClassName="h-9"
+                    variant="default"
+                    size="default"
                   />
                 </div>
               ))

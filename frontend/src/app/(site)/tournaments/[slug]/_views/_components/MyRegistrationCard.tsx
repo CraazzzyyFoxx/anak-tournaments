@@ -23,6 +23,7 @@ import {
   RefreshCw
 } from "lucide-react";
 
+import { Eyebrow } from "@/components/ui/eyebrow";
 import Image from "@/components/ui/image";
 import { StatusDot } from "@/components/ui/status-dot";
 import { LateSignUpBadge, OnCallBadge } from "@/components/status/RegistrationBadges";
@@ -625,9 +626,9 @@ function MyRegistrationCard({
           </span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5">
-              <p className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+              <Eyebrow as="p" tone="dim">
                 {t("registration.myCard.title")}
-              </p>
+              </Eyebrow>
               {/* Where this entry sits in submission order. Server-sent, because a
                   tournament that hides its participants list gives this card no
                   rows to count — and counting rows was never the same number
@@ -850,9 +851,9 @@ function MyRegistrationCard({
           <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
             {named ? (
               <div className="space-y-2">
-                <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+                <Eyebrow as="h4" tone="dim">
                   {t("common.rolesList")}
-                </h4>
+                </Eyebrow>
                 {primaryRole || secondaryRoles.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
                     {primaryRole && <RegistrationRoleChip role={primaryRole} showPrimaryMark ontology={ontology} t={t} />}
@@ -874,18 +875,18 @@ function MyRegistrationCard({
               </div>
             ) : specialization ? (
               <div className="space-y-2">
-                <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+                <Eyebrow as="h4" tone="dim">
                   {t("registration.roles.specialization")}
-                </h4>
+                </Eyebrow>
                 <p className="text-xs text-[color:var(--aqt-fg)]">{formatSubroleSlug(specialization)}</p>
               </div>
             ) : null}
 
             {teamBrief && (
               <div className="space-y-2">
-                <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+                <Eyebrow as="h4" tone="dim">
                   {t("registrationTeams.myCard.teamLabel")}
-                </h4>
+                </Eyebrow>
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
                   <span className="font-semibold text-[color:var(--aqt-fg)]">{teamBrief.name}</span>
                   {teamBrief.is_captain && (
@@ -907,9 +908,9 @@ function MyRegistrationCard({
             )}
 
             <div className="space-y-2">
-              <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+              <Eyebrow as="h4" tone="dim">
                 {t("registration.myCard.accounts")}
-              </h4>
+              </Eyebrow>
               <div className="flex flex-wrap gap-1.5 text-xs">
                 {IDENTITY_PROVIDERS.map((provider) => {
                   // Index 0 is the primary handle; the rest of a Battle.net
@@ -929,9 +930,9 @@ function MyRegistrationCard({
                       {brand ? (
                         <brand.Icon aria-hidden className={cn("size-3.5", brand.className)} />
                       ) : (
-                        <span className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+                        <Eyebrow tone="dim">
                           {t(`registration.accounts.${provider}`)}
-                        </span>
+                        </Eyebrow>
                       )}
                       <span className="text-[color:var(--aqt-fg-muted)]">{handle}</span>
                     </div>
@@ -943,9 +944,9 @@ function MyRegistrationCard({
 
           {detailColumns.length > 0 ? (
             <div className="mt-4 space-y-2">
-              <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+              <Eyebrow as="h4" tone="dim">
                 {t("registration.myCard.details")}
-              </h4>
+              </Eyebrow>
               <dl className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
                 {detailColumns.map((column) => (
                   <div key={column.id} className="min-w-0 space-y-1">
@@ -963,9 +964,9 @@ function MyRegistrationCard({
 
           {publicNotes ? (
             <div className="mt-4 space-y-1.5">
-              <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+              <Eyebrow as="h4" tone="dim">
                 {t("registration.details.notes")}
-              </h4>
+              </Eyebrow>
               <p className="border-l-2 border-[color:var(--aqt-border-2)] pl-3 text-xs italic leading-relaxed text-[color:var(--aqt-fg-muted)]">
                 &ldquo;{publicNotes}&rdquo;
               </p>

@@ -3,15 +3,16 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { getTranslations } from "next-intl/server";
 
+import { HandleLabel } from "@/components/HandleLabel";
 import {
   Column,
   ColumnHead,
   EmptyNote,
-  EYEBROW_CLASS,
   LoadError,
   Section,
   SectionHead
 } from "@/components/site/open-layout";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCloseness } from "@/lib/encounter/detail";
 import type { Formatter } from "@/lib/datetime";
@@ -23,7 +24,7 @@ import { cn } from "@/lib/utils";
 import statisticsService from "@/services/statistics.service";
 import type { StatRecord, StatRecordCode } from "@/types/statistics.types";
 
-import { clock, splitBattleTag } from "./statistics.model";
+import { clock } from "./statistics.model";
 
 const TITLE_ID = "stats-records-title";
 
@@ -91,7 +92,6 @@ function Figure({ record, format, size }: Readonly<{ record: StatRecord; format:
 /** Who holds it: a player (linked to the profile), else the team. */
 function Holder({ record, className }: Readonly<{ record: StatRecord; className: string }>) {
   if (record.player) {
-    const [nick, tag] = splitBattleTag(record.player.name);
     return (
       <p className={className}>
         <Link
@@ -100,8 +100,7 @@ function Holder({ record, className }: Readonly<{ record: StatRecord; className:
           title={record.player.name}
           className={LINK_CLASS}
         >
-          {nick}
-          {tag ? <span className="font-normal text-[color:var(--aqt-fg-faint)]">{tag}</span> : null}
+          <HandleLabel handle={record.player.name} />
         </Link>
       </p>
     );
@@ -212,7 +211,7 @@ export async function RecordsSection({ discipline }: Readonly<{ discipline: stri
         <div className={FEATURED_GRID_CLASS}>
           {featured.map((record) => (
             <article key={record.code} className="min-w-0 border-t border-[color:var(--aqt-border-3)] pt-4">
-              <h3 className={EYEBROW_CLASS}>{t(`code.${record.code}`)}</h3>
+              <Eyebrow as="h3">{t(`code.${record.code}`)}</Eyebrow>
               <Figure record={record} format={format} size="lg" />
               <Holder record={record} className="mt-2.5 truncate text-ui font-semibold text-[color:var(--aqt-fg)]" />
               <Context record={record} format={format} className="mt-1" />
@@ -230,7 +229,7 @@ export async function RecordsSection({ discipline }: Readonly<{ discipline: stri
                 className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 border-b border-[color:var(--aqt-border)] py-3"
               >
                 <div className="min-w-0">
-                  <h4 className={EYEBROW_CLASS}>{t(`code.${record.code}`)}</h4>
+                  <Eyebrow as="h4">{t(`code.${record.code}`)}</Eyebrow>
                   <Holder record={record} className="mt-1 truncate text-body font-semibold text-[color:var(--aqt-fg)]" />
                   <Context record={record} format={format} className="mt-0.5" />
                 </div>

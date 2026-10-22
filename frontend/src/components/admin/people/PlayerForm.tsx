@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 
-import { Combobox, ComboboxCheck } from "@/components/kit/Combobox";
+import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
 import DivisionIcon from "@/components/DivisionIcon";
 import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";

@@ -9,7 +9,8 @@ import { DraftClock } from "@/components/draft/DraftClock";
 import { useDraftFeasibilityQuery, useDraftRealtime } from "@/hooks/useDraftData";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { StatusPill } from "@/components/kit/StatusPill";
-import { EYEBROW_CLASS, type Tone } from "@/components/kit/tone";
+import { type Tone } from "@/components/ui/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/ui/status-dot";
@@ -76,7 +77,7 @@ export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlR
             {/* The clock is deliberately outside the live region: it ticks four
                 times a second and would re-announce the whole strip with it. */}
             <div role="status" className="mt-4">
-              <p className={`${EYEBROW_CLASS} tabular-nums`}>
+              <p className={`${eyebrowClass("muted")} tabular-nums`}>
                 {currentPick
                   ? t("onTheClock", {
                       round: currentPick.round_no,

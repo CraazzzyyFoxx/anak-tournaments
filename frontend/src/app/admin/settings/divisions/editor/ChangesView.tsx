@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
-import { EYEBROW_CLASS } from "@/components/kit/tone";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 
 import { diffBands, nativeShortLabel, rankRangeLabel, type Band, type Ladder } from "./draftReducer";
 
@@ -49,7 +49,7 @@ export function ChangesView({ ladder, base, bands, baseLabel }: Readonly<Changes
 
   return (
     <div className="flex flex-col gap-4">
-      <p className={EYEBROW_CLASS}>
+      <p className={eyebrowClass("muted")}>
         {t("changes.summary", { base: baseLabel, count: total })}
       </p>
 
