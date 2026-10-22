@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import en from "@/i18n/messages/en.json";
 import { navigation } from "@/test/url-navigation";
 import { disciplineServiceMock } from "@/test/discipline-metadata";
+import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type {
   CustomGameListItem,
@@ -129,6 +130,7 @@ beforeEach(() => {
     lastGame: null,
     isLoading: false
   });
+  useAuthProfileStore.setState({ status: "anonymous", user: undefined });
 });
 
 afterEach(() => {
@@ -251,5 +253,45 @@ describe("mix directory browsing game", () => {
       expect.stringContaining("Aria")
     ]);
     expect(container.querySelector('input[placeholder="Mix or host"]')).toBeNull();
+  });
+});
+
+describe("mix directory under all communities", () => {
+  it("reads the listed and the viewer's own communities, not every one a superuser can administer", async () => {
+    const listed = { id: 1, name: "Listed", disciplines_enabled: ["overwatch"], is_hidden: false, verification_status: "verified" };
+    const mine = { id: 2, name: "Mine", disciplines_enabled: ["overwatch"], is_hidden: true, verification_status: "unverified" };
+    // Hidden or unverified and not a member: reachable only through superuser powers.
+    const unlisted = Array.from({ length: 200 }, (_, index) => ({
+      id: 100 + index,
+      name: `Unlisted ${index}`,
+      disciplines_enabled: ["overwatch"],
+      is_hidden: index % 2 === 0,
+      verification_status: index % 2 === 0 ? "verified" : "unverified"
+    }));
+    useWorkspaceStore.setState({ statsScope: "all", workspaces: [listed, mine, ...unlisted] as never });
+    useAuthProfileStore.setState({
+      status: "authenticated",
+      user: {
+        username: "root",
+        roles: [],
+        permissions: [],
+        denies: [],
+        isSuperuser: true,
+        workspaces: [{ workspace_id: 2, slug: "mine", roles: ["owner"], permissions: [] }],
+        linkedPlayers: []
+      }
+    });
+    mocks.list.mockResolvedValue({ items: [], next_before_id: null });
+
+    await mountPage("/balancer/mix?discipline=all");
+
+    // One open read, one history page and one scoreboard per community: O(listed + own), not O(every workspace).
+    expect(lists()).toEqual([
+      [1, null, "open"],
+      [2, null, "open"],
+      [1, null, "history"],
+      [2, null, "history"]
+    ]);
+    expect(mocks.stats.mock.calls.map((call) => call[0])).toEqual([1, 2]);
   });
 });

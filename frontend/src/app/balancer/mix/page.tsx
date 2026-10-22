@@ -42,8 +42,9 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
  * leave this page for `/balancer/mix/[gameId]`.
  *
  * A multi page (spec §5): every game under "all games", one game under a game (`?discipline=` or the scope), and
- * every community under the "all communities" scope, where each one is read on its own and the results are joined
- * here (history by id, the scoreboard by player). An invalid or empty game resolution makes no request.
+ * under the "all communities" scope every community in the public directory or the viewer's own, where each one is
+ * read on its own and the results are joined here (history by id, the scoreboard by player). An invalid or empty game
+ * resolution makes no request.
  * `?view=rating` swaps the directory for the full scoreboard.
  */
 export default function BalancerPickupListPage() {
@@ -58,8 +59,15 @@ export default function BalancerPickupListPage() {
   const workspaces = useWorkspaceStore((state) => state.workspaces);
   const workspacesLoading = useWorkspaceStore((state) => state.isLoading);
   const all = statsScope === "all" && hostWorkspaceId == null;
+  const profile = useAuthProfile().user;
+  const memberOf = new Set(profile?.workspaces.map((membership) => membership.workspace_id));
+  // Every community is read on its own, so "all" must stay small: the directory (backend `_is_listed`) plus the
+  // viewer's own -- which is the switcher list itself for everyone but a superuser, whose list is every workspace.
+  // ponytail: O(listed + own) requests per panel; a cross-workspace list/stats read makes it O(1) if the directory grows.
   const visibleWorkspaces = workspaces.filter((workspace) =>
-    all || workspace.id === (hostWorkspaceId ?? workspaceId)
+    all
+      ? (!workspace.is_hidden && workspace.verification_status !== "unverified") || memberOf.has(workspace.id)
+      : workspace.id === (hostWorkspaceId ?? workspaceId)
   );
   const workspaceIds = visibleWorkspaces.map((workspace) => workspace.id);
   const gameScope = useGameScope();
@@ -83,7 +91,7 @@ export default function BalancerPickupListPage() {
   const canEdit = creationWorkspaces.length > 0;
   const [createOpen, setCreateOpen] = useState(false);
   const view = searchParams.get("view") === "rating" ? "rating" : "mixes";
-  const viewerIds = useAuthProfile().user?.linkedPlayers.map((player) => player.playerId) ?? [];
+  const viewerIds = profile?.linkedPlayers.map((player) => player.playerId) ?? [];
   const pending = workspacesLoading || resolution === null;
 
   const openQueries = useQueries({
