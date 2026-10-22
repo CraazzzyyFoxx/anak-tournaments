@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 
 import { TournamentTeamCard } from "@/components/TournamentTeamCard";
 import { FilterChip } from "@/components/ui/filter-chip";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { SearchField } from "@/components/ui/search-field";
 import {
   Select,
@@ -196,6 +197,8 @@ const TournamentTeamsView = ({ tournament, slug }: { tournament: Tournament; slu
               </>
             ) : null}
           </SectionToolbar>
+
+          <Eyebrow as="h2">{t("common.teams")}</Eyebrow>
 
           {visibleTeams.length === 0 ? (
             <TournamentPageState
