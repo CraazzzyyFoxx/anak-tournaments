@@ -27,9 +27,12 @@ from typing import Any
 from faststream.rabbit.annotations import RabbitMessage
 
 from shared import models
-from shared.domain.encounter_scoring import GameLine
+from shared.core import http_status as status
+from shared.core.errors import ApiExc
+from shared.core.errors import BaseAPIException as HTTPException
 from shared.rpc.identity import ensure_workspace_permission, rehydrate_user_optional
 from shared.services.audit import record_admin_audit
+from shared.services.encounter.participants import active_teams
 from shared.services.tournament.visibility import ensure_tournament_viewable
 from src.core import auth
 from src.rpc._helpers import _actor_player_id, _dump, _identity, _path_int, _payload, _read, _require_id, _run
@@ -37,6 +40,7 @@ from src.schemas.ffa import FfaGameCancelInput, FfaGameResultsInput, FfaGamesCou
 from src.services import visibility_resolvers
 from src.services.admin.stage import stage_service as admin_stage_service
 from src.services.encounter.ffa import ffa_encounter_service, public_view
+from src.services.encounter.games import GameResultIn
 
 
 async def _assert_source_correction_allowed(session: Any, encounter_id: int) -> None:
@@ -108,13 +112,24 @@ def register(broker: Any, logger: Any) -> None:
                 after={"position": position, **body.model_dump(mode="json")},
             )
             await _assert_source_correction_allowed(session, encounter_id)
-            # set_game_results commits internally; the settled table comes back.
-            await ffa_encounter_service.set_game_results(
+            # The table names a row by its team (`FfaLobbyRowRead.team_id`); a
+            # game line is keyed by that team's seat in this lobby.
+            seats = {seat.team_id: seat.id for seat in await active_teams(session, encounter_id)}
+            unknown = [line.team_id for line in body.results if line.team_id not in seats]
+            if unknown:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=[ApiExc(code="ffa_result_unknown_team", msg=f"Team {unknown[0]} is not in this lobby")],
+                )
+            # record_lobby_game commits internally; the settled table comes back.
+            await ffa_encounter_service.record_lobby_game(
                 session,
                 encounter_id,
                 position,
                 [
-                    GameLine(encounter_team_id=line.team_id, score=None, placement=line.placement, values=line.stats)
+                    GameResultIn(
+                        encounter_team_id=seats[line.team_id], placement=line.placement, column_values=line.stats
+                    )
                     for line in body.results
                 ],
                 actor_user_id=await _actor_player_id(session, user),
