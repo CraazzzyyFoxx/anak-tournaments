@@ -261,9 +261,31 @@ equally strong parts with `domain/mix_lobby_split.py` (422 `not_enough_players` 
 solves each lobby. `set_variant_index` refuses a variant that would seat somebody another lobby
 already seated: 409 `seat_conflict`.
 
-`record_outcome` stamps the round's `mix.round.lobby_index` and writes one busy `mix.round_member` row per
-member seated in another lobby's selected variant. `undo_match` rolls back the newest match **of
-that match's lobby** (`newest_id_for_lobby`), not of the mix.
+A lobby's match has a lifecycle (spec §5): **Start match** (`start_match`) opens an encounter of the lobby's shown lineup
+(captains in `encounter.team_member.is_captain`, one `awaiting_result` game on its `next_map_id`) and sets
+`mix.lobby.live_encounter_id` (409 `match_live` when one is already live); **Record** (`record_outcome`, 409
+`no_live_match` without a live match) completes it with `apply_result(source=host)`, stamps `mix.round.lobby_index`,
+writes a `mix.round_member` row per seat of the encounter's roster and a busy one per member seated in another lobby's
+selected variant or away (a seat wins over busy), then clears the pointer and the next map; **Cancel** (`cancel_match`)
+deletes the encounter. Close and cancelling a mix cancel every live match. Host writes of one mix run one at a time:
+`_writable` locks the mix row (`SELECT … FOR UPDATE`) and the lobbies are re-read after the lock. While live, swap /
+variant / next map / captain / balance of that lobby (or `scope="all"` while any lobby is live) and dropping the lobby
+answer 409 `match_live`; balance refuses before it reads the pool (never `empty_lineup`), and `set_next_map` checks the
+map first (404 for one the game does not have). The lobby state (`idle` / `ready` / `live`) is derived (`lobby_state`),
+never stored.
+
+Rounds read in recording order (`encounter.confirmed_at`, then id): the history, undo, rotation, the ranker replay and
+the leaderboard form. `encounter.created_at` is the start: the stats' `played_at`, the leaderboard's period window and
+the list's `last_match_at`. `undo_match` rolls back the newest match **of that match's lobby** (`newest_id_for_lobby`),
+not of the mix; a live match is no round, so undo ignores it.
+
+Captains live in the lineup (`teams[t].captain_member_id`, `domain/mix_lobbies.with_captains`): the strongest seat by
+the solver's rating, lower member id on a tie; kept while seated; re-derived for both teams when a swap involves a
+captain; a fresh balance starts over. The detail read and Start captain a lineup stored without them, on a copy.
+`set_captain` reassigns in the lobby's shown option (404 when it does not seat the player). `mix.player.away` removes a
+player from every seated set (balance, split, rotation queue, rotation-hint application) without touching their
+must-play mark, and records them busy in every round meanwhile. The player sets it through `self_away` (the role-edit
+gate minus `self_role_edit`: `can_set_away` / `away_blocker`), a host through the player patch; it never clears itself.
 
 Rank movement on `record_outcome` follows the **host's** `user_config.rating_mode`: `points` moves
 both teams by `points_per_win` (decided matches only, frozen in `points_per_win_applied`); `ranker`
@@ -275,9 +297,9 @@ saving a new `rating_min`/`rating_max`/`rating_avg`/`sigma_init` or the admin's 
 
 Rotation (`mix_rotation.py`): longest sit-out streak → shortest played streak → fewest games → input
 order. `must_play` always seated. No history, or the whole pool fits → all `NEUTRAL` (do not invent
-fairness). **A match whose `match_busy_player` set contains the member is skipped entirely** — he was
-playing in the other lobby, which is neither "played" nor "sat out". An empty busy set reproduces the
-one-lobby behaviour exactly, so no backfill was needed.
+fairness). **A round in which the member is `busy` is skipped entirely** — they were playing in another lobby, or away,
+which is neither "played" nor "sat out". An empty busy set reproduces the one-lobby behaviour exactly, so no backfill
+was needed.
 
 Self-signup (`custom_game.self_signup` = `closed` | `pool` | `benched`, `self_role_edit`): one policy,
 `mix_self_service.mix_self_policy`, gates Discord and the board alike. Check order is the reason order —

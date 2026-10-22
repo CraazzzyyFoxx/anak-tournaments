@@ -35,25 +35,35 @@ A game with one role — Deadlock — has nothing to order: the lineup, the play
 
 ## Splitting into teams
 
-**Balance teams** splits the lineup into **two** teams. The team size comes from the roster shape in your account settings, so the number of seats is two rosters. If more people turned up, the extras are moved to **Benched** automatically, and whoever has been sitting out longest is protected first. With two lobbies nobody is benched: whoever does not fit waits for a seat in the other lobby or in the next balance.
+**Balance teams** splits the lineup into **two** teams. The team size comes from the roster shape in your account settings, so the number of seats is two rosters. If more people turned up, the extras are moved to **Benched** automatically, and whoever has been sitting out longest is protected first. With several lobbies nobody is benched: whoever does not fit waits for a seat in another lobby or in the next balance. An away player is never seated (see **Away**).
 
 One run can return several options — how many is up to your settings. The arrows by the heading page through them, and everyone watching sees the option you have open. Each option shows the rank gap between the teams and how many players sit off their first-choice role. Two players can be swapped by hand by dragging one onto the other's seat; only seats of the same role swap. Team names are edited with the pencil next to the name.
 
 How evenly ranks are split versus how carefully preferred roles are honoured is the **Balancing (rank balance vs role comfort)** slider in your account settings: left for even ranks, right for more players on the role they asked for. **Line importance** sits next to it, so a tank mismatch can be made to cost more than a support one.
 
-## Two lobbies
+## Captains
 
-The **Lobbies: 1 / 2** switch in the mix header opens a second lobby. Lobbies run independently: each has its own teams, its own map, its own result and its own pace — the quick one never waits for the slow one. **Lobby A / Lobby B** tabs appear above the matchup; exactly one lobby is on screen, and everything under the tab (the option pager, the map roll, recording a result, dragging players between teams, posting to Discord) belongs to it.
+Every team of a lineup has a captain, marked with a crown. A balance makes each team's strongest player its captain — by the rank the balancer seated them at; on a tie, the one with the lower member number. **Make captain** (the crown button next to a player of a Ready lineup) hands the crown to someone else. A swap involving a captain picks both teams' captains again, and a new balance starts over. A lineup balanced before captains existed shows its captains too, without a new balance. The crown is there whether or not you ban heroes: the captain also creates the in-game lobby.
 
-**Balance teams** under a tab balances that lobby alone. Its candidates exclude anyone already seated in the other lobby and anyone pinned to the other lobby. **Shuffle both lobbies** in the header splits the whole pool into two evenly matched lobbies at once — it only exists with two lobbies, and it needs enough players for both line-ups.
+## Lobbies and rooms
 
-A lobby whose balanced line-up has not been played into the log yet is marked **not recorded** on its tab, and anything that would overwrite that line-up asks first.
+The **Lobbies** slider in the mix header's **⋯** menu runs the mix as one to six lobbies, **A** to **F**. Lobbies run independently: each has its own teams, its own map, its own match and its own pace — the quick one never waits for the slow one.
 
-A player's card (**Advanced settings**) gains **Lobby: Auto / Lobby A / Lobby B** — a pin. It takes effect at the next balance: a player pinned to A is never a candidate for B. Each lineup row shows where that player is right now: **A**, **B**, or **waiting** for a seat. With two lobbies the role-supply strip asks for twice as many people per role.
+With one lobby the mix page is that lobby's room: everything below happens right there. With several, the mix page becomes an overview: one card per lobby with its stage, one line about it (how long its match has run, the rating gap, or how many players it is short) and the one button that stage calls for, plus **Open room**. A card's **Balance** is greyed out, with the reason, while the lobby cannot fill its seats. **Shuffle all lobbies** above the cards splits the whole pool into evenly matched lobbies at once; it is greyed out while any match is live. Under the cards, everyone no lobby seats is listed in three groups — **Waiting**, **Away** and **Bench** — followed by the match history and the leaderboard.
 
-In the match history every match carries its lobby letter, and the undo is offered on the newest match of **each** lobby — undoing in A never touches B.
+Each lobby's room has its own address, for example `/balancer/mix/12/lobby/B`. Anyone with the link can watch it, signed out included — send it to that lobby's players and casters. Hosts get the full controls there, the pool with that lobby's rotation hints included.
 
-Going back to one lobby drops lobby B's teams and every pin; the matches lobby B already recorded stay in the history and in the leaderboard.
+Every lobby is in one of three stages, shown on its card and at the top of its room:
+
+| Stage | What it means | What comes next |
+| --- | --- | --- |
+| **Idle** | No teams yet. | **Balance** |
+| **Ready** | A lineup is on screen: page the options, swap players, make a captain, roll the map. | **Start match** |
+| **Live** | The match is being played and its lineup is frozen. | Record the result, or **Cancel match** |
+
+**Balance teams** in a room (**Balance** on its card) balances that lobby alone. Its candidates exclude anyone seated in another lobby, pinned to another lobby or away. A player's card (**Advanced settings**) has a **Lobby** choice — **Auto** or **Lobby A** … **Lobby F** — a pin that takes effect at the next balance. Each lineup row shows where that player is right now: the lobby letter, or **waiting**. With several lobbies the role-supply strip asks for that many times more people per role.
+
+In the match history every match carries its lobby letter, and undo is offered on the newest match of **each** lobby. Lowering the number of lobbies drops the teams and pins of the lobbies that go; their recorded matches stay in the history and the leaderboard. A lobby with a live match cannot be dropped: record or cancel the match first.
 
 ## The sit-out queue
 
@@ -65,9 +75,15 @@ When there are more players than seats, the mix suggests who should sit. The rul
 
 Players in **Must play** are outside the queue; their seat is promised. While the mix has no maps played yet, or the whole lineup fits into two teams, there are no suggestions at all — nothing fair can be invented out of an empty history.
 
-With two lobbies the queue is computed for the lobby whose tab is open: anyone already seated in the other lobby or pinned to it is outside it, and a map somebody spent in the other lobby counts for them as neither a game played nor a game sat out.
+With several lobbies the lineup on the overview shows lobby A's queue and each room shows its own lobby's: anyone seated in or pinned to another lobby, or away, is outside it, and a map somebody spent in another lobby — or away — counts for them as neither a game played nor a game sat out.
 
 **Apply rotation hints** above the lineup moves everyone into the columns the queue suggests in one press. The decision still stays yours.
+
+## Away
+
+A player who steps out for a break can be marked **Away** — by you on their card (**Advanced settings**, the away switch under **Status**, then **Save**) or by the player in their **Your seat** block. An away player keeps their place, roles and **Must play** mark, but no balance, lobby split or rotation seats them until they are back — the **Must play** mark waits for their return — and **Apply rotation hints** leaves them where they are. A player already in a Ready lineup stays in it with an **Away** badge, and **Start match** asks before it starts with them.
+
+Away time is neutral for the rotation: a match recorded while someone is away counts for them as neither played nor sat out, the same as a match in another lobby — unless they played in it. Away never clears itself.
 
 ## Co-hosts and handing a mix over
 
@@ -86,13 +102,19 @@ Every host keeps their own ranks for players, and a mix balances on those rather
 
 Your account settings also hold **Points per win**. When it is filled in, recording a result raises every winning player's rank by that many points in your book and lowers every losing player's by the same. Leave it empty to record results without touching ranks. In Deadlock it moves each player's single rank.
 
-## Map and result
+## A match: start, record, cancel
 
-The **Next map** block rolls a map: **Any** rolls from all competitive maps, or you can limit it to a mode or choose a map by hand. The choice is shared — everyone watching the mix sees the same map. With two lobbies each has its own map: the block belongs to whichever lobby's tab is open, and the roll avoids maps played recently in either lobby.
+The **Next map** block rolls a map: **Any** rolls from all competitive maps, or limit it to a mode or pick a map by hand. Everyone watching sees the same map. Each lobby has its own, and the roll skips the maps that lobby has already played in this mix while fresh ones remain.
 
-The result is recorded with three buttons under the rosters: the first team's win, **Draw**, and the second team's win. You can record as many matches in a row as you like; the mix does not close. After a result the map is cleared for a fresh roll, and the **Must play** pins of everyone who played are released: the promise covered one game, not the whole evening.
+When the players are in the game lobby, press **Start match**. The lineup on screen and the map are fixed for this match and the lobby goes **Live**. If the lobby has both team voices picked, its players are moved into them at the same moment — only those already sitting in a voice of the mix's category; **Split** under **Voice channels** stays for a second try. If somebody seated is away, Start says so first and starts anyway once you confirm.
 
-A recorded match can be undone — it leaves the history and the ranks go back exactly where they were. Only the newest match can be undone, and with two lobbies that is the newest match of each lobby; older mistakes are fixed by recording the correct result again.
+While the match is live its lineup is frozen: no new balance of this lobby or of all lobbies, no paging the options, no swaps, no new captain, no new map, and the lobby cannot be dropped. Team names, roles and the rest of the pool stay editable. The card and the room show how long the match has been running; nothing ends it on its own.
+
+Record the result with the three buttons under the teams — the first team's win, **Draw**, the second team's win — or from the **Record** menu on the lobby card. The match goes into the history, ranks move as before, the map is cleared for a fresh roll, the **Must play** pins of everyone who played are released — the promise covered one game, not the whole evening — and the lobby is **Ready** for its next start.
+
+**Cancel match** throws a live match away: nothing is recorded, no rank moves, and the lineup is ready to start again. **Close mix** cancels every live match first. A match played without pressing Start is recorded with **Start match**, then the result.
+
+A recorded match can be undone — it leaves the history and the ranks go back exactly where they were. The history lists matches in the order their results were recorded, and only the most recently recorded match of each lobby can be undone; older mistakes are fixed by recording the correct result again.
 
 ## Mix statuses
 
@@ -123,7 +145,10 @@ Deleting a mix erases it completely and is available only to a workspace admin. 
 | The split will not run | Someone in the lineup has no ranked role at all. Set a rank on their card or move them to **Benched**. |
 | A role is short | The strip above the columns names the short role. Give someone that role or invite more players. |
 | Too many players end up off-role | Move the **Balancing (rank balance vs role comfort)** slider right in your account settings and balance again. |
-| The wrong result was recorded | Undo the last match (with two lobbies, the last one of its lobby) and record the right one. Earlier matches cannot be undone. |
+| The wrong result was recorded | Undo the last match of its lobby and record the right one. Earlier matches cannot be undone. |
+| There are no result buttons | The match has not been started: press **Start match** first. |
+| A swap, a balance or a new map is refused | The lobby's match is live and its lineup is frozen. Record the result or **Cancel match**. |
+| Somebody went for a break | Mark them **Away** on their card; they are skipped until they come back. |
 | Someone always sits out | Press **Apply rotation hints** — the queue is built from who has waited longest. |
 
 ## See also

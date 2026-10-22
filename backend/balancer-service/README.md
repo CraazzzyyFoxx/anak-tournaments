@@ -312,11 +312,11 @@ Writes, in the `balancer`, `mix` and `draft` schemas unless noted:
 - `balancer.member_rank` — both rank layers.
 - `balancer.member_hidden_rating` — the mix ranker's hidden ratings (derived; rebuildable from the recorded rounds).
 - `mix.round`, `round_member` — what only the balancer reads about a recorded round: its lobby,
-  the points-per-win applied, and per member the frozen `rank_delta_applied` or "busy in another lobby".
+  the points-per-win applied, and per member the frozen `rank_delta_applied` or "busy" (in another lobby, or away).
 - `encounter.encounter`, `encounter.team` (two participations), `encounter.team_member` (+
-  `team_member_role (team_member_id, dimension_id, role_id)` for leaf assignments), `encounter.game` (one game),
-  `encounter.game_team`, and one `encounter.result_audit` journal row, written through the shared
-  result writer (`apply_result`) — all owned by the mix (`custom_game_id`, result source `host`).
+  `team_member_role (team_member_id, dimension_id, role_id)` for leaf assignments, `is_captain` from the lineup),
+  `encounter.game` (one game), `encounter.game_team`, and one `encounter.result_audit` journal row, written through
+  the shared result writer (`apply_result`) — all owned by the mix (`custom_game_id`, result source `host`).
   `start_match` opens the encounter, its rosters and its awaiting game through `start_mix_match`;
   `record_outcome` scores and completes it and writes `mix.round*` through `record_mix_result`;
   `cancel_match` (and closing the mix) deletes it. Recorded, they are the only durable trace of a played mix game.
