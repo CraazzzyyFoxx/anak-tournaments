@@ -31,9 +31,12 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
+from shared.core import http_status as status
+from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.social import SocialProvider
 from shared.repository import (
     SubscriptionProviderConfigRepository,
+    WorkspaceRepository,
     WorkspaceSubscriptionRequirementRepository,
 )
 from shared.services.registration_window import registration_open_clause
@@ -140,9 +143,16 @@ class SubscriptionConfigService:
         *,
         provider_repo: SubscriptionProviderConfigRepository = SubscriptionProviderConfigRepository(),
         requirement_repo: WorkspaceSubscriptionRequirementRepository = WorkspaceSubscriptionRequirementRepository(),
+        workspace_repo: WorkspaceRepository = WorkspaceRepository(),
     ) -> None:
         self.provider_repo = provider_repo
         self.requirement_repo = requirement_repo
+        self.workspace_repo = workspace_repo
+
+    async def _ensure_workspace_exists(self, session: AsyncSession, workspace_id: int) -> None:
+        """404 before an upsert, which would otherwise surface a missing workspace as an FK 500."""
+        if not await self.workspace_repo.exists(session, id=workspace_id):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
 
     async def list_provider_configs(
         self,
@@ -181,6 +191,7 @@ class SubscriptionConfigService:
         body: SubscriptionProviderConfigUpsert,
     ) -> SubscriptionProviderConfigRead:
         """Create or update one provider's config. Commits internally."""
+        await self._ensure_workspace_exists(session, workspace_id)
         existing = await self.provider_repo.get_for_provider(
             session,
             workspace_id=workspace_id,
@@ -274,6 +285,7 @@ class SubscriptionConfigService:
         workspace" index: the named constraint is the stable target, and ``name`` is
         always ``'default'``.
         """
+        await self._ensure_workspace_exists(session, workspace_id)
         await self.requirement_repo.upsert_default(
             session,
             workspace_id=workspace_id,

@@ -27,8 +27,11 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
+from sqlalchemy.ext.asyncio import async_sessionmaker  # noqa: E402
+
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.services.discord_errors import DiscordUnavailable  # noqa: E402
+from shared.testing import create_test_async_engine  # noqa: E402
 from src.rpc import admin as admin_rpc  # noqa: E402
 from src.services.admin.balancer import BalancerAdminService  # noqa: E402
 
@@ -64,10 +67,10 @@ class _FakeSession:
         return False
 
 
-def _handler():
+def _handler(subject: str = SUBJECT):
     broker = _CapturingBroker()
     admin_rpc.register(broker, _FakeLogger())
-    return broker.handlers[SUBJECT]
+    return broker.handlers[subject]
 
 
 def _identity(*permissions: tuple[str, str]) -> dict:
@@ -147,6 +150,7 @@ class WorkspaceConfigUpsertGateTests(IsolatedAsyncioTestCase):
         self.upsert = AsyncMock(return_value=_stored(stored_channel))
         with (
             patch.object(admin_rpc, "_SF", lambda: _FakeSession()),
+            patch.object(admin_rpc, "_ensure_workspace_exists", AsyncMock()),
             patch.object(
                 admin_rpc.balancer_admin_service,
                 "get_workspace_balancer_config",
@@ -246,6 +250,31 @@ class WorkspaceConfigUpsertGateTests(IsolatedAsyncioTestCase):
 
         assert response["ok"] is True, response
         assert self.upsert.await_args.kwargs["mix_general_voice_channel_ids"] == ["2", "1"]
+
+
+class MissingWorkspaceTests(IsolatedAsyncioTestCase):
+    """A superuser passes the gate for any id, so a typo'd one used to reach the INSERT and 500."""
+
+    if sys.platform == "win32":
+        loop_factory = asyncio.SelectorEventLoop
+
+    async def test_both_workspace_writes_404_for_a_missing_workspace(self) -> None:
+        engine = create_test_async_engine()
+        superuser = {"user_id": 1, "is_superuser": True, "is_active": True}
+        try:
+            for subject, payload in (
+                (SUBJECT, {"rank_delta_threshold": 700, "rank_delta_hide_from_pool": False}),
+                ("rpc.balancer.admin.workspace_ranker_upsert", {}),
+            ):
+                with self.subTest(subject=subject), patch.object(admin_rpc, "_SF", async_sessionmaker(engine)):
+                    response = await _handler(subject)(
+                        {"id": 999_999_999, "identity": superuser, "payload": payload}, None
+                    )
+
+                    assert response["ok"] is False, response
+                    assert response["error"]["code"] == "not_found", response
+        finally:
+            await engine.dispose()
 
 
 class WorkspaceConfigGuildCheckTests(IsolatedAsyncioTestCase):

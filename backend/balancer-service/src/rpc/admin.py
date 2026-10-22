@@ -12,6 +12,9 @@ from typing import Any
 from faststream.rabbit import RabbitMessage
 
 from shared import models, quota
+from shared.core import http_status as status
+from shared.core.errors import BaseAPIException as HTTPException
+from shared.repository import WorkspaceRepository
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services.discord_client import DiscordClient
 from src import schemas
@@ -23,6 +26,12 @@ from src.services.admin.balancer import balancer_admin_service
 from src.services.mix_ranker import mix_ranker_service, settings_from_json
 
 _SF = db.async_session_maker
+
+
+async def _ensure_workspace_exists(session: Any, workspace_id: int) -> None:
+    """404 before a workspace config write, which would otherwise surface a missing workspace as an FK 500."""
+    if not await WorkspaceRepository().exists(session, id=workspace_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Workspace not found")
 
 
 def _stored_mix_channel(cfg: models.WorkspaceBalancerConfig | None) -> str | None:
@@ -221,6 +230,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_admin_panel(user)
             workspace_id = c.require_id(data)
             ensure_workspace_permission(user, workspace_id, "team", "update")
+            await _ensure_workspace_exists(session, workspace_id)
             body = schemas.WorkspaceBalancerConfigUpsert.model_validate(c.payload(data))
             stored = await balancer_admin_service.get_workspace_balancer_config(session, workspace_id)
             voice = (body.mix_voice_category_id, body.mix_general_voice_channel_ids)
@@ -264,6 +274,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_admin_panel(user)
             workspace_id = c.require_id(data)
             ensure_workspace_permission(user, workspace_id, "team", "update")
+            await _ensure_workspace_exists(session, workspace_id)
             body = schemas.WorkspaceRankerUpsert.model_validate(c.payload(data))
             await mix_ranker_service.save_settings(
                 session,
