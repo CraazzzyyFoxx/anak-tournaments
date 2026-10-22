@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import itertools
 import os
+import uuid
 from unittest.mock import ANY, AsyncMock, patch
 
 import sqlalchemy as sa
@@ -27,7 +28,7 @@ from shared.models.platform.outbox import EventOutbox
 from shared.models.tenancy.workspace import WorkspaceMember
 from shared.models.tournament.bracket_encounter import BracketEncounter
 from shared.models.tournament.encounter_link import EncounterLink
-from shared.models.tournament.stage import Stage
+from shared.models.tournament.stage import Stage, StageItem
 from shared.models.tournament.team import Team
 from shared.services.encounter import participants
 from shared.tests.encounter_writer_case import EncounterWriterCase
@@ -1262,3 +1263,42 @@ class TwoSeatLobbyTests(ResultFlowCase):
                 await stage_service.apply_best_of_to_existing(s, stage_id)
         async with self.Session() as s:
             self.assertEqual(enums.EncounterStatus.COMPLETED, (await self.encounter(s)).status)
+
+
+class AdminReportsListTests(EncounterWriterCase):
+    async def test_a_stage_keeps_its_type_when_a_stage_item_shares_its_id(self) -> None:
+        # Stages and stage items number from separate sequences, so a fresh database pairs them by
+        # chance; the type is what the resolve dialog's "no draw in elimination" check reads.
+        shared_id = 9_000_000_000_000 + uuid.uuid4().int % 10**9
+        async with self.Session() as s:
+            s.add(
+                Stage(
+                    id=shared_id,
+                    tournament_id=self.ids["t"],
+                    name="Playoffs",
+                    stage_type=enums.StageType.SINGLE_ELIMINATION,
+                    scoring_rule_id=self.ids["rule"],
+                )
+            )
+            await s.flush()
+            s.add(StageItem(id=shared_id, stage_id=shared_id, name="Bracket", type=enums.StageItemType.SINGLE_BRACKET))
+            await s.flush()
+            s.add(
+                BracketEncounter(
+                    encounter_id=self.ids["e"],
+                    tournament_id=self.ids["t"],
+                    stage_id=shared_id,
+                    stage_item_id=shared_id,
+                    round=1,
+                )
+            )
+            await s.commit()
+
+        async with self.Session() as s:
+            row = (
+                await encounter_reports_service.list_encounter_reports(
+                    s, workspace_id=self.ids["ws"], params=schemas.EncounterReportsSearchParams(page=1, per_page=10)
+                )
+            ).results[0]
+
+        self.assertEqual(("Bracket", enums.StageType.SINGLE_ELIMINATION), (row.stage_name, row.stage_type))

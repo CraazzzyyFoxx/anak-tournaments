@@ -299,7 +299,7 @@ class AdminEncounterReportsService:
         total = (await session.execute(total_query)).scalar_one()
         encounters = [row[0] for row in rows]
 
-        seats, reports, lines, names, stages = await self._page_context(session, encounters, rows)
+        seats, reports, lines, names, stages, items = await self._page_context(session, encounters, rows)
         codes = await replay_codes_by_encounter(session, [encounter.id for encounter in encounters])
         return pagination.Paginated(
             page=params.page,
@@ -313,7 +313,7 @@ class AdminEncounterReportsService:
                     lines,
                     names,
                     codes.get(row[0].id, []),
-                    stage_name=stages.get(row.bracket_stage_item_id, (None, None))[0]
+                    stage_name=items.get(row.bracket_stage_item_id)
                     or stages.get(row.bracket_stage_id, (None, None))[0],
                     stage_type=stages.get(row.bracket_stage_id, (None, None))[1],
                     round_number=row.bracket_round,
@@ -344,8 +344,9 @@ class AdminEncounterReportsService:
         dict[int, list[EncounterTeamReportResult]],
         dict[int, str],
         dict[int, tuple[str | None, object | None]],
+        dict[int, str],
     ]:
-        """Seats, reports, lines, reporter names and stage labels for ONE page.
+        """Seats, reports, lines, reporter names, stage name/type and stage-item names for ONE page.
 
         Five statements for the whole page, not five per row: the list is the
         admin's inbox and it is read at 50 rows at a time.
@@ -355,8 +356,11 @@ class AdminEncounterReportsService:
         lines: dict[int, list[EncounterTeamReportResult]] = {}
         names: dict[int, str] = {}
         stages: dict[int, tuple[str | None, object | None]] = {}
+        # Its own map: stage and stage-item ids are separate sequences, so one dict let an item
+        # overwrite the stage that shares its number and blanked that stage's type.
+        items: dict[int, str] = {}
         if not encounters:
-            return seats, reports, lines, names, stages
+            return seats, reports, lines, names, stages, items
 
         ids = [encounter.id for encounter in encounters]
         for seat in (
@@ -410,13 +414,14 @@ class AdminEncounterReportsService:
             ).all():
                 stages[stage_id] = (name, stage_type)
         if item_ids:
-            for item_id, name in (
-                await session.execute(
-                    sa.select(models.StageItem.id, models.StageItem.name).where(models.StageItem.id.in_(item_ids))
-                )
-            ).all():
-                stages[item_id] = (name, None)
-        return seats, reports, lines, names, stages
+            items = dict(
+                (
+                    await session.execute(
+                        sa.select(models.StageItem.id, models.StageItem.name).where(models.StageItem.id.in_(item_ids))
+                    )
+                ).all()
+            )
+        return seats, reports, lines, names, stages, items
 
     async def get_reports_stats(
         self,
