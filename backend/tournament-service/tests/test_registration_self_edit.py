@@ -326,6 +326,63 @@ class WritePathTests(IsolatedAsyncioTestCase):
         assert answer_service.answers_of(registration)["reserve"] is True
 
 
+class RoundTripTests(IsolatedAsyncioTestCase):
+    """GET ``/registration/me`` -> change one answer -> PATCH the whole document back.
+
+    The read reports every answer the row holds: the NOT NULL ``reserve`` and
+    ``stream_pov`` columns whether or not the form asks them, and answers the
+    organizer has since frozen. Echoing those back unchanged is no edit.
+    """
+
+    async def _validate(self, registration: models.Registration, answers: dict[str, Any]) -> dict[str, Any]:
+        only_vk = FormSchema(sections=[FormSection(key="all", fields=[FormField(key="vk", kind="text", label="VK")])])
+        return await answer_service.validate(
+            None,  # type: ignore[arg-type] -- no roles, no OAuth gate: nothing here reads the database
+            schema=only_vk,
+            answers=answers,
+            partial=True,
+            enforce_required=False,
+            player_id=None,
+            workspace_id=1,
+            discipline="overwatch",
+            hero_catalog=None,
+            registration=registration,
+        )
+
+    async def test_keys_the_form_never_asked_read_back_unchanged_are_ignored(self) -> None:
+        registration = _registration(is_reserve=False, stream_pov=False)
+        read = answer_service.answers_of(registration)
+        assert {"reserve", "stream_pov"} <= set(read)
+
+        values = await self._validate(registration, {**read, "vk": "new"})
+
+        assert values == {"vk": "new"}
+
+    async def test_a_changed_key_the_form_never_asked_is_still_refused(self) -> None:
+        with self.assertRaises(HTTPException) as caught:
+            await self._validate(_registration(is_reserve=False, stream_pov=False), {"reserve": True})
+
+        assert [(item["field"], item["code"]) for item in caught.exception.detail] == [("reserve", "unknown_field")]
+
+    async def test_a_frozen_answer_sent_back_unchanged_is_no_edit(self) -> None:
+        registration = _registration()
+        with (
+            mock.patch.object(reg_service.registration_service, "ensure_player_identity", _noop),
+            mock.patch.object(reg_service.registration_service, "ensure_unique_primary_game_handles", _noop),
+        ):
+            await reg_service.registration_service.update_registration(
+                _RecordingSession(),
+                registration,
+                tournament=_tournament(),
+                values={"identity_battlenet": ["Player#1234"], "public_notes": "new"},
+                schema=_schema(editable_keys=frozenset({"public_notes"})),
+                form_version_id=5,
+            )
+
+        assert registration.public_notes == "new"
+        assert [identity.handle for identity in registration.identities] == ["Player#1234"]
+
+
 class PoolSweepTests(TestCase):
     def test_the_on_call_answer_changes_nothing_about_a_sweep(self) -> None:
         """The answer says "you can ring me", not "leave me out": holding these

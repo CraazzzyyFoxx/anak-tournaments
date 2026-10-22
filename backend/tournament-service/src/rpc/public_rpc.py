@@ -658,6 +658,7 @@ def register(broker: Any, logger: Any) -> None:
                 workspace_id=form.workspace_id,
                 discipline=reg.tournament.discipline,
                 hero_catalog=hero_catalog,
+                registration=reg,
             )
 
             # update_registration commits internally, so the audit row is staged

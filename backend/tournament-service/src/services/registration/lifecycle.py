@@ -277,6 +277,7 @@ class RegistrationLifecycleService:
         answers: Mapping[str, Any],
         workspace_id: int,
         discipline: str,
+        registration: models.Registration | None = None,
     ) -> tuple[FormSchema, dict[str, Any], HeroCatalog | None, int | None]:
         """Validate an ORGANIZER's answers: partial, and requirements off.
 
@@ -308,6 +309,7 @@ class RegistrationLifecycleService:
             workspace_id=workspace_id,
             discipline=discipline,
             hero_catalog=hero_catalog,
+            registration=registration,
         )
         return schema, values, hero_catalog, max_heroes
 
@@ -446,6 +448,7 @@ class RegistrationLifecycleService:
             answers=answers,
             workspace_id=registration.tournament.workspace_id,
             discipline=registration.tournament.discipline,
+            registration=registration,
         )
         if roles is not None:
             values.pop("roles", None)

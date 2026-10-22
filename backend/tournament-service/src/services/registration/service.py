@@ -737,8 +737,11 @@ class RegistrationService:
         if not policy.can_edit:
             raise HTTPException(status_code=409, detail=policy.reason)
         # Reported per key, not as one refusal: the message belongs under the
-        # control the registrant just touched.
-        locked = sorted(set(values) - policy.writable_keys)
+        # control the registrant just touched. An answer equal to the stored one
+        # touches nothing -- a client sending back the document it read edits
+        # only what it changed.
+        stored = answer_service.answers_of(registration)
+        locked = sorted(key for key in set(values) - policy.writable_keys if values[key] != stored.get(key))
         if locked:
             raise_field_errors(
                 [FieldError(key, ErrorCode.LOCKED.value, _LOCKED_ANSWER) for key in locked],

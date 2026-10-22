@@ -149,6 +149,7 @@ class RegistrationAnswerService:
         workspace_id: int,
         discipline: str,
         hero_catalog: HeroCatalog | None,
+        registration: models.Registration | None = None,
     ) -> dict[str, Any]:
         """The typed values ``answers`` reduces to, or ``422`` with every error.
 
@@ -161,7 +162,21 @@ class RegistrationAnswerService:
         ``enforce_required=False`` is the organizer path: blanks are allowed and
         the OAuth gate does not run, because the organizer authoring the row IS
         the authority the gate exists to substitute for.
+
+        ``registration`` is the row an EDIT rewrites. A key the form does not ask
+        that only repeats what ``answers_of`` reads back for it is dropped, not
+        refused: the read reports every answer column (``reserve``/``stream_pov``
+        are NOT NULL) and answers to questions a later version removed, so a
+        client sending back the document it just read must not get
+        ``unknown_field``. A CHANGED undeclared key still does.
         """
+        if registration is not None:
+            stored = self.answers_of(registration)
+            answers = {
+                key: value
+                for key, value in answers.items()
+                if schema.field(key) is not None or key not in stored or stored[key] != value
+            }
         role_codes = tuple(role.code for role in DISCIPLINES[discipline].rated_dimension.roles)
         implied = only_role_answer(role_codes)
         if implied is not None and not partial and schema.builtin("roles") is not None and not answers.get("roles"):
