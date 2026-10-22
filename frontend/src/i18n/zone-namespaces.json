@@ -1,6 +1,7 @@
 {
   "root": [
     "accountSettings",
+    "achievements",
     "admin",
     "analytics",
     "auth",
@@ -20,6 +21,7 @@
     "registration",
     "standings",
     "stream",
+    "teams",
     "users",
     "workspace"
   ],
