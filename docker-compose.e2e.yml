@@ -44,6 +44,13 @@ services:
   redis:
     ports: !reset []
     volumes: !reset []
+    # Eight parallel suites' cache scans time out at the dev 0.25 CPU
+    # (`redis.exceptions.TimeoutError` in the workers → 500s).
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
 
   rabbitmq:
     ports: !reset []
