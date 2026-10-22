@@ -315,7 +315,7 @@ ranks stay the host's book, participation the host's decision, and an edit appli
 `is_flex = true` in a game without Full flex (`DisciplineSpec.flex = False`: Deadlock) is a 422 `full_flex_unsupported`
 from the host and the player alike; `false` is accepted.
 
-Caps: 2 lobbies, 8 teams, 16 co-hosts, 100 roster rows for a self-signup (`roster_full`). Host role required (`custom_game.*`).
+Caps: 6 lobbies (`MAX_LOBBIES`), 8 teams, 16 co-hosts, 100 roster rows for a self-signup (`roster_full`). Host role required (`custom_game.*`).
 
 ---
 
