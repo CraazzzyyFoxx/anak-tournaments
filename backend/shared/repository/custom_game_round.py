@@ -3,6 +3,9 @@
 A round is one ``encounter.encounter`` owned by a ``mix.custom_game`` plus its ``mix.round`` row.
 Who sat where is ``encounter.team_member`` (rated-dimension leaf in ``team_member_role``); what only
 the balancer reads per member -- busy next door, the frozen rank delta -- is ``mix.round_member``.
+
+Rounds read in RECORDING order: ``encounter.confirmed_at``, then the encounter id for a tie. Not the id alone -- a
+round's encounter is created when its match starts, and two lobbies' matches are recorded in any order.
 """
 
 from __future__ import annotations
@@ -45,7 +48,7 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
                 encounter.selectinload(models.Encounter.result_audit),
                 selectinload(models.CustomGameRound.members),
             )
-            .order_by(models.CustomGameRound.encounter_id.desc())
+            .order_by(models.Encounter.confirmed_at.desc(), models.Encounter.id.desc())
         )
         return result.all()
 
@@ -58,11 +61,13 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
         )
 
     async def newest_id_for_lobby(self, session: AsyncSession, custom_game_id: int, lobby_index: int) -> int | None:
-        """Ids follow recording order (the migration keeps it), so the newest round is the largest id."""
+        """The lobby's most recently recorded round -- the only one undo may take."""
         return await session.scalar(
-            sa.select(sa.func.max(models.CustomGameRound.encounter_id))
+            sa.select(models.CustomGameRound.encounter_id)
             .join(models.Encounter, models.Encounter.id == models.CustomGameRound.encounter_id)
             .where(models.Encounter.custom_game_id == custom_game_id, models.CustomGameRound.lobby_index == lobby_index)
+            .order_by(models.Encounter.confirmed_at.desc(), models.Encounter.id.desc())
+            .limit(1)
         )
 
     async def activity_for_games(
@@ -143,19 +148,19 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
         self, session: AsyncSession, custom_game_ids: Sequence[int]
     ) -> dict[int, list[tuple[str, str | None]]]:
         """``custom_game_id -> [(map name, image path), ...]``: every distinct map its rounds were played on,
-        most recently played first (round ids follow recording order). A mix with no mapped round is absent."""
+        most recently recorded first. A mix with no mapped round is absent."""
         if not custom_game_ids:
             return {}
         game_map = models.CatalogEntity
-        last_round = sa.func.max(models.Encounter.id).label("last_round")
+        last_recorded = sa.func.max(models.Encounter.confirmed_at).label("last_recorded")
         rows = await session.execute(
-            sa.select(models.Encounter.custom_game_id, game_map.name, game_map.image_path, last_round)
+            sa.select(models.Encounter.custom_game_id, game_map.name, game_map.image_path, last_recorded)
             .join(models.CustomGameRound, models.CustomGameRound.encounter_id == models.Encounter.id)
             .join(models.EncounterGame, models.EncounterGame.encounter_id == models.Encounter.id)
             .join(game_map, game_map.id == models.EncounterGame.map_id)
             .where(models.Encounter.custom_game_id.in_(custom_game_ids))
             .group_by(models.Encounter.custom_game_id, game_map.id, game_map.name, game_map.image_path)
-            .order_by(models.Encounter.custom_game_id, last_round.desc())
+            .order_by(models.Encounter.custom_game_id, last_recorded.desc(), sa.func.max(models.Encounter.id).desc())
         )
         grouped: dict[int, list[tuple[str, str | None]]] = {}
         for row in rows:
@@ -165,9 +170,10 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
     @staticmethod
     def seat_rows_select(workspace_id: int) -> sa.Select:
         """The one seat join (unexecuted): a row per seat of this workspace's rounds, with its rated leaf's code and id, its frozen
-        rank delta and both sides' scores -- a round stores two scores and no winner flag. A mix seat has at most
-        one rated-dimension leaf, so the outer join never fans out. ``seats()`` executes it; the rank overview
-        composes it as a subquery."""
+        rank delta and both sides' scores -- a round stores two scores and no winner flag. ``created_at`` is when the
+        match started (it was played then), ``recorded_at`` when its result landed (the order rounds read in). A mix
+        seat has at most one rated-dimension leaf, so the outer join never fans out. ``seats()`` executes it; the rank
+        overview composes it as a subquery."""
         seat = models.EncounterTeamMember
         side = models.EncounterTeam
         other = aliased(models.EncounterTeam)
@@ -178,6 +184,7 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
                 seat.id.label("seat_id"),
                 models.Encounter.id.label("encounter_id"),
                 models.Encounter.created_at,
+                models.Encounter.confirmed_at.label("recorded_at"),
                 models.Encounter.custom_game_id,
                 models.CustomGameRound.lobby_index,
                 models.CustomGameRound.points_per_win_applied,
@@ -225,9 +232,11 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
         discipline: str | None = None,
         since: datetime | None = None,
     ) -> Sequence[sa.Row]:
-        """``seat_rows_select`` of this workspace, oldest round first: the leaderboard, the ranker replay and
-        undo all read this."""
-        stmt = self.seat_rows_select(workspace_id).order_by(models.Encounter.id, models.EncounterTeamMember.id)
+        """``seat_rows_select`` of this workspace, oldest recorded round first: the leaderboard, the ranker replay and
+        undo all read this. ``since`` windows by when the match was played (``created_at``)."""
+        stmt = self.seat_rows_select(workspace_id).order_by(
+            models.Encounter.confirmed_at, models.Encounter.id, models.EncounterTeamMember.id
+        )
         if encounter_id is not None:
             stmt = stmt.where(models.Encounter.id == encounter_id)
         if discipline is not None:

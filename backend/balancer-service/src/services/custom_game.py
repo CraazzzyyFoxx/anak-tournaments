@@ -2966,6 +2966,7 @@ class CustomGameService:
                 role=row.role,
                 match_id=row.encounter_id,
                 played_at=row.created_at,
+                recorded_at=row.recorded_at,
                 outcome=outcome_for(row.own_score, row.other_score),
             )
             for row in rows
@@ -3017,7 +3018,12 @@ class CustomGameService:
                     }
                 ),
                 "form": [
-                    {"outcome": seat.outcome, "match_id": seat.match_id, "played_at": seat.played_at.isoformat()}
+                    {
+                        "outcome": seat.outcome,
+                        "match_id": seat.match_id,
+                        "played_at": seat.played_at.isoformat(),
+                        "recorded_at": seat.recorded_at.isoformat(),
+                    }
                     for seat in entry.form
                 ],
             }

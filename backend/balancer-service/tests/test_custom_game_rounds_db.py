@@ -23,6 +23,7 @@ from shared.repository import CatalogRoleRepository, CustomGamePlayerRepository,
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
 from src.domain.balancer.result_serializer import lobby_document  # noqa: E402
 from src.services.custom_game import CustomGameService  # noqa: E402
+from src.services.mix_ranker import mix_ranker_service  # noqa: E402
 from src.services.mix_rounds import (  # noqa: E402
     MixMatchDraft,
     MixMatchSeat,
@@ -365,43 +366,115 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
             [(count,)] = await self._rows(f"SELECT count(*) FROM {table} WHERE {column} = :id", id=encounter_id)
             self.assertEqual(0, count, table)
 
-    async def _lobbies(self, count: int) -> None:
-        """Give this mix ``count`` lobbies, lobby ``i`` showing member ``m(2i)`` against ``m(2i+1)``."""
+    async def _new_mix(self) -> int:
+        """Another mix of this workspace, on this mix's rule."""
         async with self.Session() as s:
-            mix = await s.get_one(models.CustomGame, self.cg.id)
-            mix.lobby_count = count
-            for index in range(count):
+            mix = models.CustomGame(
+                workspace_id=self.ids["ws"], name="Next door", scoring_rule_id=self.cg.scoring_rule_id
+            )
+            s.add(mix)
+            await s.commit()
+            return mix.id
+
+    async def _lobbies(self, *pairings: tuple[str, str], game_id: int | None = None) -> None:
+        """Give a mix -- this one unless ``game_id`` names another -- one lobby per pairing: lobby ``i`` shows a 1v1
+        of its two members (``"m0"``..``"m3"``)."""
+        game_id = self.cg.id if game_id is None else game_id
+        async with self.Session() as s:
+            mix = await s.get_one(models.CustomGame, game_id)
+            mix.lobby_count = len(pairings)
+            for index, pairing in enumerate(pairings):
                 teams = [
-                    {"roster": {"tank": [{"uuid": str(self.ids[f"m{2 * index + side}"]), "assigned_rating": 2500}]}}
-                    for side in (0, 1)
+                    {"roster": {"tank": [{"uuid": str(self.ids[member]), "assigned_rating": 2500}]}}
+                    for member in pairing
                 ]
                 s.add(
                     models.CustomGameLobby(
-                        custom_game_id=self.cg.id,
+                        custom_game_id=game_id,
                         lobby_index=index,
                         balance_result_json=lobby_document([{"teams": teams}]),
                     )
                 )
             await s.commit()
 
-    def _host(self, lobby_index: int | None = None) -> dict[str, object]:
-        """A write of this mix by a superuser (no co-host grant to seed), on one lobby when ``lobby_index`` is given."""
+    def _host(self, lobby_index: int | None = None, *, game_id: int | None = None) -> dict[str, object]:
+        """A write of a mix (this one unless ``game_id`` names another) by a superuser -- no co-host grant to seed --
+        on one lobby when ``lobby_index`` is given."""
         args: dict[str, object] = {
             "workspace_id": self.ids["ws"],
-            "custom_game_id": self.cg.id,
+            "custom_game_id": self.cg.id if game_id is None else game_id,
             "actor_user_id": 0,
             "actor_is_superuser": True,
         }
         return args if lobby_index is None else {**args, "lobby_index": lobby_index}
 
-    async def _live_ids(self) -> list[int | None]:
+    async def _write(self, write, lobby_index: int, *, game_id: int | None = None, **extra: object) -> None:
+        """One host write of a lobby in its own committed transaction, the way an RPC runs it."""
+        async with self.Session() as s:
+            await write(s, **self._host(lobby_index, game_id=game_id), **extra)
+            await s.commit()
+
+    async def _live_ids(self, game_id: int | None = None) -> list[int | None]:
         rows = await self._rows(
-            "SELECT live_encounter_id FROM mix.lobby WHERE custom_game_id = :id ORDER BY lobby_index", id=self.cg.id
+            "SELECT live_encounter_id FROM mix.lobby WHERE custom_game_id = :id ORDER BY lobby_index",
+            id=self.cg.id if game_id is None else game_id,
         )
         return [live for (live,) in rows]
 
+    async def _hidden_book(self) -> list[tuple]:
+        rows = await self._rows(
+            "SELECT workspace_member_id, role_id, mu, sigma FROM balancer.member_hidden_rating"
+            " WHERE workspace_id = :ws ORDER BY workspace_member_id, role_id",
+            ws=self.ids["ws"],
+        )
+        return [tuple(row) for row in rows]
+
+    async def test_rounds_read_in_the_order_they_were_recorded_not_started(self) -> None:
+        await self._lobbies(("m0", "m1"), ("m2", "m3"))
+        service = CustomGameService()
+        await self._write(service.start_match, 0)
+        await self._write(service.start_match, 1)
+        a, b = await self._live_ids()
+        await self._write(service.record_outcome, 1, winner=1)
+        await self._write(service.record_outcome, 0, winner=1)
+
+        self.assertLess(a, b)  # A started first ...
+        async with self.Session() as s:
+            # ... and was recorded last: the history (and the rotation reading it) has it as the newest round,
+            history = await self.rounds.list_for_custom_game(s, self.cg.id)
+            self.assertEqual([a, b], [round_.encounter_id for round_ in history])
+            # and the replay, the leaderboard and undo read B before it.
+            seats = await self.rounds.seats(s, workspace_id=self.ids["ws"])
+            self.assertEqual([b, a], list(dict.fromkeys(row.encounter_id for row in seats)))
+
+    async def test_a_rebuild_replays_rounds_in_the_order_they_were_recorded(self) -> None:
+        # m0 is on the floor of two mixes at once: A here (against m1), B next door (against m2). B is recorded first.
+        other = await self._new_mix()
+        await self._lobbies(("m0", "m1"))
+        await self._lobbies(("m0", "m2"), game_id=other)
+        service = CustomGameService()
+        await self._write(service.start_match, 0)
+        await self._write(service.start_match, 0, game_id=other)
+        [a], [b] = await self._live_ids(), await self._live_ids(other)
+        await self._write(service.record_outcome, 0, game_id=other, winner=2)  # m2 beats m0 ...
+        await self._write(service.record_outcome, 0, winner=1)  # ... then m0 beats m1
+        incremental = await self._hidden_book()
+
+        async with self.Session() as s:
+            await mix_ranker_service.rebuild(s, self.ids["ws"])
+            await s.commit()
+
+        self.assertLess(a, b)
+        self.assertEqual(3, len(incremental))
+        self.assertEqual(incremental, await self._hidden_book())
+        async with self.Session() as s:
+            stats = await service.mix_stats(s, workspace_id=self.ids["ws"], discipline="overwatch", since=None)
+        [m0] = [row for row in stats["members"] if row["workspace_member_id"] == self.ids["m0"]]
+        # A, recorded last, is m0's newest result: a win on top of B's loss.
+        self.assertEqual(([a, b], 1), ([entry["match_id"] for entry in m0["form"]], m0["streak"]))
+
     async def test_a_second_start_of_a_live_lobby_waits_for_the_first_and_is_refused(self) -> None:
-        await self._lobbies(1)
+        await self._lobbies(("m0", "m1"))
         service = CustomGameService()
         async with self.Session() as first, self.Session() as second:
             await service.start_match(first, **self._host(0))
@@ -423,18 +496,14 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
         self.assertIsNotNone(live)
 
     async def test_cancel_and_close_leave_no_live_match_and_no_encounter_behind(self) -> None:
-        await self._lobbies(2)
+        await self._lobbies(("m0", "m1"), ("m2", "m3"))
         service = CustomGameService()
         for lobby_index in (0, 1):
-            async with self.Session() as s:
-                await service.start_match(s, **self._host(lobby_index))
-                await s.commit()
+            await self._write(service.start_match, lobby_index)
         started = await self._live_ids()
         self.assertTrue(all(started), started)
 
-        async with self.Session() as s:
-            await service.cancel_match(s, **self._host(0))
-            await s.commit()
+        await self._write(service.cancel_match, 0)
         self.assertEqual([None, started[1]], await self._live_ids())
         async with self.Session() as s:
             await service.close(s, **self._host())

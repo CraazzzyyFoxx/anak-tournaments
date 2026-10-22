@@ -468,8 +468,11 @@ export type MixMemberStats = {
 
 export type MixOutcome = "win" | "loss" | "draw";
 
-/** One recorded seat's result. `match_id` orders seats recorded in the same second. */
-export type MixFormEntry = { outcome: MixOutcome; match_id: number; played_at: string };
+/**
+ * One recorded seat's result. `played_at` is when its match started; `recorded_at` is when its result landed -- the
+ * order results read in (two lobbies' matches are recorded in any order). `match_id` breaks a tie.
+ */
+export type MixFormEntry = { outcome: MixOutcome; match_id: number; played_at: string; recorded_at: string };
 
 /**
  * `since` echoes back the window the server parsed, so a reader can tell it from all time. `mixes` and `matches`

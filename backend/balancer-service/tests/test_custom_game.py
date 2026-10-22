@@ -2564,6 +2564,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
     async def test_mix_stats_merges_the_current_roster_into_the_scoreboard(self) -> None:
         played_at = datetime(2026, 3, 1, 21, 30)
+        recorded_at = datetime(2026, 3, 1, 21, 45)
         self.mix_rounds.seats = AsyncMock(
             return_value=[
                 _row(
@@ -2572,6 +2573,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                     encounter_id=1,
                     custom_game_id=11,
                     created_at=played_at,
+                    recorded_at=recorded_at,
                     own_score=2.0,
                     other_score=1.0,
                 ),
@@ -2581,6 +2583,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                     encounter_id=1,
                     custom_game_id=11,
                     created_at=played_at,
+                    recorded_at=recorded_at,
                     own_score=1.0,
                     other_score=2.0,
                 ),
@@ -2615,7 +2618,14 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                         "last_played_at": played_at.isoformat(),
                         # ``by_role`` is keyed by the canonical role code.
                         "by_role": {"damage": {"games": 1, "wins": 1, "losses": 0, "draws": 0}},
-                        "form": [{"outcome": "win", "match_id": 1, "played_at": played_at.isoformat()}],
+                        "form": [
+                            {
+                                "outcome": "win",
+                                "match_id": 1,
+                                "played_at": played_at.isoformat(),
+                                "recorded_at": recorded_at.isoformat(),
+                            }
+                        ],
                     },
                     {
                         "workspace_member_id": 8,
@@ -2631,7 +2641,14 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                         "last_played_at": played_at.isoformat(),
                         # A seat recorded without a role lands in no bucket.
                         "by_role": {},
-                        "form": [{"outcome": "loss", "match_id": 1, "played_at": played_at.isoformat()}],
+                        "form": [
+                            {
+                                "outcome": "loss",
+                                "match_id": 1,
+                                "played_at": played_at.isoformat(),
+                                "recorded_at": recorded_at.isoformat(),
+                            }
+                        ],
                     },
                 ],
                 # Two seats, one round of one mix.
@@ -2650,6 +2667,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                     encounter_id=encounter,
                     custom_game_id=mix,
                     created_at=played_at,
+                    recorded_at=played_at,
                     own_score=1.0,
                     other_score=0.0,
                 )
@@ -2683,6 +2701,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                     encounter_id=1,
                     custom_game_id=11,
                     created_at=played_at,
+                    recorded_at=played_at,
                     own_score=2.0,
                     other_score=1.0,
                 ),

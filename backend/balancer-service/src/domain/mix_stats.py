@@ -43,17 +43,18 @@ FORM_LENGTH = 10
 class SeatOutcome:
     """One recorded seat: who sat, in which role, in which match, and how it went.
 
-    ``match_id`` orders seats in the order they were played -- ids are
-    monotonic per recording, ``played_at`` is not guaranteed distinct between
-    two maps recorded in the same second -- and is what the streak walks back
-    from. ``role`` is the wire spelling (``tank``/``damage``/``support``) or
-    ``None`` for a seat recorded without one.
+    ``recorded_at`` (when the result landed) orders seats -- a match's id and
+    ``played_at`` are fixed when it STARTS, and two lobbies' matches are
+    recorded in any order -- and is what the streak walks back from;
+    ``match_id`` breaks a tie. ``role`` is the wire spelling
+    (``tank``/``damage``/``support``) or ``None`` for a seat recorded without one.
     """
 
     member_id: int
     role: str | None
     match_id: int
     played_at: datetime
+    recorded_at: datetime
     outcome: Outcome
 
 
@@ -123,7 +124,7 @@ def aggregate_mix_stats(seats: Sequence[SeatOutcome]) -> list[MemberMixStats]:
 
     stats: list[MemberMixStats] = []
     for member_id, member_seats in by_member.items():
-        ordered = sorted(member_seats, key=lambda s: s.match_id, reverse=True)
+        ordered = sorted(member_seats, key=lambda s: (s.recorded_at, s.match_id), reverse=True)
         wins = sum(1 for s in ordered if s.outcome == "win")
         losses = sum(1 for s in ordered if s.outcome == "loss")
         draws = sum(1 for s in ordered if s.outcome == "draw")

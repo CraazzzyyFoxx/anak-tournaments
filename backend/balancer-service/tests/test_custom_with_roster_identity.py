@@ -134,6 +134,7 @@ class WithRosterIdentityTests(IsolatedAsyncioTestCase):
                 encounter_id=member_id,
                 custom_game_id=1,
                 created_at=when,
+                recorded_at=when,
                 own_score=1.0,
                 other_score=0.0,
             )

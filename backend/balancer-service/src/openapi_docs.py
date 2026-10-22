@@ -587,11 +587,11 @@ DOCS: dict[str, dict] = {
             "member's handle for that game's identity provider) are that game's. Without it (or `all`) the "
             "scoreboard spans every game, `identity` is the member's first handle in any game's provider, and "
             "`by_role` is null -- role codes of different games are different roles. The optional since query "
-            "parameter (ISO 8601) narrows it to matches recorded on or after that moment; without it the whole "
-            "history counts. Each member also carries `player_id` (the global player, null once the member is no "
-            "longer on the roster) and `form`: their newest results first, at most 10, each "
-            "`{outcome, match_id, played_at}`. Top-level `mixes` and `matches` count the distinct mixes and "
-            "recorded matches inside the same window. Read-only."
+            "parameter (ISO 8601) narrows it to matches played (started) on or after that moment; without it the "
+            "whole history counts. Each member also carries `player_id` (the global player, null once the member is "
+            "no longer on the roster) and `form`: their newest results first (in the order they were recorded), at "
+            "most 10, each `{outcome, match_id, played_at, recorded_at}`. Top-level `mixes` and `matches` count the "
+            "distinct mixes and recorded matches inside the same window. Read-only."
         ),
     },
     "rpc.balancer.custom.close": {

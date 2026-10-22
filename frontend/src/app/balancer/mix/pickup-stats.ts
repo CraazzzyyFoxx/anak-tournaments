@@ -92,8 +92,8 @@ function addRoles(
  *
  * Members are joined by `player_id`: a membership is per community, the player
  * behind it is global. Totals add up; the form is the newest `FORM_LIMIT`
- * results across all of them (match ids are global, so they order seats from
- * different communities). A one-community player keeps the server's exact
+ * results across all of them, by when each was recorded (match ids only break a
+ * tie: a match's id is fixed when it starts). A one-community player keeps the server's exact
  * streak; a joined one counts it from the merged form, which is exact unless
  * the run fills the whole window -- then it is only known to be at least that
  * long (`streakOpen`).
@@ -117,7 +117,7 @@ export function mergeMixStats(sources: readonly StatsSource[]): RatedPlayer[] {
     const wins = members.reduce((sum, member) => sum + member.wins, 0);
     const entries = members
       .flatMap((member) => member.form)
-      .sort((a, b) => b.match_id - a.match_id)
+      .sort((a, b) => Date.parse(b.recorded_at) - Date.parse(a.recorded_at) || b.match_id - a.match_id)
       .slice(0, FORM_LIMIT);
     const form = entries.map((entry) => entry.outcome);
     const single = members.length === 1;
