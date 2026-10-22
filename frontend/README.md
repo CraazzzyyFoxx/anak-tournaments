@@ -52,6 +52,10 @@ make e2e-down                                 # the database is gone with it
 - `e2e/support/routes.ts` lists every `page.tsx`; the page smoke fails on a page it doesn't list.
 - Python workers in this stack don't hot-reload: restart a service after a backend change
   (`docker compose -p owt-e2e -f docker-compose.yml -f docker-compose.e2e.yml restart tournament-svc`).
+- The stack runs whatever source `E2E_TREE` (default: this checkout) holds, uncommitted edits
+  included. For a run that work in progress can't break, start it from a detached worktree:
+  `git worktree add --detach ../owt-e2e-tree HEAD`, copy `backend/env/*.env`, `.env` and
+  `proxy/xray.json` into it, then `make e2e-up E2E_TREE=../owt-e2e-tree`.
 - Running several Playwright processes at once? Give each its own `--output` directory.
 
 ## Route zones

@@ -127,30 +127,35 @@ services:
       # Every test registers and signs in its own users from one IP.
       GATEWAY_AUTH_RATE_LIMIT: "100000"
 
+  # A production build, not `next dev`: a cold dev compile per route made a
+  # full run take hours, its HMR storms aborted renders, and its overlay is not
+  # what users get. Rebuild after a frontend change: `make e2e-up` does.
   frontend:
+    image: registry.craazzzyyfoxx.me/owt-frontend:e2e
+    build: !override
+      context: ./frontend
+      dockerfile: prod.Dockerfile
+      args:
+        NEXT_PUBLIC_SITE_NAME: OWT
+        NEXT_PUBLIC_SITE_URL: http://localhost:${E2E_PORT:-8090}
+        NEXT_PUBLIC_COOKIE_PREFIX: owt
     ports: !reset []
-    environment:
+    environment: !override
+      NEXT_INTERNAL_API_URL: http://gateway:8080
       NEXT_PUBLIC_SITE_URL: http://localhost:${E2E_PORT:-8090}
-    # Every route of the app gets compiled in one run: the dev 512M tmpfs fills
-    # (ENOSPC, 500s), and a bigger one counts against the memory limit (OOM).
-    # A disk volume also keeps compiles warm across restarts.
+      NEXT_PUBLIC_SITE_NAME: OWT
+    volumes: !reset []
     tmpfs: !reset []
-    volumes:
-      - frontend-e2e-next:/app/.next
+    develop: !reset {}
     restart: unless-stopped
-    # Cold `next dev` compiles of ~150 routes dominate a run.
     deploy:
       resources:
         limits:
-          cpus: "4.0"
-          memory: 4096M
+          cpus: "2.0"
+          memory: 2048M
 
   nginx:
-    # IPv4 loopback only: Docker Desktop's ::1 forward resets responses slower
-    # than 30 s (a first `next dev` compile); a refused ::1 makes clients fall
-    # back to 127.0.0.1 at once.
+    # IPv4 loopback only: Docker Desktop's ::1 forward resets slow responses
+    # (> 30 s); a refused ::1 makes clients fall back to 127.0.0.1 at once.
     ports: !override
       - "127.0.0.1:${E2E_PORT:-8090}:80"
-
-volumes:
-  frontend-e2e-next:

@@ -11,8 +11,12 @@
 COMPOSE = docker compose
 PROD_COMPOSE = docker compose -f docker-compose.production.yml
 # Isolated stack for the Playwright suite (docker-compose.e2e.yml): own project,
-# tmpfs database, nginx on :8090 only.
-E2E_COMPOSE = docker compose -p owt-e2e -f docker-compose.yml -f docker-compose.e2e.yml
+# tmpfs database, nginx on :8090 only. The stack bind-mounts the source of
+# E2E_TREE; point it at a snapshot so work in progress can't break a run:
+#   git worktree add --detach ../owt-e2e-tree HEAD   (plus backend/env/*.env, .env, proxy/xray.json)
+#   make e2e-up E2E_TREE=../owt-e2e-tree
+E2E_TREE ?= .
+E2E_COMPOSE = cd $(E2E_TREE) && docker compose -p owt-e2e -f docker-compose.yml -f docker-compose.e2e.yml
 # nginx.conf is bind-mounted as a single file, so a new checkout swaps the inode
 # under the running container and nothing restarts it: the old config keeps
 # serving. Its hash is stamped on the nginx service as a label
@@ -120,8 +124,8 @@ dev-health:
 
 e2e-up:
 	$(E2E_COMPOSE) up -d --wait postgres
-	$(E2E_COMPOSE) run --rm --no-deps app-svc alembic upgrade head
-	$(E2E_COMPOSE) up -d --wait
+	$(E2E_COMPOSE) run --rm --no-deps -v "$$(pwd)/backend/migrations:/app/migrations" app-svc alembic upgrade head
+	$(E2E_COMPOSE) up -d --build --wait
 
 e2e-down:
 	$(E2E_COMPOSE) down --remove-orphans
