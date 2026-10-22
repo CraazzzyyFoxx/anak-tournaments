@@ -228,6 +228,9 @@ class DisciplineSpec:
     dimensions: tuple[DimensionSpec, ...] = ()
     #: Team-format presets; the first is what an owner without a format of its own gets.
     team_format_presets: tuple[TeamFormatPreset, ...] = ()
+    #: Whether the game has open slots and Full flex players -- one flag, both meanings. ``False``: a format's open
+    #: starters go to the single rated role (``shared.domain.team_format.slot_shape``) and nobody may be Full flex.
+    flex: bool = True
     #: The provider used for default form identities, roster names and log matching.
     identity_provider: str | None = None
     #: Projected SMALLINT dictionaries; historical definitions are deactivated, never deleted.

@@ -22,7 +22,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CustomGamePlayer, MixMemberStats } from "@/services/custom-game.service";
 
 import { PickupPlayerSheet } from "./PickupPlayerSheet";
-import { OW_OWNER } from "./mix-owner.fixture";
+import { DEADLOCK_OWNER, OW_OWNER } from "./mix-owner.fixture";
 import type { MixOwner } from "./pickup-lineup";
 
 declare global {
@@ -81,6 +81,7 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     ranks: { tank: 3300, damage: 2700, support: 2900 },
     rank_sources: { tank: "author", damage: "workspace", support: "native" },
     author_ranks: { tank: 3300 },
+    away: false,
     ...overrides,
   };
 }
@@ -191,6 +192,7 @@ describe("PickupPlayerSheet ranks", () => {
       participation: "pool",
       roles: ["tank", "damage"].map((role) => ({ dimension: "player_role", role })),
       is_flex: false,
+      away: false,
     });
     expect(rankChange).toEqual({ ranks: { damage: 3000 }, clear: [] });
   });
@@ -246,6 +248,65 @@ describe("PickupPlayerSheet ranks", () => {
     expect(scope.textContent).not.toContain("Gold");
     expect(scope.textContent).not.toContain("Silver");
     expect(scope.textContent).toContain("No rank yet");
+  });
+
+  it("edits a one-role game's rank alone and never sends Full flex", async () => {
+    const scope = await mount(
+      row({
+        identity: { provider: "steam", handle: "206464648" },
+        roles: null,
+        ranks: { agent: 2900 },
+        rank_sources: { agent: "native" },
+        author_ranks: {},
+        is_flex: true,
+      }),
+      null,
+      1,
+      { ...DEADLOCK_OWNER, grid: OWNER.grid },
+    );
+
+    // No role or Full flex control: the one switch left is Away, which every game has.
+    expect(
+      [...scope.querySelectorAll('[role="switch"]')].map((node) => node.getAttribute("aria-label")),
+    ).toEqual(["away"]);
+    expect(scope.textContent).not.toContain("Roles and ranks");
+    // The heading names the rank alone, through the sheet's translator (mocked to echo the key).
+    expect(scope.textContent).toContain("rankHeading");
+    await type(rankFields(scope)[0], "3100");
+    await click(findButton(scope, "Save"));
+
+    const [patch, rankChange] = onSave.mock.calls[0];
+    // A one-role game has no order to write: `null` is "every ranked role".
+    expect(patch).toEqual({ participation: "pool", roles: null, is_flex: false, away: false });
+    expect(rankChange).toEqual({ ranks: { agent: 3100 }, clear: [] });
+  });
+
+  // A stored `[]` (or a `null` with no rank yet) seats nobody once the first rank lands unless Save writes `null`:
+  // the balance would refuse the player with `missing_ranked_role`.
+  it.each<[string, CustomGamePlayer["roles"]]>([
+    ["no role order yet", null],
+    ["an empty role order", []],
+  ])("saves a one-role player's first rank with every role on, from %s", async (_case, roles) => {
+    const scope = await mount(
+      row({
+        identity: { provider: "steam", handle: "206464648" },
+        roles,
+        ranks: {},
+        rank_sources: {},
+        author_ranks: {},
+      }),
+      null,
+      1,
+      { ...DEADLOCK_OWNER, grid: OWNER.grid },
+    );
+
+    await type(rankFields(scope)[0], "2900");
+    expect(scope.textContent).not.toContain("balance will reject this mix");
+    await click(findButton(scope, "Save"));
+
+    const [patch, rankChange] = onSave.mock.calls[0];
+    expect(patch).toEqual({ participation: "pool", roles: null, is_flex: false, away: false });
+    expect(rankChange).toEqual({ ranks: { agent: 2900 }, clear: [] });
   });
 });
 
@@ -444,5 +505,17 @@ describe("PickupPlayerSheet lobby pin", () => {
 
     expect(pinOptions(scope)[4].getAttribute("aria-checked")).toBe("true");
     expect(pinOptions(scope)[1].getAttribute("aria-checked")).toBe("false");
+  });
+});
+
+describe("PickupPlayerSheet away", () => {
+  it("marks a player away, written only on Save", async () => {
+    const scope = await mount();
+
+    await click(scope.querySelector('[role="switch"][aria-label="away"]') as Element);
+    expect(onSave).not.toHaveBeenCalled();
+    await click(findButton(scope, "Save"));
+
+    expect(onSave.mock.calls[0][0]).toMatchObject({ away: true });
   });
 });

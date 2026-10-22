@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { slotCodeOrder } from "@/lib/roster/ontology";
-import type { CustomGamePlayer, RotationRecommendation } from "@/services/custom-game.service";
+import type { CustomGame, CustomGamePlayer, RotationRecommendation } from "@/services/custom-game.service";
 import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import { TEST_LADDER_TIERS } from "@/test/native-ladder";
 
@@ -10,6 +10,8 @@ import {
   buildMixOwner,
   computeRotationHintPatches,
   getLineupIssue,
+  lobbyCandidateCount,
+  myLobbyTeam,
   parseVariants as parseVariantsOrdered,
   participationEntries,
   playerLabel,
@@ -20,8 +22,9 @@ import {
   summarizeRoleSupply,
   teamNamesByIndex,
   toggleRole,
+  waitingQueuePosition,
 } from "./pickup-lineup";
-import { LOL_OWNER, LOL_SHAPE, OW_OWNER, OW_SHAPE, flexOnlyOwner } from "./mix-owner.fixture";
+import { DEADLOCK_OWNER, LOL_OWNER, LOL_SHAPE, OW_OWNER, OW_SHAPE, flexOnlyOwner } from "./mix-owner.fixture";
 
 const OW_ORDER = slotCodeOrder(OW_METADATA);
 const LOL_ORDER = slotCodeOrder(LOL_METADATA);
@@ -40,6 +43,7 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     participation: "pool",
     role_selection_mode: "all_ranked",
     is_flex: false,
+    away: false,
     roles: null,
     ranks: { tank: 2400, damage: 2600, support: 2500 },
     rank_sources: { tank: "workspace", damage: "workspace", support: "workspace" },
@@ -122,6 +126,18 @@ describe("computeRotationHintPatches", () => {
     expect(patches).toEqual([]);
   });
 
+  it("never moves an away member, whatever a cached verdict says", () => {
+    const rows = [
+      row({ workspace_member_id: 1, participation: "benched", away: true }),
+      row({ workspace_member_id: 2, participation: "pool", away: true }),
+    ];
+    const recommendations = [
+      hint({ workspace_member_id: 1, status: "must_play" }),
+      hint({ workspace_member_id: 2, status: "should_rest" }),
+    ];
+    expect(computeRotationHintPatches(rows, recommendations)).toEqual([]);
+  });
+
   it("applies only the rows that actually need to change, across a mixed pool", () => {
     const rows = [
       row({ workspace_member_id: 1, participation: "benched" }), // owed a seat
@@ -165,6 +181,18 @@ describe("buildMixOwner", () => {
     const owner = flexOnlyOwner();
     expect(owner.demand).toEqual({});
     expect(owner.lobbySize).toBe(10);
+  });
+
+  it("reads a one-role game without Full flex: Deadlock seats agents only and names no role", () => {
+    expect(DEADLOCK_OWNER).toMatchObject({
+      roles: ["agent"],
+      dimension: "agent",
+      demand: { agent: 12 },
+      lobbySize: 12,
+      flex: false,
+      showsRoles: false,
+    });
+    expect(OW_OWNER).toMatchObject({ flex: true, showsRoles: true });
   });
 
   it("is empty until metadata and shape load: nothing is guessed", () => {
@@ -223,6 +251,19 @@ describe("summarizeRoleSupply", () => {
     expect(supply.every((entry) => entry.supply === 0)).toBe(true);
   });
 
+  it("does not count away players: with both tanks away the tank seats stay short", () => {
+    const tank = [{ dimension: "player_role", role: "tank" }];
+    const supply = summarizeRoleSupply(
+      [
+        row({ workspace_member_id: 1, roles: tank, away: true }),
+        row({ workspace_member_id: 2, roles: tank, away: true }),
+        row({ workspace_member_id: 3, roles: [{ dimension: "player_role", role: "damage" }] }),
+      ],
+      OW_OWNER,
+    );
+    expect(supply.find((entry) => entry.role === "tank")).toEqual({ role: "tank", supply: 0, need: 2, short: 2 });
+  });
+
   it("never reports a negative shortfall once a role is oversupplied", () => {
     const rows = Array.from({ length: 5 }, (_unused, index) =>
       row({ workspace_member_id: index + 1, roles: [{ dimension: "player_role", role: "tank" }] }),
@@ -253,6 +294,10 @@ describe("summarizeRoleSupply", () => {
 
   it("has no entry for a game whose format asks no role of anyone", () => {
     expect(summarizeRoleSupply([row()], flexOnlyOwner())).toEqual([]);
+  });
+
+  it("has no entry for a one-role game, though every seat is that role", () => {
+    expect(summarizeRoleSupply([row({ ranks: { agent: 2400 } })], DEADLOCK_OWNER)).toEqual([]);
   });
 });
 
@@ -339,6 +384,10 @@ describe("getLineupIssue", () => {
     expect(getLineupIssue(row({ participation: "benched", roles: [], ranks: {} }), OW_OWNER.roles)).toBeNull();
   });
 
+  it("stays silent for an away player without a ranked role: the balance skips them", () => {
+    expect(getLineupIssue(row({ away: true, roles: [] }), OW_OWNER.roles)).toBeNull();
+  });
+
   it("flags an active player whose selected roles have no rank", () => {
     expect(getLineupIssue(row({ roles: [{ dimension: "player_role", role: "tank" }], ranks: { damage: 2600 } }), OW_OWNER.roles)).toBe("no_rank");
   });
@@ -380,6 +429,19 @@ describe("summarizeLineup", () => {
         OW_OWNER.roles,
       ),
     ).toEqual({ total: 3, active: 2, benched: 1, blocking: 1 });
+  });
+
+  it("leaves away players out of the balance count and its blockers, without calling them benched", () => {
+    expect(
+      summarizeLineup(
+        [
+          row({ workspace_member_id: 1 }),
+          row({ workspace_member_id: 2, participation: "benched" }),
+          row({ workspace_member_id: 3, away: true, roles: [], ranks: {} }),
+        ],
+        OW_OWNER.roles,
+      ),
+    ).toEqual({ total: 3, active: 1, benched: 1, blocking: 0 });
   });
 });
 
@@ -646,5 +708,118 @@ describe("parseVariants for a League mix", () => {
     const [plain] = variant.teams[1].seats;
     expect(capitalised).toMatchObject({ role: "top", rating: 2150, openRating: 2050, subRole: "roamer", offRole: false });
     expect(plain).toMatchObject({ role: "top", rating: 1900, openRating: 1800, subRole: "split", offRole: false });
+  });
+});
+
+describe("lineup captains", () => {
+  it("crowns the seat the lineup names per team, and nobody on a team without one", () => {
+    const [variant] = parseVariants({
+      players: { "7": { name: "karin" }, "8": { name: "Tolgrn" }, "9": { name: "Egor" } },
+      variants: [
+        {
+          teams: [
+            { captain_member_id: 8, roster: { Tank: ["7"], Damage: ["8"] } },
+            { roster: { Support: ["9"] } },
+          ],
+        },
+      ],
+    });
+    expect(variant.teams.map((team) => team.captainUuid)).toEqual(["8", null]);
+    expect(variant.teams[0].seats.map((seat) => [seat.name, seat.isCaptain])).toEqual([
+      ["karin", false],
+      ["Tolgrn", true],
+    ]);
+    expect(variant.teams[1].seats[0].isCaptain).toBe(false);
+  });
+});
+
+describe("lobbyCandidateCount", () => {
+  it("counts who a lobby can seat: in the lineup, present, not on another lobby's floor or pin", () => {
+    const rows = [
+      row({ workspace_member_id: 1 }),
+      row({ workspace_member_id: 2, current_lobby: 1 }),
+      row({ workspace_member_id: 3, current_lobby: 0 }),
+      row({ workspace_member_id: 4, lobby_pin: 0 }),
+      row({ workspace_member_id: 5, away: true }),
+      row({ workspace_member_id: 6, participation: "benched" }),
+    ];
+    expect(lobbyCandidateCount(rows, 1)).toBe(2);
+  });
+});
+
+describe("waitingQueuePosition", () => {
+  it("lines the waiting players up by how long each has sat out, then by games played", () => {
+    const rows = [
+      row({ id: 1, workspace_member_id: 7, sort_order: 0 }),
+      row({ id: 2, workspace_member_id: 8, sort_order: 1 }),
+      row({ id: 3, workspace_member_id: 9, sort_order: 2, current_lobby: 0 }),
+      row({ id: 4, workspace_member_id: 10, sort_order: 3 }),
+    ];
+    const rotation = [
+      hint({ workspace_member_id: 8, consecutive_sat: 2 }),
+      hint({ workspace_member_id: 10, consecutive_sat: 2, games_played: 1 }),
+      hint({ workspace_member_id: 7, games_played: 3 }),
+    ];
+    expect([7, 8, 9, 10].map((id) => waitingQueuePosition(rows, rotation, id))).toEqual([3, 1, null, 2]);
+  });
+
+  it("puts the host's must-play pin first, even with no sit-out behind it", () => {
+    const rows = [
+      row({ id: 1, workspace_member_id: 7, sort_order: 0 }),
+      row({ id: 2, workspace_member_id: 8, sort_order: 1, participation: "must_play" }),
+    ];
+    const rotation = [
+      hint({ workspace_member_id: 7, consecutive_sat: 1, games_played: 1 }),
+      hint({ workspace_member_id: 8, consecutive_played: 2, games_played: 4 }),
+    ];
+    expect([7, 8].map((id) => waitingQueuePosition(rows, rotation, id))).toEqual([2, 1]);
+  });
+
+  it("breaks an equal sit-out by the shorter playing streak before total games", () => {
+    const rows = [
+      row({ id: 1, workspace_member_id: 7, sort_order: 0 }),
+      row({ id: 2, workspace_member_id: 8, sort_order: 1 }),
+    ];
+    const rotation = [
+      hint({ workspace_member_id: 7, consecutive_played: 3, games_played: 3 }),
+      hint({ workspace_member_id: 8, consecutive_played: 1, games_played: 5 }),
+    ];
+    expect([7, 8].map((id) => waitingQueuePosition(rows, rotation, id))).toEqual([2, 1]);
+  });
+});
+
+describe("myLobbyTeam", () => {
+  it("finds the player's own team in the lobby whose shown option seats them", () => {
+    const game = {
+      settings: { points_per_win: 0, team_names: { "2": "Owls" }, workspace_discord_channel_id: null },
+      lobbies: [
+        {
+          lobby_index: 0,
+          selected_variant_index: 0,
+          next_map_id: null,
+          balance_result: { players: { "7": { name: "karin" } }, variants: [{ teams: [{ roster: { Tank: ["7"] } }] }] },
+        },
+        {
+          lobby_index: 1,
+          selected_variant_index: 1,
+          next_map_id: 42,
+          balance_result: {
+            players: { "8": { name: "Tolgrn" }, "9": { name: "Egor" } },
+            variants: [{ teams: [] }, { teams: [{ captain_member_id: 9, roster: { Tank: ["9"], Damage: ["8"] } }] }],
+          },
+        },
+      ],
+    } as unknown as CustomGame;
+
+    expect(myLobbyTeam(game, 8, OW_ORDER)).toEqual({
+      lobbyIndex: 1,
+      teamName: "Owls",
+      nextMapId: 42,
+      members: [
+        { uuid: "9", name: "Egor", isCaptain: true, isMe: false },
+        { uuid: "8", name: "Tolgrn", isCaptain: false, isMe: true },
+      ],
+    });
+    expect(myLobbyTeam(game, 99, OW_ORDER)).toBeNull();
   });
 });

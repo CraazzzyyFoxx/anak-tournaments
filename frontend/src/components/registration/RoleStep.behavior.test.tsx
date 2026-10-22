@@ -11,7 +11,7 @@ import {
 } from "react";
 
 import { catalogEntity } from "@/test/catalog";
-import { OW_METADATA } from "@/test/discipline-metadata";
+import { DEADLOCK_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { RolesParams } from "@/types/forms.types";
 import type { SubroleCatalog } from "@/types/registration.types";
@@ -67,8 +67,9 @@ vi.mock("@/components/ui/popover", () => ({
     const { open, setOpen } = useContext(PopoverCtx);
     return cloneElement(children, { onClick: () => setOpen(!open) });
   },
-  PopoverContent: ({ children }: { children: ReactNode }) =>
-    useContext(PopoverCtx).open ? <div>{children}</div> : null,
+  // The picker's own name is forwarded: it is what a screen reader announces for the opened roster.
+  PopoverContent: ({ children, "aria-label": label }: { children: ReactNode; "aria-label"?: string }) =>
+    useContext(PopoverCtx).open ? <div aria-label={label}>{children}</div> : null,
 }));
 // Radix passes the root's `disabled` down to the trigger through context; the
 // stand-in has to do the same or a disabled specialization cell looks enabled.
@@ -440,4 +441,55 @@ afterAll(() => {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor);
     else Reflect.deleteProperty(globalThis, key);
   }
+});
+
+describe("RoleStep in a one-role game", () => {
+  /** The trigger's role-free name: the one row is the game's one role, so "for Agent" says nothing. */
+  const NO_ROLE_TRIGGER = 'button[aria-label="registration.roles.matrix.heroesLabelNoRole"]';
+
+  function mountOneRole(subroleCatalog: SubroleCatalog = {}) {
+    container = testWindow.document.createElement("div");
+    testWindow.document.body.appendChild(container);
+    root = createRoot(container as unknown as Element);
+    act(() =>
+      root.render(
+        <RoleStep
+          ontology={DEADLOCK_METADATA}
+          params={paramsFor("optional")}
+          subroleCatalog={subroleCatalog}
+          value={[{ role: "agent", is_primary: true }]}
+          onChange={() => {}}
+          allHeroes={HEROES}
+          lockedRole="agent"
+        />,
+      ),
+    );
+  }
+
+  it("asks for the top heroes alone: no role name, column head, hint or flex preset", () => {
+    mountOneRole();
+
+    expect(container.querySelectorAll(NO_ROLE_TRIGGER)).toHaveLength(1);
+    expect(container.textContent).not.toContain("Agent");
+    expect(container.textContent).not.toContain("registration.roles.matrix.hint");
+    expect(container.textContent).not.toContain("registration.roles.matrix.columnRole");
+  });
+
+  it("names no role in the opened hero picker either", () => {
+    mountOneRole();
+    click(NO_ROLE_TRIGGER);
+
+    const picker = container.querySelector('[aria-label="registration.roles.matrix.heroesPickerLabelNoRole"]');
+    expect(picker).not.toBeNull();
+    expect(picker?.textContent).toContain("registration.roles.topHeroes.title");
+    expect(picker?.textContent).toContain("registration.roles.topHeroes.descNoRole");
+    expect(picker?.textContent).not.toContain("Agent");
+  });
+
+  it("names the specialization select without the role it belongs to", () => {
+    mountOneRole({ agent: [{ slug: "frontline", label: "Frontline" }] });
+
+    expect(container.querySelectorAll('button[aria-label="registration.roles.specialization"]')).toHaveLength(1);
+    expect(container.querySelector('[aria-label="registration.roles.roleSpecialization"]')).toBeNull();
+  });
 });

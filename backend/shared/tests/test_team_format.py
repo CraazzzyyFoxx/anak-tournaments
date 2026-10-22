@@ -91,6 +91,25 @@ def test_role_slots_beyond_the_starting_line_up_are_refused() -> None:
     assert exc_info.value.code == "team_format_slots_exceed_starters"
 
 
+def test_a_game_without_open_slots_gives_every_starter_to_its_one_role() -> None:
+    # Deadlock (``DisciplineSpec.flex`` false): its open formats seat agents, never open slots.
+    ontology = _module_ontology("deadlock")
+    six, four = (TeamFormat.from_preset("deadlock", preset) for preset in DISCIPLINES["deadlock"].team_format_presets)
+    assert slot_shape(six, ontology).slots == {"agent": 6}
+    assert slot_shape(four, ontology).slots == {"agent": 4}
+
+
+def test_open_slots_in_a_several_role_game_without_them_are_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(DISCIPLINES, "overwatch", replace(DISCIPLINES["overwatch"], flex=False))
+    ontology = _module_ontology("overwatch")
+    informational = replace(OW_5V5, dimensions=(FormatDimension("player_role", "informational"),))
+    with pytest.raises(TeamFormatError) as exc_info:
+        slot_shape(informational, ontology)
+    assert exc_info.value.code == "team_format_open_slots_without_flex"
+    # A format that names every seat by role leaves nothing open and still projects.
+    assert slot_shape(OW_5V5, ontology).slots == {"tank": 1, "damage": 2, "support": 2}
+
+
 def test_a_1_2_2_roster_passes_the_overwatch_preset() -> None:
     ontology = _module_ontology("overwatch")
     verdict = validate_roster(OW_5V5, ontology, _members(ontology, "tank", "damage", "damage", "support", "support"))

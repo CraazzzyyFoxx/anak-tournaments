@@ -14,6 +14,7 @@ from src.domain.mix_self_service import MAX_ROSTER
 
 __all__ = (
     "CustomGameBalanceRequest",
+    "CustomGameCaptainPatch",
     "CustomGameCoHostPatch",
     "CustomGameCreate",
     "CustomGameDiscordLineup",
@@ -22,6 +23,7 @@ __all__ = (
     "CustomGameListQuery",
     "CustomGameLobbyCountPatch",
     "CustomGameLobbyVoice",
+    "CustomGameMatchRun",
     "CustomGameNextMapPatch",
     "CustomGameOutcome",
     "CustomGamePlayerPatch",
@@ -33,6 +35,7 @@ __all__ = (
     "CustomGameRename",
     "CustomGameRosterUpdate",
     "CustomGameSeatSwap",
+    "CustomGameSelfAway",
     "CustomGameSelfServicePatch",
     "CustomGameSelfUpdate",
     "CustomGameTeamNamesPatch",
@@ -94,6 +97,8 @@ class CustomGamePlayerPatch(_Request):
     participation: MixParticipation | None = None
     roles: _RoleOrder | None = None
     is_flex: StrictBool | None = None
+    # Stepped away: in no lobby's seated set until cleared (spec §7.4).
+    away: StrictBool | None = None
     # ``None`` is "auto": the balance places them wherever they fit. A patch that
     # does not mention the field leaves the pin exactly as it was.
     lobby_pin: int | None = Field(None, ge=0, le=MAX_LOBBIES - 1)
@@ -182,14 +187,24 @@ class CustomGameSeatSwap(_LobbyScoped):
     second_uuid: str = Field(min_length=1)
 
 
+class CustomGameCaptainPatch(_LobbyScoped):
+    """Who captains their team in the lobby's shown option."""
+
+    workspace_member_id: int
+
+
 class CustomGameOutcome(_Request):
     winner: Literal[1, 2] | None
 
 
 class CustomGameRecordOutcome(_LobbyScoped):
+    """The result of the lobby's live match; its seats and map were fixed when it started."""
+
     outcome: CustomGameOutcome
-    variant_index: int = Field(ge=0)
-    map_id: int | None = None
+
+
+class CustomGameMatchRun(_LobbyScoped):
+    """Which lobby's match to start or cancel."""
 
 
 class CustomGameSelfUpdate(_Request):
@@ -202,6 +217,12 @@ class CustomGameSelfUpdate(_Request):
 
     roles: _RoleOrder | None = None
     is_flex: StrictBool | None = None
+
+
+class CustomGameSelfAway(_Request):
+    """The player's own away switch: ``true`` steps away, ``false`` comes back."""
+
+    away: StrictBool
 
 
 class CustomGameSelfServicePatch(_Request):

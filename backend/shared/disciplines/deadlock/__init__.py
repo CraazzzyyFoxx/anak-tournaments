@@ -123,7 +123,7 @@ def _settings_schema(key: str) -> type[BaseModel] | None:
     return collector.DeadlockRankCollectionConfig if key == collector.SETTINGS_KEY else None
 
 
-#: Deadlock ranks are per player, not per position: one rated dimension with one role.
+#: Deadlock ranks are per player, not per position: one rated dimension with one role, and no open slot (``flex``).
 AGENT = DimensionSpec("agent", "Agent", "single", True, (RoleSpec("agent", "Agent"),))
 OPEN_6V6 = TeamFormatPreset("open_6v6", "6v6", 6, 6, dimensions=(FormatDimensionSpec("agent", "off"),))
 #: Street Brawl.
@@ -152,6 +152,7 @@ SPEC = DisciplineSpec(
     match_fetchers={SOURCE_KIND: _fetch_match},
     dimensions=(AGENT,),
     team_format_presets=(OPEN_6V6, OPEN_4V4),
+    flex=False,
     identity_provider=SocialProvider.STEAM,
     short_name="Deadlock",
     #: Published from frontend/public/disciplines/deadlock/icon.png (scripts/publish_discipline_assets.py).

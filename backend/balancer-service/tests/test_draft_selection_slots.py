@@ -28,10 +28,13 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 
 from shared.core.enums import DraftPickStatus, DraftPlayerStatus  # noqa: E402
+from shared.disciplines import DISCIPLINES  # noqa: E402
 from shared.domain.roster import PlayerRoster  # noqa: E402
 from shared.domain.roster_shape import RosterShape  # noqa: E402
+from shared.domain.team_format import TeamFormat, slot_shape  # noqa: E402
 from shared.models.catalog import CatalogRole  # noqa: E402
 from shared.models.draft import DraftPick, DraftPlayer, DraftTeam  # noqa: E402
+from shared.tests.test_team_format import _module_ontology  # noqa: E402
 from src.domain.draft import (
     feasibility,  # noqa: E402
     rules,  # noqa: E402
@@ -221,6 +224,26 @@ def test_a_role_slot_roster_keeps_the_existing_target_role_rules() -> None:
     tank = _player(3, "tank")
     with pytest.raises(Exception) as filled:
         rules.resolve_pick_slot(shape, dict(counts, tank=1), _roster_of(tank), "tank")
+    assert _code(filled.value) == "slot_filled"
+
+
+def test_a_deadlock_draft_seats_every_pick_on_its_one_role() -> None:
+    # Stage F: Deadlock's open 6v6 is six ``agent`` slots, not six open ones, so its drafts run the role-slot rules --
+    # a pick that names no role lands on the only role there is, and a seventh has nowhere to go.
+    six = TeamFormat.from_preset("deadlock", DISCIPLINES["deadlock"].preset())
+    shape = slot_shape(six, _module_ontology("deadlock"))
+    assert shape.has_role_slots is True
+
+    empty = rules.team_slot_counts((), (), 10, shape, {})
+    first = rules.resolve_pick_slot(shape, empty, _roster_of(_player(1, "agent")), None)
+    assert (first.role, first.recorded_role) == ("agent", "agent")
+
+    picked = tuple(_player(index, "agent", status=DraftPlayerStatus.PICKED, team_id=10) for index in range(1, 7))
+    picks = tuple(_pick(index, player_id=index, team_id=10, target_role="agent") for index in range(1, 7))
+    counts = rules.team_slot_counts(picked, picks, 10, shape, _rosters(*picked))
+    assert counts == {"agent": 6}
+    with pytest.raises(Exception) as filled:
+        rules.resolve_pick_slot(shape, counts, _roster_of(_player(7, "agent")), None)
     assert _code(filled.value) == "slot_filled"
 
 

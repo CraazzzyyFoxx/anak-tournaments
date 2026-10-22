@@ -1,8 +1,10 @@
 "use client";
 
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { AlertCircle } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { AlertCircle, Crown } from "lucide-react";
 
+import { AWAY_CHIP_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -28,14 +30,21 @@ export function SeatRow({
   owner,
   teamIndex,
   canDrag,
-  activeDrag
+  activeDrag,
+  away = false,
+  onMakeCaptain
 }: Readonly<{
   seat: PickupSeat;
   owner: MixOwner;
   teamIndex: number;
   canDrag: boolean;
   activeDrag: ActiveSeatDrag | null;
+  /** Stepped away but still seated in this lineup (spec §7.4). */
+  away?: boolean;
+  /** Omitted -- no "Make captain" (a viewer, a live lineup, a screenshot, or this seat already wears the crown). */
+  onMakeCaptain?: () => void;
 }>) {
+  const tRoom = useTranslations("mixes.room");
   const dragData: ActiveSeatDrag = { uuid: seat.uuid, role: seat.role, teamIndex, seat };
   const draggable = useDraggable({ id: seat.uuid, data: dragData, disabled: !canDrag });
   const droppable = useDroppable({ id: seat.uuid, data: dragData, disabled: !canDrag });
@@ -67,12 +76,14 @@ export function SeatRow({
             : "border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] hover:bg-[color:var(--aqt-overlay-3)]"
       )}
     >
-      <IconTooltip
-        label={`${slotLabel(seat.role)}${seat.subRole ? ` \u00B7 ${seat.subRole}` : ""}`}
-        className="size-6 shrink-0 items-center justify-center opacity-90"
-      >
-        <PlayerRoleIcon role={seat.role} ontology={owner.ontology} size={24} decorative />
-      </IconTooltip>
+      {owner.showsRoles ? (
+        <IconTooltip
+          label={`${slotLabel(seat.role)}${seat.subRole ? ` \u00B7 ${seat.subRole}` : ""}`}
+          className="size-6 shrink-0 items-center justify-center opacity-90"
+        >
+          <PlayerRoleIcon role={seat.role} ontology={owner.ontology} size={24} decorative />
+        </IconTooltip>
+      ) : null}
       {division == null ? null : (
         <IconTooltip
           label={getDivisionLabel(grid, division) ?? String(division)}
@@ -87,6 +98,23 @@ export function SeatRow({
       >
         {seat.name}
       </span>
+      {seat.isCaptain ? (
+        <IconTooltip label={tRoom("captain")} className="flex shrink-0 items-center">
+          <Crown aria-hidden className="size-3.5 text-[color:var(--aqt-amber)]" />
+        </IconTooltip>
+      ) : onMakeCaptain ? (
+        <IconTooltip control label={tRoom("makeCaptain")}>
+          <button
+            type="button"
+            aria-label={tRoom("makeCaptain")}
+            onClick={onMakeCaptain}
+            className="flex size-6 shrink-0 items-center justify-center rounded-md text-[color:var(--aqt-fg-faint)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-amber)]"
+          >
+            <Crown aria-hidden className="size-3.5" />
+          </button>
+        </IconTooltip>
+      ) : null}
+      {away ? <span className={AWAY_CHIP_CLASS}>{tRoom("away")}</span> : null}
       {seat.offRole ? (
         <IconTooltip
           label="Off-role"
@@ -104,6 +132,7 @@ export function SeatRow({
 /** The dragged seat's own row, detached from the list, following the pointer. */
 export function SeatDragPreview({ seat, owner }: Readonly<{ seat: PickupSeat; owner: MixOwner }>) {
   const slotLabel = useSlotLabel(owner.ontology);
+  const tRoom = useTranslations("mixes.room");
   return (
     <div
       className={cn(
@@ -111,12 +140,20 @@ export function SeatDragPreview({ seat, owner }: Readonly<{ seat: PickupSeat; ow
         "flex cursor-grabbing items-center gap-3 rounded-lg border-[color:var(--aqt-teal)] px-3.5 py-3 shadow-lg"
       )}
     >
-      <span className="flex size-6 shrink-0 items-center justify-center opacity-90">
-        <PlayerRoleIcon role={seat.role} ontology={owner.ontology} size={24} label={slotLabel(seat.role)} decorative />
-      </span>
+      {owner.showsRoles ? (
+        <span className="flex size-6 shrink-0 items-center justify-center opacity-90">
+          <PlayerRoleIcon role={seat.role} ontology={owner.ontology} size={24} label={slotLabel(seat.role)} decorative />
+        </span>
+      ) : null}
       <span className="min-w-0 flex-1 truncate text-base font-semibold text-[color:var(--aqt-fg)]">
         {seat.name}
       </span>
+      {/* No tooltip: the pointer sits on this ghost for the whole drag. */}
+      {seat.isCaptain ? (
+        <span role="img" aria-label={tRoom("captain")} className="flex shrink-0 items-center">
+          <Crown aria-hidden className="size-3.5 text-[color:var(--aqt-amber)]" />
+        </span>
+      ) : null}
       <SeatRating seat={seat} />
     </div>
   );

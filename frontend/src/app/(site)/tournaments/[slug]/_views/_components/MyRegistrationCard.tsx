@@ -33,7 +33,7 @@ import { getRegistrationTeamStatus } from "@/lib/registration/team-tone";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { roleAccent } from "@/lib/registration/role-accent";
-import { findRole, roleColor, rolePresentation, type RoleOntology } from "@/lib/roster/ontology";
+import { findRole, roleColor, rolePresentation, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { reachedAtLeast } from "@/lib/tournament/lifecycle";
 import { answerFlag, answerList, answerText } from "@/lib/forms/answers";
 import { IDENTITY_PROVIDERS, identityKey, identityProvider } from "@/lib/forms/builtin-keys";
@@ -275,6 +275,8 @@ function MyRegistrationCard({
   const ontology = ownerMetadata.data ?? null;
   const ownerProvider = ownerMetadata.data?.discipline.identity_provider ?? null;
   const slotLabel = useSlotLabel(ontology);
+  // A one-role game names no role on the card: every queue, chip and open place is that role.
+  const named = showsRoles(ontology);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -323,6 +325,7 @@ function MyRegistrationCard({
   // taken in, and the site's own slot vocabulary supplies the label and tint so
   // the chip reads like the role figures on the summary beside it.
   const roleQueue =
+    named &&
     registration.queue_role != null &&
     registration.queue_role_position != null &&
     registration.queue_role_total != null
@@ -337,6 +340,10 @@ function MyRegistrationCard({
         })()
       : null;
   const primaryRole = registration.roles.find((r) => r.is_primary);
+  // What is left of the roles once the one role goes unnamed: the specialization the registrant chose.
+  const specialization = named
+    ? null
+    : (registration.roles.map((r) => subRoleSlugOf(r.role)).find(Boolean) ?? null);
   const secondaryRoles = registration.roles
     .filter((r) => !r.is_primary)
     .sort((a, b) => a.priority - b.priority);
@@ -537,7 +544,11 @@ function MyRegistrationCard({
       teamHint = {
         text: t("registrationTeams.myCard.incomplete", {
           ...teamValues,
-          shortfall: formatShortfall(myTeam.open_slots, slotLabel)
+          shortfall: named
+            ? formatShortfall(myTeam.open_slots, slotLabel)
+            : t("registrationTeams.myCard.shortfallCount", {
+                count: Object.values(myTeam.open_slots).reduce<number>((sum, count) => sum + (count ?? 0), 0)
+              })
         }),
         tone: "font-medium text-[color:var(--aqt-amber)]"
       };
@@ -838,29 +849,38 @@ function MyRegistrationCard({
       {isExpanded && (
         <div className="border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-4 sm:px-5">
           <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="space-y-2">
-              <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-                {t("common.rolesList")}
-              </h4>
-              {primaryRole || secondaryRoles.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {primaryRole && <RegistrationRoleChip role={primaryRole} showPrimaryMark ontology={ontology} t={t} />}
-                  {secondaryRoles.map((r) => (
-                    <RegistrationRoleChip
-                      key={`${roleOf(r.role)}-${subRoleSlugOf(r.role) ?? "base"}-${r.priority}`}
-                      role={r}
-                      showPrimaryMark={false}
-                      ontology={ontology}
-                      t={t}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs italic text-[color:var(--aqt-fg-dim)]">
-                  {t("registration.myCard.noSecondaryRoles")}
-                </p>
-              )}
-            </div>
+            {named ? (
+              <div className="space-y-2">
+                <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+                  {t("common.rolesList")}
+                </h4>
+                {primaryRole || secondaryRoles.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {primaryRole && <RegistrationRoleChip role={primaryRole} showPrimaryMark ontology={ontology} t={t} />}
+                    {secondaryRoles.map((r) => (
+                      <RegistrationRoleChip
+                        key={`${roleOf(r.role)}-${subRoleSlugOf(r.role) ?? "base"}-${r.priority}`}
+                        role={r}
+                        showPrimaryMark={false}
+                        ontology={ontology}
+                        t={t}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs italic text-[color:var(--aqt-fg-dim)]">
+                    {t("registration.myCard.noSecondaryRoles")}
+                  </p>
+                )}
+              </div>
+            ) : specialization ? (
+              <div className="space-y-2">
+                <h4 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+                  {t("registration.roles.specialization")}
+                </h4>
+                <p className="text-xs text-[color:var(--aqt-fg)]">{formatSubroleSlug(specialization)}</p>
+              </div>
+            ) : null}
 
             {teamBrief && (
               <div className="space-y-2">

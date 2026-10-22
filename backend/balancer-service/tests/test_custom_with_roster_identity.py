@@ -55,6 +55,7 @@ def _service(provider_seen: list) -> CustomGameService:
                     participation=MixParticipation.POOL,
                     role_selection_mode=MixRoleSelectionMode.ALL_RANKED,
                     is_flex=False,
+                    away=False,
                     lobby_pin=None,
                 )
             ]
@@ -134,6 +135,7 @@ class WithRosterIdentityTests(IsolatedAsyncioTestCase):
                 encounter_id=member_id,
                 custom_game_id=1,
                 created_at=when,
+                recorded_at=when,
                 own_score=1.0,
                 other_score=0.0,
             )

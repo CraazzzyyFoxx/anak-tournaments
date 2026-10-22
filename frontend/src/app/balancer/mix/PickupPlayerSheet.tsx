@@ -20,6 +20,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
   type CustomGamePlayer,
@@ -72,6 +73,8 @@ type RoleDraft = {
   isFlex: boolean;
   /** Which lobby the host tied this player to, or `null` for "wherever the balance puts them". */
   lobbyPin: number | null;
+  /** Stepped away (spec §7.4): in no lineup until back; the must-play mark waits. */
+  away: boolean;
 };
 
 function buildDraft(row: CustomGamePlayer | null, roles: readonly string[]): RoleDraft {
@@ -81,6 +84,7 @@ function buildDraft(row: CustomGamePlayer | null, roles: readonly string[]): Rol
     rankEdits: {},
     isFlex: row?.is_flex ?? false,
     lobbyPin: row?.lobby_pin ?? null,
+    away: row?.away ?? false,
   };
 }
 
@@ -137,6 +141,7 @@ export function PickupPlayerSheet({
 }: Readonly<PickupPlayerSheetProps>) {
   const label = row ? playerLabel(row) : "";
   const t = useTranslations("mixes.lobbies");
+  const tRoom = useTranslations("mixes.room");
   const { name, suffix } = splitHandle(label);
   // The record across every mix, not this one: a caption, because it is
   // context for the settings below it and nothing here edits it.
@@ -159,7 +164,7 @@ export function PickupPlayerSheet({
 
   // Reads the draft, not the server row: a role turned on (or a rank typed
   // for one) must clear this warning immediately, not once Save round-trips.
-  const issue = row ? getLineupIssue(draftRow(row, draft), owner.roles) : null;
+  const issue = row ? getLineupIssue(draftRow(row, draft, owner.showsRoles), owner.roles) : null;
   const disabled = !canEdit || saving;
 
   const toggle = (role: string) =>
@@ -187,8 +192,12 @@ export function PickupPlayerSheet({
     onSave(
       {
         participation: draft.participation,
-        roles: roleRefsOf(draft.order, owner.dimension),
-        is_flex: draft.isFlex,
+        // A one-role game has nothing to order: `null` is every ranked role, and repairs a stored `[]` that
+        // would refuse the balance once the first rank lands.
+        roles: owner.showsRoles ? roleRefsOf(draft.order, owner.dimension) : null,
+        // A game without Full flex never sends one, which also clears a flag stored before it lost it.
+        is_flex: owner.flex && draft.isFlex,
+        away: draft.away,
         // A one-lobby mix 422s this field, and there is no control to set it.
         ...(lobbyCount > 1 ? { lobby_pin: draft.lobbyPin } : {}),
       },
@@ -276,6 +285,15 @@ export function PickupPlayerSheet({
                   );
                 })}
               </div>
+              <div className="flex items-center gap-2 pt-1">
+                <Switch
+                  checked={draft.away}
+                  disabled={disabled}
+                  aria-label={tRoom("away")}
+                  onCheckedChange={(away) => setDraft((current) => ({ ...current, away }))}
+                />
+                <span className="text-caption text-[color:var(--aqt-fg-muted)]">{tRoom("awayHint")}</span>
+              </div>
             </section>
 
             {lobbyCount > 1 ? (
@@ -325,7 +343,7 @@ export function PickupPlayerSheet({
 
             <section className="space-y-2.5 border-b border-[color:var(--aqt-border)] px-5 py-4">
               <h3 className="text-caption font-medium text-[color:var(--aqt-fg)]">
-                Roles and ranks
+                {owner.showsRoles ? "Roles and ranks" : t("rankHeading")}
               </h3>
 
               <PickupRoleOrderEditor
@@ -421,8 +439,8 @@ export function PickupPlayerSheet({
   );
 }
 
-/** The server row with every staged edit folded in, for `getLineupIssue`. */
-function draftRow(row: CustomGamePlayer, draft: RoleDraft): CustomGamePlayer {
+/** The server row with every staged edit folded in, for `getLineupIssue`: its roles are the ones Save writes. */
+function draftRow(row: CustomGamePlayer, draft: RoleDraft, showsRoles: boolean): CustomGamePlayer {
   const ranks = { ...row.ranks };
   for (const [role, value] of Object.entries(draft.rankEdits)) {
     if (value == null) {
@@ -435,7 +453,7 @@ function draftRow(row: CustomGamePlayer, draft: RoleDraft): CustomGamePlayer {
     ...row,
     participation: draft.participation,
     // Only the codes are read back (`resolveRoleOrder`), so the dimension is irrelevant here.
-    roles: roleRefsOf(draft.order, ""),
+    roles: showsRoles ? roleRefsOf(draft.order, "") : null,
     ranks,
   };
 }

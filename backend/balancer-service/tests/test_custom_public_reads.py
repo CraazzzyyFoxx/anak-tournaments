@@ -152,6 +152,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
             balanced_at=None,
             team1_voice_channel_id=None,
             team2_voice_channel_id=None,
+            live_encounter_id=None,
         )
         service = _list_service([row])
         service.hosts = AsyncMock(return_value={5: "Host"})
@@ -183,6 +184,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
                     "balanced_at": None,
                     "team1_voice_channel_id": None,
                     "team2_voice_channel_id": None,
+                    "live_encounter_id": None,
                     # Counted by the list too, so a row can say what each lobby has played.
                     "matches_count": 0,
                 }
@@ -201,6 +203,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
                 balanced_at=None,
                 team1_voice_channel_id=None,
                 team2_voice_channel_id=None,
+                live_encounter_id=None,
             )
             for index in (0, 1)
         ]
@@ -282,6 +285,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
                 balanced_at=balanced_at,
                 team1_voice_channel_id=None,
                 team2_voice_channel_id=None,
+                live_encounter_id=900,
                 balance_result_json=document,
             ),
             SimpleNamespace(
@@ -292,6 +296,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
                 balanced_at=balanced_at,
                 team1_voice_channel_id=None,
                 team2_voice_channel_id=None,
+                live_encounter_id=None,
                 balance_result_json=None,
             ),
         ]
@@ -303,6 +308,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
                 participation="pool",
                 role_selection_mode="explicit",
                 is_flex=False,
+                away=False,
                 lobby_pin=None,
             ),
             SimpleNamespace(
@@ -312,6 +318,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
                 participation="pool",
                 role_selection_mode="all_ranked",
                 is_flex=False,
+                away=False,
                 lobby_pin=1,
             ),
         ]
@@ -320,6 +327,8 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
         service.get = AsyncMock(return_value=game)
         service.roster.list_for_game = AsyncMock(return_value=rows)
         service.lobbies.list_for_game = AsyncMock(return_value=lobbies)
+        started_at = datetime(2026, 1, 1, 22, 30, tzinfo=UTC)
+        service.lobbies.live_started_at = AsyncMock(return_value={900: started_at})
         service.team_names.mapping_for_game = AsyncMock(return_value={})
         service.workspace_discord_target = AsyncMock(return_value=(None, "42"))
         service.host_points_per_win = AsyncMock(return_value=0)
@@ -362,6 +371,75 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
         self.assertEqual(0, data["lobbies"][1]["matches_count"])
         self.assertFalse(data["lobbies"][1]["lineup_recorded"])
         self.assertIsNotNone(data["lobbies"][0]["balance_result"])
+        # Derived on read, never stored: A has a match on the floor (and its clock), B shows nothing.
+        self.assertEqual(
+            [("live", 900, started_at.isoformat()), ("idle", None, None)],
+            [(lobby["state"], lobby["live_encounter_id"], lobby["live_started_at"]) for lobby in data["lobbies"]],
+        )
+
+    async def test_detail_read_captains_every_team_of_a_lineup_stored_without_captains(self) -> None:
+        """A lineup balanced before captains existed still reads back crowned, one captain per team, and the
+        read writes nothing back into the stored document; a host's pick who still sits on the team keeps it."""
+        from src.domain.balancer.result_serializer import lobby_document
+
+        def team(*seats: tuple[str, str, int]) -> dict[str, Any]:
+            return {"roster": {role: [{"uuid": uuid, "assigned_rating": rating}] for uuid, role, rating in seats}}
+
+        stored = lobby_document(
+            [
+                {
+                    "teams": [
+                        team(("7", "tank", 2400), ("8", "damage", 3100)),
+                        team(("9", "tank", 2900), ("10", "damage", 2800)),
+                    ]
+                }
+            ]
+        )
+        stored["variants"][0]["teams"][1]["captain_member_id"] = 10  # the host's pick; 9 is stronger
+        game = SimpleNamespace(
+            id=3,
+            workspace_id=7,
+            discipline="overwatch",
+            host_user_id=5,
+            name="Friday mix",
+            status="balanced",
+            lobby_count=1,
+            self_signup="closed",
+            self_role_edit=False,
+            general_voice_channel_id=None,
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        lobby = SimpleNamespace(
+            custom_game_id=3,
+            lobby_index=0,
+            selected_variant_index=0,
+            next_map_id=None,
+            balanced_at=datetime(2026, 1, 1, 21, 0, tzinfo=UTC),
+            team1_voice_channel_id=None,
+            team2_voice_channel_id=None,
+            live_encounter_id=None,
+            balance_result_json=stored,
+        )
+        service = MagicMock()
+        service.get = AsyncMock(return_value=game)
+        service.roster.list_for_game = AsyncMock(return_value=[])
+        service.lobbies.list_for_game = AsyncMock(return_value=[lobby])
+        service.team_names.mapping_for_game = AsyncMock(return_value={})
+        service.workspace_discord_target = AsyncMock(return_value=(None, None))
+        service.host_points_per_win = AsyncMock(return_value=0)
+        service.roster_shape = AsyncMock(return_value=SimpleNamespace(model_dump=lambda: {"slots": {}}))
+        service.co_hosts.user_ids_for_game = AsyncMock(return_value=[])
+        service.hosts = AsyncMock(return_value={5: "Host"})
+        service.mix_rounds.activity_for_games = AsyncMock(return_value={})
+        service.mix_rounds.activity_for_lobbies = AsyncMock(return_value={})
+
+        with patch.object(custom, "custom_game_service", service):
+            read = await self._call("rpc.balancer.custom.get", {"workspace_id": 7, "custom_game_id": 3})
+
+        self.assertTrue(read["ok"], read)
+        teams = read["data"]["lobbies"][0]["balance_result"]["variants"][0]["teams"]
+        self.assertEqual([8, 10], [team["captain_member_id"] for team in teams])
+        self.assertNotIn("captain_member_id", stored["variants"][0]["teams"][0])
 
     async def test_canonical_read_keeps_the_optional_query_scope_boundary(self) -> None:
         game = SimpleNamespace(id=3, workspace_id=7)

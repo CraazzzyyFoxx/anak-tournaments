@@ -14,7 +14,7 @@ import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useRoleName } from "@/hooks/useRoleName";
-import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
+import { registrationRoles, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 import type { UserOverviewStats } from "@/types/user.types";
 
@@ -83,7 +83,7 @@ export function UsersIndexFilters({
       <div className="flex flex-col gap-2.5 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2.5 md:flex-row md:flex-wrap md:items-center md:gap-2">
         {allGames ? (
           <GameFilterHint className="shrink-0" />
-        ) : (
+        ) : showsRoles(ontology) ? (
           <FilterChipGroup
             label={t("users.list.filters.roleGroup")}
             className="-mx-2.5 flex items-center gap-2 overflow-x-auto px-2.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:flex-wrap md:overflow-visible md:px-0 md:pb-0"
@@ -100,7 +100,7 @@ export function UsersIndexFilters({
               </FilterChip>
             ))}
           </FilterChipGroup>
-        )}
+        ) : null}
 
         {/* One wrapping row of compact controls on a phone; at `md` the wrapper
             dissolves so they are direct children of the toolbar row again. */}

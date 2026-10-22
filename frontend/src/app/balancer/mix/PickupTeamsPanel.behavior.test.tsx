@@ -11,8 +11,8 @@
 //  3. the index is clamped, so a shorter result cannot point past the end;
 //  4. Balance is refused while nobody is checked in the lineup, which is the
 //     `empty_lineup` 422 the server would raise;
-//  5. recording a result is a deliberate click, repeatable, and carries the
-//     page's variant index; closing the mix is a separate, explicit action;
+//  5. recording a result is a deliberate click on a live match, repeatable,
+//     and names its lobby; closing the mix is a separate, explicit action;
 //  6. a read-only viewer gets no writes but still sees teams;
 //  7. the verdict pills sit inside the captured block with the team card, so
 //     "Copy image" exports them together, while "Copy image"/"Copy handles"
@@ -26,17 +26,20 @@
 //     page actually handed a handler -- an older one would have to unwind
 //     every match stacked on top of it;
 // 10. Post to Discord appears only for a writer whose mix has a channel
-//     configured, and posts the option the pager is on, not always the first.
+//     configured, and posts the option the pager is on, not always the first;
+// 11. a lobby walks Ready -> Live: Start match opens it (asking first while an
+//     away player is still seated), a live lineup is frozen to its result and
+//     Cancel match, and each team's captain wears the crown.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CustomGame, CustomGameLobby, CustomGameMatch } from "@/services/custom-game.service";
+import type { CustomGame, CustomGameLobby, CustomGameMatch, CustomGamePlayer } from "@/services/custom-game.service";
 import { catalogMap, catalogMode } from "@/test/catalog";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 
 import { PickupTeamsPanel } from "./PickupTeamsPanel";
-import { LOL_OWNER, OW_OWNER } from "./mix-owner.fixture";
+import { DEADLOCK_OWNER, LOL_OWNER, OW_OWNER } from "./mix-owner.fixture";
 import type { MixOwner } from "./pickup-lineup";
 
 declare global {
@@ -109,7 +112,9 @@ const onRenameTeam = vi.fn();
 const onSwapSeats = vi.fn();
 const onUndoMatch = vi.fn();
 const onPostToDiscord = vi.fn();
-const onShuffleAll = vi.fn();
+const onStartMatch = vi.fn();
+const onCancelMatch = vi.fn();
+const onMakeCaptain = vi.fn();
 
 // One lobby, rated once: an option only says who sits where.
 const PLAYERS = {
@@ -160,6 +165,9 @@ function lobbyRow(overrides: Partial<CustomGameLobby> = {}): CustomGameLobby {
     balanced_at: "2026-01-01T00:00:00Z",
     lineup_recorded: true,
     matches_count: 0,
+    live_encounter_id: null,
+    state: "ready",
+    live_started_at: null,
     ...overrides,
   };
 }
@@ -208,6 +216,28 @@ function match(overrides: Partial<CustomGameMatch> = {}): CustomGameMatch {
   };
 }
 
+function player(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
+  return {
+    id: 1,
+    workspace_member_id: 7,
+    display_name: null,
+    identity: null,
+    sort_order: 0,
+    participation: "pool",
+    role_selection_mode: "all_ranked",
+    is_flex: false,
+    away: false,
+    roles: null,
+    ranks: {},
+    rank_sources: {},
+    author_ranks: {},
+    ...overrides,
+  };
+}
+
+/** The lobby while its match is on. */
+const LIVE = { state: "live", live_encounter_id: 50, live_started_at: "2026-01-01T20:00:00Z" } as const;
+
 // The history row paints the winning team's name in the full foreground tone and the other in the dim one.
 const WINNER_TONE = "text-[color:var(--aqt-fg)]";
 
@@ -232,6 +262,8 @@ type PanelOptions = {
   omitSwapSeats?: boolean;
   maps?: CatalogEntityRead[];
   matches?: CustomGameMatch[];
+  /** The whole mix's history, every lobby; defaults to `matches`, a one-lobby page's history. */
+  mixMatches?: CustomGameMatch[];
   undoingMatchId?: number | null;
   omitUndoMatch?: boolean;
   omitPostToDiscord?: boolean;
@@ -255,12 +287,17 @@ function panel(current: CustomGame | undefined, props: PanelOptions) {
       balancing={false}
       activeCount={props.activeCount ?? 10}
       onBalance={onBalance}
-      onShuffleAll={onShuffleAll}
+      startingMatch={false}
+      onStartMatch={onStartMatch}
+      cancellingMatch={false}
+      onCancelMatch={onCancelMatch}
+      onMakeCaptain={onMakeCaptain}
       variantIndex={props.variantIndex ?? 0}
       onVariantIndexChange={onVariantIndexChange}
       recordingOutcome={false}
       onRecordOutcome={onRecordOutcome}
       matches={props.matches ?? []}
+      mixMatches={props.mixMatches ?? props.matches ?? []}
       undoingMatchId={props.undoingMatchId ?? null}
       onUndoMatch={props.omitUndoMatch ? undefined : onUndoMatch}
       maps={props.maps ?? []}
@@ -340,7 +377,9 @@ beforeEach(() => {
   onSwapSeats.mockReset();
   onUndoMatch.mockReset();
   onPostToDiscord.mockReset();
-  onShuffleAll.mockReset();
+  onStartMatch.mockReset();
+  onCancelMatch.mockReset();
+  onMakeCaptain.mockReset();
   captureSpies.capture.mockReset();
   captureSpies.capturing = false;
   dndSpies.useDraggable.mockClear();
@@ -396,6 +435,31 @@ describe("PickupTeamsPanel", () => {
 
     for (const name of names) expect(scope.textContent).toContain(name);
     expect(scope.querySelectorAll("section li")).toHaveLength(10);
+  });
+
+  it("labels no seat with a role in a one-role game", async () => {
+    const deadlock = {
+      players: {
+        "7": { name: "karin", ratings: { agent: 2900 }, role_preferences: ["agent"] },
+        "8": { name: "Egor", ratings: { agent: 3100 }, role_preferences: ["agent"] },
+      },
+      feasibility: null,
+      variants: [
+        {
+          teams: [
+            { id: 1, average_mmr: 2900, roster: { agent: ["7"] } },
+            { id: 2, average_mmr: 3100, roster: { agent: ["8"] } },
+          ],
+          statistics: {},
+          benched: [],
+        },
+      ],
+    };
+    const scope = await mount(game({ lobbies: [lobbyRow({ balance_result: deadlock })] }), { owner: DEADLOCK_OWNER });
+
+    expect(scope.textContent).toContain("karin");
+    expect(scope.textContent).toContain("Egor");
+    expect(scope.querySelector('[role="img"][aria-label="Agent"]')).toBeNull();
   });
 
   it("shows the option's own verdict but not who it left out -- the lineup already marks them benched", async () => {
@@ -524,35 +588,16 @@ describe("PickupTeamsPanel", () => {
     expect(onBalance).toHaveBeenCalledTimes(1);
   });
 
-  it("records a result only on a deliberate click, without closing the mix", async () => {
-    const scope = await mount(game());
+  it("records a live match's result only on a deliberate click, without closing the mix", async () => {
+    const scope = await mount(game({ lobbies: [lobbyRow(LIVE)] }));
 
     expect(onRecordOutcome).not.toHaveBeenCalled();
 
     await click(byName(scope, "Draw"));
-    expect(onRecordOutcome).toHaveBeenCalledWith({
-      outcome: { winner: null },
-      variantIndex: 0,
-      lobbyIndex: 0,
-    });
+    expect(onRecordOutcome).toHaveBeenCalledWith({ outcome: { winner: null }, lobbyIndex: 0 });
 
     await click(byName(scope, "Team 2 win"));
-    expect(onRecordOutcome).toHaveBeenLastCalledWith({
-      outcome: { winner: 2 },
-      variantIndex: 0,
-      lobbyIndex: 0,
-    });
-  });
-
-  it("reports the page's variant index alongside a recorded result", async () => {
-    const scope = await mount(game(), { variantIndex: 1 });
-
-    await click(byName(scope, "Team 1 win"));
-    expect(onRecordOutcome).toHaveBeenCalledWith({
-      outcome: { winner: 1 },
-      variantIndex: 1,
-      lobbyIndex: 0,
-    });
+    expect(onRecordOutcome).toHaveBeenLastCalledWith({ outcome: { winner: 2 }, lobbyIndex: 0 });
   });
 
   it("shows the mix's next map, with its mode, inside the captured block", async () => {
@@ -576,6 +621,25 @@ describe("PickupTeamsPanel", () => {
     await click(byName(scope, "Roll"));
     // Hybrid has exactly one competitive map, so the roll is deterministic.
     expect(onNextMapChange).toHaveBeenCalledWith(5);
+  });
+
+  it("rolls past a map another lobby played while the mode still has an unplayed one", async () => {
+    // Always the first map of the pool: without the other lobby's history that is Ilios.
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    const twoLobbies = game({ lobby_count: 2, lobbies: [lobbyRow(), lobbyRow({ lobby_index: 1 })] });
+    // Lobby A played Ilios; lobby B's room lists none of A's matches, but its roll still skips Ilios.
+    const scope = await mount(twoLobbies, {
+      lobbyIndex: 1,
+      maps: CATALOGUE,
+      matches: [],
+      mixMatches: [match({ id: 12, lobby_index: 0, map_id: 6, map_name: "Ilios" })],
+    });
+
+    await click(byName(scope, "Control"));
+    await click(byName(scope, "Roll"));
+    random.mockRestore();
+
+    expect(onNextMapChange).toHaveBeenCalledWith(7);
   });
 
   it("hides the roll controls from a read-only viewer, and the whole strip until something is rolled", async () => {
@@ -627,7 +691,7 @@ describe("PickupTeamsPanel", () => {
   });
 
   it("shows the configured points-per-win on the win buttons, never on Draw", async () => {
-    const scope = await mount(game({ settings: { ...SETTINGS, points_per_win: 25 } }));
+    const scope = await mount(game({ settings: { ...SETTINGS, points_per_win: 25 }, lobbies: [lobbyRow(LIVE)] }));
 
     expect(byName(scope, "Team 1 win +25")).not.toBeNull();
     expect(byName(scope, "Team 2 win +25")).not.toBeNull();
@@ -635,7 +699,7 @@ describe("PickupTeamsPanel", () => {
   });
 
   it("omits the points hint once no rank-adjustment is configured", async () => {
-    const scope = await mount(game());
+    const scope = await mount(game({ lobbies: [lobbyRow(LIVE)] }));
 
     expect(byName(scope, "Team 1 win")).not.toBeNull();
   });
@@ -782,7 +846,9 @@ describe("PickupTeamsPanel", () => {
   });
 
   it("shows a host's saved team name instead of the computed default", async () => {
-    const scope = await mount(game({ settings: { ...SETTINGS, team_names: { "0": "Wolves" } } }));
+    const scope = await mount(
+      game({ settings: { ...SETTINGS, team_names: { "0": "Wolves" } }, lobbies: [lobbyRow(LIVE)] }),
+    );
 
     expect(scope.textContent).toContain("Wolves");
     // The second team keeps its computed default; the win buttons pick up
@@ -869,17 +935,13 @@ describe("PickupTeamsPanel", () => {
   it("records a result for the lobby it is showing, not always the first", async () => {
     const twoLobbies = game({
       lobby_count: 2,
-      lobbies: [lobbyRow(), lobbyRow({ lobby_index: 1 })],
+      lobbies: [lobbyRow(), lobbyRow({ lobby_index: 1, ...LIVE })],
     });
     const scope = await mount(twoLobbies, { lobbyIndex: 1, variantIndex: 1 });
 
     await click(byName(scope, "Team 1 win"));
 
-    expect(onRecordOutcome).toHaveBeenCalledWith({
-      outcome: { winner: 1 },
-      variantIndex: 1,
-      lobbyIndex: 1,
-    });
+    expect(onRecordOutcome).toHaveBeenCalledWith({ outcome: { winner: 1 }, lobbyIndex: 1 });
   });
 
   it("renames lobby B's teams at their global indices, not at 0 and 1", async () => {
@@ -934,46 +996,6 @@ describe("PickupTeamsPanel", () => {
     expect(document.querySelector('[role="alertdialog"]')).toBeNull();
   });
 
-  it("offers the shared reshuffle only once the mix runs more than one lobby", async () => {
-    const one = await mount(game());
-    expect(byName(one, "shuffleAll")).toBeNull();
-
-    const two = await mount(
-      game({ lobby_count: 2, lobbies: [lobbyRow(), lobbyRow({ lobby_index: 1 })] }),
-    );
-    await click(byName(two, "shuffleAll"));
-
-    expect(onShuffleAll).toHaveBeenCalledTimes(1);
-  });
-
-  it("asks before a shared reshuffle while either lobby's lineup is unrecorded", async () => {
-    // Lobby A is on screen and recorded; B is not -- the reshuffle replaces both.
-    const scope = await mount(
-      game({
-        lobby_count: 2,
-        lobbies: [lobbyRow(), lobbyRow({ lobby_index: 1, lineup_recorded: false })],
-      }),
-    );
-
-    await click(byName(scope, "shuffleAll"));
-    expect(onShuffleAll).not.toHaveBeenCalled();
-    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain(
-      "shuffleDescription",
-    );
-
-    await click(byName(document, "shuffleConfirm"));
-    expect(onShuffleAll).toHaveBeenCalledTimes(1);
-  });
-
-  it("gives a viewer no shared reshuffle", async () => {
-    const scope = await mount(
-      game({ lobby_count: 2, lobbies: [lobbyRow(), lobbyRow({ lobby_index: 1 })] }),
-      { canWrite: false },
-    );
-
-    expect(byName(scope, "shuffleAll")).toBeNull();
-  });
-
   it("offers an undo on the newest match of each lobby, not only on the newest of the mix", async () => {
     const twoLobbies = game({
       lobby_count: 2,
@@ -1010,5 +1032,74 @@ describe("PickupTeamsPanel", () => {
     const scope = await mount(game(), { matches: [match({ id: 12 })] });
 
     expect(scope.querySelector('[data-testid="match-lobby"]')).toBeNull();
+  });
+
+  it("starts the match from a Ready lobby, which offers no result yet", async () => {
+    const scope = await mount(game());
+
+    expect(byName(scope, "Draw")).toBeNull();
+    expect(scope.querySelector('[aria-current="step"]')?.textContent).toContain("state.ready");
+    await click(byName(scope, "startMatch"));
+
+    expect(onStartMatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("warns before starting with an away player seated, and starts once confirmed", async () => {
+    const scope = await mount(game({ players: [player({ workspace_member_id: 8, away: true })] }));
+
+    await click(byName(scope, "startMatch"));
+    expect(onStartMatch).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("awayTitle");
+
+    await click(byName(document, "awayConfirm"));
+    expect(onStartMatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("freezes a live lineup: results and Cancel match, but no balance, pager, swap or captaincy", async () => {
+    const scope = await mount(game({ lobbies: [lobbyRow(LIVE)] }));
+
+    expect(scope.querySelector('[aria-current="step"]')?.textContent).toContain("state.live");
+    expect(scope.textContent).toContain("frozen");
+    expect(byName(scope, "Balance teams")).toBeNull();
+    expect(byName(scope, "Next balance option")).toBeNull();
+    expect(byName(scope, "startMatch")).toBeNull();
+    expect(scope.querySelectorAll('button[aria-label="makeCaptain"]')).toHaveLength(0);
+    // The three seats still render; none of them can be dragged.
+    expect(scope.querySelectorAll("section li")).toHaveLength(3);
+    for (const name of ["karin", "DemonDimon", "Tolgrn"]) expect(scope.textContent).toContain(name);
+    for (const call of dndSpies.useDraggable.mock.calls) {
+      expect(call[0]).toMatchObject({ disabled: true });
+    }
+
+    await click(byName(scope, "cancelMatch"));
+    expect(onCancelMatch).not.toHaveBeenCalled();
+    await click(byName(document, "cancelConfirm"));
+    expect(onCancelMatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("tells a viewer a live lineup is frozen, without handing them the result or Cancel match", async () => {
+    const scope = await mount(game({ lobbies: [lobbyRow(LIVE)] }), { canWrite: false });
+
+    expect(scope.textContent).toContain("frozen");
+    expect(byName(scope, "Team 1 win")).toBeNull();
+    expect(byName(scope, "Draw")).toBeNull();
+    expect(byName(scope, "cancelMatch")).toBeNull();
+  });
+
+  it("crowns each team's captain and lets the host hand the crown to another seat", async () => {
+    const captained = lobby([
+      {
+        ...variant(0),
+        teams: variant(0).teams.map((team, index) => ({ ...team, captain_member_id: index === 0 ? 8 : 9 })),
+      },
+    ]);
+    const scope = await mount(game({ lobbies: [lobbyRow({ balance_result: captained })] }));
+
+    // DemonDimon (8) and Tolgrn (9) wear the crown, so only karin (7) can be made captain.
+    const makers = [...scope.querySelectorAll('button[aria-label="makeCaptain"]')];
+    expect(makers).toHaveLength(1);
+    await click(makers[0]);
+
+    expect(onMakeCaptain).toHaveBeenCalledWith(7);
   });
 });

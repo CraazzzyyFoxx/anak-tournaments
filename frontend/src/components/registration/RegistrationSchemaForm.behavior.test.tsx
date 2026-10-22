@@ -1,6 +1,6 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { Window } from "happy-dom";
-import { act, type ReactNode } from "react";
+import { act, cloneElement, createContext, useContext, type ReactElement, type ReactNode } from "react";
 
 import type { FormField, FormSchema } from "@/types/forms.types";
 import type { Registration, RegistrationForm } from "@/types/registration.types";
@@ -32,6 +32,22 @@ vi.mock("@/components/ui/select", () => ({
 vi.mock("@/components/ui/switch", () => ({
   Switch: () => <button type="button" role="switch" aria-checked="false" />,
 }));
+// Radix portals do not work under happy-dom: the popover is an open/closed switch driven through its trigger (the
+// hero roster opens on a click; the organizer's account search stays closed, as it needs `ResizeObserver`).
+const PopoverCtx = createContext<{ open: boolean; setOpen: (open: boolean) => void }>({ open: false, setOpen: () => {} });
+vi.mock("@/components/ui/popover", () => ({
+  Popover: ({ children, open = false, onOpenChange = () => {} }: {
+    children: ReactNode;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+  }) => <PopoverCtx.Provider value={{ open, setOpen: onOpenChange }}>{children}</PopoverCtx.Provider>,
+  PopoverTrigger: ({ children }: { children: ReactElement }) => {
+    const { open, setOpen } = useContext(PopoverCtx);
+    return cloneElement(children, { onClick: () => setOpen(!open) });
+  },
+  PopoverContent: ({ children }: { children: ReactNode }) =>
+    useContext(PopoverCtx).open ? <div>{children}</div> : null,
+}));
 vi.mock("@/services/registration.service", () => ({
   default: { getMySubscriptionStatus: async () => ({ required: false, verdicts: {} }) },
 }));
@@ -43,6 +59,16 @@ vi.mock("@/stores/account-settings-modal.store", () => ({
     select({ open: () => {} }),
 }));
 vi.mock("@/lib/notify", () => ({ notify: { error: () => {} } }));
+// The top-heroes picker lists the game's characters; a one-role form that keeps its heroes step reads them.
+// A dynamic import, as for the discipline mock above: `vi.mock` factories are hoisted above static imports.
+vi.mock("@/services/catalog.service", async () => {
+  const { catalogEntity } = await import("@/test/catalog");
+  return {
+    default: {
+      list: async () => ({ results: [catalogEntity({ id: 1, discipline: "deadlock", slug: "haze", name: "Haze" })] }),
+    },
+  };
+});
 
 for (const [key, value] of Object.entries({
   window: testWindow,
@@ -504,10 +530,145 @@ describe("RegistrationSchemaForm organizer edit without a questionnaire", () => 
   });
 });
 
-afterAll(() => {
+afterAll(async () => {
   act(() => root.unmount());
+  // A top-heroes form's character read can settle after `mountForm` stops waiting, and TanStack delivers that
+  // to the form on a 0 ms timer. Fired after the globals go, React reads `window.event` and throws; fired now,
+  // it lands on the unmounted form and does nothing. Timers of one delay run in order, so this one comes last.
+  const { promise, resolve } = Promise.withResolvers<void>();
+  setTimeout(resolve, 0);
+  await promise;
   for (const [key, descriptor] of previousGlobals) {
     if (descriptor) Object.defineProperty(globalThis, key, descriptor);
     else Reflect.deleteProperty(globalThis, key);
   }
+});
+
+describe("RegistrationSchemaForm in a one-role game", () => {
+  it("asks no role question, sends no roles answer and takes one unlabelled rank", async () => {
+    testWindow.localStorage.clear();
+    let submitted: { answers: Record<string, unknown> } | null = null;
+    await mountForm({
+      form: {
+        ...FORM,
+        discipline: "deadlock",
+        form_schema: {
+          schema_version: 1,
+          sections: [
+            { key: "roles", title: "Roles", fields: [field({ key: "roles", kind: "builtin" })] },
+            {
+              key: "details",
+              title: "Details",
+              fields: [
+                field({ key: "peak", kind: "role_ranks", label: "Peak rank" }),
+                field({ key: "public_notes", kind: "builtin" }),
+              ],
+            },
+          ],
+        },
+      },
+      onSubmit: async (input: { answers: Record<string, unknown> }) => {
+        submitted = input;
+      },
+    });
+
+    expect(container.textContent).not.toContain("registration.roles.matrix");
+    expect(container.textContent).not.toContain("agent");
+    expect(container.querySelector('input[aria-label="Peak rank"]')).not.toBeNull();
+
+    const buttons = container.querySelectorAll("button");
+    await act(async () => {
+      buttons[buttons.length - 1].dispatchEvent(
+        new testWindow.MouseEvent("click", { bubbles: true }) as unknown as Event,
+      );
+    });
+    // The server stores the only role (Task 6); the form asks and sends nothing about it.
+    expect(Object.keys(submitted!.answers).sort()).toEqual(["peak", "public_notes"]);
+  });
+
+  it("titles a step kept for the top heroes after the heroes, not the roles", async () => {
+    testWindow.localStorage.clear();
+    await mountForm({
+      form: {
+        ...FORM,
+        discipline: "deadlock",
+        form_schema: {
+          schema_version: 1,
+          sections: [
+            {
+              key: "roles",
+              title: "Roles",
+              fields: [field({ key: "roles", kind: "builtin", params: { top_heroes: { enabled: true } } })],
+            },
+            { key: "details", title: "Details", fields: [field({ key: "public_notes", kind: "builtin" })] },
+          ],
+        },
+      },
+    });
+
+    // The organizer's "Roles" would name a question this game never asks: the step asks for heroes alone.
+    const current = container.querySelector('[aria-current="step"]');
+    expect(current?.textContent).toContain("registration.roles.topHeroes.title");
+    expect(current?.textContent).not.toContain("Roles");
+  });
+
+  it("keeps the heroes a draft picked for the one role, still that role and primary", async () => {
+    testWindow.localStorage.clear();
+    const heroesForm = {
+      ...FORM,
+      discipline: "deadlock",
+      form_schema: {
+        schema_version: 1,
+        sections: [
+          {
+            key: "roles",
+            title: "Roles",
+            fields: [field({ key: "roles", kind: "builtin", params: { top_heroes: { enabled: true } } })],
+          },
+        ],
+      },
+    };
+    await mountForm({ form: heroesForm });
+    // The trigger's name differs with and without a role to name; either way it opens the roster.
+    act(() => {
+      container
+        .querySelector('button[aria-label^="registration.roles.matrix.heroesLabel"]')!
+        .dispatchEvent(new testWindow.MouseEvent("click", { bubbles: true }) as unknown as Event);
+    });
+    for (let attempt = 0; attempt < 20 && !container.querySelector('button[title="Haze"]'); attempt += 1) {
+      await act(async () => {
+        const { promise, resolve } = Promise.withResolvers<void>();
+        setTimeout(resolve, 5);
+        await promise;
+      });
+    }
+    act(() => {
+      container
+        .querySelector('button[title="Haze"]')!
+        .dispatchEvent(new testWindow.MouseEvent("click", { bubbles: true }) as unknown as Event);
+    });
+    // Closed mid-form: the pick is in the draft.
+    act(() => root.unmount());
+    const draft = JSON.parse(testWindow.localStorage.getItem("aqt:registration-draft:7") ?? "{}");
+    expect(draft.roles).toEqual([{ role: "agent", is_primary: true, top_heroes: ["haze"] }]);
+    // A draft from before the game lost its other roles: only the one role's own entry may come back, primary.
+    draft.roles = [{ role: "tank", is_primary: true }, { role: "agent", is_primary: false, top_heroes: ["haze"] }];
+    testWindow.localStorage.setItem("aqt:registration-draft:7", JSON.stringify(draft));
+
+    let submitted: { answers: Record<string, unknown> } | null = null;
+    await mountForm({
+      form: heroesForm,
+      onSubmit: async (input: { answers: Record<string, unknown> }) => {
+        submitted = input;
+      },
+    });
+    const buttons = container.querySelectorAll("button");
+    await act(async () => {
+      buttons[buttons.length - 1].dispatchEvent(
+        new testWindow.MouseEvent("click", { bubbles: true }) as unknown as Event,
+      );
+    });
+
+    expect(submitted!.answers.roles).toEqual([{ role: "agent", is_primary: true, top_heroes: ["haze"] }]);
+  });
 });

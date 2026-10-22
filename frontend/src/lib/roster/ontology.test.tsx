@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NextIntlClientProvider } from "next-intl";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { findRole, roleAncestors, rolePresentation, selectableRoles, ratedDimension, roleRefForWrite, selectionError, quotaCount, registrationRoles, roleChoices, roleName, slotCodeOrder, slotLabel, slotRank, subRoleOptions } from "./ontology";
+import { findRole, roleAncestors, rolePresentation, selectableRoles, ratedDimension, roleRefForWrite, selectionError, showsRoles, quotaCount, registrationRoles, roleChoices, roleName, slotCodeOrder, slotLabel, slotRank, subRoleOptions } from "./ontology";
 import { teamFormatPayload, teamFormatErrors, teamFormatsEqual } from "./team-format";
 import type { RoleOntology } from "./ontology";
 import type { PlayerSubRole } from "@/types/admin.types";
@@ -71,6 +71,11 @@ describe("registration roles and slots", () => {
     expect(registrationRoles(ontology).map(r => r.code)).toEqual(["top", "jungle", "mid", "bottom", "support"]);
     expect(registrationRoles(null)).toEqual([]);
     expect(registrationRoles({ ...ontology, dimensions: [] })).toEqual([]);
+  });
+  it("names roles only for a game with more than one to tell apart", () => {
+    expect(showsRoles(ontology)).toBe(true);
+    expect(showsRoles({ ...ontology, roles: [role(1, "top")] })).toBe(false);
+    expect(showsRoles(null)).toBe(false);
   });
   it("orders slots by the game's declaration with the open slot last, retired history included", () => {
     expect(slotCodeOrder(ontology)).toEqual(["top", "jungle", "mid", "bottom", "support", "old", "blocked", "flex"]);

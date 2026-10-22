@@ -1,10 +1,14 @@
-"""One recorded mix round on the encounter layer, and the reads every mix screen makes of it (D74-D76)."""
+"""One mix match on the encounter layer -- started, then recorded or thrown away -- and the reads every mix screen
+makes of it (D74-D76)."""
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import sys
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 for candidate in (str(REPO_BACKEND_ROOT), str(REPO_BACKEND_ROOT / "balancer-service")):
@@ -14,11 +18,37 @@ for candidate in (str(REPO_BACKEND_ROOT), str(REPO_BACKEND_ROOT / "balancer-serv
 import sqlalchemy as sa  # noqa: E402
 
 from shared import models  # noqa: E402
+from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.disciplines import DISCIPLINES  # noqa: E402
 from shared.domain.custom_game_round import winner_slot  # noqa: E402
 from shared.repository import CatalogRoleRepository, CustomGamePlayerRepository, CustomGameRoundRepository  # noqa: E402
+from shared.services.discord_messages import mix_subject  # noqa: E402
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
-from src.services.mix_rounds import MixRoundDraft, MixRoundSeat, record_mix_round  # noqa: E402
+from src.domain.balancer.result_serializer import lobby_document  # noqa: E402
+from src.rpc import custom  # noqa: E402
+from src.services.custom_game import CustomGameService  # noqa: E402
+from src.services.mix_ranker import mix_ranker_service  # noqa: E402
+from src.services.mix_rounds import (  # noqa: E402
+    MixMatchDraft,
+    MixMatchSeat,
+    MixResultDraft,
+    record_mix_result,
+    start_mix_match,
+)
+
+
+class _Broker:
+    """Collects the RPC handlers ``custom.register`` subscribes, so a test can call one the way the broker would."""
+
+    def __init__(self) -> None:
+        self.handlers: dict[str, object] = {}
+
+    def subscriber(self, subject: str):
+        def decorator(function):
+            self.handlers[subject] = function
+            return function
+
+        return decorator
 
 
 class CustomGameRoundStoreTests(EncounterWriterCase):
@@ -31,29 +61,38 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
             await s.commit()
         self.rounds = CustomGameRoundRepository()
 
-    def _draft(self, *, lobby=0, winner=1, busy=frozenset(), deltas=(None, None), points=25) -> MixRoundDraft:
-        m0, m1, m2, m3 = (self.ids[f"m{i}"] for i in range(4))
-        return MixRoundDraft(
+    def _draft(self, *, lobby=0, winner=1, busy=frozenset(), deltas=(None, None), points=25, map_id=None):
+        """One match of this mix as Start and Record are handed it: ``(MixMatchDraft, the result's fields)``."""
+        m0, m1, m2 = (self.ids[f"m{i}"] for i in range(3))
+        match = MixMatchDraft(
             custom_game_id=self.cg.id,
             workspace_id=self.ids["ws"],
             discipline="overwatch",
             scoring_rule_id=self.cg.scoring_rule_id,
-            lobby_index=lobby,
-            map_id=None,
+            map_id=map_id,
             names=("Wolves", "Team 2"),
             seats=(
-                (MixRoundSeat(m0, "Alpha", "tank", 3200, deltas[0]), MixRoundSeat(m1, "Bravo", None, 2900)),
-                (MixRoundSeat(m2, "Charlie", "tank", 2600, deltas[1]),),
+                (MixMatchSeat(m0, "Alpha", "tank", 3200, is_captain=True), MixMatchSeat(m1, "Bravo", None, 2900)),
+                (MixMatchSeat(m2, "Charlie", "tank", 2600, is_captain=True),),
             ),
-            winner_slot=winner,
-            points_per_win_applied=points,
-            busy=busy,
-            recorder_player_id=self.users[0],
         )
+        result = {
+            "lobby_index": lobby,
+            "names": ("Wolves", "Team 2"),
+            "winner_slot": winner,
+            "points_per_win_applied": points,
+            "rank_deltas": {member: delta for member, delta in ((m0, deltas[0]), (m2, deltas[1])) if delta is not None},
+            "busy": busy,
+            "recorder_player_id": self.users[0],
+        }
+        return match, result
 
-    async def _record(self, draft: MixRoundDraft) -> int:
+    async def _record(self, draft) -> int:
+        """Start, then Record: what one played match of a lobby writes."""
+        match, result = draft
         async with self.Session() as s:
-            encounter = await record_mix_round(s, draft)
+            encounter = await start_mix_match(s, match)
+            await record_mix_result(s, MixResultDraft(encounter_id=encounter.id, **result))
             await s.commit()
             return encounter.id
 
@@ -103,6 +142,42 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
             ],
         )
 
+    async def test_a_started_match_is_open_captained_and_invisible_to_every_round_read(self) -> None:
+        match, _result = self._draft()
+        async with self.Session() as s:
+            encounter = await start_mix_match(s, match)
+            await s.commit()
+
+        [row] = await self._rows(
+            "SELECT status::text, result_status::text, started_at IS NOT NULL FROM encounter.encounter WHERE id = :id",
+            id=encounter.id,
+        )
+        self.assertEqual(("OPEN", "none", True), tuple(row))
+        self.assertEqual(
+            [("awaiting_result",)],
+            [
+                tuple(r)
+                for r in await self._rows(
+                    "SELECT state::text FROM encounter.game WHERE encounter_id = :id", id=encounter.id
+                )
+            ],
+        )
+        self.assertEqual(
+            [(self.ids["m0"], True), (self.ids["m1"], False), (self.ids["m2"], True)],
+            [
+                tuple(r)
+                for r in await self._rows(
+                    "SELECT workspace_member_id, is_captain FROM encounter.team_member WHERE encounter_id = :id"
+                    " ORDER BY workspace_member_id",
+                    id=encounter.id,
+                )
+            ],
+        )
+        async with self.Session() as s:
+            self.assertEqual([], list(await self.rounds.list_for_custom_game(s, self.cg.id)))
+            self.assertEqual([], list(await self.rounds.seats(s, workspace_id=self.ids["ws"])))
+            self.assertIsNone(await self.rounds.newest_id_for_lobby(s, self.cg.id, 0))
+
     async def test_seats_keep_their_role_rank_and_frozen_delta(self) -> None:
         encounter_id = await self._record(self._draft(deltas=(31, -28), points=None))
         seats = await self._rows(
@@ -131,18 +206,20 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
             mix.discipline = "lol"
             # Persist the setup first: unit-of-work order between unrelated mappers is not a contract.
             await s.flush()
-            draft = replace(
-                self._draft(),
+            match, result = self._draft()
+            match = replace(
+                match,
                 discipline="lol",
                 seats=(
                     (
-                        MixRoundSeat(self.ids["m0"], "Alpha", "support", 3200),
-                        MixRoundSeat(self.ids["m1"], "Bravo", "flex", 2900),
+                        MixMatchSeat(self.ids["m0"], "Alpha", "support", 3200),
+                        MixMatchSeat(self.ids["m1"], "Bravo", "flex", 2900),
                     ),
-                    (MixRoundSeat(self.ids["m2"], "Charlie", None, 2600),),
+                    (MixMatchSeat(self.ids["m2"], "Charlie", None, 2600),),
                 ),
             )
-            encounter = await record_mix_round(s, draft)
+            encounter = await start_mix_match(s, match)
+            await record_mix_result(s, MixResultDraft(encounter_id=encounter.id, **result))
             trait = models.RoleDimension(discipline="lol", code="trait", name="Trait", selection_mode="single")
             s.add(trait)
             await s.flush()
@@ -238,9 +315,9 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
         # The game rows hold the maps (RESTRICT): they go with the workspace in asyncTearDown, the maps after it.
         self.addAsyncCleanup(self._drop_maps, [oasis.id, ilios.id])
 
-        await self._record(replace(self._draft(lobby=0), map_id=oasis.id))
-        await self._record(replace(self._draft(lobby=0, busy=frozenset({self.ids["m3"]})), map_id=ilios.id))
-        await self._record(replace(self._draft(lobby=1), map_id=oasis.id))
+        await self._record(self._draft(lobby=0, map_id=oasis.id))
+        await self._record(self._draft(lobby=0, busy=frozenset({self.ids["m3"]}), map_id=ilios.id))
+        await self._record(self._draft(lobby=1, map_id=oasis.id))
         await self._record(self._draft(lobby=1))  # no map rolled
         async with self.Session() as s:
             lobbies = await self.rounds.lobby_activity_for_games(s, [self.cg.id, self.cg.id + 1000])
@@ -306,3 +383,384 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
         ):
             [(count,)] = await self._rows(f"SELECT count(*) FROM {table} WHERE {column} = :id", id=encounter_id)
             self.assertEqual(0, count, table)
+
+    async def _new_mix(self) -> int:
+        """Another mix of this workspace, on this mix's rule."""
+        async with self.Session() as s:
+            mix = models.CustomGame(
+                workspace_id=self.ids["ws"], name="Next door", scoring_rule_id=self.cg.scoring_rule_id
+            )
+            s.add(mix)
+            await s.commit()
+            return mix.id
+
+    async def _lobbies(self, *pairings: tuple[str, str], game_id: int | None = None) -> None:
+        """Give a mix -- this one unless ``game_id`` names another -- one lobby per pairing: lobby ``i`` shows a 1v1
+        of its two members (``"m0"``..``"m3"``)."""
+        game_id = self.cg.id if game_id is None else game_id
+        async with self.Session() as s:
+            mix = await s.get_one(models.CustomGame, game_id)
+            mix.lobby_count = len(pairings)
+            for index, pairing in enumerate(pairings):
+                teams = [
+                    {"roster": {"tank": [{"uuid": str(self.ids[member]), "assigned_rating": 2500}]}}
+                    for member in pairing
+                ]
+                s.add(
+                    models.CustomGameLobby(
+                        custom_game_id=game_id,
+                        lobby_index=index,
+                        balance_result_json=lobby_document([{"teams": teams}]),
+                    )
+                )
+            await s.commit()
+
+    def _host(self, lobby_index: int | None = None, *, game_id: int | None = None) -> dict[str, object]:
+        """A write of a mix (this one unless ``game_id`` names another) by a superuser -- no co-host grant to seed --
+        on one lobby when ``lobby_index`` is given."""
+        args: dict[str, object] = {
+            "workspace_id": self.ids["ws"],
+            "custom_game_id": self.cg.id if game_id is None else game_id,
+            "actor_user_id": 0,
+            "actor_is_superuser": True,
+        }
+        return args if lobby_index is None else {**args, "lobby_index": lobby_index}
+
+    async def _write(self, write, lobby_index: int, *, game_id: int | None = None, **extra: object) -> None:
+        """One host write of a lobby in its own committed transaction, the way an RPC runs it."""
+        async with self.Session() as s:
+            await write(s, **self._host(lobby_index, game_id=game_id), **extra)
+            await s.commit()
+
+    async def _live_ids(self, game_id: int | None = None) -> list[int | None]:
+        rows = await self._rows(
+            "SELECT live_encounter_id FROM mix.lobby WHERE custom_game_id = :id ORDER BY lobby_index",
+            id=self.cg.id if game_id is None else game_id,
+        )
+        return [live for (live,) in rows]
+
+    async def _hidden_book(self) -> list[tuple]:
+        rows = await self._rows(
+            "SELECT workspace_member_id, role_id, mu, sigma FROM balancer.member_hidden_rating"
+            " WHERE workspace_id = :ws ORDER BY workspace_member_id, role_id",
+            ws=self.ids["ws"],
+        )
+        return [tuple(row) for row in rows]
+
+    async def test_rounds_read_in_the_order_they_were_recorded_not_started(self) -> None:
+        await self._lobbies(("m0", "m1"), ("m2", "m3"))
+        service = CustomGameService()
+        await self._write(service.start_match, 0)
+        await self._write(service.start_match, 1)
+        a, b = await self._live_ids()
+        await self._write(service.record_outcome, 1, winner=1)
+        await self._write(service.record_outcome, 0, winner=1)
+
+        self.assertLess(a, b)  # A started first ...
+        async with self.Session() as s:
+            # ... and was recorded last: the history (and the rotation reading it) has it as the newest round,
+            history = await self.rounds.list_for_custom_game(s, self.cg.id)
+            self.assertEqual([a, b], [round_.encounter_id for round_ in history])
+            # and the replay, the leaderboard and undo read B before it.
+            seats = await self.rounds.seats(s, workspace_id=self.ids["ws"])
+            self.assertEqual([b, a], list(dict.fromkeys(row.encounter_id for row in seats)))
+
+    async def test_a_rebuild_replays_rounds_in_the_order_they_were_recorded(self) -> None:
+        # m0 is on the floor of two mixes at once: A here (against m1), B next door (against m2). B is recorded first.
+        other = await self._new_mix()
+        await self._lobbies(("m0", "m1"))
+        await self._lobbies(("m0", "m2"), game_id=other)
+        service = CustomGameService()
+        await self._write(service.start_match, 0)
+        await self._write(service.start_match, 0, game_id=other)
+        [a], [b] = await self._live_ids(), await self._live_ids(other)
+        await self._write(service.record_outcome, 0, game_id=other, winner=2)  # m2 beats m0 ...
+        await self._write(service.record_outcome, 0, winner=1)  # ... then m0 beats m1
+        incremental = await self._hidden_book()
+
+        async with self.Session() as s:
+            await mix_ranker_service.rebuild(s, self.ids["ws"])
+            await s.commit()
+
+        self.assertLess(a, b)
+        self.assertEqual(3, len(incremental))
+        self.assertEqual(incremental, await self._hidden_book())
+        async with self.Session() as s:
+            stats = await service.mix_stats(s, workspace_id=self.ids["ws"], discipline="overwatch", since=None)
+        [m0] = [row for row in stats["members"] if row["workspace_member_id"] == self.ids["m0"]]
+        # A, recorded last, is m0's newest result: a win on top of B's loss.
+        self.assertEqual(([a, b], 1), ([entry["match_id"] for entry in m0["form"]], m0["streak"]))
+
+    async def test_a_second_start_of_a_live_lobby_waits_for_the_first_and_is_refused(self) -> None:
+        await self._lobbies(("m0", "m1"))
+        service = CustomGameService()
+        async with self.Session() as first, self.Session() as second:
+            await service.start_match(first, **self._host(0))
+            racing = asyncio.create_task(service.start_match(second, **self._host(0)))
+            await asyncio.sleep(0.2)
+            # The mix row is the first Start's until it commits: the second one waits, it does not race past.
+            self.assertFalse(racing.done())
+            await first.commit()
+            with self.assertRaises(HTTPException) as ctx:
+                await racing
+            await second.rollback()
+
+        self.assertEqual((409, "match_live"), (ctx.exception.status_code, ctx.exception.detail))
+        [(count,)] = await self._rows(
+            "SELECT count(*) FROM encounter.encounter WHERE custom_game_id = :id", id=self.cg.id
+        )
+        self.assertEqual(1, count)
+        [live] = await self._live_ids()
+        self.assertIsNotNone(live)
+
+    async def test_a_reshape_racing_a_start_waits_for_it_and_is_refused(self) -> None:
+        await self._lobbies(("m0", "m1"))
+        service = CustomGameService()
+        m0, m1 = str(self.ids["m0"]), str(self.ids["m1"])
+        reshapes = {
+            "swap": (service.swap_seats, {"variant_index": 0, "first_uuid": m0, "second_uuid": m1}),
+            "page": (service.set_variant_index, {"variant_index": 0}),
+            "balance": (service.balance, {}),
+        }
+        lineup = "SELECT balance_result_json, selected_variant_index FROM mix.lobby WHERE custom_game_id = :id"
+        before = await self._rows(lineup, id=self.cg.id)
+        for name, (write, extra) in reshapes.items():
+            with self.subTest(name):
+                async with self.Session() as first, self.Session() as second:
+                    await service.start_match(first, **self._host(0))
+                    racing = asyncio.create_task(write(second, **self._host(0), **extra))
+                    await asyncio.sleep(0.2)
+                    # Start holds the mix row until it commits: the reshape waits, then reads the lobby live.
+                    self.assertFalse(racing.done())
+                    await first.commit()
+                    with self.assertRaises(HTTPException) as ctx:
+                        await racing
+                    await second.rollback()
+
+                self.assertEqual((409, "match_live"), (ctx.exception.status_code, ctx.exception.detail))
+                self.assertEqual(before, await self._rows(lineup, id=self.cg.id))
+                await self._write(service.cancel_match, 0)
+
+    async def test_cancel_and_close_leave_no_live_match_and_no_encounter_behind(self) -> None:
+        await self._lobbies(("m0", "m1"), ("m2", "m3"))
+        service = CustomGameService()
+        for lobby_index in (0, 1):
+            await self._write(service.start_match, lobby_index)
+        started = await self._live_ids()
+        self.assertTrue(all(started), started)
+
+        await self._write(service.cancel_match, 0)
+        self.assertEqual([None, started[1]], await self._live_ids())
+        async with self.Session() as s:
+            await service.close(s, **self._host())
+            await s.commit()
+
+        self.assertEqual([None, None], await self._live_ids())
+        [(status,)] = await self._rows("SELECT status FROM mix.custom_game WHERE id = :id", id=self.cg.id)
+        self.assertEqual("completed", status)
+        for table, column in (
+            ("encounter.encounter", "id"),
+            ("encounter.team", "encounter_id"),
+            ("encounter.team_member", "encounter_id"),
+            ("encounter.game", "encounter_id"),
+        ):
+            [(count,)] = await self._rows(f"SELECT count(*) FROM {table} WHERE {column} = ANY(:ids)", ids=list(started))
+            self.assertEqual(0, count, table)
+
+    async def test_start_freezes_the_shown_lineup_on_the_next_map_and_goes_live(self) -> None:
+        tag = f"cgs-{self.ids['ws']}"
+        async with self.Session() as s:
+            kings_row = models.CatalogEntity(discipline="overwatch", kind="map", slug=f"{tag}-kr", name=f"{tag} KR")
+            s.add(kings_row)
+            await s.commit()
+        self.addAsyncCleanup(self._drop_maps, [kings_row.id])
+
+        def seat(member: str, name: str, rating: int) -> dict[str, object]:
+            return {"uuid": str(self.ids[member]), "name": name, "assigned_rating": rating}
+
+        option = {
+            "teams": [
+                {"roster": {"tank": [seat("m0", "Alpha", 3200)], "damage": [seat("m1", "Bravo", 2900)]}},
+                {"roster": {"tank": [seat("m2", "Charlie", 2600)], "damage": [seat("m3", "Delta", 3000)]}},
+            ]
+        }
+        async with self.Session() as s:
+            s.add(
+                models.CustomGameLobby(
+                    custom_game_id=self.cg.id,
+                    lobby_index=0,
+                    balance_result_json=lobby_document([option]),
+                    next_map_id=kings_row.id,
+                )
+            )
+            s.add(models.CustomGameTeamName(custom_game_id=self.cg.id, team_index=0, name="Wolves"))
+            await s.commit()
+
+        await self._write(CustomGameService().start_match, 0)
+
+        # Live on the encounter Start opened; the map is the match's now and stays on the card.
+        [live] = await self._live_ids()
+        [(next_map,)] = await self._rows("SELECT next_map_id FROM mix.lobby WHERE custom_game_id = :id", id=self.cg.id)
+        self.assertEqual(kings_row.id, next_map)
+        encounters = await self._rows(
+            "SELECT id, status::text FROM encounter.encounter WHERE custom_game_id = :id", id=self.cg.id
+        )
+        self.assertEqual([(live, "OPEN")], [tuple(r) for r in encounters])
+        games = await self._rows("SELECT map_id, state::text FROM encounter.game WHERE encounter_id = :id", id=live)
+        self.assertEqual([(kings_row.id, "awaiting_result")], [tuple(r) for r in games])
+        # The snapshot: each team's name and every seat as the lineup stood -- role, rating, name, and the captain,
+        # the team's strongest seat.
+        seats = await self._rows(
+            "SELECT et.slot, et.name, tm.workspace_member_id, cr.code, tm.rank, tm.display_name_snapshot, tm.is_captain"
+            " FROM encounter.team et JOIN encounter.team_member tm ON tm.encounter_team_id = et.id"
+            " LEFT JOIN encounter.team_member_role r ON r.team_member_id = tm.id"
+            " LEFT JOIN catalog.role cr ON cr.id = r.role_id"
+            " WHERE et.encounter_id = :id ORDER BY et.slot, tm.display_name_snapshot",
+            id=live,
+        )
+        m0, m1, m2, m3 = (self.ids[f"m{i}"] for i in range(4))
+        self.assertEqual(
+            [
+                (1, "Wolves", m0, "tank", 3200, "Alpha", True),
+                (1, "Wolves", m1, "damage", 2900, "Bravo", False),
+                (2, "Team 2", m2, "tank", 2600, "Charlie", False),
+                (2, "Team 2", m3, "damage", 3000, "Delta", True),
+            ],
+            [tuple(r) for r in seats],
+        )
+        # Started, not recorded: no round yet.
+        async with self.Session() as s:
+            self.assertEqual([], list(await self.rounds.list_for_custom_game(s, self.cg.id)))
+
+    async def test_a_failed_voice_split_leaves_the_started_match_committed(self) -> None:
+        await self._lobbies(("m0", "m1"))
+        async with self.Session() as s:
+            await s.execute(
+                sa.update(models.CustomGameLobby)
+                .where(models.CustomGameLobby.custom_game_id == self.cg.id)
+                .values(team1_voice_channel_id=101, team2_voice_channel_id=102)
+            )
+            await s.commit()
+        broker = _Broker()
+        custom.register(broker, logging.getLogger(__name__))
+
+        async def unannounced(*_args, **_kwargs) -> None:
+            """The realtime and outbox signal is not what this test is about."""
+
+        identity = {
+            "user_id": 1,
+            "is_superuser": True,
+            "is_active": True,
+            "roles": [],
+            "permissions": [],
+            "workspaces": [{"workspace_id": self.ids["ws"], "role": "owner", "rbac_roles": [], "rbac_permissions": []}],
+        }
+        with (
+            patch.object(custom, "_SF", self.Session),
+            patch.object(custom, "emit_pickup_mix_changed", unannounced),
+            self.assertLogs(__name__, "WARNING") as logs,
+        ):
+            result = await broker.handlers["rpc.balancer.custom.start_match"](
+                {
+                    "identity": identity,
+                    "workspace_id": self.ids["ws"],
+                    "custom_game_id": self.cg.id,
+                    "payload": {"lobby_index": 0},
+                },
+                None,
+            )
+
+        # The lobby has both team voices, but the workspace has no voice category: the split fails after the commit,
+        # and Start still answers with the mix ...
+        self.assertIn("voice split skipped (voice_not_configured)", "\n".join(logs.output))
+        self.assertTrue(result["ok"], result)
+        # ... whose match is committed and live.
+        [live] = await self._live_ids()
+        self.assertIsNotNone(live)
+        rows = await self._rows("SELECT status::text FROM encounter.encounter WHERE id = :id", id=live)
+        self.assertEqual([("OPEN",)], [tuple(r) for r in rows])
+
+    async def test_hard_delete_waits_for_the_mix_lock_before_it_touches_the_mix_posts(self) -> None:
+        async with self.Session() as s:
+            post = models.DiscordMessage(
+                channel="discord_channel",
+                target="1",
+                subject=mix_subject(self.cg.id),
+                slot="signup",
+                kind="mix_signup",
+                workspace_id=self.ids["ws"],
+                status="posted",
+            )
+            s.add(post)
+            await s.commit()
+        service = CustomGameService()
+        try:
+            async with self.Session() as host, self.Session() as admin:
+                # A host write holds the mix row, the way every `_writable` write does ...
+                await service.rename(host, **self._host(), name="Night")
+                deleting = asyncio.create_task(
+                    service.hard_delete(admin, workspace_id=self.ids["ws"], custom_game_id=self.cg.id)
+                )
+                await asyncio.sleep(0.2)
+                self.assertFalse(deleting.done())
+                # ... then goes on to the mix's post (mix -> message). The delete must be queued on the mix, not
+                # holding the post: otherwise the two wait on each other and Postgres aborts one as a deadlock.
+                _game, taken_down = await service.delete_discord_post(host, **self._host(), post_id=post.id)
+                await host.commit()
+                left_over = await deleting
+                await admin.commit()
+
+            # The host's delete went out; the hard delete found the post already on its way out.
+            self.assertEqual(([post.id], []), ([command.message_ref for command in taken_down], left_over))
+            self.assertEqual([], await self._rows("SELECT id FROM mix.custom_game WHERE id = :id", id=self.cg.id))
+            self.assertEqual(
+                [("deleting",)], await self._rows("SELECT status FROM discord_message WHERE id = :id", id=post.id)
+            )
+        finally:
+            async with self.Session() as s:
+                await s.execute(sa.delete(models.DiscordMessage).where(models.DiscordMessage.id == post.id))
+                await s.commit()
+
+    async def test_a_round_spent_away_drops_out_of_the_rotation_history(self) -> None:
+        # Two matches of m0 against m1. m2 waits through both; m3 waits through the first and is away for the second.
+        await self._lobbies(("m0", "m1"))
+        async with self.Session() as s:
+            s.add_all(
+                [
+                    models.CustomGamePlayer(custom_game_id=self.cg.id, workspace_member_id=self.ids[f"m{i}"])
+                    for i in range(4)
+                ]
+            )
+            await s.commit()
+        service = CustomGameService()
+
+        async def set_away(member: str, away: bool) -> None:
+            async with self.Session() as s:
+                await service.update_player(
+                    s, **self._host(), workspace_member_id=self.ids[member], patch={"away": away}
+                )
+                await s.commit()
+
+        await self._write(service.start_match, 0)
+        await self._write(service.record_outcome, 0, winner=1)
+        await set_away("m3", True)
+        # Started anyway with m0 away in the lineup: the seat beats the away mark.
+        await set_away("m0", True)
+        await self._write(service.start_match, 0)
+        await self._write(service.record_outcome, 0, winner=1)
+        await set_away("m3", False)
+        await set_away("m0", False)
+
+        async with self.Session() as s:
+            rotation = await service.rotation(s, workspace_id=self.ids["ws"], custom_game_id=self.cg.id)
+        # (sat-out streak, played streak, games played): the three keys of the rotation priority.
+        self.assertEqual(
+            {
+                self.ids["m0"]: (0, 2, 2),
+                self.ids["m1"]: (0, 2, 2),
+                self.ids["m2"]: (2, 0, 0),
+                # One wait, exactly as if the away match had never been recorded -- not two, and not a reset.
+                self.ids["m3"]: (1, 0, 0),
+            },
+            {rec.member_id: (rec.consecutive_sat, rec.consecutive_played, rec.games_played) for rec in rotation},
+        )

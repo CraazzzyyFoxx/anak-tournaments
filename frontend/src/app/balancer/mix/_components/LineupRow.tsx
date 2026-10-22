@@ -7,7 +7,7 @@ import { useDraggable } from "@dnd-kit/core";
 import { Armchair, GripVertical, RotateCw, SlidersHorizontal, X } from "lucide-react";
 
 import { PANEL_CLASS, splitHandle } from "@/components/balancer/balancer-page-helpers";
-import { lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
+import { AWAY_CHIP_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
 import DivisionIcon from "@/components/DivisionIcon";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
@@ -141,6 +141,7 @@ export function LineupRow({
   onOpen,
   onRemove
 }: Readonly<LineupRowProps>) {
+  const tRoom = useTranslations("mixes.room");
   const { grid } = owner;
   const label = playerLabel(row);
   const { name, suffix } = splitHandle(label);
@@ -196,19 +197,22 @@ export function LineupRow({
         ) : null}
       </span>
 
+      {row.away ? <span className={AWAY_CHIP_CLASS}>{tRoom("away")}</span> : null}
       {lobbyCount > 1 ? <LineupLobbyBadge currentLobby={row.current_lobby} /> : null}
       <RotationHintBadge hint={rotationHint} pinned={row.participation === "must_play"} />
 
-      <RowAction>
-        <RolePriorityRail
-          row={row}
-          owner={owner}
-          label={label}
-          canWrite={canWrite && !dimmed}
-          saving={saving}
-          onPatch={onPatch}
-        />
-      </RowAction>
+      {owner.showsRoles ? (
+        <RowAction>
+          <RolePriorityRail
+            row={row}
+            owner={owner}
+            label={label}
+            canWrite={canWrite && !dimmed}
+            saving={saving}
+            onPatch={onPatch}
+          />
+        </RowAction>
+      ) : null}
 
       <div className="flex w-[92px] shrink-0 items-center justify-end gap-1.5">
         {division == null ? null : (

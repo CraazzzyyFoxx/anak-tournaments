@@ -2138,14 +2138,25 @@ def frozen_mix(live: Live, ids: dict[str, Any]) -> None:
                 for uuid in uuids
             )
             assert sum(seats.values()) == 10 and {seat[1] for seat in seats} <= set(members), seats
-            # Retrospective: the host records the outcome with no sides at all.
+            # The host starts the lobby's match on the shown lineup and map, then records it with no sides at all.
+            call(
+                live,
+                ids,
+                "host",
+                "POST",
+                base + "/{gid}/match/start",
+                {"lobby_index": 0},
+                expect=200,
+                ws=a,
+                gid=gid,
+            )
             call(
                 live,
                 ids,
                 "host",
                 "POST",
                 base + "/{gid}/outcome",
-                {"lobby_index": 0, "variant_index": 0, "outcome": {"winner": 1}, "map_id": None},
+                {"lobby_index": 0, "outcome": {"winner": 1}},
                 expect=200,
                 ws=a,
                 gid=gid,

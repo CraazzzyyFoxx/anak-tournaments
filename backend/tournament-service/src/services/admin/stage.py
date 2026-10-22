@@ -1697,7 +1697,8 @@ class AdminStageService:
     async def _team_lineups(
         self, session: AsyncSession, team_ids: Sequence[int]
     ) -> dict[int, tuple[MemberSnapshot, ...]]:
-        """Each team's tournament roster (substitutes flagged) as the line-up its seat snapshots, as a mix seat does.
+        """Each team's tournament roster (substitutes and captain flagged) as the line-up its seat snapshots, as a mix
+        seat does.
 
         Taken when the seat is filled and never synced: a player rostered later
         reaches a seat only the way any mid-encounter change does (the match
@@ -1717,7 +1718,11 @@ class AdminStageService:
                     player.name,
                     player.rank,
                     player.is_substitution,
+                    # The team's captain is a ``players.user``; the seat is its workspace member.
+                    (models.WorkspaceMember.player_id == models.Team.captain_id).label("is_captain"),
                 )
+                .join(models.Team, models.Team.id == player.team_id)
+                .join(models.WorkspaceMember, models.WorkspaceMember.id == player.workspace_member_id)
                 .where(player.team_id.in_(team_ids))
                 .order_by(player.team_id, player.is_substitution, player.id)
             )
@@ -1748,6 +1753,8 @@ class AdminStageService:
                         rank=row.rank,
                         is_substitute=row.is_substitution,
                         roles=tuple(roles[row.id]),
+                        # NULL when the team has no captain.
+                        is_captain=row.is_captain is True,
                     ),
                 )
         return {team_id: tuple(members.values()) for team_id, members in lineups.items()}

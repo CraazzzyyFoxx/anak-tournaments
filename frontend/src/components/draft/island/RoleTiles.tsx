@@ -12,7 +12,7 @@ import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid"
 import { canSeat, type RoomSelection, type TeamView } from "@/lib/draft/room-model";
 import { playerRoles, roleTopHeroes } from "@/lib/draft/workspace-model";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
-import { ratedDimension, roleTint, type RoleOntology } from "@/lib/roster/ontology";
+import { ratedDimension, roleTint, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DraftPlayer, DraftRole } from "@/types/draft.types";
 import type { UserDraftCard } from "@/types/user.types";
@@ -58,6 +58,8 @@ export function RoleTiles({
   const slotLabel = useSlotLabel(ontology);
   const ratedCode = ontology ? (ratedDimension(ontology)?.code ?? null) : null;
   const roles = playerRoles(player);
+  // A one-role game's tile is the player, not a role: no role name, no priority.
+  const named = showsRoles(ontology);
   const displayName = player.identity?.handle ?? `#${player.id}`;
   // The team a tile selects for; tiles are read-only chips without one.
   const team = player.status === "available" ? actingTeam : null;
@@ -96,13 +98,13 @@ export function RoleTiles({
         const heroes = roleTopHeroes(player, role).slice(0, 3);
         const usable = team != null && canSeat(team, role);
         const on = selection?.playerId === player.id && selection.role === role;
-        const priority = PRIORITY_KEYS[index];
+        const priority = named ? PRIORITY_KEYS[index] : undefined;
         const roleStats = roleTotals.find((entry) => entry.role?.dimension === ratedCode && entry.role.role === role) ?? null;
         const share = roleStats && roleStats.maps > 0 ? roleStats.maps_won / roleStats.maps : 0;
         const lowMaps = (roleStats?.maps ?? 0) < MIN_WINRATE_MAPS;
 
         const title = [
-          roleLabel,
+          named ? roleLabel : null,
           rank ?? "—",
           crestLabel,
           borrowed ? t(`rankSource.${borrowed}`) : null,
@@ -116,7 +118,7 @@ export function RoleTiles({
             <span className="flex min-w-0 items-center gap-2">
               <PlayerRoleIcon role={role} ontology={ontology} size={24} decorative />
               <span className="flex min-w-0 flex-col">
-                <span className="whitespace-nowrap text-body font-semibold leading-tight">{roleLabel}</span>
+                {named && <span className="whitespace-nowrap text-body font-semibold leading-tight">{roleLabel}</span>}
                 {(priority || subRole) && (
                   <span className="flex min-w-0 items-center gap-1 whitespace-nowrap text-label font-medium leading-snug">
                     {priority && (
@@ -251,7 +253,11 @@ export function RoleTiles({
             type="button"
             aria-pressed={on}
             aria-disabled={!usable || undefined}
-            aria-label={t("island.tile.select", { player: displayName, role: roleLabel })}
+            aria-label={
+              named
+                ? t("island.tile.select", { player: displayName, role: roleLabel })
+                : t("island.action.pickPlayer", { player: displayName })
+            }
             title={title}
             onClick={() => {
               if (usable) onSelectRole(role);

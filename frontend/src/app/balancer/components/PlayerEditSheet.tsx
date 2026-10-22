@@ -32,6 +32,7 @@ import type {
 } from "@/types/balancer-admin.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 import type { DisciplineMetadata } from "@/types/discipline.types";
+import { showsRoles } from "@/lib/roster/ontology";
 import { AdditionalHandleStrip, HandleCopyButton } from "./HandleCopyControls";
 import RankHistory from "@/components/RankHistory";
 import { Spinner } from "@/components/ui/spinner";
@@ -99,6 +100,8 @@ export function PlayerEditModal({
   const nativeRankName = ontology?.discipline.capabilities.native_rank_collection
     ? ontology.discipline.name
     : null;
+  // A game with one rated role edits its rank alone: no role list to order, no role to add, turn off or remove.
+  const showsRoleList = showsRoles(ontology);
 
   return (
     <Sheet
@@ -158,46 +161,53 @@ export function PlayerEditModal({
                 )}
               </div>
             </div>
-            <div
-              className={cn(
-                "rounded-lg border px-3 py-2",
-                form.isFlex
-                  ? "border-emerald-400/20 bg-emerald-500/[0.08]"
-                  : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]"
-              )}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <Label
-                  htmlFor="is-flex"
-                  className="cursor-pointer text-xs font-medium text-[color:var(--aqt-fg)]"
-                >
-                  Flex player
-                </Label>
-                <Switch
-                  id="is-flex"
-                  checked={form.isFlex}
-                  onCheckedChange={form.setIsFlex}
-                  aria-label="Flex player"
-                />
+            {/* A game without Full flex (`discipline.flex`) offers no switch for it. */}
+            {ontology?.discipline.flex === false ? null : (
+              <div
+                className={cn(
+                  "rounded-lg border px-3 py-2",
+                  form.isFlex
+                    ? "border-emerald-400/20 bg-emerald-500/[0.08]"
+                    : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]"
+                )}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <Label
+                    htmlFor="is-flex"
+                    className="cursor-pointer text-xs font-medium text-[color:var(--aqt-fg)]"
+                  >
+                    Flex player
+                  </Label>
+                  <Switch
+                    id="is-flex"
+                    checked={form.isFlex}
+                    onCheckedChange={form.setIsFlex}
+                    aria-label="Flex player"
+                  />
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
-              <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">Roles</Label>
+              <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
+                {showsRoleList ? "Roles" : "Rank"}
+              </Label>
               <div className="flex flex-nowrap items-center gap-1.5">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 whitespace-nowrap border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2.5 text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-                  onClick={form.addRole}
-                  disabled={form.addableRole === null}
-                >
-                  <Plus className="mr-1 h-3 w-3" />
-                  Add role
-                </Button>
+                {showsRoleList ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 whitespace-nowrap border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2.5 text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+                    onClick={form.addRole}
+                    disabled={form.addableRole === null}
+                  >
+                    <Plus className="mr-1 h-3 w-3" />
+                    Add role
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   variant="outline"
@@ -262,22 +272,26 @@ export function PlayerEditModal({
               onReorder={form.reorderRoles}
               className="space-y-2"
             >
-              {(entry, index) => (
-                <SortableRoleEntry
-                  key={`${entry.role}-${index}`}
-                  id={`${entry.role}-${index}`}
-                  entry={entry}
-                  index={index}
-                  grid={form.divisionGrid}
-                  resolveDivision={form.resolveDivision}
-                  getDivisionName={form.getDivisionName}
-                  onUpdate={form.updateEntry}
-                  onRemove={form.removeEntry}
-                  subtypeOptions={form.subtypeOptions}
-                  ontology={ontology}
-                  nativeRankName={nativeRankName}
-                />
-              )}
+              {(entry, index) =>
+                // A one-role game shows its sole role's rank alone; any other stored entry is kept, not shown.
+                form.soleRole === null || entry.role === form.soleRole ? (
+                  <SortableRoleEntry
+                    key={`${entry.role}-${index}`}
+                    id={`${entry.role}-${index}`}
+                    entry={entry}
+                    index={index}
+                    grid={form.divisionGrid}
+                    resolveDivision={form.resolveDivision}
+                    getDivisionName={form.getDivisionName}
+                    onUpdate={form.updateEntry}
+                    onRemove={form.removeEntry}
+                    subtypeOptions={form.subtypeOptions}
+                    ontology={ontology}
+                    nativeRankName={nativeRankName}
+                    showsRole={showsRoleList}
+                  />
+                ) : null
+              }
             </SortableRows>
           </div>
 

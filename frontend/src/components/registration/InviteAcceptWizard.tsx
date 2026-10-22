@@ -13,6 +13,7 @@ import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { ApiError } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
 import { translateRegistrationTeamError } from "@/lib/registration/team-errors";
+import { showsRoles } from "@/lib/roster/ontology";
 import { isRoleSlot } from "@/lib/roster/shape";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import meService from "@/services/me.service";
@@ -123,9 +124,11 @@ export default function InviteAcceptWizard({
   // `flex` has no matrix row, and a role-less roster asks no role question at all,
   // so the ordinary matrix is the honest UI there. Only a real role slot locks.
   const lockedRole: RoleCode | null = isRoleSlot(slotCode) ? slotCode : null;
-  // The slot is named in the form's own game (the owner read carries it).
+  // The slot is named in the form's own game (the owner read carries it). A one-role game's every slot is that
+  // role, so it names none.
   const metadata = useDisciplineMetadata(form.workspace_id, form.discipline);
   const slotLabel = useSlotLabel(metadata.data ?? null)(slotCode);
+  const showsSlot = showsRoles(metadata.data);
 
   // A live registration means the backend will ATTACH it rather than create a new
   // one, so the form has nothing left to ask. Terminal rows (withdrawn/rejected)
@@ -144,9 +147,11 @@ export default function InviteAcceptWizard({
     <div className="flex flex-col gap-4">
       <div className="grid gap-1.5 rounded-lg border border-[color:var(--aqt-border)] bg-muted/20 p-3">
         <p className="text-sm font-medium">{t("accept.title", { team: teamName })}</p>
-        <p className="text-xs text-[color:var(--aqt-fg-muted)]">
-          {t("accept.slotLocked", { slot: slotLabel })}
-        </p>
+        {showsSlot && (
+          <p className="text-xs text-[color:var(--aqt-fg-muted)]">
+            {t("accept.slotLocked", { slot: slotLabel })}
+          </p>
+        )}
         {isSubstitute && (
           <p className="text-xs text-warning">{t("accept.substituteNotice")}</p>
         )}

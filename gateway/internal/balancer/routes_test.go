@@ -218,6 +218,7 @@ func TestMixSelfServiceRoutes(t *testing.T) {
 		"POST /api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me":                        "rpc.balancer.custom.self_join",
 		"DELETE /api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me":                      "rpc.balancer.custom.self_leave",
 		"PATCH /api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me":                       "rpc.balancer.custom.self_update",
+		"PUT /api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me/away":                    "rpc.balancer.custom.self_away",
 		"PUT /api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/self-service":               "rpc.balancer.custom.set_self_service",
 		"POST /api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/discord/signup":            "rpc.balancer.custom.post_signup",
 		"DELETE /api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/discord/posts/{post_id}": "rpc.balancer.custom.delete_discord_post",

@@ -14,6 +14,7 @@ import { MAX_AVATAR_BYTES } from "@/lib/uploads";
 import { notify } from "@/lib/notify";
 import { translateRegistrationTeamError } from "@/lib/registration/team-errors";
 import { isRoleSlot, type SlotCode } from "@/lib/roster/shape";
+import { showsRoles } from "@/lib/roster/ontology";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import meService from "@/services/me.service";
 import registrationTeamService from "@/services/registration-team.service";
@@ -254,21 +255,24 @@ export default function TeamRegistrationWizard({
             already form a group, and this is the platform's way to name it. The
             grid lives on an inner wrapper because a legend inside a grid-display
             fieldset is laid out inconsistently across browsers. */}
-        <fieldset className="min-w-0" aria-describedby="regteam-slot-hint">
-          <legend className="text-sm font-medium">{t("create.slotLabel")}</legend>
-          <div className="mt-2 grid gap-2">
-            <RosterSlotPicker
-              name="regteam-slot"
-              options={availableSlots}
-              value={slot}
-              onChange={setSlot}
-              ontology={metadata.data ?? null}
-            />
-            <p id="regteam-slot-hint" className="text-xs text-[color:var(--aqt-fg-muted)]">
-              {t("create.slotHint")}
-            </p>
-          </div>
-        </fieldset>
+        {/* A one-role game has one kind of slot: the captain takes it without choosing (`slot` starts on it). */}
+        {metadata.data == null || showsRoles(metadata.data) ? (
+          <fieldset className="min-w-0" aria-describedby="regteam-slot-hint">
+            <legend className="text-sm font-medium">{t("create.slotLabel")}</legend>
+            <div className="mt-2 grid gap-2">
+              <RosterSlotPicker
+                name="regteam-slot"
+                options={availableSlots}
+                value={slot}
+                onChange={setSlot}
+                ontology={metadata.data ?? null}
+              />
+              <p id="regteam-slot-hint" className="text-xs text-[color:var(--aqt-fg-muted)]">
+                {t("create.slotHint")}
+              </p>
+            </div>
+          </fieldset>
+        ) : null}
       </section>
 
       <RegistrationSchemaForm

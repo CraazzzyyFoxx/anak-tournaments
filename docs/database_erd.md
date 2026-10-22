@@ -13,7 +13,7 @@ baselines and Discord channels live in `stats/`. `catalog/` writes only to `cata
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`owmapdrop01`** (133 revisions in `backend/migrations/versions/`).
+Alembic head: **`mixaway01`** (138 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -1720,6 +1720,7 @@ erDiagram
         varchar(255) display_name_snapshot
         int rank "nullable"
         boolean is_substitute
+        boolean is_captain
     }
     ENCOUNTER_TEAM_MEMBER_ROLE {
         bigint team_member_id PK,FK
@@ -2438,6 +2439,7 @@ erDiagram
         timestamptz balanced_at "nullable"
         bigint team1_voice_channel_id "nullable"
         bigint team2_voice_channel_id "nullable"
+        bigint live_encounter_id FK,UK "nullable"
     }
     MIX_PLAYER {
         bigint id PK
@@ -2450,6 +2452,7 @@ erDiagram
         varchar(16) role_selection_mode
         boolean is_flex
         int lobby_pin "nullable"
+        boolean away
     }
     MIX_PLAYER_ROLE {
         bigint custom_game_player_id PK,FK
@@ -2481,6 +2484,7 @@ erDiagram
     CATALOG_ENTITY ||--o{ MIX_LOBBY : "next_map_kind"
     CATALOG_ROLE ||--o{ MIX_PLAYER_ROLE : "dimension_id"
     CATALOG_ROLE ||--o| MIX_PLAYER_ROLE : "role_id"
+    ENCOUNTER_ENCOUNTER |o--o| MIX_LOBBY : "live_encounter_id"
     ENCOUNTER_ENCOUNTER ||--o| MIX_ROUND : "encounter_id"
     ENCOUNTER_SCORING_RULE ||--o{ MIX_CUSTOM_GAME : "scoring_rule_id"
     ENCOUNTER_SCORING_RULE ||--o{ MIX_CUSTOM_GAME : "workspace_id"

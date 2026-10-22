@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { useFormatter } from "@/lib/datetime/client";
-import type { RoleOntology } from "@/lib/roster/ontology";
+import { showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { roleOf } from "@/lib/roster/role-ref";
 import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 import type { DraftBoard, DraftJournalAction, DraftJournalEntry } from "@/types/draft.types";
@@ -36,6 +36,9 @@ const KNOWN_ACTIONS = new Set([
   "player_role_added"
 ]);
 
+/** The sentences that name a role; a one-role game words them without it (every seat is that role). */
+const ROLE_ACTIONS = ["pick_made", "pick_autopicked", "pick_overridden", "player_role_added"] as const;
+
 /** Warnings amber, machine actions muted, everything else plain. */
 function entryColor(action: string): string {
   if (action === "pick_overridden" || action === "paused" || action === "rollback") return "var(--aqt-amber)";
@@ -47,6 +50,7 @@ function entryColor(action: string): string {
 export function DraftJournal({ id, board, entries, ontology, isLoading, isError, onRetry }: Readonly<DraftJournalProps>) {
   const t = useTranslations("draftRedesign");
   const slotLabel = useSlotLabel(ontology);
+  const named = showsRoles(ontology);
   const format = useFormatter();
   const teamName = (teamId: number | null) =>
     board.teams.find((team) => team.id === teamId)?.name ?? t("shell.journal.unknownTeam");
@@ -55,17 +59,23 @@ export function DraftJournal({ id, board, entries, ontology, isLoading, isError,
     return player ? (player.identity?.handle ?? `#${player.id}`) : t("shell.journal.unknownPlayer");
   };
 
-  const describe = (entry: DraftJournalEntry) =>
-    KNOWN_ACTIONS.has(entry.action)
-      ? t(`shell.journal.action.${entry.action as DraftJournalAction}`, {
-          pick: entry.pick_no ?? "—",
-          team: teamName(entry.team_id),
-          player: playerTag(entry.player_id),
-          role: slotLabel(entry.role ? roleOf(entry.role) : OPEN_SLOT_CODE),
-          reason: entry.reason ?? "",
-          seconds: entry.seconds ?? 0
-        })
-      : t("shell.journal.action.unknown", { action: entry.action });
+  const describe = (entry: DraftJournalEntry) => {
+    if (!KNOWN_ACTIONS.has(entry.action)) return t("shell.journal.action.unknown", { action: entry.action });
+    const values = {
+      pick: entry.pick_no ?? "—",
+      team: teamName(entry.team_id),
+      player: playerTag(entry.player_id),
+      reason: entry.reason ?? "",
+      seconds: entry.seconds ?? 0
+    };
+    if (!named && (ROLE_ACTIONS as readonly string[]).includes(entry.action)) {
+      return t(`shell.journal.actionNoRole.${entry.action as (typeof ROLE_ACTIONS)[number]}`, values);
+    }
+    return t(`shell.journal.action.${entry.action as DraftJournalAction}`, {
+      ...values,
+      role: slotLabel(entry.role ? roleOf(entry.role) : OPEN_SLOT_CODE)
+    });
+  };
 
   return (
     <div id={id} className="mx-auto max-w-[1720px] px-4 pb-2.5 sm:px-6">

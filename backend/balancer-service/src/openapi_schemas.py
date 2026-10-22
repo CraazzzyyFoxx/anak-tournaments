@@ -157,6 +157,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.balancer.custom.update_roster": Op(request=custom_game.CustomGameRosterUpdate),
     "rpc.balancer.custom.update_player": Op(request=custom_game.CustomGamePlayerPatch),
     "rpc.balancer.custom.self_update": Op(request=custom_game.CustomGameSelfUpdate),
+    "rpc.balancer.custom.self_away": Op(request=custom_game.CustomGameSelfAway),
     "rpc.balancer.custom.set_self_service": Op(request=custom_game.CustomGameSelfServicePatch),
     "rpc.balancer.custom.set_participation": Op(request=custom_game.CustomGamePlayersParticipationPatch),
     "rpc.balancer.custom.balance": Op(request=custom_game.CustomGameBalanceRequest),
@@ -173,7 +174,10 @@ OPERATIONS: dict[str, Op] = {
     "rpc.balancer.custom.transfer_host": Op(request=custom_game.CustomGameHostTransfer),
     "rpc.balancer.custom.add_co_host": Op(request=custom_game.CustomGameCoHostPatch),
     "rpc.balancer.custom.swap_seats": Op(request=custom_game.CustomGameSeatSwap),
+    "rpc.balancer.custom.set_captain": Op(request=custom_game.CustomGameCaptainPatch),
     "rpc.balancer.custom.record_outcome": Op(request=custom_game.CustomGameRecordOutcome),
+    "rpc.balancer.custom.start_match": Op(request=custom_game.CustomGameMatchRun),
+    "rpc.balancer.custom.cancel_match": Op(request=custom_game.CustomGameMatchRun),
     "rpc.balancer.custom.stats": Op(
         query_params=(
             QueryParam(

@@ -25,7 +25,7 @@ import {
   type DraftPoolTab
 } from "@/lib/draft/workspace-model";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
-import { roleTint, type RoleOntology } from "@/lib/roster/ontology";
+import { roleTint, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DraftPickOptionsResponse, DraftPlayer, DraftRole } from "@/types/draft.types";
 import type { DivisionGrid } from "@/types/workspace.types";
@@ -318,13 +318,14 @@ function RightCell({
 }>) {
   const t = useTranslations("draftRedesign");
   const slotLabel = useSlotLabel(ontology);
+  const named = showsRoles(ontology);
   const main = "truncate text-body font-semibold";
 
   if (!available) {
     const cell = takenTeam?.cells.find((entry) => entry.player?.id === player.id);
     // The team is already under the name ("Already on {team}"); this narrow
     // column only has room for what that line lacks — the seat they took.
-    if (!player.is_captain && cell?.role) {
+    if (!player.is_captain && cell?.role && named) {
       const label = `${slotLabel(cell.role)}${cell.offRole ? ` · ${t("pool.right.offRole")}` : ""}`;
       return (
         <div className={cn("flex justify-end", cell.offRole && "opacity-60 grayscale")} title={label}>
@@ -346,7 +347,7 @@ function RightCell({
   // up-green is kept apart from the support role's green.
   const color = getImpactColor(fit.score);
   const title =
-    fit.role == null
+    fit.role == null || !named
       ? t("pool.fitTitleAny", { team: actingTeam.team.name })
       : t("pool.fitTitle", { team: actingTeam.team.name, role: slotLabel(fit.role) });
   return (
@@ -398,6 +399,8 @@ function RoleCell({
   const slotLabel = useSlotLabel(ontology);
   const primary = index === 0;
   const roleLabel = slotLabel(role);
+  // One role: the cell is the player's rank and pick -- no priority, no glyph, no role in its name.
+  const named = showsRoles(ontology);
   // The role's OWN rank: spending a support main on tank is a different number.
   const rank = player.role_ranks[role] ?? null;
   const division = resolveDivisionFromRank(divisionGrid, rank);
@@ -406,7 +409,7 @@ function RoleCell({
   const heroes = roleTopHeroes(player, role).slice(0, 3);
   const prioTitle = t("pool.cell.priority", { n: index + 1, total });
   const summary = [
-    `${roleLabel}${primary ? ` (${t("pool.cell.primaryMark")})` : ""}`,
+    named ? `${roleLabel}${primary ? ` (${t("pool.cell.primaryMark")})` : ""}` : null,
     rank ?? "—",
     divisionLabel
   ]
@@ -415,24 +418,28 @@ function RoleCell({
 
   const body = (
     <>
-      <span
-        title={prioTitle}
-        className={cn(
-          "pointer-events-none absolute -top-[7px] left-[7px] whitespace-nowrap bg-[color:var(--aqt-card)] px-1 text-label font-semibold leading-none",
-          primary ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-muted)]"
-        )}
-      >
-        {t(`pool.cell.${PRIORITY_KEYS[index] ?? "third"}`)}
-      </span>
-      <span className={cn("inline-flex h-[22px] w-[22px] shrink-0", !primary && "opacity-60 grayscale")}>
-        <PlayerRoleIcon
-          role={role}
-          ontology={ontology}
-          size={22}
-          decorative={actor != null}
-          label={roleLabel}
-        />
-      </span>
+      {named && (
+        <span
+          title={prioTitle}
+          className={cn(
+            "pointer-events-none absolute -top-[7px] left-[7px] whitespace-nowrap bg-[color:var(--aqt-card)] px-1 text-label font-semibold leading-none",
+            primary ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-muted)]"
+          )}
+        >
+          {t(`pool.cell.${PRIORITY_KEYS[index] ?? "third"}`)}
+        </span>
+      )}
+      {named && (
+        <span className={cn("inline-flex h-[22px] w-[22px] shrink-0", !primary && "opacity-60 grayscale")}>
+          <PlayerRoleIcon
+            role={role}
+            ontology={ontology}
+            size={22}
+            decorative={actor != null}
+            label={roleLabel}
+          />
+        </span>
+      )}
       <span className="ml-0.5 mr-1 inline-flex h-[22px] w-[22px] shrink-0" title={divisionLabel ?? undefined}>
         {division != null && (
           <DivisionIcon
@@ -511,7 +518,7 @@ function RoleCell({
   return (
     <button
       type="button"
-      aria-label={t("pickAs", { player: name, role: roleLabel })}
+      aria-label={named ? t("pickAs", { player: name, role: roleLabel }) : t("island.action.pickPlayer", { player: name })}
       aria-pressed={on}
       // aria-disabled, not `disabled`: the reason stays reachable and announced.
       aria-disabled={!usable || undefined}

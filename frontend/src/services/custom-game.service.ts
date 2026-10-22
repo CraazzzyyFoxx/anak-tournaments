@@ -48,6 +48,8 @@ export type CustomGamePlayer = {
    * the solver, so `roles`'s order stops mattering as a priority hint --
    * mirrors the tournament balancer's flex flag (`Player.is_flex`). */
   is_flex: boolean;
+  /** Stepped away (spec §7.4): in no lobby's seated set until back; the must-play mark waits for them. */
+  away: boolean;
   /**
    * Which lobby this player is seated in right now, derived server-side from
    * the selected variant of each lobby; `null` means waiting for a seat.
@@ -107,6 +109,9 @@ export type CustomGameSettings = {
   workspace_discord_channel_id: string | null;
 };
 
+/** A lobby's stage, derived server-side and never stored (spec §5). Draft and pre-game stages arrive later. */
+export type MixLobbyState = "idle" | "ready" | "live";
+
 /**
  * One lobby of a mix — the four columns that used to sit on the mix itself
  * (`custom_game_lobby`). A mix always has exactly `lobby_count` of them, so
@@ -142,6 +147,12 @@ export type CustomGameLobby = {
   lineup_recorded?: boolean;
   /** How many matches this lobby has recorded. Both reads: the directory names the game a lobby is on. */
   matches_count?: number;
+  /** The match this lobby has on the floor -- started, not yet recorded or cancelled; `null` when none. */
+  live_encounter_id: number | null;
+  /** `live` while a match is on, `ready` while a lineup is shown, `idle` otherwise. Detail reads only. */
+  state?: MixLobbyState;
+  /** When the live match started: the cards' elapsed clock. Detail reads only. */
+  live_started_at?: string | null;
 };
 
 /**
@@ -326,6 +337,7 @@ export type CustomGamePlayerPatch = {
   participation?: MixParticipation;
   roles?: RoleRef[] | null;
   is_flex?: boolean;
+  away?: boolean;
   /**
    * Which lobby this player is tied to, or `null` for "wherever the balance
    * puts them". Host-only, and 422 on a mix that runs one lobby.
@@ -365,6 +377,11 @@ export type MixSelfSeat = {
   /** `null` is the `all_ranked` mode -- every role this player has a rank for. */
   roles: RoleRef[] | null;
   is_flex: boolean;
+  /** The caller's own member id: how the board finds them in a lineup. */
+  workspace_member_id: number;
+  away: boolean;
+  /** Their own team's Discord voice, when the lobby has one and the community a verified guild. */
+  voice_url: string | null;
   /** Effective rank per role; `null` where no layer answers for it. */
   ranks: Record<string, number | null>;
   /** Which lobby a balance seated them in; `null` means waiting for a seat. */
@@ -376,10 +393,13 @@ export type MixSelfPolicy = {
   can_join: boolean;
   can_leave: boolean;
   can_edit_roles: boolean;
+  can_set_away: boolean;
   /** `null` exactly when `can_join`. */
   join_blocker: MixSelfBlocker | null;
   /** `null` exactly when `can_edit_roles`. */
   edit_blocker: MixSelfBlocker | null;
+  /** `null` exactly when `can_set_away`. */
+  away_blocker: MixSelfBlocker | null;
 };
 
 /**
@@ -468,8 +488,11 @@ export type MixMemberStats = {
 
 export type MixOutcome = "win" | "loss" | "draw";
 
-/** One recorded seat's result. `match_id` orders seats recorded in the same second. */
-export type MixFormEntry = { outcome: MixOutcome; match_id: number; played_at: string };
+/**
+ * One recorded seat's result. `played_at` is when its match started; `recorded_at` is when its result landed -- the
+ * order results read in (two lobbies' matches are recorded in any order). `match_id` breaks a tie.
+ */
+export type MixFormEntry = { outcome: MixOutcome; match_id: number; played_at: string; recorded_at: string };
 
 /**
  * `since` echoes back the window the server parsed, so a reader can tell it from all time. `mixes` and `matches`
@@ -641,22 +664,50 @@ export const customGameService = {
   },
 
   /**
-   * Snapshots one played match of one lobby into the permanent casual-match log
-   * — team rosters and who won. Repeatable: a mix can record many before its
-   * host calls `close`. `variantIndex` is whichever balance option that lobby is
-   * showing; the map is that lobby's `next_map_id`, consumed server-side.
+   * Starts this lobby's match on the lineup it is showing (spec §5.1): an open encounter, the lineup frozen until
+   * the result or a cancel. When the lobby has both team voices the server then splits its players into them.
+   * 409 `match_live` while a match is already on.
+   */
+  startMatch(workspaceId: number, gameId: number, lobbyIndex: number): Promise<CustomGame> {
+    return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/match/start`, {
+      skipWorkspace: true,
+      method: "POST",
+      body: { lobby_index: lobbyIndex },
+    }).then((r) => r.json());
+  },
+
+  /** Throws this lobby's live match away: nothing is recorded, no rank moves, the lineup is ready again. */
+  cancelMatch(workspaceId: number, gameId: number, lobbyIndex: number): Promise<CustomGame> {
+    return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/match/cancel`, {
+      skipWorkspace: true,
+      method: "POST",
+      body: { lobby_index: lobbyIndex },
+    }).then((r) => r.json());
+  },
+
+  /**
+   * Records the result of this lobby's live match into the permanent log -- repeatable, the mix stays open. The seats
+   * and the map were fixed when it started. 409 `no_live_match` when nothing was started.
    */
   recordOutcome(
     workspaceId: number,
     gameId: number,
     lobbyIndex: number,
     outcome: CustomGameOutcome,
-    variantIndex: number,
   ): Promise<CustomGame> {
     return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/outcome`, {
       skipWorkspace: true,
       method: "POST",
-      body: { lobby_index: lobbyIndex, outcome, variant_index: variantIndex },
+      body: { lobby_index: lobbyIndex, outcome },
+    }).then((r) => r.json());
+  },
+
+  /** "Make captain": one seat of the lobby's shown option wears the crown. 409 `match_live` while live. */
+  setCaptain(workspaceId: number, gameId: number, lobbyIndex: number, workspaceMemberId: number): Promise<CustomGame> {
+    return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/captain`, {
+      skipWorkspace: true,
+      method: "PUT",
+      body: { lobby_index: lobbyIndex, workspace_member_id: workspaceMemberId },
     }).then((r) => r.json());
   },
 
@@ -924,6 +975,15 @@ export const customGameService = {
       skipWorkspace: true,
       method: "PATCH",
       body: patch,
+    }).then((r) => r.json());
+  },
+
+  /** The caller's own away switch (spec §7.4): `true` steps away, `false` comes back. Answers with their seat. */
+  setMyAway(workspaceId: number, gameId: number, away: boolean): Promise<MixSelfState> {
+    return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/me/away`, {
+      skipWorkspace: true,
+      method: "PUT",
+      body: { away },
     }).then((r) => r.json());
   },
 

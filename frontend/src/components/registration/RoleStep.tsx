@@ -7,7 +7,7 @@ import { useRoleName } from "@/hooks/useRoleName";
 import { roleAccent } from "@/lib/registration/role-accent";
 import { cn } from "@/lib/utils";
 import { getSubroleOptions } from "@/lib/roster/roles";
-import { registrationRoles, rolePresentation, type RoleOntology } from "@/lib/roster/ontology";
+import { registrationRoles, rolePresentation, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import type { RolesParams } from "@/types/forms.types";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { RoleInput, SubroleCatalog } from "@/types/registration.types";
@@ -84,6 +84,8 @@ export default function RoleStep({
   // slot picker: the game's own role names from its scoped ontology.
   const roles = registrationRoles(ontology);
   const roleCodes = roles.map((role) => role.code);
+  // A one-role game keeps this step only for its top heroes (the form drops it otherwise): it names no role.
+  const named = showsRoles(ontology);
   const accentOf = (role: (typeof roles)[number]) =>
     roleAccent(ontology ? rolePresentation(ontology.roles, role.id).color : null);
   const isLocked = lockedRole != null;
@@ -237,7 +239,7 @@ export default function RoleStep({
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {hideHelperText ? (
+        {hideHelperText || !named ? (
           <span />
         ) : (
           <p className="max-w-[38rem] text-xs leading-5 text-[color:var(--aqt-fg-muted)]">
@@ -251,7 +253,7 @@ export default function RoleStep({
           </p>
         )}
 
-        {!isLocked && flexMode === "optional" && (
+        {!isLocked && named && flexMode === "optional" && (
           <button
             type="button"
             aria-pressed={isFlex}
@@ -291,18 +293,20 @@ export default function RoleStep({
         </div>
       )}
 
-      <div
-        aria-hidden
-        className={cn(
-          "hidden gap-2 px-2 text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)] sm:grid",
-          columnClass,
-        )}
-      >
-        <span>{t("registration.roles.matrix.columnRole")}</span>
-        {showPriority && <span>{t("registration.roles.matrix.columnPriority")}</span>}
-        <span>{t("registration.roles.specialization")}</span>
-        <span>{topHeroesEnabled ? t("registration.roles.topHeroes.title") : ""}</span>
-      </div>
+      {named && (
+        <div
+          aria-hidden
+          className={cn(
+            "hidden gap-2 px-2 text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)] sm:grid",
+            columnClass,
+          )}
+        >
+          <span>{t("registration.roles.matrix.columnRole")}</span>
+          {showPriority && <span>{t("registration.roles.matrix.columnPriority")}</span>}
+          <span>{t("registration.roles.specialization")}</span>
+          <span>{topHeroesEnabled ? t("registration.roles.topHeroes.title") : ""}</span>
+        </div>
+      )}
 
       <div className="grid gap-2">
         {visibleRoles.map((role) => (
@@ -317,6 +321,7 @@ export default function RoleStep({
             topHeroesEnabled={topHeroesEnabled}
             maxHeroes={maxHeroes}
             showPriority={showPriority}
+            showRole={named}
             onPriorityChange={(priority) => setPriority(role.code, priority)}
             onSubroleChange={(subrole) => setSubrole(role.code, subrole)}
             onHeroesChange={(heroes) => setHeroes(role.code, heroes)}

@@ -47,6 +47,8 @@ type SortableRoleEntryProps = {
   ontology: RoleOntology | null;
   /** The owner game's name when it collects native ranks (`native_rank_collection`), else `null`: no live-rank row. */
   nativeRankName: string | null;
+  /** More than one role in the game: the card names its role and can reorder, turn off or remove it. */
+  showsRole: boolean;
 };
 
 export function SortableRoleEntry({
@@ -60,7 +62,8 @@ export function SortableRoleEntry({
   onRemove,
   subtypeOptions,
   ontology,
-  nativeRankName
+  nativeRankName,
+  showsRole
 }: Readonly<SortableRoleEntryProps>) {
   const { ref, style, handleProps } = useSortableRow(id);
 
@@ -93,100 +96,116 @@ export function SortableRoleEntry({
       ref={ref}
       style={{ ...style, ...(declaredActive ? accentRowStyle(accent) : undefined) }}
       className={cn(
-        "grid gap-2 rounded-xl border p-2.5 transition-colors md:grid-cols-[32px_minmax(0,1fr)]",
+        "grid gap-2 rounded-xl border p-2.5 transition-colors",
+        showsRole && "md:grid-cols-[32px_minmax(0,1fr)]",
         declaredActive
           ? "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)]"
           : "border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] opacity-80"
       )}
     >
-      <div className="flex items-center justify-between md:flex-col md:items-center md:justify-center md:gap-1">
-        <SortableGrip handleProps={handleProps} label={`Reorder ${roleName}`} />
-        <span className="text-label font-semibold text-[color:var(--aqt-fg-dim)]">
-          #{index + 1}
-        </span>
-      </div>
+      {showsRole ? (
+        <div className="flex items-center justify-between md:flex-col md:items-center md:justify-center md:gap-1">
+          <SortableGrip handleProps={handleProps} label={`Reorder ${roleName}`} />
+          <span className="text-label font-semibold text-[color:var(--aqt-fg-dim)]">
+            #{index + 1}
+          </span>
+        </div>
+      ) : null}
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5">
-            <PlayerRoleIcon role={entry.role} ontology={ontology} size={15} decorative />
-            <span
-              className="text-xs font-semibold"
-              style={declaredActive ? accentTextStyle(accent) : { color: "var(--aqt-fg-muted)" }}
-            >
-              {roleName}
-            </span>
-            {subtypeLabel ? (
-              <Badge className="h-4 border px-1.5 text-label" style={accentChipStyle(accent)}>
-                {subtypeLabel}
-              </Badge>
-            ) : null}
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <div className="flex h-6 items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2">
-              <Switch
-                checked={declaredActive}
-                className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 data-[state=checked]:[&>span]:translate-x-3"
-                onCheckedChange={(checked) =>
-                  onUpdate(index, { ...entry, is_declared_active: checked })
-                }
-                aria-label={declaredActive ? "Disable role" : "Enable role"}
-              />
+        {/* One role: nothing to name, turn off or remove -- the rank below is the whole card. */}
+        {showsRole ? (
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <PlayerRoleIcon role={entry.role} ontology={ontology} size={15} decorative />
               <span
-                className="text-label font-semibold uppercase tracking-label"
-                style={declaredActive ? accentTextStyle(accent) : { color: "var(--aqt-fg-dim)" }}
+                className="text-xs font-semibold"
+                style={declaredActive ? accentTextStyle(accent) : { color: "var(--aqt-fg-muted)" }}
               >
-                {declaredActive ? "Active" : "Off"}
+                {roleName}
               </span>
+              {subtypeLabel ? (
+                <Badge className="h-4 border px-1.5 text-label" style={accentChipStyle(accent)}>
+                  {subtypeLabel}
+                </Badge>
+              ) : null}
             </div>
 
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 shrink-0 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-dim)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-              aria-label={`Remove ${roleName}`}
-              onClick={() => onRemove(index)}
-            >
-              <Trash2 className="h-3 w-3" aria-hidden="true" />
-            </Button>
-          </div>
-        </div>
+            <div className="flex items-center gap-1.5">
+              <div className="flex h-6 items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2">
+                <Switch
+                  checked={declaredActive}
+                  className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 data-[state=checked]:[&>span]:translate-x-3"
+                  onCheckedChange={(checked) =>
+                    onUpdate(index, { ...entry, is_declared_active: checked })
+                  }
+                  aria-label={declaredActive ? "Disable role" : "Enable role"}
+                />
+                <span
+                  className="text-label font-semibold uppercase tracking-label"
+                  style={declaredActive ? accentTextStyle(accent) : { color: "var(--aqt-fg-dim)" }}
+                >
+                  {declaredActive ? "Active" : "Off"}
+                </span>
+              </div>
 
-        <div className="grid gap-2 lg:grid-cols-[minmax(0,140px)_minmax(0,1fr)_130px]">
-          <div className="space-y-1">
-            <span className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
-              Sub-role
-            </span>
-            <Select
-              value={entry.subtype ?? "none"}
-              disabled={!hasSubtypeOptions}
-              onValueChange={(value) =>
-                onUpdate(index, {
-                  ...entry,
-                  subtype: value === "none" ? null : (value as BalancerRoleSubtype)
-                })
-              }
-            >
-              <SelectTrigger
-                size="sm"
-                className={cn(
-                  "h-7 w-full border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-[color:var(--aqt-fg)]",
-                  !declaredActive && "text-[color:var(--aqt-fg-dim)]"
-                )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 shrink-0 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-dim)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+                aria-label={`Remove ${roleName}`}
+                onClick={() => onRemove(index)}
               >
-                <SelectValue placeholder="Sub-role" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No sub-role</SelectItem>
-                {roleSubtypeOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                <Trash2 className="h-3 w-3" aria-hidden="true" />
+              </Button>
+            </div>
           </div>
+        ) : null}
+
+        <div
+          className={cn(
+            "grid gap-2",
+            showsRole
+              ? "lg:grid-cols-[minmax(0,140px)_minmax(0,1fr)_130px]"
+              : "lg:grid-cols-[minmax(0,1fr)_130px]"
+          )}
+        >
+          {/* Sub-roles specialise one of several roles; a one-role game's card names neither. */}
+          {showsRole ? (
+            <div className="space-y-1">
+              <span className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)]">
+                Sub-role
+              </span>
+              <Select
+                value={entry.subtype ?? "none"}
+                disabled={!hasSubtypeOptions}
+                onValueChange={(value) =>
+                  onUpdate(index, {
+                    ...entry,
+                    subtype: value === "none" ? null : (value as BalancerRoleSubtype)
+                  })
+                }
+              >
+                <SelectTrigger
+                  size="sm"
+                  className={cn(
+                    "h-7 w-full border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-[color:var(--aqt-fg)]",
+                    !declaredActive && "text-[color:var(--aqt-fg-dim)]"
+                  )}
+                >
+                  <SelectValue placeholder="Sub-role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No sub-role</SelectItem>
+                  {roleSubtypeOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
 
           <RoleRankControls
             rankValue={entry.rank_value}

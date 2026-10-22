@@ -32,7 +32,7 @@ import type {
 } from "@/services/custom-game.service";
 
 import { PickupLobbyPanel } from "./PickupLobbyPanel";
-import { LOL_OWNER, OW_OWNER } from "./mix-owner.fixture";
+import { DEADLOCK_OWNER, LOL_OWNER, OW_OWNER } from "./mix-owner.fixture";
 import type { MixOwner } from "./pickup-lineup";
 
 declare global {
@@ -491,6 +491,17 @@ describe("PickupLobbyPanel", () => {
     // The rail toggles League's positions, written in League's own dimension.
     expect(byLabel(scope, "Jungle for Aria#1111, first choice, 2200 points")).not.toBeNull();
     expect(byLabel(scope, "Top for Aria#1111, off, no rank")).not.toBeNull();
+  });
+
+  it("gives a one-role game no role rail and no supply strip", async () => {
+    const scope = await mount(
+      [row({ identity: { provider: "steam", handle: "206464648" }, ranks: { agent: 2900 }, rank_sources: { agent: "native" } })],
+      { owner: DEADLOCK_OWNER },
+    );
+
+    expect(scope.querySelector('[aria-label^="Roles for"]')).toBeNull();
+    expect(scope.textContent).not.toContain(" of 12");
+    expect(scope.textContent).toContain("2900");
   });
 
   it("warns once every selected role of an active player is unranked", async () => {

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import FlexIcon from "@/components/icons/FlexIcon";
 import { useRoleName } from "@/hooks/useRoleName";
-import { findRole, ratedDimension, rolePresentation, type RoleOntology } from "@/lib/roster/ontology";
+import { findRole, ratedDimension, rolePresentation, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import type { RoleRef } from "@/lib/roster/team-format";
 
 /** The dictionary is explicit owner scope. Missing/unknown history is never reclassified. */
@@ -23,6 +23,8 @@ export default function PlayerRoleIcon({
   const nameOf = useRoleName();
   const [failedIcon, setFailedIcon] = useState<string | null>(null);
   const open = role === null || (typeof role === "string" && role.toLowerCase() === "flex");
+  // A game with one rated role names no role anywhere (the single-role rule), so its role has no glyph either.
+  if (ontology && !open && !showsRoles(ontology)) return null;
   const ref = typeof role === "string"
     ? { dimension: ontology ? ratedDimension(ontology)?.code ?? "" : "", role }
     : role;

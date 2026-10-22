@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import { useInvalidation } from "@/hooks/useInvalidation";
@@ -21,6 +21,7 @@ import { OPEN_MIXES } from "@/app/balancer/mix/pickup-chrome";
 import {
   computeRotationHintPatches,
   participationEntries,
+  waitingQueuePosition,
   type PickupRecordOutcomeInput,
 } from "@/app/balancer/mix/pickup-lineup";
 import { voiceRefusal } from "@/app/balancer/mix/pickup-voice";
@@ -77,10 +78,11 @@ export type PickupMySeatInput = { roles: RoleRef[] | null; is_flex: boolean };
 export function usePickupMix(
   workspaceId: number,
   pickedGameId: number | null,
-  options: { seatEnabled?: boolean; voiceEnabled?: boolean; initialGame?: CustomGame } = {},
+  options: { seatEnabled?: boolean; voiceEnabled?: boolean; initialGame?: CustomGame; initialLobby?: number } = {},
 ) {
   const queryClient = useQueryClient();
   const tVoiceError = useTranslations("mixes.voice.errors");
+  const tRoom = useTranslations("mixes.room");
 
   // Every open mix of the workspace, whatever its game: the voice panel names the channels this workspace's OTHER
   // open mixes already took, and voice channels are shared across games. The same page the directory's "now" block
@@ -108,13 +110,14 @@ export function usePickupMix(
   });
 
   // The lobby on screen. Page state, not server state: two co-hosts may well be
-  // watching different lobbies of the same mix.
-  const [activeLobby, setActiveLobby] = useState(0);
-  const lobbyCount = gameQuery.data?.lobby_count ?? 1;
+  // watching different lobbies of the same mix. A room opens on its own lobby.
+  const [activeLobby, setActiveLobby] = useState(options.initialLobby ?? 0);
+  const lobbyCount = gameQuery.data?.lobby_count;
   // Dropping lobbies while a later one is open would leave the page pointing at
   // a lobby the mix no longer has. Reset during render, React's own pattern for
-  // state derived from a prop that must follow it.
-  if (activeLobby >= lobbyCount) {
+  // state derived from a prop that must follow it -- and only against a loaded
+  // mix: until the detail arrives a room's requested lobby is kept.
+  if (lobbyCount != null && activeLobby >= lobbyCount) {
     setActiveLobby(0);
   }
 
@@ -142,6 +145,29 @@ export function usePickupMix(
     queryFn: () => customGameService.getMySeat(workspaceId, selectedGameId as number),
     enabled: selectedGameId != null && options.seatEnabled === true,
   });
+
+  // The caller's place in the mix-wide waiting line. Each lobby's rotation leaves out whoever is pinned to another
+  // lobby, so the line reads every lobby's -- only while the caller waits, at most six reads. The history is the
+  // whole mix's, so a member two lobbies both rank carries the same numbers in each.
+  const mySeat = mySeatQuery.data?.seat ?? null;
+  const waiting =
+    mySeat != null && !mySeat.away && mySeat.participation !== "benched" && mySeat.current_lobby == null;
+  const queueRotations = useQueries({
+    queries: Array.from({ length: waiting ? (lobbyCount ?? 0) : 0 }, (_, lobbyIndex) => ({
+      queryKey: customGameKeys.rotation(workspaceId, selectedGameId ?? 0, lobbyIndex),
+      queryFn: () => customGameService.rotation(workspaceId, selectedGameId as number, lobbyIndex),
+      enabled: selectedGameId != null,
+    })),
+  });
+  // No number until every lobby has answered: a partial line would rank a player pinned elsewhere as a newcomer.
+  const myQueuePosition =
+    mySeat == null || queueRotations.length === 0 || queueRotations.some((query) => query.data == null)
+      ? null
+      : waitingQueuePosition(
+          gameQuery.data?.players ?? [],
+          queueRotations.flatMap((query) => query.data ?? []),
+          mySeat.workspace_member_id,
+        );
 
   /**
    * The voices this mix may pick, listed from Discord through the workspace's
@@ -315,17 +341,39 @@ export function usePickupMix(
 
   const recordOutcome = useMutation({
     mutationFn: (input: PickupRecordOutcomeInput) =>
-      customGameService.recordOutcome(
-        workspaceId,
-        selectedGameId as number,
-        input.lobbyIndex,
-        input.outcome,
-        input.variantIndex,
-      ),
+      customGameService.recordOutcome(workspaceId, selectedGameId as number, input.lobbyIndex, input.outcome),
     onSuccess: (game) => {
       applyGame(game);
       notify.success("Result recorded");
     },
+    onError: (error) => notify.apiError(error),
+  });
+
+  /** Opens the lobby's match on the lineup it shows; the server splits the team voices when it has them. */
+  const startMatch = useMutation({
+    mutationFn: (lobbyIndex: number) => customGameService.startMatch(workspaceId, selectedGameId as number, lobbyIndex),
+    onSuccess: (game) => {
+      applyGame(game);
+      notify.success(tRoom("started"));
+    },
+    onError: (error) => notify.apiError(error),
+  });
+
+  /** Throws the lobby's live match away; the lineup is ready to start again. */
+  const cancelMatch = useMutation({
+    mutationFn: (lobbyIndex: number) => customGameService.cancelMatch(workspaceId, selectedGameId as number, lobbyIndex),
+    onSuccess: (game) => {
+      applyGame(game);
+      notify.success(tRoom("cancelled"));
+    },
+    onError: (error) => notify.apiError(error),
+  });
+
+  /** "Make captain" on a seat of the lobby's shown option. */
+  const setCaptain = useMutation({
+    mutationFn: ({ lobbyIndex, workspaceMemberId }: { lobbyIndex: number; workspaceMemberId: number }) =>
+      customGameService.setCaptain(workspaceId, selectedGameId as number, lobbyIndex, workspaceMemberId),
+    onSuccess: applyGame,
     onError: (error) => notify.apiError(error),
   });
 
@@ -487,6 +535,13 @@ export function usePickupMix(
     onError: (error) => notify.apiError(error),
   });
 
+  /** The caller's own away switch: answers with their seat, and moves the board every viewer reads. */
+  const setMyAway = useMutation({
+    mutationFn: (away: boolean) => customGameService.setMyAway(workspaceId, selectedGameId as number, away),
+    onSuccess: applySeat,
+    onError: (error) => notify.apiError(error),
+  });
+
   /** The host's switches. Returns the game, so the board is seeded like any other host write. */
   const setSelfService = useMutation({
     mutationFn: (patch: { self_signup?: MixSelfSignup; self_role_edit?: boolean }) =>
@@ -572,12 +627,16 @@ export function usePickupMix(
     matchesQuery,
     rotationQuery,
     mySeatQuery,
+    myQueuePosition,
     voiceOptionsQuery,
     setRoster,
     patchPlayer,
     applyRotationHints,
     balance,
     recordOutcome,
+    startMatch,
+    cancelMatch,
+    setCaptain,
     undoMatch,
     setNextMap,
     setVariantIndex,
@@ -595,6 +654,7 @@ export function usePickupMix(
     joinMix,
     leaveMix,
     updateMySeat,
+    setMyAway,
     setSelfService,
     postSignup,
     deleteDiscordPost,

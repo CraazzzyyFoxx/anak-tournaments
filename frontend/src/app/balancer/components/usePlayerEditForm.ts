@@ -9,7 +9,7 @@ import {
   type PlayerRankHistoryPreview,
   type PlayerRankHistoryPreviewEntry
 } from "@/components/balancer/workspace-helpers";
-import { ratedDimension, registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
+import { ratedDimension, registrationRoles, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import {
   useCurrentWorkspaceId,
   useDivisionGrid,
@@ -148,7 +148,7 @@ export function usePlayerEditForm({
     return getDivisionLabel(workspaceGrid, divisionNumber);
   };
 
-  const [roleEntries, setRoleEntries] = useState<BalancerPlayerRoleEntry[]>(
+  const [editedEntries, setRoleEntries] = useState<BalancerPlayerRoleEntry[]>(
     normalizeRoleEntries(player.role_entries_json)
   );
   const [isFlex, setIsFlex] = useState(player.is_flex);
@@ -168,6 +168,31 @@ export function usePlayerEditForm({
     () => registrationRoles(ontology).map((role) => role.code),
     [ontology]
   );
+  // A one-role game edits its sole role's rank alone, with no switch to turn it off: its entry is always declared on,
+  // keeping its stored rank and sub-role, and a registration without one gets a fresh one. It leads the list, so the
+  // write keeps it primary. Every other stored entry (a role the module retired, with its character preferences)
+  // follows in its stored order, otherwise unchanged: a save replaces the registration's roles.
+  const soleRole = showsRoles(ontology) ? null : (selectableRoleCodes[0] ?? null);
+  const roleEntries = useMemo<BalancerPlayerRoleEntry[]>(() => {
+    if (soleRole === null) return editedEntries;
+    const stored = editedEntries.find((entry) => entry.role === soleRole);
+    const sole: BalancerPlayerRoleEntry = {
+      ...(stored ?? {
+        role: soleRole,
+        subtype: null,
+        priority: 1,
+        division_number: null,
+        rank_value: null,
+        is_active: false,
+        ow_rank_value: null
+      }),
+      is_declared_active: true
+    };
+    return [sole, ...editedEntries.filter((entry) => entry !== stored)].map((entry, index) => ({
+      ...entry,
+      priority: index + 1
+    }));
+  }, [editedEntries, soleRole]);
   const addableRole =
     selectableRoleCodes.find((code) => !roleEntries.some((entry) => entry.role === code)) ?? null;
 
@@ -350,6 +375,8 @@ export function usePlayerEditForm({
     divisionGrid,
     workspaceGrid,
     roleEntries,
+    /** A one-role game's only role: the one entry the sheet shows. `null` when the game names roles (or is loading). */
+    soleRole,
     isFlex,
     setIsFlex,
     notes,

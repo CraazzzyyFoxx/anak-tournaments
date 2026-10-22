@@ -199,23 +199,25 @@ function LineupChip({
         ) : null}
       </span>
 
-      <span aria-hidden="true" className="flex shrink-0 items-center gap-0.5">
-        {owner.roles.map((role) => {
-          const position = order.indexOf(role);
-          const isOn = position !== -1;
-          return (
-            <IconTooltip
-              key={role}
-              label={`${slotLabel(role)}: ${
-                isOn ? (position === 0 ? "first choice" : "also plays") : "off"
-              }`}
-              className={cn("size-5 items-center justify-center rounded", !isOn && "opacity-20")}
-            >
-              <PlayerRoleIcon role={role} ontology={owner.ontology} size={13} decorative />
-            </IconTooltip>
-          );
-        })}
-      </span>
+      {owner.showsRoles ? (
+        <span aria-hidden="true" className="flex shrink-0 items-center gap-0.5">
+          {owner.roles.map((role) => {
+            const position = order.indexOf(role);
+            const isOn = position !== -1;
+            return (
+              <IconTooltip
+                key={role}
+                label={`${slotLabel(role)}: ${
+                  isOn ? (position === 0 ? "first choice" : "also plays") : "off"
+                }`}
+                className={cn("size-5 items-center justify-center rounded", !isOn && "opacity-20")}
+              >
+                <PlayerRoleIcon role={role} ontology={owner.ontology} size={13} decorative />
+              </IconTooltip>
+            );
+          })}
+        </span>
+      ) : null}
 
       <span className="w-11 shrink-0 text-right text-caption font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]">
         {rank ?? "\u2014"}

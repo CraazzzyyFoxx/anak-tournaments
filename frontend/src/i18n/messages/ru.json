@@ -500,6 +500,8 @@
         "flexPreset": "Играю на любой роли",
         "heroesLabel": "Топ-герои для роли {role}: выбрано {count} из {max}",
         "heroesPickerLabel": "Выбор топ-героев для роли {role}",
+        "heroesLabelNoRole": "Топ-герои: выбрано {count} из {max}",
+        "heroesPickerLabelNoRole": "Выбор топ-героев",
         "heroesAtMax": "Выбран максимум — {max}. Снимите одного, чтобы заменить."
       },
       "specialization": "Специализация",
@@ -508,6 +510,7 @@
       "topHeroes": {
         "title": "Топ-герои",
         "desc": "Выберите до {max} героев, на которых играете лучше всего в этой роли.",
+        "descNoRole": "Выберите до {max} героев, на которых играете лучше всего.",
         "count": "{count}/{max}",
         "search": "Поиск персонажей"
       }
@@ -581,6 +584,7 @@
       "empty": "Заявок команд пока нет. Капитан регистрирует команду и приглашает игроков в состав.",
       "count": "{count, plural, one {# команда} few {# команды} many {# команд} other {# команды}}",
       "shortfall": "Нужно ещё: {slots}",
+      "shortfallCount": "Нужно ещё: {count, plural, one {# игрок} few {# игрока} many {# игроков} other {# игрока}}",
       "openSlot": "Свободно",
       "complete": "Состав собран",
       "substitutes": "Запасные: {used} из {max}",
@@ -687,6 +691,7 @@
       "logoSaved": "Логотип команды обновлён.",
       "logoRemoved": "Логотип команды удалён.",
       "incomplete": "Ваша команда {team} ещё не собрана: {shortfall}. Пока состав неполный, команда не попадёт на турнир.",
+      "shortfallCount": "не хватает {count, plural, one {# игрока} few {# игроков} many {# игроков} other {# игрока}}",
       "complete": "Ваша команда {team} собрана и ждёт организатора.",
       "exported": "Ваша команда {team} участвует в турнире.",
       "rejected": "Вашу команду {team} отклонил организатор.",
@@ -828,6 +833,8 @@
       "invitedTo": "Вас приглашают в команду {team} на турнир {tournament}.",
       "slot": "Предложенный слот: {slot}",
       "slotSubstitute": "Предложенный слот: {slot} (запасной)",
+      "seat": "Предложенное место: в основе",
+      "seatSubstitute": "Предложенное место: запасной",
       "signInHint": "Войдите, чтобы принять приглашение. Ссылка не закреплена за аккаунтом: слот займёт тот, кто первым вступит в команду.",
       "signInAction": "Войти",
       "retry": "Повторить загрузку",
@@ -844,6 +851,8 @@
       "title": "Приглашения в команды",
       "sentence": "{team} приглашает вас на {slot}.",
       "sentenceSubstitute": "{team} приглашает вас запасным ({slot}).",
+      "sentenceNoSlot": "{team} приглашает вас в команду.",
+      "sentenceSubstituteNoSlot": "{team} приглашает вас запасным.",
       "expires": "Истекает {date}",
       "accept": "Вступить",
       "decline": "Отклонить",
@@ -3018,6 +3027,7 @@
       "allDivisions": "Все дивизионы",
       "divisionOption": "D{division}",
       "columnLabel": "{role} — игроков: {count}",
+      "players": "Игроки",
       "columnEmpty": "На эту роль пока никого",
       "rank": "D{division} · {rank}",
       "flexTitle": "Играет на нескольких ролях, поэтому показан в каждой из них: {roles}",
@@ -5890,9 +5900,11 @@
     "blockers": {
       "not_enough_players": "Допущенных игроков меньше, чем мест в составах.",
       "pool_unranked": "{count, plural, one {# игрок в пуле без ранга} few {# игрока в пуле без ранга} many {# игроков в пуле без ранга} other {# игрока в пуле без ранга}}. Добавьте ранг в балансировщике.",
-      "role_shortage": "Недостаточно игроков, способных играть на роли «{role}»."
+      "role_shortage": "Недостаточно игроков, способных играть на роли «{role}».",
+      "seat_shortage": "Допущенных игроков не хватает, чтобы занять все места."
     },
     "roleDeficit": "{role}: после серверной проверки не закрыто {count, plural, one {# место} few {# места} many {# мест} other {# места}}.",
+    "seatDeficit": "После серверной проверки не закрыто {count, plural, one {# место} few {# места} many {# мест} other {# места}}.",
     "captainsSelected": "Выбрано капитанов",
     "searchCaptains": "Поиск капитанов",
     "captainSort": "Сортировка капитанов",
@@ -6288,6 +6300,12 @@
           "cancelled": "Драфт отменён",
           "player_role_added": "{player}: добавлена роль {role}",
           "unknown": "{action}"
+        },
+        "actionNoRole": {
+          "pick_made": "П{pick} · {team} · {player}",
+          "pick_autopicked": "П{pick} · {team} · {player} · автопик",
+          "pick_overridden": "П{pick} · {team} · {player} · замена: «{reason}»",
+          "player_role_added": "{player}: роль добавлена"
         }
       },
       "banner": {
@@ -6457,6 +6475,7 @@
       "cell": {
         "open": "Свободно: {role}",
         "openFilter": "Свободно: {role} — показать игроков этой роли",
+        "openSeat": "Свободное место",
         "offRole": "не своя роль"
       },
       "anyRole": "любая роль",
@@ -7793,6 +7812,7 @@
       "waitingSeat": "Ждёте места",
       "rolesAllRanked": "Все роли, по которым есть ранг",
       "unranked": "Нет ранга: {roles}. Хост проставит.",
+      "unrankedOne": "Ранга пока нет. Хост проставит.",
       "fixLinks": "Открыть настройки аккаунта",
       "blocker": {
         "mix_closed": "Микс завершён.",
@@ -7813,8 +7833,6 @@
       "tabsLabel": "Лобби",
       "tab": "Лобби {letter}",
       "game": "игра {number}",
-      "notRecorded": "не записано",
-      "notBalanced": "не собрано",
       "rebalanceTitle": "Перебалансировать это лобби?",
       "rebalanceDescription": "Результат состава на экране не записан. Перебаланс заменит его, и записывать будет нечего.",
       "rebalanceConfirm": "Всё равно перебалансировать",
@@ -7830,6 +7848,7 @@
       "seatedIn": "Играет в лобби {letter}",
       "waiting": "ждёт",
       "waitingTitle": "Ждёт места",
+      "rankHeading": "Ранг",
       "pinHeading": "Лобби",
       "pinGroup": "Лобби для {name}",
       "pinOption": "{option} для {name}",
@@ -7900,6 +7919,54 @@
         "general_voice_not_configured": "У микса не выбран общий войс.",
         "general_voice_outside_category": "Общий войс микса больше не в категории — выберите его заново.",
         "discord_unavailable": "Бот сейчас недоступен — попробуйте ещё раз."
+      }
+    },
+    "room": {
+      "steps": "Этап лобби",
+      "state": {
+        "idle": "Пусто",
+        "ready": "Готово",
+        "live": "Идёт матч"
+      },
+      "elapsed": "{minutes} мин",
+      "startMatch": "Начать матч",
+      "started": "Матч начат",
+      "awayTitle": "Начать с отошедшими?",
+      "awayDescription": "В составе, но отошли: {names}. Матч всё равно начнётся.",
+      "awayConfirm": "Всё равно начать",
+      "cancelMatch": "Отменить матч",
+      "cancelTitle": "Отменить этот матч?",
+      "cancelDescription": "Ничего не запишется и ранги не сдвинутся. Состав остаётся — его можно начать заново.",
+      "cancelConfirm": "Да, отменить матч",
+      "cancelled": "Матч отменён",
+      "frozen": "Состав заморожен, пока идёт матч",
+      "captain": "Капитан",
+      "makeCaptain": "Сделать капитаном",
+      "away": "Отошёл",
+      "awayHint": "Отошёл: не попадает в составы, пока не вернётся",
+      "record": "Записать",
+      "teamWin": "Победа: {team}",
+      "draw": "Ничья",
+      "balance": "Собрать",
+      "shortSeats": "{count} из {need} игроков",
+      "gap": "разрыв {gap}",
+      "openRoom": "Открыть комнату",
+      "overview": "Все лобби",
+      "notFound": "В этом миксе нет такого лобби.",
+      "waitingCount": "Ждут места: {count}",
+      "you": "Вы",
+      "yourTeam": "Лобби {letter} · {team}",
+      "nextMap": "Следующая карта: {map}",
+      "voice": "Голосовой канал команды",
+      "goAway": "Отойти",
+      "back": "Я вернулся",
+      "awayStatus": "Вы отошли: ни одно лобби не посадит вас, пока вы не вернётесь.",
+      "waiting": "Ждёте места",
+      "queue": "Вы {position}-й в очереди",
+      "groups": {
+        "waiting": "Ждут места",
+        "away": "Отошли",
+        "bench": "Скамейка"
       }
     }
   },
@@ -13084,6 +13151,7 @@
       "displayName": "Отображаемое имя",
       "displayNamePlaceholder": "Отображаемое имя",
       "rank": "Ранг: {role}",
+      "rankOnly": "Ранг",
       "adminNotes": "Заметки администратора",
       "adminNotesPlaceholder": "Внутренние заметки только для администраторов",
       "registrationStatus": "Статус регистрации",

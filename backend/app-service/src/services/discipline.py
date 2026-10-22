@@ -85,6 +85,7 @@ def _descriptor(spec: DisciplineSpec, *, enabled: bool) -> DisciplineDescriptor:
         kinds=dict(spec.kinds),  # type: ignore[arg-type]  # validated against the catalog kinds
         character_classes=list(spec.character_classes),
         identity_provider=spec.identity_provider,
+        flex=spec.flex,
         short_name=spec.short_name or spec.name,
         icon=public_asset_url(spec.icon, public_origin=config.settings.s3_public_url),
         capabilities=DisciplineCapabilities(

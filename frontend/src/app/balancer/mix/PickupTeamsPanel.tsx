@@ -10,10 +10,12 @@ import {
   ClipboardCopy,
   Copy,
   Send,
+  CircleX,
   Shuffle
 } from "lucide-react";
 
 import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
+import { CAPTION_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import { PickupResultControls } from "@/app/balancer/mix/PickupResultControls";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -28,6 +30,8 @@ import { Spinner } from "@/components/ui/spinner";
 
 import { MatchHistoryList } from "./_components/MatchHistoryList";
 import { NextMapStrip } from "./_components/NextMapStrip";
+import { RoomStepper } from "./_components/RoomStepper";
+import { StartMatchButton } from "./_components/StartMatchButton";
 import { VariantView } from "./_components/VariantView";
 import { slotCodeOrder } from "@/lib/roster/ontology";
 import {
@@ -58,9 +62,6 @@ type PickupTeamsPanelProps = {
   activeCount: number;
   /** Re-runs the solver for THIS lobby. The confirm for an unrecorded lineup is this panel's. */
   onBalance: () => void;
-  shufflingAll?: boolean;
-  /** Re-splits the whole pool across every lobby. Offered only while more than one runs. */
-  onShuffleAll?: () => void;
   /**
    * Which of the solver's options is on screen — the lobby's own
    * `selected_variant_index`, so the host's pager moves every viewer with it.
@@ -71,8 +72,18 @@ type PickupTeamsPanelProps = {
   onVariantIndexChange: (index: number) => void;
   recordingOutcome: boolean;
   onRecordOutcome: (input: PickupRecordOutcomeInput) => void;
-  /** The permanent record of every match this mix has played, every lobby, newest first. */
+  startingMatch: boolean;
+  /** Opens the lobby's match on the lineup on screen (the voices follow server-side). */
+  onStartMatch: () => void;
+  cancellingMatch: boolean;
+  /** Throws the live match away; nothing is recorded. */
+  onCancelMatch: () => void;
+  /** Omitted -- no "Make captain" on a seat. */
+  onMakeCaptain?: (workspaceMemberId: number) => void;
+  /** The history this panel lists, newest first: the room's own lobby, or every lobby on a one-lobby overview. */
   matches: CustomGameMatch[];
+  /** Every match this mix has played, every lobby: the map roll skips their maps, whichever lobby played them. */
+  mixMatches: CustomGameMatch[];
   /** The match whose undo is in flight, so only that row spins. */
   undoingMatchId?: number | null;
   /** Omitted -- the history renders read-only, matching a page that offers no undo. */
@@ -101,8 +112,9 @@ type PickupTeamsPanelProps = {
 };
 
 /**
- * The result side: the teams the solver produced, and the writes that act on
- * them — re-balance, record who won (repeatable), and close the mix.
+ * The lobby's room (spec §7.5): its stage, the teams it is showing, and the
+ * writes that act on them -- re-balance and Start match while Ready, the result
+ * or Cancel match while Live (the lineup is frozen meanwhile), and close the mix.
  *
  * One lobby at a time: the page hands down which one, and every write this
  * panel makes addresses it. Teams are read from that lobby's stored
@@ -125,13 +137,17 @@ export function PickupTeamsPanel({
   balancing,
   activeCount,
   onBalance,
-  shufflingAll = false,
-  onShuffleAll,
   variantIndex,
   onVariantIndexChange,
   recordingOutcome,
   onRecordOutcome,
+  startingMatch,
+  onStartMatch,
+  cancellingMatch,
+  onCancelMatch,
+  onMakeCaptain,
   matches,
+  mixMatches,
   undoingMatchId = null,
   onUndoMatch,
   maps,
@@ -164,10 +180,19 @@ export function PickupTeamsPanel({
   // case the button asks first.
   const [balanceOpen, setBalanceOpen] = useState(false);
   const lineupAtRisk = lobby?.lineup_recorded === false;
-  // The shared reshuffle replaces BOTH lobbies, so it asks if either one's
-  // lineup is still unrecorded, not just the lobby on screen.
-  const [shuffleOpen, setShuffleOpen] = useState(false);
-  const anyLineupUnrecorded = (game?.lobbies ?? []).some((row) => row.lineup_recorded === false);
+  const tRoom = useTranslations("mixes.room");
+  const state = lobby?.state ?? "idle";
+  const live = state === "live";
+  // Every write that re-forms, re-seats or re-maps the lineup waits for the live match (409 `match_live`).
+  const reshape = canWrite && !live;
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const awayUuids = new Set(
+    (game?.players ?? []).filter((row) => row.away).map((row) => String(row.workspace_member_id)),
+  );
+  const awayNames = (variant?.teams ?? [])
+    .flatMap((team) => team.seats)
+    .filter((seat) => awayUuids.has(seat.uuid))
+    .map((seat) => seat.name);
 
   return (
     // Width-capped by the caller now, alongside the mix header that sits
@@ -177,6 +202,7 @@ export function PickupTeamsPanel({
     // rosters across an arm's length of desk, so reading "who is on my team"
     // became a head turn.
     <div className="flex w-full min-w-0 flex-col gap-3.5">
+      {game && lobby ? <RoomStepper state={state} startedAt={lobby.live_started_at ?? null} /> : null}
       <div className="flex flex-col gap-3.5">
         {gamesError ? (
           <PageStateCard
@@ -209,8 +235,8 @@ export function PickupTeamsPanel({
               <NextMapStrip
                 nextMapId={lobby?.next_map_id ?? null}
                 maps={maps}
-                matches={matches}
-                canWrite={canWrite}
+                matches={mixMatches}
+                canWrite={reshape}
                 saving={settingNextMap}
                 capturing={capturing}
                 onNextMapChange={onNextMapChange}
@@ -240,9 +266,14 @@ export function PickupTeamsPanel({
                   ((teamIndex, name) => onRenameTeam(lobbyIndex * 2 + teamIndex, name))
                 }
                 onSwapSeats={
-                  onSwapSeats &&
-                  ((firstUuid, secondUuid) => onSwapSeats(index, firstUuid, secondUuid))
+                  reshape && onSwapSeats
+                    ? (firstUuid, secondUuid) => onSwapSeats(index, firstUuid, secondUuid)
+                    : undefined
                 }
+                onMakeCaptain={
+                  reshape && onMakeCaptain ? (uuid) => onMakeCaptain(Number(uuid)) : undefined
+                }
+                awayUuids={awayUuids}
               />
             )}
           </div>
@@ -256,25 +287,67 @@ export function PickupTeamsPanel({
           rare share/close actions demoted to icons on the right -- and the
           history the results write into. */}
       <div className={cn(PANEL_CLASS, "flex flex-col gap-3 px-4 py-3")}>
-        {variant && canWrite ? (
-          <PickupResultControls
-            teamCount={variant.teams.length}
-            teamNames={variant.teams.map((team) => team.name)}
-            saving={recordingOutcome}
-            pointsPerWin={pointsPerWin}
-            onRecord={(recordedOutcome) =>
-              onRecordOutcome({ outcome: recordedOutcome, variantIndex: index, lobbyIndex })
-            }
-          />
+        {live ? (
+          <>
+            {variant && canWrite ? (
+              <PickupResultControls
+                teamCount={variant.teams.length}
+                teamNames={variant.teams.map((team) => team.name)}
+                saving={recordingOutcome}
+                pointsPerWin={pointsPerWin}
+                onRecord={(recordedOutcome) => onRecordOutcome({ outcome: recordedOutcome, lobbyIndex })}
+              />
+            ) : null}
+            {/* Every viewer hears why the teams stopped moving; only a host can end the match. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <p className={CAPTION_CLASS}>{tRoom("frozen")}</p>
+              {canWrite ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto"
+                    disabled={cancellingMatch}
+                    onClick={() => setCancelOpen(true)}
+                  >
+                    {cancellingMatch ? (
+                      <Spinner className="mr-1.5 size-3.5" />
+                    ) : (
+                      <CircleX className="mr-1.5 size-3.5" aria-hidden="true" />
+                    )}
+                    {tRoom("cancelMatch")}
+                  </Button>
+                  <ConfirmDialog
+                    open={cancelOpen}
+                    onOpenChange={setCancelOpen}
+                    intent={{
+                      title: tRoom("cancelTitle"),
+                      description: tRoom("cancelDescription"),
+                      confirmLabel: tRoom("cancelConfirm"),
+                      tone: "danger"
+                    }}
+                    pending={cancellingMatch}
+                    onConfirm={() => {
+                      setCancelOpen(false);
+                      onCancelMatch();
+                    }}
+                  />
+                </>
+              ) : null}
+            </div>
+          </>
+        ) : variant && canWrite && state === "ready" ? (
+          <StartMatchButton awayNames={awayNames} starting={startingMatch} onStart={onStartMatch} />
         ) : null}
 
         <div
           className={cn(
             "flex flex-wrap items-center gap-2",
-            variant && canWrite && "border-t border-[color:var(--aqt-border)] pt-3"
+            ((variant && canWrite) || live) && "border-t border-[color:var(--aqt-border)] pt-3"
           )}
         >
-          {canWrite ? (
+          {reshape ? (
             <>
               <Button
                 type="button"
@@ -308,42 +381,10 @@ export function PickupTeamsPanel({
                   onBalance();
                 }}
               />
-              {onShuffleAll && lobbyCount > 1 ? (
-                <>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    disabled={balancing || shufflingAll}
-                    onClick={() => (anyLineupUnrecorded ? setShuffleOpen(true) : onShuffleAll())}
-                  >
-                    {shufflingAll ? (
-                      <Spinner className="mr-1.5 size-3.5" />
-                    ) : (
-                      <Shuffle className="mr-1.5 size-3.5" aria-hidden="true" />
-                    )}
-                    {t("shuffleAll")}
-                  </Button>
-                  <ConfirmDialog
-                    open={shuffleOpen}
-                    onOpenChange={setShuffleOpen}
-                    intent={{
-                      title: t("shuffleTitle"),
-                      description: t("shuffleDescription"),
-                      confirmLabel: t("shuffleConfirm"),
-                      tone: "danger"
-                    }}
-                    pending={shufflingAll}
-                    onConfirm={() => {
-                      setShuffleOpen(false);
-                      onShuffleAll();
-                    }}
-                  />
-                </>
-              ) : null}
             </>
           ) : null}
 
-          {canWrite && variants.length > 1 ? (
+          {reshape && variants.length > 1 ? (
             <div className="flex h-9 items-center gap-0.5 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-1">
               <IconTooltip control label="Previous balance option">
                 <Button

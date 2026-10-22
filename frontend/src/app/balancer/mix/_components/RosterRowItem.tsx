@@ -100,14 +100,15 @@ export function RosterRowItem({
             // workspace, so the crest names the number the balance will use.
             const division = resolveDivisionFromRank(grid, own ?? inherited);
             const rank = own ?? inherited;
-            const roleName = slotLabel(role);
+            // A one-role game names no role: the crest is just the player's rank.
+            const what = owner.showsRoles ? `${slotLabel(role)} rank` : "Rank";
             return (
               <IconTooltip
                 key={role}
                 label={
                   inherited == null
-                    ? `${roleName} rank for ${label}`
-                    : `${roleName} rank for ${label}, inherited ${inherited} from the workspace`
+                    ? `${what} for ${label}`
+                    : `${what} for ${label}, inherited ${inherited} from the workspace`
                 }
                 hint={
                   rank == null

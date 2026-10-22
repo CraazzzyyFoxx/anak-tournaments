@@ -26,7 +26,7 @@ import {
 import { playerRoles, rosterRoleForPlayer } from "@/lib/draft/workspace-model";
 import { notify } from "@/lib/notify";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
-import type { LadderedOntology } from "@/lib/roster/ontology";
+import { showsRoles, type LadderedOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DraftAutopickPreview, DraftBoard, DraftPlayer, DraftRole } from "@/types/draft.types";
 import type { RealtimeConnectionState } from "@/types/realtime.types";
@@ -176,7 +176,7 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
               style={{ color: available ? "var(--aqt-teal)" : "var(--aqt-fg-muted)" }}
             >
               <span className="truncate">{statusText}</span>
-              {draftedRole && (
+              {draftedRole && showsRoles(ontology) && (
                 <>
                   <span aria-hidden>·</span>
                   <PlayerRoleIcon role={draftedRole} ontology={ontology} size={14} />
@@ -214,7 +214,7 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
                 </span>
               )}
             </div>
-            {priority.length > 0 && (
+            {priority.length > 0 && showsRoles(ontology) && (
               <p
                 className="mt-0.5 flex min-w-0 items-center gap-1.5 text-body text-[color:var(--aqt-fg-muted)]"
                 title={priorityLine}
@@ -350,7 +350,8 @@ function IslandFooter({
   queue,
   onPicked,
   myTurn,
-  onAnnounce
+  onAnnounce,
+  ontology
 }: Readonly<IslandFooterProps>) {
   const t = useTranslations("draftRedesign");
   const [note, setNote] = useState("");
@@ -360,7 +361,8 @@ function IslandFooter({
   const displayName = player.identity?.handle ?? `#${player.id}`;
   // The action is about the card's player: a selection of somebody else is not confirmable from here.
   const chosen = selection?.playerId === player.id ? selection : null;
-  const withRole = board.session.roster_shape.has_role_slots;
+  // A one-role game's pick names the player only (its role message would read "flex" for `agent`).
+  const withRole = board.session.roster_shape.has_role_slots && showsRoles(ontology);
   const dimension = board.session.roster_shape.dimension;
   const pickPending = mutations.makePick.isPending;
   const overridePending = mutations.override.isPending;

@@ -18,7 +18,7 @@ import MyTeamRosterList from "@/components/registration/MyTeamRosterList";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { getRegistrationTeamStatus } from "@/lib/registration/team-tone";
-import { slotCodeOrder } from "@/lib/roster/ontology";
+import { showsRoles, slotCodeOrder } from "@/lib/roster/ontology";
 import type { RegistrationTeam, RegistrationTeamMember } from "@/types/registration-team.types";
 
 import { buildMyTeamRoster } from "./myTeam.model";
@@ -68,6 +68,8 @@ export default function MyTeamPanel({
   const metadata = useDisciplineMetadata(workspaceId, discipline);
   const ontology = metadata.data ?? null;
   const slotLabel = useSlotLabel(ontology);
+  // A one-role game names no slot anywhere on the card: every place is that role.
+  const showsSlots = showsRoles(ontology);
 
   /** Owned here, not by the drawer, because a refusal at the invite cap has to
    *  force it open — the answer to "where did 60 invites go" is in there. */
@@ -211,6 +213,7 @@ export default function MyTeamPanel({
           mutations.uploadImageMutation.isPending || mutations.deleteImageMutation.isPending
         }
         slotLabel={slotLabel}
+        showsSlots={showsSlots}
         onRename={mutations.renameMutation.mutate}
         onUploadLogo={mutations.uploadImageMutation.mutate}
         onDeleteLogo={mutations.deleteImageMutation.mutate}
@@ -258,6 +261,7 @@ export default function MyTeamPanel({
         busy={busy}
         ontology={ontology}
         slotLabel={slotLabel}
+        showsSlots={showsSlots}
         onPlace={mutations.placeMutation.mutate}
         onSetManager={mutations.managerMutation.mutate}
         onTransferCaptaincy={(member) => setConfirming({ kind: "transfer", member })}
@@ -270,6 +274,8 @@ export default function MyTeamPanel({
           pendingInvites={pendingInvites}
           canEditRoster={canEditRoster}
           busy={busy}
+          ontology={ontology}
+          showsSlots={showsSlots}
           onExtend={mutations.extendMutation.mutate}
           onRevoke={mutations.revokeMutation.mutate}
         />
@@ -380,6 +386,7 @@ export default function MyTeamPanel({
         benchOpen={benchOpen}
         busy={busy}
         slotLabel={slotLabel}
+        showsSlots={showsSlots}
       />
 
       <ConfirmDialog

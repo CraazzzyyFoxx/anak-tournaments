@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DraftMutations } from "@/hooks/useDraftData";
 import type { DraftGating } from "@/lib/draft/logic";
 import { buildTeamViews, type RoomSelection } from "@/lib/draft/room-model";
-import { OW_METADATA } from "@/test/discipline-metadata";
+import { DEADLOCK_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import type { RosterShape } from "@/lib/roster/shape";
 import type { DraftBoard, DraftPick, DraftPlayer, DraftTeam } from "@/types/draft.types";
 import type { UserDraftCard } from "@/types/user.types";
@@ -178,6 +178,7 @@ interface Setup {
   queue?: boolean;
   /** Everyone else on the board (rostered players shape the acting team's open slots). */
   others?: DraftPlayer[];
+  ontology?: typeof OW_METADATA;
 }
 
 async function open(setup: Setup = {}) {
@@ -211,7 +212,7 @@ async function open(setup: Setup = {}) {
           autopickPreview={null}
           queue={setup.queue ? { ids: [], toggle: vi.fn(), move: vi.fn() } : null}
           divisionGrid={GRID}
-          ontology={OW_METADATA}
+          ontology={setup.ontology ?? OW_METADATA}
           onPicked={onPicked}
         />
       </QueryClientProvider>
@@ -552,5 +553,29 @@ describe("career stats", () => {
 
     expect(body.innerHTML).toContain("profile.stats.error");
     expect(body.innerHTML).toContain("profile.stats.retry");
+  });
+});
+
+describe("PickIsland in a one-role game", () => {
+  it("picks the player: no role priority, no role tile name, and the action names nobody's role", async () => {
+    const agent = { dimension: "agent", role: "agent" };
+    const { body } = await open({
+      subject: player({ primary_role: agent, role_ranks: { agent: 3000 } }),
+      gating: CAPTAIN_ON_TURN,
+      actingTeamId: 1,
+      selection: { playerId: 7, role: "agent" },
+      canConfirm: true,
+      ontology: DEADLOCK_METADATA,
+      sessionPatch: {
+        discipline: "deadlock",
+        roster_shape: { ...SHAPE, dimension: "agent", slots: { agent: 6 }, team_size: 6, draft_rounds: 5 }
+      }
+    });
+
+    expect(body.textContent).not.toContain("island.rolePriority");
+    expect(body.textContent).not.toContain("Agent");
+    expect(body.querySelector('[aria-label^="island.tile.select"]')).toBeNull();
+    expect(body.querySelector('[aria-label^="island.action.pickPlayer"]')).not.toBeNull();
+    expect(body.textContent).toContain('island.action.pickPlayer:{"player":"Ana#1234"}');
   });
 });

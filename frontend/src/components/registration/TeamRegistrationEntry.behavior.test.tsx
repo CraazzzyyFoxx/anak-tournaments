@@ -96,7 +96,7 @@ const FORM = {
   }
 } as unknown as RegistrationForm;
 
-function tournament(slots: RosterSlotMap): Tournament {
+function tournament(slots: RosterSlotMap, discipline = "overwatch"): Tournament {
   const now = Date.now();
   return {
     id: 84,
@@ -113,9 +113,9 @@ function tournament(slots: RosterSlotMap): Tournament {
         ends_at: new Date(now + 86_400_000).toISOString()
       }
     ],
-    discipline: "overwatch",
+    discipline,
     roster_shape: {
-      dimension: "player_role",
+      dimension: discipline === "deadlock" ? "agent" : "player_role",
       slots,
       team_size: Object.values(slots).reduce((sum, count) => sum + (count ?? 0), 0),
       flex_slots: slots.flex ?? 0,
@@ -137,13 +137,13 @@ async function settle() {
   });
 }
 
-async function mount(slots: RosterSlotMap) {
+async function mount(slots: RosterSlotMap, discipline = "overwatch") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
       <NextIntlClientProvider locale="en" messages={en}>
         <QueryClientProvider client={client}>
-          <TeamRegistrationEntry tournament={tournament(slots)} />
+          <TeamRegistrationEntry tournament={tournament(slots, discipline)} />
         </QueryClientProvider>
       </NextIntlClientProvider>
     );
@@ -230,5 +230,31 @@ describe("founding a team on a role roster", () => {
     expect(offeredSlots()).toEqual(["tank", "damage", "support"]);
     // The first slot is preselected, and a role slot DOES fix the role step.
     expect(roleRows()).toEqual([en.rosterShape.slotCodes.tank]);
+  });
+});
+
+describe("founding a team in a one-role game", () => {
+  it("asks for neither a slot nor a role", async () => {
+    getForm.mockResolvedValue({
+      ...FORM,
+      discipline: "deadlock",
+      subrole_catalog: {},
+      form_schema: {
+        schema_version: 1,
+        sections: [
+          ...FORM.form_schema.sections,
+          {
+            key: "details",
+            title: "Details",
+            fields: [{ key: "public_notes", kind: "builtin", label: "Notes", required: false, visibility: "public", params: {} }]
+          }
+        ]
+      }
+    });
+    await mount({ agent: 6 }, "deadlock");
+    await openWizard();
+
+    expect(offeredSlots()).toEqual([]);
+    expect(document.body.textContent).not.toContain(en.registration.roles.matrix.hint);
   });
 });

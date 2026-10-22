@@ -31,6 +31,8 @@ interface MyTeamHeaderProps {
   logoEditable: boolean;
   logoBusy: boolean;
   slotLabel: SlotLabelTranslator;
+  /** `false` in a one-role game: the shortfall is a count of players, every open place being that role. */
+  showsSlots: boolean;
   onRename: (name: string) => void;
   onUploadLogo: (file: File) => void;
   onDeleteLogo: () => void;
@@ -47,6 +49,7 @@ export default function MyTeamHeader({
   logoEditable,
   logoBusy,
   slotLabel,
+  showsSlots,
   onRename,
   onUploadLogo,
   onDeleteLogo,
@@ -126,7 +129,9 @@ export default function MyTeamHeader({
           <p className="text-xs text-[color:var(--aqt-fg-muted)]">
             {team.is_complete
               ? t("list.complete")
-              : t("list.shortfall", { slots: formatShortfall(team.open_slots, slotLabel) })}
+              : showsSlots
+                ? t("list.shortfall", { slots: formatShortfall(team.open_slots, slotLabel) })
+                : t("list.shortfallCount", { count: starterCapacity - starterCount })}
           </p>
           {typeof team.checked_in_count === "number" && (team.check_in_total ?? 0) > 0 && (
             <p className="text-xs text-[color:var(--aqt-fg-muted)]">

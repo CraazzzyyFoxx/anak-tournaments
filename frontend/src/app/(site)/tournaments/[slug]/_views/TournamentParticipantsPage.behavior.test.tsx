@@ -68,6 +68,11 @@ vi.mock("@/services/me.service", () => ({
 vi.mock("@/services/rbac.service", () => ({
   rbacService: { listOAuthConnections: () => Promise.resolve({ results: [] }) }
 }));
+// The card's own team read, for the "still incomplete" line.
+const listPublicTeams = vi.fn();
+vi.mock("@/services/registration-team.service", () => ({
+  default: { listPublic: (...args: unknown[]) => listPublicTeams(...args) }
+}));
 
 // Signed in, because an anonymous visitor has no registration to check in. The
 // real store, not a stubbed hook: a hydrating render reads its INITIAL
@@ -922,5 +927,66 @@ describe("late sign-ups", () => {
   it("says nothing for an on-time sign-up", async () => {
     await mount();
     expect(container.querySelector("[data-registration-late]")).toBeNull();
+  });
+});
+
+describe("a one-role game's card", () => {
+  const AGENT = { dimension: "agent", role: "agent" };
+
+  beforeEach(() => {
+    // Before check-in, so the card's line is the team's news rather than the check-in call.
+    tournament = { ...makeTournament("registration", CLOSED_WINDOW), discipline: "deadlock" };
+    listPublicTeams.mockResolvedValue({
+      items: [{ id: 7, name: "Alpha", status: "forming", exported_team_id: null, open_slots: { agent: 2 } }]
+    });
+  });
+
+  async function expandDetails() {
+    const expand = container.querySelector<HTMLButtonElement>(
+      `[aria-label="${en.registration.myCard.showDetails}"]`
+    );
+    await act(async () => expand?.click());
+  }
+
+  it("names no role in its queue place, its team's shortfall or its details", async () => {
+    getMyRegistration.mockResolvedValue(
+      makeRegistration({
+        roles: [{ role: AGENT, is_primary: true, priority: 0, top_characters: [] }],
+        queue_position: 12,
+        queue_total: 48,
+        queue_role: AGENT,
+        queue_role_position: 12,
+        queue_role_total: 48,
+        team: { id: 7, name: "Alpha", status: "forming", slot_code: "agent", is_substitute: false, is_captain: false }
+      })
+    );
+    await mount();
+    await expandDetails();
+    const text = container.textContent ?? "";
+
+    expect(text).not.toMatch(/agent/i);
+    expect(text).not.toContain(en.registration.myCard.primaryRole);
+    // The place overall is the place: every entry is in the one role's queue.
+    expect(text).toContain("12 / 48");
+    expect(container.querySelectorAll('[aria-label^="Position 12 of 48"]')).toHaveLength(1);
+    // What the team still needs is a count of players.
+    expect(text).toContain("2 players");
+  });
+
+  it("keeps a chosen specialization, under its own heading", async () => {
+    getMyRegistration.mockResolvedValue(
+      makeRegistration({
+        roles: [
+          { role: { ...AGENT, role: "agent_frontline", parent: "agent" }, is_primary: true, priority: 0, top_characters: [] }
+        ]
+      })
+    );
+    await mount();
+    await expandDetails();
+    const text = container.textContent ?? "";
+
+    expect(text).not.toMatch(/agent/i);
+    expect(text).toContain(en.registration.roles.specialization);
+    expect(text).toContain("Frontline");
   });
 });

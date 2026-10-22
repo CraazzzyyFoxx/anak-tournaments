@@ -15,6 +15,7 @@ import { useSlotLabel } from "@/hooks/useSlotLabel";
 import {
   ratedDimension,
   roleColor,
+  showsRoles,
   slotCodeOrder,
   slotRank,
   type RoleOntology
@@ -274,6 +275,9 @@ function RoleColumn({
   const t = useTranslations();
   const roleLabel = useSlotLabel(ontology);
   const rated = ontology ? ratedDimension(ontology) : null;
+  // A one-role game has one column, and it is everybody: named by no role.
+  const named = showsRoles(ontology);
+  const title = named ? roleLabel(role) : t("tournamentDetail.participantsPool.players");
   const visible = entries.slice(0, VISIBLE_PER_COLUMN);
   const rest = entries.slice(VISIBLE_PER_COLUMN);
   // Reserving the hero track in a column nobody filled in leaves a stripe of
@@ -297,10 +301,11 @@ function RoleColumn({
     <section
       className="relative overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2 pt-3"
       style={{ "--pool-role": roleColor(ontology, role) ?? NEUTRAL_ROLE_COLOR } as CSSProperties}
-      aria-label={t("tournamentDetail.participantsPool.columnLabel", {
-        role: roleLabel(role),
-        count: entries.length
-      })}
+      aria-label={
+        named
+          ? t("tournamentDetail.participantsPool.columnLabel", { role: title, count: entries.length })
+          : title
+      }
       data-pool-column={role}
     >
       {/* The column's identity: a role-tinted edge, readable before the label. */}
@@ -309,16 +314,18 @@ function RoleColumn({
         className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,var(--pool-role),transparent_75%)]"
       />
       <h3 className="mb-2 flex items-center gap-2 px-1.5">
-        <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--pool-role)_26%,transparent)] bg-[color:color-mix(in_srgb,var(--pool-role)_12%,transparent)] text-[color:var(--pool-role)]">
-          <PlayerRoleIcon
-            role={rated ? { dimension: rated.code, role } : null}
-            ontology={ontology}
-            size={13}
-            decorative
-          />
-        </span>
+        {named ? (
+          <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--pool-role)_26%,transparent)] bg-[color:color-mix(in_srgb,var(--pool-role)_12%,transparent)] text-[color:var(--pool-role)]">
+            <PlayerRoleIcon
+              role={rated ? { dimension: rated.code, role } : null}
+              ontology={ontology}
+              size={13}
+              decorative
+            />
+          </span>
+        ) : null}
         <span className="aqt-display text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg)]">
-          {roleLabel(role)}
+          {title}
         </span>
         <span className="aqt-tnum ml-auto rounded-md bg-[color:var(--aqt-overlay-2)] px-1.5 py-px text-label tabular-nums text-[color:var(--aqt-fg-muted)]">
           {entries.length}

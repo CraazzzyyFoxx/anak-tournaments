@@ -42,6 +42,8 @@ export interface RoleMatrixRowProps {
   maxHeroes: number;
   /** Hidden in the forced-flex mode, where every role is main by definition. */
   showPriority?: boolean;
+  /** `false` in a one-role game: the row is that role's heroes and specialization, not a role to name. */
+  showRole?: boolean;
   onPriorityChange: (priority: RolePriority) => void;
   onSubroleChange: (subrole: string) => void;
   onHeroesChange: (heroes: string[]) => void;
@@ -57,6 +59,7 @@ export function RoleMatrixRow({
   topHeroesEnabled,
   maxHeroes,
   showPriority = true,
+  showRole = true,
   onPriorityChange,
   onSubroleChange,
   onHeroesChange,
@@ -83,28 +86,32 @@ export function RoleMatrixRow({
         "grid items-center gap-2 rounded-xl border p-2 transition-colors",
         showPriority
           ? "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,13rem)_minmax(0,1fr)_minmax(0,8.5rem)]"
-          : "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,1fr)_minmax(0,8.5rem)]",
+          : showRole
+            ? "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,1fr)_minmax(0,8.5rem)]"
+            : "sm:grid-cols-[minmax(0,1fr)_minmax(0,8.5rem)]",
         active
           ? "border-[color:var(--aqt-border-3)] bg-[color:var(--aqt-overlay-2)]"
           : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)]",
       )}
     >
-      <div className="flex min-w-0 items-center gap-2.5">
-        <span
-          className="flex size-7 shrink-0 items-center justify-center rounded-xl"
-          style={accent.tile}
-        >
-          <PlayerRoleIcon role={roleRef} ontology={ontology} size={18} decorative />
-        </span>
-        <span
-          className={cn(
-            "truncate text-label font-semibold",
-            active ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-muted)]",
-          )}
-        >
-          {roleLabel}
-        </span>
-      </div>
+      {showRole && (
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className="flex size-7 shrink-0 items-center justify-center rounded-xl"
+            style={accent.tile}
+          >
+            <PlayerRoleIcon role={roleRef} ontology={ontology} size={18} decorative />
+          </span>
+          <span
+            className={cn(
+              "truncate text-label font-semibold",
+              active ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-muted)]",
+            )}
+          >
+            {roleLabel}
+          </span>
+        </div>
+      )}
 
       {showPriority && (
         <SegmentedRadio
@@ -129,7 +136,11 @@ export function RoleMatrixRow({
           >
             <SelectTrigger
               id={subroleId}
-              aria-label={t("registration.roles.roleSpecialization", { role: roleLabel })}
+              aria-label={
+                showRole
+                  ? t("registration.roles.roleSpecialization", { role: roleLabel })
+                  : t("registration.roles.specialization")
+              }
               className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <SelectValue />
@@ -156,6 +167,7 @@ export function RoleMatrixRow({
           <HeroPickerCell
             accent={accent}
             roleLabel={roleLabel}
+            showRole={showRole}
             heroes={heroes}
             selected={selection.topHeroes}
             max={maxHeroes}

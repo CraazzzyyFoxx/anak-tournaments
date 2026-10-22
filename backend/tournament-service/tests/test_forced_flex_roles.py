@@ -26,6 +26,7 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 
 _common = importlib.import_module("src.services.registration._common")
+from shared import models  # noqa: E402
 from shared.testing.roles import rated_catalog, registration_role  # noqa: E402
 
 ROLE_CODES = ("tank", "damage", "support")
@@ -296,3 +297,30 @@ class TestApplyAllRolesWithoutForcing:
 
         assert {entry.role for entry in entries} == {"tank", "damage", "support"}
         assert [entry.role for entry in entries if entry.is_primary] == ["support"]
+
+
+DEADLOCK_ROLES = rated_catalog(discipline_code="deadlock")
+
+
+def _agent(**values: Any) -> Any:
+    leaf = DEADLOCK_ROLES["agent"]
+    return models.RegistrationRole(catalog_role=leaf, dimension_id=leaf.dimension_id, **values)
+
+
+class TestAOneRoleGameAlwaysPlaysItsRole:
+    """Deadlock has one rated role and shows no role step: every role write stores that role, primary."""
+
+    def test_any_roles_answer_becomes_the_only_role_as_primary(self) -> None:
+        for answer in ([], [{"role": "agent", "is_primary": False}]):
+            entries = _common.build_registration_roles(answer, catalog_roles=DEADLOCK_ROLES, role_codes=("agent",))
+            assert [(entry.role, entry.is_primary, entry.priority) for entry in entries] == [("agent", True, 0)]
+
+    def test_a_write_naming_no_role_keeps_the_stored_row_and_its_rank(self) -> None:
+        stored = _agent(rank_value=3100, is_active=True, is_primary=False, priority=0)
+        registration = models.Registration(id=1, tournament_id=7, status="pending")
+        registration.roles = [stored]
+
+        _common.replace_registration_roles(registration, [], catalog_roles=DEADLOCK_ROLES)
+
+        assert registration.roles == [stored]
+        assert (stored.is_primary, stored.rank_value) == (True, 3100)

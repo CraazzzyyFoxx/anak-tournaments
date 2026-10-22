@@ -164,6 +164,33 @@ def _errors(exc: ApiHTTPException) -> list[dict[str, Any]]:
     return list(exc.detail)
 
 
+def test_a_one_role_sign_up_plays_that_role_without_answering_a_roles_question(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Deadlock shows no role step, even where the organizer marked the roles question required."""
+    import src.services.registration.answers as answers_module
+
+    monkeypatch.setattr(answers_module, "resolve_subrole_catalog", _no_subroles)
+    schema = FormSchema(
+        sections=[FormSection(key="all", fields=[FormField(key="roles", kind="builtin", required=True)])]
+    )
+
+    async def validate(partial: bool) -> dict[str, Any]:
+        return await answer_service.validate(
+            _FakeSession(),
+            schema=schema,
+            answers={},
+            partial=partial,
+            enforce_required=True,
+            player_id=42,
+            workspace_id=1,
+            discipline="deadlock",
+            hero_catalog=None,
+        )
+
+    assert asyncio.run(validate(partial=False))["roles"] == [{"role": "agent", "is_primary": True}]
+    # A self-edit that does not touch roles leaves them alone.
+    assert "roles" not in asyncio.run(validate(partial=True))
+
+
 # ── validate: one pass, every error ─────────────────────────────────────────
 
 
@@ -410,6 +437,22 @@ def test_a_role_edit_does_not_leave_a_parentless_role_row_in_the_session() -> No
     pending_roles = [row for row in session.new if isinstance(row, models.RegistrationRole)]
     assert [row for row in pending_roles if row not in registration.roles] == []
     assert [entry.entity_id for entry in registration.roles[0].hero_entries] == [11]
+
+
+def test_a_new_registration_of_a_one_role_game_stores_that_role_without_a_roles_answer() -> None:
+    """Organizer rows and sheet rows validate partially, so nothing implied the role before ``apply``."""
+    created = models.Registration(tournament_id=7, status="pending", identities=[])
+    answer_service.apply(
+        created, {}, catalog_roles=rated_catalog(discipline_code="deadlock"), schema=SCHEMA, hero_catalog=None
+    )
+    assert [(row.role, row.is_primary) for row in created.roles] == [("agent", True)]
+
+    # A stored registration is edited, never re-seeded: its roles are not even read.
+    stored = _registration()
+    answer_service.apply(
+        stored, {}, catalog_roles=rated_catalog(discipline_code="deadlock"), schema=SCHEMA, hero_catalog=None
+    )
+    assert stored.roles == []
 
 
 def test_an_identity_answer_rewrites_its_rows_in_place_and_a_blank_one_deletes() -> None:

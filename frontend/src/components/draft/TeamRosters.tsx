@@ -19,7 +19,7 @@ import {
 } from "@/lib/draft/room-model";
 import { slotRankForPlayer } from "@/lib/draft/workspace-model";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
-import { roleTint, type RoleOntology } from "@/lib/roster/ontology";
+import { roleTint, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { isRoleSlot, OPEN_SLOT_CODE, slotCodesOf, type SlotCode } from "@/lib/roster/shape";
 import { cn } from "@/lib/utils";
 import type { DraftBoard, DraftRole } from "@/types/draft.types";
@@ -91,6 +91,8 @@ export function TeamRosters({
   const t = useTranslations("draftRedesign");
   const slotLabel = useSlotLabel(ontology);
   const shape = board.session.roster_shape;
+  // A one-role game names no role here: no need chips, no slot heads, no role in a cell.
+  const named = showsRoles(ontology);
   const listRef = useRef<HTMLDivElement>(null);
   const hovering = useRef(false);
   useDraftLayerPad(listRef);
@@ -123,7 +125,7 @@ export function TeamRosters({
   const gridTemplateColumns = `22px minmax(140px,1.2fr) repeat(${Math.max(columns, 1)}, minmax(0,1fr)) 66px`;
   const rowVars = { "--roster-cols": gridTemplateColumns } as CSSProperties;
 
-  const roleCodes = slotCodesOf(shape.slots).filter(isRoleSlot);
+  const roleCodes = named ? slotCodesOf(shape.slots).filter(isRoleSlot) : [];
   const followCount = board.teams.filter((team) => followed.has(team.id) || team.id === myTeamId).length;
   const chips: { value: TeamFilter; label: string; count: number; aria: string; role: DraftRole | null }[] = [
     { value: "all", label: t("teams.chips.all"), count: teamViews.size, aria: t("teams.chips.allAria", { count: teamViews.size }), role: null },
@@ -201,17 +203,19 @@ export function TeamRosters({
           {headerGroups(columnCodes).map((group, index) => (
             <span
               key={`${group.code}-${index}`}
-              title={slotLabel(group.code)}
+              title={named ? slotLabel(group.code) : undefined}
               className="flex justify-center"
               style={{ gridColumn: `span ${group.span}` }}
             >
-              <PlayerRoleIcon
-                role={group.code === OPEN_SLOT_CODE ? null : group.code}
-                ontology={ontology}
-                size={16}
-                color={slotColor(ontology, group.code)}
-                label={slotLabel(group.code)}
-              />
+              {named ? (
+                <PlayerRoleIcon
+                  role={group.code === OPEN_SLOT_CODE ? null : group.code}
+                  ontology={ontology}
+                  size={16}
+                  color={slotColor(ontology, group.code)}
+                  label={slotLabel(group.code)}
+                />
+              ) : null}
             </span>
           ))}
         </span>
@@ -391,10 +395,11 @@ function RosterCell({
   const nameOf = useSlotLabel(ontology);
   const color = slotColor(ontology, cell.code);
   const slotLabel = nameOf(cell.code);
+  const named = showsRoles(ontology);
 
   if (cell.player == null) {
     const { code } = cell;
-    const filterRole = onSlotFilter && isRoleSlot(code) ? code : null;
+    const filterRole = onSlotFilter && named && isRoleSlot(code) ? code : null;
     const boxClass = "h-[30px] min-w-0 rounded-[7px] border border-dashed";
     const borderColor = tint(color, onClock ? 75 : 30);
     if (filterRole != null && onSlotFilter) {
@@ -409,7 +414,7 @@ function RosterCell({
         />
       );
     }
-    const label = t("teams.cell.open", { role: slotLabel });
+    const label = named ? t("teams.cell.open", { role: slotLabel }) : t("teams.cell.openSeat");
     return (
       <span title={label} className={boxClass} style={{ borderColor }}>
         <span className="sr-only">{label}</span>
@@ -423,8 +428,9 @@ function RosterCell({
   const division = resolveDivisionFromRank(divisionGrid, rank);
   const divisionLabel = division == null ? null : getDivisionLabel(divisionGrid, division);
   // Under a role-less shape nobody holds a role: the slot is all there is to name.
-  const roleLabel =
-    !hasRoleSlots || cell.role == null
+  const roleLabel = !named
+    ? null
+    : !hasRoleSlots || cell.role == null
       ? slotLabel
       : cell.code === OPEN_SLOT_CODE
         ? `${slotLabel} · ${nameOf(cell.role)}`

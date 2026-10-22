@@ -118,6 +118,7 @@ async def _roster_snapshot(session: AsyncSession, participation: models.Encounte
             rank=row.rank,
             is_substitute=row.is_substitute,
             roles=tuple(roles.get(row.id, ())),
+            is_captain=row.is_captain,
         )
         for row in rows
     ]

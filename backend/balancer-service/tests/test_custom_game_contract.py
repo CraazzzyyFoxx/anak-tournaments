@@ -62,15 +62,13 @@ def test_bulk_participation_requires_unique_members() -> None:
 
 def test_record_outcome_takes_the_outcome_the_client_sends() -> None:
     """The wire field is ``outcome``, and only 1/2/null are decided outcomes."""
-    body = _schemas().CustomGameRecordOutcome.model_validate(
-        {"outcome": {"winner": 2}, "variant_index": 0, "map_id": None}
-    )
+    body = _schemas().CustomGameRecordOutcome.model_validate({"outcome": {"winner": 2}})
     assert body.outcome.winner == 2
 
 
 def test_record_outcome_rejects_an_impossible_winner() -> None:
     with pytest.raises(ValidationError):
-        _schemas().CustomGameRecordOutcome.model_validate({"outcome": {"winner": 3}, "variant_index": 0})
+        _schemas().CustomGameRecordOutcome.model_validate({"outcome": {"winner": 3}})
 
 
 def test_self_update_distinguishes_an_unset_roles_field_from_a_null_one() -> None:

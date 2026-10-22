@@ -500,6 +500,8 @@
         "flexPreset": "Play any role",
         "heroesLabel": "Top heroes for {role}: {count} of {max} selected",
         "heroesPickerLabel": "Choose top heroes for {role}",
+        "heroesLabelNoRole": "Top heroes: {count} of {max} selected",
+        "heroesPickerLabelNoRole": "Choose top heroes",
         "heroesAtMax": "Maximum of {max} heroes selected. Remove one to swap."
       },
       "specialization": "Specialization",
@@ -508,6 +510,7 @@
       "topHeroes": {
         "title": "Top Heroes",
         "desc": "Pick up to {max} heroes you play best in this role.",
+        "descNoRole": "Pick up to {max} heroes you play best.",
         "count": "{count}/{max}",
         "search": "Search characters"
       }
@@ -581,6 +584,7 @@
       "empty": "No team applications yet. A captain registers a team and invites players to its roster.",
       "count": "{count, plural, =1 {# team} other {# teams}}",
       "shortfall": "Still needed: {slots}",
+      "shortfallCount": "Still needed: {count, plural, one {# player} other {# players}}",
       "openSlot": "Open",
       "complete": "Roster complete",
       "substitutes": "{used} of {max} substitutes",
@@ -687,6 +691,7 @@
       "logoSaved": "Team logo updated.",
       "logoRemoved": "Team logo removed.",
       "incomplete": "Your team {team} is still incomplete: {shortfall}. Until the roster is full it cannot enter the tournament.",
+      "shortfallCount": "{count, plural, one {# player} other {# players}} missing",
       "complete": "Your team {team} has a full roster and is waiting for the organizer.",
       "exported": "Your team {team} is in the tournament.",
       "rejected": "Your team {team} was rejected by an organizer.",
@@ -828,6 +833,8 @@
       "invitedTo": "You have been invited to join {team} in {tournament}.",
       "slot": "Slot offered: {slot}",
       "slotSubstitute": "Slot offered: {slot} (substitute)",
+      "seat": "Seat offered: starter",
+      "seatSubstitute": "Seat offered: substitute",
       "signInHint": "Sign in to accept the invite. This link is not reserved for an account: the first person to join takes the slot.",
       "signInAction": "Sign in",
       "retry": "Retry loading",
@@ -844,6 +851,8 @@
       "title": "Team invites",
       "sentence": "{team} invited you to play {slot}.",
       "sentenceSubstitute": "{team} invited you as a substitute ({slot}).",
+      "sentenceNoSlot": "{team} invited you to join the team.",
+      "sentenceSubstituteNoSlot": "{team} invited you as a substitute.",
       "expires": "Expires {date}",
       "accept": "Join team",
       "decline": "Decline",
@@ -3018,6 +3027,7 @@
       "allDivisions": "All divisions",
       "divisionOption": "D{division}",
       "columnLabel": "{role} — {count} players",
+      "players": "Players",
       "columnEmpty": "Nobody in this role yet",
       "rank": "D{division} · {rank}",
       "flexTitle": "Plays several roles, so appears in each of them: {roles}",
@@ -5890,9 +5900,11 @@
     "blockers": {
       "not_enough_players": "There are fewer eligible players than roster slots.",
       "pool_unranked": "{count, plural, one {# pool player has no rank} other {# pool players have no rank}}. Add their ranks in the balancer.",
-      "role_shortage": "There are not enough eligible {role} players."
+      "role_shortage": "There are not enough eligible {role} players.",
+      "seat_shortage": "There are not enough eligible players to fill every seat."
     },
     "roleDeficit": "{role}: {count, plural, one {# unmatched slot} other {# unmatched slots}} after server validation.",
+    "seatDeficit": "{count, plural, one {# unmatched seat} other {# unmatched seats}} after server validation.",
     "captainsSelected": "Captains selected",
     "searchCaptains": "Search captains",
     "captainSort": "Sort captains",
@@ -6288,6 +6300,12 @@
           "cancelled": "Draft cancelled",
           "player_role_added": "{player}: role {role} added",
           "unknown": "{action}"
+        },
+        "actionNoRole": {
+          "pick_made": "P{pick} · {team} · {player}",
+          "pick_autopicked": "P{pick} · {team} · {player} · autopick",
+          "pick_overridden": "P{pick} · {team} · {player} · override: “{reason}”",
+          "player_role_added": "{player}: role added"
         }
       },
       "banner": {
@@ -6457,6 +6475,7 @@
       "cell": {
         "open": "Open: {role}",
         "openFilter": "Open: {role} — show players for this role",
+        "openSeat": "Open seat",
         "offRole": "off-role"
       },
       "anyRole": "any role",
@@ -7793,6 +7812,7 @@
       "waitingSeat": "Waiting for a seat",
       "rolesAllRanked": "Every role you have a rank for",
       "unranked": "No rank yet: {roles}. The host will fill it in.",
+      "unrankedOne": "No rank yet. The host will fill it in.",
       "fixLinks": "Open account settings",
       "blocker": {
         "mix_closed": "This mix is over.",
@@ -7813,8 +7833,6 @@
       "tabsLabel": "Lobbies",
       "tab": "Lobby {letter}",
       "game": "game {number}",
-      "notRecorded": "not recorded",
-      "notBalanced": "not balanced",
       "rebalanceTitle": "Rebalance this lobby?",
       "rebalanceDescription": "The result of the lineup on screen has not been recorded. Balancing replaces it, and there will be nothing left to record it from.",
       "rebalanceConfirm": "Balance anyway",
@@ -7830,6 +7848,7 @@
       "seatedIn": "Playing in lobby {letter}",
       "waiting": "waiting",
       "waitingTitle": "Waiting for a seat",
+      "rankHeading": "Rank",
       "pinHeading": "Lobby",
       "pinGroup": "Lobby for {name}",
       "pinOption": "{option} for {name}",
@@ -7900,6 +7919,54 @@
         "general_voice_not_configured": "This mix has no general voice.",
         "general_voice_outside_category": "The mix's general voice is no longer in the category — pick it again.",
         "discord_unavailable": "The bot is unavailable right now — try again."
+      }
+    },
+    "room": {
+      "steps": "Lobby stage",
+      "state": {
+        "idle": "Idle",
+        "ready": "Ready",
+        "live": "Live"
+      },
+      "elapsed": "{minutes} min",
+      "startMatch": "Start match",
+      "started": "Match started",
+      "awayTitle": "Start with away players?",
+      "awayDescription": "Still seated in this lineup but away: {names}. The match starts anyway.",
+      "awayConfirm": "Start anyway",
+      "cancelMatch": "Cancel match",
+      "cancelTitle": "Cancel this match?",
+      "cancelDescription": "Nothing is recorded and no rank moves. The lineup stays, ready to start again.",
+      "cancelConfirm": "Yes, cancel the match",
+      "cancelled": "Match cancelled",
+      "frozen": "Lineup frozen while the match is live",
+      "captain": "Captain",
+      "makeCaptain": "Make captain",
+      "away": "Away",
+      "awayHint": "Away: in no lineup until back",
+      "record": "Record",
+      "teamWin": "{team} win",
+      "draw": "Draw",
+      "balance": "Balance",
+      "shortSeats": "{count} of {need} players",
+      "gap": "gap {gap}",
+      "openRoom": "Open room",
+      "overview": "All lobbies",
+      "notFound": "This mix has no such lobby.",
+      "waitingCount": "{count} waiting for a seat",
+      "you": "You",
+      "yourTeam": "Lobby {letter} · {team}",
+      "nextMap": "Next map: {map}",
+      "voice": "Team voice",
+      "goAway": "Step away",
+      "back": "I'm back",
+      "awayStatus": "You are away: no lobby seats you until you are back.",
+      "waiting": "Waiting for a seat",
+      "queue": "Number {position} in line",
+      "groups": {
+        "waiting": "Waiting",
+        "away": "Away",
+        "bench": "Bench"
       }
     }
   },
@@ -13084,6 +13151,7 @@
       "displayName": "Display Name",
       "displayNamePlaceholder": "Display name",
       "rank": "{role} rank",
+      "rankOnly": "Rank",
       "adminNotes": "Admin Notes",
       "adminNotesPlaceholder": "Internal notes for admins only",
       "registrationStatus": "Registration Status",

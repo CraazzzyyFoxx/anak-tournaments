@@ -4,12 +4,13 @@ import type { MixFormEntry, MixMemberStats, MixOutcome, MixStatsResponse } from 
 
 import { formatRecord, formatStreak, mergeMixStats, sinceFor } from "./pickup-stats";
 
-/** Results newest first, each with the given global match id: sources interleave by these ids. */
+/** Results newest first, each with the given global match id, recorded in id order: sources interleave by these. */
 function form(outcomes: MixOutcome[], ids: number[]): MixFormEntry[] {
   return outcomes.map((outcome, index) => ({
     outcome,
     match_id: ids[index],
     played_at: new Date(Date.UTC(2026, 0, 31) - ids.length + index).toISOString(),
+    recorded_at: new Date(Date.UTC(2026, 1, 1) + ids[index] * 60_000).toISOString(),
   }));
 }
 
@@ -106,6 +107,40 @@ describe("mergeMixStats", () => {
     ]);
     expect(joined.form).toEqual(["loss", "loss", "win", "win"]);
     expect(joined).toMatchObject({ streak: -2, streakOpen: false });
+  });
+
+  it("orders a joined form by when each result was recorded, not by its match id", () => {
+    // Match 90 started last but its result landed first: match 80's is the newest.
+    const entry = (outcome: MixOutcome, matchId: number, recordedAt: string): MixFormEntry => ({
+      outcome,
+      match_id: matchId,
+      played_at: "2026-01-31T20:00:00.000Z",
+      recorded_at: recordedAt,
+    });
+    const [joined] = mergeMixStats([
+      source(1, [member({ games: 5, form: [entry("loss", 90, "2026-01-31T20:30:00.000Z")] })]),
+      source(2, [member({ games: 5, form: [entry("win", 80, "2026-01-31T20:40:00.000Z")] })]),
+    ]);
+
+    expect(joined.form).toEqual(["win", "loss"]);
+    expect(joined.streak).toBe(1);
+  });
+
+  it("keeps one community's form in the server's recording order, even within a millisecond", () => {
+    // The server ordered these by the full recording time: match 5's result landed microseconds after match 9's.
+    const sameMs = "2026-01-31T20:00:00.000Z";
+    const [single] = mergeMixStats([
+      source(1, [
+        member({
+          form: [
+            { outcome: "win", match_id: 5, played_at: sameMs, recorded_at: sameMs },
+            { outcome: "loss", match_id: 9, played_at: sameMs, recorded_at: sameMs },
+          ],
+        }),
+      ]),
+    ]);
+
+    expect(single.form).toEqual(["win", "loss"]);
   });
 
   it("marks a joined run that fills the whole form window as possibly longer", () => {

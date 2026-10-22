@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { buildTeamViews, filterSortTeams } from "@/lib/draft/room-model";
 import type { RosterShape } from "@/lib/roster/shape";
-import { OW_METADATA } from "@/test/discipline-metadata";
+import { DEADLOCK_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import type { DraftBoard, DraftPick, DraftPlayer, DraftSession, DraftTeam } from "@/types/draft.types";
 
 vi.mock("next-intl", () => ({
@@ -155,12 +155,14 @@ function renderRosters(
     myTeamId = null,
     followed = new Set<number>(),
     filter = "all",
-    onSlotFilter
+    onSlotFilter,
+    ontology = OW_METADATA
   }: {
     myTeamId?: number | null;
     followed?: ReadonlySet<number>;
     filter?: "all" | "follow" | "tank" | "damage" | "support";
     onSlotFilter?: (role: "tank" | "damage" | "support") => void;
+    ontology?: typeof OW_METADATA;
   } = {}
 ) {
   const teamViews = buildTeamViews(board);
@@ -180,7 +182,7 @@ function renderRosters(
       onOpenProfile={noop}
       onSlotFilter={onSlotFilter}
       divisionGrid={GRID}
-      ontology={OW_METADATA}
+      ontology={ontology}
       clockColor="var(--aqt-fg)"
     />
   );
@@ -364,5 +366,34 @@ describe("order tab", () => {
       [makeTeam(1), makeTeam(2), makeTeam(3)]
     );
     expect(shuffled).toContain("teams.order.roundTitle:{&quot;n&quot;:1,&quot;direction&quot;:&quot;custom&quot;}");
+  });
+});
+
+describe("a one-role game", () => {
+  test("names no role: no need chips, no slot heads, the cell reads the player and the rank", () => {
+    const agent = { dimension: "agent", role: "agent" };
+    const shape: RosterShape = {
+      slots: { agent: 6 },
+      team_size: 6,
+      flex_slots: 0,
+      has_role_slots: true,
+      draft_rounds: 5,
+      source: "tournament"
+    };
+    const player: DraftPlayer = {
+      ...drafted,
+      primary_role: agent,
+      secondary_roles: [],
+      role_ranks: { agent: 2800 },
+      role_sources: { agent: "registration" }
+    };
+    const pick = makePick(1, 1, 1, 1, "completed", { picked_player_id: 7, target_role: agent });
+
+    const html = renderRosters(makeBoard(shape, { players: [player], picks: [pick] }), { ontology: DEADLOCK_METADATA });
+
+    expect(html).toContain('aria-label="Ana#1234 · 2800 SR');
+    expect(html).not.toContain("teams.chips.need");
+    expect(html).not.toContain("Agent");
+    expect(html).toContain("teams.cell.openSeat");
   });
 });

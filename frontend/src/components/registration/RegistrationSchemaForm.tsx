@@ -23,7 +23,7 @@ import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { visibleFields } from "@/lib/forms/visible-when";
 import { notify } from "@/lib/notify";
 import { roleOf, subRoleSlugOf, toRoleRef, type RoleRef } from "@/lib/roster/role-ref";
-import { ratedDimension, registrationRoles } from "@/lib/roster/ontology";
+import { ratedDimension, registrationRoles, showsRoles } from "@/lib/roster/ontology";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { BUILTIN_STATUS_MESSAGE_KEYS } from "@/lib/registration/balancer-statuses";
 import registrationService from "@/services/registration.service";
@@ -232,15 +232,21 @@ function draftKeyFor(
   return mode === "public" && !isEditing ? `aqt:registration-draft:${tournamentId}` : null;
 }
 
-function readDraft(key: string, lockedRole: RoleCode | null): Answers | null {
+function readDraft(key: string, roleCodes: readonly RoleCode[], lockedRole: RoleCode | null): Answers | null {
   if (typeof window === "undefined") return null;
   try {
     const parsed: unknown = JSON.parse(window.localStorage.getItem(key) ?? "null");
     if (!parsed || typeof parsed !== "object") return null;
     const draft = parsed as Answers;
     // The host dictates the slot (an invite names it, a captain picks it above
-    // the form), so a draft saved under a different one must not reinstate it.
-    if (lockedRole) delete draft.roles;
+    // the form, a one-role game has only it), so a draft saved under a different
+    // one must not reinstate it. What was picked ON the locked role (its heroes,
+    // its specialization) is still the registrant's: it comes back, that role, primary.
+    if (lockedRole && Array.isArray(draft.roles)) {
+      draft.roles = fromRoleSelections(roleCodes, toRoleSelections(roleCodes, draft.roles as RoleInput[]), lockedRole);
+    } else if (lockedRole) {
+      delete draft.roles;
+    }
     return draft;
   } catch {
     // Unparseable or unreadable storage is just an absent draft.
@@ -320,6 +326,11 @@ function RegistrationSchemaFormBody({
   const roles = registrationRoles(metadata);
   const nameOf = useRoleName();
   const roleCodes = roles.map((role) => role.code);
+  // A game with one rated role asks no role question (the single-role rule): the server stores that role on every
+  // write (tournament-service `_common.only_role_answer`). The form still seeds its own answer with it, locked like an
+  // invite's slot, so a required rank block and the organizer's rank field know which role they are about.
+  const onlyRole = showsRoles(metadata) ? null : (roleCodes[0] ?? null);
+  const seededRole = lockedRole ?? onlyRole;
   const tErrors = useTranslations("forms.errors");
   const tOrganizer = useTranslations("registrationOrganizer");
   const queryClient = useQueryClient();
@@ -365,8 +376,8 @@ function RegistrationSchemaFormBody({
   // client-side only (the invite page waits for the URL fragment, the two
   // dialogs for a click), so there is no server render to diverge from.
   const [answers, setAnswers] = useState<Answers>(() => ({
-    ...initialAnswers(schema, mode, initial, userProfile, roleCodes, lockedRole),
-    ...(draftKey ? readDraft(draftKey, lockedRole) : null)
+    ...initialAnswers(schema, mode, initial, userProfile, roleCodes, seededRole),
+    ...(draftKey ? readDraft(draftKey, roleCodes, seededRole) : null)
   }));
   const [step, setStep] = useState(0);
   // Objections stay hidden until the registrant tries to advance: the form used
@@ -400,6 +411,24 @@ function RegistrationSchemaFormBody({
 
   const rolesField = allFields(schema).find((field) => field.key === "roles");
   const topHeroesEnabled = rolesField ? rolesParams(rolesField).top_heroes.enabled : false;
+  // What the registrant is asked, and what a submit sends: a one-role game keeps the role step only for what else it
+  // carries (top heroes), titled after them, else the step goes whole -- an empty section is no step at all.
+  // Plain, not `useMemo`: the React Compiler memoizes it, and refuses the manual form over `onlyRole`.
+  const shownSchema: FormSchema =
+    onlyRole == null
+      ? schema
+      : {
+          ...schema,
+          sections: schema.sections
+            .map((section) =>
+              !section.fields.some((field) => field.key === "roles")
+                ? section
+                : topHeroesEnabled
+                  ? { ...section, title: t("registration.roles.topHeroes.title") }
+                  : { ...section, fields: section.fields.filter((field) => field.key !== "roles") }
+            )
+            .filter((section) => section.fields.length > 0)
+        };
   // The picker lists the characters of the form's own game (the owner read names it).
   const heroesQuery = useCatalogEntities(form.discipline, "character", {
     enabled: topHeroesEnabled
@@ -434,7 +463,7 @@ function RegistrationSchemaFormBody({
     subroleCatalog: form.subrole_catalog ?? {},
     heroes: heroesQuery.data ?? [],
     metadata,
-    lockedRole,
+    lockedRole: seededRole,
     subscription: isAdmin ? null : (subscriptionQuery.data ?? null),
     onLinkAccounts,
     t: tErrors
@@ -489,7 +518,7 @@ function RegistrationSchemaFormBody({
     // server rejects it with `code: "locked"` — so the whole save would fail on
     // fields nobody touched.
     const sent: Answers = {};
-    for (const field of visibleFields(schema, answers)) {
+    for (const field of visibleFields(shownSchema, answers)) {
       if (writableKeys && !writableKeys.includes(field.key)) continue;
       // Same reason as the allowlist: a locked key resent unchanged is still a
       // write of that key, and the server refuses the whole PATCH for it.
@@ -504,7 +533,7 @@ function RegistrationSchemaFormBody({
       // answer when both are sent, and a send REPLACES the registration's whole role set (assignments, ranks,
       // picks). Hence `adminRoles` below.
       const adminRolesFrom = (answered: readonly RoleInput[], typedRanks: Record<string, string>) =>
-        fromRoleSelections(roleCodes, toRoleSelections(roleCodes, answered), lockedRole).map((role, index) => {
+        fromRoleSelections(roleCodes, toRoleSelections(roleCodes, answered), seededRole).map((role, index) => {
           const typed = typedRanks[role.role]?.trim();
           const rank = typed ? Number(typed) : null;
           return {
@@ -580,7 +609,7 @@ function RegistrationSchemaFormBody({
       // The SAME step list `SchemaForm` renders, or the index would point into
       // a section the edit dialog dropped for having nothing writable on it.
       const target = schemaSteps(
-        schema,
+        shownSchema,
         answers,
         isEditing ? (field) => lockedFields[field.key] === undefined : undefined
       ).findIndex((section) => section.fields.some((field) => rejected.includes(field.key)));
@@ -651,7 +680,11 @@ function RegistrationSchemaFormBody({
         {roles.map((role) => (
           <TextField
             key={role.code}
-            label={t("registrationOrganizer.form.rank", { role: nameOf(role) })}
+            label={
+              onlyRole
+                ? t("registrationOrganizer.form.rankOnly")
+                : t("registrationOrganizer.form.rank", { role: nameOf(role) })
+            }
             type="number"
             placeholder="—"
             value={ranks[role.code] ?? ""}
@@ -839,7 +872,7 @@ function RegistrationSchemaFormBody({
       )}
 
       <SchemaForm
-        schema={schema}
+        schema={shownSchema}
         answers={answers}
         onChange={updateAnswer}
         renderers={registrationRenderers}

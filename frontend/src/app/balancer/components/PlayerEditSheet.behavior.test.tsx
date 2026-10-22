@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RankAutofillPreviewTables } from "@/components/balancer/rank-autofill/_components/RankAutofillPreviewTables";
+import { buildRegistrationUpdateFromPlayerPayload } from "@/components/balancer/registration-update-payload";
 import { PickBanTargetBoard } from "@/components/pick-ban/PickBanTargetBoard";
 import messages from "@/i18n/messages/en.json";
 import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
@@ -14,7 +15,7 @@ import balancerAdminService from "@/services/balancer-admin.service";
 import userService from "@/services/user.service";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
+import { DEADLOCK_METADATA, LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import type {
   BalancerPlayerRecord,
   RegistrationRankAutofillResponse
@@ -501,6 +502,167 @@ describe("owner game role and rank capabilities", () => {
     expect(onSave.mock.calls[0][1].role_entries_json.map((entry: { role: string }) => entry.role)).toEqual([
       "support",
       "top"
+    ]);
+  });
+
+  it("offers the Flex player switch only in a game with Full flex", async () => {
+    await render(sheetFor("overwatch"));
+    expect(document.querySelector('[aria-label="Flex player"]')).not.toBeNull();
+
+    await render(
+      <PlayerEditModal
+        player={player}
+        discipline="overwatch"
+        ontology={{ ...OW_METADATA, discipline: { ...OW_METADATA.discipline, flex: false } }}
+        divisionGridVersionId={null}
+        open
+        onOpenChange={() => {}}
+        onSave={onSave}
+      />
+    );
+    expect(document.querySelector('[aria-label="Flex player"]')).toBeNull();
+  });
+
+  it("edits a one-role game's rank alone: no role list to add to, turn off or remove from", async () => {
+    // The Overwatch grid opens the sheet; the Deadlock dictionary is what the card reads its roles from.
+    await render(
+      <PlayerEditModal
+        player={{ ...player, role_entries_json: [{ ...player.role_entries_json[0], role: "agent" }] }}
+        discipline="overwatch"
+        ontology={DEADLOCK_METADATA}
+        divisionGridVersionId={null}
+        open
+        onOpenChange={() => {}}
+        onSave={onSave}
+      />
+    );
+
+    expect([...document.querySelectorAll("button")].some((button) => button.textContent?.trim() === "Add role")).toBe(
+      false
+    );
+    expect(document.querySelector('[aria-label^="Remove "]')).toBeNull();
+    expect(document.querySelector('[aria-label="Disable role"]')).toBeNull();
+    expect(document.querySelector('input[inputmode="numeric"]')).not.toBeNull();
+  });
+
+  // A one-role game: the Overwatch grid opens the sheet, the Deadlock dictionary is the player's game.
+  const deadlockSheet = (entries: BalancerPlayerRecord["role_entries_json"]) => (
+    <PlayerEditModal
+      player={{ ...player, role_entries_json: entries }}
+      discipline="overwatch"
+      ontology={DEADLOCK_METADATA}
+      divisionGridVersionId={null}
+      open
+      onOpenChange={() => {}}
+      onSave={onSave}
+    />
+  );
+
+  it("names no sub-role in a one-role game", async () => {
+    await render(sheetFor("overwatch"));
+    expect(document.body.textContent).toContain("Sub-role");
+
+    await render(deadlockSheet([{ ...player.role_entries_json[0], role: "agent" }]));
+    expect(document.body.textContent).not.toContain("Sub-role");
+  });
+
+  it("gives a one-role registration without role rows its sole role, saved active with the entered rank", async () => {
+    await render(deadlockSheet([]));
+    const input = document.querySelector<HTMLInputElement>('input[inputmode="numeric"]')!;
+    expect(input).not.toBeNull();
+    await act(async () => {
+      input.focus();
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, "1500");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => input.blur());
+    await clickButton("Save");
+
+    expect(onSave.mock.calls[0][1].role_entries_json).toEqual([
+      expect.objectContaining({ role: "agent", is_declared_active: true, rank_value: 1500, division_number: 1 })
+    ]);
+  });
+
+  it("turns a one-role registration's disabled sole role back on when saved, keeping its rank and sub-role", async () => {
+    await render(
+      deadlockSheet([
+        {
+          ...player.role_entries_json[0],
+          role: "agent",
+          subtype: "duelist",
+          rank_value: 1500,
+          is_active: false,
+          is_declared_active: false
+        }
+      ])
+    );
+    expect(document.querySelector<HTMLInputElement>('input[inputmode="numeric"]')?.value).toBe("1500");
+    await clickButton("Save");
+
+    expect(onSave.mock.calls[0][1].role_entries_json).toEqual([
+      expect.objectContaining({ role: "agent", subtype: "duelist", is_declared_active: true, rank_value: 1500 })
+    ]);
+  });
+
+  it("keeps a one-role registration's other stored role entries when only the notes change", async () => {
+    // A role the module no longer declares stays stored: the sheet edits the sole role's rank, never deletes the rest.
+    const retired = {
+      ...player.role_entries_json[0],
+      role: "tank",
+      subtype: "main",
+      priority: 2,
+      rank_value: 2500,
+      division_number: 1,
+      is_active: false,
+      is_declared_active: false
+    };
+    await render(deadlockSheet([{ ...player.role_entries_json[0], role: "agent", rank_value: 1500 }, retired]));
+    expect(document.querySelectorAll('input[inputmode="numeric"]')).toHaveLength(1);
+    const notes = document.querySelector<HTMLTextAreaElement>("textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(notes, "Plays evenings");
+      notes.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await clickButton("Save");
+
+    expect(onSave.mock.calls[0][1].admin_notes).toBe("Plays evenings");
+    expect(onSave.mock.calls[0][1].role_entries_json).toEqual([
+      expect.objectContaining({ role: "agent", is_declared_active: true, rank_value: 1500 }),
+      expect.objectContaining(retired)
+    ]);
+  });
+
+  it("keeps the sole role primary when a retired role was stored ahead of it", async () => {
+    // Stored order put the retired role first; the save leads with the game's only role, so the write keeps it primary.
+    const retired = {
+      ...player.role_entries_json[0],
+      role: "tank",
+      priority: 1,
+      rank_value: 2500,
+      is_active: false,
+      is_declared_active: true
+    };
+    await render(deadlockSheet([retired, { ...player.role_entries_json[0], role: "agent", priority: 2, rank_value: 1500 }]));
+    const notes = document.querySelector<HTMLTextAreaElement>("textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(notes, "Plays evenings");
+      notes.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await clickButton("Save");
+
+    const payload = onSave.mock.calls[0][1];
+    expect(payload.role_entries_json).toEqual([
+      expect.objectContaining({ role: "agent", priority: 1, is_declared_active: true, rank_value: 1500 }),
+      expect.objectContaining({ ...retired, priority: 2 })
+    ]);
+    expect(
+      buildRegistrationUpdateFromPlayerPayload(payload, undefined, "agent").roles?.map((role) => [
+        role.role.role,
+        role.is_primary
+      ])
+    ).toEqual([
+      ["agent", true],
+      ["tank", false]
     ]);
   });
 });

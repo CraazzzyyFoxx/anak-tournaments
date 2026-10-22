@@ -1,10 +1,10 @@
 import type { DisciplineDescriptor, DisciplineMetadata, OntologyRole } from "@/types/discipline.types";
 
 /**
- * Scoped metadata fixtures for the two installed games, shaped like `GET /disciplines/{code}/metadata`:
- * Overwatch's three roots in the `player_role` dimension, League's five positions in `position`. Component
- * tests mock `@/services/discipline.service` with {@link disciplineServiceMock} so a form or roster resolves
- * the same owner scope it would in production.
+ * Scoped metadata fixtures for the installed games, shaped like `GET /disciplines/{code}/metadata`:
+ * Overwatch's three roots in the `player_role` dimension, League's five positions in `position`, Deadlock's one
+ * `agent` (no Full flex). Component tests mock `@/services/discipline.service` with {@link disciplineServiceMock}
+ * so a form or roster resolves the same owner scope it would in production; its list holds Overwatch and League only.
  */
 function role(
   id: number,
@@ -32,12 +32,14 @@ function descriptor(code: string, name: string, provider: string): DisciplineDes
   return {
     code,
     name,
-    short_name: code === "lol" ? "LoL" : "OW",
+    short_name: code === "lol" ? "LoL" : code === "deadlock" ? "Deadlock" : "OW",
     icon: null,
     enabled: true,
     kinds: { character: code === "lol" ? "Champion" : "Hero", map: "Map" },
     character_classes: [],
     identity_provider: provider,
+    // Deadlock alone has no open slot and no Full flex player (`DisciplineSpec.flex`).
+    flex: code !== "deadlock",
     capabilities: {
       catalog_sync: true,
       native_rank_collection: true,
@@ -83,14 +85,20 @@ export const LOL_METADATA = metadata("lol", "League of Legends", "riot", "positi
   role(15, "position", "support", "Support", { attrs: { icon: "/test-roles/support.svg" } })
 ]);
 
+export const DEADLOCK_METADATA = metadata("deadlock", "Deadlock", "steam", "agent", [
+  role(21, "agent", "agent", "Agent")
+]);
+
 const ALL = [OW_METADATA, LOL_METADATA];
+/** Every game the metadata read resolves; the installed-games list stays Overwatch and League. */
+const RESOLVABLE = [...ALL, DEADLOCK_METADATA];
 
 /** The `vi.mock("@/services/discipline.service", …)` factory result. */
 export const disciplineServiceMock = {
   default: {
     list: async () => ALL.map((entry) => entry.discipline),
     metadata: async (_axis: unknown, code: string) => {
-      const found = ALL.find((entry) => entry.discipline.code === code);
+      const found = RESOLVABLE.find((entry) => entry.discipline.code === code);
       if (!found) throw new Error(`discipline_not_installed: ${code}`);
       return found;
     }

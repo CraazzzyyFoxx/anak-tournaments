@@ -35,6 +35,9 @@ interface MyTeamInviteDialogProps {
   /** Any roster write in flight, from the card's own pending set. */
   busy: boolean;
   slotLabel: (code: string) => string;
+  /** `false` in a one-role game: every slot is that role, so the invite asks none (`invite.slot` already holds it)
+   *  and a free agent's role chips would repeat it on every row. */
+  showsSlots: boolean;
 }
 
 export default function MyTeamInviteDialog({
@@ -43,6 +46,7 @@ export default function MyTeamInviteDialog({
   benchOpen,
   busy,
   slotLabel,
+  showsSlots,
 }: Readonly<MyTeamInviteDialogProps>) {
   const t = useTranslations("registrationTeams");
   const tCommon = useTranslations("common");
@@ -109,34 +113,36 @@ export default function MyTeamInviteDialog({
               </p>
             </fieldset>
 
-            <fieldset className="grid gap-1.5">
-              <legend className="text-sm font-medium">{t("invite.slotLabel")}</legend>
-              <div className="flex flex-wrap gap-2">
-                {invite.selectableSlots.map((code) => {
-                  const selected = invite.slot === code;
-                  return (
-                    <label key={code} className={OPTION_LABEL_CLASS}>
-                      <input
-                        type="radio"
-                        name="invite-slot"
-                        value={code}
-                        checked={selected}
-                        onChange={() => invite.setSlot(code)}
-                        className="peer sr-only"
-                      />
-                      <span
-                        className={cn(
-                          OPTION_CLASS,
-                          selected ? OPTION_SELECTED_CLASS : OPTION_IDLE_CLASS
-                        )}
-                      >
-                        {slotLabel(code)}
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </fieldset>
+            {showsSlots ? (
+              <fieldset className="grid gap-1.5">
+                <legend className="text-sm font-medium">{t("invite.slotLabel")}</legend>
+                <div className="flex flex-wrap gap-2">
+                  {invite.selectableSlots.map((code) => {
+                    const selected = invite.slot === code;
+                    return (
+                      <label key={code} className={OPTION_LABEL_CLASS}>
+                        <input
+                          type="radio"
+                          name="invite-slot"
+                          value={code}
+                          checked={selected}
+                          onChange={() => invite.setSlot(code)}
+                          className="peer sr-only"
+                        />
+                        <span
+                          className={cn(
+                            OPTION_CLASS,
+                            selected ? OPTION_SELECTED_CLASS : OPTION_IDLE_CLASS
+                          )}
+                        >
+                          {slotLabel(code)}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </fieldset>
+            ) : null}
 
             {benchOpen && (
               <Label className="flex items-center gap-2 text-sm">
@@ -227,14 +233,15 @@ export default function MyTeamInviteDialog({
                                 <span className="truncate">{agent.primary_handle}</span>
                                 {/* Roles on the row: the captain is filling one specific
                                     slot and should spot a tank without opening a profile. */}
-                                {agent.roles.map((role) => (
-                                  <span
-                                    key={`${role.dimension}:${role.role}`}
-                                    className="rounded-full border border-[color:var(--aqt-border-2)] px-2 py-0.5 text-label text-[color:var(--aqt-fg-muted)]"
-                                  >
-                                    {slotLabel(roleOf(role))}
-                                  </span>
-                                ))}
+                                {showsSlots &&
+                                  agent.roles.map((role) => (
+                                    <span
+                                      key={`${role.dimension}:${role.role}`}
+                                      className="rounded-full border border-[color:var(--aqt-border-2)] px-2 py-0.5 text-label text-[color:var(--aqt-fg-muted)]"
+                                    >
+                                      {slotLabel(roleOf(role))}
+                                    </span>
+                                  ))}
                               </span>
                             </label>
                           </li>

@@ -139,6 +139,9 @@ class EncounterTeamMember(db.TimeStampIntegerMixin):
     #: Rank snapshot taken on the member's rating role.
     rank: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     is_substitute: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false")
+    #: Captained the team that took this seat, as it stood when the seat was filled: the lineup captain of a mix
+    #: match, ``tournament.team.captain_id`` of a tournament seat. A moved seat carries it with its snapshot.
+    is_captain: Mapped[bool] = mapped_column(Boolean(), default=False, server_default="false")
 
 
 class EncounterTeamMemberRole(db.Base):

@@ -150,6 +150,7 @@ class CustomGameLobby(db.Base):
             ondelete="SET NULL (next_map_id)",
             name="fk_custom_game_lobby_next_map",
         ),
+        UniqueConstraint("live_encounter_id", name="uq_custom_game_lobby_live_encounter"),
         {"schema": "mix"},
     )
 
@@ -161,7 +162,7 @@ class CustomGameLobby(db.Base):
     balance_result_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     balance_result_version: Mapped[int] = mapped_column(Integer(), nullable=False, default=1, server_default="1")
     # The map this lobby's next match is played on -- rolled ahead of the lobby
-    # loading in, consumed and cleared by ``record_outcome``.
+    # loading in, fixed on the match by ``start_match`` and cleared by ``record_outcome``.
     next_map_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     next_map_kind: Mapped[str] = mapped_column(String(16), default="map", server_default="map")
     balanced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -169,6 +170,13 @@ class CustomGameLobby(db.Base):
     # voices of the workspace's voice category that are not general voices.
     team1_voice_channel_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     team2_voice_channel_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    # The match this lobby has on the floor: started, not yet recorded or cancelled (spec §5.1). Its lineup is
+    # frozen meanwhile; the lobby's state (idle / ready / live) is derived from this and the document, never stored.
+    live_encounter_id: Mapped[int | None] = mapped_column(
+        BigInteger(),
+        ForeignKey("encounter.encounter.id", ondelete="SET NULL", name="fk_custom_game_lobby_live_encounter"),
+        nullable=True,
+    )
 
 
 class CustomGamePlayer(db.TimeStampIntegerMixin):
@@ -200,6 +208,8 @@ class CustomGamePlayer(db.TimeStampIntegerMixin):
     # The host's "this one plays in A": honoured by the next balance, not a
     # live seat. ``None`` means the solver places them wherever they fit.
     lobby_pin: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    # Stepped away (spec §7.4): in no lobby's seated set until back. The must-play mark is kept for the return.
+    away: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False, server_default="false")
 
 
 class CustomGamePlayerRole(db.Base):

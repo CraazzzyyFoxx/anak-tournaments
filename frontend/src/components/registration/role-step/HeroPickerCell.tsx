@@ -19,6 +19,8 @@ interface HeroPickerCellProps {
   /** The role's own accent (from its ontology presentation). */
   accent: RoleAccent;
   roleLabel: string;
+  /** `false` in a one-role game: the picker's names, heading and hint say "top heroes", never the role. */
+  showRole?: boolean;
   /** Characters to offer: the owner game's whole roster. */
   heroes: CatalogEntityRead[];
   selected: string[];
@@ -39,6 +41,7 @@ interface HeroPickerCellProps {
 export function HeroPickerCell({
   accent,
   roleLabel,
+  showRole = true,
   heroes,
   selected,
   max,
@@ -60,11 +63,11 @@ export function HeroPickerCell({
         <button
           type="button"
           disabled={disabled}
-          aria-label={t("registration.roles.matrix.heroesLabel", {
-            role: roleLabel,
-            count: selected.length,
-            max,
-          })}
+          aria-label={
+            showRole
+              ? t("registration.roles.matrix.heroesLabel", { role: roleLabel, count: selected.length, max })
+              : t("registration.roles.matrix.heroesLabelNoRole", { count: selected.length, max })
+          }
           className={cn(
             "flex h-9 w-full items-center gap-2 rounded-lg border border-[color:var(--aqt-border-2)]",
             "bg-[color:var(--aqt-overlay-2)] px-2 text-label font-medium transition-colors",
@@ -96,11 +99,15 @@ export function HeroPickerCell({
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        aria-label={t("registration.roles.matrix.heroesPickerLabel", { role: roleLabel })}
+        aria-label={
+          showRole
+            ? t("registration.roles.matrix.heroesPickerLabel", { role: roleLabel })
+            : t("registration.roles.matrix.heroesPickerLabelNoRole")
+        }
         className="w-[min(22rem,calc(100vw-2rem))] space-y-2 p-3"
       >
         <p className="text-label font-medium uppercase tracking-label text-[color:var(--aqt-fg-muted)]">
-          {roleLabel}
+          {showRole ? roleLabel : t("registration.roles.topHeroes.title")}
         </p>
         <HeroPickerBlock
           heroes={heroes}
@@ -114,7 +121,7 @@ export function HeroPickerCell({
         <output className="block text-label leading-4 text-[color:var(--aqt-fg-muted)]">
           {atMax
             ? t("registration.roles.matrix.heroesAtMax", { max })
-            : t("registration.roles.topHeroes.desc", { max })}
+            : t(showRole ? "registration.roles.topHeroes.desc" : "registration.roles.topHeroes.descNoRole", { max })}
         </output>
       </PopoverContent>
     </Popover>

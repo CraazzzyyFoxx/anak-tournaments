@@ -3,9 +3,9 @@
 ``rpc.balancer.custom.{create,list,get,rename,update_roster,update_player,set_participation,set_lobby_count,
 balance,set_team_names,set_next_map,set_variant_index,
 post_discord,post_signup,delete_discord_post,discord_view,set_voice_channels,voice_options,voice_move,voice_return,
-transfer_host,add_co_host,remove_co_host,swap_seats,record_outcome,
+transfer_host,add_co_host,remove_co_host,swap_seats,set_captain,start_match,cancel_match,record_outcome,
 match_history,undo_match,rotation,stats,close,delete,hard_delete,
-self_get,self_current,self_join,self_leave,self_update,set_self_service,hosted_active}``.
+self_get,self_current,self_join,self_leave,self_update,self_away,set_self_service,hosted_active}``.
 
 Writes require ``actor`` to be the host, a co-host or a superuser; the per-mix check lives in
 ``CustomGameService._writable``. The reads (``list``, ``get``, ``stats``,
@@ -17,7 +17,7 @@ read out to a lobby, whose players need no account here.
 Pydantic model in ``src.schemas.custom_game`` before it reaches a use case --
 nothing here hand-parses a dict.
 
-The six ``self_*`` subjects are the PLAYER's own surface: they are gated by
+The seven ``self_*`` subjects are the PLAYER's own surface: they are gated by
 ``mix_self_policy`` inside the service rather than by ``_require_mix``, because
 whoever is joining may not be a workspace member yet. ``workspace_id`` is
 optional on them -- the bot knows only a ``custom_game_id`` -- and when present
@@ -40,6 +40,7 @@ writes the row's outcome itself, so nothing answers back here.
 
 from __future__ import annotations
 
+import copy
 from datetime import datetime
 from typing import Any, TypeVar
 
@@ -62,7 +63,7 @@ from shared.services.ontology import workspace_discipline
 from src.core import db
 from src.core.config import config
 from src.domain.balancer.result_serializer import as_lobby_document
-from src.domain.mix_lobbies import seated_member_ids
+from src.domain.mix_lobbies import lobby_state, seated_member_ids, with_captains
 from src.domain.mix_voice import snowflake
 from src.rpc import _common as c
 from src.schemas import custom_game as schemas
@@ -210,6 +211,7 @@ def _dump_row(
         # included; `all_ranked` means it is `null` and every ranked role plays.
         "role_selection_mode": row.role_selection_mode,
         "is_flex": row.is_flex,
+        "away": row.away,
         # Where this player is right now, derived from the lobbies' selected
         # options: ``null`` means waiting for a seat. The host's pin is a
         # separate, durable wish the next balance honours.
@@ -261,15 +263,20 @@ def _dump_settings(
     }
 
 
-def _dump_lobby(lobby: Any, *, balance_result: bool, activity: tuple[int, Any] | None = None) -> dict[str, Any]:
-    """One lobby: its pager, its rolled map, when it was last balanced, its match
-    count whenever the read counted them (the list and the detail read do) --
-    and, in the detail read, its own matchup.
+def _dump_lobby(
+    lobby: Any,
+    *,
+    balance_result: bool,
+    activity: tuple[int, Any] | None = None,
+    live_started_at: Any = None,
+) -> dict[str, Any]:
+    """One lobby: its pager, its rolled map, its live match, when it was last balanced, its match count whenever the
+    read counted them (the list and the detail read do) -- and, in the detail read, its own matchup and stage.
 
-    ``balance_result`` is detail-only -- the solver document grows with every
-    stored option and no list row renders it. ``lineup_recorded`` is false while
-    a balanced lineup has not been played: the UI asks for confirmation before
-    anything that would overwrite it.
+    ``balance_result`` is detail-only -- the solver document grows with every stored option and no list row renders
+    it -- and so are ``state`` (``idle`` | ``ready`` | ``live``, spec §5, derived from that document) and
+    ``live_started_at`` (the cards' elapsed clock). ``lineup_recorded`` is false while a balanced lineup has not
+    been played: the UI asks for confirmation before anything that would overwrite it.
     """
     out: dict[str, Any] = {
         "lobby_index": lobby.lobby_index,
@@ -280,15 +287,21 @@ def _dump_lobby(lobby: Any, *, balance_result: bool, activity: tuple[int, Any] |
         # lobby of the same mix already took.
         "team1_voice_channel_id": snowflake(lobby.team1_voice_channel_id),
         "team2_voice_channel_id": snowflake(lobby.team2_voice_channel_id),
+        # The match on the floor: started, not yet recorded or cancelled.
+        "live_encounter_id": lobby.live_encounter_id,
     }
     if activity is not None:
         out["matches_count"] = activity[0]
     if balance_result:
         last_match_at = activity[1] if activity is not None else None
-        out["balance_result"] = as_lobby_document(lobby.balance_result_json)
+        # Crowned on a copy: a lineup stored before captains existed reads back captained, and a read never
+        # writes into the ORM's JSON.
+        out["balance_result"] = with_captains(copy.deepcopy(as_lobby_document(lobby.balance_result_json)))
         out["lineup_recorded"] = lobby.balanced_at is None or (
             last_match_at is not None and last_match_at >= lobby.balanced_at
         )
+        out["state"] = lobby_state(lobby.balance_result_json, lobby.selected_variant_index, lobby.live_encounter_id)
+        out["live_started_at"] = live_started_at.isoformat() if live_started_at is not None else None
     return out
 
 
@@ -339,6 +352,7 @@ def _dump_game(
     lobby_activity: dict[int, tuple[int, Any]] | None = None,
     current_lobby: dict[int, int] | None = None,
     discord_posts: list[dict[str, Any]] | None = None,
+    live_started_at: dict[int, Any] | None = None,
 ) -> dict[str, Any]:
     matches_count, last_match_at = activity if activity is not None else (0, None)
     out: dict[str, Any] = {
@@ -363,6 +377,7 @@ def _dump_game(
                 balance_result=roster is not None,
                 # A read that counted no lobby (``lobby_activity`` absent) says nothing, rather than a false 0.
                 activity=None if lobby_activity is None else lobby_activity.get(lobby.lobby_index, (0, None)),
+                live_started_at=(live_started_at or {}).get(lobby.live_encounter_id),
             )
             for lobby in (lobbies or [])
         ],
@@ -445,6 +460,8 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
     co_hosts = [{"user_id": user_id, "display_name": host_names.get(user_id)} for user_id in co_host_user_ids]
     activity = (await custom_game_service.mix_rounds.activity_for_games(session, [game.id])).get(game.id)
     lobbies = list(await custom_game_service.lobbies.list_for_game(session, game.id))
+    live_ids = [lobby.live_encounter_id for lobby in lobbies if lobby.live_encounter_id is not None]
+    live_started_at = await custom_game_service.lobbies.live_started_at(session, live_ids) if live_ids else {}
     lobby_activity = await custom_game_service.mix_rounds.activity_for_lobbies(session, game.id)
     # Derived once, here: the board, the player sheet and the bot all ask the
     # same question, and none of them should re-parse a solver document.
@@ -466,6 +483,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
             lobby_activity=lobby_activity,
             current_lobby=current_lobby,
             discord_posts=discord_posts,
+            live_started_at=live_started_at,
         )
     member_ids = [row.workspace_member_id for row in roster]
     members = await custom_game_service.members(session, game.workspace_id, member_ids, discipline=game.discipline)
@@ -511,6 +529,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         lobby_activity=lobby_activity,
         current_lobby=current_lobby,
         discord_posts=discord_posts,
+        live_started_at=live_started_at,
     )
 
 
@@ -536,7 +555,8 @@ def _dump_round(round_: Any, map_info: dict[int, tuple[str, str | None]]) -> dic
         "points_per_win_applied": round_.points_per_win_applied,
         # The journal's actor: a ``players.user`` id.
         "recorded_by": encounter.result_audit[0].actor_user_id if encounter.result_audit else None,
-        "recorded_at": encounter.created_at.isoformat() if encounter.created_at else None,
+        # Confirmed, not created: a round's encounter is created when its match starts (Decision 7).
+        "recorded_at": encounter.confirmed_at.isoformat() if encounter.confirmed_at else None,
     }
 
 
@@ -861,6 +881,25 @@ def register(broker: Any, logger: Any) -> None:
             return state
 
         return await c.envelope(logger, "custom.self_update", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.self_away")
+    async def _self_away(data: dict, msg: RabbitMessage) -> dict:
+        """Step away from the mix and back: the caller's own row, gated like a role edit minus the host's switch."""
+
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            body = _body(schemas.CustomGameSelfAway, data)
+            state = await custom_game_service.self_set_away(
+                session,
+                custom_game_id=_game_id(data),
+                auth_user=user,
+                away=body.away,
+                workspace_id=_opt_int(data, "workspace_id"),
+            )
+            await session.commit()
+            return state
+
+        return await c.envelope(logger, "custom.self_away", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.set_self_service")
     async def _set_self_service(data: dict, msg: RabbitMessage) -> dict:
@@ -1340,6 +1379,96 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "custom.swap_seats", op, session_factory=_SF)
 
+    @broker.subscriber("rpc.balancer.custom.set_captain")
+    async def _set_captain(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(user, workspace_id, "update")
+            body = _body(schemas.CustomGameCaptainPatch, data)
+            game = await custom_game_service.set_captain(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                lobby_index=body.lobby_index,
+                workspace_member_id=body.workspace_member_id,
+                actor_user_id=user.id,
+                actor_is_superuser=user.is_superuser,
+            )
+            await emit_pickup_mix_changed(
+                session, workspace_id, custom_game_id=game.id, change="teams", actor_user_id=user.id
+            )
+            await session.commit()
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.set_captain", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.start_match")
+    async def _start_match(data: dict, msg: RabbitMessage) -> dict:
+        """Start a lobby's match, then split its players into their team voices when it has both (Q24b).
+
+        The split runs after the commit: a Discord hiccup must not undo a started match. The move only touches
+        members already in a voice of the category, so the Voices button repeating it is harmless.
+        """
+
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(user, workspace_id, "update")
+            body = _body(schemas.CustomGameMatchRun, data)
+            game = await custom_game_service.start_match(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                lobby_index=body.lobby_index,
+                actor_user_id=user.id,
+                actor_is_superuser=user.is_superuser,
+            )
+            await emit_pickup_mix_changed(
+                session, workspace_id, custom_game_id=game.id, change="match", actor_user_id=user.id
+            )
+            await session.commit()
+            lobby = await custom_game_service.lobbies.get(session, game.id, body.lobby_index)
+            if lobby.team1_voice_channel_id is not None and lobby.team2_voice_channel_id is not None:
+                try:
+                    await custom_game_service.voice_move(
+                        session,
+                        discord=_voice_discord(broker),
+                        workspace_id=workspace_id,
+                        custom_game_id=game.id,
+                        lobby_index=body.lobby_index,
+                        actor_user_id=user.id,
+                        actor_is_superuser=user.is_superuser,
+                    )
+                except HTTPException as exc:
+                    logger.warning(f"custom.start_match: voice split skipped ({exc.detail})")
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.start_match", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.cancel_match")
+    async def _cancel_match(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(user, workspace_id, "update")
+            body = _body(schemas.CustomGameMatchRun, data)
+            game = await custom_game_service.cancel_match(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                lobby_index=body.lobby_index,
+                actor_user_id=user.id,
+                actor_is_superuser=user.is_superuser,
+            )
+            await emit_pickup_mix_changed(
+                session, workspace_id, custom_game_id=game.id, change="match", actor_user_id=user.id
+            )
+            await session.commit()
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.cancel_match", op, session_factory=_SF)
+
     @broker.subscriber("rpc.balancer.custom.record_outcome")
     async def _record_outcome(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
@@ -1353,8 +1482,6 @@ def register(broker: Any, logger: Any) -> None:
                 custom_game_id=_game_id(data),
                 lobby_index=body.lobby_index,
                 winner=body.outcome.winner,
-                variant_index=body.variant_index,
-                map_id=body.map_id,
                 actor_user_id=user.id,
                 actor_is_superuser=user.is_superuser,
             )

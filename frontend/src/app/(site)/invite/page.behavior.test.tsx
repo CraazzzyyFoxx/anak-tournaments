@@ -220,4 +220,18 @@ describe("invite landing page", () => {
     expect(container.textContent).toContain("уже использовано");
     expect(container.textContent).not.toMatch(/landing\.dead/);
   });
+
+  for (const locale of ["en", "ru"] as const) {
+    it(`offers a one-role game's seat without naming its role in ${locale}`, async () => {
+      previewInvite.mockResolvedValue({ ...PREVIEW, discipline: "deadlock", slot_code: "agent", is_substitute: true });
+
+      const container = await mount(locale);
+      const text = container.textContent ?? "";
+
+      expect(text).not.toMatch(/agent/i);
+      expect(text).not.toMatch(/registrationTeams\./);
+      // Whether the seat is on the bench still matters, and is said without a role.
+      expect(text).toContain(MESSAGES[locale].registrationTeams.landing.seatSubstitute);
+    });
+  }
 });

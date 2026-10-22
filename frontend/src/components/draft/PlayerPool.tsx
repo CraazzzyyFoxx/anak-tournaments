@@ -36,7 +36,7 @@ import {
   type DraftViewParams
 } from "@/lib/draft/workspace-model";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
-import { roleTint, slotCodeOrder, type RoleOntology } from "@/lib/roster/ontology";
+import { roleTint, showsRoles, slotCodeOrder, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { DraftBoard, DraftPickOptionsResponse, DraftRole } from "@/types/draft.types";
 import type { DivisionGrid } from "@/types/workspace.types";
@@ -97,6 +97,8 @@ export function PlayerPool({
 }: Readonly<PlayerPoolProps>) {
   const t = useTranslations("draftRedesign");
   const slotLabel = useSlotLabel(ontology);
+  // A one-role game keeps its rank column (the cell is the pick) but no role chip, role strip or role head.
+  const named = showsRoles(ontology);
   const [heroFilter, setHeroFilter] = useState<ReadonlySet<string>>(() => new Set());
   // Uncontrolled: the URL is written asynchronously, so an input bound to it
   // snaps back to the last committed query on every keystroke and eats both the
@@ -111,7 +113,7 @@ export function PlayerPool({
     () => poolRoleColumns(session.roster_shape, board.players, slotCodeOrder(ontology)),
     [session.roster_shape, board.players, ontology]
   );
-  const market = useMemo(() => roleMarket(board, teamViews), [board, teamViews]);
+  const market = useMemo(() => (named ? roleMarket(board, teamViews) : []), [named, board, teamViews]);
   const summary = useMemo(
     () => (finished ? draftSummary(board, teamViews) : null),
     [finished, board, teamViews]
@@ -153,12 +155,14 @@ export function PlayerPool({
         ]
       : []),
     { key: "all", label: t("pool.chip.all"), count: finished ? null : pool.available.length, role: null },
-    ...columns.map((role) => ({
-      key: role,
-      label: slotLabel(role),
-      count: finished ? null : (pool.roleCounts[role] ?? 0),
-      role
-    }))
+    ...(named
+      ? columns.map((role) => ({
+          key: role,
+          label: slotLabel(role),
+          count: finished ? null : (pool.roleCounts[role] ?? 0),
+          role
+        }))
+      : [])
   ];
   const filtersOn = viewParams.role !== "all" || viewParams.query !== "" || heroFilter.size > 0;
   const resetFilters = () => {
@@ -465,7 +469,7 @@ export function PlayerPool({
               className="grid gap-1.5"
               style={{ gridTemplateColumns: `repeat(${Math.max(columns.length, 1)}, minmax(0, 1fr))` }}
             >
-              {columns.map((role) => (
+              {named && columns.map((role) => (
                 <span key={role} className="flex min-w-0 items-center gap-1.5" style={{ color: roleTint(ontology, role) }}>
                   <PlayerRoleIcon role={role} ontology={ontology} size={16} decorative />
                   <span className="truncate">{slotLabel(role)}</span>

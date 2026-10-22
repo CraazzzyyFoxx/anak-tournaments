@@ -83,7 +83,7 @@ const AGENTS = [
   { registration_id: 901, primary_handle: "Zen#2222", roles: [{ dimension: "player_role", role: "damage" }, { dimension: "player_role", role: "tank" }] }
 ];
 
-async function openDialog(): Promise<HTMLElement> {
+async function openDialog(discipline = "overwatch", team: RegistrationTeam = TEAM): Promise<HTMLElement> {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -93,10 +93,10 @@ async function openDialog(): Promise<HTMLElement> {
       <NextIntlClientProvider locale="en" messages={en}>
         <QueryClientProvider client={client}>
           <MyTeamPanel
-            discipline="overwatch"
+            discipline={discipline}
             workspaceId={1}
             tournamentId={1}
-            team={TEAM}
+            team={team}
             isCaptain
             registrationOpen
             checkInAvailable={false}
@@ -310,5 +310,33 @@ describe("captain's free-agent picker", () => {
     });
 
     expect(listInviteHistory).not.toHaveBeenCalled();
+  });
+});
+
+describe("inviting in a one-role game", () => {
+  const ONE_ROLE_TEAM = {
+    ...TEAM,
+    members: [{ ...TEAM.members[0], slot_code: "agent" }],
+    open_slots: { agent: 1 },
+    shortfall: "1x agent"
+  } as RegistrationTeam;
+
+  it("offers no slot choice: every slot is the game's one role", async () => {
+    await openDialog("deadlock", ONE_ROLE_TEAM);
+
+    expect(document.querySelectorAll('input[name="invite-slot"]')).toHaveLength(0);
+  });
+
+  it("tags no free agent with the game's one role", async () => {
+    listFreeAgents.mockResolvedValue({
+      items: [{ registration_id: 900, primary_handle: "Ana#1111", roles: [{ dimension: "agent", role: "agent" }] }],
+      total: 1
+    });
+    await openDialog("deadlock", ONE_ROLE_TEAM);
+    await chooseTargetedMode();
+
+    // Every candidate plays it, so a chip would only repeat the game's one role on every row.
+    const row = document.querySelector('input[name="invite-target-agent"]')?.closest("label");
+    expect(row?.textContent).toBe("Ana#1111");
   });
 });
