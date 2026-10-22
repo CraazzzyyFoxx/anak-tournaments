@@ -26380,18 +26380,13 @@
         "status_url": {
           "title": "Status Url",
           "type": "string"
-        },
-        "stream_url": {
-          "title": "Stream Url",
-          "type": "string"
         }
       },
       "required": [
         "job_id",
         "status",
         "status_url",
-        "result_url",
-        "stream_url"
+        "result_url"
       ],
       "title": "CreateJobResponse",
       "type": "object"

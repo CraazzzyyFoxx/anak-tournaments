@@ -14896,8 +14896,6 @@ export interface components {
             status: BalancerCreateJobResponseStatus;
             /** Status Url */
             status_url: string;
-            /** Stream Url */
-            stream_url: string;
         };
         /**
          * DraftAutopickPreview
