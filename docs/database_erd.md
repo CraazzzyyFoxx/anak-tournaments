@@ -13,7 +13,7 @@ baselines and Discord channels live in `stats/`. `catalog/` writes only to `cata
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`mixlive01`** (136 revisions in `backend/migrations/versions/`).
+Alembic head: **`mixaway01`** (137 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -2452,6 +2452,7 @@ erDiagram
         varchar(16) role_selection_mode
         boolean is_flex
         int lobby_pin "nullable"
+        boolean away
     }
     MIX_PLAYER_ROLE {
         bigint custom_game_player_id PK,FK

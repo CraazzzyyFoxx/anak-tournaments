@@ -548,3 +548,47 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
         ):
             [(count,)] = await self._rows(f"SELECT count(*) FROM {table} WHERE {column} = ANY(:ids)", ids=list(started))
             self.assertEqual(0, count, table)
+
+    async def test_a_round_spent_away_drops_out_of_the_rotation_history(self) -> None:
+        # Two matches of m0 against m1. m2 waits through both; m3 waits through the first and is away for the second.
+        await self._lobbies(("m0", "m1"))
+        async with self.Session() as s:
+            s.add_all(
+                [
+                    models.CustomGamePlayer(custom_game_id=self.cg.id, workspace_member_id=self.ids[f"m{i}"])
+                    for i in range(4)
+                ]
+            )
+            await s.commit()
+        service = CustomGameService()
+
+        async def set_away(member: str, away: bool) -> None:
+            async with self.Session() as s:
+                await service.update_player(
+                    s, **self._host(), workspace_member_id=self.ids[member], patch={"away": away}
+                )
+                await s.commit()
+
+        await self._write(service.start_match, 0)
+        await self._write(service.record_outcome, 0, winner=1)
+        await set_away("m3", True)
+        # Started anyway with m0 away in the lineup: the seat beats the away mark.
+        await set_away("m0", True)
+        await self._write(service.start_match, 0)
+        await self._write(service.record_outcome, 0, winner=1)
+        await set_away("m3", False)
+        await set_away("m0", False)
+
+        async with self.Session() as s:
+            rotation = await service.rotation(s, workspace_id=self.ids["ws"], custom_game_id=self.cg.id)
+        # (sat-out streak, played streak, games played): the three keys of the rotation priority.
+        self.assertEqual(
+            {
+                self.ids["m0"]: (0, 2, 2),
+                self.ids["m1"]: (0, 2, 2),
+                self.ids["m2"]: (2, 0, 0),
+                # One wait, exactly as if the away match had never been recorded -- not two, and not a reset.
+                self.ids["m3"]: (1, 0, 0),
+            },
+            {rec.member_id: (rec.consecutive_sat, rec.consecutive_played, rec.games_played) for rec in rotation},
+        )

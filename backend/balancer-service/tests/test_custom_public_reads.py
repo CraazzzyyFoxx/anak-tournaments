@@ -308,6 +308,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
                 participation="pool",
                 role_selection_mode="explicit",
                 is_flex=False,
+                away=False,
                 lobby_pin=None,
             ),
             SimpleNamespace(
@@ -317,6 +318,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
                 participation="pool",
                 role_selection_mode="all_ranked",
                 is_flex=False,
+                away=False,
                 lobby_pin=1,
             ),
         ]

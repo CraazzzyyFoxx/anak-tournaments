@@ -4318,7 +4318,7 @@
       "summary": "Add custom game co-host"
     },
     "rpc.balancer.custom.balance": {
-      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). With `scope=\"lobby\"` (the default) balances the non-benched lineup of ONE lobby (`lobby_index`, default 0) -- everyone another lobby is already playing or holds a pin on is left out. With `scope=\"all\"` it splits the whole pool into `lobby_count` equally strong lobbies and balances them all. Ranks come from the host's own book above the workspace canon. 422 when the lineup is empty, a seated player has no ranked role, the mix has one lobby (`single_lobby`) or the pool cannot be split (`not_enough_players`, `too_many_must_play`, `too_many_pinned`, `roles_infeasible`). 409 match_live when the lobby -- for scope all, any lobby -- has a live match.",
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). With `scope=\"lobby\"` (the default) balances the non-benched lineup of ONE lobby (`lobby_index`, default 0) -- everyone another lobby is already playing or holds a pin on is left out. With `scope=\"all\"` it splits the whole pool into `lobby_count` equally strong lobbies and balances them all. Ranks come from the host's own book above the workspace canon. 422 when the lineup is empty, a seated player has no ranked role, the mix has one lobby (`single_lobby`) or the pool cannot be split (`not_enough_players`, `too_many_must_play`, `too_many_pinned`, `roles_infeasible`). 409 match_live when the lobby -- for scope all, any lobby -- has a live match. An away player is never a candidate.",
       "request": {
         "array": false,
         "ref": "balancer.CustomGameBalanceRequest"
@@ -4510,6 +4510,14 @@
       ],
       "summary": "Get custom game rotation hints"
     },
+    "rpc.balancer.custom.self_away": {
+      "description": "Permission: a seated account; the account links are required as for a role edit, the host's 'players edit their own roles' switch is not. Sets or clears the caller's own away flag: an away player keeps their row, roles and must-play mark, but no balance, lobby split or rotation seats them until they are back, and every match recorded meanwhile counts them as busy (neither played nor sat out). It never clears itself. 404 when the caller has no seat, 409 once the mix is over.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameSelfAway"
+      },
+      "summary": "Step away from my mix"
+    },
     "rpc.balancer.custom.self_current": {
       "description": "Permission: any authenticated account; workspace membership is NOT required. Same answer as `self_get`, for the workspace's newest mix that is neither completed nor cancelled -- what `/mix` in Discord asks, where the player names no id. 404 when the workspace is running nothing.",
       "summary": "Get my seat in the current mix"
@@ -4647,7 +4655,7 @@
       "summary": "Undo custom game match"
     },
     "rpc.balancer.custom.update_player": {
-      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Patches one seat's participation state, role order or flex flag and returns the refreshed mix; 404 when the member is not on this mix's roster.",
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Patches one seat's participation state, role order, flex flag or away flag and returns the refreshed mix; 404 when the member is not on this mix's roster.",
       "request": {
         "array": false,
         "ref": "balancer.CustomGamePlayerPatch"
@@ -26722,6 +26730,18 @@
     "balancer.CustomGamePlayerPatch": {
       "additionalProperties": false,
       "properties": {
+        "away": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Away"
+        },
         "is_flex": {
           "anyOf": [
             {
@@ -26926,6 +26946,21 @@
         "second_uuid"
       ],
       "title": "CustomGameSeatSwap",
+      "type": "object"
+    },
+    "balancer.CustomGameSelfAway": {
+      "additionalProperties": false,
+      "description": "The player's own away switch: ``true`` steps away, ``false`` comes back.",
+      "properties": {
+        "away": {
+          "title": "Away",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "away"
+      ],
+      "title": "CustomGameSelfAway",
       "type": "object"
     },
     "balancer.CustomGameSelfServicePatch": {

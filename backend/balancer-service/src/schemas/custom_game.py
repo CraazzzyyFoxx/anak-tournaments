@@ -35,6 +35,7 @@ __all__ = (
     "CustomGameRename",
     "CustomGameRosterUpdate",
     "CustomGameSeatSwap",
+    "CustomGameSelfAway",
     "CustomGameSelfServicePatch",
     "CustomGameSelfUpdate",
     "CustomGameTeamNamesPatch",
@@ -96,6 +97,8 @@ class CustomGamePlayerPatch(_Request):
     participation: MixParticipation | None = None
     roles: _RoleOrder | None = None
     is_flex: StrictBool | None = None
+    # Stepped away: in no lobby's seated set until cleared (spec §7.4).
+    away: StrictBool | None = None
     # ``None`` is "auto": the balance places them wherever they fit. A patch that
     # does not mention the field leaves the pin exactly as it was.
     lobby_pin: int | None = Field(None, ge=0, le=MAX_LOBBIES - 1)
@@ -214,6 +217,12 @@ class CustomGameSelfUpdate(_Request):
 
     roles: _RoleOrder | None = None
     is_flex: StrictBool | None = None
+
+
+class CustomGameSelfAway(_Request):
+    """The player's own away switch: ``true`` steps away, ``false`` comes back."""
+
+    away: StrictBool
 
 
 class CustomGameSelfServicePatch(_Request):

@@ -324,7 +324,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.custom.update_player": {
         "summary": "Update custom game player",
-        "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Patches one seat's participation state, role order or flex flag and returns the refreshed mix; 404 when the member is not on this mix's roster.",
+        "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Patches one seat's participation state, role order, flex flag or away flag and returns the refreshed mix; 404 when the member is not on this mix's roster.",
     },
     "rpc.balancer.custom.set_participation": {
         "summary": "Set custom game participation",
@@ -383,6 +383,16 @@ DOCS: dict[str, dict] = {
             "when the caller has no seat."
         ),
     },
+    "rpc.balancer.custom.self_away": {
+        "summary": "Step away from my mix",
+        "description": (
+            "Permission: a seated account; the account links are required as for a role edit, the host's 'players "
+            "edit their own roles' switch is not. Sets or clears the caller's own away flag: an away player keeps "
+            "their row, roles and must-play mark, but no balance, lobby split or rotation seats them until they are "
+            "back, and every match recorded meanwhile counts them as busy (neither played nor sat out). It never "
+            "clears itself. 404 when the caller has no seat, 409 once the mix is over."
+        ),
+    },
     "rpc.balancer.custom.set_self_service": {
         "summary": "Set custom game self-service switches",
         "description": (
@@ -403,6 +413,7 @@ DOCS: dict[str, dict] = {
             "mix has one lobby (`single_lobby`) or the pool cannot be split (`not_enough_players`, "
             "`too_many_must_play`, `too_many_pinned`, `roles_infeasible`)."
             " 409 match_live when the lobby -- for scope all, any lobby -- has a live match."
+            " An away player is never a candidate."
         ),
     },
     "rpc.balancer.custom.set_team_names": {

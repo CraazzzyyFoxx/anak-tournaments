@@ -5,7 +5,7 @@ balance,set_team_names,set_next_map,set_variant_index,
 post_discord,post_signup,delete_discord_post,discord_view,set_voice_channels,voice_options,voice_move,voice_return,
 transfer_host,add_co_host,remove_co_host,swap_seats,set_captain,start_match,cancel_match,record_outcome,
 match_history,undo_match,rotation,stats,close,delete,hard_delete,
-self_get,self_current,self_join,self_leave,self_update,set_self_service,hosted_active}``.
+self_get,self_current,self_join,self_leave,self_update,self_away,set_self_service,hosted_active}``.
 
 Writes require ``actor`` to be the host, a co-host or a superuser; the per-mix check lives in
 ``CustomGameService._writable``. The reads (``list``, ``get``, ``stats``,
@@ -17,7 +17,7 @@ read out to a lobby, whose players need no account here.
 Pydantic model in ``src.schemas.custom_game`` before it reaches a use case --
 nothing here hand-parses a dict.
 
-The six ``self_*`` subjects are the PLAYER's own surface: they are gated by
+The seven ``self_*`` subjects are the PLAYER's own surface: they are gated by
 ``mix_self_policy`` inside the service rather than by ``_require_mix``, because
 whoever is joining may not be a workspace member yet. ``workspace_id`` is
 optional on them -- the bot knows only a ``custom_game_id`` -- and when present
@@ -211,6 +211,7 @@ def _dump_row(
         # included; `all_ranked` means it is `null` and every ranked role plays.
         "role_selection_mode": row.role_selection_mode,
         "is_flex": row.is_flex,
+        "away": row.away,
         # Where this player is right now, derived from the lobbies' selected
         # options: ``null`` means waiting for a seat. The host's pin is a
         # separate, durable wish the next balance honours.
@@ -880,6 +881,25 @@ def register(broker: Any, logger: Any) -> None:
             return state
 
         return await c.envelope(logger, "custom.self_update", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.self_away")
+    async def _self_away(data: dict, msg: RabbitMessage) -> dict:
+        """Step away from the mix and back: the caller's own row, gated like a role edit minus the host's switch."""
+
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            body = _body(schemas.CustomGameSelfAway, data)
+            state = await custom_game_service.self_set_away(
+                session,
+                custom_game_id=_game_id(data),
+                auth_user=user,
+                away=body.away,
+                workspace_id=_opt_int(data, "workspace_id"),
+            )
+            await session.commit()
+            return state
+
+        return await c.envelope(logger, "custom.self_away", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.set_self_service")
     async def _set_self_service(data: dict, msg: RabbitMessage) -> dict:

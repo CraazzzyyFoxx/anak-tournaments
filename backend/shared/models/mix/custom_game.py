@@ -208,6 +208,8 @@ class CustomGamePlayer(db.TimeStampIntegerMixin):
     # The host's "this one plays in A": honoured by the next balance, not a
     # live seat. ``None`` means the solver places them wherever they fit.
     lobby_pin: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    # Stepped away (spec §7.4): in no lobby's seated set until back. The must-play mark is kept for the return.
+    away: Mapped[bool] = mapped_column(Boolean(), nullable=False, default=False, server_default="false")
 
 
 class CustomGamePlayerRole(db.Base):

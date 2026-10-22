@@ -101,7 +101,7 @@ _MAX_TEAM_NAME_LEN = 60
 
 #: A roster row owns only its lineup state. A rank correction goes into the
 #: host's own layer of ``member_rank``, so it outlives the game it was made in.
-_PLAYER_PATCH_FIELDS = frozenset({"participation", "roles", "is_flex", "lobby_pin"})
+_PLAYER_PATCH_FIELDS = frozenset({"participation", "roles", "is_flex", "lobby_pin", "away"})
 
 #: What a PLAYER may patch on their own row. Ranks are the host's book and
 #: participation is the host's decision, so neither is here.
@@ -168,6 +168,7 @@ def _new_roster_row(game_id: int, member_id: int, sort_order: int) -> models.Cus
         participation=MixParticipation.POOL,
         role_selection_mode=MixRoleSelectionMode.ALL_RANKED,
         is_flex=False,
+        away=False,
     )
 
 
@@ -946,7 +947,7 @@ class CustomGameService:
         """Apply a validated lineup patch to one row, within ``allowed`` fields.
 
         One mutation for two callers: the host patches the whole row
-        (``_PLAYER_PATCH_FIELDS``), a player only their own role order and flex
+        (``_PLAYER_PATCH_FIELDS``, away included), a player only their own role order and flex
         (``_SELF_PATCH_FIELDS``). The difference between them is the gate, not
         the write -- a self edit that diverged here would be a second, subtly
         different way to set the same columns.
@@ -994,6 +995,13 @@ class CustomGameService:
                     detail="is_flex must be a boolean",
                 )
             row.is_flex = patch["is_flex"]
+        if "away" in patch:
+            if not isinstance(patch["away"], bool):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="away must be a boolean",
+                )
+            row.away = patch["away"]
         if "lobby_pin" in patch:
             pin = patch["lobby_pin"]
             if pin is not None and pin >= lobby_count:
@@ -1186,6 +1194,20 @@ class CustomGameService:
                 divisions[role] = None if tier is None else {"name": tier.name, "slug": tier.slug}
             considered = list(stored) if explicit else list(rated_role_codes(ctx.game.discipline))
             unranked = [role for role in considered if ranks.get(role) is None]
+            current_lobby: int | None = None
+            voice_channel: int | None = None
+            for lobby in await self.lobbies.list_for_game(session, ctx.game.id):
+                teams = seated_teams(lobby.balance_result_json, lobby.selected_variant_index)
+                for team_index, members in enumerate(teams):
+                    if ctx.row.workspace_member_id in members:
+                        current_lobby = lobby.lobby_index
+                        if team_index < 2:
+                            voice_channel = (lobby.team1_voice_channel_id, lobby.team2_voice_channel_id)[team_index]
+            voice_url: str | None = None
+            if voice_channel is not None:
+                _channel_id, guild_id = await self.workspace_discord_target(session, ctx.game.workspace_id)
+                if guild_id is not None:
+                    voice_url = f"https://discord.com/channels/{guild_id}/{voice_channel}"
             seat = {
                 "participation": ctx.row.participation,
                 # ``null`` means all_ranked: every role this player has a number
@@ -1199,16 +1221,12 @@ class CustomGameService:
                 "is_flex": ctx.row.is_flex,
                 "ranks": ranks,
                 "divisions": divisions,
-                # 0 | 1 while a balance seats them, ``null`` while it does not.
-                "current_lobby": next(
-                    (
-                        lobby.lobby_index
-                        for lobby in await self.lobbies.list_for_game(session, ctx.game.id)
-                        if ctx.row.workspace_member_id
-                        in seated_member_ids(lobby.balance_result_json, lobby.selected_variant_index)
-                    ),
-                    None,
-                ),
+                "workspace_member_id": ctx.row.workspace_member_id,
+                "away": ctx.row.away,
+                # The lobby whose shown option seats them, ``null`` while none does.
+                "current_lobby": current_lobby,
+                # Their own team's voice in Discord, when the lobby has one and the workspace a verified guild.
+                "voice_url": voice_url,
             }
         return {
             "custom_game_id": ctx.game.id,
@@ -1225,8 +1243,10 @@ class CustomGameService:
                 "can_join": ctx.policy.can_join,
                 "can_leave": ctx.policy.can_leave,
                 "can_edit_roles": ctx.policy.can_edit_roles,
+                "can_set_away": ctx.policy.can_set_away,
                 "join_blocker": ctx.policy.join_blocker,
                 "edit_blocker": ctx.policy.edit_blocker,
+                "away_blocker": ctx.policy.away_blocker,
             },
         }
 
@@ -1391,6 +1411,39 @@ class CustomGameService:
         if ctx.row is None or not ctx.policy.can_edit_roles:
             raise _blocker(ctx.policy.edit_blocker or "not_on_roster")
         await self._apply_player_patch(session, ctx.row, patch, _SELF_PATCH_FIELDS, game=ctx.game)
+        await session.flush()
+        await emit_pickup_mix_changed(
+            session,
+            ctx.game.workspace_id,
+            custom_game_id=ctx.game.id,
+            change="roster",
+            actor_user_id=auth_user.id,
+        )
+        return await self.self_state(
+            session, custom_game_id=custom_game_id, auth_user=auth_user, workspace_id=workspace_id
+        )
+
+    async def self_set_away(
+        self,
+        session: AsyncSession,
+        *,
+        custom_game_id: int,
+        auth_user: Any,
+        away: bool,
+        workspace_id: int | None = None,
+    ) -> dict[str, Any]:
+        """Step away from the mix, or come back (spec §7.4).
+
+        Gated like a role edit minus the host's switch (``MixSelfPolicy.can_set_away``): a break is the player's own
+        business. It never clears itself. The stored balance is left alone -- an away player already in a lineup stays
+        there with a badge, and Start match warns about them.
+        """
+        ctx = await self._self_context(
+            session, custom_game_id=custom_game_id, auth_user=auth_user, workspace_id=workspace_id
+        )
+        if ctx.row is None or not ctx.policy.can_set_away:
+            raise _blocker(ctx.policy.away_blocker or "not_on_roster")
+        ctx.row.away = away
         await session.flush()
         await emit_pickup_mix_changed(
             session,
@@ -1858,7 +1911,8 @@ class CustomGameService:
         for lobby in targets:
             _refuse_live(lobby)
         roster = list(await self.roster.list_for_game(session, game.id))
-        lineup = [row for row in roster if row.participation != MixParticipation.BENCHED]
+        # An away player is in no lobby's seated set, must-play or not; the mark waits for their return (§7.4).
+        lineup = [row for row in roster if row.participation != MixParticipation.BENCHED and not row.away]
         if not lineup:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="empty_lineup")
         if scope == "all":
@@ -2804,6 +2858,8 @@ class CustomGameService:
         roster = list(await self.roster.list_for_game(session, game.id))
         # Whoever was on the floor next door neither played this round nor sat it out.
         busy = await self._other_lobby_seated(session, game, lobby_index)
+        # Away, they neither played nor sat out either: rotation skips the round for them like for a busy one (§7.4).
+        busy |= {row.workspace_member_id for row in roster if row.away}
 
         participant_ids = {member_id for team in team_players for member_id, _, _ in team}
         for row in roster:
@@ -3105,7 +3161,8 @@ class CustomGameService:
         through the same ``participation`` field.
         """
         game = await self.get(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
-        roster = list(await self.roster.list_for_game(session, game.id))
+        # Away players are outside the queue until they are back (§7.4).
+        roster = [row for row in await self.roster.list_for_game(session, game.id) if not row.away]
         if not roster:
             return []
 

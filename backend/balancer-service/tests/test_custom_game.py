@@ -47,7 +47,7 @@ from shared.services.member_rank import MIX_ORDER  # noqa: E402
 from shared.testing import install_postgres_type_shims  # noqa: E402
 from shared.tests.test_team_format import OW_5V5, _module_ontology  # noqa: E402
 from src.domain.balancer.result_serializer import lobby_document  # noqa: E402
-from src.domain.mix_lobbies import with_captains  # noqa: E402
+from src.domain.mix_lobbies import seated_member_ids, with_captains  # noqa: E402
 from src.domain.mix_ranker import Ranker  # noqa: E402
 from src.domain.mix_self_service import MAX_ROSTER  # noqa: E402
 from src.services import custom_game as custom_game_module
@@ -83,6 +83,7 @@ def _roster_row(row_id: int, member_id: int, sort_order: int, **overrides) -> Si
         "is_flex": False,
         "roles": None,
         "lobby_pin": None,
+        "away": False,
         "created_at": None,
         "updated_at": None,
     }
@@ -4181,6 +4182,104 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(42, self.lobby_rows[1].next_map_id)
+
+    async def test_balance_leaves_an_away_player_out_even_when_must_play(self) -> None:
+        away = _roster_row(1, 7, 0, participation=MixParticipation.MUST_PLAY, away=True)
+        self.games.get.return_value = _game()
+        self.roster.list_for_game.return_value = [away, _roster_row(2, 8, 1)]
+        self.ranks.resolve.return_value = _ranks(7, 8)
+        # The solver seats everyone it is handed, so the stored lineup shows who was a candidate.
+        self.run_balance.side_effect = lambda data, *_: _seated([(int(uuid), uuid) for uuid in data["players"]])
+
+        await self.service.balance(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
+
+        self.assertEqual(frozenset({8}), seated_member_ids(self.lobby_rows[0].balance_result_json, 0))
+        # The mark is kept: it seats them first once they are back.
+        self.assertEqual(MixParticipation.MUST_PLAY, away.participation)
+
+    async def test_rotation_leaves_an_away_player_out(self) -> None:
+        self.games.get.return_value = _game()
+        self.roster.list_for_game.return_value = [
+            _roster_row(1, 7, 0, away=True),
+            _roster_row(2, 8, 1),
+            _roster_row(3, 9, 2),
+        ]
+
+        recommendations = await self.service.rotation(self.session, workspace_id=1, custom_game_id=11)
+
+        self.assertEqual({8, 9}, {rec.member_id for rec in recommendations})
+
+    async def test_record_outcome_writes_an_away_member_as_busy(self) -> None:
+        self.games.get.return_value = _game(status="balanced")
+        self.lobby_rows[0] = _lobby(0, balance_result_json=self._captained_result(), live_encounter_id=900)
+        self.roster.list_for_game.return_value = [_roster_row(1, 12, 0, away=True)]
+        busy_by_round: dict[int, frozenset[int]] = {}
+        self.write_result.side_effect = lambda _s, draft: busy_by_round.__setitem__(draft.encounter_id, draft.busy)
+
+        await self.service.record_outcome(self.session, workspace_id=1, custom_game_id=11, winner=1, actor_user_id=9)
+
+        # Rotation skips the round for them exactly like for somebody playing next door.
+        self.assertEqual({900: frozenset({12})}, busy_by_round)
+
+    async def test_the_host_marks_a_player_away_and_back(self) -> None:
+        row = _roster_row(1, 7, 0)
+        self.games.get.return_value = _game()
+        self.roster.list_for_game.return_value = [row]
+
+        for away in (True, False):
+            await self.service.update_player(
+                self.session,
+                workspace_id=1,
+                custom_game_id=11,
+                workspace_member_id=7,
+                patch={"away": away},
+                actor_user_id=9,
+            )
+            self.assertIs(away, row.away)
+
+    async def test_a_player_steps_away_and_back_without_the_role_edit_switch(self) -> None:
+        row = _roster_row(1, 7, 0)
+        self.games.get.return_value = _game(self_signup="pool", self_role_edit=False)
+        self.roster.list_for_game.return_value = [row]
+        self.workspace_members.get_by_player.return_value = _row(id=7, player_id=70)
+
+        state = await self.service.self_set_away(
+            self.session, custom_game_id=11, auth_user=_auth(), away=True, workspace_id=1
+        )
+        self.assertTrue(row.away)
+        self.assertTrue(state["seat"]["away"])
+
+        await self.service.self_set_away(self.session, custom_game_id=11, auth_user=_auth(), away=False, workspace_id=1)
+        self.assertFalse(row.away)
+
+    async def test_stepping_away_off_the_roster_404(self) -> None:
+        self.games.get.return_value = _game(self_signup="pool")
+        self.roster.list_for_game.return_value = []
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.self_set_away(
+                self.session, custom_game_id=11, auth_user=_auth(), away=True, workspace_id=1
+            )
+
+        self.assertEqual((404, "not_on_roster"), (ctx.exception.status_code, ctx.exception.detail))
+
+    async def test_self_state_links_the_voice_of_the_players_own_team(self) -> None:
+        row = _roster_row(1, 9, 0)
+        self.games.get.return_value = _game(self_signup="pool")
+        self.roster.list_for_game.return_value = [row]
+        self.workspace_members.get_by_player.return_value = _row(id=9, player_id=70)
+        self.lobby_rows[0] = _lobby(
+            0, balance_result_json=self._captained_result(), team1_voice_channel_id=111, team2_voice_channel_id=222
+        )
+        self._voice_config({}, "555")
+
+        state = await self.service.self_state(self.session, custom_game_id=11, auth_user=_auth(), workspace_id=1)
+
+        # Charlie (9) plays on team 2.
+        self.assertEqual(
+            (0, 9, "https://discord.com/channels/555/222"),
+            (state["seat"]["current_lobby"], state["seat"]["workspace_member_id"], state["seat"]["voice_url"]),
+        )
 
     async def test_rotation_returns_empty_list_for_an_empty_pool(self) -> None:
         self.games.get.return_value = _game()

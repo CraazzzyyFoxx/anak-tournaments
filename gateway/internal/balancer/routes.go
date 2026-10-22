@@ -115,6 +115,8 @@ var RosterRoutes = []edge.RouteSpec{
 	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me", Queue: "rpc.balancer.custom.self_join", IDParam: "game_id", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me", Queue: "rpc.balancer.custom.self_leave", IDParam: "game_id", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me", Queue: "rpc.balancer.custom.self_update", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	// The player's own away switch (spec §7.4): gated like a role edit minus the host's switch.
+	{Method: "PUT", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/me/away", Queue: "rpc.balancer.custom.self_away", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	// Host-only: whether players may seat themselves at all, and whether a
 	// seated one may re-order their own roles.
 	{Method: "PUT", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/self-service", Queue: "rpc.balancer.custom.set_self_service", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},

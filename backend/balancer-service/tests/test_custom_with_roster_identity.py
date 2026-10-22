@@ -55,6 +55,7 @@ def _service(provider_seen: list) -> CustomGameService:
                     participation=MixParticipation.POOL,
                     role_selection_mode=MixRoleSelectionMode.ALL_RANKED,
                     is_flex=False,
+                    away=False,
                     lobby_pin=None,
                 )
             ]
