@@ -460,13 +460,16 @@ class DivisionGridService:
             removed_ids = set(existing_by_id) - set(payload_ids)
             if removed_ids or len(payload_ids) != len(data.tiers):
                 structural_changed = True
+            # Delete before writing: a new tier may reuse a removed tier's sort_order or slug (both unique per version).
+            for removed_id in removed_ids:
+                await self.tier_repo.delete(session, existing_by_id[removed_id])
 
             reordered = any(
                 tier.id is not None and existing_by_id[tier.id].sort_order != tier.sort_order for tier in data.tiers
             )
             if reordered:
-                for existing in version.tiers:
-                    existing.sort_order = -int(existing.id)
+                for tier_id in payload_ids:
+                    existing_by_id[tier_id].sort_order = -tier_id
                 await session.flush()
 
             added_tiers: list[models.DivisionGridTier] = []
@@ -504,9 +507,6 @@ class DivisionGridService:
 
             if added_tiers:
                 await self.tier_repo.create_many(session, added_tiers)
-
-            for removed_id in removed_ids:
-                await self.tier_repo.delete(session, existing_by_id[removed_id])
 
             if structural_changed:
                 await self.mapping_repo.mark_incomplete_for_version(session, version_id)

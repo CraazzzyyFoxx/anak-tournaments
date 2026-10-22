@@ -417,3 +417,56 @@ def test_native_ranges_survive_service_writes_serialization_and_resolution(db_se
             await db_session.close()
 
     asyncio.run(run())
+
+
+_REWRITES = {
+    "replace-all": lambda kept: [
+        _write_tier(None, "top", 1500, None),
+        _write_tier(None, "rest", 0, 1499, number=2, sort_order=1),
+    ],
+    "swap-last": lambda kept: [*kept[:-1], _write_tier(None, "rookie", 0, 999, number=3, sort_order=2)],
+}
+
+
+@pytest.mark.parametrize("rewrite", list(_REWRITES))
+def test_draft_tier_rewrite_is_stored(db_session, rewrite) -> None:
+    """PATCH with id-less tiers reusing a removed tier's sort_order/slug saves instead of a unique violation."""
+
+    async def run() -> None:
+        try:
+            workspace = models.Workspace(slug=f"grid-rewrite-{rewrite}", name="Grid rewrite")
+            db_session.add(workspace)
+            await db_session.flush()
+            grid = models.DivisionGrid(workspace_id=workspace.id, slug="rewrite", name="Rewrite", versions=[])
+            db_session.add(grid)
+            await db_session.flush()
+            draft = await grid_service.create_version(
+                db_session,
+                workspace.id,
+                grid.id,
+                schemas.DivisionGridVersionCreate(
+                    label="Draft",
+                    tiers=[
+                        _write_tier(None, "top", 2000, None),
+                        _write_tier(None, "mid", 1000, 1999, number=2, sort_order=1),
+                        _write_tier(None, "low", 0, 999, number=3, sort_order=2),
+                    ],
+                ),
+            )
+            payload = schemas.DivisionGridVersionRead.model_validate(draft, from_attributes=True).model_dump(
+                mode="json"
+            )
+            tiers = _REWRITES[rewrite]([schemas.DivisionGridTierWrite.model_validate(t) for t in payload["tiers"]])
+
+            await grid_service.update_version(db_session, draft.id, schemas.DivisionGridVersionUpdate(tiers=tiers))
+
+            stored = await db_session.scalars(
+                sa.select(models.DivisionGridTier.slug)
+                .where(models.DivisionGridTier.version_id == draft.id)
+                .order_by(models.DivisionGridTier.sort_order)
+            )
+            assert list(stored) == [t.slug for t in tiers]
+        finally:
+            await db_session.rollback()
+
+    asyncio.run(run())
