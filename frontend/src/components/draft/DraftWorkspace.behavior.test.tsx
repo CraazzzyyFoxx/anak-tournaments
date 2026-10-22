@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { DraftGating } from "@/lib/draft/logic";
 import type { DraftBoard, DraftPick, DraftPlayer, DraftTeam } from "@/types/draft.types";
 import type { DraftMutations } from "@/hooks/useDraftData";
-import type { Tournament } from "@/types/tournament.types";
+import type { DraftOwner } from "./DraftBoard";
 
 vi.mock("next-intl", () => ({
   useLocale: () => "en",
@@ -82,6 +82,8 @@ function board(overrides: Partial<DraftBoard> = {}, session: Partial<DraftBoard[
     session: {
       id: 1,
       tournament_id: 5,
+      custom_game_id: null,
+      lobby_index: null,
       workspace_id: 2,
       discipline: "overwatch",
       status: "live",
@@ -130,7 +132,14 @@ const mutations = {
   extendClock: { mutate: noop, isPending: false }
 } as unknown as DraftMutations;
 
-const tournament = { id: 5, name: "Cup #41", workspace_id: 2 } as unknown as Tournament;
+const owner: DraftOwner = {
+  workspaceId: 2,
+  discipline: "overwatch",
+  name: "Cup #41",
+  href: "/tournaments/5",
+  divisionGrid: null,
+  isOrganizer: false,
+};
 
 const gating = (overrides: Partial<DraftGating>): DraftGating => ({
   myTeamId: null,
@@ -150,7 +159,7 @@ function render(seat: DraftGating, snapshot: DraftBoard = board()) {
   return renderToStaticMarkup(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <DraftWorkspace
-        tournament={tournament}
+        owner={owner}
         board={snapshot}
         gating={seat}
         presence={{ users: {}, anonymous_viewer_count: 3 }}
@@ -247,6 +256,14 @@ describe("DraftWorkspace banner", () => {
     expect(render(admin, blocked)).toContain("shell.banner.blocked.role_shortage");
     expect(render(admin, blocked)).toContain(link);
     expect(render(spectator, blocked)).not.toContain(link);
+  });
+
+  test("a mix lobby's blocked draft has no tournament page to link the organizer to", () => {
+    const blocked = board({}, { status: "paused", blocked_reason: "role_shortage", tournament_id: null, custom_game_id: 3, lobby_index: 0 });
+    const html = render(admin, blocked);
+
+    expect(html).toContain("shell.banner.blocked.role_shortage");
+    expect(html).not.toContain("/admin/tournaments/");
   });
 
   test("overtime of another team names that team", () => {

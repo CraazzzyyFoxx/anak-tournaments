@@ -25,11 +25,17 @@ export type DraftRole = string;
 type DraftPlayerStatus = "available" | "picked" | "removed";
 export type DraftPickStatus = "upcoming" | "on_clock" | "completed" | "skipped" | "autopicked";
 
+/** A session's lifecycle verbs, for a tournament's draft and a mix lobby's alike. */
+export type DraftLifecycleAction = "start" | "pause" | "resume" | "cancel" | "rollback";
+
 export interface DraftSession {
   id: number;
-  tournament_id: number;
+  tournament_id: number | null;
+  /** The mix owning this draft and its lobby (0 = A); both null for a tournament's draft (spec §9.1). */
+  custom_game_id: number | null;
+  lobby_index: number | null;
   workspace_id: number;
-  /** The owning tournament's discipline (owner context for catalog/ontology/identity reads). */
+  /** The owner's discipline (owner context for catalog/ontology/identity reads). */
   discipline: string;
   status: DraftStatus;
   blocked_reason: string | null;
@@ -83,12 +89,13 @@ interface DraftPlayerCustomField {
 }
 
 /** Where a role's resolved rank came from — mirrors `shared.domain.roster.RankSource`. */
-type DraftRankSource = "registration" | "workspace" | "native" | "none";
+type DraftRankSource = "author" | "registration" | "workspace" | "native" | "none";
 
 export interface DraftPlayer {
   id: number;
   session_id: number;
-  registration_id: number;
+  /** null for a mix seat */
+  registration_id: number | null;
   user_id: number | null;
   identity: PlayerIdentity | null;
   /** The player's canonical unique name: every `/users/<name>` link is built from it, never from a game handle. */

@@ -40,12 +40,12 @@ import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import type { DraftBoard, DraftPickOptionsResponse, DraftPresenceState, DraftRole } from "@/types/draft.types";
 import type { RealtimeConnectionState } from "@/types/realtime.types";
-import type { Tournament } from "@/types/tournament.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { slotCodeOrder, type LadderedOntology } from "@/lib/roster/ontology";
 
 import { AdminStrip } from "./AdminStrip";
+import type { DraftOwner } from "./DraftBoard";
 import styles from "./DraftRoom.module.css";
 import { PickIsland } from "./PickIsland";
 import { PickPill } from "./PickPill";
@@ -56,7 +56,7 @@ import { RoomHeader } from "./RoomHeader";
 import { TeamsPanel } from "./TeamsPanel";
 
 interface DraftWorkspaceProps {
-  tournament: Tournament;
+  owner: DraftOwner;
   board: DraftBoard;
   gating: DraftGating;
   presence: DraftPresenceState;
@@ -88,7 +88,7 @@ const NO_FOLLOWED: number[] = [];
  * decides which affordances exist. An admin who is also a captain gets both.
  */
 export function DraftWorkspace({
-  tournament,
+  owner,
   board,
   gating,
   presence,
@@ -439,7 +439,7 @@ export function DraftWorkspace({
         className="relative z-30 border-b border-[color:var(--aqt-border)] bg-[color:color-mix(in_srgb,var(--aqt-bg)_88%,transparent)] backdrop-blur-xl"
       >
         <RoomHeader
-          tournament={tournament}
+          owner={owner}
           board={board}
           gating={gating}
           presence={presence}

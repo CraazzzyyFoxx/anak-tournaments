@@ -12,10 +12,11 @@ import type { DraftGating } from "@/lib/draft/logic";
 import { seatOf, viewerCount } from "@/lib/draft/room-model";
 import type { DraftBoard, DraftPresenceState } from "@/types/draft.types";
 import type { RealtimeConnectionState } from "@/types/realtime.types";
-import type { Tournament } from "@/types/tournament.types";
+
+import type { DraftOwner } from "./DraftBoard";
 
 interface RoomHeaderProps {
-  tournament: Tournament;
+  owner: DraftOwner;
   board: DraftBoard;
   gating: DraftGating;
   presence: DraftPresenceState;
@@ -41,7 +42,7 @@ function roomStatus(board: DraftBoard): RoomStatus {
 }
 
 /** Identification row: where am I, what is the draft doing, who am I in it, am I connected. */
-export function RoomHeader({ tournament, board, gating, presence, connectionState }: Readonly<RoomHeaderProps>) {
+export function RoomHeader({ owner, board, gating, presence, connectionState }: Readonly<RoomHeaderProps>) {
   const t = useTranslations("draftRedesign");
   const session = board.session;
   const status = roomStatus(board);
@@ -51,12 +52,12 @@ export function RoomHeader({ tournament, board, gating, presence, connectionStat
   return (
     <div className="mx-auto flex min-h-[52px] max-w-[1720px] flex-wrap items-center gap-x-4 gap-y-1 px-4 py-1.5 sm:px-6 xl:h-[52px] xl:flex-nowrap xl:py-0">
       <Link
-        href={`/tournaments/${tournament.id}`}
+        href={owner.href}
         title={t("room.back")}
         className="-ml-1 inline-flex min-h-11 min-w-0 items-center gap-1.5 rounded-md px-1 text-body text-[color:var(--aqt-fg-muted)] outline-hidden transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] sm:min-h-8"
       >
         <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden />
-        <span className="truncate">{tournament.name}</span>
+        <span className="truncate">{owner.name}</span>
       </Link>
       <span aria-hidden className="hidden h-5 w-px bg-[color:var(--aqt-border-2)] sm:block" />
       <h1 className="font-onest text-heading font-semibold">{t("shell.title")}</h1>

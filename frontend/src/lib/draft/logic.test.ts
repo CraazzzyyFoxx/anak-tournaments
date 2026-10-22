@@ -83,6 +83,8 @@ function makeBoard(): DraftBoard {
     session: {
       id: 1,
       tournament_id: 5,
+      custom_game_id: null,
+      lobby_index: null,
       workspace_id: 2,
       status: "live",
       format: "snake",

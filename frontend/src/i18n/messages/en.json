@@ -6154,12 +6154,14 @@
     "noRoleHint": "This player has no ranked role, so there is nothing to pick them on. Add a rank in the balancer.",
     "noRoleHintViewer": "This player has no ranked role, so they can't be picked.",
     "rankSource": {
+      "author": "Host's rank",
       "registration": "Declared on registration",
       "workspace": "Workspace rank",
       "native": "Overwatch rank",
       "none": "No rank source"
     },
     "rankSourceShort": {
+      "author": "HOST",
       "registration": "REG",
       "workspace": "WS",
       "native": "OW",

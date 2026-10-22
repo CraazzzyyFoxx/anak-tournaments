@@ -5,6 +5,7 @@ import type {
   DraftExportResponse,
   DraftFeasibility,
   DraftJournalResponse,
+  DraftLifecycleAction,
   DraftPickExtendRequest,
   DraftPickOptionsResponse,
   DraftRoleEditRequest,
@@ -147,14 +148,17 @@ export default class draftService {
     return res.json();
   }
 
-  static async lifecycle(
-    tournamentId: number,
-    sessionId: number,
-    action: "start" | "pause" | "resume" | "cancel" | "export" | "rollback"
-  ): Promise<DraftSession | DraftExportResponse> {
-    const res = await apiFetch(`/api/v1/balancer/draft/tournaments/${tournamentId}/sessions/${sessionId}/${action}`,
-      { method: "POST" }
-    );
+  /** A session's lifecycle, for a tournament's draft and a mix lobby's alike: the server checks the session's owner. */
+  static async lifecycle(sessionId: number, action: DraftLifecycleAction): Promise<DraftSession> {
+    const res = await apiFetch(`/api/v1/balancer/draft/sessions/${sessionId}/${action}`, { method: "POST" });
+    return res.json();
+  }
+
+  /** A completed tournament draft becomes the tournament's teams (a mix draft writes its lobby's lineup itself). */
+  static async exportDraft(tournamentId: number, sessionId: number): Promise<DraftExportResponse> {
+    const res = await apiFetch(`/api/v1/balancer/draft/tournaments/${tournamentId}/sessions/${sessionId}/export`, {
+      method: "POST"
+    });
     return res.json();
   }
 

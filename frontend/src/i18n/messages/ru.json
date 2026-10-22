@@ -6154,12 +6154,14 @@
     "noRoleHint": "У игрока нет ни одной роли с рангом, поэтому выбрать его не на что. Добавьте ранг в балансировщике.",
     "noRoleHintViewer": "У игрока нет роли с рангом — выбрать его нельзя.",
     "rankSource": {
+      "author": "Ранг хоста",
       "registration": "Указан в заявке",
       "workspace": "Ранг из воркспейса",
       "native": "Ранг из Overwatch",
       "none": "Источник ранга неизвестен"
     },
     "rankSourceShort": {
+      "author": "ХОСТ",
       "registration": "ЗАЯВ",
       "workspace": "ВРКС",
       "native": "OW",

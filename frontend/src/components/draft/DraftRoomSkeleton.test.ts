@@ -87,17 +87,13 @@ describe("standalone Draft loading skeleton", () => {
     }
   });
 
+  // The route page's own composition is rendered in `app/draft/[id]/page.behavior.test.tsx`.
   it("uses the canonical composition in route and client initial loading states", () => {
     const loading = routeSourceFor("loading.tsx");
-    const page = routeSourceFor("page.tsx");
     const board = sourceFor("DraftBoard.tsx");
 
     expect(loading).toContain('import { DraftRoomSkeleton } from "@/components/draft/DraftRoomSkeleton"');
     expect(loading).toContain("return <DraftRoomSkeleton />");
-    expect(page).toContain('import { DraftRoomSkeleton } from "@/components/draft/DraftRoomSkeleton"');
-    expect(page).toContain("shouldShowInitialDraftSkeleton(tournamentQuery)");
-    expect(page).toContain("return <DraftRoomSkeleton />");
-    expect(page).not.toContain("Loader2");
 
     expect(board).toContain("DraftBoardSkeleton");
     expect(board).toContain("shouldShowInitialDraftSkeleton(boardQuery)");

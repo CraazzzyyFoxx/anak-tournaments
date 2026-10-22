@@ -133,7 +133,7 @@ const CURRENT: DraftPick = {
 function board(players: DraftPlayer[], sessionPatch: Partial<DraftBoard["session"]> = {}): DraftBoard {
   return {
     session: {
-      id: 1, tournament_id: 1, workspace_id: 1, discipline: "overwatch", status: "live", blocked_reason: null, format: "snake",
+      id: 1, tournament_id: 1, custom_game_id: null, lobby_index: null, workspace_id: 1, discipline: "overwatch", status: "live", blocked_reason: null, format: "snake",
       rounds: 4, pick_time_seconds: 45, overtime_seconds: 0, roster_shape: SHAPE, current_pick_id: CURRENT.id,
       pool_source: "manual", source_balance_id: null, autopick_strategy: "best_fit", allow_admin_override: true,
       exported_at: null, export_status: null, settings_json: {}, version: 1, created_at: null,

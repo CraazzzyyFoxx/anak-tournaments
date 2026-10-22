@@ -106,6 +106,8 @@ export const tournamentQueryKeys = {
   draftBoard: (tournamentId: number) => ["draft", tournamentId, "board"] as const,
   draftSessions: (tournamentId: number) => ["draft", tournamentId, "sessions"] as const,
   draftSession: (sessionId: number) => ["draft", "session", sessionId] as const,
+  /** One session's board, whoever owns the draft: the room's cache, patched by the session's own topic. */
+  draftSessionBoard: (sessionId: number) => ["draft", "session", sessionId, "board"] as const,
   draftFeasibility: (sessionId: number) =>
     ["draft", "session", sessionId, "feasibility"] as const,
   draftPickOptions: (pickId: number) => ["draft", "pick", pickId, "options"] as const,

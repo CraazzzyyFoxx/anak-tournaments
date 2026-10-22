@@ -15,8 +15,7 @@ import { shouldShowInitialDraftSkeleton } from "@/components/draft/draft-loading
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
-import { usePermissions } from "@/hooks/usePermissions";
-import type { Tournament } from "@/types/tournament.types";
+import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import type { DivisionGrid } from "@/types/workspace.types";
 
 import {
@@ -31,25 +30,37 @@ import { poolRoleColumns } from "@/lib/draft/room-model";
 import { parseDraftViewParams, type DraftViewParams } from "@/lib/draft/workspace-model";
 import { DraftWorkspace } from "./DraftWorkspace";
 
+/** Who a draft belongs to, as the room needs it (spec §9.6): a tournament or a mix lobby. */
+export type DraftOwner = {
+  workspaceId: number;
+  discipline: string;
+  /** The back link's label and target. */
+  name: string;
+  href: string;
+  /** The owner's own grid when it pins one (a tournament's version); null reads the game's workspace grid. */
+  divisionGrid: DivisionGrid | null;
+  /** Whoever runs this draft: a tournament's `team.create` holder, a mix's host or co-host. */
+  isOrganizer: boolean;
+};
+
 interface DraftBoardProps {
-  tournament: Tournament;
+  sessionId: number;
+  owner: DraftOwner;
 }
 
-export function DraftBoard({ tournament }: Readonly<DraftBoardProps>) {
+export function DraftBoard({ sessionId, owner }: Readonly<DraftBoardProps>) {
   const t = useTranslations("draftRedesign");
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const boardQuery = useDraftBoardQuery(tournament.id);
+  const boardKey = tournamentQueryKeys.draftSessionBoard(sessionId);
+  const boardQuery = useDraftBoardQuery(sessionId);
   const board = boardQuery.data ?? null;
-  const { presence, connectionState } = useDraftRealtime(tournament.id, board);
-  const mutations = useDraftMutations(tournament.id);
+  const { presence, connectionState } = useDraftRealtime(boardKey, board);
+  const mutations = useDraftMutations(boardKey);
   const { user } = useAuthProfile();
-  const { canAccessPermission } = usePermissions();
-  // The same right the control room is gated on: whoever may build this
-  // tournament's teams runs its draft. Admin affordances are additive — an
-  // admin who also captains a team keeps the captain's confirm button.
-  const isAdmin = canAccessPermission("team.create", tournament.workspace_id);
+  // An organizer's affordances are additive — one who also captains keeps the captain's confirm button.
+  const isAdmin = owner.isOrganizer;
   const myPlayerIds = useMemo(
     () => (user?.linkedPlayers ?? []).map((player) => player.playerId),
     [user]
@@ -62,8 +73,8 @@ export function DraftBoard({ tournament }: Readonly<DraftBoardProps>) {
     board?.current_pick?.id ?? null,
     Boolean(board && gating?.isMyPick)
   );
-  // The owner game's role dictionary (tournament scope, never the browsing choice): names, glyphs, colours and order.
-  const ontology = useDisciplineMetadata(tournament.workspace_id, tournament.discipline).data ?? null;
+  // The owner game's role dictionary (owner scope, never the browsing choice): names, glyphs, colours and order.
+  const ontology = useDisciplineMetadata(owner.workspaceId, owner.discipline).data ?? null;
   // `?role=` is a filter only for a role this draft's pool has a column for.
   const roleColumns = useMemo(
     () => (board ? poolRoleColumns(board.session.roster_shape, board.players) : []),
@@ -73,17 +84,11 @@ export function DraftBoard({ tournament }: Readonly<DraftBoardProps>) {
     () => parseDraftViewParams(new URLSearchParams(searchParams.toString()), roleColumns),
     [searchParams, roleColumns]
   );
-  // Tournament grid first — a draft is seeded, balanced and displayed on the
-  // grid its OWN tournament is configured with. The workspace default is the
-  // fallback when the tournament pins no version, scoped to the same game.
-  const workspaceGrid = useDivisionGrid(tournament.discipline);
-  const divisionGrid: DivisionGrid = useMemo(
-    () =>
-      tournament.division_grid_version?.tiers
-        ? { tiers: tournament.division_grid_version.tiers }
-        : workspaceGrid,
-    [tournament.division_grid_version, workspaceGrid]
-  );
+  // The owner's grid first — a draft is seeded, balanced and displayed on the
+  // grid its OWN owner is configured with. The workspace default is the
+  // fallback when the owner pins no version, scoped to the same game.
+  const workspaceGrid = useDivisionGrid(owner.discipline);
+  const divisionGrid: DivisionGrid = owner.divisionGrid ?? workspaceGrid;
 
   const updateViewParams = (patch: Partial<DraftViewParams>) => {
     const next = new URLSearchParams(searchParams.toString());
@@ -105,7 +110,7 @@ export function DraftBoard({ tournament }: Readonly<DraftBoardProps>) {
   }
 
   // Every dead end keeps a way out: the room has no site navigation around it.
-  const back = { href: `/tournaments/${tournament.id}`, label: t("room.back") };
+  const back = { href: owner.href, label: t("room.back") };
 
   if (boardQuery.isError && !board) {
     return (
@@ -146,7 +151,7 @@ export function DraftBoard({ tournament }: Readonly<DraftBoardProps>) {
   return (
     <div className="w-full pb-[env(safe-area-inset-bottom)]">
       <DraftWorkspace
-        tournament={tournament}
+        owner={owner}
         board={board}
         gating={gating}
         presence={presence}

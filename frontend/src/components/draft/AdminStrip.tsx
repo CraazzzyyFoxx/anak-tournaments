@@ -161,12 +161,16 @@ export function AdminStrip({ board, mutations, onlineCaptainIds, ontology }: Rea
               ) : (
                 <>
                   <AlertTriangle className="h-4 w-4" aria-hidden />
-                  <Link
-                    href={`/admin/tournaments/${session.tournament_id}/teams/draft`}
-                    className="rounded-sm underline underline-offset-2 outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-                  >
-                    {t("admin.infeasible")}
-                  </Link>
+                  {session.tournament_id != null ? (
+                    <Link
+                      href={`/admin/tournaments/${session.tournament_id}/teams/draft`}
+                      className="rounded-sm underline underline-offset-2 outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+                    >
+                      {t("admin.infeasible")}
+                    </Link>
+                  ) : (
+                    t("admin.infeasible")
+                  )}
                 </>
               )}
             </span>

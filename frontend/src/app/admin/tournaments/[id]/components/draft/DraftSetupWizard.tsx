@@ -281,7 +281,7 @@ export function DraftSetupWizard({
   });
 
   const startMutation = useMutation({
-    mutationFn: () => draftService.lifecycle(tournamentId, session!.id, "start"),
+    mutationFn: () => draftService.lifecycle(session!.id, "start"),
     onSuccess: async (result) => {
       setLocalSession(result);
       notify.success(t("draftStarted"));
@@ -293,7 +293,7 @@ export function DraftSetupWizard({
   const cancelMutation = useMutation({
     mutationFn: () => {
       if (!session) throw new Error("Draft session is missing");
-      return draftService.lifecycle(tournamentId, session.id, "cancel");
+      return draftService.lifecycle(session.id, "cancel");
     },
     onSuccess: async (result) => {
       queryClient.setQueryData<DraftBoard | null>(boardKey, (current) =>

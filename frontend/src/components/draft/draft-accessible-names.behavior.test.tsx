@@ -115,7 +115,7 @@ function board(shape: RosterShape, players: DraftPlayer[]): DraftBoard {
   });
   return {
     session: {
-      id: 1, tournament_id: 1, workspace_id: 1, discipline: "overwatch", status: "live", blocked_reason: null,
+      id: 1, tournament_id: 1, custom_game_id: null, lobby_index: null, workspace_id: 1, discipline: "overwatch", status: "live", blocked_reason: null,
       format: "snake", rounds: 5, pick_time_seconds: 45, overtime_seconds: 0, roster_shape: shape,
       current_pick_id: onClock.id, pool_source: "manual", source_balance_id: null, autopick_strategy: "best_fit",
       allow_admin_override: true, exported_at: null, export_status: null, settings_json: {}, version: 1, created_at: null
@@ -131,8 +131,8 @@ function board(shape: RosterShape, players: DraftPlayer[]): DraftBoard {
 
 const CAPTAIN_ON_TURN: DraftGating = { myTeamId: 1, isCaptain: true, isAdmin: false, isMyPick: true, isSpectator: false };
 
-/** Every button's accessible name in the card: its `aria-label`, else its text. */
-async function cardButtonNames(
+/** The open player card, rendered through a real catalog; the caller reads it, then unmounts. */
+async function renderCard(
   messages: typeof en,
   locale: string,
   { shape, player, role, ontology }: { shape: RosterShape; player: DraftPlayer; role: string; ontology: typeof OW_METADATA }
@@ -171,11 +171,26 @@ async function cardButtonNames(
       </NextIntlClientProvider>
     );
   });
+  return {
+    container,
+    unmount: () => {
+      act(() => root.unmount());
+      container.remove();
+    }
+  };
+}
+
+/** Every button's accessible name in the card: its `aria-label`, else its text. */
+async function cardButtonNames(
+  messages: typeof en,
+  locale: string,
+  setup: { shape: RosterShape; player: DraftPlayer; role: string; ontology: typeof OW_METADATA }
+) {
+  const { container, unmount } = await renderCard(messages, locale, setup);
   const names = [...container.querySelectorAll("button")].map(
     (button) => button.getAttribute("aria-label") ?? (button.textContent ?? "").trim()
   );
-  act(() => root.unmount());
-  container.remove();
+  unmount();
   return names;
 }
 
@@ -207,6 +222,20 @@ describe("the player card", () => {
     expectDistinct(names);
     expect(names).toContain("Select Ana#1234");
     expect(names).toContain("Pick Ana#1234");
+  });
+});
+
+describe("the role tiles", () => {
+  it.each([
+    ["en", en, "Host's rank", "HOST"],
+    ["ru", ru, "Ранг хоста", "ХОСТ"]
+  ] as const)("says a mix rank comes from the host's book (%s)", async (locale, messages, label, short) => {
+    const player = { ...ana, role_sources: { support: "author" as const } };
+    const { container, unmount } = await renderCard(messages, locale, { shape: OW_SHAPE, player, role: "support", ontology: OW_METADATA });
+    const badge = [...container.querySelectorAll("span[title]")].find((span) => span.getAttribute("title") === label);
+
+    expect(badge?.textContent).toBe(short);
+    unmount();
   });
 });
 

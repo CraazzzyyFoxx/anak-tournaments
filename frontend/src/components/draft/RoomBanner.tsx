@@ -98,7 +98,7 @@ export function RoomBanner({ board, gating, autopickPreview }: Readonly<RoomBann
           style={{ color: textColor }}
         >
           <span>{text}</span>
-          {adminLink && (
+          {adminLink && session.tournament_id != null && (
             <Link
               href={`/admin/tournaments/${session.tournament_id}/teams/draft`}
               className="inline-flex min-h-11 items-center rounded-sm underline underline-offset-2 outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] sm:min-h-0"
