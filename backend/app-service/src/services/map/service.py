@@ -2,18 +2,19 @@ import typing
 from dataclasses import replace
 
 import sqlalchemy as sa
-from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from shared import models
 from shared.core import pagination
 from shared.repository.stats_reads import duel_matches
+from shared.services.cache_generations import versioned
 from src import schemas
 from src.core import config
 from src.services.hero.queries import HeroQueries
 from src.services.hero.service import heroes as hero_service
 from src.services.user.service import users as user_service
+from src.services.user_cache import user_generations
 
 __all__ = ("MapService", "maps")
 
@@ -26,7 +27,8 @@ class MapService:
         """The catalog entity of a map; its mode is ``parent`` (loaded by the caller when requested)."""
         return schemas.CatalogEntityRead.from_entity(game_map, with_parent="parent" in entities)
 
-    @cache(
+    @versioned(
+        generations=user_generations("{id}"),
         ttl=config.settings.users_cache_ttl,
         key=(
             "backend:user_maps:{id}:{discipline}:{workspace_id}:{params.page}:{params.per_page}:{params.sort}:"

@@ -3,7 +3,7 @@
 Their values are pickled in a Redis that outlives a deploy, and cashews hands an unpickled value back without
 re-validating its nested models, so a warm pre-cutover entry would serve match documents without ``participants``.
 The names changed instead (``native_encounters*``): nothing asks for an old entry any more. These tests pin the new
-names against the keys cashews really renders, and that every tournament write still evicts them.
+names against the keys cashews really renders, and that every tournament write still misses them.
 """
 
 from __future__ import annotations
@@ -25,16 +25,18 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 
 flows = importlib.import_module("src.services.encounter.flows")
 schemas = importlib.import_module("src.schemas")
-invalidation = importlib.import_module("src.services.tournament.cache_invalidation")
 
-from shared.services.realtime import Resource, Scope  # noqa: E402
+from shared.schemas.events import CacheInvalidatedEvent  # noqa: E402
+from shared.services.realtime import Resource  # noqa: E402
+from shared.services.realtime.consumer import invalidate_from_event  # noqa: E402
+from shared.testing.cache import configure_test_cache  # noqa: E402
 
 _PRE_CUTOVER = ("encounters", "encounters_overview")
 
 
 def _key(template: str, function, *, workspace_id: int | None, tournament_id: int | None) -> str:
-    """The stored key: cashews renders ``prefix`` + ``:`` + template, so ``prefix="fastapi:"`` stores ``fastapi::...``.
-    The invalidation globs lead with ``*``, which is what keeps them indifferent to that second colon."""
+    """The stored key's prefix: cashews renders ``prefix`` + ``:`` + template (``fastapi::...``), then the
+    tournament's generations."""
     kwargs = {
         "workspace_id": workspace_id,
         "params": schemas.EncounterSearchParams(tournament_id=tournament_id),
@@ -43,11 +45,40 @@ def _key(template: str, function, *, workspace_id: int | None, tournament_id: in
     return "fastapi::" + get_cache_key(inspect.unwrap(function), template, kwargs=kwargs)
 
 
+async def _write(tournament_id: int, *resources: Resource) -> None:
+    await invalidate_from_event(
+        CacheInvalidatedEvent(scope_kind="tournament", scope_id=tournament_id, resources=[str(r) for r in resources])
+    )
+
+
+_EMPTY_OVERVIEW = {
+    "total": 0,
+    "with_logs_count": 0,
+    "recent_count": 0,
+    "avg_closeness": None,
+    "live_now_count": 0,
+    "upcoming_count": 0,
+    "histogram_rows": [],
+    "score_rows": [],
+    "stage_rows": [],
+    "hot_map_rows": [],
+    "avg_series_seconds": None,
+    "completed_series_count": 0,
+    "sweep_count": 0,
+    "went_distance_count": 0,
+    "slot_one_wins": 0,
+    "slot_two_wins": 0,
+    "closest": [],
+    "upcoming": [],
+    "live": [],
+    "preset_counts": {},
+}
+
+
 class EncounterCacheNamespaceTests(IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        cache.setup("mem://", prefix="fastapi:")
-        cache.setup("mem://", prefix="backend:")
-        await cache.delete_match("fastapi:*")
+        configure_test_cache()
+        await cache.clear()
 
     def test_both_families_moved_off_their_pre_cutover_names(self) -> None:
         for template, function, name in (
@@ -63,7 +94,7 @@ class EncounterCacheNamespaceTests(IsolatedAsyncioTestCase):
             for old in _PRE_CUTOVER:
                 self.assertFalse(key.startswith(f"fastapi::{old}:"), f"{key!r} is still in the pre-cutover namespace")
 
-    async def test_the_decorated_list_writes_the_native_key_and_a_tournament_write_drops_it(self) -> None:
+    async def test_the_decorated_list_writes_the_native_key_and_a_tournament_write_misses_it(self) -> None:
         service = flows.flows_service
         read = AsyncMock(return_value=([], 0))
         with (
@@ -76,55 +107,29 @@ class EncounterCacheNamespaceTests(IsolatedAsyncioTestCase):
                 await service.get_all_encounters(
                     object(), schemas.EncounterSearchParams(tournament_id=tournament_id), workspace_id=5
                 )
-            stored = sorted([key async for key in cache.scan("fastapi:*")])
+            stored = [key async for key in cache.scan("fastapi:*")]
             self.assertEqual(2, len(stored))
-            self.assertEqual(
-                sorted(
-                    _key(
-                        flows.ENCOUNTERS_CACHE_KEY,
-                        flows.EncounterFlowsService.get_all_encounters,
-                        workspace_id=5,
-                        tournament_id=t,
-                    )
-                    for t in (7, 70)
-                ),
-                stored,
-            )
+            for tournament_id in (7, 70):
+                prefix = _key(
+                    flows.ENCOUNTERS_CACHE_KEY,
+                    flows.EncounterFlowsService.get_all_encounters,
+                    workspace_id=5,
+                    tournament_id=tournament_id,
+                )
+                self.assertEqual(1, sum(key.startswith(prefix) for key in stored), (prefix, stored))
 
-            await invalidation.invalidate_tournament_resources(
-                Scope.tournament(7), frozenset({Resource.TOURNAMENT_ENCOUNTERS})
-            )
+            await _write(7, Resource.TOURNAMENT_ENCOUNTERS)
 
-            # Tournament 7 is evicted and 70 is not: the id is terminated in the pattern.
-            self.assertEqual([key for key in stored if ":5:70:" in key], [key async for key in cache.scan("fastapi:*")])
-            await service.get_all_encounters(object(), schemas.EncounterSearchParams(tournament_id=7), workspace_id=5)
-        self.assertEqual(3, read.await_count, "the eviction did not force a rebuild")
+            # Tournament 7 is rebuilt and 70 is not: a generation names one tournament exactly.
+            for tournament_id in (7, 70):
+                await service.get_all_encounters(
+                    object(), schemas.EncounterSearchParams(tournament_id=tournament_id), workspace_id=5
+                )
+        self.assertEqual(3, read.await_count, "the write did not force exactly one rebuild")
 
-    async def test_the_decorated_overview_writes_the_native_key_and_a_tournament_write_drops_it(self) -> None:
+    async def test_the_decorated_overview_writes_the_native_key_and_a_tournament_write_misses_it(self) -> None:
         service = flows.flows_service
-        empty = {
-            "total": 0,
-            "with_logs_count": 0,
-            "recent_count": 0,
-            "avg_closeness": None,
-            "live_now_count": 0,
-            "upcoming_count": 0,
-            "histogram_rows": [],
-            "score_rows": [],
-            "stage_rows": [],
-            "hot_map_rows": [],
-            "avg_series_seconds": None,
-            "completed_series_count": 0,
-            "sweep_count": 0,
-            "went_distance_count": 0,
-            "slot_one_wins": 0,
-            "slot_two_wins": 0,
-            "closest": [],
-            "upcoming": [],
-            "live": [],
-            "preset_counts": {},
-        }
-        read = AsyncMock(return_value=empty)
+        read = AsyncMock(return_value=_EMPTY_OVERVIEW)
         with (
             patch.object(service.encounters, "get_overview_data", read),
             patch.object(flows, "resolve_encounter_challonge", AsyncMock(return_value={})),
@@ -138,37 +143,36 @@ class EncounterCacheNamespaceTests(IsolatedAsyncioTestCase):
                 workspace_id=5,
                 tournament_id=7,
             )
-            self.assertEqual([expected], [key async for key in cache.scan("fastapi:*")])
+            [stored] = [key async for key in cache.scan("fastapi:*")]
+            self.assertTrue(stored.startswith(expected), stored)
 
-            await invalidation.invalidate_tournament_resources(
-                Scope.tournament(7), frozenset({Resource.TOURNAMENT_ENCOUNTERS})
-            )
-
-            self.assertEqual([], [key async for key in cache.scan("fastapi:*")])
             await service.get_encounters_overview(object(), params, workspace_id=5)
-        self.assertEqual(2, read.await_count, "the eviction did not force a rebuild")
+            await _write(7, Resource.TOURNAMENT_ENCOUNTERS)
+            await service.get_encounters_overview(object(), params, workspace_id=5)
+        self.assertEqual(2, read.await_count, "the write did not force a rebuild")
 
-    async def test_every_resource_that_changes_an_encounter_drops_both_families(self) -> None:
-        keys = {
-            family: _key(template, function, workspace_id=5, tournament_id=7)
-            for family, template, function in (
-                ("list", flows.ENCOUNTERS_CACHE_KEY, flows.EncounterFlowsService.get_all_encounters),
-                ("overview", flows.ENCOUNTERS_OVERVIEW_CACHE_KEY, flows.EncounterFlowsService.get_encounters_overview),
-            )
-        }
-        other = _key(
-            flows.ENCOUNTERS_OVERVIEW_CACHE_KEY,
-            flows.EncounterFlowsService.get_encounters_overview,
-            workspace_id=5,
-            tournament_id=8,
-        )
-        for resource in (Resource.TOURNAMENT_ENCOUNTERS, Resource.TOURNAMENT_STRUCTURE):
-            for key in (*keys.values(), other):
-                await cache.set(key, 1)
+    async def test_every_resource_that_changes_an_encounter_misses_both_families(self) -> None:
+        service = flows.flows_service
+        page = AsyncMock(return_value=([], 0))
+        overview = AsyncMock(return_value=_EMPTY_OVERVIEW)
+        with (
+            patch.object(service.encounters, "get_all_encounters", page),
+            patch.object(service.encounters, "get_overview_data", overview),
+            patch.object(flows, "resolve_encounter_challonge", AsyncMock(return_value={})),
+            patch.object(flows, "resolve_tournament_challonge", AsyncMock(return_value={})),
+            patch.object(flows, "resolve_slot_sources", AsyncMock(return_value={})),
+        ):
 
-            await invalidation.invalidate_tournament_resources(Scope.tournament(7), frozenset({resource}))
+            async def read_all() -> None:
+                for tournament_id in (7, 8):
+                    params = schemas.EncounterSearchParams(tournament_id=tournament_id)
+                    await service.get_all_encounters(object(), params, workspace_id=5)
+                    await service.get_encounters_overview(object(), params, workspace_id=5)
 
-            for family, key in keys.items():
-                self.assertIsNone(await cache.get(key), f"{resource}: the {family} entry survived the write")
-            self.assertEqual(1, await cache.get(other), f"{resource}: another tournament's entry was evicted")
-            await cache.delete_match("fastapi:*")
+            await read_all()
+            for resource in (Resource.TOURNAMENT_ENCOUNTERS, Resource.TOURNAMENT_STRUCTURE):
+                before = (page.await_count, overview.await_count)
+                await _write(7, resource)
+                await read_all()
+                # Tournament 7's list and overview rebuilt once each; tournament 8's stayed cached.
+                self.assertEqual((before[0] + 1, before[1] + 1), (page.await_count, overview.await_count), resource)

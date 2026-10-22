@@ -16,6 +16,7 @@ from shared.repository import (
 from shared.repository.stats_reads import MatchReadContext
 from shared.schemas.catalog import CatalogEntityRead
 from shared.schemas.match import MatchEventsRead
+from shared.services.cache_generations import versioned
 from shared.services.challonge_refs import (
     ChallongeRef,
     resolve_encounter_challonge,
@@ -30,13 +31,14 @@ from src.services.map.flows import MapFlowsService, map_to_read
 from src.services.map.flows import flows_service as map_flows_service
 from src.services.team.flows import TeamFlowsService
 from src.services.team.flows import flows_service as team_flows_service
+from src.services.tournament.cache_resources import ENCOUNTERS, tournament_generations
 from src.services.tournament.flows import TournamentFlowsService
 from src.services.tournament.flows import flows_service as tournament_flows_service
 
 # Both families embed ``MatchRead`` (and ``EncounterGameRead.map``/``.mode``). Their values are pickled in a persistent
 # Redis that outlives a deploy and cashews returns an unpickled value as it is, without re-validating its nested models,
 # so a wire change to those models needs a new namespace (``native_``, then ``:v2``), not a TTL wait.
-# ``cache_resources._encounters`` evicts both through ``*encounters*:{tournament_id}:*``;
+# ``ENCOUNTERS`` (``tournament/cache_resources.py``) names the writes that miss both;
 # ``tests/test_encounter_cache_namespaces.py`` pins that against the keys cashews renders from these templates.
 _ENCOUNTER_QUERY_KEY = (
     "{workspace_id}:{params.tournament_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}:"
@@ -388,7 +390,8 @@ class EncounterFlowsService:
             slot_sources=await resolve_slot_sources(session, [encounter.id]),
         )
 
-    @cache(
+    @versioned(
+        generations=tournament_generations("{params.tournament_id}", ENCOUNTERS),
         ttl=config.settings.encounters_cache_ttl,
         key=ENCOUNTERS_CACHE_KEY,
         prefix="fastapi:",
@@ -475,7 +478,8 @@ class EncounterFlowsService:
             saved_view_id=saved_view_id,
         )
 
-    @cache(
+    @versioned(
+        generations=tournament_generations("{params.tournament_id}", ENCOUNTERS),
         ttl=config.settings.encounters_cache_ttl,
         key=ENCOUNTERS_OVERVIEW_CACHE_KEY,
         prefix="fastapi:",
@@ -647,8 +651,8 @@ class EncounterFlowsService:
 
     @cache(
         ttl=config.settings.match_cache_ttl,
-        # No tournament_id in the args, so this key can't participate in the
-        # targeted invalidation patterns — staleness is bounded by the short TTL.
+        # No tournament_id in the args, so this key can't carry a tournament's
+        # cache generations — staleness is bounded by the short TTL.
         # ``native_`` namespaces the participant/fact document shape: a cached value of another shape is never read.
         key="native_match_stats:v2:{match_id}:{entities}:{workspace_id}",
         prefix="fastapi:",

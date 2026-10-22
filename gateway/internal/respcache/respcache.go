@@ -91,14 +91,13 @@ const (
 	maxTotalBytes = 32 << 20
 	// upstreamSettle caps the life of an entry filled shortly after an
 	// invalidation of its tournament. The event lands here right after the
-	// writer's commit, but a service that caches the same read without owning
-	// the write (tournament-service's teams list after a balancer export)
-	// drops its copy only when the outbox relay — a 1s tick, then a keyspace
-	// SCAN — delivers the event. A fill in that gap is the upstream's pre-write
-	// copy, and with no event left to evict it, it used to live a full TTL.
-	// ponytail: fixed window; an upstream lagging past it (broker outage) is
-	// still TTL-bounded. Exact would be the owning consumer re-announcing the
-	// invalidation after its own drop.
+	// writer's commit, and the services caching the same read have already
+	// missed it by then (the commit bumps their shared cache generations) —
+	// unless that bump failed, in which case they miss only when the outbox
+	// relay re-bumps (a 1s tick). A fill in that gap is the upstream's
+	// pre-write copy, and with no event left to evict it, it would live a full
+	// TTL. ponytail: fixed window; an upstream lagging past it (broker outage)
+	// is still TTL-bounded.
 	upstreamSettle = 10 * time.Second
 )
 

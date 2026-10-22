@@ -138,26 +138,23 @@ See the [P2 release guide](../../docs/multi-game-p2-roles-release.md) for all wi
 
 ### Consumed queue
 
-`tournament_changed_app_service`, bound to the `tournament.changed` topic exchange on
-`tournament.changed.*` (`shared/messaging/config.py`). Tournament-service publishes onto that
-exchange through the transactional outbox whenever public tournament data changes, and
-stats-service does the same when a match log lands; app-service and tournament-service each hold
-their own durable queue on it, so both see every event.
+`cache_invalidation_app_service` (`CACHE_INVALIDATION_APP_QUEUE`), bound to the
+`cache.invalidation` exchange. A service whose write stales a tournament resource that another
+service caches enqueues a `CacheInvalidatedEvent` there through the transactional outbox
+(`shared.services.realtime.enqueue_invalidation_outbox`).
 
-On each event (`src/services/tournament_events.py`) this worker:
+On each event (`shared/services/realtime/consumer.py`, registered in `serve.py`) this worker:
 
-1. skips `reason == "bracket_changed"` — nothing it caches depends on bracket shape, which makes
-   stats-service's match-log event a no-op here;
-2. `delete_match`es the affected Redis read-cache patterns: `*tournaments/{id}*`, every user-scoped
-   flow key (the event does not name the users a tournament touched), the users-overview id order,
-   and the per-workspace achievement-rarity aggregate;
-3. requests a debounced refresh of the `stats.mv_entity_global_stats` materialized view.
+1. re-bumps the cache generations of the event's resources — the writer's commit already bumped
+   them, this is the durable retry. The user-scoped flow keys (the event does not name the users a
+   tournament touched), the users-overview id order and the per-workspace achievement-rarity
+   aggregate are all keyed by `user_cache.TOURNAMENT_DATA`, so no key is ever matched by pattern;
+2. on `tournament.standings`, requests a debounced refresh of the `stats.mv_entity_global_stats`
+   materialized view.
 
-This invalidates **this service's** Redis cache only. The gateway's own anonymous response cache is
-invalidated separately, off the `realtime:tournament:{id}:{bracket,draft}` Redis channels that
-tournament-service publishes from its consumer of the same exchange; the gateway subscribes to those
-for WebSocket fan-out and reuses the signal (`gateway/internal/respcache`). Nothing app-service does
-reaches the gateway cache directly.
+The gateway's own anonymous response cache is invalidated separately, off the realtime
+invalidation topics the writer publishes after its commit (`gateway/internal/respcache`). Nothing
+app-service does reaches the gateway cache directly.
 
 ### Published events
 

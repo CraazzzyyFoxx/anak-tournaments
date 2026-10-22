@@ -1,13 +1,14 @@
-from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core import enums, errors, pagination, utils
 from shared.division_grid import DivisionGrid
+from shared.services.cache_generations import versioned
 from shared.services.division_grid.resolution import resolve_tournament_division
 from src import schemas
 from src.core import config
 from src.core.workspace import get_division_grid
+from src.services.tournament.cache_resources import TEAMS, tournament_generations
 from src.services.tournament.flows import flows_service as tournament_flows_service
 from src.services.user.flows import flows_service as user_flows_service
 from src.services.user.flows import user_to_read
@@ -202,8 +203,9 @@ class TeamFlowsService:
         return await self.teams.get_player(session, player_id, entities)
 
     # `v2` key version: Redis keeps values across a deploy and cashews returns them unvalidated, so a
-    # `TeamRead` shape change must bump it; `cache_resources._teams` evicts all.
-    @cache(
+    # `TeamRead` shape change must bump it.
+    @versioned(
+        generations=tournament_generations("{params.tournament_id}", TEAMS),
         ttl=config.settings.teams_cache_ttl,
         key="teams:v2:{workspace_id}:{params.tournament_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}:{params.entities}:{params.search}:{params.discipline}",
         prefix="fastapi:",

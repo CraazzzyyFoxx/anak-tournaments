@@ -17,7 +17,7 @@ class Settings(BaseServiceSettings):
     encounters_cache_ttl: int = 60 * 5
     # Match detail pages can change mid-series (live score edits), so they rely
     # on a short TTL instead of targeted invalidation (the key has no
-    # tournament_id for the invalidation patterns to match on).
+    # tournament_id to name a tournament's cache generations by).
     match_cache_ttl: int = 30
 
     # Subscription-entitlement provider credentials. Optional: without it Twitch

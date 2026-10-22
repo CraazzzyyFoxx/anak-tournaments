@@ -54,9 +54,9 @@ app = FastStream(broker)
 # before any RPC read path hits the cache.
 configure_cache()
 # Same reason, same place: the realtime rail is a process-global too, and every
-# `emit` in this worker is a no-op until it knows where to publish. No
-# `cache_invalidator` — balancer-service keeps no cashews table of its own, so
-# there is nothing local to drop before the publish.
+# `emit` in this worker is a no-op until it knows where to publish. It also
+# routes the shared cache generations: an export's commit bumps them, so the
+# tournament/app caches of what it wrote miss before its reply leaves.
 configure_realtime(redis_url=config.redis_url)
 # Quota policy lives in the ``quota`` schema and consumption in Redis; the gate
 # needs both before the first metered RPC. Its own session factory, not the

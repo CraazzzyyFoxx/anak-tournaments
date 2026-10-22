@@ -1,15 +1,16 @@
 {
   "$comment": [
     "Single source of truth for the realtime invalidation vocabulary.",
-    "A resource names WHAT went stale, never WHY. Four tables mirror this file:",
+    "A resource names WHAT went stale, never WHY. Three tables mirror this file:",
     "  - backend/shared/services/realtime/resources.py            (Resource enum)",
     "  - gateway/internal/respcache/resources.go                  (URL substrings)",
     "  - frontend/src/lib/realtime/resources.ts                   (query keys)",
-    "  - per-service RESOURCE_CACHE_PATTERNS (cashews globs)",
     "Each of those has a parity test against this file, so a resource cannot be",
     "published without every consumer knowing what to drop, and a consumer",
-    "cannot keep a rule for a resource nobody publishes.",
-    "Adding a resource: add it here first, then run the four parity tests and",
+    "cannot keep a rule for a resource nobody publishes. Server-side caches name",
+    "the resources they depend on where each read is cached (cache generations,",
+    "shared/services/cache_generations.py); an emit bumps them.",
+    "Adding a resource: add it here first, then run the three parity tests and",
     "fix what they report. Bump `version` on any breaking payload change."
   ],
   "version": 1,

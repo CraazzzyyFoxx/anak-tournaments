@@ -305,11 +305,19 @@ refetching.
 
 Cache decorators live on `services/` methods, never on a repository or a `domain/` function.
 Backends are registered per key-prefix in `src/core/caching.py`: cashews has no default backend
-and raises `NotConfiguredError` for an unroutable key, so **every** entrypoint that can read,
-write, or invalidate the cache calls `configure_cache()` before the first subscriber runs
-(`app-service/serve.py`). The prefix tuple in `core/caching.py` is the single source for
-invalidation patterns — an invalidation consumer generates its patterns from it rather than
-re-typing them.
+and raises `NotConfiguredError` for an unroutable key, so **every** entrypoint that can read or
+write the cache calls `configure_cache()` before the first subscriber runs (`app-service/serve.py`).
+
+Nothing invalidates by pattern (a `delete_match` is a keyspace `SCAN`; under load it times out and
+the drop is silently lost). A read that a write can stale is cached with
+`shared.services.cache_generations.versioned`, whose key carries the current *generations* it
+names: `resource_generation(resource, "{tournament_id}")` for a tournament-scoped read,
+`resource_generation(resource)` (any tournament) for an aggregate across them, or a service's own
+name (`user_cache`, `division_grid/cache.py`). `emit`'s commit bumps the generations of every
+resource it staled — one `SET` each, in the Redis all services share (`configure_realtime`) —
+so another service's cached copy misses before the writer's `commit()` returns; the
+`cache.invalidated` outbox consumer re-bumps them durably. A new cached read names its
+generations; a new write only has to `emit` what it staled.
 
 ## Errors
 

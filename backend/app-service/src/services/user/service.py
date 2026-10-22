@@ -13,6 +13,7 @@ from shared.disciplines import DISCIPLINES
 from shared.division_grid import DivisionGrid
 from shared.repository import TournamentRepository
 from shared.schemas.role import RoleRef
+from shared.services.cache_generations import versioned
 from shared.services.division_grid.access import (
     build_workspace_division_grid_normalizer,
     get_effective_division_grid_version_ids,
@@ -33,6 +34,7 @@ from src.core.workspace import get_division_grid, get_division_grid_version
 from src.services.discipline_queries import DisciplineQueries
 from src.services.hero.service import heroes as hero_service
 from src.services.statistics.queries import StatisticsQueries
+from src.services.user_cache import COMPARE_GENERATIONS, user_generations
 
 from . import _mappers
 from .queries.compare import COMPARE_METRIC_DEFINITIONS, UserCompareQueries
@@ -700,7 +702,8 @@ class UserService(DisciplineQueries):
             metrics=metrics,
         )
 
-    @cache(
+    @versioned(
+        generations=COMPARE_GENERATIONS,
         ttl=config.settings.users_cache_ttl,
         key=(
             "backend:user_compare:v3:{id}:{self.discipline}:{baseline}:{target_user_id}:{role}:{div_min}:{div_max}:"
@@ -958,7 +961,8 @@ class UserService(DisciplineQueries):
             metrics=metrics,
         )
 
-    @cache(
+    @versioned(
+        generations=COMPARE_GENERATIONS,
         ttl=config.settings.users_cache_ttl,
         key=(
             "backend:user_character_compare:v3:{id}:{self.discipline}:{baseline}:{target_user_id}:{left_hero_id}:"
@@ -1130,9 +1134,10 @@ class UserService(DisciplineQueries):
     # Cache key intentionally omits `session`, `grid`, `normalizer` — they're
     # either non-hashable runtime fixtures (session) or derivable from workspace_id
     # (grid/normalizer are loaded fresh for the workspace). Workspace-level grid
-    # changes are rare; any tournament-resource ``CacheInvalidatedEvent`` drops every
-    # ``user_*`` key (``user_cache.tournament_user_cache_patterns``).
-    @cache(
+    # changes are rare; any tournament write that moves a user aggregate misses
+    # every ``user_*`` key (``user_cache.TOURNAMENT_DATA``).
+    @versioned(
+        generations=user_generations("{id}"),
         ttl=config.settings.user_profile_cache_ttl,
         key="backend:user_profile:{id}:{self._discipline}:{workspace_id}:native",
     )
@@ -1326,7 +1331,8 @@ class UserService(DisciplineQueries):
             )
         return summaries
 
-    @cache(
+    @versioned(
+        generations=user_generations("{id}"),
         ttl=config.settings.users_cache_ttl,
         key="backend:user_draft_card:{id}:{self.discipline}:{workspace_id}:native",
     )
@@ -1436,7 +1442,8 @@ class UserService(DisciplineQueries):
             recent_tournaments=list(recent.values()),
         )
 
-    @cache(
+    @versioned(
+        generations=user_generations("{id}"),
         ttl=config.settings.users_cache_ttl,
         key="backend:user_tournaments:{id}:{self._discipline}:{workspace_id}:native",
     )
@@ -1563,7 +1570,8 @@ class UserService(DisciplineQueries):
 
         return output
 
-    @cache(
+    @versioned(
+        generations=user_generations("{id}"),
         ttl=config.settings.users_cache_ttl,
         key="backend:user_tournament_encounters:v7:{id}:{self.discipline}:{tournament_id}",
     )
@@ -1632,10 +1640,11 @@ class UserService(DisciplineQueries):
         ]
 
     # ``grid`` is a pure function of ``tournament_id`` (a tournament pins its own
-    # division_grid_version), so it stays out of the key; a tournament-resource
-    # ``CacheInvalidatedEvent`` broadly drops ``user_tournament_stats:v2:*``
-    # (``user_cache.tournament_user_cache_patterns``).
-    @cache(
+    # division_grid_version), so it stays out of the key; a tournament write that
+    # moves a user aggregate misses every ``user_tournament_stats:v2`` key
+    # (``user_cache.TOURNAMENT_DATA``).
+    @versioned(
+        generations=user_generations("{id}"),
         ttl=config.settings.users_cache_ttl,
         key="backend:user_tournament_stats:v2:{id}:{self.discipline}:{tournament_id}:native",
         lock=True,
@@ -1788,7 +1797,8 @@ class UserService(DisciplineQueries):
             workspace_id=workspace_id,
         )
 
-    @cache(
+    @versioned(
+        generations=user_generations("{id}"),
         ttl=config.settings.users_cache_ttl,
         key="backend:user_characters:v2:{id}:{self.discipline}:{workspace_id}:{tournament_id}:{stats_key}:{params.page}:{params.per_page}",
         lock=True,
@@ -1922,7 +1932,8 @@ class UserService(DisciplineQueries):
             for hero, games, won, _lost, _drawn in await self.encounters.get_user_hero_records(session, None)
         }
 
-    @cache(
+    @versioned(
+        generations=user_generations("{id}"),
         ttl=config.settings.users_cache_ttl,
         key="backend:user_teammates:{id}:{self.discipline}:{workspace_id}:{params.page}:{params.per_page}:{params.sort}:{params.order}",
     )
@@ -1957,7 +1968,8 @@ class UserService(DisciplineQueries):
             ],
         )
 
-    @cache(
+    @versioned(
+        generations=user_generations("{user_id}"),
         ttl=config.settings.users_cache_ttl,
         key=(
             "backend:user_encounters:v7:{user_id}:{self._discipline}:{workspace_id}:{params.page}:{params.per_page}:"
@@ -2012,7 +2024,8 @@ class UserService(DisciplineQueries):
             results=encounters_read,
         )
 
-    @cache(
+    @versioned(
+        generations=user_generations("{user_id}"),
         ttl=config.settings.users_cache_ttl,
         key="backend:user_matches_summary:{user_id}:{self.discipline}:{workspace_id}:{opponents_limit}",
     )

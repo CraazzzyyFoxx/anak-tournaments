@@ -1,8 +1,8 @@
 """Parity gate: the Resource enum IS the manifest.
 
-The manifest (``shared/realtime/resources.json``) is the vocabulary four tables
-mirror — this enum, the gateway's URL patterns, the frontend's query keys, and
-each service's cashews globs. Each has a test like this one. Together they are
+The manifest (``shared/realtime/resources.json``) is the vocabulary three tables
+mirror — this enum, the gateway's URL patterns and the frontend's query keys.
+Each has a test like this one. Together they are
 the only mechanical guarantee that a publisher cannot name a resource some
 consumer has never heard of; the previous rail had no such gate, and its three
 ``reason``-to-keys tables drifted apart until a draft pick evicted an entire

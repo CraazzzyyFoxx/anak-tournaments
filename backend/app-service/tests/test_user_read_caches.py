@@ -2,10 +2,9 @@
 
 Guards two things that are easy to break silently:
 
-* the per-flow ``@cache`` keys actually memoize (and normalize their inputs), and
-* every user read-cache prefix is dropped by *both* invalidation shapes
-  (tournament change → broad; profile/identity edit → precise), so a longer TTL
-  never serves stale data.
+* the per-flow ``@versioned`` keys actually memoize (and normalize their inputs), and
+* every user read cache misses after *both* invalidation shapes (a tournament write → every user; a profile/identity
+  edit → that user), so a longer TTL never serves stale data.
 """
 
 from __future__ import annotations
@@ -28,70 +27,77 @@ flows = importlib.import_module("src.services.user.service")
 enums = importlib.import_module("shared.core.enums")
 pagination = importlib.import_module("shared.core.pagination")
 user_cache = importlib.import_module("src.services.user_cache")
-cache_resources = importlib.import_module("src.services.cache_resources")
 users = flows.UserService.of("overwatch")
 
-_ALL_PREFIXES = (*user_cache.USER_CACHE_KEY_PREFIXES, *user_cache.USER_COMPARE_KEY_PREFIXES)
+from shared.schemas.events import CacheInvalidatedEvent  # noqa: E402
+from shared.services.realtime import Resource  # noqa: E402
+from shared.services.realtime.consumer import invalidate_from_event  # noqa: E402
+from shared.testing.cache import configure_test_cache  # noqa: E402
+
+
+async def _tournament_write(*resources: Resource) -> None:
+    await invalidate_from_event(
+        CacheInvalidatedEvent(scope_kind="tournament", scope_id=42, resources=[str(r) for r in resources])
+    )
 
 
 class _CacheTestBase(IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        cache.setup("mem://", prefix="backend:")
-        cache.setup("mem://", prefix="lock:")
-        for prefix in _ALL_PREFIXES:
-            await cache.delete_match(f"backend:{prefix}:*")
+        configure_test_cache()
+        await cache.clear()
 
 
-class UserCacheInvalidationTests(_CacheTestBase):
-    async def test_tournament_patterns_clear_every_user_read_cache(self) -> None:
-        for prefix in _ALL_PREFIXES:
-            await cache.set(f"backend:{prefix}:5:x", 1)
+class _SummaryReads(_CacheTestBase):
+    """``get_matches_summary`` stands in for every per-user read: all of them are keyed by ``user_generations``."""
 
-        for pattern in user_cache.tournament_user_cache_patterns():
-            await cache.delete_match(pattern)
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        self.opponents = AsyncMock(return_value=[])
+        for patcher in (
+            patch.object(users, "get", AsyncMock(return_value=SimpleNamespace(id=1, name="Player"))),
+            patch.object(users.encounters, "get_user_opponents", self.opponents),
+            patch.object(users.encounters, "get_user_stage_breakdown", AsyncMock(return_value=[])),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
-        for prefix in _ALL_PREFIXES:
-            self.assertIsNone(
-                await cache.get(f"backend:{prefix}:5:x"),
-                msg=f"{prefix} survived a tournament-change invalidation",
-            )
+    async def read(self, *user_ids: int) -> int:
+        """Read each user's summary; how many were rebuilt."""
+        before = self.opponents.await_count
+        for user_id in user_ids:
+            await users.get_matches_summary(object(), user_id, workspace_id=1)
+        return self.opponents.await_count - before
 
-    async def test_user_patterns_are_precise_to_the_subject(self) -> None:
-        # Per-user (non-compare) caches must drop only the subject's entries.
-        for prefix in user_cache.USER_CACHE_KEY_PREFIXES:
-            await cache.set(f"backend:{prefix}:5:x", 1)
-            await cache.set(f"backend:{prefix}:6:x", 1)
 
-        for pattern in user_cache.user_cache_patterns(5):
-            await cache.delete_match(pattern)
+class UserCacheInvalidationTests(_SummaryReads):
+    async def test_a_tournament_write_misses_every_users_reads(self) -> None:
+        # The event does not name the users a tournament touched.
+        self.assertEqual(2, await self.read(5, 6))
+        for resource in (
+            Resource.TOURNAMENT_STANDINGS,
+            Resource.TOURNAMENT_TEAMS,
+            Resource.TOURNAMENT_STRUCTURE,
+            Resource.TOURNAMENT_DETAIL,
+            Resource.TOURNAMENT_STAGES,
+        ):
+            await _tournament_write(resource)
+            self.assertEqual(2, await self.read(5, 6), resource)
 
-        for prefix in user_cache.USER_CACHE_KEY_PREFIXES:
-            self.assertIsNone(await cache.get(f"backend:{prefix}:5:x"))
-            self.assertEqual(1, await cache.get(f"backend:{prefix}:6:x"))
+    async def test_a_score_report_or_a_registration_misses_no_users_reads(self) -> None:
+        self.assertEqual(2, await self.read(5, 6))
+        await _tournament_write(Resource.TOURNAMENT_ENCOUNTERS, Resource.TOURNAMENT_REGISTRATIONS)
+        self.assertEqual(0, await self.read(5, 6))
 
-    async def test_invalidate_user_caches_routes_every_pattern(self) -> None:
-        await cache.set("backend:user_characters:v2:9:x", 1)
-        await cache.set("backend:user_matches_summary:9:x", 1)
-        await cache.set("backend:user_compare:v3:9:x", 1)
+    async def test_a_profile_edit_misses_only_the_subjects_reads(self) -> None:
+        self.assertEqual(2, await self.read(5, 6))
+        await user_cache.invalidate_user_caches(5)
+        self.assertEqual(1, await self.read(5, 6))
+        self.assertEqual(0, await self.read(5, 6))
 
-        # Must not raise NotConfiguredError and must clear the subject's keys.
-        await user_cache.invalidate_user_caches(9)
-
-        self.assertIsNone(await cache.get("backend:user_characters:v2:9:x"))
-        self.assertIsNone(await cache.get("backend:user_matches_summary:9:x"))
-        self.assertIsNone(await cache.get("backend:user_compare:v3:9:x"))
-
-    def test_tournament_invalidation_patterns_include_new_read_caches(self) -> None:
-        patterns = set(cache_resources.RESOURCE_CACHE_PATTERNS["tournament.standings"](42))
-        for prefix in user_cache.USER_CACHE_KEY_PREFIXES:
-            self.assertIn(
-                f"backend:{prefix}:*",
-                patterns,
-                msg=f"tournament change does not drop {prefix}",
-            )
-        # Regression: compare namespaces stay covered (was asserted before refactor).
-        self.assertIn("backend:user_compare:v3:*", patterns)
-        self.assertIn("backend:user_character_compare:v3:*", patterns)
+    async def test_a_merge_misses_both_users_reads(self) -> None:
+        self.assertEqual(3, await self.read(7, 9, 11))
+        await user_cache.invalidate_user_caches(7, 9)
+        self.assertEqual(2, await self.read(7, 9, 11))
 
 
 class CharactersCacheTests(_CacheTestBase):
@@ -116,7 +122,7 @@ class CharactersCacheTests(_CacheTestBase):
             await users.get_heroes(object(), 101, params, stats, workspace_id=1)
             stored = [key async for key in cache.scan("backend:user_characters*")]
         compute.assert_awaited_once()
-        # Versioned (rows gained fields), still in the ``{prefix}:{user_id}:*`` shape user_cache_patterns() globs.
+        # Versioned (rows gained fields).
         self.assertTrue(stored)
         self.assertTrue(all(key.startswith("backend:user_characters:v2:101:") for key in stored), stored)
 
@@ -168,49 +174,10 @@ class MatchesSummaryCacheTests(_CacheTestBase):
         self.assertEqual(2, opponents.await_count)
 
 
-class CacheKeyRoutabilityTests(_CacheTestBase):
-    """The keys the decorators really write must be reachable by the patterns in
-    ``user_cache``.
-
-    Regression: every ``@cache`` in this domain used to pass
-    ``prefix="backend:"`` next to a bare ``key="user_…"`` template, and cashews
-    renders that as ``backend:`` + ``:`` + template. So the stored key was
-    ``backend::user_profile:7:2`` while every invalidation pattern was
-    ``backend:user_profile:7:*`` — off by one colon, matching nothing. Profile
-    edits, merges and tournament changes silently invalidated *nothing* for
-    ~300 s. The other tests in this file seed their own keys in the pattern's
-    shape, so none of them could see it. This one asserts against the key the
-    decorator itself produced.
-    """
-
-    async def test_a_cached_read_is_dropped_by_its_own_invalidation_pattern(self) -> None:
-        user = SimpleNamespace(id=303, name="Player")
-        opponents = AsyncMock(return_value=[])
-        with (
-            patch.object(users, "get", AsyncMock(return_value=user)),
-            patch.object(users.encounters, "get_user_opponents", opponents),
-            patch.object(users.encounters, "get_user_stage_breakdown", AsyncMock(return_value=[])),
-        ):
-            await users.get_matches_summary(object(), 303, workspace_id=1)
-            stored = [key async for key in cache.scan("backend:*")]
-
-            await user_cache.invalidate_user_caches(303)
-            self.assertEqual([], [key async for key in cache.scan("backend:*")])
-
-            await users.get_matches_summary(object(), 303, workspace_id=1)
-
-        self.assertTrue(stored, "the decorated read stored nothing")
-        for key in stored:
-            self.assertTrue(
-                key.startswith("backend:user_matches_summary:303:"),
-                f"key {key!r} is not in the shape user_cache_patterns() globs for",
-            )
-        self.assertEqual(2, opponents.await_count, "invalidation did not force a recompute")
-
-    async def test_the_versioned_encounter_families_are_dropped_by_both_invalidation_shapes(self) -> None:
+class VersionedEncounterFamiliesTests(_CacheTestBase):
+    async def test_both_encounter_families_miss_after_both_invalidation_shapes(self) -> None:
         """``user_encounters`` and ``user_tournament_encounters`` embed the native match header of one game, so their
-        keys are versioned (``:v7:``). The version belongs to the prefix: a subject's precise pattern is
-        ``{prefix}:{user_id}:*`` and must still reach the key the decorator wrote, and so must the broad one."""
+        keys are versioned (``:v7:``); a subject's edit and a tournament write must both still reach them."""
         user = SimpleNamespace(id=404, name="Player")
         page = AsyncMock(return_value=([], 0))
         dossier = AsyncMock(return_value=[])
@@ -220,31 +187,30 @@ class CacheKeyRoutabilityTests(_CacheTestBase):
             patch.object(users.encounters, "get_user_encounters_paginated", page),
             patch.object(users.encounters, "get_user_encounter_matches_unpaginated", dossier),
         ):
-            for drop in ("subject", "tournament"):
+
+            async def read() -> None:
                 await users.get_encounters_by_user(object(), 404, params, workspace_id=1)
                 await users.get_tournament_encounters(object(), 404, 7)
-                stored = sorted([key async for key in cache.scan("backend:*")])
-                self.assertEqual(
-                    [
-                        "backend:user_encounters:v7:404:",
-                        "backend:user_tournament_encounters:v7:404:",
-                    ],
-                    [key[: key.index("404:") + 4] for key in stored],
-                )
-                patterns = (
-                    user_cache.user_cache_patterns(404)
-                    if drop == "subject"
-                    else user_cache.tournament_user_cache_patterns()
-                )
-                for pattern in patterns:
-                    await cache.delete_match(pattern)
-                self.assertEqual([], [key async for key in cache.scan("backend:*")], f"{drop} invalidation missed")
-        self.assertEqual(2, page.await_count)
-        self.assertEqual(2, dossier.await_count)
 
+            await read()
+            stored = sorted([key async for key in cache.scan("backend:*")])
+            self.assertEqual(
+                ["backend:user_encounters:v7:404:", "backend:user_tournament_encounters:v7:404:"],
+                [key[: key.index("404:") + 4] for key in stored],
+            )
+            await read()
+            await user_cache.invalidate_user_caches(404)
+            await read()
+            await _tournament_write(Resource.TOURNAMENT_STANDINGS)
+            await read()
+        self.assertEqual(3, page.await_count)
+        self.assertEqual(3, dossier.await_count)
+
+
+class CacheKeyShapeTests(_CacheTestBase):
     def test_no_cache_decorator_reintroduces_the_prefix_kwarg(self) -> None:
-        """``prefix=`` is what produced the double colon. The prefix belongs in
-        the key template, which is also where ``user_cache`` looks for it."""
+        """``prefix="backend:"`` next to a bare ``key="user_…"`` renders ``backend::user_…`` (cashews joins them with
+        a colon). The prefix belongs in the key template."""
         domain = Path(__file__).resolve().parents[1] / "src" / "services"
         offenders = [
             path.relative_to(domain).as_posix()

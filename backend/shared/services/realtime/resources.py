@@ -17,7 +17,7 @@ from typing import Any
 
 from shared.services.realtime.scope import ScopeKind
 
-__all__ = ("MANIFEST_PATH", "Resource", "load_manifest", "scope_kind_of")
+__all__ = ("MANIFEST_PATH", "Resource", "load_manifest", "resource_generation", "scope_kind_of")
 
 MANIFEST_PATH = Path(__file__).resolve().parents[2] / "realtime" / "resources.json"
 
@@ -52,3 +52,13 @@ def scope_kind_of(resource: Resource) -> ScopeKind:
     land on a topic whose subscribers are a different audience entirely.
     """
     return ScopeKind(load_manifest()["resources"][str(resource)]["scope"])
+
+
+def resource_generation(resource: Resource, scope_id: int | str = "*") -> str:
+    """The cache generation an invalidation of ``resource`` moves (``shared.services.cache_generations``).
+
+    ``emit`` bumps it for the scope's id AND for ``*``: a read cached per scope depends on the former, an aggregate
+    across every scope of the kind (a user's history across tournaments) on the latter. ``scope_id`` may be a key
+    template (``"{params.tournament_id}"``) when a cached read names what it depends on.
+    """
+    return f"{scope_kind_of(resource)}:{scope_id}:{resource}"

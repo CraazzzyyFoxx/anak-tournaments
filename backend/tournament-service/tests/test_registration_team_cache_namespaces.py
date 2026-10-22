@@ -4,7 +4,7 @@ Their payloads changed shape in the multi-game cutover (``top_characters``, a re
 ``TournamentHistoryEntry.discipline``, roles as ``{dimension, role}``) while the keys stayed put. Values are pickled in a
 Redis that outlives a deploy and cashews hands them back without re-validating, so a warm pre-cutover entry would be
 served in the old shape. These tests pin the keys cashews really writes, that a pre-bump entry is never read, and that
-the invalidation globs drop the versioned keys (and pre-bump leftovers) of exactly one tournament.
+a tournament write misses the versioned reads of exactly one tournament.
 """
 
 from __future__ import annotations
@@ -26,9 +26,11 @@ sys.path.insert(0, str(backend_root / "tournament-service"))
 public_list = importlib.import_module("src.services.registration.public_list")
 team_flows = importlib.import_module("src.services.team.flows")
 schemas = importlib.import_module("src.schemas")
-invalidation = importlib.import_module("src.services.tournament.cache_invalidation")
 
-from shared.services.realtime import Resource, Scope  # noqa: E402
+from shared.schemas.events import CacheInvalidatedEvent  # noqa: E402
+from shared.services.realtime import Resource  # noqa: E402
+from shared.services.realtime.consumer import invalidate_from_event  # noqa: E402
+from shared.testing.cache import configure_test_cache  # noqa: E402
 
 
 @asynccontextmanager
@@ -46,9 +48,8 @@ def _pre_bump(key: str) -> str:
 
 class RegistrationAndTeamCacheNamespaceTests(IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        cache.setup("mem://", prefix="fastapi:")
-        cache.setup("mem://", prefix="backend:")
-        await cache.delete_match("fastapi:*")
+        configure_test_cache()
+        await cache.clear()
         self.build = AsyncMock(side_effect=lambda _session, *, tournament_id: {"fresh": tournament_id})
         self.page = AsyncMock(return_value=([], 0))
         service = team_flows.flows_service
@@ -61,7 +62,7 @@ class RegistrationAndTeamCacheNamespaceTests(IsolatedAsyncioTestCase):
             self.addCleanup(patcher.stop)
 
     async def asyncTearDown(self) -> None:
-        await cache.delete_match("fastapi:*")
+        await cache.clear()
 
     @staticmethod
     async def _registration_list(tournament_id: int):
@@ -88,27 +89,26 @@ class RegistrationAndTeamCacheNamespaceTests(IsolatedAsyncioTestCase):
             await cache.set(_pre_bump(key), "stale")
             self.assertEqual(fresh, await read(7), f"{_pre_bump(key)!r} was served")
             self.assertEqual(2, upstream.await_count)
-            await cache.delete_match("fastapi:*")
+            await cache.clear()
 
-    async def test_a_tournament_write_drops_its_versioned_keys_and_leftovers_but_no_other_tournament(self) -> None:
-        for resources, reads in (
-            ((Resource.TOURNAMENT_REGISTRATIONS, Resource.TOURNAMENT_REGISTRATION_FORM), (self._registration_list,)),
+    async def test_a_tournament_write_misses_its_reads_but_no_other_tournaments(self) -> None:
+        for resources, read, upstream in (
             (
-                (Resource.TOURNAMENT_TEAMS, Resource.TOURNAMENT_STRUCTURE),
-                (self._teams_page,),
+                (Resource.TOURNAMENT_REGISTRATIONS, Resource.TOURNAMENT_REGISTRATION_FORM),
+                self._registration_list,
+                self.build,
             ),
+            ((Resource.TOURNAMENT_TEAMS, Resource.TOURNAMENT_STRUCTURE), self._teams_page, self.page),
         ):
             for resource in resources:
-                for read in reads:
-                    for tournament_id in (7, 70):
-                        await read(tournament_id)
-                kept = {key for key in await _stored() if ":70:" in key}
-                self.assertEqual(len(reads), len(kept))
-                for key in await _stored() - kept:
-                    self.assertTrue(":v2:" in key and ":7:" in key, key)
-                    await cache.set(_pre_bump(key), "stale")
+                for tournament_id in (7, 70):
+                    await read(tournament_id)
+                before = upstream.await_count
 
-                await invalidation.invalidate_tournament_resources(Scope.tournament(7), frozenset({resource}))
+                await invalidate_from_event(
+                    CacheInvalidatedEvent(scope_kind="tournament", scope_id=7, resources=[str(resource)])
+                )
 
-                self.assertEqual(kept, await _stored(), f"{resource}: wrong entries evicted")
-                await cache.delete_match("fastapi:*")
+                for tournament_id in (7, 70):
+                    await read(tournament_id)
+                self.assertEqual(before + 1, upstream.await_count, f"{resource}: not exactly tournament 7 rebuilt")

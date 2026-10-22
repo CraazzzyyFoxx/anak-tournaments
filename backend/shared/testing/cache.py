@@ -20,10 +20,11 @@ from cashews import cache
 #: Union of every prefix any service's ``configure_cache()`` registers --
 #: see ``CACHE_PREFIXES``/``CACHE_LOCK_PREFIX``/``CACHE_PING_PREFIXES`` in
 #: app-service/balancer-service/stats-service/tournament-service's
-#: ``src/core/caching.py``. Configuring the full union up front means a test
-#: importing any service's cache-decorated code never hits an unrouted
-#: prefix, regardless of which subset that particular service registers.
-_TEST_CACHE_PREFIXES: tuple[str, ...] = ("fastapi:", "backend:", "lock:", "LOCK", "PING")
+#: ``src/core/caching.py`` -- plus the cache generations ``configure_realtime``
+#: routes (``shared.services.cache_generations``). Configuring the full union up
+#: front means a test importing any service's cache-decorated code never hits an
+#: unrouted prefix, regardless of which subset that particular service registers.
+_TEST_CACHE_PREFIXES: tuple[str, ...] = ("fastapi:", "backend:", "lock:", "LOCK", "PING", "cachegen:")
 
 
 def configure_test_cache(*extra_prefixes: str) -> None:

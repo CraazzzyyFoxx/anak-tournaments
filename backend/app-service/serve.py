@@ -7,9 +7,9 @@ endpoints) plus the ``cache.invalidated`` invalidation consumer.
 Run with: ``faststream run serve:app``.
 """
 
-from cashews import cache
 from faststream import FastStream
 from faststream.rabbit import Channel
+from redis.asyncio import Redis
 
 from shared.messaging.config import (
     CACHE_INVALIDATION_APP_DLQ,
@@ -56,7 +56,6 @@ from src.rpc import (
     workspaces,
 )
 from src.services import hero_stats_refresh
-from src.services.cache_resources import RESOURCE_CACHE_PATTERNS, invalidate_local
 from src.services.notification_delivery import consumer as notification_delivery_consumer
 
 logger = setup_logging(
@@ -72,13 +71,13 @@ broker = make_rabbit_broker(
 app = FastStream(broker)
 
 # The cashews singleton is process-global and has no default backend. The
-# @cache-decorated flows AND the invalidation consumer both raise
-# NotConfiguredError without this — call it before any subscriber runs.
+# @cache-decorated flows raise NotConfiguredError without this — call it before
+# any subscriber runs.
 configure_cache()
 
-# Same reason, for the realtime rail: cache_invalidator is what makes an
-# invalidation this process emits drop its own keys before anything publishes.
-configure_realtime(redis_url=str(config.settings.redis_url), cache_invalidator=invalidate_local)
+# Same reason, for the realtime rail: ``emit`` publishes through this Redis URL,
+# and the cache generations every service's invalidations bump live there too.
+configure_realtime(redis_url=str(config.settings.redis_url))
 
 # Third process-global with the same rule: the quota gate needs its policy
 # session factory and its Redis before the first metered upload, and the admin
@@ -111,7 +110,6 @@ register_invalidation_consumer(
     logger,
     queue=CACHE_INVALIDATION_APP_QUEUE,
     exchange=CACHE_INVALIDATION_EXCHANGE,
-    patterns=RESOURCE_CACHE_PATTERNS,
     channel=_INVALIDATION_CHANNEL,
     on_event=_refresh_hero_stats,
 )
@@ -203,9 +201,7 @@ async def start_worker() -> None:
     )
     if config.settings.worker_metrics_port is not None:
         start_worker_metrics_server(config.settings.worker_metrics_port)
-    # Drop stale cache on (re)deploy.
-    await cache.delete_match("fastapi:*")
-    await cache.delete_match("backend:*")
+    await _flush_read_caches()
     # The modules' role ontologies are projected before the first message is served.
     async with db.async_session_maker() as session:
         await project_disciplines(session)
@@ -215,6 +211,17 @@ async def start_worker() -> None:
     hero_stats_refresh.hero_stats_refresh_service.request_refresh(db.async_session_maker, logger)
     _outbox_scheduler.start(drain_outbox, seconds=1, args=(db.async_session_maker, broker))
     logger.info("App RPC service (app-svc) started")
+
+
+async def _flush_read_caches() -> None:
+    """Drop stale cache on (re)deploy: one FLUSHDB per cache database, which hold nothing but cache — never a
+    keyspace SCAN, which times out under load and loses the drop."""
+    for url in (config.settings.api_cache_url, config.settings.backend_cache_url):
+        client = Redis.from_url(url)
+        try:
+            await client.flushdb(asynchronous=True)
+        finally:
+            await client.aclose()
 
 
 @app.on_shutdown

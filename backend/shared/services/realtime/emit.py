@@ -12,12 +12,15 @@ Invariants this module owns, so no caller has to remember them:
    commutative and idempotent, which is precisely why invalidation needs no
    ordering guarantees — unlike the domain patches, whose order matters and
    which are therefore never merged.
-3. **Ordering after commit: local cache first, then clients.** The service's
-   own cache is dropped before anything is published, so a client that reacts
-   instantly cannot repopulate a gateway entry from a cache we were about to
-   clear. (The cross-service half of that race is bounded by the outbox drain;
-   the row itself is written inside the caller's transaction, so it is already
-   durable by the time anything is published.)
+3. **Ordering after commit: caches first, then clients.** Every resource the
+   transaction staled has its cache generation bumped (``resource_generation``)
+   before anything is published — and, on an ``AsyncSession``, before its
+   ``commit()`` returns. The generations are shared, so this moves every
+   service's cached reads of the resource, not only this process's: neither a
+   client reacting to the event nor the caller's reply can re-read what the
+   transaction just staled. (The outbox row ``enqueue_invalidation_outbox``
+   writes inside the transaction re-bumps them from each consuming service: the
+   durable copy of a bump that failed here.)
 4. **A resource may only be published under its own scope kind.** The manifest
    decides; a ``workspace.*`` resource on a tournament topic would be delivered
    to a different audience than the one allowed to see it.
@@ -26,7 +29,7 @@ Invariants this module owns, so no caller has to remember them:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -34,13 +37,15 @@ from typing import Any
 from loguru import logger
 from sqlalchemy import event
 from sqlalchemy.orm import Session
+from sqlalchemy.util.concurrency import await_only, in_greenlet
 
 from shared.messaging.config import CACHE_INVALIDATION_EXCHANGE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.models.platform.realtime import WorkspaceEvent
 from shared.schemas.events import CacheInvalidatedEvent
 from shared.schemas.realtime import WorkspaceEventEnvelope
-from shared.services.realtime.resources import Resource, scope_kind_of
+from shared.services.cache_generations import bump, configure_generations
+from shared.services.realtime.resources import Resource, resource_generation, scope_kind_of
 from shared.services.realtime.scope import Scope
 from shared.services.realtime_publisher import event_to_envelope, publish_event_to_redis_url
 
@@ -56,26 +61,21 @@ _SAVEPOINTS_KEY = "realtime_savepoints"
 # publish whose handle nobody holds can be collected mid-flight.
 _background_tasks: set[asyncio.Task[Any]] = set()
 
-CacheInvalidator = Callable[[Scope, frozenset[Resource], Mapping[str, Sequence[int]]], Awaitable[None]]
-
 _redis_url: str | None = None
-_cache_invalidator: CacheInvalidator | None = None
 
 
-def configure_realtime(*, redis_url: str, cache_invalidator: CacheInvalidator | None = None) -> None:
+def configure_realtime(*, redis_url: str) -> None:
     """Wire the process into the realtime rail. One call per entrypoint.
 
     This module is shared across services and has no ``src.core.config`` of its
     own (same reason as ``configure_cache()``). ``main`` and ``serve`` are
-    separate processes and each configures independently.
-
-    ``cache_invalidator`` is how a service declares "I own caches that these
-    resources describe". It runs BEFORE the publish (invariant 3). A service
-    with no server-side cache passes nothing.
+    separate processes and each configures independently. The same Redis holds
+    the cache generations every service's invalidations bump and its cached
+    reads are keyed by (``shared.services.cache_generations``).
     """
-    global _redis_url, _cache_invalidator
+    global _redis_url
     _redis_url = redis_url
-    _cache_invalidator = cache_invalidator
+    configure_generations(redis_url)
 
 
 @dataclass(frozen=True, slots=True)
@@ -237,14 +237,41 @@ def _publish_staged(session: Session) -> None:
     pending = session.info.pop(_PENDING_KEY, [])
     if not pending:
         return
+    generations = _generations(pending)
+    if generations and in_greenlet():
+        # An AsyncSession commit runs in SQLAlchemy's greenlet, which can await: the caller's ``await commit()``
+        # returns only once every cache's copy of what it staled is unreachable, so not even its own reply can
+        # race the invalidation (invariant 3).
+        await_only(_bump(generations))
+        generations = []
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         logger.warning("Cannot publish realtime events without a running event loop")
         return
-    task = loop.create_task(_flush(pending))
+    task = loop.create_task(_flush(pending, generations))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
+
+
+def _generations(
+    pending: list[tuple[Scope, WorkspaceEvent | None, frozenset[Resource], dict[str, list[int]]]],
+) -> list[str]:
+    return list(
+        dict.fromkeys(
+            name
+            for scope, _row, resources, _entity_ids in pending
+            for resource in sorted(resources)
+            for name in (resource_generation(resource, scope.id), resource_generation(resource))
+        )
+    )
+
+
+async def _bump(generations: list[str]) -> None:
+    try:
+        await bump(*generations)
+    except Exception:
+        logger.exception("Cache generation bump failed", generations=generations)
 
 
 # Rollback hooks. A SAVEPOINT release is not a commit and a SAVEPOINT rollback is not a transaction rollback: the
@@ -309,17 +336,11 @@ def _drop_staged(session: Session) -> None:
 
 async def _flush(
     pending: list[tuple[Scope, WorkspaceEvent | None, frozenset[Resource], dict[str, list[int]]]],
+    generations: list[str],
 ) -> None:
-    # Invariant 3: every local cache drop completes before the first publish,
-    # so a client reacting to the event cannot re-read what we just staled.
-    if _cache_invalidator is not None:
-        for scope, _row, resources, entity_ids in pending:
-            if not resources:
-                continue
-            try:
-                await _cache_invalidator(scope, resources, entity_ids)
-            except Exception:
-                logger.exception("Local cache invalidation failed", scope=str(scope), resources=sorted(resources))
+    # Invariant 3: the generations move before the first publish. Already done at commit for an AsyncSession.
+    if generations:
+        await _bump(generations)
 
     if _redis_url is None:
         logger.warning("Realtime not configured (configure_realtime); dropping publish")
@@ -359,13 +380,13 @@ async def enqueue_invalidation_outbox(
     resources: Sequence[Resource],
     entity_ids: Mapping[str, Sequence[int]] | None = None,
 ) -> None:
-    """Cross-service half of an invalidation: one outbox row, retried and DLQ'd.
+    """Durable half of a cross-service invalidation: one outbox row, retried and DLQ'd.
 
-    Redis pub/sub is at-most-once. For clients that is covered by the gateway's
-    TTL and by cursor replay on resubscribe; for another service's cashews
-    entries nothing covers it, which is why the cross-service path is the
-    transactional outbox and not a second publish. Called by the owning service
-    when a resource it stales is cached elsewhere too.
+    ``emit`` already bumps the shared cache generations at commit, but that bump
+    is a single attempt. Each consuming service re-bumps them from this row (and
+    hangs its own follow-up work off it), so a bump lost to a Redis blip is
+    retried instead of leaving another service's cached reads stale until TTL.
+    Called by the owning service when a resource it stales is cached elsewhere too.
     """
     await enqueue_outbox_event(
         session,

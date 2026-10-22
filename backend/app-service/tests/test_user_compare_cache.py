@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, patch
 from cashews import cache
 
 from shared.schemas.role import RoleRef
+from shared.testing.cache import configure_test_cache
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -21,7 +22,7 @@ flows = importlib.import_module("src.services.user.service")
 schemas = importlib.import_module("src.schemas")
 enums = importlib.import_module("shared.core.enums")
 division_grid = importlib.import_module("shared.division_grid")
-user_merge = importlib.import_module("src.services.admin.user_merge")
+user_cache = importlib.import_module("src.services.user_cache")
 caching = importlib.import_module("src.core.caching")
 users = flows.UserService.of("overwatch")
 
@@ -32,10 +33,8 @@ def _grid(version_id: int = 17):
 
 class UserCompareCacheTests(IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
-        cache.setup("mem://", prefix="backend:")
-        cache.setup("mem://", prefix="lock:")
-        await cache.delete_match("backend:user_compare:v3:*")
-        await cache.delete_match("backend:user_character_compare:v3:*")
+        configure_test_cache()
+        await cache.clear()
 
     async def test_overall_cache_ignores_runtime_session_and_uses_grid_version(self) -> None:
         response = {"result": "overall"}
@@ -93,23 +92,24 @@ class UserCompareCacheTests(IsolatedAsyncioTestCase):
         self.assertEqual(({"game": "overwatch"}, {"game": "lol"}), (first, second))
         self.assertEqual((1, 1), (overwatch_compute.await_count, league_compute.await_count))
 
-    async def test_user_merge_invalidates_both_compare_namespaces(self) -> None:
-        preview = SimpleNamespace(
-            source=SimpleNamespace(social_accounts=[]),
-            target=SimpleNamespace(social_accounts=[]),
-        )
-        delete_match = AsyncMock()
+    async def test_any_users_edit_misses_both_compare_namespaces(self) -> None:
+        # Global/cohort baselines move when ANY user changes, so a merge of 7 into 9 misses 101's compares too.
+        overall = AsyncMock(return_value={"result": "overall"})
+        hero = AsyncMock(return_value={"result": "hero"})
+        overall_params = schemas.UserCompareParams(baseline="global")
+        hero_params = schemas.UserCharacterCompareParams(baseline="global", stats=[enums.LogStatsName.Eliminations])
 
-        with patch.object(user_merge.cache, "delete_match", delete_match):
-            await user_merge.merges._invalidate_merge_caches(  # noqa: SLF001 - invalidation contract
-                source_user_id=7,
-                target_user_id=9,
-                preview=preview,
-            )
+        async def read_both() -> None:
+            await users.get_compare_cached(object(), 101, overall_params, grid=_grid(), workspace_id=1)
+            await users.get_hero_compare_cached(object(), 101, hero_params, grid=_grid(), workspace_id=1)
 
-        patterns = {call.args[0] for call in delete_match.await_args_list}
-        self.assertIn("backend:user_compare:v3:*", patterns)
-        self.assertIn("backend:user_character_compare:v3:*", patterns)
+        with patch.object(users, "get_compare", overall), patch.object(users, "get_hero_compare", hero):
+            await read_both()
+            await read_both()
+            await user_cache.invalidate_user_caches(7, 9)
+            await read_both()
+
+        self.assertEqual((2, 2), (overall.await_count, hero.await_count))
 
     def test_cache_configuration_registers_the_lock_namespace(self) -> None:
         with patch.object(caching.cache, "setup") as setup:

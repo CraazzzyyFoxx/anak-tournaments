@@ -6,11 +6,9 @@ from src.core import config
 
 # Single source of truth for the cache-key prefixes this service registers.
 #
-# cashews has no default backend: it routes every operation (get/set/delete_match)
+# cashews has no default backend: it routes every operation (get/set)
 # to the backend whose registered prefix the key starts with, and raises
-# ``NotConfiguredError`` for keys that match no prefix. Cache-invalidation
-# patterns are generated from this tuple (see ``cache_invalidation``) so they
-# always stay routable and in sync with ``configure_cache``.
+# ``NotConfiguredError`` for keys that match no prefix.
 CACHE_PREFIXES: tuple[str, ...] = ("fastapi:", "backend:")
 
 

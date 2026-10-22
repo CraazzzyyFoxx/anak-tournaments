@@ -1,83 +1,57 @@
-"""Single source of truth for invalidating the workspace-scoped ``/users/*``
-read caches.
+"""Single source of truth for what invalidates the workspace-scoped ``/users/*`` read caches.
 
-Every ``@cache`` in ``services.user.service`` / ``services.map.service`` stores its
-result under a ``backend:`` key whose prefix is listed in
-:data:`USER_CACHE_KEY_PREFIXES` and whose **first** template component is the
-subject user's id. That invariant lets us derive two invalidation shapes from
-one list:
+Every ``@versioned`` read in ``services.user.service`` / ``services.map.service`` is keyed by
+(``shared.services.cache_generations``):
 
-* :func:`tournament_user_cache_patterns` — a broad ``{prefix}:*`` wipe used when
-  tournament/match data changes (we can't know which users a tournament touched).
-* :func:`user_cache_patterns` — a precise ``{prefix}:{user_id}:*`` wipe used when
-  a single user's profile/identity changes (name, avatar, socials, merge).
-
-Keep :data:`USER_CACHE_KEY_PREFIXES` in sync with the cache-key prefixes those
-flows register; ``tests/test_user_read_caches.py`` enforces routability.
+* :data:`TOURNAMENT_DATA` — any tournament write that can move a user aggregate. The event does not name the users a
+  tournament touched and the aggregates (tournaments, heroes, encounters, maps, teammates, ...) fan across
+  tournaments, so every user's reads miss; staleness is bounded by ``users_cache_ttl`` regardless. A score report or a
+  registration moves none of them, so their resources are not listed.
+* the subject user's generation (:func:`user_generations`) — a profile/identity edit of that user (name, avatar,
+  socials, merge); cross-user cosmetic staleness (this user's name or avatar embedded in *other* users' cached
+  teammate/opponent lists) is left to the TTL;
+* or, for the compare caches (:data:`COMPARE_GENERATIONS`), which depend on *other* users too (target-user / cohort
+  baselines), any user's edit.
 """
 
 from __future__ import annotations
 
-from cashews import cache
+from loguru import logger
 
-# Per-user read caches: every key is ``{prefix}:{user_id}:...`` (user id first).
-USER_CACHE_KEY_PREFIXES: tuple[str, ...] = (
-    "user_profile",
-    "user_draft_card",
-    "user_tournaments",
-    # Versioned in the prefix, like the compare namespaces: these embed ``MatchReadWithUserStats`` (native match
-    # header + viewer facts) of one discipline and the encounter's own `discipline`, or (tournament stats) the owner
-    # workspace/game, and a pickle of an older shape must sit under a name no reader asks for. The version stays a
-    # part of the prefix so the subject's id is still the first component after it (``{prefix}:{user_id}:*``).
-    "user_tournament_stats:v2",
-    # v7 (and ``user_encounters:v7``): match rows gained ``mode_id``/``mode``.
-    "user_tournament_encounters:v7",
-    # v2: rows gained games/win/loss/draw/win_rate_all/record; a v1 pickle would serve them as defaults.
-    "user_characters:v2",
-    "user_encounters:v7",
-    "user_maps",
-    "user_teammates",
-    "user_matches_summary",
-)
+from shared.services.cache_generations import bump
+from shared.services.realtime import Resource, resource_generation
 
-# Compare caches depend on *other* users too (target-user / cohort baselines), so
-# they can never be scoped to a single subject id — they always invalidate
-# broadly. Kept separate from the per-user prefixes above for that reason.
-USER_COMPARE_KEY_PREFIXES: tuple[str, ...] = (
-    "user_compare:v3",
-    "user_character_compare:v3",
-)
+__all__ = ("COMPARE_GENERATIONS", "TOURNAMENT_DATA", "invalidate_user_caches", "user_generations")
 
-
-def tournament_user_cache_patterns() -> tuple[str, ...]:
-    """Broad ``delete_match`` patterns for a tournament/match data change.
-
-    A tournament change can move standings, ranks and aggregates for any of its
-    participants, and the aggregate caches (tournaments, heroes, encounters,
-    maps, teammates, ...) fan across tournaments — so we cannot target specific
-    users. Wipe every user read cache; staleness is bounded by
-    ``users_cache_ttl`` regardless.
-    """
-    return tuple(f"backend:{prefix}:*" for prefix in (*USER_CACHE_KEY_PREFIXES, *USER_COMPARE_KEY_PREFIXES))
-
-
-def user_cache_patterns(user_id: int) -> tuple[str, ...]:
-    """Precise ``delete_match`` patterns for a single user's profile/identity
-    mutation.
-
-    Drops the subject's own read caches exactly (``{prefix}:{user_id}:*``) and
-    the shared compare namespaces broadly (a global/cohort baseline can shift
-    when any user changes). Cross-user cosmetic staleness — this user's name or
-    avatar embedded in *other* users' cached teammate/opponent lists — is left to
-    the TTL.
-    """
-    return (
-        *(f"backend:{prefix}:{user_id}:*" for prefix in USER_CACHE_KEY_PREFIXES),
-        *(f"backend:{prefix}:*" for prefix in USER_COMPARE_KEY_PREFIXES),
+TOURNAMENT_DATA: tuple[str, ...] = tuple(
+    resource_generation(resource)
+    for resource in (
+        Resource.TOURNAMENT_STANDINGS,
+        Resource.TOURNAMENT_TEAMS,
+        Resource.TOURNAMENT_STRUCTURE,
+        Resource.TOURNAMENT_DETAIL,
+        Resource.TOURNAMENT_STAGES,
     )
+)
+_ANY_USER = "app.user:*"
+COMPARE_GENERATIONS: tuple[str, ...] = (*TOURNAMENT_DATA, _ANY_USER)
 
 
-async def invalidate_user_caches(user_id: int) -> None:
-    """Drop every read cache scoped to ``user_id`` after a profile/identity edit."""
-    for pattern in user_cache_patterns(user_id):
-        await cache.delete_match(pattern)
+def _user(user_id: int | str) -> str:
+    return f"app.user:{user_id}"
+
+
+def user_generations(user_id: str) -> tuple[str, ...]:
+    """A read about one user; ``user_id`` is a template over the cached call (``"{id}"``)."""
+    return (*TOURNAMENT_DATA, _user(user_id))
+
+
+async def invalidate_user_caches(*user_ids: int) -> None:
+    """Miss every read cache scoped to ``user_ids``, and every compare cache, after a profile/identity edit.
+
+    Runs after the write committed, so a failure is logged rather than raised: the caller's write stands either way.
+    """
+    try:
+        await bump(*(_user(user_id) for user_id in user_ids), _ANY_USER)
+    except Exception:
+        logger.exception("User cache invalidation failed", user_ids=user_ids)

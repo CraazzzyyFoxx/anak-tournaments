@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import sqlalchemy as sa
-from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
@@ -16,12 +15,14 @@ from shared.core import pagination, utils
 from shared.models.achievements.achievement import AchievementRule
 from shared.repository.stats_reads import MatchReadContext, get_match_reads
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
+from shared.services.cache_generations import versioned
 from src.core import config
+from src.services.user_cache import TOURNAMENT_DATA
 
 __all__ = ("AchievementQueries", "UserAchievementRow", "queries")
 
-# Cache-key prefix for the per-workspace rarity aggregate. Invalidated broadly on
-# a ``tournament.standings`` invalidation (see ``services.cache_resources``) — earned
+# Cache-key prefix for the per-workspace rarity aggregate. Misses after any tournament
+# write that moves a user aggregate (``user_cache.TOURNAMENT_DATA``) — earned
 # achievements and the player denominator both move with tournament/match data.
 # The map is ``{rule_id: rarity}`` over every discipline: each rule's rarity already
 # divides by its own discipline's players, so one entry per workspace is not game-mixed.
@@ -228,7 +229,7 @@ class AchievementQueries:
         results = await session.execute(query)
         return results.all(), count.scalar()
 
-    @cache(ttl=config.settings.achievements_cache_ttl, key=_RARITY_MAP_CACHE_KEY)
+    @versioned(generations=TOURNAMENT_DATA, ttl=config.settings.achievements_cache_ttl, key=_RARITY_MAP_CACHE_KEY)
     async def _get_rarity_map(
         self,
         session: AsyncSession,

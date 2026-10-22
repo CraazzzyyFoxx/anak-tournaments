@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from typing import Any
 
 from cashews import cache
 
 from shared.division_grid import DivisionGrid, DivisionTier
+from shared.services.cache_generations import bump, current
 
 GRID_CACHE_TTL_SECONDS = 60 * 60
 CACHE_KEY_PREFIX = "backend:"
@@ -168,37 +169,59 @@ def _version_read_key(version_id: int) -> str:
     return f"{CACHE_KEY_PREFIX}division_grid:version:{version_id}:read"
 
 
-def _workspace_default_key(workspace_id: int, discipline: str | None = None) -> str:
-    return f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:default_version:v3:{discipline or '*'}"
+# The keys below carry generations (``shared.services.cache_generations``): an invalidation bumps one instead of
+# globbing every mapping of a version, every discipline of a workspace or every tournament.
+def _version_generation(version_id: int) -> str:
+    return f"division_grid.version:{version_id}"
 
 
-def _tournament_effective_key(tournament_id: int) -> str:
-    return f"{CACHE_KEY_PREFIX}division_grid:tournament:{tournament_id}:effective_version:v3"
+def _workspace_generation(workspace_id: int) -> str:
+    return f"division_grid.workspace:{workspace_id}"
 
 
-def _mapping_key(source_version_id: int, target_version_id: int) -> str:
-    return f"{CACHE_KEY_PREFIX}division_grid:mapping:{source_version_id}:{target_version_id}"
+# A workspace default moves the effective grid of every tournament inheriting it, and a tournament's key does not say
+# which workspace it is in: any workspace's invalidation misses them all.
+_ANY_WORKSPACE = "division_grid.workspace:*"
 
 
-def _workspace_source_versions_key(workspace_id: int, discipline: str | None = None) -> str:
-    return f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:source_versions:{discipline or '*'}"
+async def _workspace_default_key(workspace_id: int, discipline: str | None = None) -> str:
+    generation = await current(_workspace_generation(workspace_id))
+    return (
+        f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:default_version:v3:{discipline or '*'}:{generation}"
+    )
 
 
-async def _get(key: str) -> Any | None:
+def _tournament_effective_key(tournament_id: int, generation: str) -> str:
+    return f"{CACHE_KEY_PREFIX}division_grid:tournament:{tournament_id}:effective_version:v3:{generation}"
+
+
+async def _mapping_key(source_version_id: int, target_version_id: int) -> str:
+    generation = await current(_version_generation(source_version_id), _version_generation(target_version_id))
+    return f"{CACHE_KEY_PREFIX}division_grid:mapping:{source_version_id}:{target_version_id}:{generation}"
+
+
+async def _workspace_source_versions_key(workspace_id: int, discipline: str | None = None) -> str:
+    generation = await current(_workspace_generation(workspace_id))
+    return f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:source_versions:{discipline or '*'}:{generation}"
+
+
+async def _get(key: str | Callable[[], Awaitable[str]]) -> Any | None:
+    """``key`` is a string, or the coroutine function of a generation-carrying one: reading its generation fails
+    like the read itself does, into a miss."""
     if not cache.is_setup():
         return None
     try:
-        return await cache.get(key)
+        return await cache.get(key if isinstance(key, str) else await key())
     except Exception as exc:
         logger.debug("Division grid cache get failed for %s: %s", key, exc)
         return None
 
 
-async def _set(key: str, value: Any, ttl: int = GRID_CACHE_TTL_SECONDS) -> None:
+async def _set(key: str | Callable[[], Awaitable[str]], value: Any, ttl: int = GRID_CACHE_TTL_SECONDS) -> None:
     if not cache.is_setup():
         return
     try:
-        await cache.set(key, value, expire=ttl)
+        await cache.set(key if isinstance(key, str) else await key(), value, expire=ttl)
     except Exception as exc:
         logger.debug("Division grid cache set failed for %s: %s", key, exc)
 
@@ -280,14 +303,14 @@ async def set_grid_version_read_payloads(payloads: Mapping[int, dict[str, Any]])
 
 
 async def get_workspace_default_version_id(workspace_id: int, discipline: str | None = None) -> int | None:
-    value = await _get(_workspace_default_key(workspace_id, discipline))
+    value = await _get(lambda: _workspace_default_key(workspace_id, discipline))
     return int(value) if value is not None else None
 
 
 async def set_workspace_default_version_id(
     workspace_id: int, version_id: int | None, discipline: str | None = None
 ) -> None:
-    await _set(_workspace_default_key(workspace_id, discipline), version_id)
+    await _set(lambda: _workspace_default_key(workspace_id, discipline), version_id)
 
 
 async def get_tournament_effective_version_ids(tournament_ids: Sequence[int]) -> dict[int, int | None]:
@@ -301,7 +324,8 @@ async def get_tournament_effective_version_ids(tournament_ids: Sequence[int]) ->
     if not cache.is_setup() or not ids:
         return {}
     try:
-        values = await cache.get_many(*(_tournament_effective_key(tid) for tid in ids))
+        generation = await current(_ANY_WORKSPACE)
+        values = await cache.get_many(*(_tournament_effective_key(tid, generation) for tid in ids))
     except Exception as exc:
         logger.debug("Division grid cache batch get failed for tournaments %s: %s", ids, exc)
         return {}
@@ -312,8 +336,9 @@ async def set_tournament_effective_version_ids(values: Mapping[int, int | None])
     if not cache.is_setup() or not values:
         return
     try:
+        generation = await current(_ANY_WORKSPACE)
         await cache.set_many(
-            {_tournament_effective_key(tid): version_id for tid, version_id in values.items()},
+            {_tournament_effective_key(tid, generation): version_id for tid, version_id in values.items()},
             expire=GRID_CACHE_TTL_SECONDS,
         )
     except Exception as exc:
@@ -324,7 +349,7 @@ async def get_mapping_snapshot(
     source_version_id: int,
     target_version_id: int,
 ) -> DivisionGridMappingSnapshot | None:
-    payload = await _get(_mapping_key(source_version_id, target_version_id))
+    payload = await _get(lambda: _mapping_key(source_version_id, target_version_id))
     if payload is None:
         return None
     return DivisionGridMappingSnapshot.from_payload(payload)
@@ -332,13 +357,13 @@ async def get_mapping_snapshot(
 
 async def set_mapping_snapshot(snapshot: DivisionGridMappingSnapshot) -> None:
     await _set(
-        _mapping_key(snapshot.source_version_id, snapshot.target_version_id),
+        lambda: _mapping_key(snapshot.source_version_id, snapshot.target_version_id),
         snapshot.to_payload(),
     )
 
 
 async def get_workspace_source_version_ids(workspace_id: int, discipline: str | None = None) -> set[int] | None:
-    value = await _get(_workspace_source_versions_key(workspace_id, discipline))
+    value = await _get(lambda: _workspace_source_versions_key(workspace_id, discipline))
     if value is None:
         return None
     return {int(version_id) for version_id in value}
@@ -347,7 +372,7 @@ async def get_workspace_source_version_ids(workspace_id: int, discipline: str | 
 async def set_workspace_source_version_ids(
     workspace_id: int, version_ids: set[int], discipline: str | None = None
 ) -> None:
-    await _set(_workspace_source_versions_key(workspace_id, discipline), sorted(version_ids))
+    await _set(lambda: _workspace_source_versions_key(workspace_id, discipline), sorted(version_ids))
 
 
 async def invalidate_grid_version(version_id: int) -> None:
@@ -356,8 +381,7 @@ async def invalidate_grid_version(version_id: int) -> None:
     try:
         await cache.delete(_version_key(version_id))
         await cache.delete(_version_read_key(version_id))
-        await cache.delete_match(f"{CACHE_KEY_PREFIX}division_grid:mapping:{version_id}:*")
-        await cache.delete_match(f"{CACHE_KEY_PREFIX}division_grid:mapping:*:{version_id}")
+        await bump(_version_generation(version_id))  # every mapping from or to it
     except Exception as exc:
         logger.debug("Division grid cache invalidation failed for version %s: %s", version_id, exc)
 
@@ -366,9 +390,7 @@ async def invalidate_workspace(workspace_id: int) -> None:
     if not cache.is_setup():
         return
     try:
-        await cache.delete_match(f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:default_version:*")
-        await cache.delete_match(f"{CACHE_KEY_PREFIX}division_grid:workspace:{workspace_id}:source_versions:*")
-        await cache.delete_match(f"{CACHE_KEY_PREFIX}division_grid:tournament:*:effective_version:v3")
+        await bump(_workspace_generation(workspace_id), _ANY_WORKSPACE)
     except Exception as exc:
         logger.debug("Division grid cache invalidation failed for workspace %s: %s", workspace_id, exc)
 
@@ -377,7 +399,7 @@ async def invalidate_tournament(tournament_id: int) -> None:
     if not cache.is_setup():
         return
     try:
-        await cache.delete(_tournament_effective_key(tournament_id))
+        await cache.delete(_tournament_effective_key(tournament_id, await current(_ANY_WORKSPACE)))
     except Exception as exc:
         logger.debug("Division grid cache invalidation failed for tournament %s: %s", tournament_id, exc)
 
@@ -386,7 +408,7 @@ async def invalidate_mapping(source_version_id: int, target_version_id: int) -> 
     if not cache.is_setup():
         return
     try:
-        await cache.delete(_mapping_key(source_version_id, target_version_id))
+        await cache.delete(await _mapping_key(source_version_id, target_version_id))
     except Exception as exc:
         logger.debug(
             "Division grid cache invalidation failed for mapping %s -> %s: %s",

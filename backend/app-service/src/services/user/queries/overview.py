@@ -5,7 +5,6 @@ import typing
 from collections import Counter, defaultdict
 
 import sqlalchemy as sa
-from cashews import cache
 from sqlalchemy.dialects.postgresql import aggregate_order_by
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
@@ -16,10 +15,12 @@ from shared.disciplines import DISCIPLINES, discipline, rated_role_codes
 from shared.division_grid import DivisionGrid
 from shared.schemas.role import RoleRef
 from shared.services.achievement_effective import build_effective_achievement_rows_subquery
+from shared.services.cache_generations import versioned
 from shared.services.division_grid.access import tournament_effective_version_id_expr
 from src.core import config
 from src.services.discipline_queries import DisciplineQueries
 from src.services.encounter_seats import Seat
+from src.services.user_cache import TOURNAMENT_DATA
 
 from ._scope import (
     _apply_overview_role_filters,
@@ -386,9 +387,10 @@ class UserOverviewQueries(DisciplineQueries):
     # this path serves — the correlated aggregates with *no* role/division/logs/search
     # filter — the ordering depends only on (game, workspace, sort, direction,
     # min_encounters); `grid` only feeds the division predicates, which are absent here.
-    # Short TTL + invalidation on a tournament.standings invalidation
-    # (services.cache_resources) bound staleness.
-    @cache(
+    # Short TTL + a miss after any tournament write that moves a user aggregate
+    # (``user_cache.TOURNAMENT_DATA``) bound staleness.
+    @versioned(
+        generations=TOURNAMENT_DATA,
         ttl=config.settings.users_cache_ttl,
         key="backend:user_overview_order:{self._discipline}:{workspace_id}:{sort_key}:{descending}:{min_encounters}",
     )

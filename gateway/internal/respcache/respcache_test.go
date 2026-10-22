@@ -801,12 +801,11 @@ func TestRequestAfterInvalidationDoesNotJoinEarlierFlight(t *testing.T) {
 	}
 }
 
-// The invalidation lands here right after the writer's commit, but a service
-// caching the same read without owning the write drops its copy only when the
-// outbox relay delivers (tournament-service's teams list after a balancer
-// export). A fill in that gap may carry the upstream's pre-write copy, so it
-// lives only until upstreamSettle passes; a fill after the window gets the
-// full TTL.
+// The invalidation lands here right after the writer's commit; a service
+// caching the same read misses it at that commit, unless the generation bump
+// failed and only the outbox relay re-bumps it. A fill in that gap may carry
+// the upstream's pre-write copy, so it lives only until upstreamSettle passes;
+// a fill after the window gets the full TTL.
 func TestFillRightAfterInvalidationLivesOnlyTheSettleWindow(t *testing.T) {
 	var calls atomic.Int64
 	c := testCache(t)

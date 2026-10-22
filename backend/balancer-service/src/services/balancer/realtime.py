@@ -36,7 +36,7 @@ __all__ = (
 # What every path through ``TeamMaterializationService`` stales: it DELETEs and
 # re-INSERTs tournament.team / player / standing, so the teams list, the
 # standings hanging off them and the set of sections the tournament page has all
-# move at once. app-service caches the same three, which is why
+# move at once. tournament-service and app-service cache them, which is why
 # ``stage_export_invalidation`` also enqueues the cross-service outbox row.
 EXPORT_RESOURCES = (Resource.TOURNAMENT_TEAMS, Resource.TOURNAMENT_STANDINGS, Resource.TOURNAMENT_STRUCTURE)
 _DOMAIN = "balancer"
@@ -69,8 +69,10 @@ async def stage_export_invalidation(session: Any, tournament_id: int) -> None:
     """Stage the public-read staleness of an export on the caller's session.
 
     The balancer topic reaches only the admin tool, while public reads cache
-    ``EXPORT_RESOURCES``: they are invalidated here, and mirrored to app-service
-    through the outbox, which commits with the export itself.
+    ``EXPORT_RESOURCES``: the export's commit bumps their shared cache
+    generations, so tournament-service and app-service miss them before the
+    reply leaves; the outbox row, committed with the export, re-bumps them
+    durably.
     """
     scope = Scope.tournament(tournament_id)
     await emit(session, scope=scope, invalidates=EXPORT_RESOURCES)

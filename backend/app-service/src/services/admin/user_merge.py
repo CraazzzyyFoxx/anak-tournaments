@@ -20,7 +20,6 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 
 import sqlalchemy as sa
-from cashews import cache
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -413,11 +412,9 @@ class UserMergeService:
             await session.rollback()
             raise
 
-        await self._invalidate_merge_caches(
-            source_user_id=request.source_user_id,
-            target_user_id=request.target_user_id,
-            preview=preview,
-        )
+        # Both users' read caches, and every compare cache (global/cohort baselines move even when the merged user is
+        # not the subject).
+        await user_cache.invalidate_user_caches(request.source_user_id, request.target_user_id)
         return schemas.UserMergeExecuteResponse(
             deleted_source_user_id=request.source_user_id,
             surviving_target_user_id=request.target_user_id,
@@ -1166,43 +1163,6 @@ class UserMergeService:
             moved += int(result.rowcount or 0)
 
         return moved
-
-    # ─── Cache invalidation ──────────────────────────────────────────────────
-    async def _invalidate_merge_caches(
-        self,
-        *,
-        source_user_id: int,
-        target_user_id: int,
-        preview: schemas.UserMergePreviewResponse,
-    ) -> None:
-        patterns = {
-            "backend:get_statistics_by_heroes_all_values*",
-            # Global/cohort baselines can change even when the merged user is not
-            # the subject, so compare responses need broad short-TTL invalidation.
-            *(f"backend:{prefix}:*" for prefix in user_cache.USER_COMPARE_KEY_PREFIXES),
-        }
-        for user_id in (source_user_id, target_user_id):
-            patterns.update(
-                {
-                    f"backend:*users*{user_id}*",
-                    f"backend:*profile*{user_id}*",
-                    f"backend:*compare*{user_id}*",
-                    f"backend:*tournaments*{user_id}*",
-                    f"backend:*maps*{user_id}*",
-                    f"backend:*encounters*{user_id}*",
-                    f"backend:*characters*{user_id}*",
-                    f"backend:*teammates*{user_id}*",
-                }
-            )
-            # Precise per-user coverage for every registered user read-cache prefix
-            # (incl. user_tournament_stats / user_matches_summary, which the broad
-            # keyword patterns above miss). Single source of truth: services.user_cache.
-            patterns.update(user_cache.user_cache_patterns(user_id))
-        for identity in preview.source.social_accounts + preview.target.social_accounts:
-            patterns.add(f"backend:*{identity.value}*")
-            patterns.add(f"backend:*{identity.value.replace('#', '-')}*")
-        for pattern in patterns:
-            await cache.delete_match(pattern)
 
 
 merges = UserMergeService()

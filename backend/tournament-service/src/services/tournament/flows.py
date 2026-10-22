@@ -10,6 +10,7 @@ from shared.core import enums, errors, pagination
 from shared.core.tournament_state import IN_PLAY_STATUSES
 from shared.division_grid import DivisionGrid
 from shared.models.identity.auth_user import AuthUser
+from shared.services.cache_generations import versioned
 from shared.services.challonge_refs import ChallongeRef, resolve_stage_challonge, resolve_tournament_challonge
 from shared.services.division_grid.normalization import DivisionGridNormalizationError, DivisionGridNormalizer
 from shared.services.team_format import tournament_shape_reads
@@ -22,6 +23,7 @@ from src.services.registration.service import registration_service
 from src.services.registration_team_guards import has_registered_teams, registered_team_tournament_ids
 from src.services.team.service import team_service
 
+from .cache_resources import DETAIL, tournament_generations
 from .service import TournamentService, tournament_service
 
 
@@ -214,11 +216,9 @@ class TournamentFlowsService:
             )
         return tournament
 
-    @cache(
+    @versioned(
+        generations=tournament_generations("{id}", DETAIL),
         ttl=config.settings.tournaments_cache_ttl,
-        # Key deliberately contains "tournaments/{id}:" so the invalidation
-        # pattern behind ``Resource.TOURNAMENT_DETAIL`` (see
-        # ``cache_resources._detail``) purges it on change.
         key="tournaments/{id}:{entities}",
         prefix="fastapi:",
     )
@@ -465,8 +465,8 @@ class TournamentFlowsService:
 
     @cache(
         ttl=config.settings.tournaments_cache_ttl,
-        # No tournament_id in the args, so this key can't participate in the
-        # targeted invalidation patterns — staleness is bounded by the short TTL.
+        # No tournament_id in the args, so this key can't carry a tournament's
+        # cache generations — staleness is bounded by the short TTL.
         key="tournaments_statistics_history:{workspace_id}",
         prefix="fastapi:",
     )

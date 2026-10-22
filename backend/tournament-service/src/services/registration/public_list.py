@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from shared.services.cache_generations import versioned
 from src.core.config import settings
 from src.services.registration.service import registration_service
+from src.services.tournament.cache_resources import REGISTRATION_LIST, tournament_generations
 
 __all__ = ("build_registration_list", "coalesced_registration_list")
 
@@ -22,9 +23,9 @@ _inflight: dict[int, asyncio.Task[Any]] = {}
 
 
 # Values outlive a deploy in Redis and come back unvalidated, so a shape change
-# bumps the key version; the invalidation glob (``tournament/cache_resources.py``)
-# matches every version.
-@cache(
+# bumps the key version.
+@versioned(
+    generations=tournament_generations("{tournament_id}", REGISTRATION_LIST),
     ttl=settings.tournaments_cache_ttl,
     key="registration_list:v2:{tournament_id}:",
     prefix="fastapi:",

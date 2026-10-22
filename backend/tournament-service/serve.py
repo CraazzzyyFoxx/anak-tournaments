@@ -67,8 +67,6 @@ from src.services.division_grid.import_jobs import process_import_job, recover_s
 from src.services.encounter import challonge_push_events, log_evidence_events, room_reconcile
 from src.services.registration import sheet_sync
 from src.services.tournament import auto_transitions, recalculation_events
-from src.services.tournament.cache_invalidation import invalidate_tournament_resources
-from src.services.tournament.cache_resources import RESOURCE_CACHE_PATTERNS
 
 logger = setup_logging(
     service_name="tournament-svc",
@@ -92,15 +90,12 @@ _JOBS_CHANNEL = Channel(prefetch_count=4)
 set_worker_broker(broker)
 
 # The cashews cache is a process-global singleton; the worker must configure it
-# or after-commit cache invalidation raises NotConfiguredError.
+# before any cached read runs.
 configure_cache()
 
-# Same reason, same place: ``emit`` publishes through this Redis URL and drops
-# this service's own cashews keys through the invalidator before doing so.
-configure_realtime(
-    redis_url=str(config.settings.redis_url),
-    cache_invalidator=invalidate_tournament_resources,
-)
+# Same reason, same place: ``emit`` publishes through this Redis URL, and the
+# cache generations every service's invalidations bump live there too.
+configure_realtime(redis_url=str(config.settings.redis_url))
 
 # Quota policy lives in the ``quota`` schema, consumption in Redis; the gate needs
 # both before the first metered RPC. Its own client rather than
@@ -114,13 +109,13 @@ configure_quota(
     edge_workspace_metering=config.settings.quota_edge_workspace_metering,
 )
 
-# Cross-service half: resources another service stales that this one caches.
+# Durable half of the cross-service invalidations: re-bumps the generations the
+# writer already bumped at its commit, in case that bump was lost.
 register_invalidation_consumer(
     broker,
     logger,
     queue=CACHE_INVALIDATION_TOURNAMENT_QUEUE,
     exchange=CACHE_INVALIDATION_EXCHANGE,
-    patterns=RESOURCE_CACHE_PATTERNS,
 )
 
 # Typed read RPC methods served by the gateway (rpc.tournament.*).

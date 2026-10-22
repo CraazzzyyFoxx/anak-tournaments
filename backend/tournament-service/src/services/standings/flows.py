@@ -2,16 +2,17 @@ import typing
 from collections import defaultdict
 
 import sqlalchemy as sa
-from cashews import cache
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core import utils
 from shared.domain.tournament_utils import sort_bracket_matches
+from shared.services.cache_generations import versioned
 from src import schemas
 from src.core import config
 from src.services.encounter.flows import to_summary
 from src.services.team.flows import flows_service as team_flows_service
+from src.services.tournament.cache_resources import STANDINGS, tournament_generations
 from src.services.tournament.flows import flows_service as tournament_flows_service
 
 from . import service
@@ -150,7 +151,8 @@ class StandingsFlowsService:
             matches_history=sort_matches(matches_history),
         )
 
-    @cache(
+    @versioned(
+        generations=tournament_generations("{tournament_id}", STANDINGS),
         ttl=config.settings.standings_cache_ttl,
         key="standings_by_tournament:{tournament_id}:{entities}",
         prefix="fastapi:",
@@ -167,8 +169,8 @@ class StandingsFlowsService:
 
         Standings rows change on a recalculation and on a stage restructure; the
         embedded ``matches_history`` also moves whenever an encounter does. Every
-        one of those publishes a resource whose ``cache_resources`` entry covers
-        this key, so a plain TTL cache here is safe.
+        one of those publishes a resource in ``STANDINGS``, whose generation is
+        part of this key, so a plain TTL cache here is safe.
 
         ``tournament`` is an optional pre-fetched model (callers typically loaded
         it for a visibility check), read only on a cache miss when "tournament"
