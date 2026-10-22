@@ -251,11 +251,12 @@ class AdminStageService:
         """
         await publish_tournament_invalidation(session, tournament_id, STRUCTURE_RESOURCES)
 
-    async def get_stage(self, session: AsyncSession, stage_id: int) -> models.Stage:
+    async def get_stage(self, session: AsyncSession, stage_id: int, *, populate_existing: bool = False) -> models.Stage:
         stage = await self.stage_repo.get(
             session,
             stage_id,
             options=[selectinload(models.Stage.items).selectinload(models.StageItem.inputs)],
+            populate_existing=populate_existing,
         )
         if not stage:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stage not found")
@@ -1984,7 +1985,9 @@ class AdminStageService:
             num_groups,
             mode,
         )
-        return await self.get_stage(session, stage_id)
+        # Reloaded: the inputs were deleted and added through the session, not
+        # through the ``items[].inputs`` collections of the stage loaded above.
+        return await self.get_stage(session, stage_id, populate_existing=True)
 
     async def wire_from_groups(
         self,

@@ -113,6 +113,7 @@ async def _seed(session: Any) -> SimpleNamespace:
     return SimpleNamespace(
         workspace_id=workspace.id,
         tournament_id=tournament.id,
+        groups=groups.id,
         group_a=group_a.id,
         group_b=group_b.id,
         bracket=bracket.id,
@@ -217,3 +218,26 @@ def test_a_team_cannot_move_into_another_stage(db_session) -> None:
     refused, group_a = asyncio.run(_run())
     assert refused.status_code == 400
     assert group_a == [(1, "a1"), (2, "a2"), (3, "a3"), (5, "a4")]
+
+
+def test_seeding_answers_with_the_inputs_it_stored(db_session) -> None:
+    """The response is the reseeded stage, not the one loaded before the wipe."""
+
+    async def _run() -> tuple:
+        seeded = await _seed(db_session)
+        try:
+            stage = await stage_service.seed_teams(db_session, seeded.groups, sorted(seeded.names)[:3])
+            returned = sorted((inp.id, inp.team_id) for item in stage.items for inp in item.inputs)
+            stored = await db_session.execute(
+                sa.select(StageItemInput.id, StageItemInput.team_id)
+                .join(StageItem, StageItem.id == StageItemInput.stage_item_id)
+                .where(StageItem.stage_id == seeded.groups)
+                .order_by(StageItemInput.id)
+            )
+            return returned, [tuple(row) for row in stored.all()]
+        finally:
+            await _drop(db_session, seeded)
+
+    returned, stored = asyncio.run(_run())
+    assert len(stored) == 3
+    assert returned == stored
