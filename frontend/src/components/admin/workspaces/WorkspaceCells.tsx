@@ -2,9 +2,9 @@
 
 import Image from "@/components/ui/image";
 
-import type { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 
-export function WorkspaceIcon({ workspace }: Readonly<{ workspace: Workspace }>) {
+export function WorkspaceIcon({ workspace }: Readonly<{ workspace: WorkspaceListItem }>) {
   if (workspace.icon_url) {
     return (
       <Image

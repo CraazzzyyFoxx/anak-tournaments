@@ -1,8 +1,8 @@
 import type { FilterDef } from "@/components/kit/useFilters";
-import type { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 
 /** `label` names the chip; the options are the workspaces this account can issue keys in. */
-export function apiKeyFilterDefs(workspaces: readonly Workspace[], label: string): FilterDef[] {
+export function apiKeyFilterDefs(workspaces: readonly WorkspaceListItem[], label: string): FilterDef[] {
   return [
     {
       key: "workspace",

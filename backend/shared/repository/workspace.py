@@ -29,8 +29,16 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
     def __init__(self) -> None:
         super().__init__(models.Workspace)
 
-    async def get_by_slug(self, session: AsyncSession, slug: str) -> models.Workspace | None:
-        workspace = await self.get_by(session, options=self.default_grid_options(), slug=slug)
+    async def get_by_slug(
+        self, session: AsyncSession, slug: str, *where: sa.ColumnElement[bool]
+    ) -> models.Workspace | None:
+        """``slug``'s workspace if it also matches ``where``, with its effective grids."""
+        result = await session.execute(
+            sa.select(models.Workspace)
+            .options(*self.default_grid_options())
+            .where(models.Workspace.slug == slug, *where)
+        )
+        workspace = result.scalar_one_or_none()
         await self.load_effective_grid_versions(session, [workspace] if workspace is not None else [])
         return workspace
 
@@ -126,9 +134,9 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
         )
 
     async def list_ordered(self, session: AsyncSession, *where: sa.ColumnElement[bool]) -> Sequence[models.Workspace]:
-        """Workspaces matching ``where``, ordered by id, with their effective grids.
+        """Workspaces matching ``where``, ordered by id: list rows, so no effective grids (versions and tiers).
 
-        Filter here, never over the result: every row loaded also loads its grid versions and their tiers.
+        Filter here, never over the result.
         """
         result = await session.execute(
             sa.select(models.Workspace)
@@ -136,9 +144,7 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
             .where(*where)
             .order_by(models.Workspace.id.asc())
         )
-        workspaces = result.scalars().all()
-        await self.load_effective_grid_versions(session, workspaces)
-        return workspaces
+        return result.scalars().all()
 
     async def count_by_owner(self, session: AsyncSession, *, owner_id: int) -> int:
         """How many workspaces this account is the create-time accountable party for.

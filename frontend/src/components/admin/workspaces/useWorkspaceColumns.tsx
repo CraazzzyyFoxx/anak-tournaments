@@ -8,7 +8,7 @@ import { EyeOff, Pencil, Trash2, XCircle } from "lucide-react";
 import { columnMeta, createKebabColumn } from "@/components/data-table";
 import { StatusIcon } from "@/components/admin/StatusIcon";
 import { WorkspaceVerificationIcon } from "@/components/admin/workspace-verification";
-import type { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 
 import { WorkspaceIcon } from "./WorkspaceCells";
 
@@ -21,10 +21,10 @@ export function useWorkspaceColumns({
   isSuperuser: boolean;
   isWorkspaceAdmin: (workspaceId: number) => boolean;
   /** Stable identity required: the kebab column closes over it. */
-  onDelete: (workspace: Workspace) => void;
-}>): ColumnDef<Workspace>[] {
+  onDelete: (workspace: WorkspaceListItem) => void;
+}>): ColumnDef<WorkspaceListItem>[] {
   const t = useTranslations("adminAccess.common");
-  return useMemo<ColumnDef<Workspace>[]>(
+  return useMemo<ColumnDef<WorkspaceListItem>[]>(
     () => [
       {
         accessorKey: "id",
@@ -60,7 +60,7 @@ export function useWorkspaceColumns({
         accessorKey: "is_active",
         header: t("status"),
         size: 120,
-        meta: columnMeta<Workspace>({ align: "center" }),
+        meta: columnMeta<WorkspaceListItem>({ align: "center" }),
         // Active is the norm; only an inactive workspace is marked.
         cell: ({ row }) =>
           row.original.is_active ? null : (
@@ -71,14 +71,14 @@ export function useWorkspaceColumns({
         accessorKey: "is_hidden",
         header: t("visibility"),
         size: 120,
-        meta: columnMeta<Workspace>({ align: "center" }),
+        meta: columnMeta<WorkspaceListItem>({ align: "center" }),
         // Listed is the norm; only a hidden workspace is marked.
         cell: ({ row }) =>
           row.original.is_hidden ? (
             <StatusIcon icon={EyeOff} label={t("hidden")} variant="warning" />
           ) : null
       },
-      createKebabColumn<Workspace>(
+      createKebabColumn<WorkspaceListItem>(
         (row) => [
           {
             label: t("editWorkspace"),

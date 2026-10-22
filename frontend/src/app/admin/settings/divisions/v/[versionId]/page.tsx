@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useWorkspaceRead } from "@/hooks/useCurrentWorkspace";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { usePermissions } from "@/hooks/usePermissions";
 import { activeGridVersionId } from "@/lib/divisions/grid";
@@ -37,8 +38,7 @@ export default function DivisionDraftEditorPage() {
 
   const { isSuperuser, canAccessPermission } = usePermissions();
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
-  const getCurrentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace);
-  const workspace = getCurrentWorkspace();
+  const workspace = useWorkspaceRead(workspaceId);
 
   const canRead =
     workspaceId !== null && (isSuperuser || canAccessPermission("division_grid.read", workspaceId));

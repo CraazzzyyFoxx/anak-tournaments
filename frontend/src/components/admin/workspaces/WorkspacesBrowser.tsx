@@ -14,7 +14,7 @@ import { paginateResults, sortArray } from "@/lib/api/paginate-results";
 import { cn } from "@/lib/utils";
 import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import type { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 
 import { WorkspaceIcon } from "./WorkspaceCells";
@@ -42,8 +42,8 @@ export function WorkspacesBrowser() {
   const { searchParams, setParams } = useQueryParams({ resetOnChange: [], shallow: true });
   const openId = searchParams?.get("id") ?? null;
 
-  const [pageRows, setPageRows] = useState<Workspace[]>([]);
-  const [pendingDelete, setPendingDelete] = useState<Workspace | null>(null);
+  const [pageRows, setPageRows] = useState<WorkspaceListItem[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<WorkspaceListItem | null>(null);
 
   const invalidate = () => {
     // `["admin-workspaces"]` is the prefix the workspace settings sections
@@ -80,7 +80,7 @@ export function WorkspacesBrowser() {
         className={cn("grid items-start gap-4", openRow && "lg:grid-cols-[minmax(0,1fr)_380px]")}
       >
         <div className="min-w-0">
-          <DataTable<Workspace>
+          <DataTable<WorkspaceListItem>
             columns={columns}
             initialPageSize={PAGE_SIZE}
             searchPlaceholder={t("searchWorkspaces")}

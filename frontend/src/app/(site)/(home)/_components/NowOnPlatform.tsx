@@ -31,7 +31,7 @@ import tournamentService from "@/services/tournament.service";
 import workspaceService from "@/services/workspace.service";
 import { cn } from "@/lib/utils";
 import type { Tournament } from "@/types/tournament.types";
-import type { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 
 const TITLE_ID = "home-now-title";
 
@@ -65,7 +65,7 @@ interface NowData {
   /** Nothing active: the most recent finished tournament takes the big slot. */
   last: FinishedTournament | null;
   small: NowItem[];
-  workspaces: Map<number, Workspace>;
+  workspaces: Map<number, WorkspaceListItem>;
 }
 
 async function loadNow(): Promise<NowData> {
@@ -154,7 +154,7 @@ export async function NowOnPlatform() {
 function WorkspaceLine({
   workspace,
   children
-}: Readonly<{ workspace: Workspace | undefined; children?: ReactNode }>) {
+}: Readonly<{ workspace: WorkspaceListItem | undefined; children?: ReactNode }>) {
   if (!workspace) return null;
   return (
     <div className={FEAT_WS_CLASS}>
@@ -169,7 +169,7 @@ function WorkspaceLine({
 async function LeadFeat({
   tournament,
   workspace
-}: Readonly<{ tournament: Tournament; workspace: Workspace | undefined }>) {
+}: Readonly<{ tournament: Tournament; workspace: WorkspaceListItem | undefined }>) {
   const [t, tSite, statusLabel, format] = await Promise.all([
     getTranslations("home.now"),
     getTranslations("site"),
@@ -330,7 +330,7 @@ async function LeadFeat({
 async function LastFinishedFeat({
   entry,
   workspace
-}: Readonly<{ entry: FinishedTournament; workspace: Workspace | undefined }>) {
+}: Readonly<{ entry: FinishedTournament; workspace: WorkspaceListItem | undefined }>) {
   const [t, format] = await Promise.all([getTranslations("home.now"), getFormatter()]);
   const { tournament, winner } = entry;
   const start = new Date(tournament.start_date);
@@ -391,7 +391,7 @@ async function LastFinishedFeat({
 async function TCard({
   item,
   workspace
-}: Readonly<{ item: NowItem; workspace: Workspace | undefined }>) {
+}: Readonly<{ item: NowItem; workspace: WorkspaceListItem | undefined }>) {
   const [t, statusLabel, format] = await Promise.all([
     getTranslations("home.now"),
     getTranslations("common.statusBadge"),

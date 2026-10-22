@@ -305,7 +305,9 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   Activation and deletion affect only that game's assignment and preserve valid event pins.
   `WorkspaceRead.default_division_grid_versions` contains explicit IDs;
   `effective_division_grid_versions` contains persisted effective version/tier payloads, including
-  matching system fallback. Absent versions are omitted, not synthetic IDs. Neither map is writable
+  matching system fallback. Absent versions are omitted, not synthetic IDs. Only single-workspace reads
+  (`GET /workspaces/{id}`, `/workspaces/by-slug`) carry the effective map: `GET /workspaces` list rows
+  (`WorkspaceListItem`) omit it, so listing every workspace never loads every grid's tiers. Neither map is writable
   through workspace create/update, and the old scalar fields are rejected. A valid event pin needs
   no workspace activation. Known-owner UI consumers retain the pin and discipline; unresolved owners
   expose no wrong-game controls. Legacy OW data explicitly chooses OW, and LoL grids show no OW native

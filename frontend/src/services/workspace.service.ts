@@ -15,6 +15,7 @@ import {
   DivisionGridVersion,
   ManageableDiscordGuild,
   Workspace,
+  WorkspaceListItem,
   WorkspaceListScope,
   WorkspaceMember,
   WorkspaceOwner,
@@ -45,14 +46,20 @@ export default class workspaceService {
    * `public` (default) is the home-page directory: hidden and `unverified`
    * workspaces are absent for everyone, superusers included. `admin` is the
    * management list (superuser: everything, else own memberships) and `all`
-   * unions that with the directory, for the switcher and slug resolution.
+   * unions that with the directory, for the switcher. Rows carry no grids:
+   * `getById` / `getBySlug` read one workspace with them.
    */
-  static async getAll(scope: WorkspaceListScope = "public"): Promise<Workspace[]> {
+  static async getAll(scope: WorkspaceListScope = "public"): Promise<WorkspaceListItem[]> {
     return apiFetch("/api/v1/workspaces", { query: { scope } }).then((r) => r.json());
   }
 
   static async getById(id: number): Promise<Workspace> {
     return apiFetch(`/api/v1/workspaces/${id}`).then((r) => r.json());
+  }
+
+  /** The community page's workspace: 404 unless `getAll("all")` would list it for the viewer. */
+  static async getBySlug(slug: string): Promise<Workspace> {
+    return apiFetch("/api/v1/workspaces/by-slug", { query: { slug } }).then((r) => r.json());
   }
 
   /**

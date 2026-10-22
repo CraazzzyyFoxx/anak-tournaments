@@ -1,7 +1,7 @@
 import Cookies from "js-cookie";
 import { create } from "zustand";
 import type { AuthProfile } from "@/stores/auth-profile.store";
-import { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 import workspaceService from "@/services/workspace.service";
 import { STATS_SCOPE_COOKIE, type StatsScope } from "@/lib/site/stats-scope";
 import {
@@ -57,7 +57,8 @@ function cookieValue(name: string): string | undefined {
 }
 
 type WorkspaceState = {
-  workspaces: Workspace[];
+  /** List rows (`scope=all`): no grids — `useCurrentWorkspaceRead` reads the current one in full. */
+  workspaces: WorkspaceListItem[];
   currentWorkspaceId: number | null;
   statsScope: StatsScope;
   /** Runtime-only owner of the opened object; never changes the viewing preference. */
@@ -90,14 +91,14 @@ type WorkspaceState = {
   setLastGame: (code: string) => void;
   setEntityDiscipline: (code: string | null) => void;
   setHostLock: (id: number | null) => void;
-  getCurrentWorkspace: () => Workspace | undefined;
+  getCurrentWorkspace: () => WorkspaceListItem | undefined;
 };
 
-export function filterAccessibleWorkspaces(
-  workspaces: Workspace[],
+export function filterAccessibleWorkspaces<T extends WorkspaceListItem>(
+  workspaces: T[],
   authStatus: string,
   user?: AuthProfile
-): Workspace[] {
+): T[] {
   if (authStatus !== "authenticated" || !user) {
     return workspaces;
   }
@@ -111,7 +112,7 @@ export function filterAccessibleWorkspaces(
 }
 
 export function resolveCurrentWorkspaceId(
-  workspaces: Workspace[],
+  workspaces: WorkspaceListItem[],
   currentWorkspaceId: number | null
 ): number | null {
   if (workspaces.length === 0) {

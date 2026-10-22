@@ -10,7 +10,7 @@ import { getFormatter } from "@/lib/datetime/server";
 import { getTournamentStatusMeta, isTournamentStatusActive } from "@/lib/tournament/status";
 import statisticsService from "@/services/statistics.service";
 import type { Tournament } from "@/types/tournament.types";
-import type { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 
 import { DirectoryRail } from "./DirectoryRail";
 import { getActiveTournaments, getPublicWorkspaces } from "./home-data";
@@ -18,7 +18,7 @@ import { getActiveTournaments, getPublicWorkspaces } from "./home-data";
 const TITLE_ID = "home-directory-title";
 
 interface DirectoryEntry {
-  workspace: Workspace;
+  workspace: WorkspaceListItem;
   /** What this community has running right now, if anything. */
   active: Tournament | null;
   tournaments: number | null;

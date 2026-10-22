@@ -1,13 +1,28 @@
 import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 
+import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { resolveOwnerGrid } from "@/lib/divisions/grid";
+import workspaceService from "@/services/workspace.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
-import { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
+import { DivisionGrid, DivisionGridVersion, Workspace } from "@/types/workspace.types";
 
 export function useCurrentWorkspaceId(): number | null {
   return useWorkspaceStore(
     (s) => s.hostLockedWorkspaceId ?? s.entityWorkspaceId ?? s.currentWorkspaceId
   );
+}
+
+/**
+ * One workspace in full, grids included: the store's list rows carry none. On the cache entry the settings pages
+ * read and invalidate, so a saved change reaches every grid reader.
+ */
+export function useWorkspaceRead(workspaceId: number | null): Workspace | undefined {
+  return useQuery({
+    queryKey: adminQueryKeys.workspace(workspaceId ?? 0),
+    queryFn: () => workspaceService.getById(workspaceId as number),
+    enabled: workspaceId !== null
+  }).data;
 }
 
 /**
@@ -17,15 +32,11 @@ export function useCurrentWorkspaceId(): number | null {
  * game's crests. Without an explicit `discipline` the workspace's first enabled game is read, as before.
  */
 export function useDivisionGrid(discipline?: string): DivisionGrid {
-  const workspace = useWorkspaceStore((s) => s.getCurrentWorkspace());
-  const scope = discipline ?? workspace?.disciplines_enabled[0];
-  const tiers = resolveOwnerGrid(workspace, scope)?.tiers;
+  const tiers = useDivisionGridVersion(discipline)?.tiers;
   return useMemo(() => ({ tiers: tiers ?? [] }), [tiers]);
 }
 
 export function useDivisionGridVersion(discipline?: string): DivisionGridVersion | null {
-  return useWorkspaceStore((s) => {
-    const workspace = s.getCurrentWorkspace();
-    return resolveOwnerGrid(workspace, discipline ?? workspace?.disciplines_enabled[0]);
-  });
+  const workspace = useWorkspaceRead(useCurrentWorkspaceId());
+  return resolveOwnerGrid(workspace, discipline ?? workspace?.disciplines_enabled[0]);
 }

@@ -26,13 +26,14 @@ import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 import { useGameScope } from "@/hooks/useGameScope";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useQueryParams } from "@/hooks/useQueryParams";
+import { useWorkspaceRead } from "@/hooks/useCurrentWorkspace";
 import { usePermissions } from "@/hooks/usePermissions";
+import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { activeGridVersionId, resolveOwnerGrid } from "@/lib/divisions/grid";
 import { divisionGridQueryKeys } from "@/lib/divisions/query-keys";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
 import workspaceService from "@/services/workspace.service";
-import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { DivisionGridEntity, DivisionGridVersion } from "@/types/workspace.types";
 
 import { DivisionsHeaderActions } from "./DivisionsHeaderActions";
@@ -71,9 +72,7 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
   const queryClient = useQueryClient();
   const { searchParams, setParams } = useQueryParams();
   const { isSuperuser, canAccessPermission } = usePermissions();
-  const getCurrentWorkspace = useWorkspaceStore((state) => state.getCurrentWorkspace);
-  const fetchWorkspaces = useWorkspaceStore((state) => state.fetchWorkspaces);
-  const workspace = getCurrentWorkspace();
+  const workspace = useWorkspaceRead(workspaceId);
   const [confirming, setConfirming] = useState<Confirming | null>(null);
   const [gridForm, setGridForm] = useState<GridForm | null>(null);
 
@@ -217,7 +216,7 @@ export function DivisionsBrowser({ workspaceId }: Readonly<{ workspaceId: number
       queryClient.invalidateQueries({
         queryKey: divisionGridQueryKeys.readinessByDiscipline(scope.workspaceId, scope.discipline)
       }),
-      fetchWorkspaces()
+      queryClient.invalidateQueries({ queryKey: adminQueryKeys.workspace(scope.workspaceId) })
     ]);
   };
 

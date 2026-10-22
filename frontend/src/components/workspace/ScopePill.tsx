@@ -19,7 +19,7 @@ import { ALL_DISCIPLINES, DISCIPLINE_PARAM, pageClassOf, type PillGame } from "@
 import { cn } from "@/lib/utils";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
-import type { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 
 type OwnerKind = "tournament" | "match" | "encounter" | "draft" | "scrim" | "mix" | "rule";
 
@@ -146,7 +146,7 @@ export function ScopePill() {
       setPicked(null);
     });
   };
-  const pickWorkspace = (next: Workspace) =>
+  const pickWorkspace = (next: WorkspaceListItem) =>
     commit(next.id, () => {
       setCurrentWorkspace(next.id);
       setStatsScope("workspace");

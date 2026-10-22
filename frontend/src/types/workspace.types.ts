@@ -292,13 +292,17 @@ export interface Workspace {
   verification_status: WorkspaceVerificationStatus;
   /** Explicit active selections; missing keys use the discipline's fallback. */
   default_division_grid_versions: Record<string, number>;
-  /** Real resolved versions, including same-discipline system defaults. */
+  /** Real resolved versions, including same-discipline system defaults. Only a single-workspace read carries
+   * them: a `WorkspaceListItem` does not. */
   effective_division_grid_versions: Record<string, DivisionGridVersion>;
   /** How "is this player new" is decided when a roster is created: `"global"`
    * counts any workspace's tournaments, `"workspace"` counts only this
    * workspace's. */
   newcomer_scope: "global" | "workspace";
 }
+
+/** A row of `GET /api/v1/workspaces`: every field but the grids, which a list of every workspace cannot afford. */
+export type WorkspaceListItem = Omit<Workspace, "effective_division_grid_versions">;
 
 /**
  * `Workspace.owner_id` resolved to a person — the account accountable for the

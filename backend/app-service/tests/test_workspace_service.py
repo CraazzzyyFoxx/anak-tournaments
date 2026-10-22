@@ -16,7 +16,7 @@ from shared import models
 from shared.disciplines import discipline
 from shared.repository.workspace import WorkspaceRepository
 from shared.testing import create_test_async_engine
-from src.schemas.workspace import WorkspaceCreate, WorkspaceRead, WorkspaceUpdate
+from src.schemas.workspace import WorkspaceCreate, WorkspaceListItem, WorkspaceRead, WorkspaceUpdate
 
 workspace_service = importlib.import_module("src.services.workspace.service")
 workspaces = workspace_service.workspaces
@@ -239,6 +239,7 @@ class WorkspaceGetAllVisibilityTests(IsolatedAsyncioTestCase):
         self.session.add_all(rows.values())
         await self.session.flush()
         self.ids = {label: row.id for label, row in rows.items()}
+        self.slugs = {label: row.slug for label, row in rows.items()}
         self.session.expunge_all()
 
     async def asyncTearDown(self) -> None:
@@ -246,14 +247,57 @@ class WorkspaceGetAllVisibilityTests(IsolatedAsyncioTestCase):
         await self.session.close()
         await self.engine.dispose()
 
+    def _viewer(self, user):
+        """``user`` with its label memberships turned into the test's workspace ids."""
+        if user is None:
+            return None
+        ids = [self.ids.get(label, -label) for label in user.get_workspace_ids()]
+        return SimpleNamespace(is_superuser=user.is_superuser, get_workspace_ids=Mock(return_value=ids))
+
     async def _get_all(self, user, scope: str = "public") -> list[int]:
         """The labels of the test's workspaces ``get_all`` returns; ``user`` names its memberships by label too."""
-        if user is not None:
-            ids = [self.ids.get(label, -label) for label in user.get_workspace_ids()]
-            user = SimpleNamespace(is_superuser=user.is_superuser, get_workspace_ids=Mock(return_value=ids))
-        result = await workspaces.get_all(self.session, user=user, scope=scope)
+        result = await workspaces.get_all(self.session, user=self._viewer(user), scope=scope)
         label_of = {id_: label for label, id_ in self.ids.items()}
         return [label_of[w.id] for w in result if w.id in label_of]
+
+    async def _by_slug(self, user) -> list[int]:
+        """The labels whose slug resolves for ``user`` -- must be exactly what ``scope=all`` lists."""
+        viewer = self._viewer(user)
+        return [
+            label
+            for label, slug in self.slugs.items()
+            if await workspaces.get_visible_by_slug(self.session, slug, user=viewer) is not None
+        ]
+
+    async def test_a_slug_resolves_exactly_where_the_switcher_lists_it(self) -> None:
+        """The community page by slug: a hidden or ``unverified`` workspace opens to its members and
+        superusers only, never to a visitor or a non-member."""
+        viewers = {
+            "anonymous": None,
+            "non-member": SimpleNamespace(is_superuser=False, get_workspace_ids=Mock(return_value=[99])),
+            "member of 2 and 4": SimpleNamespace(is_superuser=False, get_workspace_ids=Mock(return_value=[2, 4])),
+            "superuser": SimpleNamespace(is_superuser=True, get_workspace_ids=Mock(return_value=[])),
+        }
+        expected = {
+            "anonymous": [1, 3],
+            "non-member": [1, 3],
+            "member of 2 and 4": [1, 2, 3, 4],
+            "superuser": [1, 2, 3, 4],
+        }
+        for name, user in viewers.items():
+            with self.subTest(viewer=name):
+                self.assertEqual(expected[name], await self._by_slug(user))
+                self.assertEqual(expected[name], await self._get_all(user, "all"))
+
+    async def test_a_slug_lookup_is_the_full_read_a_list_row_is_not(self) -> None:
+        """The community page renders grids, so by slug answers what by id does, effective grids included."""
+        by_slug = await workspaces.get_visible_by_slug(self.session, self.slugs[1], user=None)
+        by_id = await workspaces.get_by_id(self.session, self.ids[1])
+
+        self.assertEqual(
+            WorkspaceRead.model_validate(by_id, from_attributes=True).model_dump(),
+            WorkspaceRead.model_validate(by_slug, from_attributes=True).model_dump(),
+        )
 
     async def test_the_directory_never_loads_a_workspace_it_leaves_out(self) -> None:
         """Every workspace loaded drags in its grid versions and all their tiers: filtering the loaded rows
@@ -422,11 +466,16 @@ class WorkspacePublicGridTests(IsolatedAsyncioTestCase):
                     sa.event.listen(engine.sync_engine, "before_cursor_execute", count_sql)
                     try:
                         public = await workspaces.get_all(session)
-                        serialized = [WorkspaceRead.model_validate(row, from_attributes=True) for row in public]
+                        serialized = [WorkspaceListItem.model_validate(row, from_attributes=True) for row in public]
                     finally:
                         sa.event.remove(engine.sync_engine, "before_cursor_execute", count_sql)
                     counts.append(len(statements))
                     self.assertTrue(any(item.slug == f"{tag}-{index}" for item in serialized))
+                    # A list row carries no grids: neither its queries nor its payload reach a version or a tier.
+                    self.assertEqual(
+                        [], [sql for sql in statements if "division_grid_version" in sql or "division_grid_tier" in sql]
+                    )
+                    self.assertNotIn("effective_division_grid_versions", serialized[0].model_dump())
                 self.assertEqual(counts[0], counts[1])
                 print(
                     f"WorkspaceRead: explicit OW+LoL, scoped effective payloads, no legacy fields; list queries {counts}"

@@ -262,7 +262,17 @@ DOCS: dict[str, dict] = {
             " byte-identical for every caller, superusers included: hidden and `unverified` workspaces never appear."
             " `scope=admin` is the management list -- every workspace for a superuser, otherwise only the caller's own"
             " memberships at any tier. `scope=all` is that unioned with the public directory (the workspace switcher)."
-            " Any other value is a 422."
+            " Any other value is a 422. Rows carry no `effective_division_grid_versions`: read one workspace for its"
+            " grids."
+        ),
+    },
+    "rpc.app.workspaces.by_slug": {
+        "summary": "Get workspace by slug",
+        "description": (
+            "Permission: public; no authentication required -- an optional identity widens what resolves. The"
+            " community page's lookup: the workspace whose slug is `slug`, with its grids, when `scope=all` of the"
+            " list would include it for the caller (listed, one of their memberships, or any for a superuser);"
+            " 404 otherwise, so a hidden or `unverified` workspace never opens to anyone else by its slug."
         ),
     },
     "rpc.app.workspaces.by_host": {

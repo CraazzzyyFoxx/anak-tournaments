@@ -27,7 +27,7 @@ import { useAccountSettingsModalStore } from "@/stores/account-settings-modal.st
 import { SITE_FAVICON, SITE_NAME } from "@/config/site";
 import { DISCIPLINE_PARAM } from "@/lib/site/discipline-scope";
 import { initials } from "@/lib/utils";
-import type { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 
 // Role names come from two RBAC scopes: global roles ("admin", "moderator" —
 // see AppRole in usePermissions) and
@@ -143,7 +143,7 @@ export function SidebarUserDropdown() {
 
   const workspaces = filterAccessibleWorkspaces(allWorkspaces, status, user);
   const currentWorkspace = workspaces.find((w) => w.id === currentWorkspaceId);
-  const pickWorkspace = (next: Workspace) => {
+  const pickWorkspace = (next: WorkspaceListItem) => {
     setCurrentWorkspace(next.id);
     // A game filter the new community does not run would narrow its list to nothing.
     const game = searchParams?.get(DISCIPLINE_PARAM);

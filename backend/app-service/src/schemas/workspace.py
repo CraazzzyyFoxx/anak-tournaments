@@ -32,6 +32,7 @@ _LINK_HOSTS: dict[str, tuple[str, ...]] = {
 }
 
 __all__ = (
+    "WorkspaceListItem",
     "WorkspaceRead",
     "WorkspaceCreate",
     "WorkspaceUpdate",
@@ -53,7 +54,9 @@ __all__ = (
 )
 
 
-class WorkspaceRead(BaseRead):
+class WorkspaceListItem(BaseRead):
+    """One row of ``workspaces.list``: everything but the grids, which a list of every workspace cannot afford."""
+
     slug: str
     name: str
     description: str | None
@@ -107,11 +110,16 @@ class WorkspaceRead(BaseRead):
     # so it is already observable from the outside.
     verification_status: str = "unverified"
     default_division_grid_versions: dict[str, int] = Field(default_factory=dict)
-    effective_division_grid_versions: dict[str, DivisionGridVersionRead] = Field(default_factory=dict)
     #: The workspace's enabled games as stored; a read never invents one.
     disciplines_enabled: list[str]
     # See ``shared.models.tenancy.workspace.Workspace.newcomer_scope``.
     newcomer_scope: Literal["global", "workspace"] = "global"
+
+
+class WorkspaceRead(WorkspaceListItem):
+    """One workspace, with the effective division grid of each of its games."""
+
+    effective_division_grid_versions: dict[str, DivisionGridVersionRead] = Field(default_factory=dict)
 
 
 class WorkspaceCreate(BaseModel):

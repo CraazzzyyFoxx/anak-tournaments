@@ -10,6 +10,7 @@ import { buildRegistrationUpdateFromPlayerPayload } from "@/components/balancer/
 import { PickBanTargetBoard } from "@/components/pick-ban/PickBanTargetBoard";
 import messages from "@/i18n/messages/en.json";
 import ru from "@/i18n/messages/ru.json";
+import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
 import adminService from "@/services/admin.service";
 import balancerAdminService from "@/services/balancer-admin.service";
@@ -156,6 +157,11 @@ function crestNames() {
     .filter((image) => /^(LoL|OW) /.test(image.alt))
     .map((image) => image.alt);
 }
+/** The full read `useDivisionGrid` resolves through: the store's list rows carry no grids. */
+function serveWorkspace(read: Workspace) {
+  client.setQueryData(adminQueryKeys.workspace(read.id), read);
+  vi.spyOn(workspaceService, "getById").mockResolvedValue(read);
+}
 async function clickButton(label: string) {
   const button = [...document.querySelectorAll("button")].find(
     (candidate) => candidate.textContent?.trim() === label
@@ -176,6 +182,7 @@ beforeEach(() => {
     entityWorkspaceId: null,
     hostLockedWorkspaceId: null
   });
+  serveWorkspace(workspace);
   vi.spyOn(adminService, "getPlayerSubRoles").mockResolvedValue([]);
   onSave.mockReset();
 });
@@ -227,9 +234,7 @@ describe("owner-grid receiving controls", () => {
   });
 
   it("does not expose an OW slider when the known LoL owner's payload is missing", async () => {
-    useWorkspaceStore.setState({
-      workspaces: [{ ...workspace, effective_division_grid_versions: { overwatch: ow } }]
-    });
+    serveWorkspace({ ...workspace, effective_division_grid_versions: { overwatch: ow } });
     await render(sheet("lol"));
     expect(document.querySelector('[role="slider"]')).toBeNull();
     expect(crestNames()).toEqual([]);
@@ -240,14 +245,10 @@ describe("owner-grid receiving controls", () => {
     const pinned = version(3, "LoL Pin", [200, 900]);
     const pending = Promise.withResolvers<DivisionGridVersion>();
     vi.spyOn(workspaceService, "getDivisionGridVersion").mockReturnValue(pending.promise);
-    useWorkspaceStore.setState({
-      workspaces: [
-        {
-          ...workspace,
-          default_division_grid_versions: { overwatch: ow.id },
-          effective_division_grid_versions: { overwatch: ow }
-        }
-      ]
+    serveWorkspace({
+      ...workspace,
+      default_division_grid_versions: { overwatch: ow.id },
+      effective_division_grid_versions: { overwatch: ow }
     });
     await render(sheet(undefined, undefined));
     expect(document.querySelector('[role="slider"]')).toBeNull();
@@ -292,11 +293,7 @@ describe("owner-grid receiving controls", () => {
   ])("commits numeric rank entry using the real upper bound ($max)", async ({ max, expected }) => {
     // Embedded tournament responses omit null maxima; tier order is not rank order.
     const bounded = { ...lol, tiers: [{ ...lol.tiers[1], rank_max: max }, lol.tiers[0]] };
-    useWorkspaceStore.setState({
-      workspaces: [
-        { ...workspace, effective_division_grid_versions: { overwatch: ow, lol: bounded } }
-      ]
-    });
+    serveWorkspace({ ...workspace, effective_division_grid_versions: { overwatch: ow, lol: bounded } });
     await render(sheet("lol"));
     const input = document.querySelector<HTMLInputElement>('input[inputmode="numeric"]')!;
     await act(async () => {

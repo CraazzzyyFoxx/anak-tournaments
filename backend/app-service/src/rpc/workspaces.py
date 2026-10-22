@@ -178,7 +178,7 @@ def register(broker: Any, logger: Any) -> None:
                 raise HTTPException(status_code=422, detail="scope must be one of public, admin, all")
             viewer = rehydrate_user_optional(data.get("identity"))
             workspaces = await workspace_service.get_all(session, user=viewer, scope=scope)
-            return [schemas.WorkspaceRead.model_validate(w, from_attributes=True) for w in workspaces]
+            return [schemas.WorkspaceListItem.model_validate(w, from_attributes=True) for w in workspaces]
 
         return await c.envelope(logger, "workspaces.list", op, session_factory=_SF)
 
@@ -191,6 +191,20 @@ def register(broker: Any, logger: Any) -> None:
             return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
 
         return await c.envelope(logger, "workspaces.get", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.app.workspaces.by_slug")
+    async def _by_slug(data: dict, msg: RabbitMessage) -> dict:
+        """``?slug=``: the community page's workspace, 404 unless ``scope=all`` would list it for the viewer."""
+
+        async def op(session: Any) -> Any:
+            slug = c.q1(data, "slug", str, "")
+            viewer = rehydrate_user_optional(data.get("identity"))
+            workspace = await workspace_service.get_visible_by_slug(session, slug, user=viewer)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Workspace not found")
+            return schemas.WorkspaceRead.model_validate(workspace, from_attributes=True)
+
+        return await c.envelope(logger, "workspaces.by_slug", op, session_factory=_SF)
 
     @broker.subscriber("rpc.app.workspaces.staff")
     async def _staff(data: dict, msg: RabbitMessage) -> dict:

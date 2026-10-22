@@ -90,6 +90,19 @@ def _listed() -> sa.ColumnElement[bool]:
     return sa.and_(models.Workspace.is_hidden.is_(False), models.Workspace.verification_status.in_(VERIFIED_STATUSES))
 
 
+ListScope = typing.Literal["public", "admin", "all"]
+
+
+def _visible_to(user: AuthUser | None, scope: ListScope) -> tuple[sa.ColumnElement[bool], ...]:
+    """The WHERE clause of ``scope`` for ``user`` (see ``WorkspaceService.get_all``); empty = every workspace."""
+    if scope == "public" or user is None:
+        return (sa.false(),) if scope == "admin" else (_listed(),)
+    if user.is_superuser:
+        return ()
+    mine = models.Workspace.id.in_(user.get_workspace_ids())
+    return (mine,) if scope == "admin" else (sa.or_(mine, _listed()),)
+
+
 class WorkspaceService:
     """Workspace + membership orchestration: repository-backed CRUD, the
     custom-domain (white-label) lifecycle, and the RBAC member queries."""
@@ -119,6 +132,16 @@ class WorkspaceService:
     async def get_by_slug(self, session: AsyncSession, slug: str) -> models.Workspace | None:
         return await self.workspace_repo.get_by_slug(session, slug)
 
+    async def get_visible_by_slug(
+        self, session: AsyncSession, slug: str, *, user: AuthUser | None
+    ) -> models.Workspace | None:
+        """``slug``'s workspace if the switcher (``scope=all``) lists it for ``user``, else ``None``.
+
+        The community page's lookup: listed, a membership, or a superuser -- a hidden or ``unverified``
+        workspace never opens to anyone else by its slug.
+        """
+        return await self.workspace_repo.get_by_slug(session, slug, *_visible_to(user, "all"))
+
     async def get_by_subdomain(self, session: AsyncSession, subdomain: str) -> models.Workspace | None:
         return await self.workspace_repo.get_by_subdomain(session, subdomain)
 
@@ -135,7 +158,7 @@ class WorkspaceService:
         session: AsyncSession,
         *,
         user: AuthUser | None = None,
-        scope: typing.Literal["public", "admin", "all"] = "public",
+        scope: ListScope = "public",
     ) -> typing.Sequence[models.Workspace]:
         """Workspaces the caller is entitled to see under ``scope``.
 
@@ -152,24 +175,19 @@ class WorkspaceService:
         permission question this layer does not answer).
 
         ``all`` is ``admin`` unioned with the public directory -- the workspace
-        switcher and slug resolution, where a member must reach their own
-        brand-new ``unverified`` workspace while still being able to browse
-        every listed one.
-
-        Direct lookups (``get_by_id``, ``get_by_slug``, ``get_by_subdomain``,
-        ``get_by_custom_domain``) are untouched by all of this: a fresh
-        ``unverified`` workspace is fully reachable and usable by slug,
-        subdomain or verified custom domain the moment it is created, it just
+        switcher, and ``get_visible_by_slug``'s community page, where a member
+        must reach their own brand-new ``unverified`` workspace while still being
+        able to browse every listed one.
+        Every other direct lookup (``get_by_id``, ``get_by_slug``,
+        ``get_by_subdomain``, ``get_by_custom_domain``) is untouched by all of
+        this: a fresh ``unverified`` workspace is fully reachable and usable by
+        id, subdomain or verified custom domain the moment it is created, it just
         does not appear in the public directory until a superuser marks it
         ``verified``.
+
+        List rows carry no effective grids: read one workspace for those.
         """
-        repo = self.workspace_repo
-        if scope == "public" or user is None:
-            return [] if scope == "admin" else await repo.list_ordered(session, _listed())
-        if user.is_superuser:
-            return await repo.list_ordered(session)
-        mine = models.Workspace.id.in_(user.get_workspace_ids())
-        return await repo.list_ordered(session, mine if scope == "admin" else sa.or_(mine, _listed()))
+        return await self.workspace_repo.list_ordered(session, *_visible_to(user, scope))
 
     # --- custom domain (white-label) ----------------------------------------
 

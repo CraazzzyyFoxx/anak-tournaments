@@ -15,7 +15,7 @@ import { isTournamentStatusActive } from "@/lib/tournament/status";
 import { tournamentHref } from "@/lib/tournament/url";
 import tournamentService from "@/services/tournament.service";
 import type { Tournament } from "@/types/tournament.types";
-import type { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 
 /**
  * "What is running right now, everywhere": the header's live counter and the
@@ -33,7 +33,7 @@ export default function ActiveEvents() {
     staleTime: 60_000
   });
 
-  const groups = useMemo<{ workspace: Workspace; tournaments: Tournament[] }[]>(() => {
+  const groups = useMemo<{ workspace: WorkspaceListItem; tournaments: Tournament[] }[]>(() => {
     if (!allTournaments?.results || workspaces.length === 0) return [];
 
     const byWorkspace = new Map<number, Tournament[]>();

@@ -15,6 +15,7 @@
 //
 // There is no fourth rank field: the per-mix rank pin is gone, so every rank
 // the sheet writes goes to the author's book and nowhere else.
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -100,21 +101,24 @@ async function mount(
   const container = document.createElement("div");
   document.body.appendChild(container);
   await act(async () => {
+    // The rank crests also ask for the current workspace's own grid, through the query cache.
     createRoot(container).render(
-      <NextIntlClientProvider locale="en" messages={en}>
-        <PickupPlayerSheet
-          discipline="overwatch"
-          owner={owner}
-          row={value}
-          mixStats={mixStats}
-          lobbyCount={lobbyCount}
-          canEdit
-          saving={false}
-          onOpenChange={onOpenChange}
-          onSave={onSave}
-          onRemove={onRemove}
-        />
-      </NextIntlClientProvider>,
+      <QueryClientProvider client={new QueryClient()}>
+        <NextIntlClientProvider locale="en" messages={en}>
+          <PickupPlayerSheet
+            discipline="overwatch"
+            owner={owner}
+            row={value}
+            mixStats={mixStats}
+            lobbyCount={lobbyCount}
+            canEdit
+            saving={false}
+            onOpenChange={onOpenChange}
+            onSave={onSave}
+            onRemove={onRemove}
+          />
+        </NextIntlClientProvider>
+      </QueryClientProvider>,
     );
   });
   await act(async () => {

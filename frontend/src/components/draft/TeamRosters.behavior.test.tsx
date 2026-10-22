@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, test, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -166,25 +167,28 @@ function renderRosters(
   } = {}
 ) {
   const teamViews = buildTeamViews(board);
+  // The rank crests also ask for the current workspace's own grid, through the query cache.
   return renderToStaticMarkup(
-    <TeamRosters
-      board={board}
-      teamViews={teamViews}
-      teams={filterSortTeams(board, teamViews, { filter, sort: "order", followed, myTeamId })}
-      filter={filter}
-      onFilterChange={noop}
-      sort="order"
-      onSortChange={noop}
-      followed={followed}
-      onToggleFollow={noop}
-      myTeamId={myTeamId}
-      onlineCaptainIds={new Set([101])}
-      onOpenProfile={noop}
-      onSlotFilter={onSlotFilter}
-      divisionGrid={GRID}
-      ontology={ontology}
-      clockColor="var(--aqt-fg)"
-    />
+    <QueryClientProvider client={new QueryClient()}>
+      <TeamRosters
+        board={board}
+        teamViews={teamViews}
+        teams={filterSortTeams(board, teamViews, { filter, sort: "order", followed, myTeamId })}
+        filter={filter}
+        onFilterChange={noop}
+        sort="order"
+        onSortChange={noop}
+        followed={followed}
+        onToggleFollow={noop}
+        myTeamId={myTeamId}
+        onlineCaptainIds={new Set([101])}
+        onOpenProfile={noop}
+        onSlotFilter={onSlotFilter}
+        divisionGrid={GRID}
+        ontology={ontology}
+        clockColor="var(--aqt-fg)"
+      />
+    </QueryClientProvider>
   );
 }
 
@@ -300,24 +304,26 @@ describe("order tab", () => {
   function renderOrder(picks: DraftPick[], teams = [makeTeam(1), makeTeam(2)]) {
     const board = makeBoard(ROLE_SHAPE, { teams, players: [], picks });
     return renderToStaticMarkup(
-      <TeamsPanel
-        board={board}
-        teamViews={buildTeamViews(board)}
-        tab="order"
-        onTabChange={noop}
-        filter="all"
-        onFilterChange={noop}
-        sort="order"
-        onSortChange={noop}
-        followed={new Set()}
-        onToggleFollow={noop}
-        myTeamId={null}
-        onlineCaptainIds={new Set()}
-        onOpenProfile={noop}
-        divisionGrid={GRID}
-        ontology={OW_METADATA}
-        headingId="teams-h"
-      />
+      <QueryClientProvider client={new QueryClient()}>
+        <TeamsPanel
+          board={board}
+          teamViews={buildTeamViews(board)}
+          tab="order"
+          onTabChange={noop}
+          filter="all"
+          onFilterChange={noop}
+          sort="order"
+          onSortChange={noop}
+          followed={new Set()}
+          onToggleFollow={noop}
+          myTeamId={null}
+          onlineCaptainIds={new Set()}
+          onOpenProfile={noop}
+          divisionGrid={GRID}
+          ontology={OW_METADATA}
+          headingId="teams-h"
+        />
+      </QueryClientProvider>
     );
   }
 

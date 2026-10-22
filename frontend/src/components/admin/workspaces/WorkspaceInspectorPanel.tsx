@@ -6,14 +6,14 @@ import { useTranslations } from "next-intl";
 import { InspectorField } from "@/components/kit/InspectorField";
 import { WorkspaceOwnerValue } from "@/components/admin/workspace-owner";
 import { Button } from "@/components/ui/button";
-import type { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 
 /**
  * The open workspace's settings at a glance; changing any of them happens
  * under `[id]/`. Active/listed are in the row's icon columns, so they are not
  * repeated here; unset values and defaults render no field.
  */
-export function WorkspaceInspectorPanel({ workspace }: Readonly<{ workspace: Workspace }>) {
+export function WorkspaceInspectorPanel({ workspace }: Readonly<{ workspace: WorkspaceListItem }>) {
   const t = useTranslations("adminAccess.common");
   const tw = useTranslations("adminAccess.workspace");
 
@@ -53,10 +53,10 @@ export function WorkspaceInspectorActions({
   canDelete,
   onDelete
 }: Readonly<{
-  workspace: Workspace;
+  workspace: WorkspaceListItem;
   canEdit: boolean;
   canDelete: boolean;
-  onDelete: (workspace: Workspace) => void;
+  onDelete: (workspace: WorkspaceListItem) => void;
 }>) {
   const t = useTranslations("adminAccess.common");
 

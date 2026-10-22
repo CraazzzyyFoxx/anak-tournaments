@@ -43,6 +43,8 @@ var ReadRoutes = []edge.RouteSpec{
 	// (app-service/src/services/workspace/service.py:get_all).
 	{Method: "GET", Pattern: "/api/v1/workspaces", Queue: "rpc.app.workspaces.list", Query: []string{"scope"}, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/workspaces/by-host", Queue: "rpc.app.workspaces.by_host", Query: []string{"host"}, Auth: edge.AuthNone},
+	// The community page: one workspace by slug under the list's scope=all visibility, so AuthOptional.
+	{Method: "GET", Pattern: "/api/v1/workspaces/by-slug", Queue: "rpc.app.workspaces.by_slug", Query: []string{"slug"}, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/workspaces/{id}", Queue: "rpc.app.workspaces.get", IDParam: "id", Auth: edge.AuthNone},
 	{Method: "GET", Pattern: "/api/v1/workspaces/{workspace_id}/staff", Queue: "rpc.app.workspaces.staff", Path: []string{"workspace_id"}, Auth: edge.AuthNone},
 	// --- users (literals + /{id}/... + bare /{name} last) -------------------

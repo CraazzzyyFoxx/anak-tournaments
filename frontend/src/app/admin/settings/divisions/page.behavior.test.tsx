@@ -45,7 +45,7 @@ const activateDivisionGridVersion = vi.fn();
 const importDivisionGridPortable = vi.fn();
 const createDivisionGrid = vi.fn();
 const deleteDivisionGrid = vi.fn();
-const fetchWorkspaces = vi.fn();
+const getById = vi.fn();
 
 let permitted = true;
 
@@ -66,21 +66,14 @@ let currentWorkspace: Record<string, unknown>;
 
 vi.mock("@/stores/workspace.store", () => ({
   useWorkspaceStore: (
-    selector: (state: {
-      currentWorkspaceId: number;
-      getCurrentWorkspace: () => unknown;
-      fetchWorkspaces: () => Promise<void>;
-    }) => unknown
-  ) =>
-    selector({
-      currentWorkspaceId: 1,
-      getCurrentWorkspace: () => currentWorkspace,
-      fetchWorkspaces
-    })
+    selector: (state: { currentWorkspaceId: number; fetchWorkspaces: () => Promise<void> }) => unknown
+  ) => selector({ currentWorkspaceId: 1, fetchWorkspaces: async () => {} })
 }));
 
 vi.mock("@/services/workspace.service", () => ({
   default: {
+    // The in-force versions come from the workspace read, never from the store's list rows.
+    getById: (...args: unknown[]) => getById(...args),
     getDivisionGrids: (...args: unknown[]) => getDivisionGrids(...args),
     getDivisionGridVersions: (...args: unknown[]) => getDivisionGridVersions(...args),
     getDivisionGridVersionReadiness: (...args: unknown[]) =>
@@ -358,7 +351,7 @@ beforeEach(() => {
     effective_division_grid_versions: { overwatch: VERSIONS[2] }
   };
   activateDivisionGridVersion.mockReset();
-  fetchWorkspaces.mockReset().mockResolvedValue(undefined);
+  getById.mockReset().mockImplementation(async () => currentWorkspace);
   replace.mockClear();
   getDivisionGrids.mockReset().mockResolvedValue([grid(7, "Anak Division Grid")]);
   getDivisionGridVersions.mockReset().mockResolvedValue(VERSIONS);
@@ -501,10 +494,12 @@ describe("Settings › Divisions", () => {
     const confirm = Array.from(document.querySelectorAll('[role="alertdialog"] button')).find(
       (element) => element.textContent?.trim() === "Activate v2"
     );
+    const reads = getById.mock.calls.length;
     await click(confirm);
 
     expect(activateDivisionGridVersion).toHaveBeenCalledWith(1, 21);
-    expect(fetchWorkspaces).toHaveBeenCalled();
+    // The version in force is the workspace's: activating re-reads it.
+    expect(getById.mock.calls.length).toBeGreaterThan(reads);
   });
 
   it("uses the selected grid's discipline and refreshes its active key without changing the other game", async () => {
@@ -521,14 +516,13 @@ describe("Settings › Divisions", () => {
       default_division_grid_versions: { overwatch: 22, lol: 90 },
       effective_division_grid_versions: { overwatch: VERSIONS[2], lol }
     };
-    activateDivisionGridVersion.mockResolvedValue(next);
-    fetchWorkspaces.mockImplementation(async () => {
+    activateDivisionGridVersion.mockImplementation(async () => {
       currentWorkspace = {
         ...currentWorkspace,
         default_division_grid_versions: { overwatch: 22, lol: 91 },
         effective_division_grid_versions: { overwatch: VERSIONS[2], lol: next }
       };
-      rerender?.();
+      return next;
     });
     const container = await mount();
     expect(inForceTitle(container)).toBe("OW · v3");

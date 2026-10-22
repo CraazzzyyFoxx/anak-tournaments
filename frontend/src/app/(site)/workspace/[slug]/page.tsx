@@ -7,20 +7,17 @@ import workspaceService from "@/services/workspace.service";
 import type { Workspace } from "@/types/workspace.types";
 
 /**
- * `all`, not the public directory: a community's own page must stay reachable
- * for its members while it is still `unverified` or hidden. Cached so the
- * metadata and the page itself resolve the slug with one read.
+ * By slug under the switcher's visibility: a community's own page stays
+ * reachable for its members while it is still `unverified` or hidden, and is a
+ * 404 for everyone else. Cached so the metadata and the page itself resolve the
+ * slug with one read.
  */
 const resolveWorkspace = cache(async (slug: string): Promise<Workspace> => {
-  let workspaces: Workspace[];
   try {
-    workspaces = await workspaceService.getAll("all");
+    return await workspaceService.getBySlug(slug);
   } catch {
     notFound();
   }
-  const workspace = workspaces.find((candidate) => candidate.slug === slug);
-  if (!workspace) notFound();
-  return workspace;
 });
 
 export async function generateMetadata({

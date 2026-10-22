@@ -20,7 +20,7 @@ import {
 } from "@/hooks/useAccountApiKeys";
 import { notify } from "@/lib/notify";
 import type { AccountApiKey } from "@/types/auth.types";
-import type { Workspace } from "@/types/workspace.types";
+import type { WorkspaceListItem } from "@/types/workspace.types";
 
 import { CreateApiKeyDialog } from "./CreateApiKeyDialog";
 import { apiKeyFilterDefs } from "./filters";
@@ -45,7 +45,7 @@ export function ApiKeysBrowser({
   isSuperuser
 }: Readonly<{
   /** The workspaces this account may issue keys in; never empty. */
-  workspaces: Workspace[];
+  workspaces: WorkspaceListItem[];
   currentWorkspaceId: number | null;
   isSuperuser: boolean;
 }>) {

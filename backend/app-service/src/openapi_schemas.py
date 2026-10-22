@@ -182,7 +182,8 @@ OPERATIONS: dict[str, Op] = {
     # ── workspaces ─────────────────────────────────────────────────────────
     "rpc.app.workspaces.get": Op(response=schemas.WorkspaceRead),
     "rpc.app.workspaces.staff": Op(response=schemas.WorkspaceStaffMember, response_array=True),
-    "rpc.app.workspaces.list": Op(response=schemas.WorkspaceRead, response_array=True),
+    "rpc.app.workspaces.list": Op(response=schemas.WorkspaceListItem, response_array=True),
+    "rpc.app.workspaces.by_slug": Op(response=schemas.WorkspaceRead, query_params=(QueryParam("slug"),)),
     # by_host answers with an ad-hoc {workspace_id, slug} (or null); only the
     # host query param is declared -- see the module docstring's convention.
     "rpc.app.workspaces.by_host": Op(query_params=(QueryParam("host"),)),

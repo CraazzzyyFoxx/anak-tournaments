@@ -45,7 +45,13 @@ vi.mock("@/lib/datetime/client", () => ({
 }));
 
 vi.mock("@tanstack/react-query", () => ({
-  useQuery: () => ({ data: SESSIONS, isLoading: false, isError: false, refetch: () => {} }),
+  // The sessions read; the rank crests' workspace read (`["admin-workspace", id]`) has nothing loaded.
+  useQuery: ({ queryKey }: { queryKey: readonly unknown[] }) => ({
+    data: queryKey[0] === "admin-workspace" ? undefined : SESSIONS,
+    isLoading: false,
+    isError: false,
+    refetch: () => {}
+  }),
   useMutation: () => ({ mutate: () => {}, isPending: false }),
   useQueryClient: () => ({ invalidateQueries: async () => {} })
 }));

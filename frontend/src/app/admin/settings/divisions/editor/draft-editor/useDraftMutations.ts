@@ -3,7 +3,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { useWorkspaceStore } from "@/stores/workspace.store";
+import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { notify } from "@/lib/notify";
 import workspaceService from "@/services/workspace.service";
 import type { DivisionGridReadinessSource, DivisionGridVersion } from "@/types/workspace.types";
@@ -51,7 +51,6 @@ export function useDraftMutations({
     });
   const router = useRouter();
   const queryClient = useQueryClient();
-  const fetchWorkspaces = useWorkspaceStore((store) => store.fetchWorkspaces);
 
   // Only this game's keys: another discipline's cached versions and readiness are not affected by an
   // edit, publish or activation here.
@@ -142,8 +141,11 @@ export function useDraftMutations({
   const activateMutation = useMutation({
     mutationFn: () => workspaceService.activateDivisionGridVersion(workspaceId, version.id),
     onSuccess: async () => {
-      // The workspace's per-discipline default map changed: refresh it with this game's keys.
-      await Promise.all([invalidate(), fetchWorkspaces()]);
+      // The workspace's per-discipline default map changed: refresh its read with this game's keys.
+      await Promise.all([
+        invalidate(),
+        queryClient.invalidateQueries({ queryKey: adminQueryKeys.workspace(workspaceId) })
+      ]);
       notify.success(t("toast.activated", { version: version.version }));
       onReload();
     },
