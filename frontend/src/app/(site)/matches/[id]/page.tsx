@@ -1,5 +1,7 @@
-import { Fragment } from "react";
+import { Fragment, cache } from "react";
+import { notFound } from "next/navigation";
 import encounterService from "@/services/encounter.service";
+import { isNotFoundError } from "@/lib/api/error";
 import { cn } from "@/lib/utils";
 import { Metadata } from "next";
 import Image from "@/components/ui/image";
@@ -24,11 +26,21 @@ const ACCENT_CLASSES = [
 
 export const dynamic = 'force-dynamic';
 
+// One read for the metadata and the page; an unknown id is the not-found page, not a 500.
+const loadMatch = cache(async (id: number) => {
+  try {
+    return await encounterService.getMatch(id);
+  } catch (error) {
+    if (isNotFoundError(error)) notFound();
+    throw error;
+  }
+});
+
 export async function generateMetadata(props: {
   params: Promise<{ id: number }>;
 }): Promise<Metadata> {
   const params = await props.params;
-  const match = await encounterService.getMatch(params.id);
+  const match = await loadMatch(params.id);
   const t = await getTranslations();
 
   const [home, away] = seatsBySlot(match.participants);
@@ -58,7 +70,7 @@ export async function generateMetadata(props: {
 
 const EncounterPage = async (props: { params: Promise<{ id: number }> }) => {
   const params = await props.params;
-  const match = await encounterService.getMatch(params.id);
+  const match = await loadMatch(params.id);
   const t = await getTranslations();
 
   const participants = seatsBySlot(match.participants);
