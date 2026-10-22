@@ -426,6 +426,11 @@ _REWRITES = {
     ],
     "swap-last": lambda kept: [*kept[:-1], _write_tier(None, "rookie", 0, 999, number=3, sort_order=2)],
     "append": lambda kept: [*kept, _write_tier(None, "unranked", -500, -1, number=99, sort_order=3)],
+    "swap-slugs": lambda kept: [
+        kept[0].model_copy(update={"slug": kept[1].slug}),
+        kept[1].model_copy(update={"slug": kept[0].slug}),
+        kept[2],
+    ],
 }
 
 
@@ -470,6 +475,87 @@ def test_draft_tier_rewrite_is_stored_and_echoed(db_session, rewrite) -> None:
             )
             assert list(stored) == [t.slug for t in tiers]
             assert [t.slug for t in updated.tiers] == [t.slug for t in tiers]
+        finally:
+            await db_session.rollback()
+
+    asyncio.run(run())
+
+
+def _three_tiers():
+    return [
+        _write_tier(None, "top", 2000, None),
+        _write_tier(None, "mid", 1000, 1999, number=2, sort_order=1),
+        _write_tier(None, "low", 0, 999, number=3, sort_order=2),
+    ]
+
+
+async def _published_grid(session, workspace, slug):
+    grid = models.DivisionGrid(workspace_id=workspace.id, slug=slug, name=slug, versions=[])
+    session.add(grid)
+    await session.flush()
+    version = await grid_service.create_version(
+        session, workspace.id, grid.id, schemas.DivisionGridVersionCreate(label="v1", tiers=_three_tiers())
+    )
+    published = await grid_service.publish_version(session, version.id)
+    session.expire(grid, ["versions"])  # one session stands in for several requests: drop the empty collection
+    return grid, published
+
+
+def test_saving_a_grid_that_is_not_active_leaves_the_active_one_alone(db_session) -> None:
+    """Switching grids is the explicit activate; a save that passes readiness only activates the active grid."""
+
+    async def run() -> None:
+        try:
+            workspace = models.Workspace(slug="grid-save-inactive", name="Grid save inactive")
+            db_session.add(workspace)
+            await db_session.flush()
+            live, live_v1 = await _published_grid(db_session, workspace, "live")
+            spare, _ = await _published_grid(db_session, workspace, "spare")
+            await grid_service.activate_version(db_session, workspace=workspace, version_id=live_v1.id)
+            reshaped = [_write_tier(None, "top", 1000, None), _write_tier(None, "rest", 0, 999, number=2, sort_order=1)]
+
+            spare_save = await grid_service.save_workspace_grid(
+                db_session, workspace=workspace, data=schemas.DivisionGridSaveRequest(grid_id=spare.id, tiers=reshaped)
+            )
+            assert spare_save.readiness.is_ready
+            assert spare_save.mode == "new_version_pending"
+            assert spare_save.active_version_id == live_v1.id
+
+            live_save = await grid_service.save_workspace_grid(
+                db_session, workspace=workspace, data=schemas.DivisionGridSaveRequest(grid_id=live.id, tiers=reshaped)
+            )
+            assert live_save.mode == "new_version_activated"
+            assert live_save.active_version_id == live_save.saved_version_id
+        finally:
+            await db_session.rollback()
+
+    asyncio.run(run())
+
+
+def test_in_place_save_can_swap_two_tiers_slugs(db_session) -> None:
+    async def run() -> None:
+        try:
+            workspace = models.Workspace(slug="grid-save-slug-swap", name="Grid slug swap")
+            db_session.add(workspace)
+            await db_session.flush()
+            grid, version = await _published_grid(db_session, workspace, "swap")
+            await grid_service.activate_version(db_session, workspace=workspace, version_id=version.id)
+            top, mid, low = (
+                schemas.DivisionGridTierWrite.model_validate(t, from_attributes=True) for t in version.tiers
+            )
+            tiers = [top.model_copy(update={"slug": "mid"}), mid.model_copy(update={"slug": "top"}), low]
+
+            saved = await grid_service.save_workspace_grid(
+                db_session, workspace=workspace, data=schemas.DivisionGridSaveRequest(grid_id=grid.id, tiers=tiers)
+            )
+
+            assert saved.mode == "in_place"
+            stored = await db_session.scalars(
+                sa.select(models.DivisionGridTier.slug)
+                .where(models.DivisionGridTier.version_id == version.id)
+                .order_by(models.DivisionGridTier.sort_order)
+            )
+            assert list(stored) == ["mid", "top", "low"]
         finally:
             await db_session.rollback()
 

@@ -90,6 +90,19 @@ def _classify_tier_change(
     return "cosmetic"
 
 
+def _rekeys(tier: models.DivisionGridTier, payload_tier: schemas.DivisionGridTierWrite) -> bool:
+    return (tier.sort_order, tier.slug) != (payload_tier.sort_order, payload_tier.slug)
+
+
+async def _park_tier_keys(session: AsyncSession, tiers: list[models.DivisionGridTier]) -> None:
+    """Move the per-version unique keys (sort_order, slug) to ``-id`` / ``~id`` and flush,
+    so the tiers can then trade them without a transient unique violation."""
+    for tier in tiers:
+        tier.sort_order = -int(tier.id)
+        tier.slug = f"~{tier.id}"
+    await session.flush()
+
+
 def _validate_mapping(
     source_tier_ids: set[int],
     rules: list[schemas.DivisionGridMappingRuleWrite],
@@ -464,13 +477,8 @@ class DivisionGridService:
             for removed_id in removed_ids:
                 await self.tier_repo.delete(session, existing_by_id[removed_id])
 
-            reordered = any(
-                tier.id is not None and existing_by_id[tier.id].sort_order != tier.sort_order for tier in data.tiers
-            )
-            if reordered:
-                for tier_id in payload_ids:
-                    existing_by_id[tier_id].sort_order = -tier_id
-                await session.flush()
+            if any(tier.id is not None and _rekeys(existing_by_id[tier.id], tier) for tier in data.tiers):
+                await _park_tier_keys(session, [existing_by_id[tier_id] for tier_id in payload_ids])
 
             added_tiers: list[models.DivisionGridTier] = []
             for tier_data in data.tiers:
@@ -789,12 +797,8 @@ class DivisionGridService:
     ) -> None:
         """Apply cosmetic-only tier edits in place (no rank/count changes)."""
         by_id = {tier.id: tier for tier in version.tiers}
-        if any(by_id[p.id].sort_order != p.sort_order for p in payload_tiers):
-            # Park sort_order in a non-colliding range before reassigning to avoid
-            # transient (version_id, sort_order) unique violations.
-            for tier in version.tiers:
-                tier.sort_order = -int(tier.id)
-            await session.flush()
+        if any(_rekeys(by_id[p.id], p) for p in payload_tiers):
+            await _park_tier_keys(session, list(version.tiers))
         for payload_tier in payload_tiers:
             tier = by_id[payload_tier.id]
             tier.slug = payload_tier.slug
@@ -816,7 +820,9 @@ class DivisionGridService:
     ) -> SaveOutcome:
         """Server-authoritative grid save: classify the edit, then either apply it
         in place (cosmetic) or spawn a new version, auto-generate mappings from every
-        used source version, and auto-activate when the mappings are complete."""
+        used source version, and auto-activate when the mappings are complete and the
+        grid already holds the workspace's active version for its game (switching
+        grids is the explicit ``activate_version``)."""
         if data.grid_id is not None:
             grid = await self.get_grid_by_id(session, data.grid_id)
             if grid.workspace_id not in (None, workspace.id):
@@ -825,6 +831,8 @@ class DivisionGridService:
             grid = await self._resolve_workspace_grid(session, workspace)
         assert_discipline_enabled(workspace, grid.discipline)
         active = _pick_active_version(grid, workspace)
+        active_id = workspace.default_division_grid_versions.get(grid.discipline)
+        owns_active = active_id is None or any(version.id == active_id for version in grid.versions)
         change = "structural" if active is None else _classify_tier_change(active.tiers, data.tiers)
 
         if change == "cosmetic" and active is not None:
@@ -862,7 +870,7 @@ class DivisionGridService:
                 workspace_id=workspace.id,
                 target_version_id=new_version.id,
             )
-            if readiness.is_ready:
+            if readiness.is_ready and owns_active:
                 await self.activate_version(session, workspace=workspace, version_id=new_version.id)
                 mode = "new_version_activated"
             else:
