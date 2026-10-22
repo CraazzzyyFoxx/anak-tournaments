@@ -12,7 +12,6 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
-from types import SimpleNamespace
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -61,19 +60,3 @@ class ListScopeRPCTests(IsolatedAsyncioTestCase):
             envelope = await handler({"query": {"scope": ["all"]}}, MagicMock())
 
         self.assertEqual(["owt"], [w["slug"] for w in envelope["data"]])
-
-
-class ListScopeSignatureTests(IsolatedAsyncioTestCase):
-    """The default lives in the service too: a future caller that forgets the
-    keyword gets the directory, not everything."""
-
-    async def test_service_default_is_public(self) -> None:
-        service = importlib.import_module("src.services.workspace.service")
-        rows = [
-            SimpleNamespace(id=1, is_hidden=False, verification_status="verified"),
-            SimpleNamespace(id=2, is_hidden=False, verification_status="unverified"),
-        ]
-        with patch.object(service.workspaces.workspace_repo, "list_ordered", AsyncMock(return_value=rows)):
-            result = await service.workspaces.get_all(SimpleNamespace())
-
-        self.assertEqual([1], [w.id for w in result])

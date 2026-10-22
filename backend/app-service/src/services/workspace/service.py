@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
-from shared.domain.workspace_tier import is_verified_or_trusted
+from shared.domain.workspace_tier import VERIFIED_STATUSES
 from shared.messaging.config import WORKSPACE_MEMBER_CHANGED_QUEUE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.messaging.rpc import request_rpc
@@ -85,9 +85,9 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
-def _is_listed(workspace: models.Workspace) -> bool:
+def _listed() -> sa.ColumnElement[bool]:
     """The public-directory bar: not hidden, and past the ``unverified`` tier."""
-    return not workspace.is_hidden and is_verified_or_trusted(workspace)
+    return sa.and_(models.Workspace.is_hidden.is_(False), models.Workspace.verification_status.in_(VERIFIED_STATUSES))
 
 
 class WorkspaceService:
@@ -163,17 +163,13 @@ class WorkspaceService:
         does not appear in the public directory until a superuser marks it
         ``verified``.
         """
-        workspaces = await self.workspace_repo.list_ordered(session)
-        if scope == "public":
-            return [w for w in workspaces if _is_listed(w)]
-        if user is None:
-            return [] if scope == "admin" else [w for w in workspaces if _is_listed(w)]
+        repo = self.workspace_repo
+        if scope == "public" or user is None:
+            return [] if scope == "admin" else await repo.list_ordered(session, _listed())
         if user.is_superuser:
-            return workspaces
-        member_ids = set(user.get_workspace_ids())
-        if scope == "admin":
-            return [w for w in workspaces if w.id in member_ids]
-        return [w for w in workspaces if w.id in member_ids or _is_listed(w)]
+            return await repo.list_ordered(session)
+        mine = models.Workspace.id.in_(user.get_workspace_ids())
+        return await repo.list_ordered(session, mine if scope == "admin" else sa.or_(mine, _listed()))
 
     # --- custom domain (white-label) ----------------------------------------
 

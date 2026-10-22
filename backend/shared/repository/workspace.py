@@ -125,9 +125,16 @@ class WorkspaceRepository(BaseRepository[models.Workspace]):
             )
         )
 
-    async def list_ordered(self, session: AsyncSession) -> Sequence[models.Workspace]:
+    async def list_ordered(self, session: AsyncSession, *where: sa.ColumnElement[bool]) -> Sequence[models.Workspace]:
+        """Workspaces matching ``where``, ordered by id, with their effective grids.
+
+        Filter here, never over the result: every row loaded also loads its grid versions and their tiers.
+        """
         result = await session.execute(
-            sa.select(models.Workspace).options(*self.default_grid_options()).order_by(models.Workspace.id.asc())
+            sa.select(models.Workspace)
+            .options(*self.default_grid_options())
+            .where(*where)
+            .order_by(models.Workspace.id.asc())
         )
         workspaces = result.scalars().all()
         await self.load_effective_grid_versions(session, workspaces)

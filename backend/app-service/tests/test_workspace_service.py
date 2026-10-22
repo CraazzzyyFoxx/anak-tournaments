@@ -218,21 +218,58 @@ class WorkspaceGetAllVisibilityTests(IsolatedAsyncioTestCase):
     ``is_hidden`` and ``unverified`` are dropped for EVERY caller, membership
     and ``is_superuser`` included. ``admin`` is the management list (superuser:
     everything, else own memberships only) and ``all`` unions that with the
-    directory for the workspace switcher."""
+    directory for the workspace switcher.
 
-    def _workspaces(self) -> list[SimpleNamespace]:
-        return [
-            SimpleNamespace(id=1, is_hidden=False, verification_status="trusted"),
-            SimpleNamespace(id=2, is_hidden=True, verification_status="trusted"),
-            SimpleNamespace(id=3, is_hidden=False, verification_status="verified"),
-            SimpleNamespace(id=4, is_hidden=False, verification_status="unverified"),
-        ]
+    Against a real database: the filter runs in SQL, and the workspaces below
+    are known to the tests by their labels 1-4."""
+
+    if sys.platform == "win32":
+        loop_factory = asyncio.SelectorEventLoop
+
+    async def asyncSetUp(self) -> None:
+        self.engine = create_test_async_engine()
+        self.session = AsyncSession(self.engine, expire_on_commit=False)
+        tag = uuid.uuid4().hex
+        rows = {
+            1: models.Workspace(slug=f"{tag}-1", name="1", is_hidden=False, verification_status="trusted"),
+            2: models.Workspace(slug=f"{tag}-2", name="2", is_hidden=True, verification_status="trusted"),
+            3: models.Workspace(slug=f"{tag}-3", name="3", is_hidden=False, verification_status="verified"),
+            4: models.Workspace(slug=f"{tag}-4", name="4", is_hidden=False, verification_status="unverified"),
+        }
+        self.session.add_all(rows.values())
+        await self.session.flush()
+        self.ids = {label: row.id for label, row in rows.items()}
+        self.session.expunge_all()
+
+    async def asyncTearDown(self) -> None:
+        await self.session.rollback()
+        await self.session.close()
+        await self.engine.dispose()
 
     async def _get_all(self, user, scope: str = "public") -> list[int]:
-        session = SimpleNamespace()
-        with patch.object(workspaces.workspace_repo, "list_ordered", AsyncMock(return_value=self._workspaces())):
-            result = await workspaces.get_all(session, user=user, scope=scope)
-        return [w.id for w in result]
+        """The labels of the test's workspaces ``get_all`` returns; ``user`` names its memberships by label too."""
+        if user is not None:
+            ids = [self.ids.get(label, -label) for label in user.get_workspace_ids()]
+            user = SimpleNamespace(is_superuser=user.is_superuser, get_workspace_ids=Mock(return_value=ids))
+        result = await workspaces.get_all(self.session, user=user, scope=scope)
+        label_of = {id_: label for label, id_ in self.ids.items()}
+        return [label_of[w.id] for w in result if w.id in label_of]
+
+    async def test_the_directory_never_loads_a_workspace_it_leaves_out(self) -> None:
+        """Every workspace loaded drags in its grid versions and all their tiers: filtering the loaded rows
+        instead of the query made each home-page read hold every workspace's grids at once."""
+        loaded: list[int] = []
+
+        def on_load(workspace, _context) -> None:
+            loaded.append(workspace.id)
+
+        sa.event.listen(models.Workspace, "load", on_load)
+        try:
+            await workspaces.get_all(self.session)
+        finally:
+            sa.event.remove(models.Workspace, "load", on_load)
+
+        self.assertEqual({self.ids[1], self.ids[3]}, set(loaded) & set(self.ids.values()))
 
     async def test_anonymous_sees_non_hidden_verified_and_trusted_workspaces(self) -> None:
         self.assertEqual([1, 3], await self._get_all(None))
