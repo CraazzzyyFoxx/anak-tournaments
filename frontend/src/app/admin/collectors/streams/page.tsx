@@ -41,7 +41,7 @@ export default function StreamCollectorPage() {
   // session. Saying why beats an empty page or a bare 403 toast, and without
   // health there is no other slot to offer (Settings is superuser-only).
   return (
-    <PermissionGate loaded={isLoaded} allowed={canReadHealth} description={t("access.streams")}>
+    <PermissionGate loaded={isLoaded} allowed={canReadHealth} description={t("access.streams")} headingLevel={2}>
       <div className="space-y-4">
         <LinkTabs
           items={items}

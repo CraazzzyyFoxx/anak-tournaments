@@ -91,6 +91,7 @@ export function PickupMixScreen({ roomLobby }: Readonly<{ roomLobby: number | nu
     return (
       <PageStateCard
         state="error"
+        headingLevel={1}
         title={t("list.errorTitle")}
         description={t("list.errorDescription")}
         actionLabel={t("retry")}
@@ -297,7 +298,7 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
   };
 
   if (roomLobby != null && (roomLobby < 0 || roomLobby >= lobbyCount)) {
-    return <PageStateCard state="not-found" description={t("notFound")} />;
+    return <PageStateCard state="not-found" headingLevel={1} description={t("notFound")} />;
   }
 
   const teamsPanel =

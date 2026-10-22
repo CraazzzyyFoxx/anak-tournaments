@@ -99,7 +99,10 @@ describe("Tournament Rules section", () => {
     const html = await mount();
 
     expect(html.textContent).toContain(en.tournamentDetail.rules.emptyTitle);
-    expect(html.querySelector("h2")).toBeNull();
+    // The state card's title is the only heading: no document outline is drawn.
+    expect([...html.querySelectorAll("h2, h3")].map((heading) => heading.textContent)).toEqual([
+      en.tournamentDetail.rules.emptyTitle
+    ]);
   });
 
   it("links every table-of-contents entry to a heading that exists", async () => {

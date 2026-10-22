@@ -332,12 +332,14 @@ const SidebarRail = React.forwardRef<
 })
 SidebarRail.displayName = "SidebarRail"
 
+// A plain column, not `<main>`: the shell's header sits in it too, and the
+// landmark belongs to the content alone (`AdminLayoutClient`'s `#admin-content`).
 const SidebarInset = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"main">
+  React.ComponentProps<"div">
 >(({ className, ...props }, ref) => {
   return (
-    <main
+    <div
       ref={ref}
       className={cn(
         "relative flex min-w-0 flex-1 flex-col bg-background",

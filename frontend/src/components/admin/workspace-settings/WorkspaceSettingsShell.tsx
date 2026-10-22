@@ -95,7 +95,7 @@ export function WorkspaceSettingsShell({
           activeKey={page?.key ?? ""}
         />
         {/* Not `<main>`: the admin shell already exposes the page-level main
-            landmark (`components/ui/sidebar.tsx` SidebarInset). */}
+            landmark (`AdminLayoutClient`'s `#admin-content`). */}
         <div className={cn("flex min-w-0 flex-1 flex-col gap-4", !page?.wide && "max-w-3xl")}>
           <AdminPageHeader
             title={page?.title ?? t("sections.settingsTitle")}

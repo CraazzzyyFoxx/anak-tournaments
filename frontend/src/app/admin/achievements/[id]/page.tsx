@@ -67,7 +67,7 @@ export default function AchievementDetailPage() {
   });
 
   if (!workspaceId) {
-    return <PageStateCard state="empty" title={t("detail.selectWorkspace")} />;
+    return <PageStateCard state="empty" headingLevel={1} title={t("detail.selectWorkspace")} />;
   }
 
   if (isLoading) {
@@ -81,11 +81,11 @@ export default function AchievementDetailPage() {
   }
 
   if (isError) {
-    return <PageStateCard state="error" onAction={() => refetch()} />;
+    return <PageStateCard state="error" headingLevel={1} onAction={() => refetch()} />;
   }
 
   if (!rule) {
-    return <PageStateCard state="not-found" title={t("detail.notFound")} />;
+    return <PageStateCard state="not-found" headingLevel={1} title={t("detail.notFound")} />;
   }
 
   return (

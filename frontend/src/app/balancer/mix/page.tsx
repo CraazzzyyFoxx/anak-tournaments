@@ -196,6 +196,7 @@ export default function BalancerPickupListPage() {
       <div className="flex flex-1 items-center justify-center py-12">
         <PageStateCard
           state="empty"
+          headingLevel={1}
           title={t("chooseWorkspace")}
           description={t("workspaceHint")}
           className="w-full max-w-md"

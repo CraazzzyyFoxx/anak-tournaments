@@ -476,7 +476,8 @@ describe("tournament matches", () => {
     const text = await render([]);
 
     expect(text).toContain(en.tournamentDetail.publicPages.matches.emptyTitle);
-    expect(headings()).toEqual([]);
+    // The state card's own title is the only heading: no stage or round grouping.
+    expect(headings()).toEqual([en.tournamentDetail.publicPages.matches.emptyTitle]);
     expect(segment()).toBeNull();
   });
 
@@ -484,7 +485,7 @@ describe("tournament matches", () => {
     const text = await render(fixtures(false), "team=999");
 
     expect(text).toContain(en.tournamentDetail.pageState.filteredEmpty.title);
-    expect(headings()).toEqual([]);
+    expect(headings()).toEqual([en.tournamentDetail.pageState.filteredEmpty.title]);
   });
 });
 

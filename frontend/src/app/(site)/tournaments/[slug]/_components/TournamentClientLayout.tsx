@@ -159,7 +159,7 @@ export default function TournamentClientLayout({
   if (!tournament) {
     return (
       <div className="aqt-tn">
-        <PageStateCard state="not-found" title={t("common.tournamentNotFound")} />
+        <PageStateCard state="not-found" headingLevel={1} title={t("common.tournamentNotFound")} />
       </div>
     );
   }

@@ -16,6 +16,11 @@ interface PageStateCardProps {
   /** Shown for `error`; also used as "Clear filters" for `filtered-empty`. */
   onAction?: () => void;
   actionLabel?: string;
+  /**
+   * The title's heading level: `2` for a card under the page's own `<h1>` (a section, a tab, a detail pane);
+   * `1` when the card stands in for the whole page (a gate, a not-found or failed page) and no other `<h1>` renders.
+   */
+  headingLevel?: 1 | 2;
   className?: string;
 }
 
@@ -62,14 +67,19 @@ export function PageStateCard({
   description,
   onAction,
   actionLabel,
+  headingLevel = 2,
   className
 }: Readonly<PageStateCardProps>) {
   const t = useTranslations();
   const Icon = ICONS[state];
+  const Heading = headingLevel === 1 ? "h1" : "h2";
 
   const copy = COPY[state];
   const resolvedTitle = title ?? t(copy.title as never);
-  const resolvedDescription = description ?? t(copy.description as never);
+  // The default empty copy speaks of tournaments being played: it belongs to the default title, not to a caller's
+  // own empty state (an organizer's "No stages yet", "Select a workspace").
+  const resolvedDescription =
+    description ?? (state === "empty" && title != null ? null : t(copy.description as never));
   const resolvedActionLabel =
     actionLabel ?? (state === "filtered-empty" ? t("common.clearFilters") : t("common.retry"));
 
@@ -91,10 +101,12 @@ export function PageStateCard({
         )}
       />
       <div className="space-y-1">
-        <p className="text-sm font-semibold text-[color:var(--aqt-fg)]">{resolvedTitle}</p>
-        <p className="mx-auto max-w-prose text-caption leading-relaxed text-[color:var(--aqt-fg-muted)]">
-          {resolvedDescription}
-        </p>
+        <Heading className="text-sm font-semibold text-[color:var(--aqt-fg)]">{resolvedTitle}</Heading>
+        {resolvedDescription ? (
+          <p className="mx-auto max-w-prose text-caption leading-relaxed text-[color:var(--aqt-fg-muted)]">
+            {resolvedDescription}
+          </p>
+        ) : null}
       </div>
       {onAction ? (
         <Button type="button" variant="subtle" size="sm" className="mt-1" onClick={onAction}>

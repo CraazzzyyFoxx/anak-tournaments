@@ -153,7 +153,7 @@ export default function AdminTeamWorkspacePage() {
   }
 
   if (teamQuery.isError) {
-    return <PageStateCard state="error" onAction={() => void teamQuery.refetch()} />;
+    return <PageStateCard state="error" headingLevel={1} onAction={() => void teamQuery.refetch()} />;
   }
 
   if (!team) {

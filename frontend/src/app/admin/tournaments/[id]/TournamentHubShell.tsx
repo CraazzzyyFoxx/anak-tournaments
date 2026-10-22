@@ -171,9 +171,9 @@ export function TournamentHubShell({
     // An invalid id never queries, and a 404 is an answer: both are not-found.
     // Anything else is a failed read the user can retry.
     return tournamentQuery.isError && !isNotFoundError(tournamentQuery.error) ? (
-      <PageStateCard state="error" onAction={() => void tournamentQuery.refetch()} />
+      <PageStateCard state="error" headingLevel={1} onAction={() => void tournamentQuery.refetch()} />
     ) : (
-      <PageStateCard state="not-found" title={t("notFound")} description={t("notFoundDescription")} />
+      <PageStateCard state="not-found" headingLevel={1} title={t("notFound")} description={t("notFoundDescription")} />
     );
   }
 
@@ -203,6 +203,7 @@ export function TournamentHubShell({
     return (
       <PageStateCard
         state="not-found"
+        headingLevel={1}
         title={t("unauthorized")}
         description={t("unauthorizedDescription")}
       />

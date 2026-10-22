@@ -220,7 +220,7 @@ const TournamentsClient = ({
   if (resolution === null) {
     return gameScope.isError ? (
       <div className="aqt-tn">
-        <PageStateCard state="error" onAction={gameScope.refetch} />
+        <PageStateCard state="error" headingLevel={1} onAction={gameScope.refetch} />
       </div>
     ) : (
       <div className="aqt-tn">

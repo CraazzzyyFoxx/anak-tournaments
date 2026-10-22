@@ -128,6 +128,7 @@ export default function ScrimRoomPage() {
     return (
       <PageStateCard
         state="error"
+        headingLevel={1}
         actionLabel={t("retry")}
         onAction={() => void roomQuery.refetch()}
       />

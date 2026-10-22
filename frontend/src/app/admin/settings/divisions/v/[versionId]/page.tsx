@@ -97,6 +97,7 @@ export default function DivisionDraftEditorPage() {
     return (
       <PageStateCard
         state="empty"
+        headingLevel={1}
         title={t("noWorkspace.title")}
         description={t("noWorkspace.openDraft")}
       />
@@ -107,6 +108,7 @@ export default function DivisionDraftEditorPage() {
     return (
       <PageStateCard
         state="not-found"
+        headingLevel={1}
         title={t("draftUnavailable.title")}
         description={t("draftUnavailable.description")}
       />
@@ -117,6 +119,7 @@ export default function DivisionDraftEditorPage() {
     return (
       <PageStateCard
         state="error"
+        headingLevel={1}
         title={t("versionLoadError.title")}
         description={t("versionLoadError.description")}
         actionLabel={t("retry")}
@@ -140,6 +143,7 @@ export default function DivisionDraftEditorPage() {
     return (
       <PageStateCard
         state="error"
+        headingLevel={1}
         title={t("versionLoadError.title")}
         description={t("versionLoadError.description")}
         actionLabel={t("retry")}

@@ -48,7 +48,7 @@ export default function RankCollectorPage() {
   ]);
 
   return (
-    <PermissionGate loaded={isLoaded} allowed={canRead} description={t("access.rank")}>
+    <PermissionGate loaded={isLoaded} allowed={canRead} description={t("access.rank")} headingLevel={2}>
       <div className="space-y-4">
         <LinkTabs items={items} activeKey={activeKey} level={2} ariaLabel={t("views.rankAria")} />
         <GameScopeControl scope={gameScope} variant="single" />

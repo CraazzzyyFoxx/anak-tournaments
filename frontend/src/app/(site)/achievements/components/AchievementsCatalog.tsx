@@ -199,7 +199,7 @@ const AchievementsCatalog = ({ initial }: Readonly<{ initial?: GameScopeInit }>)
   if (resolution === null) {
     return gameScope.isError ? (
       <div className="aqt-player">
-        <PageStateCard state="error" description={t("common.loadError")} onAction={gameScope.refetch} />
+        <PageStateCard state="error" headingLevel={1} description={t("common.loadError")} onAction={gameScope.refetch} />
       </div>
     ) : (
       <PageSkeleton />
@@ -220,6 +220,7 @@ const AchievementsCatalog = ({ initial }: Readonly<{ initial?: GameScopeInit }>)
       <div className="aqt-player">
         <PageStateCard
           state="error"
+          headingLevel={1}
           description={t("common.loadError")}
           onAction={() => void refetch()}
         />

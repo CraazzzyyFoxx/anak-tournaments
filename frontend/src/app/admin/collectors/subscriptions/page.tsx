@@ -45,7 +45,7 @@ export default function SubscriptionCollectorPage() {
   });
 
   return (
-    <PermissionGate loaded={isLoaded} allowed={canRead} description={t("access.subscriptions")}>
+    <PermissionGate loaded={isLoaded} allowed={canRead} description={t("access.subscriptions")} headingLevel={2}>
       <div className="space-y-4">
         <LinkTabs
           items={items}

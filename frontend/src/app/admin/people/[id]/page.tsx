@@ -81,6 +81,7 @@ export default function PersonHubPage() {
     return (
       <PageStateCard
         state="not-found"
+        headingLevel={1}
         title={t("notFound")}
         description={t("notFoundDescription", { id: personId })}
       />

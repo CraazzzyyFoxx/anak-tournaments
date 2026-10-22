@@ -66,6 +66,7 @@ function UnauthorizedState() {
     <main className="flex min-h-screen w-full items-center justify-center p-4">
       <PageStateCard
         state="error"
+        headingLevel={1}
         className="w-full max-w-md"
         title={t("unauthorized")}
         description={t("noPermission")}
@@ -218,7 +219,7 @@ export function AdminLayoutClient({
               (the row inspector) then sticks to it and never moves. `clip`
               trims the same overflow while leaving the y axis `visible`, so the
               window stays the scroll ancestor. */}
-          <div
+          <main
             id="admin-content"
             tabIndex={-1}
             className="flex w-full flex-1 flex-col gap-4 overflow-x-clip p-4 md:px-5"
@@ -226,7 +227,7 @@ export function AdminLayoutClient({
             {/* One drawer for the whole panel: every per-entity trail opens
                 here, so no screen mounts its own copy and none can nest. */}
             <AuditTrailProvider>{children}</AuditTrailProvider>
-          </div>
+          </main>
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>
