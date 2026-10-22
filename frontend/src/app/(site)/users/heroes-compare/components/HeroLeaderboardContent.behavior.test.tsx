@@ -129,14 +129,14 @@ describe("hero leaderboard selection", () => {
     await settleUntil(
       () =>
         container.textContent!.includes(messages.users.heroesCompare.hero.bestKd) &&
-        container.textContent!.includes(messages.users.heroesCompare.allTournaments)
+        container.textContent!.includes(messages.users.heroesCompare.table.allPlayers)
     );
 
     expect(mocks.leaderboard).toHaveBeenCalledTimes(1);
     // The scoped game's statistics route, for the checked entity.
     expect(mocks.leaderboard.mock.calls[0]?.slice(0, 2)).toEqual(["overwatch", 7]);
     expect(container.textContent).not.toContain("That hero is not in this game");
-    // Overwatch's module draws the board and its headline figures.
+    // Overwatch's module draws the hero card and the board.
     expect(container.textContent).toContain(messages.users.heroesCompare.hero.bestKd);
   });
 
@@ -150,22 +150,31 @@ describe("hero leaderboard selection", () => {
     expect(mocks.leaderboard).not.toHaveBeenCalled();
   });
 
-  it("drops the picked hero when a tab switches the game", async () => {
+  it("shows a player's division crest from the grid the row names, its tier in the tooltip", async () => {
     mocks.getEntity.mockResolvedValue(catalogEntity({ id: 7, name: "Ana", attrs: { class: "support" } }));
-    await mount("/users/heroes-compare?hero_id=7");
-
-    const tab = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find((node) =>
-      node.textContent?.includes("League of Legends")
-    );
-    expect(tab).toBeTruthy();
-    await act(async () => {
-      tab!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+    // An all-communities board: this player's 4 is a number on their own tournament's ladder, not the workspace's.
+    mocks.leaderboard.mockResolvedValue({
+      results: [{ ...OW_ROW, div: 4, division_grid_version_id: 77 }],
+      division_grids: [
+        {
+          id: 77, grid_id: 1, version: 1, label: "Ladder", status: "published", created_from_version_id: null,
+          published_at: null,
+          tiers: [
+            { id: 1, version_id: 77, slug: "gold-2", number: 4, name: "Gold 2", sort_order: 4, rank_min: 0, rank_max: null,
+              icon_url: "https://cdn.test/gold-2.png" }
+          ]
+        }
+      ],
+      total: 1,
+      page: 1,
+      per_page: -1
     });
-    await settle();
 
-    const url = new URL(navigation.pushes.at(-1)!, "http://x");
-    expect(url.searchParams.get("discipline")).toBe("lol");
-    expect(url.searchParams.has("hero_id")).toBe(false);
+    await mount("/users/heroes-compare?hero_id=7&discipline=overwatch");
+    await settleUntil(() => container.textContent!.includes("ow-ranked"));
+
+    const crest = container.querySelector<HTMLElement>('[title="Gold 2"]');
+    expect(crest?.querySelector("img")?.getAttribute("alt")).toBe("Gold 2");
   });
 
   it("a game picked in the scope pill drops the picked hero and tournament", async () => {
@@ -300,7 +309,7 @@ describe("hero leaderboard selection", () => {
 });
 
 describe("the server render", () => {
-  it("draws the game tabs under all games, and the browser hydrates it without a mismatch", async () => {
+  it("names the game it shows under all games, offering the site's switcher, and hydrates without a mismatch", async () => {
     navigation.reset("/users/heroes-compare");
     const page = await HeroesComparePage();
     // The same tree on both sides; only the query client differs, as one request's and the browser's do.
@@ -309,8 +318,11 @@ describe("the server render", () => {
         <QueryClientProvider client={queryClient}>{page}</QueryClientProvider>
       </NextIntlClientProvider>
     );
+    const hint = messages.users.heroesCompare.gameHint.replace("{game}", "League of Legends");
     const html = renderToString(tree(new QueryClient()));
-    expect(html).toContain('role="tablist"');
+    // The last game the visitor played, and no game tabs of the page's own.
+    expect(html).toContain(hint);
+    expect(html).not.toContain('role="tablist"');
 
     // The browser already holds the area's games (the header read them) when the page's boundary hydrates, and its
     // store carries the visitor's cookies.
@@ -331,7 +343,7 @@ describe("the server render", () => {
 
     expect(recoverable).toEqual([]);
     expect(mismatches).toEqual([]);
-    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("League of Legends");
+    expect(host.textContent).toContain(hint);
     await act(async () => hydrated?.unmount());
     host.remove();
   });

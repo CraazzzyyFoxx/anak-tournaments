@@ -1,17 +1,17 @@
 "use client";
 
-import { RotateCcw, SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { TournamentCombobox } from "@/app/(site)/users/components/shared/TournamentCombobox";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { SearchField } from "@/components/ui/search-field";
 import SearchableImageSelect, { type SearchableImageOption } from "@/components/ui/searchable-image-select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { cn } from "@/lib/utils";
 
-/** The sample floor's choices in the toolbar popover. */
+/** The sample floor's choices in the popover. */
 export const MIN_GAMES_OPTIONS = [1, 3, 5, 10, 20] as const;
 
 /**
@@ -26,7 +26,12 @@ export const parseMinGames = (value: string | null, tournamentId: number | undef
   return value && (MIN_GAMES_OPTIONS as readonly number[]).includes(parsed) ? parsed : defaultMinGames(tournamentId);
 };
 
-interface HeroLeaderboardFiltersCardProps {
+interface HeroLeaderboardControlsProps {
+  /**
+   * Under "all games" the page shows one game it picked itself (the last one played): the game's name, worn by a
+   * chip that opens the site's game switcher. `null` when the switcher already names the game.
+   */
+  gameHint: string | null;
   /** The searchable picker: only for a roster too long for the rail, or when the rail's catalog failed to load. */
   showHeroPicker: boolean;
   heroId: number | undefined;
@@ -41,17 +46,14 @@ interface HeroLeaderboardFiltersCardProps {
   onTournamentChange: (id: number | undefined) => void;
   minGames: number;
   onMinGamesChange: (value: number) => void;
-  query: string;
-  onQueryChange: (value: string) => void;
-  onResetColumns: () => void;
-  resetDisabled: boolean;
 }
 
 const TRIGGER =
   "border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_100%/0.025)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]";
 
-/** The board's one toolbar row: what is read (hero, tournament), who is ranked (the floor), who is shown (search). */
-const HeroLeaderboardFiltersCard = ({
+/** The header's controls: which game (a hint), which hero (long rosters only), which tournament, who is ranked. */
+const HeroLeaderboardControls = ({
+  gameHint,
   showHeroPicker,
   heroId,
   heroOptions,
@@ -65,15 +67,17 @@ const HeroLeaderboardFiltersCard = ({
   onTournamentChange,
   minGames,
   onMinGamesChange,
-  query,
-  onQueryChange,
-  onResetColumns,
-  resetDisabled,
-}: HeroLeaderboardFiltersCardProps) => {
+}: HeroLeaderboardControlsProps) => {
   const t = useTranslations();
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2.5 md:flex-row md:flex-wrap md:items-center md:gap-2">
+    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
+      {gameHint ? (
+        <GameFilterHint className="self-start sm:self-auto">
+          {t("users.heroesCompare.gameHint", { game: gameHint })}
+        </GameFilterHint>
+      ) : null}
+
       {showHeroPicker ? (
         <SearchableImageSelect
           value={heroId !== undefined ? String(heroId) : undefined}
@@ -84,7 +88,7 @@ const HeroLeaderboardFiltersCard = ({
           ariaLabel={t("users.heroesCompare.filters.heroLabel")}
           isLoading={isLoadingHeroes}
           disabled={isLoadingHeroes || isErrorHeroes}
-          triggerClassName={cn(TRIGGER, "md:w-56")}
+          triggerClassName={cn(TRIGGER, "sm:w-56")}
         />
       ) : null}
 
@@ -95,7 +99,7 @@ const HeroLeaderboardFiltersCard = ({
         ariaLabel={t("users.heroesCompare.filters.tournamentScope")}
         isLoading={isLoadingTournaments}
         disabled={isLoadingTournaments || isErrorTournaments}
-        triggerClassName={cn(TRIGGER, "md:w-60")}
+        triggerClassName={cn(TRIGGER, "sm:w-56")}
       />
 
       <Popover>
@@ -110,7 +114,7 @@ const HeroLeaderboardFiltersCard = ({
             {t("users.heroesCompare.filters.minGamesValue", { value: String(minGames) })}
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-64 space-y-2">
+        <PopoverContent align="end" className="w-64 space-y-2">
           <p className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
             {t("users.heroesCompare.filters.minGames")}
           </p>
@@ -132,28 +136,8 @@ const HeroLeaderboardFiltersCard = ({
           <p className="text-caption text-[color:var(--aqt-fg-dim)]">{t("users.heroesCompare.filters.minGamesHint")}</p>
         </PopoverContent>
       </Popover>
-
-      <SearchField
-        value={query}
-        onValueChange={onQueryChange}
-        label={t("users.heroesCompare.filters.searchPlayer")}
-        placeholder={t("users.heroesCompare.filters.searchPlayer")}
-        containerClassName="w-full md:ml-auto md:w-auto md:min-w-[12rem] md:max-w-xs md:flex-1"
-        className="max-md:h-10"
-      />
-
-      <button
-        type="button"
-        onClick={onResetColumns}
-        disabled={resetDisabled}
-        title={t("users.heroesCompare.filters.resetColumnsTitle")}
-        className="inline-flex h-8 cursor-pointer items-center justify-center gap-2 rounded-[8px] px-3 text-xs font-semibold text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[hsl(0_0%_100%/0.05)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] disabled:pointer-events-none disabled:opacity-40"
-      >
-        <RotateCcw aria-hidden className="h-3.5 w-3.5" />
-        {t("users.heroesCompare.filters.resetColumns")}
-      </button>
     </div>
   );
 };
 
-export default HeroLeaderboardFiltersCard;
+export default HeroLeaderboardControls;

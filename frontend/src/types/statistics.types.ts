@@ -56,3 +56,5 @@ export interface UserTournamentStat {
 
 /** One player's row on a character's leaderboard (per-10 averages over the player's eligible matches). */
 export type CharacterLeaderboardEntry = Schema<"app.CharacterLeaderboardEntry">;
+/** A leaderboard page plus every division grid its rows' `div` is a number on (`division_grid_version_id`). */
+export type CharacterLeaderboardResponse = Schema<"app.CharacterLeaderboardResponse">;

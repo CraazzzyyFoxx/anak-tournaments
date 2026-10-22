@@ -1,18 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { EyeOff, Sword } from "lucide-react";
+import { EyeOff, RotateCcw, Sword } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { Button } from "@/components/ui/button";
+import { SearchField } from "@/components/ui/search-field";
 import { Skeleton } from "@/components/ui/skeleton";
-import { characterClass } from "@/lib/catalog/attrs";
 import { cn } from "@/lib/utils";
-import type { CatalogEntityRead } from "@/types/catalog.types";
+import type { DivisionGridVersion } from "@/types/workspace.types";
 
 import type { RankedEntry } from "./board";
-import BarRow, { CELL, STICKY_PLAYER, STICKY_RANK, type StatCellSpec } from "./BarRow";
+import LeaderboardRow, { CELL, STICKY_PLAYER, STICKY_RANK, type StatCellSpec } from "./LeaderboardRow";
 import { ALL_STAT_OPTIONS, COL, type StatKey } from "./stat-columns";
 import StatColumnHeader from "./StatColumnHeader";
 
@@ -21,12 +20,17 @@ const TITLE_ID = "hero-leaderboard-title";
 
 const HEAD_CELL = "border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-3 py-2.5 align-middle";
 const HEAD_LABEL = "text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg-faint)]";
+/** The legend's swatches: the heat map's three tinted tiers, palest first. */
+const LEGEND = [
+  { label: "50%", swatch: "bg-[color:color-mix(in_srgb,var(--aqt-teal)_8%,transparent)]" },
+  { label: "75%", swatch: "bg-[color:color-mix(in_srgb,var(--aqt-teal)_17%,transparent)]" },
+  { label: "90%", swatch: "bg-[color:color-mix(in_srgb,var(--aqt-teal)_30%,transparent)]" }
+];
 
 interface HeroLeaderboardTableProps {
-  selectedHero: CatalogEntityRead | undefined;
-  selectedTournamentName: string | undefined;
+  discipline: string;
   tournamentId: number | undefined;
-  /** Every player at the sample floor, ranked: the bars' scale. */
+  /** Every player at the sample floor, ranked: the heat map's scale. */
   ranked: readonly RankedEntry[];
   /** The rows on screen: the search's matches, cut to what the reader asked to see. */
   rows: readonly RankedEntry[];
@@ -35,7 +39,10 @@ interface HeroLeaderboardTableProps {
   /** Players under the sample floor, left off the board. */
   hiddenCount: number;
   minGames: number;
+  /** The grids the rows' divisions are numbers on (`division_grid_version_id`). */
+  grids: readonly DivisionGridVersion[];
   query: string;
+  onQueryChange: (value: string) => void;
   isLoading: boolean;
   columnKeys: StatKey[];
   /** Index into `columnKeys` of the column that drives the shared row order. */
@@ -45,20 +52,22 @@ interface HeroLeaderboardTableProps {
   moreCount: number;
   onColumnSelect: (colIndex: number, key: StatKey) => void;
   onSortChange: (colIndex: number) => void;
+  onResetColumns: () => void;
   onShowMore: () => void;
   onShowHidden: () => void;
 }
 
 const HeroLeaderboardTable = ({
-  selectedHero,
-  selectedTournamentName,
+  discipline,
   tournamentId,
   ranked,
   rows,
   matchCount,
   hiddenCount,
   minGames,
+  grids,
   query,
+  onQueryChange,
   isLoading,
   columnKeys,
   sortIndex,
@@ -66,15 +75,14 @@ const HeroLeaderboardTable = ({
   moreCount,
   onColumnSelect,
   onSortChange,
+  onResetColumns,
   onShowMore,
   onShowHidden,
 }: HeroLeaderboardTableProps) => {
   const t = useTranslations();
   const [hoveredUserId, setHoveredUserId] = useState<number | null>(null);
-  // The class badge wears the character's own catalog colour (neutral without one) — never a role hue.
-  const badgeColor = typeof selectedHero?.attrs.color === "string" ? selectedHero.attrs.color : "var(--aqt-fg-muted)";
 
-  // One scale per column over every ranked player (not the rows on screen), so a bar means the same thing
+  // One scale per column over every ranked player (not the rows on screen), so a tint means the same thing
   // whatever the search or the "show more" cut leaves visible.
   const cells = useMemo<StatCellSpec[]>(
     () =>
@@ -84,6 +92,7 @@ const HeroLeaderboardTable = ({
       }),
     [columnKeys, ranked]
   );
+  const gridById = useMemo(() => new Map(grids.map((grid) => [grid.id, grid])), [grids]);
 
   const emptyMessage = query
     ? t("users.heroesCompare.table.noMatches", { query: query.trim() })
@@ -94,35 +103,46 @@ const HeroLeaderboardTable = ({
         : t("users.heroesCompare.table.noData");
 
   return (
-    <section className="overflow-hidden rounded-[var(--aqt-radius)] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]">
-      {/* Board head */}
-      <div className="flex items-center gap-3.5 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-5 py-4">
-        {selectedHero && <CatalogEntityImage entity={selectedHero} size={44} rounded="lg" />}
-        <div className="min-w-0">
-          <div className="flex items-center gap-2.5">
-            <h2
-              id={TITLE_ID}
-              className="font-[family-name:var(--aqt-display)] text-2xl font-bold uppercase leading-none tracking-[0.03em]"
-            >
-              {selectedHero?.name ?? t("users.heroesCompare.table.heroFallback")}
-            </h2>
-            {selectedHero && (
-              <span
-                className="rounded-[5px] px-1.5 py-0.5 text-label font-bold uppercase leading-none tracking-label"
-                style={{
-                  color: badgeColor,
-                  background: `color-mix(in srgb, ${badgeColor} 15%, transparent)`,
-                }}
-              >
-                {characterClass(selectedHero)}
-              </span>
-            )}
-          </div>
-          <p className="mt-1 font-[family-name:var(--aqt-data)] text-label text-[color:var(--aqt-fg-dim)]">
-            {selectedTournamentName ?? t("users.heroesCompare.allTournaments")}
-            {tournamentId ? ` · ${t("users.heroesCompare.table.scope")} #${tournamentId}` : ""}
-          </p>
-        </div>
+    <section
+      aria-labelledby={TITLE_ID}
+      className="overflow-hidden rounded-[var(--aqt-radius)] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]"
+    >
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[color:var(--aqt-border)] px-4 py-3">
+        <h2 id={TITLE_ID} className="font-onest text-lg font-semibold text-[color:var(--aqt-fg)]">
+          {t("users.heroesCompare.table.allPlayers")}
+        </h2>
+        {!isLoading ? (
+          <span className="rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-2.5 py-0.5 text-label tabular-nums text-[color:var(--aqt-fg-muted)]">
+            {t("users.heroesCompare.table.rankedCount", { count: ranked.length })}
+          </span>
+        ) : null}
+        <span className="flex items-center gap-1.5 text-label text-[color:var(--aqt-fg-faint)] max-md:hidden">
+          {t("users.heroesCompare.table.legendLead")}
+          {LEGEND.map((item) => (
+            <span key={item.label} className="inline-flex items-center gap-1">
+              <span aria-hidden className={cn("h-2.5 w-3.5 rounded-[3px]", item.swatch)} />
+              {item.label}
+            </span>
+          ))}
+          {t("users.heroesCompare.table.legendTail")}
+        </span>
+        <SearchField
+          value={query}
+          onValueChange={onQueryChange}
+          label={t("users.heroesCompare.filters.searchPlayer")}
+          placeholder={t("users.heroesCompare.filters.searchPlayer")}
+          containerClassName="w-full md:ml-auto md:w-64"
+          className="max-md:h-10"
+        />
+        <button
+          type="button"
+          onClick={onResetColumns}
+          title={t("users.heroesCompare.filters.resetColumnsTitle")}
+          className="inline-flex h-8 cursor-pointer items-center justify-center gap-2 rounded-[8px] px-3 text-xs font-semibold text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+        >
+          <RotateCcw aria-hidden className="h-3.5 w-3.5" />
+          {t("users.heroesCompare.filters.resetColumns")}
+        </button>
       </div>
 
       {/* One table, one row order: column k and column k+1 describe the same player. */}
@@ -135,7 +155,7 @@ const HeroLeaderboardTable = ({
           <colgroup>
             <col className="w-[52px]" />
             {/* Narrower on a phone: the sticky rank + player pair must leave room for the column scrolling past. */}
-            <col className="w-[148px] sm:w-[220px]" />
+            <col className="w-[156px] sm:w-[230px]" />
             <col className="w-[88px]" />
             {columnKeys.map((key, i) => (
               <col key={`${key}-${i}`} />
@@ -190,11 +210,16 @@ const HeroLeaderboardTable = ({
               </tr>
             ) : (
               rows.map((entry) => (
-                <BarRow
+                <LeaderboardRow
                   key={entry.entry.user_id}
                   ranked={entry}
                   cells={cells}
-                  activeIndex={sortIndex}
+                  grid={
+                    entry.entry.division_grid_version_id == null
+                      ? null
+                      : (gridById.get(entry.entry.division_grid_version_id) ?? null)
+                  }
+                  discipline={discipline}
                   isHighlighted={entry.entry.user_id === hoveredUserId}
                   onHoverUser={setHoveredUserId}
                 />

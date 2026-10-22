@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { CharacterLeaderboardEntry } from "@/types/statistics.types";
 
-import { beatsShare, rankEntries, searchEntries } from "./board";
+import { beatsShare, rankEntries, searchEntries, shareOfBest } from "./board";
 import { COL } from "./stat-columns";
 
 const row = (username: string, games: number, elims: number, deaths: number): CharacterLeaderboardEntry => ({
@@ -55,5 +55,15 @@ describe("a bar's share of the column", () => {
   it("turns around for a lower-is-better column", () => {
     expect(beatsShare(sorted, 2, true)).toBe(1);
     expect(beatsShare(sorted, 9, true)).toBe(0);
+  });
+});
+
+describe("a top-chart bar", () => {
+  it("is full for the leader and shorter for a weaker value, whichever way the column runs", () => {
+    expect(shareOfBest(10, 10, false)).toBe(1);
+    expect(shareOfBest(10, 5, false)).toBe(0.5);
+    // Deaths: the leader died least, so twice the leader's deaths is half the leader's bar.
+    expect(shareOfBest(2, 2, true)).toBe(1);
+    expect(shareOfBest(2, 4, true)).toBe(0.5);
   });
 });

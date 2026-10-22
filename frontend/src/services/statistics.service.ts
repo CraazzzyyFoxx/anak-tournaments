@@ -1,5 +1,5 @@
 import {
-  CharacterLeaderboardEntry,
+  CharacterLeaderboardResponse,
   MapStatsResponse,
   PlayerLeaderboardRow,
   PlayerSort,
@@ -177,7 +177,7 @@ export default class statisticsService {
       perPage?: number;
       signal?: AbortSignal;
     }
-  ): Promise<PaginatedResponse<CharacterLeaderboardEntry>> {
+  ): Promise<CharacterLeaderboardResponse> {
     return apiFetch(
       `/api/v1/statistics/${encodeURIComponent(discipline)}/characters/${entityId}/leaderboard`,
       {

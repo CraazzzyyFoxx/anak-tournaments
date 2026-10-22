@@ -64,3 +64,20 @@ export function beatsShare(sorted: readonly number[], value: number, lowerIsBett
     : countUpTo(sorted, value, true);
   return beaten / others;
 }
+
+/** A heat-map cell's tier: better than 90, 75 or 50% of the board, the middle, or the bottom tenth (0). */
+export function heatTier(share: number): 0 | 1 | 2 | 3 | 4 {
+  if (share >= 0.9) return 4;
+  if (share >= 0.75) return 3;
+  if (share >= 0.5) return 2;
+  return share < 0.1 ? 0 : 1;
+}
+
+/**
+ * A top-chart bar: the value as a share of the leader's, turned around for a lower-is-better column, so the leader's
+ * bar is full and a weaker value's is shorter in every column.
+ */
+export function shareOfBest(best: number, value: number, lowerIsBetter: boolean): number {
+  if (lowerIsBetter) return value <= 0 ? 1 : Math.min(best / value, 1);
+  return best <= 0 ? 0 : Math.min(value / best, 1);
+}

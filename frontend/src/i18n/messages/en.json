@@ -5625,7 +5625,7 @@
     },
     "heroesCompare": {
       "selectHeroPrompt": "Select a hero above to rank every player who's logged time on it.",
-      "allTournaments": "All tournaments",
+      "gameHint": "{game} · switch the game in the header",
       "stat": {
         "elims": "Elims / 10",
         "healing": "Healing / 10",
@@ -5666,8 +5666,10 @@
         "noClass": "No class"
       },
       "table": {
-        "heroFallback": "Hero",
-        "scope": "scope",
+        "allPlayers": "All players",
+        "rankedCount": "{count} ranked",
+        "legendLead": "Better than",
+        "legendTail": "of ranked players",
         "noData": "No data found for this hero.",
         "noDataInTournament": "No data found for this hero in this tournament.",
         "noMatches": "No ranked player matches “{query}”.",
@@ -5675,7 +5677,6 @@
         "rank": "Rank",
         "player": "Player",
         "games": "Games",
-        "division": "Div {division}",
         "lowerIsBetter": "lower is better",
         "beats": "Better than {value}% of ranked players",
         "belowFloor": "{count, plural, one {# player} other {# players}} with fewer than {min} games {count, plural, one {is} other {are}} hidden.",
@@ -5684,16 +5685,22 @@
         "showMore": "Show {count} more",
         "selectStat": "Change column stat: {stat}"
       },
+      "top": {
+        "title": "Top 10: {stat}",
+        "floor": "{min}+ games each",
+        "games": "{count, plural, one {# game} other {# games}}"
+      },
       "hero": {
-        "healing": "Healing",
-        "blocked": "Blocked",
-        "damage": "Damage",
         "playersRanked": "Players ranked",
         "rankedOf": "{min}+ games, of {total}",
         "withLoggedTime": "with logged {name} time",
-        "pickToRank": "pick a hero to rank",
-        "topStat": "Top {stat}",
+        "timeOn": "Time on {name}",
+        "hours": "{hours} h",
+        "playersTotal": "{count, plural, one {# player} other {# players}} in total",
+        "typicalSample": "Typical sample",
+        "medianGames": "games, median",
         "bestKd": "Best K/D",
+        "rankBy": "Rank by",
         "usersBreadcrumb": "Users",
         "breadcrumb": "Hero compare",
         "title": "Who plays it best?",

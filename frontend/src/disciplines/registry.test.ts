@@ -36,7 +36,6 @@ describe("slot-family loaders", () => {
     expect(await slotsOf(loadAdminUI)).toEqual(["nativeRankEditor"]);
     expect(await slotsOf(loadProfileUI)).toEqual([
       "characterCompare",
-      "characterCompareSummary",
       "characterPopover",
       "characterStats",
       "lobbyRankTiles",

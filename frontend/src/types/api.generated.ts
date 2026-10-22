@@ -3271,7 +3271,7 @@ export interface paths {
         };
         /**
          * Character leaderboard
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated player leaderboard for one character of the path discipline, resolved against the workspace context and its division grid. 404 when the id is not a character of that discipline.
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated player leaderboard for one character of the path discipline, resolved against the workspace context and its division grid. A row's `div` is a number on the grid named by its `division_grid_version_id`: the workspace grid in a scoped read, the player's latest tournament grid with `workspace_id=all`; every referenced grid is returned once in `division_grids`. 404 when the id is not a character of that discipline.
          *
          *     RPC subject: `rpc.app.statistics.character_leaderboard`
          */
@@ -12294,6 +12294,11 @@ export interface components {
             avg_weapon_accuracy: number;
             /** Div */
             div: number;
+            /**
+             * Division Grid Version Id
+             * @default null
+             */
+            division_grid_version_id: number | null;
             /** Games Played */
             games_played: number;
             /** Kd */
@@ -12356,6 +12361,22 @@ export interface components {
             user_id: number;
             /** Username */
             username: string;
+        };
+        /**
+         * CharacterLeaderboardResponse
+         * @description One character's leaderboard page plus every division grid its rows' ``div`` refers to.
+         */
+        "app.CharacterLeaderboardResponse": {
+            /** Division Grids */
+            division_grids?: components["schemas"]["app.DivisionGridVersionRead"][];
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["app.CharacterLeaderboardEntry"][];
+            /** Total */
+            total: number;
         };
         /**
          * CharacterPlaytime
@@ -13074,17 +13095,6 @@ export interface components {
             per_page: number;
             /** Results */
             results: components["schemas"]["app.CatalogEntityRead"][];
-            /** Total */
-            total: number;
-        };
-        /** Paginated[CharacterLeaderboardEntry] */
-        "app.Paginated_CharacterLeaderboardEntry_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.CharacterLeaderboardEntry"][];
             /** Total */
             total: number;
         };
@@ -41345,7 +41355,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.Paginated_CharacterLeaderboardEntry_"];
+                    "application/json": components["schemas"]["app.CharacterLeaderboardResponse"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */

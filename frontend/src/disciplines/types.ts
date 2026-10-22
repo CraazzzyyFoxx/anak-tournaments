@@ -69,20 +69,16 @@ export interface PregameCharacterRound extends PregameCharacterBoard {
   mapItem: PickBanItemLike | undefined;
 }
 
-/** What the character-comparison slots are given (the host's checked selection and read scope). */
+/** What the character-comparison slot is given (the host's checked selection and read scope). */
 export interface CharacterCompareProps {
   character: CatalogEntityRead | undefined;
   tournamentId: number | undefined;
-  /** The tournament's display name, when the host's picker knows it. */
-  tournamentName: string | undefined;
   axis: WorkspaceAxis;
   metadata: DisciplineMetadata;
   /** The sample floor: a player with fewer games on the character is left off the board and its figures. */
   minGames: number;
   /** Moves the floor (the board's way back to the players it leaves off). */
   onMinGamesChange: (value: number) => void;
-  /** A player-name search over the board; a match keeps the rank it holds on the whole board. */
-  query: string;
 }
 
 /** What a game's analytics board hands back to the host's tournament hero (slice 9 amendment). */
@@ -151,13 +147,12 @@ export type SlotProps = {
   };
   /**
    * The character comparison (`/users/heroes-compare`), 8b fix amendment: the host owns the browsed game, the
-   * checked character (`undefined` until one is picked and found in that game) and the tournament scope; the module
-   * reads that character's leaderboard itself — its wire and column catalog are the module's — and draws the
-   * board. A game without a renderer gets the host's explicit "not available" state and no read.
+   * checked character (`undefined` until one is picked and found in that game), the tournament scope and the sample
+   * floor; the module reads that character's leaderboard itself (its wire and column catalog are the module's) and
+   * draws everything under the picker: the hero card, the top chart and the board. A game without a renderer gets
+   * the host's explicit "not available" state and no read.
    */
   characterCompare: CharacterCompareProps;
-  /** The same comparison's headline figures beside the page title (8b fix amendment); nothing for a game without one. */
-  characterCompareSummary: CharacterCompareProps;
   matchStats: { match: MatchWithStats; metadata: DisciplineMetadata };
   /** `view`: `overview` compares the observed sides; `players` is the totals grouped by participation (8a amendment). */
   seriesStats: { matches: MatchWithStats[]; metadata: DisciplineMetadata; view: "overview" | "players" };
@@ -224,8 +219,7 @@ export type ProfileSlot =
   | "roleSignatures"
   | "tournamentSummary"
   | "lobbyRankTiles"
-  | "characterCompare"
-  | "characterCompareSummary";
+  | "characterCompare";
 export type MatchSlot = "matchStats" | "seriesStats" | "matchRowBadge" | "matchCharacters";
 export type PregameSlot = "pregameCharacterBans";
 export type AdminSlot = "nativeRankEditor";

@@ -5625,7 +5625,7 @@
     },
     "heroesCompare": {
       "selectHeroPrompt": "Выберите героя выше, чтобы ранжировать всех игроков, кто на нём играл.",
-      "allTournaments": "Все турниры",
+      "gameHint": "{game} · игра меняется в шапке сайта",
       "stat": {
         "elims": "Убийства / 10",
         "healing": "Исцеление / 10",
@@ -5666,8 +5666,10 @@
         "noClass": "Без класса"
       },
       "table": {
-        "heroFallback": "Герой",
-        "scope": "область",
+        "allPlayers": "Все игроки",
+        "rankedCount": "{count} в рейтинге",
+        "legendLead": "Лучше, чем",
+        "legendTail": "игроков в рейтинге",
         "noData": "Нет данных по этому герою.",
         "noDataInTournament": "Нет данных по этому герою в этом турнире.",
         "noMatches": "Нет игроков в рейтинге по запросу «{query}».",
@@ -5675,7 +5677,6 @@
         "rank": "Место",
         "player": "Игрок",
         "games": "Игры",
-        "division": "Див {division}",
         "lowerIsBetter": "чем меньше, тем лучше",
         "beats": "Лучше, чем {value}% игроков в рейтинге",
         "belowFloor": "Меньше {min} игр: {count, plural, one {# игрок скрыт} few {# игрока скрыты} many {# игроков скрыто} other {# игрока скрыто}}.",
@@ -5684,16 +5685,22 @@
         "showMore": "Показать ещё {count}",
         "selectStat": "Изменить статистику столбца: {stat}"
       },
+      "top": {
+        "title": "Топ-10: {stat}",
+        "floor": "от {min} игр у каждого",
+        "games": "{count, plural, one {# игра} few {# игры} many {# игр} other {# игры}}"
+      },
       "hero": {
-        "healing": "Исцеление",
-        "blocked": "Блок",
-        "damage": "Урон",
         "playersRanked": "Игроков в рейтинге",
         "rankedOf": "от {min} игр, из {total}",
         "withLoggedTime": "с записанным временем на {name}",
-        "pickToRank": "выберите героя для рейтинга",
-        "topStat": "Топ {stat}",
+        "timeOn": "Время на {name}",
+        "hours": "{hours} ч",
+        "playersTotal": "всего {count, plural, one {# игрок} few {# игрока} many {# игроков} other {# игрока}}",
+        "typicalSample": "Обычная выборка",
+        "medianGames": "игр, медиана",
         "bestKd": "Лучший K/D",
+        "rankBy": "Ранжировать по",
         "usersBreadcrumb": "Игроки",
         "breadcrumb": "Сравнение героев",
         "title": "Кто играет лучше всех?",

@@ -1,13 +1,17 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Gamepad2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { useScopePillOpen } from "@/components/workspace/scope-pill-store";
 import { cn } from "@/lib/utils";
 
-/** Stands in for the game-bound filters under "all games" (spec §6.2); opens the scope pill. */
-export function GameFilterHint({ className }: Readonly<{ className?: string }>) {
+/**
+ * Stands in for the game-bound filters under "all games" (spec §6.2); opens the scope pill. `children` replaces the
+ * generic wording (a one-game page naming the game it shows).
+ */
+export function GameFilterHint({ className, children }: Readonly<{ className?: string; children?: ReactNode }>) {
   const t = useTranslations("common.discipline");
   const setOpen = useScopePillOpen((state) => state.setOpen);
 
@@ -23,7 +27,7 @@ export function GameFilterHint({ className }: Readonly<{ className?: string }>) 
       )}
     >
       <Gamepad2 className="size-3.5 shrink-0" aria-hidden />
-      {t("filterHint")}
+      {children ?? t("filterHint")}
     </button>
   );
 }
