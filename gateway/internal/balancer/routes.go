@@ -133,6 +133,10 @@ var RosterRoutes = []edge.RouteSpec{
 	// every pin, since a pin to a lobby the mix no longer runs would quietly
 	// exclude that player from the next balance.
 	{Method: "PUT", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/lobbies", Queue: "rpc.balancer.custom.set_lobby_count", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	// A lobby's match: Start opens it on the shown lineup (and splits the team voices), Cancel throws it away; the
+	// result is /outcome.
+	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/match/start", Queue: "rpc.balancer.custom.start_match", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/match/cancel", Queue: "rpc.balancer.custom.cancel_match", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/outcome", Queue: "rpc.balancer.custom.record_outcome", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/teams/swap", Queue: "rpc.balancer.custom.swap_seats", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	// "Make captain": one seat of the lobby's shown option wears the crown.

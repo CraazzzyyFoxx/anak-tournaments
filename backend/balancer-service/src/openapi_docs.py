@@ -515,17 +515,37 @@ DOCS: dict[str, dict] = {
             "re-captains both teams. 404 when that option does not seat the player."
         ),
     },
+    "rpc.balancer.custom.start_match": {
+        "summary": "Start custom game match",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
+            "Starts the lobby's match on the option it is showing: an open encounter with both teams' rosters "
+            "(captains flagged) and one game on the lobby's next map. The lineup is then frozen until the result is "
+            "recorded or the match is cancelled. When the lobby has both team voices, its seated players are then "
+            "moved into them (as voice_move; a Discord failure leaves the match started). 409 match_live when the lobby "
+            "already has a live match, 404 when the shown option is gone, 422 unless it seats two teams."
+        ),
+    },
+    "rpc.balancer.custom.cancel_match": {
+        "summary": "Cancel custom game match",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
+            "Throws the lobby's live match away: its encounter is deleted with its game and rosters, nothing is "
+            "recorded and no rank, pin or map moves; the lineup is ready to start again. 409 no_live_match when "
+            "nothing was started."
+        ),
+    },
     "rpc.balancer.custom.record_outcome": {
         "summary": "Record custom game match",
         "description": (
             "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
-            "Freezes one played match of a balance option into the mix's history, moving both teams' "
-            "ranks in the host's book -- by points_per_win when a winner is given, or seat by seat by the "
-            "mix ranker when the host's rating_mode is 'ranker' -- advancing the workspace's hidden "
-            "ratings, and redeeming every "
-            "seat's must_play pin back to the pool. The match is stamped with the lobby that played it "
-            "and with whoever was playing another lobby at that moment, whom rotation then counts as "
-            "neither played nor sat out. Repeatable until the mix is closed."
+            "Records the result of the lobby's live match -- the one Start match opened on the lineup it froze -- and "
+            "completes its encounter, moving both teams' ranks in the host's book (by points_per_win when a winner is "
+            "given, or seat by seat by the mix ranker when the host's rating_mode is 'ranker'), advancing the "
+            "workspace's hidden ratings and redeeming every seat's must_play pin back to the pool. The match is "
+            "stamped with its lobby and with whoever was playing another lobby at that moment, whom rotation then "
+            "counts as neither played nor sat out. The lobby's next map is cleared. 409 no_live_match when nothing was "
+            "started. Repeatable until the mix is closed."
         ),
     },
     "rpc.balancer.custom.match_history": {
@@ -578,8 +598,8 @@ DOCS: dict[str, dict] = {
         "summary": "Close custom game",
         "description": (
             "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
-            "Marks the mix completed so no further writes land. Nothing is destroyed -- the mix and "
-            "every match it recorded stay readable -- so this is the reversible end of a mix."
+            "Cancels every live match, then marks the mix completed so no further writes land. Nothing is "
+            "destroyed -- the mix and every match it recorded stay readable -- so this is the reversible end of a mix."
         ),
     },
     "rpc.balancer.custom.set_lobby_count": {

@@ -237,5 +237,5 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
         return (await session.execute(stmt)).all()
 
     async def delete_round(self, session: AsyncSession, encounter_id: int) -> None:
-        """Undo: the encounter goes, and seats, game, journal and ``custom_game_round*`` cascade with it."""
+        """Undo, or Cancel match: the encounter goes, and seats, game, journal and ``mix.round*`` cascade with it."""
         await session.execute(sa.delete(models.Encounter).where(models.Encounter.id == encounter_id))

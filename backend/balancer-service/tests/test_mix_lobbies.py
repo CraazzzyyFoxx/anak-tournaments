@@ -3,6 +3,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 BALANCER_SERVICE_ROOT = REPO_BACKEND_ROOT / "balancer-service"
 
@@ -12,7 +14,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
 
 
 from src.domain.balancer.result_serializer import lobby_document  # noqa: E402
-from src.domain.mix_lobbies import seated_member_ids, seated_teams, with_captains  # noqa: E402
+from src.domain.mix_lobbies import lobby_state, seated_member_ids, seated_teams, with_captains  # noqa: E402
 
 
 def _payload(*teams: dict[str, list[int]]) -> dict[str, object]:
@@ -117,3 +119,15 @@ def test_a_seated_captain_is_kept_and_one_who_left_is_replaced() -> None:
     second["captain_member_id"] = 8  # sits on the other team now
     with_captains(document)
     assert (first["captain_member_id"], second["captain_member_id"]) == (7, 9)
+
+
+@pytest.mark.parametrize(
+    ("document", "live", "state"),
+    [
+        (None, None, "idle"),
+        (lobby_document([_payload({"tank": [7]}, {"tank": [8]})]), None, "ready"),
+        (lobby_document([_payload({"tank": [7]}, {"tank": [8]})]), 900, "live"),
+    ],
+)
+def test_a_lobby_state_is_derived_never_stored(document, live, state) -> None:
+    assert lobby_state(document, 0, live) == state

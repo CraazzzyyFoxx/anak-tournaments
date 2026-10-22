@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -77,7 +77,7 @@ from src.services.account_links import missing_account_links
 from src.services.balancer.solver import run_mix_balance as _run_balance
 from src.services.balancer.solver import serialize_format_context
 from src.services.mix_ranker import MixRankerService, RatedSeat, mix_ranker_service
-from src.services.mix_rounds import MixRoundDraft, MixRoundSeat, record_mix_round
+from src.services.mix_rounds import MixMatchDraft, MixMatchSeat, MixResultDraft, record_mix_result, start_mix_match
 from src.services.pickup_mix_realtime import emit_pickup_mix_changed
 from src.services.workspace_roster import (
     RosterMember,
@@ -296,6 +296,65 @@ def _locate_seat(teams: Sequence[Mapping[str, Any]], uuid: str) -> tuple[int, st
     return None
 
 
+def _refuse_live(lobby: models.CustomGameLobby) -> None:
+    """The frozen lineup (spec §5.1): a lobby whose match is live is not re-formed, re-seated or re-mapped."""
+    if lobby.live_encounter_id is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="match_live")
+
+
+def _two_team_lineup(lobby: models.CustomGameLobby) -> tuple[dict[str, Any], list[Any]]:
+    """The lobby's shown option as a captained two-team lineup: a copy of its document, and that option's teams."""
+    result = with_captains(copy.deepcopy(as_lobby_document(lobby.balance_result_json))) or {}
+    variants = result.get("variants")
+    index = lobby.selected_variant_index
+    if not isinstance(variants, list) or not (0 <= index < len(variants)):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance option not found")
+    teams = variants[index].get("teams") if isinstance(variants[index], dict) else None
+    if not isinstance(teams, list) or len(teams) != 2:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="A match can only be played by a two-team balance",
+        )
+    return result, teams
+
+
+def _lineup_seats(
+    result: Mapping[str, Any], teams: Sequence[Any]
+) -> tuple[list[list[MixMatchSeat]], list[list[tuple[int, str, int]]], list[list[int]]]:
+    """One walk over a two-team lineup: the seats a match snapshots, and per team ``(member, slot code, rating)`` plus
+    each seat's open rank (the ranker's base). The name and rating are the lineup's, as they stood when it was formed."""
+    team_seats: list[list[MixMatchSeat]] = [[], []]
+    team_players: list[list[tuple[int, str, int]]] = [[], []]
+    open_ranks: list[list[int]] = [[], []]
+    players = _lobby_players(result)
+    for team_index, team in enumerate(teams):
+        roster = team.get("roster") if isinstance(team, dict) else None
+        if not isinstance(roster, dict):
+            continue
+        captain = team.get("captain_member_id")
+        for bucket_name, seats in roster.items():
+            if not isinstance(seats, list):
+                continue
+            slot_code = role_slot_code(bucket_name)
+            for uuid in seats:
+                player = players.get(str(uuid))
+                if not isinstance(player, Mapping):
+                    continue
+                member_id = int(uuid)
+                rating = int(seat_rating(player, bucket_name))
+                team_seats[team_index].append(
+                    MixMatchSeat(
+                        member_id, str(player.get("name") or f"#{member_id}"), slot_code, rating, member_id == captain
+                    )
+                )
+                team_players[team_index].append((member_id, slot_code, rating))
+                opens = player.get("open_ratings")
+                open_ranks[team_index].append(
+                    int(opens.get(bucket_name, rating)) if isinstance(opens, Mapping) else rating
+                )
+    return team_seats, team_players, open_ranks
+
+
 # Statistics a solver scored for the seating *it* produced. A hand-edited
 # roster invalidates all of them at once, so they are cleared together.
 _SOLVER_SCORED_STAT_KEYS = (
@@ -385,7 +444,8 @@ class CustomGameService:
         player_roles: CustomGamePlayerRoleRepository = CustomGamePlayerRoleRepository(),
         team_names: CustomGameTeamNameRepository = CustomGameTeamNameRepository(),
         mix_rounds: CustomGameRoundRepository = CustomGameRoundRepository(),
-        write_round=record_mix_round,
+        open_match=start_mix_match,
+        write_result=record_mix_result,
         maps: CatalogEntityRepository = CatalogEntityRepository("map"),
         host_prefs: UserBalancerConfigRepository = UserBalancerConfigRepository(),
         ranks: MemberRankService | None = None,
@@ -411,7 +471,8 @@ class CustomGameService:
         self.player_roles = player_roles
         self.team_names = team_names
         self.mix_rounds = mix_rounds
-        self.write_round = write_round
+        self.open_match = open_match
+        self.write_result = write_result
         self.maps = maps
         self.host_prefs = host_prefs
         self.ranks = ranks if ranks is not None else member_rank_service
@@ -528,7 +589,11 @@ class CustomGameService:
         actor_user_id: int,
         actor_is_superuser: bool = False,
     ) -> models.CustomGame:
-        game = await self.get(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
+        # Locked, and re-read: the host writes of one mix run one at a time -- two Starts of one lobby, a Start
+        # against a Close or a lineup write -- so each reads the lobbies as the write before it committed them.
+        game = await self.games.get(session, custom_game_id, for_update=True)
+        if game is None or game.workspace_id != workspace_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Custom game not found")
         # A superuser manages every mix as if a co-host. The flag comes from the
         # token, never a DB read: an API key is minted non-superuser on purpose.
         if not actor_is_superuser and actor_user_id != game.host_user_id:
@@ -1882,7 +1947,7 @@ class CustomGameService:
 
         Rolled or hand-picked ahead of the lobby loading in; every viewer sees
         it through the same realtime refetch as any other mix write, and
-        :meth:`record_outcome` stamps it on the recorded match and clears it.
+        :meth:`start_match` fixes it on the match and :meth:`record_outcome` clears it.
         The roll itself lives client-side (the catalogue and this mix's match
         history are already there) -- this only stores the verdict.
         """
@@ -2599,6 +2664,83 @@ class CustomGameService:
                     )
         return deltas
 
+    async def start_match(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+        lobby_index: int = 0,
+        actor_user_id: int,
+        actor_is_superuser: bool = False,
+    ) -> models.CustomGame:
+        """Start the lobby's match on the option it is showing (spec §5.1).
+
+        An open encounter of the mix with both teams' rosters -- the captains flagged -- and one game on the lobby's
+        next map. From here the lineup is frozen (``_refuse_live``) until :meth:`record_outcome` or
+        :meth:`cancel_match`. An away player still seated in the lineup plays: the board warns before Start, it does
+        not block. The voices are the RPC layer's (it holds the Discord client).
+        """
+        game = await self._writable(
+            session,
+            workspace_id=workspace_id,
+            custom_game_id=custom_game_id,
+            actor_user_id=actor_user_id,
+            actor_is_superuser=actor_is_superuser,
+        )
+        lobby = await self._lobby(session, game, lobby_index)
+        _refuse_live(lobby)
+        result, teams = _two_team_lineup(lobby)
+        team_seats, _players, _opens = _lineup_seats(result, teams)
+        names = await self._lobby_team_names(session, game.id, lobby_index)
+        encounter = await self.open_match(
+            session,
+            MixMatchDraft(
+                custom_game_id=game.id,
+                workspace_id=game.workspace_id,
+                discipline=game.discipline,
+                scoring_rule_id=game.scoring_rule_id,
+                map_id=lobby.next_map_id,
+                names=(names.get(0) or "Team 1", names.get(1) or "Team 2"),
+                seats=(tuple(team_seats[0]), tuple(team_seats[1])),
+            ),
+        )
+        lobby.live_encounter_id = encounter.id
+        await session.flush()
+        return game
+
+    async def _drop_live_match(self, session: AsyncSession, lobby: models.CustomGameLobby) -> None:
+        """Delete the lobby's live encounter (its game and rosters cascade) and release the lobby."""
+        encounter_id, lobby.live_encounter_id = lobby.live_encounter_id, None
+        await session.flush()
+        await self.mix_rounds.delete_round(session, encounter_id)
+
+    async def cancel_match(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+        lobby_index: int = 0,
+        actor_user_id: int,
+        actor_is_superuser: bool = False,
+    ) -> models.CustomGame:
+        """Throw the lobby's live match away (spec §5.1): nothing is recorded, no rank, pin or map moves, and the
+        lineup is Ready to start again. 409 ``no_live_match`` when nothing was started."""
+        game = await self._writable(
+            session,
+            workspace_id=workspace_id,
+            custom_game_id=custom_game_id,
+            actor_user_id=actor_user_id,
+            actor_is_superuser=actor_is_superuser,
+        )
+        lobby = await self._lobby(session, game, lobby_index)
+        if lobby.live_encounter_id is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="no_live_match")
+        await self._drop_live_match(session, lobby)
+        await session.flush()
+        return game
+
     async def record_outcome(
         self,
         session: AsyncSession,
@@ -2607,27 +2749,18 @@ class CustomGameService:
         custom_game_id: int,
         lobby_index: int = 0,
         winner: int | None,
-        variant_index: int,
-        map_id: int | None = None,
         actor_user_id: int,
         actor_is_superuser: bool = False,
     ) -> models.CustomGame:
-        """Record one played round as an encounter of this mix.
+        """Record the result of the lobby's live match (spec §5.1).
 
-        Repeatable -- a mix records many matches before its host calls
-        :meth:`close`, and the frozen snapshot is the only record of each: the
-        mix itself keeps no mutable copy of "the last result".
-
-        The HOST's rating mode decides how both teams' host-authored ranks
-        move: ``points_per_win`` (when set, and only for a decided match) or
-        the mix ranker, seat by seat. The workspace's hidden ratings advance
-        either way. Every seat that actually played redeems its ``MUST_PLAY``
-        pin back to ``POOL`` -- the pin promises one guaranteed seat, not every
-        seat forever.
-
-        ``map_id`` names the map explicitly; omitted, the match takes the lobby's
-        ``next_map_id`` (see :meth:`set_next_map`), which is cleared either way
-        so the following match starts with a fresh roll.
+        Repeatable -- a mix records many matches before its host calls :meth:`close`, and the frozen snapshot is the
+        only record of each. The seats are the lineup the match was started on (frozen since); the map was fixed at
+        Start. The HOST's rating mode decides how both teams' host-authored ranks move: ``points_per_win`` (when set,
+        and only for a decided match) or the mix ranker, seat by seat. The workspace's hidden ratings advance either
+        way. Every seat that played redeems its ``MUST_PLAY`` pin back to ``POOL`` -- the pin promises one seat, not
+        every seat forever. The lobby's next map is cleared and the lobby is Ready again. 409 ``no_live_match`` when
+        nothing was started.
         """
         game = await self._writable(
             session,
@@ -2639,67 +2772,24 @@ class CustomGameService:
         if winner not in (1, 2, None):
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="winner must be 1, 2 or null")
         lobby = await self._lobby(session, game, lobby_index)
-        if map_id is None:
-            map_id = lobby.next_map_id
-        if map_id is not None and not await self.maps.exists(session, id=map_id, discipline=game.discipline):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Map not found")
-
-        result = as_lobby_document(lobby.balance_result_json) or {}
-        variants = result.get("variants")
-        if not isinstance(variants, list) or not (0 <= variant_index < len(variants)):
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Balance option not found")
-        variant = variants[variant_index] if isinstance(variants[variant_index], dict) else {}
-        teams = variant.get("teams")
-        if not isinstance(teams, list) or len(teams) != 2:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="A match can only be recorded for a two-team balance",
-            )
+        if lobby.live_encounter_id is None:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="no_live_match")
+        result, teams = _two_team_lineup(lobby)
+        _seats, team_players, open_ranks = _lineup_seats(result, teams)
 
         names = await self._lobby_team_names(session, game.id, lobby_index)
         # The host's knobs, not the mix's and not the recording co-host's -- the
         # book being moved is the host's own (see ``_shift_host_ranks``).
         host_config = await self._host_config(session, game.host_user_id)
         points_per_win = _points_per_win(host_config)
+        roster = list(await self.roster.list_for_game(session, game.id))
         # Whoever was on the floor next door neither played this round nor sat it out.
         busy = await self._other_lobby_seated(session, game, lobby_index)
 
-        # Per team: the seats the round freezes, and (member_id, role_slot_code, balance-time rating) for the
-        # rank moves -- one walk over ``teams`` feeds both. The open rank rides along for the ranker.
-        team_seats: list[list[MixRoundSeat]] = [[], []]
-        team_players: list[list[tuple[int, str, int]]] = [[], []]
-        open_ranks: list[list[int]] = [[], []]
-        players = _lobby_players(result)
-        for team_index, team in enumerate(teams):
-            roster = team.get("roster") if isinstance(team, dict) else None
-            if not isinstance(roster, dict):
-                continue
-            for bucket_name, seats in roster.items():
-                if not isinstance(seats, list):
-                    continue
-                slot_code = role_slot_code(bucket_name)
-                role = slot_code
-                for uuid in seats:
-                    player = players.get(str(uuid))
-                    if not isinstance(player, Mapping):
-                        continue
-                    member_id = int(uuid)
-                    rating = int(seat_rating(player, bucket_name))
-                    # The name as it stood when the round was played.
-                    team_seats[team_index].append(
-                        MixRoundSeat(member_id, str(player.get("name") or f"#{member_id}"), role, rating)
-                    )
-                    team_players[team_index].append((member_id, slot_code, rating))
-                    opens = player.get("open_ratings")
-                    open_ranks[team_index].append(
-                        int(opens.get(bucket_name, rating)) if isinstance(opens, Mapping) else rating
-                    )
-
         participant_ids = {member_id for team in team_players for member_id, _, _ in team}
-        if participant_ids:
-            for row in await self.roster.list_for_game(session, game.id):
-                if row.participation == MixParticipation.MUST_PLAY and row.workspace_member_id in participant_ids:
-                    row.participation = MixParticipation.POOL
+        for row in roster:
+            if row.participation == MixParticipation.MUST_PLAY and row.workspace_member_id in participant_ids:
+                row.participation = MixParticipation.POOL
 
         ranker, rated = await self.ranker.rate_match(
             session, workspace_id=workspace_id, discipline=game.discipline, teams=team_players, winner=winner
@@ -2737,27 +2827,21 @@ class CustomGameService:
                 ],
             )
 
-        await self.write_round(
+        await self.write_result(
             session,
-            MixRoundDraft(
-                custom_game_id=game.id,
-                workspace_id=game.workspace_id,
-                discipline=game.discipline,
-                scoring_rule_id=game.scoring_rule_id,
+            MixResultDraft(
+                encounter_id=lobby.live_encounter_id,
                 lobby_index=lobby_index,
-                map_id=map_id,
                 names=(names.get(0) or "Team 1", names.get(1) or "Team 2"),
-                seats=tuple(
-                    tuple(replace(seat, rank_delta_applied=deltas.get(seat.workspace_member_id)) for seat in team)
-                    for team in team_seats
-                ),
                 winner_slot=winner,
                 # Frozen on the round so undo rolls back what was applied, not what the knob says by then.
                 points_per_win_applied=points_per_win if (points_per_win and winner in (1, 2)) else None,
+                rank_deltas=deltas,
                 busy=busy,
                 recorder_player_id=await self.players.get_id_by_auth_user_id(session, actor_user_id),
             ),
         )
+        lobby.live_encounter_id = None
         lobby.next_map_id = None
         await session.flush()
         return game
@@ -3028,7 +3112,8 @@ class CustomGameService:
         actor_is_superuser: bool = False,
     ) -> models.CustomGame:
         """Ends the mix. No result of its own -- matches already recorded via
-        ``record_outcome`` stay recorded; this only stops further writes.
+        ``record_outcome`` stay recorded; this only stops further writes. Every
+        live match is cancelled first.
         """
         game = await self._writable(
             session,
@@ -3037,6 +3122,10 @@ class CustomGameService:
             actor_user_id=actor_user_id,
             actor_is_superuser=actor_is_superuser,
         )
+        # A mix that is over plays nothing: every live match is thrown away first (spec §5.1).
+        for lobby in await self.lobbies.list_for_game(session, game.id):
+            if lobby.live_encounter_id is not None:
+                await self._drop_live_match(session, lobby)
         game.status = MixStatus.COMPLETED
         await session.flush()
         return game
@@ -3057,6 +3146,10 @@ class CustomGameService:
             actor_user_id=actor_user_id,
             actor_is_superuser=actor_is_superuser,
         )
+        # A mix that is over plays nothing: every live match is thrown away first (spec §5.1).
+        for lobby in await self.lobbies.list_for_game(session, game.id):
+            if lobby.live_encounter_id is not None:
+                await self._drop_live_match(session, lobby)
         game.status = MixStatus.CANCELLED
         await session.flush()
         return game

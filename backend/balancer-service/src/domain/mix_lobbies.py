@@ -4,17 +4,17 @@ Membership in a lobby is not stored: it is the seats of that lobby's selected
 balance option. One pure function answers it for every caller -- the balance
 candidate filter, the pager's conflict check, the busy rows a recorded match
 freezes, the ``current_lobby`` badge on the board, and the voice mover.
-:func:`with_captains` gives each team of a stored lineup its captain.
+:func:`with_captains` gives each team of a stored lineup its captain; :func:`lobby_state` names the lobby's stage.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
 
 from src.domain.balancer.result_serializer import as_lobby_document, seat_rating
 
-__all__ = ("seated_member_ids", "seated_teams", "with_captains")
+__all__ = ("lobby_state", "seated_member_ids", "seated_teams", "with_captains")
 
 
 def seated_teams(balance_result_json: Mapping[str, Any] | None, variant_index: int) -> tuple[tuple[int, ...], ...]:
@@ -96,3 +96,13 @@ def with_captains(document: dict[str, Any] | None) -> dict[str, Any] | None:
             ranked = [(-seat_rating(players.get(str(member)) or {}, bucket), member) for bucket, member in seats]
             team["captain_member_id"] = min(ranked)[1] if ranked else None
     return document
+
+
+def lobby_state(
+    balance_result_json: Mapping[str, Any] | None, variant_index: int, live_encounter_id: int | None
+) -> Literal["idle", "ready", "live"]:
+    """A lobby's stage, derived and never stored (spec §5): live while a started match is unrecorded, ready while it
+    shows a lineup, idle otherwise. The draft and pre-game stages arrive with their own stages (П1, П2)."""
+    if live_encounter_id is not None:
+        return "live"
+    return "ready" if seated_teams(balance_result_json, variant_index) else "idle"

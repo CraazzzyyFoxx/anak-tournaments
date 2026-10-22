@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Collection, Sequence
+from datetime import datetime
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -254,6 +255,11 @@ class CustomGameLobbyRepository:
 
     Not a ``BaseRepository``: the row has a composite primary key and no ``id``
     column, which every generic lookup there is written against.
+
+    ``get`` and ``list_for_game`` re-read rows already in the session
+    (``populate_existing``): a host write reads its lobbies after locking the
+    mix row (``CustomGameService._writable``), and a copy loaded before that
+    lock -- a live match another write has since started -- must not be served.
     """
 
     #: Leaves the solver document in the database. It is the one heavy column a
@@ -268,6 +274,7 @@ class CustomGameLobbyRepository:
             sa.select(models.CustomGameLobby)
             .where(models.CustomGameLobby.custom_game_id == custom_game_id)
             .order_by(models.CustomGameLobby.lobby_index)
+            .execution_options(populate_existing=True)
         )
         return result.all()
 
@@ -290,7 +297,16 @@ class CustomGameLobbyRepository:
         return grouped
 
     async def get(self, session: AsyncSession, custom_game_id: int, lobby_index: int) -> models.CustomGameLobby | None:
-        return await session.get(models.CustomGameLobby, (custom_game_id, lobby_index))
+        return await session.get(models.CustomGameLobby, (custom_game_id, lobby_index), populate_existing=True)
+
+    async def live_started_at(self, session: AsyncSession, encounter_ids: Sequence[int]) -> dict[int, datetime | None]:
+        """When each of these live matches started -- the cards' elapsed clock. No ids, no query."""
+        if not encounter_ids:
+            return {}
+        rows = await session.execute(
+            sa.select(models.Encounter.id, models.Encounter.started_at).where(models.Encounter.id.in_(encounter_ids))
+        )
+        return {row.id: row.started_at for row in rows}
 
     async def create(self, session: AsyncSession, lobby: models.CustomGameLobby) -> models.CustomGameLobby:
         session.add(lobby)

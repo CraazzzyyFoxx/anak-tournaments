@@ -307,17 +307,19 @@ Writes, in the `balancer`, `mix` and `draft` schemas unless noted:
 - `balancer.workspace_config`, `tournament_config`, `user_config` — the three balancer config scopes: the
   workspace's (including the mix ranker's knobs), one tournament's, and one account's own mix
   settings (solver knobs, points per win, rating mode); roster rules belong to each mix's frozen format.
-- `mix.custom_game`, `co_host`, `lobby`, `player`, `player_role`, `team_name` — mixes.
+- `mix.custom_game`, `co_host`, `lobby`, `player`, `player_role`, `team_name` — mixes. A lobby's
+  `live_encounter_id` points at its started, unrecorded match.
 - `balancer.member_rank` — both rank layers.
 - `balancer.member_hidden_rating` — the mix ranker's hidden ratings (derived; rebuildable from the recorded rounds).
 - `mix.round`, `round_member` — what only the balancer reads about a recorded round: its lobby,
   the points-per-win applied, and per member the frozen `rank_delta_applied` or "busy in another lobby".
 - `encounter.encounter`, `encounter.team` (two participations), `encounter.team_member` (+
-  `team_member_role (team_member_id, dimension_id, role_id)` for leaf assignments), `encounter.game` (one confirmed game),
+  `team_member_role (team_member_id, dimension_id, role_id)` for leaf assignments), `encounter.game` (one game),
   `encounter.game_team`, and one `encounter.result_audit` journal row, written through the shared
   result writer (`apply_result`) — all owned by the mix (`custom_game_id`, result source `host`).
-  `record_outcome` writes them in one transaction through `record_mix_round`; they are the only
-  durable trace of a played mix game.
+  `start_match` opens the encounter, its rosters and its awaiting game through `start_mix_match`;
+  `record_outcome` scores and completes it and writes `mix.round*` through `record_mix_result`;
+  `cancel_match` (and closing the mix) deletes it. Recorded, they are the only durable trace of a played mix game.
 - `roster.team_format`, `team_format_dimension`, `format_role_rule` — the mix-owned format copy.
 
 Reads only: the `registration` schema (tournament-service owns those writes — a draft pool entry *is*

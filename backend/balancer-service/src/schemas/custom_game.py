@@ -23,6 +23,7 @@ __all__ = (
     "CustomGameListQuery",
     "CustomGameLobbyCountPatch",
     "CustomGameLobbyVoice",
+    "CustomGameMatchRun",
     "CustomGameNextMapPatch",
     "CustomGameOutcome",
     "CustomGamePlayerPatch",
@@ -194,9 +195,13 @@ class CustomGameOutcome(_Request):
 
 
 class CustomGameRecordOutcome(_LobbyScoped):
+    """The result of the lobby's live match; its seats and map were fixed when it started."""
+
     outcome: CustomGameOutcome
-    variant_index: int = Field(ge=0)
-    map_id: int | None = None
+
+
+class CustomGameMatchRun(_LobbyScoped):
+    """Which lobby's match to start or cancel."""
 
 
 class CustomGameSelfUpdate(_Request):

@@ -13,7 +13,7 @@ baselines and Discord channels live in `stats/`. `catalog/` writes only to `cata
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`mixcapt01`** (135 revisions in `backend/migrations/versions/`).
+Alembic head: **`mixlive01`** (136 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -2439,6 +2439,7 @@ erDiagram
         timestamptz balanced_at "nullable"
         bigint team1_voice_channel_id "nullable"
         bigint team2_voice_channel_id "nullable"
+        bigint live_encounter_id FK,UK "nullable"
     }
     MIX_PLAYER {
         bigint id PK
@@ -2482,6 +2483,7 @@ erDiagram
     CATALOG_ENTITY ||--o{ MIX_LOBBY : "next_map_kind"
     CATALOG_ROLE ||--o{ MIX_PLAYER_ROLE : "dimension_id"
     CATALOG_ROLE ||--o| MIX_PLAYER_ROLE : "role_id"
+    ENCOUNTER_ENCOUNTER |o--o| MIX_LOBBY : "live_encounter_id"
     ENCOUNTER_ENCOUNTER ||--o| MIX_ROUND : "encounter_id"
     ENCOUNTER_SCORING_RULE ||--o{ MIX_CUSTOM_GAME : "scoring_rule_id"
     ENCOUNTER_SCORING_RULE ||--o{ MIX_CUSTOM_GAME : "workspace_id"

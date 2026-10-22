@@ -185,19 +185,25 @@ class _CoHosts:
 
 
 class _RoundStore:
-    """Recorded rounds as the writer would leave them, shaped like ``CustomGameRoundRepository`` rows."""
+    """Matches as Start leaves them and rounds as Record leaves them, shaped like ``CustomGameRoundRepository`` rows."""
 
     def __init__(self) -> None:
+        self.matches: list[Any] = []
         self.drafts: list[Any] = []
         self.rounds: list[Any] = []
 
+    async def open(self, _session: Any, draft: Any) -> Any:
+        self.matches.append(draft)
+        return SimpleNamespace(id=500 + len(self.matches))
+
     async def record(self, _session: Any, draft: Any) -> Any:
+        match = self.matches[draft.encounter_id - 501]
         self.drafts.append(draft)
-        seated = [seat.workspace_member_id for team in draft.seats for seat in team]
+        seated = [seat.workspace_member_id for team in match.seats for seat in team]
         self.rounds.append(
             SimpleNamespace(
-                encounter_id=500 + len(self.rounds),
-                custom_game_id=draft.custom_game_id,
+                encounter_id=draft.encounter_id,
+                custom_game_id=match.custom_game_id,
                 encounter=SimpleNamespace(created_at=len(self.rounds) + 1),
                 members=[SimpleNamespace(workspace_member_id=m, busy=False) for m in seated]
                 + [SimpleNamespace(workspace_member_id=m, busy=True) for m in sorted(draft.busy - set(seated))],
@@ -289,7 +295,8 @@ class MixFlowTests(IsolatedAsyncioTestCase):
             # The host's solver and points knobs, not the mix's format.
             host_prefs=self.host_prefs,
             mix_rounds=SimpleNamespace(list_for_custom_game=self.store.list_for_custom_game),
-            write_round=self.store.record,
+            open_match=self.store.open,
+            write_result=self.store.record,
             players=SimpleNamespace(get_id_by_auth_user_id=AsyncMock(return_value=90)),
             ranks=self.ranks,
             scoring_rules=SimpleNamespace(create=AsyncMock(side_effect=lambda _s, row: setattr(row, "id", 5) or row)),
@@ -391,22 +398,27 @@ class MixFlowTests(IsolatedAsyncioTestCase):
         self.assertEqual(by_member[11].participation, MixParticipation.BENCHED)
         self.assertEqual(by_member[7].participation, MixParticipation.MUST_PLAY)
 
+        await self.service.start_match(self.session, workspace_id=1, custom_game_id=game.id, actor_user_id=9)
+        [match] = self.store.matches
+        self.assertEqual(match.names, ("Wolves", "Team 2"))
+        seats = [seat for team in match.seats for seat in team]
+        self.assertEqual(sorted(seat.workspace_member_id for seat in seats), [7, 8, 9, 10])
+        self.assertTrue(all(seat.display_name for seat in seats))
+        # One captain per team.
+        self.assertEqual([1, 1], [sum(seat.is_captain for seat in team) for team in match.seats])
+
         recorded = await self.service.record_outcome(
             self.session,
             workspace_id=1,
             custom_game_id=game.id,
             winner=1,
-            variant_index=0,
             actor_user_id=9,
         )
         # Repeatable: the mix stays open, and the match is the only record.
         self.assertEqual(recorded.status, "balanced")
         self.assertEqual(len(self.store.drafts), 1)
         draft = self.store.drafts[0]
-        self.assertEqual((draft.names, draft.winner_slot), (("Wolves", "Team 2"), 1))
-        seats = [seat for team in draft.seats for seat in team]
-        self.assertEqual(sorted(seat.workspace_member_id for seat in seats), [7, 8, 9, 10])
-        self.assertTrue(all(seat.display_name for seat in seats))
+        self.assertEqual((draft.encounter_id, draft.names, draft.winner_slot), (501, ("Wolves", "Team 2"), 1))
         # The pin was redeemed by the seat it guaranteed; the win moved ranks.
         self.assertEqual(by_member[7].participation, MixParticipation.POOL)
         self.assertEqual(len(self.ranks.set_ranks.await_args_list), 9)

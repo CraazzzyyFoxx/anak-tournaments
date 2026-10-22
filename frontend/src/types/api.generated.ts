@@ -9969,7 +9969,7 @@ export interface paths {
         put?: never;
         /**
          * Close custom game
-         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Marks the mix completed so no further writes land. Nothing is destroyed -- the mix and every match it recorded stay readable -- so this is the reversible end of a mix.
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Cancels every live match, then marks the mix completed so no further writes land. Nothing is destroyed -- the mix and every match it recorded stay readable -- so this is the reversible end of a mix.
          *
          *     RPC subject: `rpc.balancer.custom.close`
          */
@@ -10134,6 +10134,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/match/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel custom game match
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Throws the lobby's live match away: its encounter is deleted with its game and rosters, nothing is recorded and no rank, pin or map moves; the lineup is ready to start again. 409 no_live_match when nothing was started.
+         *
+         *     RPC subject: `rpc.balancer.custom.cancel_match`
+         */
+        post: operations["post__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__match_cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/match/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start custom game match
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Starts the lobby's match on the option it is showing: an open encounter with both teams' rosters (captains flagged) and one game on the lobby's next map. The lineup is then frozen until the result is recorded or the match is cancelled. When the lobby has both team voices, its seated players are then moved into them (as voice_move; a Discord failure leaves the match started). 409 match_live when the lobby already has a live match, 404 when the shown option is gone, 422 unless it seats two teams.
+         *
+         *     RPC subject: `rpc.balancer.custom.start_match`
+         */
+        post: operations["post__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__match_start"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/matches": {
         parameters: {
             query?: never;
@@ -10273,7 +10317,7 @@ export interface paths {
         put?: never;
         /**
          * Record custom game match
-         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Freezes one played match of a balance option into the mix's history, moving both teams' ranks in the host's book -- by points_per_win when a winner is given, or seat by seat by the mix ranker when the host's rating_mode is 'ranker' -- advancing the workspace's hidden ratings, and redeeming every seat's must_play pin back to the pool. The match is stamped with the lobby that played it and with whoever was playing another lobby at that moment, whom rotation then counts as neither played nor sat out. Repeatable until the mix is closed.
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Records the result of the lobby's live match -- the one Start match opened on the lineup it froze -- and completes its encounter, moving both teams' ranks in the host's book (by points_per_win when a winner is given, or seat by seat by the mix ranker when the host's rating_mode is 'ranker'), advancing the workspace's hidden ratings and redeeming every seat's must_play pin back to the pool. The match is stamped with its lobby and with whoever was playing another lobby at that moment, whom rotation then counts as neither played nor sat out. The lobby's next map is cleared. 409 no_live_match when nothing was started. Repeatable until the mix is closed.
          *
          *     RPC subject: `rpc.balancer.custom.record_outcome`
          */
@@ -21733,6 +21777,17 @@ export interface components {
             team2_voice_channel_id: string | null;
         };
         /**
+         * CustomGameMatchRun
+         * @description Which lobby's match to start or cancel.
+         */
+        "balancer.CustomGameMatchRun": {
+            /**
+             * Lobby Index
+             * @default 0
+             */
+            lobby_index: number;
+        };
+        /**
          * CustomGameNextMapPatch
          * @description ``null`` clears the pick; the next match then records with no map.
          */
@@ -21806,21 +21861,17 @@ export interface components {
              */
             self_signup: BalancerCustomGamePostSignupSelf_signup;
         };
-        /** CustomGameRecordOutcome */
+        /**
+         * CustomGameRecordOutcome
+         * @description The result of the lobby's live match; its seats and map were fixed when it started.
+         */
         "balancer.CustomGameRecordOutcome": {
             /**
              * Lobby Index
              * @default 0
              */
             lobby_index: number;
-            /**
-             * Map Id
-             * @default null
-             */
-            map_id: number | null;
             outcome: components["schemas"]["balancer.CustomGameOutcome"];
-            /** Variant Index */
-            variant_index: number;
         };
         /** CustomGameRename */
         "balancer.CustomGameRename": {
@@ -69248,6 +69299,172 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["balancer.CustomGameLobbyCountPatch"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__match_cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["balancer.CustomGameMatchRun"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__match_start: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["balancer.CustomGameMatchRun"];
             };
         };
         responses: {

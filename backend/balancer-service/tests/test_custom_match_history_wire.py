@@ -15,6 +15,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(REPO_BACKEND_ROOT / "balancer-serv
 from src.rpc import custom  # noqa: E402
 
 AT = datetime(2026, 10, 1, 20, 0, tzinfo=UTC)
+STARTED = datetime(2026, 10, 1, 19, 20, tzinfo=UTC)
 
 
 def _round(scores: tuple[float, float]) -> SimpleNamespace:
@@ -23,7 +24,8 @@ def _round(scores: tuple[float, float]) -> SimpleNamespace:
         points_per_win_applied=25,
         encounter=SimpleNamespace(
             id=501,
-            created_at=AT,
+            created_at=STARTED,
+            confirmed_at=AT,
             teams=[
                 SimpleNamespace(slot=2, name="Bravo", score=scores[1]),
                 SimpleNamespace(slot=1, name="Alpha", score=scores[0]),

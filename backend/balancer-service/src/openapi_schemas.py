@@ -175,6 +175,8 @@ OPERATIONS: dict[str, Op] = {
     "rpc.balancer.custom.swap_seats": Op(request=custom_game.CustomGameSeatSwap),
     "rpc.balancer.custom.set_captain": Op(request=custom_game.CustomGameCaptainPatch),
     "rpc.balancer.custom.record_outcome": Op(request=custom_game.CustomGameRecordOutcome),
+    "rpc.balancer.custom.start_match": Op(request=custom_game.CustomGameMatchRun),
+    "rpc.balancer.custom.cancel_match": Op(request=custom_game.CustomGameMatchRun),
     "rpc.balancer.custom.stats": Op(
         query_params=(
             QueryParam(

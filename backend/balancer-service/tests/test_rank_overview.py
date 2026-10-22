@@ -44,7 +44,13 @@ from src.domain.mix_ranker import HiddenRating, Ranker  # noqa: E402
 from src.rpc import ranks as ranks_rpc  # noqa: E402
 from src.schemas.ranks import LAYERS  # noqa: E402
 from src.services.mix_ranker import mix_ranker_service  # noqa: E402
-from src.services.mix_rounds import MixRoundDraft, MixRoundSeat, record_mix_round  # noqa: E402
+from src.services.mix_rounds import (  # noqa: E402
+    MixMatchDraft,
+    MixMatchSeat,
+    MixResultDraft,
+    record_mix_result,
+    start_mix_match,
+)
 from src.services.rank_overview import (  # noqa: E402
     RankOverviewFilters,
     _grid_rank_case,
@@ -418,21 +424,26 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
             )
             s.add(game)
             await s.flush()
-            await record_mix_round(
+            encounter = await start_mix_match(
                 s,
-                MixRoundDraft(
+                MixMatchDraft(
                     custom_game_id=game.id,
                     workspace_id=workspace.id,
                     discipline="overwatch",
                     scoring_rule_id=rule.id,
-                    lobby_index=1,
                     map_id=None,
                     names=("Alpha", "Bravo"),
-                    seats=((MixRoundSeat(member.id, "Parity", "tank", 2050),), ()),
+                    seats=((MixMatchSeat(member.id, "Parity", "tank", 2050),), ()),
+                ),
+            )
+            await record_mix_result(
+                s,
+                MixResultDraft(
+                    encounter_id=encounter.id,
+                    lobby_index=1,
+                    names=("Alpha", "Bravo"),
                     winner_slot=1,
                     points_per_win_applied=25,
-                    busy=frozenset(),
-                    recorder_player_id=None,
                 ),
             )
             await s.commit()
