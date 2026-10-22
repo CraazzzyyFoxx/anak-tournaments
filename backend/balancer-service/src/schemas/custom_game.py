@@ -25,6 +25,7 @@ __all__ = (
     "CustomGameLobbyCountPatch",
     "CustomGameLobbyVoice",
     "CustomGameMatchRun",
+    "CustomGameMatchStart",
     "CustomGameNextMapPatch",
     "CustomGameOutcome",
     "CustomGamePlayerPatch",
@@ -205,7 +206,13 @@ class CustomGameRecordOutcome(_LobbyScoped):
 
 
 class CustomGameMatchRun(_LobbyScoped):
-    """Which lobby's match to start or cancel."""
+    """Which lobby's match to cancel."""
+
+
+class CustomGameMatchStart(_LobbyScoped):
+    """Which lobby's match to start, and whether the host swaps the computed ban opener (spec §8.3)."""
+
+    flip_opener: StrictBool = False
 
 
 class CustomGameSelfUpdate(_Request):

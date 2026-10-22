@@ -2192,7 +2192,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             actor_user_id=9,
         )
 
-        self.assertIsNone(self._draft().winner_slot)
+        self.assertIsNone(self._draft().winner)
 
     async def test_record_outcome_without_a_host_points_knob_never_adjusts_ranks(self) -> None:
         result = {
@@ -4024,8 +4024,15 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual(game.status, "balanced")
         draft = self._draft()
         self.assertEqual(
-            (draft.encounter_id, draft.lobby_index, draft.names, draft.winner_slot, draft.recorder_player_id),
-            (900, 0, ("Wolves", "Team 2"), 1, 70),
+            (
+                draft.encounter_id,
+                draft.lobby_index,
+                draft.names,
+                draft.lineup_first_team,
+                draft.winner,
+                draft.recorder_player_id,
+            ),
+            (900, 0, ("Wolves", "Team 2"), frozenset({7, 8}), 1, 70),
         )
         self.assertIsNone(self.lobby_rows[0].live_encounter_id)
         self.players.get_id_by_auth_user_id.assert_awaited_once_with(self.session, 9)

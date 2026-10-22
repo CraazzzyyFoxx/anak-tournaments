@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Collection, Sequence
 from datetime import datetime
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer
 
 from shared import models
-from shared.core.enums import MixStatus
+from shared.core.enums import MapVetoSessionStatus, MixStatus, PickBanKind
 from shared.core.errors import BaseAPIException
 from shared.repository.base import BaseRepository
 from shared.repository.roles import CatalogRoleRepository
@@ -307,6 +308,42 @@ class CustomGameLobbyRepository:
             sa.select(models.Encounter.id, models.Encounter.started_at).where(models.Encounter.id.in_(encounter_ids))
         )
         return {row.id: row.started_at for row in rows}
+
+    async def pregame_ids(self, session: AsyncSession, encounter_ids: Sequence[int]) -> frozenset[int]:
+        """The live matches still in Pre-game (spec §5): started on a frozen ban preset (``live_ban_preset``) and
+        their hero room not completed or cancelled -- or not open yet. Not readiness: Start marks every match's seats
+        ready, with bans or without. No ids, no query."""
+        if not encounter_ids:
+            return frozenset()
+        done = sa.exists().where(
+            models.PickBanSession.encounter_id == models.CustomGameLobby.live_encounter_id,
+            models.PickBanSession.kind == PickBanKind.HERO,
+            models.PickBanSession.status.in_((MapVetoSessionStatus.COMPLETED, MapVetoSessionStatus.CANCELLED)),
+        )
+        rows = await session.scalars(
+            sa.select(models.CustomGameLobby.live_encounter_id).where(
+                models.CustomGameLobby.live_encounter_id.in_(encounter_ids),
+                models.CustomGameLobby.live_ban_preset.is_not(None),
+                ~done,
+            )
+        )
+        return frozenset(rows)
+
+    async def live_seats(self, session: AsyncSession, encounter_ids: Sequence[int]) -> dict[int, list[dict[str, Any]]]:
+        """Each live match's participations in slot order as ``{id, slot, name}`` -- the seats its ban room names.
+        No ids, no query."""
+        if not encounter_ids:
+            return {}
+        team = models.EncounterTeam
+        rows = await session.execute(
+            sa.select(team.encounter_id, team.id, team.slot, team.name)
+            .where(team.encounter_id.in_(encounter_ids), team.active.is_(True))
+            .order_by(team.encounter_id, team.slot)
+        )
+        seats: dict[int, list[dict[str, Any]]] = {}
+        for row in rows:
+            seats.setdefault(row.encounter_id, []).append({"id": row.id, "slot": row.slot, "name": row.name})
+        return seats
 
     async def create(self, session: AsyncSession, lobby: models.CustomGameLobby) -> models.CustomGameLobby:
         session.add(lobby)

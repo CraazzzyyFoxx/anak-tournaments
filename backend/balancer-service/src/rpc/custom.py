@@ -269,14 +269,18 @@ def _dump_lobby(
     balance_result: bool,
     activity: tuple[int, Any] | None = None,
     live_started_at: Any = None,
+    pregame: bool = False,
+    live_seats: list[dict[str, Any]] | None = None,
+    opener_index: int | None = None,
 ) -> dict[str, Any]:
     """One lobby: its pager, its rolled map, its live match, when it was last balanced, its match count whenever the
     read counted them (the list and the detail read do) -- and, in the detail read, its own matchup and stage.
 
     ``balance_result`` is detail-only -- the solver document grows with every stored option and no list row renders
-    it -- and so are ``state`` (``idle`` | ``ready`` | ``live``, spec §5, derived from that document) and
-    ``live_started_at`` (the cards' elapsed clock). ``lineup_recorded`` is false while a balanced lineup has not
-    been played: the UI asks for confirmation before anything that would overwrite it.
+    it -- and so are ``state`` (``idle`` | ``ready`` | ``pregame`` | ``live``, spec §5, derived from that document and
+    the live match), ``live_started_at`` (the cards' elapsed clock), ``live_seats`` and ``opener_index``.
+    ``lineup_recorded`` is false while a balanced lineup has not been played: the UI asks for confirmation before
+    anything that would overwrite it.
     """
     out: dict[str, Any] = {
         "lobby_index": lobby.lobby_index,
@@ -300,8 +304,13 @@ def _dump_lobby(
         out["lineup_recorded"] = lobby.balanced_at is None or (
             last_match_at is not None and last_match_at >= lobby.balanced_at
         )
-        out["state"] = lobby_state(lobby.balance_result_json, lobby.selected_variant_index, lobby.live_encounter_id)
+        out["state"] = lobby_state(
+            lobby.balance_result_json, lobby.selected_variant_index, lobby.live_encounter_id, pregame
+        )
         out["live_started_at"] = live_started_at.isoformat() if live_started_at is not None else None
+        # The live match's seats as its ban room names them, and who bans first in the next one (spec §8.3).
+        out["live_seats"] = live_seats or []
+        out["opener_index"] = opener_index
     return out
 
 
@@ -353,6 +362,9 @@ def _dump_game(
     current_lobby: dict[int, int] | None = None,
     discord_posts: list[dict[str, Any]] | None = None,
     live_started_at: dict[int, Any] | None = None,
+    pregame_ids: frozenset[int] = frozenset(),
+    live_seats: dict[int, list[dict[str, Any]]] | None = None,
+    openers: dict[int, int | None] | None = None,
 ) -> dict[str, Any]:
     matches_count, last_match_at = activity if activity is not None else (0, None)
     out: dict[str, Any] = {
@@ -378,6 +390,9 @@ def _dump_game(
                 # A read that counted no lobby (``lobby_activity`` absent) says nothing, rather than a false 0.
                 activity=None if lobby_activity is None else lobby_activity.get(lobby.lobby_index, (0, None)),
                 live_started_at=(live_started_at or {}).get(lobby.live_encounter_id),
+                pregame=lobby.live_encounter_id in pregame_ids,
+                live_seats=(live_seats or {}).get(lobby.live_encounter_id),
+                opener_index=(openers or {}).get(lobby.lobby_index),
             )
             for lobby in (lobbies or [])
         ],
@@ -464,6 +479,13 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
     lobbies = list(await custom_game_service.lobbies.list_for_game(session, game.id))
     live_ids = [lobby.live_encounter_id for lobby in lobbies if lobby.live_encounter_id is not None]
     live_started_at = await custom_game_service.lobbies.live_started_at(session, live_ids) if live_ids else {}
+    pregame_ids = await custom_game_service.lobbies.pregame_ids(session, live_ids)
+    live_seats = await custom_game_service.lobbies.live_seats(session, live_ids)
+    openers = {
+        lobby.lobby_index: await custom_game_service.ban_opener(session, game, lobby)
+        for lobby in lobbies
+        if lobby.live_encounter_id is None
+    }
     lobby_activity = await custom_game_service.mix_rounds.activity_for_lobbies(session, game.id)
     # Derived once, here: the board, the player sheet and the bot all ask the
     # same question, and none of them should re-parse a solver document.
@@ -486,6 +508,9 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
             current_lobby=current_lobby,
             discord_posts=discord_posts,
             live_started_at=live_started_at,
+            pregame_ids=pregame_ids,
+            live_seats=live_seats,
+            openers=openers,
         )
     member_ids = [row.workspace_member_id for row in roster]
     members = await custom_game_service.members(session, game.workspace_id, member_ids, discipline=game.discipline)
@@ -532,11 +557,14 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         current_lobby=current_lobby,
         discord_posts=discord_posts,
         live_started_at=live_started_at,
+        pregame_ids=pregame_ids,
+        live_seats=live_seats,
+        openers=openers,
     )
 
 
-def _dump_round(round_: Any, map_info: dict[int, tuple[str, str | None]]) -> dict[str, Any]:
-    """One recorded round as the history wire spells it: the two seats by slot, the winning slot."""
+def _dump_round(round_: Any, map_info: dict[int, tuple[str, str | None]], bans: list[dict[str, int]]) -> dict[str, Any]:
+    """One recorded round as the history wire spells it: the two seats by slot, the winning slot, the hero bans."""
     encounter = round_.encounter
     teams = sorted(encounter.teams, key=lambda team: team.slot)
     map_id = encounter.games[0].map_id if encounter.games else None
@@ -549,6 +577,8 @@ def _dump_round(round_: Any, map_info: dict[int, tuple[str, str | None]]) -> dic
         "lobby_index": round_.lobby_index,
         "teams": [{"slot": team.slot, "name": team.name, "score": int(team.score)} for team in teams],
         "winner_slot": winner_slot(1, teams[0].score, teams[1].score),
+        # The hero bans, in the order they were made (spec §8.4).
+        "bans": bans,
         "map_id": map_id,
         "map_name": map_name,
         "map_image_path": map_image_path,
@@ -563,10 +593,11 @@ def _dump_round(round_: Any, map_info: dict[int, tuple[str, str | None]]) -> dic
 
 
 async def _dump_rounds(session: Any, rounds: list[Any]) -> list[dict[str, Any]]:
-    """Dump match history, resolving every round's map name and thumbnail in one read."""
+    """Dump match history, resolving every round's map name and thumbnail and its hero bans in one read each."""
     map_ids = {round_.encounter.games[0].map_id for round_ in rounds if round_.encounter.games} - {None}
     map_info = await custom_game_service.round_map_info(session, map_ids)
-    return [_dump_round(round_, map_info) for round_ in rounds]
+    bans = await custom_game_service.mix_rounds.hero_bans(session, [round_.encounter.id for round_ in rounds])
+    return [_dump_round(round_, map_info, bans.get(round_.encounter.id, [])) for round_ in rounds]
 
 
 def _dump_rotation(recommendations: list[Any]) -> list[dict[str, Any]]:
@@ -1442,12 +1473,13 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             workspace_id = _int(data, "workspace_id")
             _require_mix(user, workspace_id, "update")
-            body = _body(schemas.CustomGameMatchRun, data)
+            body = _body(schemas.CustomGameMatchStart, data)
             game = await custom_game_service.start_match(
                 session,
                 workspace_id=workspace_id,
                 custom_game_id=_game_id(data),
                 lobby_index=body.lobby_index,
+                flip_opener=body.flip_opener,
                 actor_user_id=user.id,
                 actor_is_superuser=user.is_superuser,
             )

@@ -1,13 +1,14 @@
 """One mix match on the encounter layer, in two writes, each in the caller's transaction.
 
 :func:`start_mix_match` opens it: an encounter owned by the mix (2 slots, Bo1, open, ``started_at``), two
-participations with the roster snapshot of the lobby's lineup -- captains included -- and one game on the lobby's next
-map, waiting for its result. :func:`record_mix_result` closes it: the game's score, a ``host`` result through the single
-result writer (one journal row, actor = the recorder) and the balancer's ``mix.round``/``mix.round_member`` rows.
+participations with the roster snapshot of the lobby's lineup -- captains included -- both marked ready, and one game
+on the lobby's next map, waiting for its result. With hero bans it also asks tournament-service, through the outbox, to
+open the encounter's ban room. :func:`record_mix_result` closes it: the game's score, a ``host`` result through the
+single result writer (one journal row, actor = the recorder) and the balancer's ``mix.round``/``mix.round_member`` rows.
 
 A started match has no ``mix.round`` row, so history, leaderboard, rotation, ranker and undo -- which all read rounds --
-do not see it until it is recorded. No tournament event, outbox, standings or achievement is raised: nothing listens
-for a mix. A draw is 0:0.
+do not see it until it is recorded. No tournament result event, standings or achievement is raised: nothing listens
+for a mix result. A draw is 0:0.
 """
 
 from __future__ import annotations
@@ -31,6 +32,8 @@ from shared.core.enums import (
 from shared.disciplines import discipline
 from shared.domain.encounter_scoring import GameLine, compile_rules, evaluate_encounter
 from shared.domain.roster_shape import FLEX_SLOT_CODE
+from shared.messaging.config import TOURNAMENT_EVENTS_EXCHANGE, TOURNAMENT_PICK_BAN_ROOM_OPEN_QUEUE
+from shared.messaging.outbox import enqueue_outbox_event
 from shared.repository import (
     CustomGameRoundRepository,
     EncounterGameRepository,
@@ -38,6 +41,7 @@ from shared.repository import (
     EncounterRepository,
     ScoringRuleRepository,
 )
+from shared.schemas.events import PickBanRoomOpenRequestedEvent
 from shared.services.encounter.participants import MemberSnapshot, active_teams, place_team
 from shared.services.encounter.result import apply_result
 
@@ -48,7 +52,7 @@ _games = EncounterGameRepository()
 _game_teams = EncounterGameTeamRepository()
 _rules = ScoringRuleRepository()
 _rounds = CustomGameRoundRepository()
-#: Game score per slot for winner slot 1, 2 and a draw.
+#: Game score per lineup team for winner 1, 2 and a draw.
 _SCORES = {1: (1, 0), 2: (0, 1), None: (0, 0)}
 
 
@@ -71,9 +75,11 @@ class MixMatchDraft:
     scoring_rule_id: int
     #: The lobby's next map, fixed for this match; ``None`` when nothing was rolled.
     map_id: int | None
-    #: Slot 1 and slot 2 (team index 0 and 1 of the lineup).
+    #: Slot 1 and slot 2: the ban opener first (spec §5.1).
     names: tuple[str, str]
     seats: tuple[tuple[MixMatchSeat, ...], tuple[MixMatchSeat, ...]]
+    #: Open a hero ban room: ask tournament-service to open it once the match is committed.
+    bans: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,7 +88,10 @@ class MixResultDraft:
     lobby_index: int
     #: The lobby's team names at record time: a rename while the match ran lands on the record.
     names: tuple[str, str]
-    winner_slot: int | None
+    #: The lineup's first team's members: Start may have seated it in slot 2 (it banned second).
+    lineup_first_team: frozenset[int]
+    #: The lineup team that won (1 or 2); None for a draw.
+    winner: int | None
     points_per_win_applied: int | None
     #: The ranker's frozen move per seated member; a member absent here moved nothing.
     rank_deltas: Mapping[int, int] = field(default_factory=dict)
@@ -124,7 +133,7 @@ async def start_mix_match(session: AsyncSession, draft: MixMatchDraft) -> models
     )
     dimension = discipline(draft.discipline).rated_dimension.code
     for slot, (name, team) in enumerate(zip(draft.names, draft.seats, strict=True), start=1):
-        await place_team(
+        participation = await place_team(
             session,
             encounter,
             slot=slot,
@@ -143,6 +152,8 @@ async def start_mix_match(session: AsyncSession, draft: MixMatchDraft) -> models
                 for seat in team
             ],
         )
+        # Ready at once, bans or not (spec §5.1 step 4): the room's open rule stays the tournament one.
+        session.add(models.EncounterReadiness(encounter_id=encounter.id, encounter_team_id=participation.id))
     await _games.create(
         session,
         models.EncounterGame(
@@ -153,6 +164,14 @@ async def start_mix_match(session: AsyncSession, draft: MixMatchDraft) -> models
             state=EncounterGameState.AWAITING_RESULT,
         ),
     )
+    if draft.bans:
+        # tournament-service opens the room once this commits (step 5); the request dies with a rolled-back Start.
+        await enqueue_outbox_event(
+            session,
+            PickBanRoomOpenRequestedEvent(encounter_id=encounter.id, source_service="balancer-service"),
+            exchange=TOURNAMENT_EVENTS_EXCHANGE,
+            routing_key=TOURNAMENT_PICK_BAN_ROOM_OPEN_QUEUE.routing_key,
+        )
     return encounter
 
 
@@ -160,22 +179,34 @@ async def record_mix_result(session: AsyncSession, draft: MixResultDraft) -> mod
     # Mix-owned, so not through ``get_for_update`` (tournament encounters only, D77); the result writer needs the lock.
     encounter = await _encounters.get_any_owner_for_update(session, draft.encounter_id)
     participations = await active_teams(session, encounter.id)
-    encounter.name = f"{draft.names[0]} vs {draft.names[1]}"
+    slot_one = set(
+        await session.scalars(
+            sa.select(models.EncounterTeamMember.workspace_member_id).where(
+                models.EncounterTeamMember.encounter_team_id == participations[0].id,
+                models.EncounterTeamMember.active.is_(True),
+            )
+        )
+    )
+    # Start seats the team that bans first in slot 1 (spec §5.1): line the seats up with the lineup's team order.
+    if slot_one != draft.lineup_first_team:
+        participations.reverse()
     for participation, name in zip(participations, draft.names, strict=True):
         participation.name = name
+    encounter.name = " vs ".join(team.name for team in sorted(participations, key=lambda team: team.slot))
     [game] = await _games.list_for_encounter(session, encounter.id)
     game.state = EncounterGameState.CONFIRMED
     game.result_source = EncounterGameResultSource.HOST
     game.result_version = 1
     game.confirmed_at = datetime.now(UTC)
-    scores = _SCORES[draft.winner_slot]
-    await _game_teams.create_many(
-        session,
-        [
-            models.EncounterGameTeam(game_id=game.id, encounter_id=encounter.id, encounter_team_id=team.id, score=score)
-            for team, score in zip(participations, scores, strict=True)
-        ],
-    )
+    scores = _SCORES[draft.winner]
+    # A LoL side pick already wrote this game's lines (``starting_side``); keep them and add the score.
+    lines = {row.encounter_team_id: row for row in await _game_teams.list_for_games(session, [game.id])}
+    for team, score in zip(participations, scores, strict=True):
+        line = lines.get(team.id) or _game_teams.add(
+            session, models.EncounterGameTeam(game_id=game.id, encounter_id=encounter.id, encounter_team_id=team.id)
+        )
+        line.score = score
+    await session.flush()
     outcome = evaluate_encounter(
         compile_rules(await _rules.get(session, encounter.scoring_rule_id)),
         best_of=1,

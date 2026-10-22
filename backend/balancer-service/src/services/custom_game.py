@@ -69,6 +69,7 @@ from src.domain.balancer.result_serializer import as_lobby_document, seat_rating
 from src.domain.balancer.role_naming import role_slot_code
 from src.domain.mix_lobbies import seated_member_ids, seated_teams, with_captains
 from src.domain.mix_lobby_split import LobbySplitError, SplitCandidate, split_into_lobbies
+from src.domain.mix_opener import ban_opener
 from src.domain.mix_ranker import Ranker
 from src.domain.mix_rotation import PlayerHistory, RotationRecommendation, recommend_rotation, rotation_priority
 from src.domain.mix_self_service import MixSelfPolicy, mix_self_policy
@@ -2775,6 +2776,28 @@ class CustomGameService:
                     )
         return deltas
 
+    async def ban_opener(
+        self, session: AsyncSession, game: models.CustomGame, lobby: models.CustomGameLobby
+    ) -> int | None:
+        """The lineup team (0/1) that bans first in this lobby's next match (spec §8.3); ``None`` without bans or a
+        two-team lineup. Start and the detail read ask this one question, so the dialog shows what Start does."""
+        if (
+            game.hero_ban_preset is None
+            or len(seated_teams(lobby.balance_result_json, lobby.selected_variant_index)) != 2
+        ):
+            return None
+        result, teams = _two_team_lineup(lobby)
+        _seats, players, _opens = _lineup_seats(result, teams)
+        previous: list[tuple[frozenset[int], float]] | None = None
+        last = await self.mix_rounds.newest_id_for_lobby(session, game.id, lobby.lobby_index)
+        if last is not None:
+            by_slot: dict[int, tuple[set[int], float]] = {}
+            for row in await self.mix_rounds.seats(session, workspace_id=game.workspace_id, encounter_id=last):
+                by_slot.setdefault(row.slot, (set(), float(row.own_score)))[0].add(row.workspace_member_id)
+            if len(by_slot) == 2:
+                previous = [(frozenset(by_slot[slot][0]), by_slot[slot][1]) for slot in sorted(by_slot)]
+        return ban_opener([[(member, rating) for member, _code, rating in team] for team in players], previous)
+
     async def start_match(
         self,
         session: AsyncSession,
@@ -2782,15 +2805,20 @@ class CustomGameService:
         workspace_id: int,
         custom_game_id: int,
         lobby_index: int = 0,
+        flip_opener: bool = False,
         actor_user_id: int,
         actor_is_superuser: bool = False,
     ) -> models.CustomGame:
         """Start the lobby's match on the option it is showing (spec §5.1).
 
-        An open encounter of the mix with both teams' rosters -- the captains flagged -- and one game on the lobby's
-        next map. From here the lineup is frozen (``_refuse_live``) until :meth:`record_outcome` or
+        An open encounter of the mix with both teams' rosters -- the captains flagged, both seats ready -- and one game
+        on the lobby's next map. From here the lineup is frozen (``_refuse_live``) until :meth:`record_outcome` or
         :meth:`cancel_match`. An away player still seated in the lineup plays: the board warns before Start, it does
         not block. The voices are the RPC layer's (it holds the Discord client).
+
+        With a hero ban preset the opener (``ban_opener``, flipped by ``flip_opener``) sits in slot 1, the preset is
+        frozen on the lobby (``live_ban_preset``: a header edit meanwhile does not change the room) and tournament-service
+        is asked to open the room; without one the lineup order stands and the flip is ignored.
         """
         game = await self._writable(
             session,
@@ -2804,6 +2832,10 @@ class CustomGameService:
         result, teams = _two_team_lineup(lobby)
         team_seats, _players, _opens = _lineup_seats(result, teams)
         names = await self._lobby_team_names(session, game.id, lobby_index)
+        lineup_names = (names.get(0) or "Team 1", names.get(1) or "Team 2")
+        opener = await self.ban_opener(session, game, lobby)
+        first = 0 if opener is None else opener ^ int(flip_opener)
+        order = (first, 1 - first)
         encounter = await self.open_match(
             session,
             MixMatchDraft(
@@ -2812,17 +2844,19 @@ class CustomGameService:
                 discipline=game.discipline,
                 scoring_rule_id=game.scoring_rule_id,
                 map_id=lobby.next_map_id,
-                names=(names.get(0) or "Team 1", names.get(1) or "Team 2"),
-                seats=(tuple(team_seats[0]), tuple(team_seats[1])),
+                names=(lineup_names[order[0]], lineup_names[order[1]]),
+                seats=(tuple(team_seats[order[0]]), tuple(team_seats[order[1]])),
+                bans=opener is not None,
             ),
         )
         lobby.live_encounter_id = encounter.id
+        lobby.live_ban_preset = game.hero_ban_preset
         await session.flush()
         return game
 
     async def _drop_live_match(self, session: AsyncSession, lobby: models.CustomGameLobby) -> None:
         """Delete the lobby's live encounter (its game and rosters cascade) and release the lobby."""
-        encounter_id, lobby.live_encounter_id = lobby.live_encounter_id, None
+        encounter_id, lobby.live_encounter_id, lobby.live_ban_preset = lobby.live_encounter_id, None, None
         await session.flush()
         await self.mix_rounds.delete_round(session, encounter_id)
 
@@ -2870,8 +2904,9 @@ class CustomGameService:
         Start. The HOST's rating mode decides how both teams' host-authored ranks move: ``points_per_win`` (when set,
         and only for a decided match) or the mix ranker, seat by seat. The workspace's hidden ratings advance either
         way. Every seat that played redeems its ``MUST_PLAY`` pin back to ``POOL`` -- the pin promises one seat, not
-        every seat forever. The lobby's next map is cleared and the lobby is Ready again. 409 ``no_live_match`` when
-        nothing was started.
+        every seat forever. ``winner`` names the lineup team (1 or 2), whichever slot Start seated it in. The lobby's
+        next map and frozen ban preset are cleared and the lobby is Ready again. 409 ``no_live_match`` when nothing was
+        started.
         """
         game = await self._writable(
             session,
@@ -2946,7 +2981,8 @@ class CustomGameService:
                 encounter_id=lobby.live_encounter_id,
                 lobby_index=lobby_index,
                 names=(names.get(0) or "Team 1", names.get(1) or "Team 2"),
-                winner_slot=winner,
+                lineup_first_team=frozenset(member for member, _code, _rating in team_players[0]),
+                winner=winner,
                 # Frozen on the round so undo rolls back what was applied, not what the knob says by then.
                 points_per_win_applied=points_per_win if (points_per_win and winner in (1, 2)) else None,
                 rank_deltas=deltas,
@@ -2955,6 +2991,7 @@ class CustomGameService:
             ),
         )
         lobby.live_encounter_id = None
+        lobby.live_ban_preset = None
         lobby.next_map_id = None
         await session.flush()
         return game

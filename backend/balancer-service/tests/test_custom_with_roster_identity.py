@@ -66,7 +66,12 @@ def _service(provider_seen: list) -> CustomGameService:
     service.mix_rounds = SimpleNamespace(
         activity_for_games=AsyncMock(return_value={}), activity_for_lobbies=AsyncMock(return_value={})
     )
-    service.lobbies = SimpleNamespace(list_for_game=AsyncMock(return_value=[]))
+    service.lobbies = SimpleNamespace(
+        list_for_game=AsyncMock(return_value=[]),
+        pregame_ids=AsyncMock(return_value=frozenset()),
+        live_seats=AsyncMock(return_value={}),
+    )
+    service.ban_opener = AsyncMock(return_value=None)
     service.player_roles = SimpleNamespace(roles_for_players=AsyncMock(return_value={}))
     service.ranks = SimpleNamespace(list_layer_rows=AsyncMock(return_value=[]), resolve=AsyncMock(return_value={}))
     return service

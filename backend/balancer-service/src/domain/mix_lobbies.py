@@ -99,10 +99,14 @@ def with_captains(document: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def lobby_state(
-    balance_result_json: Mapping[str, Any] | None, variant_index: int, live_encounter_id: int | None
-) -> Literal["idle", "ready", "live"]:
-    """A lobby's stage, derived and never stored (spec §5): live while a started match is unrecorded, ready while it
-    shows a lineup, idle otherwise. The draft and pre-game stages arrive with their own stages (П1, П2)."""
+    balance_result_json: Mapping[str, Any] | None,
+    variant_index: int,
+    live_encounter_id: int | None,
+    pregame: bool = False,
+) -> Literal["idle", "ready", "pregame", "live"]:
+    """A lobby's stage, derived and never stored (spec §5): pre-game while a match started with bans has its ban room
+    still to finish (``pregame``, read off the lobby and the encounter), live while it is played, ready while a lineup
+    shows, idle otherwise."""
     if live_encounter_id is not None:
-        return "live"
+        return "pregame" if pregame else "live"
     return "ready" if seated_teams(balance_result_json, variant_index) else "idle"

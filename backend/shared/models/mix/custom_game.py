@@ -173,7 +173,8 @@ class CustomGameLobby(db.Base):
     team1_voice_channel_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     team2_voice_channel_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     # The match this lobby has on the floor: started, not yet recorded or cancelled (spec §5.1). Its lineup is
-    # frozen meanwhile; the lobby's state (idle / ready / live) is derived from this and the document, never stored.
+    # frozen meanwhile; the lobby's state (idle / ready / pregame / live) is derived from this, the document,
+    # ``live_ban_preset`` and the match's hero room, never stored.
     live_encounter_id: Mapped[int | None] = mapped_column(
         BigInteger(),
         ForeignKey("encounter.encounter.id", ondelete="SET NULL", name="fk_custom_game_lobby_live_encounter"),

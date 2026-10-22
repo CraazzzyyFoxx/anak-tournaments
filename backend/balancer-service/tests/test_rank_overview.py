@@ -442,7 +442,8 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
                     encounter_id=encounter.id,
                     lobby_index=1,
                     names=("Alpha", "Bravo"),
-                    winner_slot=1,
+                    lineup_first_team=frozenset({member.id}),
+                    winner=1,
                     points_per_win_applied=25,
                 ),
             )

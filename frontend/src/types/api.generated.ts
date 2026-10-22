@@ -9679,7 +9679,7 @@ export interface paths {
         };
         /**
          * Get custom game
-         * @description Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace. It carries the mix's hero_ban_preset (null = no bans).
+         * @description Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace. It carries the mix's hero_ban_preset (null = no bans). Each lobby carries state (idle | ready | pregame | live), live_seats (the live match's participations {id, slot, name}) and opener_index (the lineup team that bans first in the next match, null without bans).
          *
          *     RPC subject: `rpc.balancer.custom.get`
          */
@@ -10189,7 +10189,7 @@ export interface paths {
         put?: never;
         /**
          * Start custom game match
-         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Starts the lobby's match on the option it is showing: an open encounter with both teams' rosters (captains flagged) and one game on the lobby's next map. The lineup is then frozen until the result is recorded or the match is cancelled. When the lobby has both team voices, its seated players are then moved into them (as voice_move; a Discord failure leaves the match started). 409 match_live when the lobby already has a live match, 404 when the shown option is gone, 422 unless it seats two teams.
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Starts the lobby's match on the option it is showing: an open encounter with both teams' rosters (captains flagged) and one game on the lobby's next map. The lineup is then frozen until the result is recorded or the match is cancelled. When the lobby has both team voices, its seated players are then moved into them (as voice_move; a Discord failure leaves the match started). 409 match_live when the lobby already has a live match, 404 when the shown option is gone, 422 unless it seats two teams. Both seats are marked ready. With a hero ban preset the team that bans first (the last round's loser when the same two teams meet again, else the lower average rating; flip_opener swaps it) is seated in slot 1 and tournament-service opens the ban room; the lobby reads pregame until the room is done.
          *
          *     RPC subject: `rpc.balancer.custom.start_match`
          */
@@ -10209,7 +10209,7 @@ export interface paths {
         };
         /**
          * List custom game matches
-         * @description Permission: public; no authentication required. Returns every round recorded for the mix, newest first: its two teams by slot with name and score, the winning slot (null for a draw), lobby, map, recorder and the rank points it applied.
+         * @description Permission: public; no authentication required. Returns every round recorded for the mix, newest first: its two teams by slot (slot 1 banned first) with name and score, its hero bans {slot, item_id} in order, the winning slot (null for a draw), lobby, map, recorder and the rank points it applied.
          *
          *     RPC subject: `rpc.balancer.custom.match_history`
          */
@@ -10361,7 +10361,7 @@ export interface paths {
         put?: never;
         /**
          * Record custom game match
-         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Records the result of the lobby's live match -- the one Start match opened on the lineup it froze -- and completes its encounter, moving both teams' ranks in the host's book (by points_per_win when a winner is given, or seat by seat by the mix ranker when the host's rating_mode is 'ranker'), advancing the workspace's hidden ratings and redeeming every seat's must_play pin back to the pool. The match is stamped with its lobby and with whoever was playing another lobby at that moment, whom rotation then counts as neither played nor sat out. The lobby's next map is cleared. 409 no_live_match when nothing was started. Repeatable until the mix is closed.
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Records the result of the lobby's live match -- the one Start match opened on the lineup it froze -- and completes its encounter, moving both teams' ranks in the host's book (by points_per_win when a winner is given, or seat by seat by the mix ranker when the host's rating_mode is 'ranker'), advancing the workspace's hidden ratings and redeeming every seat's must_play pin back to the pool. The match is stamped with its lobby and with whoever was playing another lobby at that moment, whom rotation then counts as neither played nor sat out. The lobby's next map is cleared. 409 no_live_match when nothing was started. Repeatable until the mix is closed. The winner names the lineup team (1 or 2), whichever slot Start seated it in.
          *
          *     RPC subject: `rpc.balancer.custom.record_outcome`
          */
@@ -21849,9 +21849,25 @@ export interface components {
         };
         /**
          * CustomGameMatchRun
-         * @description Which lobby's match to start or cancel.
+         * @description Which lobby's match to cancel.
          */
         "balancer.CustomGameMatchRun": {
+            /**
+             * Lobby Index
+             * @default 0
+             */
+            lobby_index: number;
+        };
+        /**
+         * CustomGameMatchStart
+         * @description Which lobby's match to start, and whether the host swaps the computed ban opener (spec §8.3).
+         */
+        "balancer.CustomGameMatchStart": {
+            /**
+             * Flip Opener
+             * @default false
+             */
+            flip_opener: boolean;
             /**
              * Lobby Index
              * @default 0
@@ -69645,7 +69661,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["balancer.CustomGameMatchRun"];
+                "application/json": components["schemas"]["balancer.CustomGameMatchStart"];
             };
         };
         responses: {
