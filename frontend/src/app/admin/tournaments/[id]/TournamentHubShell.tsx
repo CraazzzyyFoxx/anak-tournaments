@@ -84,12 +84,13 @@ export function TournamentHubShell({
 
   const tournamentQuery = useHubTournamentQuery(tournamentId);
 
-  const teamsCountQuery = useHubTeamsCountQuery(tournamentId);
-  const encountersCountQuery = useHubEncountersCountQuery(tournamentId);
+  const tournamentWorkspaceId = tournamentQuery.data?.workspace_id ?? null;
+
+  const teamsCountQuery = useHubTeamsCountQuery(tournamentId, tournamentWorkspaceId);
+  const encountersCountQuery = useHubEncountersCountQuery(tournamentId, tournamentWorkspaceId);
 
   const stagesQuery = useHubStagesQuery(tournamentId);
 
-  const tournamentWorkspaceId = tournamentQuery.data?.workspace_id ?? null;
   // Align the workspace store with the tournament's workspace: workspace-scoped
   // catalogs (custom statuses, sub-roles) on the registration tab read the store,
   // and apiFetch injects the store workspace into every call (D25/D29).

@@ -71,12 +71,17 @@ export function useHubTeamsQuery(tournamentId: number) {
   });
 }
 
-/** Header metric only — the count endpoint, not the team list. */
-export function useHubTeamsCountQuery(tournamentId: number) {
+/**
+ * Header metric only — the count endpoint, not the team list. Scoped to the
+ * tournament's OWN workspace and held until it is known: fired alongside the
+ * tournament read, apiFetch injected the admin's current workspace, and a
+ * tournament of another workspace read "0 teams" until the next refetch.
+ */
+export function useHubTeamsCountQuery(tournamentId: number, workspaceId: number | null) {
   return useQuery({
     queryKey: adminQueryKeys.tournamentTeamsCount(tournamentId),
-    queryFn: () => teamService.getCount(tournamentId),
-    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+    queryFn: () => teamService.getCount(tournamentId, workspaceId),
+    enabled: Number.isFinite(tournamentId) && tournamentId > 0 && workspaceId != null,
     refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
     refetchIntervalInBackground: false
   });
@@ -92,12 +97,12 @@ export function useHubEncountersQuery(tournamentId: number) {
   });
 }
 
-/** Header metric only — the count endpoint, not the encounter list. */
-export function useHubEncountersCountQuery(tournamentId: number) {
+/** Header metric only — the count endpoint, not the encounter list. Scoped like the teams count. */
+export function useHubEncountersCountQuery(tournamentId: number, workspaceId: number | null) {
   return useQuery({
     queryKey: adminQueryKeys.tournamentEncountersCount(tournamentId),
-    queryFn: () => encounterService.getCount(tournamentId),
-    enabled: Number.isFinite(tournamentId) && tournamentId > 0,
+    queryFn: () => encounterService.getCount(tournamentId, workspaceId),
+    enabled: Number.isFinite(tournamentId) && tournamentId > 0 && workspaceId != null,
     refetchInterval: TOURNAMENT_WORKSPACE_REFRESH_INTERVAL_MS,
     refetchIntervalInBackground: false
   });

@@ -44,9 +44,10 @@ export default class teamService {
       .then((response: PaginatedResponse<Team>) => normalizePaginatedResponse(response));
   }
 
-  static async getCount(tournament_id: number | null = null): Promise<number> {
+  static async getCount(tournament_id: number | null = null, workspaceId?: number | null): Promise<number> {
     return apiFetch(`/api/v1/teams`, {
       query: {
+        workspace_id: workspaceId,
         page: 1,
         per_page: 1,
         only_count: true,
