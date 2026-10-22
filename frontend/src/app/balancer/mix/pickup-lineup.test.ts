@@ -251,6 +251,19 @@ describe("summarizeRoleSupply", () => {
     expect(supply.every((entry) => entry.supply === 0)).toBe(true);
   });
 
+  it("does not count away players: with both tanks away the tank seats stay short", () => {
+    const tank = [{ dimension: "player_role", role: "tank" }];
+    const supply = summarizeRoleSupply(
+      [
+        row({ workspace_member_id: 1, roles: tank, away: true }),
+        row({ workspace_member_id: 2, roles: tank, away: true }),
+        row({ workspace_member_id: 3, roles: [{ dimension: "player_role", role: "damage" }] }),
+      ],
+      OW_OWNER,
+    );
+    expect(supply.find((entry) => entry.role === "tank")).toEqual({ role: "tank", supply: 0, need: 2, short: 2 });
+  });
+
   it("never reports a negative shortfall once a role is oversupplied", () => {
     const rows = Array.from({ length: 5 }, (_unused, index) =>
       row({ workspace_member_id: index + 1, roles: [{ dimension: "player_role", role: "tank" }] }),
@@ -371,6 +384,10 @@ describe("getLineupIssue", () => {
     expect(getLineupIssue(row({ participation: "benched", roles: [], ranks: {} }), OW_OWNER.roles)).toBeNull();
   });
 
+  it("stays silent for an away player without a ranked role: the balance skips them", () => {
+    expect(getLineupIssue(row({ away: true, roles: [] }), OW_OWNER.roles)).toBeNull();
+  });
+
   it("flags an active player whose selected roles have no rank", () => {
     expect(getLineupIssue(row({ roles: [{ dimension: "player_role", role: "tank" }], ranks: { damage: 2600 } }), OW_OWNER.roles)).toBe("no_rank");
   });
@@ -412,6 +429,19 @@ describe("summarizeLineup", () => {
         OW_OWNER.roles,
       ),
     ).toEqual({ total: 3, active: 2, benched: 1, blocking: 1 });
+  });
+
+  it("leaves away players out of the balance count and its blockers, without calling them benched", () => {
+    expect(
+      summarizeLineup(
+        [
+          row({ workspace_member_id: 1 }),
+          row({ workspace_member_id: 2, participation: "benched" }),
+          row({ workspace_member_id: 3, away: true, roles: [], ranks: {} }),
+        ],
+        OW_OWNER.roles,
+      ),
+    ).toEqual({ total: 3, active: 1, benched: 1, blocking: 0 });
   });
 });
 

@@ -93,13 +93,19 @@ export const LINEUP_ISSUE_MESSAGES: Record<LineupIssue, string> = {
   no_rank: "No rank on any selected role — balance will reject this mix",
 };
 
+/** A balance candidate, as the server filters them: in the lineup (not benched) and present (not away). */
+function inBalance(row: Pick<CustomGamePlayer, "participation" | "away">): boolean {
+  return row.participation !== "benched" && !row.away;
+}
+
 /**
  * What would make `balance` reject this row. An active player with no playable
  * ranked role fails the whole run server-side (`missing_ranked_role`), so it is
- * worth showing before the host presses Balance.
+ * worth showing before the host presses Balance. A benched or away row is no
+ * candidate, so it fails nothing.
  */
 export function getLineupIssue(row: CustomGamePlayer, roles: readonly string[]): LineupIssue | null {
-  if (row.participation === "benched") {
+  if (!inBalance(row)) {
     return null;
   }
   const order = resolveRoleOrder(row, roles);
@@ -134,18 +140,23 @@ export type LineupSummary = {
   blocking: number;
 };
 
+/** `active` counts the balance candidates; an away row is neither active nor benched, but stays in `total`. */
 export function summarizeLineup(rows: CustomGamePlayer[], roles: readonly string[]): LineupSummary {
   let active = 0;
+  let benched = 0;
   let blocking = 0;
   for (const row of rows) {
-    if (row.participation !== "benched") {
+    if (inBalance(row)) {
       active += 1;
+    }
+    if (row.participation === "benched") {
+      benched += 1;
     }
     if (getLineupIssue(row, roles) != null) {
       blocking += 1;
     }
   }
-  return { total: rows.length, active, benched: rows.length - active, blocking };
+  return { total: rows.length, active, benched, blocking };
 }
 
 /**
@@ -228,7 +239,7 @@ export function rankSourceLabel(source: RankSource, gameName: string | null): st
 
 export type RoleSupply = {
   role: string;
-  /** Active players who both selected this role and carry a rank for it. */
+  /** Balance candidates (not benched, not away) who both selected this role and carry a rank for it. */
   supply: number;
   need: number;
   /** How many more the solver would want; 0 once the role is covered. */
@@ -249,10 +260,7 @@ export function summarizeRoleSupply(rows: CustomGamePlayer[], owner: MixOwner, l
     .filter((role) => (owner.demand[role] ?? 0) > 0)
     .map((role) => {
       const supply = rows.filter(
-        (row) =>
-          row.participation !== "benched" &&
-          resolveRoleOrder(row, owner.roles).includes(role) &&
-          row.ranks[role] != null,
+        (row) => inBalance(row) && resolveRoleOrder(row, owner.roles).includes(role) && row.ranks[role] != null,
       ).length;
       const need = owner.demand[role] * lobbyCount;
       return { role, supply, need, short: Math.max(0, need - supply) };
@@ -568,8 +576,7 @@ export function parseVariants(
 export function lobbyCandidateCount(rows: readonly CustomGamePlayer[], lobbyIndex: number): number {
   return rows.filter(
     (row) =>
-      row.participation !== "benched" &&
-      !row.away &&
+      inBalance(row) &&
       (row.current_lobby == null || row.current_lobby === lobbyIndex) &&
       (row.lobby_pin == null || row.lobby_pin === lobbyIndex),
   ).length;
