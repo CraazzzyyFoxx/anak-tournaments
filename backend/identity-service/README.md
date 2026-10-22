@@ -80,8 +80,16 @@ The full method list with request/response schemas is published at `/api/docs`, 
 
 Besides its own RPC queues it consumes one event queue, `workspace_member_changed`
 (`src/rpc/workspace_member_events.py`, DLQ `workspace_member_changed.dlq`): app-service's
-`WorkspaceMemberChangedEvent`, on which it drops the cached RBAC payload of every listed user. It
-publishes no domain events or outbox rows and writes no Redis realtime topics.
+`WorkspaceMemberChangedEvent`, on which it drops the cached RBAC payload of every listed user.
+app-service also sends the same event as the internal RPC `rpc.identity.workspace_member_changed`
+(no gateway route) right after committing and waits for it, so the actor's very next request
+already sees the change; the queued copy is the durable fallback.
+
+It publishes no domain events or outbox rows. Its one Redis realtime topic is
+`user:{id}:rbac` (`rbac.changed`, ephemeral): every RBAC-cache drop — membership events, role,
+permission and deny edits, account deletion, profile merge, `invalidate_session` — announces it
+after the entry is gone, and the gateway evicts every token it cached for that user
+(`gateway/internal/principal`).
 
 ## Data owned
 

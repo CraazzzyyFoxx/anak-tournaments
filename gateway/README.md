@@ -105,7 +105,10 @@ REST routes read the credential from the `Authorization` header only
 
 `internal/principal` calls `rpc.identity.validate_token` — the gateway is not an auth authority,
 it only caches the verdict (30s TTL, concurrent misses for one credential collapsed by
-singleflight). identity-svc is the single place that branches on credential type; both branches
+singleflight). The TTL is a backstop: identity-svc publishes `realtime:user:{id}:rbac` whenever
+it drops a user's cached RBAC (membership, role, deny, merge), and the resolver — a leg of the
+realtime fan-out — evicts every token it cached for that user, so grants and revocations apply on
+the next request. identity-svc is the single place that branches on credential type; both branches
 return the same payload shape, which the gateway injects as `data["identity"]` and the workers
 rehydrate into an `AuthUser`.
 

@@ -415,10 +415,12 @@ func run() error {
 	// only evaluated at subscribe time and an organizer hiding a chat must cut
 	// off the spectators already in it. safego recovers a panic here
 	// (unexpected Redis message format, etc.) instead of crashing the whole
-	// process.
+	// process. The resolver leg drops a user's cached principals when
+	// identity-svc announces an RBAC change (realtime:user:{id}:rbac).
 	// Invalidate before enqueueing notifications: clients may refetch as soon
 	// as their writer pump delivers the event.
-	legs := make([]events.Broadcaster, 0, 3)
+	legs := make([]events.Broadcaster, 0, 4)
+	legs = append(legs, resolver)
 	if respCache != nil {
 		legs = append(legs, respCache)
 	}

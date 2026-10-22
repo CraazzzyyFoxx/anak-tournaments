@@ -492,3 +492,106 @@ func TestResolver_ResolveIgnoresTheSessionCookie(t *testing.T) {
 		t.Fatalf("rpc must not be called, calls=%d", s.calls)
 	}
 }
+
+// identity-svc publishes realtime:user:{id}:rbac whenever it drops a user's
+// cached RBAC. Every token of that user must be judged again on its next
+// request — a creator must see the workspace they just made, a removed member
+// must lose it — while other users' entries and other topics stay put.
+func TestResolver_RBACChangeEvictsOnlyThatUsersTokens(t *testing.T) {
+	before := []byte(`{"ok":true,"data":{"user_id":9,"workspaces":[]}}`)
+	s := &stubCaller{reply: before}
+	r := New(s)
+	resolveAll := func() {
+		t.Helper()
+		for _, tok := range []string{"a", "b", "c"} {
+			if _, ok, err := r.Resolve(reqWithToken(tok)); !ok || err != nil {
+				t.Fatalf("resolve %s: ok=%v err=%v", tok, ok, err)
+			}
+		}
+	}
+	r.Resolve(reqWithToken("a"))
+	r.Resolve(reqWithToken("b"))
+	s.reply = []byte(`{"ok":true,"data":{"user_id":5}}`)
+	r.Resolve(reqWithToken("c"))
+	if s.calls != 3 {
+		t.Fatalf("setup: calls=%d", s.calls)
+	}
+
+	for _, topic := range []string{"user:9:invalidation", "tournament:9:rbac", "user:x:rbac", "user:9:rbac:extra"} {
+		r.Broadcast(topic, nil)
+	}
+	resolveAll()
+	if s.calls != 3 {
+		t.Fatalf("unrelated topics must not evict: calls=%d", s.calls)
+	}
+
+	s.reply = []byte(`{"ok":true,"data":{"user_id":9,"workspaces":[{"workspace_id":3,"rbac_permissions":[{"resource":"workspace","action":"update"}]}]}}`)
+	r.Broadcast("user:9:rbac", nil)
+	resolveAll()
+	if s.calls != 5 {
+		t.Fatalf("user 9's two tokens must revalidate, user 5's must not: calls=%d", s.calls)
+	}
+	if info, _, _ := r.Principal(reqWithToken("a")); info.WorkspaceGrants != 1 {
+		t.Fatalf("the re-judged payload must carry the new grant, got %+v", info)
+	}
+}
+
+// A validation that was already in flight when the RBAC change landed carries
+// a pre-change answer: it must not be cached, and a request arriving after the
+// eviction must not join it.
+func TestResolver_EvictionFencesTheValidationInFlight(t *testing.T) {
+	g := &gatedCaller{reply: []byte(`{"ok":true,"data":{"user_id":7}}`), release: make(chan struct{})}
+	r := New(g)
+	waitCalls := func(n int64) {
+		t.Helper()
+		deadline := time.Now().Add(2 * time.Second)
+		for g.calls.Load() < n {
+			if time.Now().After(deadline) {
+				t.Fatalf("expected %d rpc calls, got %d", n, g.calls.Load())
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
+	var wg sync.WaitGroup
+	resolve := func() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r.Resolve(reqWithToken("t"))
+		}()
+	}
+
+	resolve()
+	waitCalls(1)
+	r.EvictUser(7)
+	resolve() // must start its own flight, not join the pre-eviction one
+	waitCalls(2)
+	close(g.release)
+	wg.Wait()
+
+	if _, ok, err := r.Resolve(reqWithToken("t")); !ok || err != nil {
+		t.Fatalf("resolve: ok=%v err=%v", ok, err)
+	}
+	if n := g.calls.Load(); n != 2 {
+		t.Fatalf("the post-eviction answer should be cached, got %d calls", n)
+	}
+
+	// The store fence on its own: the only flight predates the eviction.
+	g2 := &gatedCaller{reply: []byte(`{"ok":true,"data":{"user_id":7}}`), release: make(chan struct{})}
+	r2 := New(g2)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		r2.Resolve(reqWithToken("t"))
+	}()
+	for g2.calls.Load() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	r2.EvictUser(7)
+	close(g2.release)
+	<-done
+	r2.Resolve(reqWithToken("t"))
+	if n := g2.calls.Load(); n != 2 {
+		t.Fatalf("a pre-eviction answer must not be cached, got %d calls", n)
+	}
+}

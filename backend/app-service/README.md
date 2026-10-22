@@ -165,7 +165,11 @@ reaches the gateway cache directly.
 `workspace_member_changed` queue (default exchange): staged by every `WorkspaceService` operation
 that changes who holds a workspace role (create, member add/update/remove, owner transfer) and by
 the profile merge, in the write's own transaction. identity-service consumes it and drops the cached
-RBAC payload of the listed users. App-service publishes no Redis realtime topics.
+RBAC payload of the listed users. The `WorkspaceService` operations also send the same event to
+identity as the RPC `rpc.identity.workspace_member_changed` right after committing and wait for it
+(identity then has the gateway evict those users' cached principals), so the creator's first
+settings save or a removed member's next call already sees the change; a failed call only loses
+that head start. App-service publishes no Redis realtime topics.
 
 ### Scheduled work
 

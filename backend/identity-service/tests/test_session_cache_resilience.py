@@ -14,6 +14,7 @@ from shared.models.identity.auth_user import AuthUser
 from shared.schemas.user_merge_auth import AuthMergeFinalizationRequest
 from src.core import cache as cache_module  # noqa: E402
 from src.core import redis as redis_module  # noqa: E402
+from src.services import session_cache as session_cache_module  # noqa: E402
 from src.services.rbac import AuthUserAdminService
 from src.services.session_cache import session_cache  # noqa: E402
 
@@ -77,6 +78,28 @@ def test_set_and_invalidate_rbac_ignore_redis_failures(monkeypatch) -> None:
 
     asyncio.run(session_cache.set_rbac(7, roles=["admin"], permissions=[{"resource": "role", "action": "read"}]))
     asyncio.run(session_cache.invalidate_rbac(7))
+
+
+def test_invalidating_rbac_tells_the_gateway_once_the_entry_is_gone(monkeypatch) -> None:
+    # The gateway caches each token's verdict on its own; it only re-asks after
+    # this frame. Published after the drop, or the re-ask could hit the old entry.
+    client = _WorkingRedisClient()
+    published: list[tuple[str, str, dict[str, str]]] = []
+
+    async def publish(channel: str, message: str) -> None:
+        published.append((channel, json.loads(message)["event"]["event_type"], dict(client.store)))
+
+    client.publish = publish
+    monkeypatch.setattr(cache_module, "get_redis", lambda: client)
+    monkeypatch.setattr(session_cache_module, "get_redis", lambda: client)
+
+    asyncio.run(session_cache.set_rbac(7, roles=["admin"], permissions=[]))
+    asyncio.run(session_cache.invalidate_rbac(7, 8))
+
+    assert published == [
+        ("realtime:user:7:rbac", "rbac.changed", {}),
+        ("realtime:user:8:rbac", "rbac.changed", {}),
+    ]
 
 
 def test_rbac_round_trip_always_carries_every_component(monkeypatch) -> None:

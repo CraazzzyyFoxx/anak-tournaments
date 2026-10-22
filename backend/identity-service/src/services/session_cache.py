@@ -7,17 +7,28 @@ blacklist and RBAC invalidations must succeed before the database merge commits.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 from loguru import logger
+from redis.exceptions import RedisError
 
 from shared.rbac import RBAC_USER_KEY_PREFIX
+from shared.schemas.realtime import WorkspaceEventEnvelope
+from shared.services.realtime.scope import Scope
+from shared.services.realtime_publisher import publish_envelope_to_redis
 from src.core.cache import RedisStore
 from src.core.redis import get_redis
 
 # The cached payload carries the user's workspace memberships (id + slug) too,
 # so a hit answers the token path with no database round trip at all.
 RBAC_TTL_SECONDS = 60
+
+# ``user:{id}:rbac`` -- announced after every RBAC drop so the gateway evicts
+# the principals it cached for that user (gateway/internal/principal, which
+# mirrors this topic). Ephemeral (event_id 0): nothing to replay.
+RBAC_DOMAIN = "rbac"
+RBAC_CHANGED_EVENT = "rbac.changed"
 
 # Concurrent refreshes of the same token must not look like a reuse attack: the
 # first rotation publishes its result here for the others to read.
@@ -76,6 +87,24 @@ class SessionCache:
         for user_id in user_ids:
             await self._rbac.drop(user_id)
             logger.info(f"RBAC cache invalidated for user {user_id}")
+        await self._announce_rbac_changed(user_ids)
+
+    async def _announce_rbac_changed(self, user_ids: tuple[int, ...] | list[int]) -> None:
+        """Tell the gateway, AFTER the Redis entries are gone, to forget these users' principals.
+
+        Best-effort like the cache itself: a lost frame leaves the gateway's
+        own short token TTL as the bound.
+        """
+        for user_id in user_ids:
+            envelope = WorkspaceEventEnvelope(
+                event_id=0, event_type=RBAC_CHANGED_EVENT, occurred_at=datetime.now(UTC), data={}
+            )
+            try:
+                await publish_envelope_to_redis(
+                    get_redis(), topic=Scope.user(user_id).domain_topic(RBAC_DOMAIN), envelope=envelope
+                )
+            except (RedisError, OSError, RuntimeError) as exc:
+                logger.warning(f"RBAC change for user {user_id} not announced to the gateway: {exc}")
 
     # --- Revoked sessions ---
 
@@ -103,6 +132,7 @@ class SessionCache:
                 pipeline.set(self._revoked_sessions.key(session_id), "1", ex=ttl_seconds)
             pipeline.delete(*(self._rbac.key(user_id) for user_id in auth_user_ids))
             await pipeline.execute()
+        await self._announce_rbac_changed(auth_user_ids)
 
     async def is_session_blacklisted(self, session_id: str | None) -> bool:
         """True only when the session is known-revoked (fails open otherwise).

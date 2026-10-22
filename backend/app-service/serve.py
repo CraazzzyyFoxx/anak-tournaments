@@ -21,6 +21,7 @@ from shared.messaging.outbox import drain_outbox
 from shared.messaging.topology import declare_dead_letter_queue
 from shared.observability import (
     make_rabbit_broker,
+    set_worker_broker,
     setup_logging,
     setup_sentry,
     setup_tracing,
@@ -169,6 +170,9 @@ _outbox_scheduler = IntervalScheduler(job_id="event_outbox_drain", label="Outbox
 @app.on_startup
 async def start_worker() -> None:
     await broker.connect()
+    # Service code that is not handed a broker (WorkspaceService's post-commit
+    # RBAC drop at identity) resolves this one.
+    set_worker_broker(broker)
     # The invalidation queue dead-letters here; without the declaration a
     # poison message routes to a non-existent queue and vanishes.
     await declare_dead_letter_queue(broker, CACHE_INVALIDATION_APP_DLQ)

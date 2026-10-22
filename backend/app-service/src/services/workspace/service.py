@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 
 import dns.asyncresolver
 import sqlalchemy as sa
+from loguru import logger
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +15,7 @@ from shared.messaging.config import WORKSPACE_MEMBER_CHANGED_QUEUE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.messaging.rpc import request_rpc
 from shared.models.identity.auth_user import AuthUser
+from shared.observability.broker import optional_broker
 from shared.rbac import (
     assign_default_member_role_if_roleless,
     assign_workspace_system_role,
@@ -56,6 +58,12 @@ _DISCORD_GUILDS_SUBJECT = "rpc.identity.oauth_discord_guilds"
 # and say so identically -- one is the picker for the other. Clear does not
 # talk to Discord at all.
 _GUILD_UNREACHABLE_MESSAGE = "Could not reach Discord for guild verification"
+# Internal, service-to-service like the subject above: identity drops the listed
+# users' cached RBAC and has the gateway evict their principals, then answers.
+_MEMBER_CHANGED_SUBJECT = "rpc.identity.workspace_member_changed"
+# Short on purpose: the write has already committed, so a slow identity only
+# costs the head start, and the outbox copy of the event still lands.
+_MEMBER_CHANGED_TIMEOUT = 2.0
 
 MEMBERS_SORT_FIELDS = ("username", "role")
 
@@ -510,26 +518,43 @@ class WorkspaceService:
         )
         await self.member_repo.update_fields(session, member, {"removed_at": datetime.now(UTC)})
 
-    async def _member_changed(
+    async def _commit_member_change(
         self, session: AsyncSession, workspace_id: int, auth_user_ids: typing.Iterable[int], change: str
     ) -> None:
-        """Stage the event that makes identity drop these users' cached RBAC.
+        """Commit a write that changes who holds which workspace role, and make it count at once.
 
-        Staged in the membership write's own transaction by every transactional
-        operation that changes who holds which workspace role, so the relay
-        only ever announces a change that committed.
+        Every transactional operation that changes membership or roles ends
+        here. The event that makes identity drop these users' cached RBAC is
+        staged in the write's own transaction, so only a committed change is
+        ever announced. The relay delivers it up to a second after the commit,
+        though -- later than the actor's very next request, which is the one
+        that needs it (the creator's first settings save, a removed member's
+        next call). So the same event is also sent to identity right after the
+        commit and waited on; identity drops the cache and has the gateway evict
+        those users' principals before it answers. A failed call loses only
+        that head start: the outbox copy still lands.
         """
-        await enqueue_outbox_event(
-            session,
-            WorkspaceMemberChangedEvent(
-                workspace_id=workspace_id,
-                auth_user_ids=sorted(auth_user_ids),
-                change=change,
-                source_service="app-service",
-            ),
-            exchange="",
-            routing_key=WORKSPACE_MEMBER_CHANGED_QUEUE.name,
+        event = WorkspaceMemberChangedEvent(
+            workspace_id=workspace_id,
+            auth_user_ids=sorted(auth_user_ids),
+            change=change,
+            source_service="app-service",
         )
+        await enqueue_outbox_event(session, event, exchange="", routing_key=WORKSPACE_MEMBER_CHANGED_QUEUE.name)
+        await session.commit()
+
+        broker = optional_broker()
+        if broker is None:
+            return
+        try:
+            reply = await request_rpc(
+                broker, event.model_dump(mode="json"), _MEMBER_CHANGED_SUBJECT, timeout=_MEMBER_CHANGED_TIMEOUT
+            )
+        except Exception as exc:
+            reply = None
+            logger.warning(f"identity did not confirm the RBAC drop for {event.auth_user_ids}: {exc!r}")
+        if reply is not None and not reply.ok:
+            logger.warning(f"identity refused the RBAC drop for {event.auth_user_ids}: {reply.error}")
 
     # --- ownership cap guard ------------------------------------------------
 
@@ -596,8 +621,7 @@ class WorkspaceService:
         await assign_workspace_system_role(
             session, user_id=owner_auth_user_id, workspace_id=workspace.id, role_name="owner"
         )
-        await self._member_changed(session, workspace.id, [owner_auth_user_id], "added")
-        await session.commit()
+        await self._commit_member_change(session, workspace.id, [owner_auth_user_id], "added")
         await session.refresh(workspace, ["division_grid_defaults"])
         return workspace
 
@@ -634,8 +658,7 @@ class WorkspaceService:
         if await self.get_member(session, workspace_id, auth_user_id):
             raise HTTPException(status_code=400, detail="User is already a member")
         member = await self.add_member_with_roles(session, workspace_id, auth_user_id, role_ids=role_ids)
-        await self._member_changed(session, workspace_id, [auth_user_id], "added")
-        await session.commit()
+        await self._commit_member_change(session, workspace_id, [auth_user_id], "added")
         return member
 
     async def change_member_roles(
@@ -647,15 +670,13 @@ class WorkspaceService:
     ) -> models.WorkspaceMember:
         member = await self.update_member_roles(session, member, role_ids=role_ids)
         auth_user_id = await self.get_member_auth_user_id(session, member)
-        await self._member_changed(session, member.workspace_id, [auth_user_id], "roles_changed")
-        await session.commit()
+        await self._commit_member_change(session, member.workspace_id, [auth_user_id], "roles_changed")
         return member
 
     async def revoke_member(self, session: AsyncSession, member: models.WorkspaceMember) -> None:
         await self.remove_member(session, member)
         auth_user_id = await self.get_member_auth_user_id(session, member)
-        await self._member_changed(session, member.workspace_id, [auth_user_id], "removed")
-        await session.commit()
+        await self._commit_member_change(session, member.workspace_id, [auth_user_id], "removed")
 
     async def _record_domain_change(
         self,
@@ -1067,10 +1088,9 @@ class WorkspaceService:
             before={"owner_id": owner_before},
             after={"owner_id": workspace.owner_id},
         )
-        await self._member_changed(
+        await self._commit_member_change(
             session, workspace.id, {new_owner_auth_user_id, owner_before} - {None}, "owner_transferred"
         )
-        await session.commit()
         return workspace
 
 
