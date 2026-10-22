@@ -10251,7 +10251,7 @@
       "summary": "Lookup tournaments"
     },
     "rpc.tournament.pick_ban_rules_catalog": {
-      "description": "Permission: public; no authentication required \u2014 the catalog describes the rules ENGINE (which condition leaves and constraints exist, what parameters they take) plus ONE discipline's vocabulary: its item groups per kind (character classes declared by its module, mode slugs for maps) and its presets (the module's own plus the generic map presets; a preset's `first_ban_rotation`, when set, is the rotation the preset needs). `discipline` is required: 422 when absent, 404 `discipline_not_installed` for a code no module declares, never another game's presets. The pick-ban constructor loads it before a config exists to attach it to.",
+      "description": "Permission: public; no authentication required \u2014 the catalog describes the rules ENGINE (which condition leaves and constraints exist, what parameters they take) plus ONE discipline's vocabulary: its item groups per kind (character classes declared by its module, mode slugs for maps) and its presets (the module's own plus the generic map presets; a preset's `first_ban_rotation`, when set, is the rotation the preset needs; `mix_eligible` says whether a pickup mix may play it -- a hero preset that bans no player on map 1 of a Bo1). `discipline` is required: 422 when absent, 404 `discipline_not_installed` for a code no module declares, never another game's presets. The pick-ban constructor loads it before a config exists to attach it to.",
       "query_params": [
         {
           "name": "discipline",

@@ -1350,6 +1350,29 @@ class CatalogOp(IsolatedAsyncioTestCase):
         self.assertEqual([preset.id for preset in pbr.presets_for("lol")], [preset["id"] for preset in data["presets"]])
         self.assertFalse({preset["id"] for preset in data["presets"]} & {"hero_classic", "hero_anti_one_trick"})
 
+    async def test_each_preset_says_whether_a_pickup_mix_may_play_it(self) -> None:
+        """A mix round is map 1 of a Bo1: anti-one-trick bans players only from map 2, so a mix may play it; a preset
+        that bans a player on map 1 it may not, and a map preset never."""
+        targets_on_map_one = pbr.Ruleset(phases=[ANTI_ONE_TRICK.ruleset.phases[1].model_copy(update={"when": {}})])
+        spec = DisciplineSpec(
+            "targeting",
+            "Targeting",
+            (),
+            character_classes=("tank",),
+            pick_ban_presets=lambda: (
+                ANTI_ONE_TRICK,
+                pbr.Preset("per_player_always", "hero", ("pool",), targets_on_map_one),
+            ),
+        )
+        with patch.dict(DISCIPLINES, {spec.code: spec}):
+            envelope = await self._catalog({"discipline": [spec.code]})
+
+        self.assertTrue(envelope["ok"], envelope)
+        self.assertEqual(
+            {"hero_anti_one_trick": True, "per_player_always": False, "map_bracket": False, "map_slot_veto": False},
+            {preset["id"]: preset["mix_eligible"] for preset in envelope["data"]["presets"]},
+        )
+
     async def test_the_discipline_is_required(self) -> None:
         envelope = await self._catalog(None)
 
