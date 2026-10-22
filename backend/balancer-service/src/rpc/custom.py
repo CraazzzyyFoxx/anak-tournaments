@@ -282,8 +282,9 @@ def _dump_lobby(
     ``balance_result`` is detail-only -- the solver document grows with every stored option and no list row renders
     it -- and so are ``state`` (``idle`` | ``ready`` | ``pregame`` | ``live``, spec §5, derived from that document and
     the live match; ``draft_setup`` / ``draft_live`` while the lobby's draft runs, and ``draft_session_id`` names it),
-    ``live_started_at`` (the cards' elapsed clock), ``live_seats``, ``live_ban_preset`` (the preset the live match
-    started on, so a Live room still shows its settled bans) and ``opener_index``.
+    ``live_started_at`` (the cards' elapsed clock: the match's start, or a live draft's first pick clock),
+    ``live_seats``, ``live_ban_preset`` (the preset the live match started on, so a Live room still shows its settled
+    bans) and ``opener_index``.
     ``lineup_recorded`` is false while a balanced lineup has not been played: the UI asks for confirmation before
     anything that would overwrite it.
     """
@@ -377,6 +378,7 @@ def _dump_game(
     live_seats: dict[int, list[dict[str, Any]]] | None = None,
     openers: dict[int, int | None] | None = None,
     draft_lobbies: dict[int, tuple[int, str, frozenset[int]]] | None = None,
+    draft_started_at: dict[int, Any] | None = None,
 ) -> dict[str, Any]:
     matches_count, last_match_at = activity if activity is not None else (0, None)
     out: dict[str, Any] = {
@@ -401,7 +403,8 @@ def _dump_game(
                 balance_result=roster is not None,
                 # A read that counted no lobby (``lobby_activity`` absent) says nothing, rather than a false 0.
                 activity=None if lobby_activity is None else lobby_activity.get(lobby.lobby_index, (0, None)),
-                live_started_at=(live_started_at or {}).get(lobby.live_encounter_id),
+                live_started_at=(live_started_at or {}).get(lobby.live_encounter_id)
+                or (draft_started_at or {}).get(lobby.lobby_index),
                 pregame=lobby.live_encounter_id in pregame_ids,
                 live_seats=(live_seats or {}).get(lobby.live_encounter_id),
                 opener_index=(openers or {}).get(lobby.lobby_index),
@@ -504,6 +507,15 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
     }
     lobby_activity = await custom_game_service.mix_rounds.activity_for_lobbies(session, game.id)
     draft_lobbies = await custom_game_service.draft_lobbies(session, game.id)
+    # A live draft is timed from its first pick's clock, as a match from its start (U1); a draft in setup has none.
+    draft_starts = (
+        await custom_game_service.drafts.first_clock_starts(session, [entry[0] for entry in draft_lobbies.values()])
+        if draft_lobbies
+        else {}
+    )
+    draft_started_at = {
+        index: draft_starts[entry[0]] for index, entry in draft_lobbies.items() if entry[0] in draft_starts
+    }
     # Derived once, here: the board, the player sheet and the bot all ask the
     # same question, and none of them should re-parse a solver document.
     current_lobby = current_lobbies(lobbies, draft_lobbies)
@@ -525,6 +537,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
             live_seats=live_seats,
             openers=openers,
             draft_lobbies=draft_lobbies,
+            draft_started_at=draft_started_at,
         )
     member_ids = [row.workspace_member_id for row in roster]
     members = await custom_game_service.members(session, game.workspace_id, member_ids, discipline=game.discipline)
@@ -575,6 +588,7 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         live_seats=live_seats,
         openers=openers,
         draft_lobbies=draft_lobbies,
+        draft_started_at=draft_started_at,
     )
 
 

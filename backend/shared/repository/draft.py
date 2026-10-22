@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import Any
 
 import sqlalchemy as sa
@@ -121,6 +122,16 @@ class DraftSessionRepository(BaseRepository[models.DraftSession]):
         return {
             index: (session_id, status, frozenset(members)) for index, (session_id, status, members) in found.items()
         }
+
+    async def first_clock_starts(self, session: AsyncSession, session_ids: Sequence[int]) -> dict[int, datetime]:
+        """When each of these drafts went live: its first pick's clock start. A draft not started yet has none."""
+        pick = models.DraftPick
+        rows = await session.execute(
+            sa.select(pick.session_id, pick.clock_started_at).where(
+                pick.session_id.in_(session_ids), pick.overall_no == 1, pick.clock_started_at.is_not(None)
+            )
+        )
+        return dict(rows.tuples().all())
 
     async def get_workspace_id_in_tournament(self, session: AsyncSession, id: int, *, tournament_id: int) -> int | None:
         """The session's workspace, or ``None`` unless the session exists AND belongs to ``tournament_id``."""

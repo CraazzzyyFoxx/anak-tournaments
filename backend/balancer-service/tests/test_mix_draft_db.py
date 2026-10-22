@@ -823,6 +823,24 @@ class MixDraftTests(EncounterWriterCase):
         self.assertEqual(("draft_setup", draft_id), (lobby["state"], lobby["draft_session_id"]))
         self.assertEqual({0}, {row["current_lobby"] for row in read["players"]})
 
+    async def test_a_live_drafts_lobby_read_carries_the_first_picks_clock_start(self) -> None:
+        """U1: a drafting card times the draft from its first pick's clock, as it times bans; setup has no time yet."""
+        host, _ = await self._host()
+        draft_id = await self._seed_lobby(host)
+        async with self.Session() as s:
+            [setup] = (await custom._with_roster(s, await s.get_one(models.CustomGame, self.cg_id)))["lobbies"]
+        await self._start(draft_id, host)
+        async with self.Session() as s:
+            started = await s.scalar(
+                sa.select(models.DraftPick.clock_started_at).where(
+                    models.DraftPick.session_id == draft_id, models.DraftPick.overall_no == 1
+                )
+            )
+            [live] = (await custom._with_roster(s, await s.get_one(models.CustomGame, self.cg_id)))["lobbies"]
+
+        self.assertEqual(("draft_setup", None), (setup["state"], setup["live_started_at"]))
+        self.assertEqual(("draft_live", started.isoformat()), (live["state"], live["live_started_at"]))
+
     async def test_a_tied_overflow_pool_seats_the_same_players_in_a_draft_as_in_a_balance(self) -> None:
         """R-S3: nobody has a rotation history, so the overflow tie falls to the balancer's own input order. m4 heads
         the roster's order -- a draft that read the roster would seat them and leave m3 waiting."""
