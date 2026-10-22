@@ -26,8 +26,11 @@ const STACK_ID = "dock-stack";
 // safe-area floor so a panel clears an iOS home indicator. Logical `end`, not
 // `right`: the corner follows the writing direction. `z-40` puts the stack
 // under the real modals (`ui/dialog`) and under the cookie banner, both `z-50`.
+// `--overlay-bar-h` is the height of a page's fixed command bar
+// (`ui/overlay-bar`) while one is mounted: the stack stands on it rather than
+// over the controls it carries.
 const STACK_CLASS =
-  "fixed bottom-4 end-4 z-40 flex flex-col-reverse items-end gap-3 supports-[padding:max(0px)]:mb-[max(0px,env(safe-area-inset-bottom))]";
+  "fixed bottom-[calc(1rem+var(--overlay-bar-h,0px))] end-4 z-40 flex flex-col-reverse items-end gap-3 supports-[padding:max(0px)]:mb-[max(0px,env(safe-area-inset-bottom))]";
 
 function dockStack(): HTMLElement {
   const existing = document.getElementById(STACK_ID);

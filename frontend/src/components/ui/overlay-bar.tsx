@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -28,10 +28,33 @@ interface OverlayBarProps {
  *
  * Pair with bottom padding on the page's scroll container so the fixed bar
  * never overlaps trailing content.
+ *
+ * While mounted it publishes its height as `--overlay-bar-h` on `<html>`: the
+ * corner docks (`ui/dock`) stand on top of it instead of covering the very
+ * control the bar exists for. Their stack is a portal on `<body>`, never this
+ * bar's subtree, so a CSS variable is the only channel both can read.
  */
 export function OverlayBar({ tone = "neutral", ariaLabel, className, children }: Readonly<OverlayBarProps>) {
+  const ref = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const node = ref.current;
+    if (node === null) return;
+    const root = document.documentElement;
+    // ponytail: one bar per page; a second one would overwrite the first's height.
+    const publish = () => root.style.setProperty("--overlay-bar-h", `${node.offsetHeight}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--overlay-bar-h");
+    };
+  }, []);
+
   return (
     <section
+      ref={ref}
       className={cn(
         "fixed bottom-2 left-1/2 z-40 w-[min(1320px,94vw)] -translate-x-1/2 rounded-xl border bg-[color:var(--aqt-card)]/95 p-3 shadow-xl backdrop-blur transition-colors supports-[padding:max(0px)]:pb-[max(0.75rem,env(safe-area-inset-bottom))]",
         TONE_BORDER[tone],
