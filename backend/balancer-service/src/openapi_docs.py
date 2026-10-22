@@ -402,6 +402,7 @@ DOCS: dict[str, dict] = {
             "workspace canon. 422 when the lineup is empty, a seated player has no ranked role, the "
             "mix has one lobby (`single_lobby`) or the pool cannot be split (`not_enough_players`, "
             "`too_many_must_play`, `too_many_pinned`, `roles_infeasible`)."
+            " 409 match_live when the lobby -- for scope all, any lobby -- has a live match."
         ),
     },
     "rpc.balancer.custom.set_team_names": {
@@ -417,6 +418,7 @@ DOCS: dict[str, dict] = {
             "outcome names one explicitly, and clears it either way. The lobby_index field names which "
             "lobby's roll this is; a single-lobby mix leaves it at 0. 404 when "
             "the map is not in the catalogue."
+            " 409 match_live while the lobby's match is live."
         ),
     },
     "rpc.balancer.custom.set_variant_index": {
@@ -428,6 +430,7 @@ DOCS: dict[str, dict] = {
             "404 when the index points past the stored options, and 409 seat_conflict when the option "
             "would seat somebody another of the mix's lobbies has already put on the floor. Re-balancing "
             "resets it to the first option."
+            " 409 match_live while the lobby's match is live."
         ),
     },
     "rpc.balancer.custom.post_discord": {
@@ -504,6 +507,7 @@ DOCS: dict[str, dict] = {
             "returns the refreshed mix; a swap that moves a team's captain re-captains both teams. "
             "404 when the option or either seat is missing, 422 when the seats hold different roles or sit on the "
             "same team."
+            " 409 match_live while the lobby's match is live."
         ),
     },
     "rpc.balancer.custom.set_captain": {
@@ -513,6 +517,7 @@ DOCS: dict[str, dict] = {
             "Makes one seated player the captain of their team in the option the lobby is showing and returns the "
             "refreshed mix. A balance captains each team by its strongest seat; a swap that moves a captain "
             "re-captains both teams. 404 when that option does not seat the player."
+            " 409 match_live while the lobby's match is live."
         ),
     },
     "rpc.balancer.custom.start_match": {
@@ -610,6 +615,7 @@ DOCS: dict[str, dict] = {
             "ones untouched; shrinking deletes every lobby past the new count together with its "
             "stored matchup and clears the pins that named them. Matches already recorded for a "
             "deleted lobby stay in the history and in the statistics."
+            " 409 match_live when a lobby it would drop has a live match."
         ),
     },
     "rpc.balancer.custom.rename": {

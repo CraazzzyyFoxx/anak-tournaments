@@ -495,6 +495,34 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
         [live] = await self._live_ids()
         self.assertIsNotNone(live)
 
+    async def test_a_reshape_racing_a_start_waits_for_it_and_is_refused(self) -> None:
+        await self._lobbies(("m0", "m1"))
+        service = CustomGameService()
+        m0, m1 = str(self.ids["m0"]), str(self.ids["m1"])
+        reshapes = {
+            "swap": (service.swap_seats, {"variant_index": 0, "first_uuid": m0, "second_uuid": m1}),
+            "page": (service.set_variant_index, {"variant_index": 0}),
+            "balance": (service.balance, {}),
+        }
+        lineup = "SELECT balance_result_json, selected_variant_index FROM mix.lobby WHERE custom_game_id = :id"
+        before = await self._rows(lineup, id=self.cg.id)
+        for name, (write, extra) in reshapes.items():
+            with self.subTest(name):
+                async with self.Session() as first, self.Session() as second:
+                    await service.start_match(first, **self._host(0))
+                    racing = asyncio.create_task(write(second, **self._host(0), **extra))
+                    await asyncio.sleep(0.2)
+                    # Start holds the mix row until it commits: the reshape waits, then reads the lobby live.
+                    self.assertFalse(racing.done())
+                    await first.commit()
+                    with self.assertRaises(HTTPException) as ctx:
+                        await racing
+                    await second.rollback()
+
+                self.assertEqual((409, "match_live"), (ctx.exception.status_code, ctx.exception.detail))
+                self.assertEqual(before, await self._rows(lineup, id=self.cg.id))
+                await self._write(service.cancel_match, 0)
+
     async def test_cancel_and_close_leave_no_live_match_and_no_encounter_behind(self) -> None:
         await self._lobbies(("m0", "m1"), ("m2", "m3"))
         service = CustomGameService()

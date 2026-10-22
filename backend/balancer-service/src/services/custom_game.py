@@ -1052,7 +1052,7 @@ class CustomGameService:
         stored matchups are lost, their recorded matches stay in the history --
         and frees the pins that named them, because a pin to a lobby the mix no
         longer runs would quietly exclude that player from the next balance.
-        Pins to surviving lobbies are kept.
+        Pins to surviving lobbies are kept. A lobby it would drop must not have a live match (409 ``match_live``).
         """
         game = await self._writable(
             session,
@@ -1069,9 +1069,16 @@ class CustomGameService:
                     session, models.CustomGameLobby(custom_game_id=game.id, lobby_index=lobby_index)
                 )
         else:
-            for lobby in await self.lobbies.list_for_game(session, game.id):
-                if lobby.lobby_index >= lobby_count:
-                    await self.lobbies.delete(session, lobby)
+            dropped = [
+                lobby
+                for lobby in await self.lobbies.list_for_game(session, game.id)
+                if lobby.lobby_index >= lobby_count
+            ]
+            # Checked before anything is deleted: dropping a lobby mid-match would orphan its open encounter.
+            for lobby in dropped:
+                _refuse_live(lobby)
+            for lobby in dropped:
+                await self.lobbies.delete(session, lobby)
             for row in await self.roster.list_for_game(session, game.id):
                 if row.lobby_pin is not None and row.lobby_pin >= lobby_count:
                     row.lobby_pin = None
@@ -1842,6 +1849,14 @@ class CustomGameService:
             actor_user_id=actor_user_id,
             actor_is_superuser=actor_is_superuser,
         )
+        if scope == "all":
+            # A reshuffle re-forms every lobby, so one live match is enough to refuse it.
+            targets = list(await self.lobbies.list_for_game(session, game.id))
+        else:
+            targets = [await self._lobby(session, game, lobby_index)]
+        # Refused before the pool is read: a frozen lobby answers 409 match_live, never empty_lineup.
+        for lobby in targets:
+            _refuse_live(lobby)
         roster = list(await self.roster.list_for_game(session, game.id))
         lineup = [row for row in roster if row.participation != MixParticipation.BENCHED]
         if not lineup:
@@ -1849,7 +1864,7 @@ class CustomGameService:
         if scope == "all":
             await self._balance_all(session, game, lineup)
         else:
-            lobby = await self._lobby(session, game, lobby_index)
+            [lobby] = targets
             candidates = await self._lobby_candidates(session, game, lineup, lobby_index)
             if not candidates:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="empty_lineup")
@@ -1961,6 +1976,7 @@ class CustomGameService:
         if map_id is not None and not await self.maps.exists(session, id=map_id, discipline=game.discipline):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Map not found")
         lobby = await self._lobby(session, game, lobby_index)
+        _refuse_live(lobby)
         lobby.next_map_id = map_id
         await session.flush()
         return game
@@ -1993,6 +2009,7 @@ class CustomGameService:
             actor_is_superuser=actor_is_superuser,
         )
         lobby = await self._lobby(session, game, lobby_index)
+        _refuse_live(lobby)
         result = as_lobby_document(lobby.balance_result_json)
         variants = result.get("variants") if isinstance(result, dict) else None
         if not isinstance(variants, list) or not (0 <= variant_index < len(variants)):
@@ -2499,6 +2516,7 @@ class CustomGameService:
             actor_is_superuser=actor_is_superuser,
         )
         lobby = await self._lobby(session, game, lobby_index)
+        _refuse_live(lobby)
         result = copy.deepcopy(as_lobby_document(lobby.balance_result_json))
         variants = result.get("variants") if isinstance(result, dict) else None
         if not isinstance(variants, list) or not (0 <= variant_index < len(variants)):
@@ -2564,6 +2582,7 @@ class CustomGameService:
             actor_is_superuser=actor_is_superuser,
         )
         lobby = await self._lobby(session, game, lobby_index)
+        _refuse_live(lobby)
         result = with_captains(copy.deepcopy(as_lobby_document(lobby.balance_result_json)))
         index = lobby.selected_variant_index
         team_index = next(

@@ -4074,6 +4074,112 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.assertEqual([900, 901], [call.args[1] for call in self.mix_rounds.delete_round.await_args_list])
         self.assertEqual([None, None], [row.live_encounter_id for row in self.lobby_rows.values()])
 
+    async def test_a_live_lobby_refuses_every_write_that_reshapes_its_lineup_409(self) -> None:
+        self.games.get.return_value = _game(status="balanced", lobby_count=2)
+        self.lobby_rows[1] = _lobby(1)
+        self.roster.list_for_game.return_value = [_roster_row(1, 7, 0)]
+        self.ranks.resolve.return_value = _ranks(7)
+        writes = {
+            "swap seats": lambda: self.service.swap_seats(
+                self.session,
+                workspace_id=1,
+                custom_game_id=11,
+                variant_index=0,
+                first_uuid="7",
+                second_uuid="9",
+                actor_user_id=9,
+            ),
+            "page the options": lambda: self.service.set_variant_index(
+                self.session, workspace_id=1, custom_game_id=11, variant_index=0, actor_user_id=9
+            ),
+            "roll the next map": lambda: self.service.set_next_map(
+                self.session, workspace_id=1, custom_game_id=11, map_id=42, actor_user_id=9
+            ),
+            "make a captain": lambda: self.service.set_captain(
+                self.session, workspace_id=1, custom_game_id=11, workspace_member_id=9, actor_user_id=9
+            ),
+            "balance the lobby": lambda: self.service.balance(
+                self.session, workspace_id=1, custom_game_id=11, actor_user_id=9
+            ),
+            "shuffle every lobby": lambda: self.service.balance(
+                self.session, workspace_id=1, custom_game_id=11, scope="all", actor_user_id=9
+            ),
+        }
+        for name, write in writes.items():
+            with self.subTest(name):
+                document = with_captains(self._captained_result())
+                self.lobby_rows[0] = _lobby(0, balance_result_json=document, live_encounter_id=900, next_map_id=5)
+                with self.assertRaises(HTTPException) as ctx:
+                    await write()
+                self.assertEqual((409, "match_live"), (ctx.exception.status_code, ctx.exception.detail))
+                lobby = self.lobby_rows[0]
+                self.assertIs(document, lobby.balance_result_json)
+                self.assertEqual((0, 5), (lobby.selected_variant_index, lobby.next_map_id))
+        self.run_balance.assert_not_awaited()
+
+    async def test_a_live_lobby_refuses_a_balance_before_it_reads_the_lineup_409(self) -> None:
+        # Everyone is benched: an empty lineup, which is 422 empty_lineup anywhere but under a live match.
+        self.games.get.return_value = _game(status="balanced", lobby_count=2)
+        self.lobby_rows[0] = _lobby(0, live_encounter_id=900)
+        self.lobby_rows[1] = _lobby(1)
+        self.roster.list_for_game.return_value = [_roster_row(1, 7, 0, participation=MixParticipation.BENCHED)]
+
+        for scope in ("lobby", "all"):
+            with self.subTest(scope):
+                with self.assertRaises(HTTPException) as ctx:
+                    await self.service.balance(
+                        self.session, workspace_id=1, custom_game_id=11, scope=scope, actor_user_id=9
+                    )
+                self.assertEqual((409, "match_live"), (ctx.exception.status_code, ctx.exception.detail))
+
+    async def test_dropping_a_lobby_with_a_live_match_409(self) -> None:
+        self.games.get.return_value = _game(status="balanced", lobby_count=2)
+        self.lobby_rows[1] = _lobby(1, live_encounter_id=901)
+
+        with self.assertRaises(HTTPException) as ctx:
+            await self.service.set_lobby_count(
+                self.session, workspace_id=1, custom_game_id=11, lobby_count=1, actor_user_id=9
+            )
+
+        self.assertEqual((409, "match_live"), (ctx.exception.status_code, ctx.exception.detail))
+        self.assertEqual([0, 1], sorted(self.lobby_rows))
+
+    async def test_a_live_lobby_keeps_team_names_and_player_edits_open(self) -> None:
+        self.games.get.return_value = _game(status="balanced")
+        self.lobby_rows[0] = _lobby(
+            0, balance_result_json=with_captains(self._captained_result()), live_encounter_id=900
+        )
+        row = _roster_row(1, 7, 0)
+        self.roster.list_for_game.return_value = [row]
+
+        await self.service.set_team_names(
+            self.session, workspace_id=1, custom_game_id=11, team_names={"0": "Wolves"}, actor_user_id=9
+        )
+        await self.service.update_player(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            workspace_member_id=7,
+            patch={"participation": "benched"},
+            actor_user_id=9,
+        )
+
+        self.team_names.set.assert_awaited_once_with(self.session, 11, 0, "Wolves")
+        self.assertEqual(MixParticipation.BENCHED, row.participation)
+
+    async def test_a_live_lobby_does_not_freeze_its_neighbour(self) -> None:
+        self.games.get.return_value = _game(status="balanced", lobby_count=2)
+        self.lobby_rows[0] = _lobby(
+            0, balance_result_json=with_captains(self._captained_result()), live_encounter_id=900
+        )
+        self.lobby_rows[1] = _lobby(1)
+
+        await self.service.set_next_map(
+            self.session, workspace_id=1, custom_game_id=11, lobby_index=1, map_id=42, actor_user_id=9
+        )
+
+        self.assertEqual(42, self.lobby_rows[1].next_map_id)
+
     async def test_rotation_returns_empty_list_for_an_empty_pool(self) -> None:
         self.games.get.return_value = _game()
         self.roster.list_for_game.return_value = []
