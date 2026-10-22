@@ -8,7 +8,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { usePermissions } from "@/hooks/usePermissions";
-import captainService from "@/services/captain.service";
+import { useMyEncounterRole } from "@/hooks/useMyEncounterRole";
 import pickBanService from "@/services/pickBan.service";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 
@@ -62,12 +62,7 @@ export function PregameRoomLink({
     metadata.data?.discipline.capabilities.match_fetch === true;
   // The room files as an organizer only with `match.result` (the organizer route's gate); anyone else must captain.
   const organizer = hasWorkspacePermission(workspaceId, "match.result");
-  const roleQuery = useQuery({
-    queryKey: encounterQueryKeys.myRole(encounterId),
-    queryFn: () => captainService.getMyRole(encounterId),
-    enabled: importOnly && !organizer,
-    retry: false
-  });
+  const roleQuery = useMyEncounterRole(encounterId, importOnly && !organizer);
   const canImport = organizer || roleQuery.data?.encounter_team_id != null;
   if (!configured && !(importOnly && canImport)) {
     return null;

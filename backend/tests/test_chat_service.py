@@ -189,12 +189,22 @@ class ChatServiceTest(IsolatedAsyncioTestCase):
         self.assertFalse(envelope.viewer.can_write)
         self.assertTrue(envelope.settings.spectators_can_read)
 
-    async def test_pregame_spectator_is_refused_by_default(self) -> None:
-        """The pre-game room is where lobby codes are exchanged."""
-        service, *_ = self._service(_Access(SPECTATOR))
-        with self.assertRaises(HTTPException) as caught:
-            await service.envelope(_Session(), VIEWER, ChatRoom.encounter(42))
-        self.assertEqual(caught.exception.status_code, 403)
+    async def test_pregame_spectator_sees_a_closed_room_by_default(self) -> None:
+        """The pre-game room is where lobby codes are exchanged: a watcher reads it as closed, with nothing in it,
+        and the read itself succeeds -- a spectator's page is not an error."""
+        service, *_ = self._service(_Access(SPECTATOR), messages=_Messages([_row(1, body="code: ABC")]))
+        envelope = await service.envelope(_Session(), VIEWER, ChatRoom.encounter(42))
+        self.assertEqual(envelope.messages, [])
+        self.assertFalse(envelope.settings.spectators_can_read)
+        self.assertEqual(envelope.viewer.role, "spectator")
+        self.assertFalse(envelope.viewer.can_write)
+        self.assertEqual(envelope.mutes, [])
+
+    async def test_anonymous_spectator_sees_a_closed_room_too(self) -> None:
+        service, *_ = self._service(_Access(SPECTATOR), messages=_Messages([_row(1)]))
+        envelope = await service.envelope(_Session(), None, ChatRoom.encounter(42))
+        self.assertEqual(envelope.messages, [])
+        self.assertFalse(envelope.settings.spectators_can_read)
 
     async def test_organizer_can_open_the_pregame_chat(self) -> None:
         service, *_ = self._service(_Access(SPECTATOR), settings=_Settings(True))
@@ -202,9 +212,23 @@ class ChatServiceTest(IsolatedAsyncioTestCase):
         self.assertTrue(envelope.settings.spectators_can_read)
 
     async def test_organizer_can_close_the_draft_chat(self) -> None:
-        service, *_ = self._service(_Access(SPECTATOR), settings=_Settings(False))
-        with self.assertRaises(HTTPException):
-            await service.envelope(_Session(), VIEWER, ChatRoom.draft(3))
+        service, *_ = self._service(_Access(SPECTATOR), settings=_Settings(False), messages=_Messages([_row(1)]))
+        envelope = await service.envelope(_Session(), VIEWER, ChatRoom.draft(3))
+        self.assertEqual(envelope.messages, [])
+        self.assertFalse(envelope.settings.spectators_can_read)
+
+    async def test_a_closed_room_still_reads_in_full_for_its_captains(self) -> None:
+        service, *_ = self._service(_Access(CAPTAIN_MEMBER), messages=_Messages([_row(1)]))
+        envelope = await service.envelope(_Session(), CAPTAIN, ChatRoom.encounter(42))
+        self.assertEqual([message.id for message in envelope.messages], [1])
+        self.assertFalse(envelope.settings.spectators_can_read)
+
+    async def test_a_spectator_of_a_closed_room_still_cannot_write(self) -> None:
+        service, *_ = self._service(_Access(SPECTATOR))
+        with patch("shared.services.chat.service.emit"):
+            with self.assertRaises(HTTPException) as caught:
+                await service.post(_Session(), VIEWER, ChatRoom.encounter(42), "hello")
+        self.assertEqual(caught.exception.status_code, 403)
 
     async def test_spectator_never_writes_even_when_the_room_is_open(self) -> None:
         service, *_ = self._service(_Access(SPECTATOR))

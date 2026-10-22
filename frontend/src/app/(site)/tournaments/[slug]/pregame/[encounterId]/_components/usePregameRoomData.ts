@@ -4,7 +4,7 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import captainService from "@/services/captain.service";
+import { useMyEncounterRole } from "@/hooks/useMyEncounterRole";
 import encounterService from "@/services/encounter.service";
 import pickBanService from "@/services/pickBan.service";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
@@ -133,12 +133,7 @@ export function usePregameRoomData(encounterId: number): PregameRoomData {
   // `build_unavailable_state` reports `viewer_team_id: null` regardless of
   // identity (there is no session yet to resolve a participation against), so the
   // readiness gate's "you're a captain" check needs its own read.
-  const roleQuery = useQuery({
-    queryKey: encounterQueryKeys.myRole(encounterId),
-    queryFn: () => captainService.getMyRole(encounterId),
-    enabled,
-    retry: false
-  });
+  const roleQuery = useMyEncounterRole(encounterId, enabled);
 
   // Both topics and local writes share one bounded, jittered batch. Never
   // restart its timer on another signal: continuous blind drafts must not

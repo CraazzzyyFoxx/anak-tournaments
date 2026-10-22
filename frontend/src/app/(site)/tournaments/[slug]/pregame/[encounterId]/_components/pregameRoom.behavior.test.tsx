@@ -17,6 +17,7 @@ import { loadMatchUI } from "@/disciplines/registry/match";
 import en from "@/i18n/messages/en.json";
 import { ApiError } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
+import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import type { Encounter } from "@/types/encounter.types";
 import type {
   PickBanEntry,
@@ -463,6 +464,8 @@ beforeEach(() => {
     roles: []
   }));
   getMyRole.mockResolvedValue({ encounter_team_id: null, slot: null });
+  // The viewer is signed in unless a case says otherwise: only an account is asked for its seat.
+  useAuthProfileStore.setState({ status: "authenticated" });
   getReports.mockResolvedValue({ reports: [], form: undefined });
   search = new URLSearchParams();
   usePermissionsMock.mockReturnValue({
@@ -609,6 +612,15 @@ describe("readiness gate", () => {
       (b) => b.textContent?.trim() === ROOM.ready.button
     );
     expect(button).toBeUndefined();
+  });
+
+  it("asks an anonymous spectator for no seat: only an account can captain", async () => {
+    useAuthProfileStore.setState({ status: "anonymous" });
+    mockStates(unavailableState("not_ready"), unavailableState("not_configured"));
+    await render();
+
+    expect(document.body.textContent).toContain(ROOM.notReadyTitle);
+    expect(getMyRole).not.toHaveBeenCalled();
   });
 
   it("renders the real room behind the gate — matchup and per-side state, no skeletons", async () => {

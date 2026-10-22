@@ -179,7 +179,16 @@ class ChatService:
         after_id: int | None = None,
         limit: int = HISTORY_DEFAULT,
     ) -> ChatEnvelope:
-        membership, visible = await self._reader(session, auth_user, room)
+        membership = await self.access.resolve(session, auth_user, room)
+        visible = await self.spectators_can_read(session, room)
+        if membership.is_spectator and not visible:
+            # Watching a closed room is a normal visit, not a failed read: the room answers that it is closed and
+            # shows nothing of what is said in it. Only the writes refuse a spectator (``_reader``).
+            return ChatEnvelope(
+                messages=[],
+                settings=ChatSettings(spectators_can_read=False),
+                viewer=ChatViewer(role=membership.role, can_write=False, can_moderate=False),
+            )
         rows = await self.messages.history(
             session,
             room_kind=room.kind,

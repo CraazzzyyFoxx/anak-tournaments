@@ -52,8 +52,7 @@ export function useRoomChat(room: ChatRoomDescriptor) {
    * Re-read the room from the newest message on screen. This is the reconnect
    * path AND the repair for a dropped Redis publish (at-most-once pub/sub can
    * lose a frame with no disconnect at all), and it re-answers `viewer` and
-   * `settings` from the server — including the 403 that hides the panel once an
-   * organizer closes the room to spectators.
+   * `settings` from the server.
    */
   const refresh = async () => {
     const current = queryClient.getQueryData<ChatEnvelope | null>(queryKey);
@@ -102,10 +101,13 @@ export function useRoomChat(room: ChatRoomDescriptor) {
   const applySettings = (settings: ChatSettings) =>
     patch((current) => ({ ...current, settings }));
 
-  // Null until the envelope resolved: the gateway denies this topic to everyone
-  // it also 403s, so subscribing first would cost a rejected frame and an ACL
-  // query per spectator in the room.
-  const topic = envelope.data != null ? room.topic : null;
+  // A spectator of a room closed to spectators gets the room as closed (no messages), not an error: there is nothing
+  // to show them and nothing to subscribe to -- the gateway denies them this topic too. Null until the envelope
+  // resolved, so nobody subscribes first and costs a rejected frame and an ACL query.
+  const readable =
+    envelope.data != null &&
+    (envelope.data.viewer.role !== "spectator" || envelope.data.settings.spectators_can_read);
+  const topic = readable ? room.topic : null;
 
   useRealtimeTopic<ChatEventData>(
     topic,
@@ -133,10 +135,9 @@ export function useRoomChat(room: ChatRoomDescriptor) {
           return;
         case "chat.visibility_changed":
           if (data.spectators_can_read == null) return;
+          // Closing the room to spectators hides it from a spectator right here; the server drops their subscription
+          // on the same event.
           applySettings({ spectators_can_read: data.spectators_can_read });
-          // The server drops a spectator's subscription on the same event, so
-          // let it answer whether this viewer still has a room at all.
-          if (envelope.data?.viewer.role === "spectator") void refresh();
           return;
         default:
           return;
@@ -182,11 +183,12 @@ export function useRoomChat(room: ChatRoomDescriptor) {
     viewer: envelope.data?.viewer ?? null,
     mutes: envelope.data?.mutes ?? [],
     /**
-     * The envelope resolved. A 403, a pending load and a hard failure all read
-     * as "no room here", and the panel renders nothing for all three: it must
-     * not advertise a back channel it will not let the viewer read.
+     * The viewer may read the room. A room closed to this spectator, a refused
+     * read, a pending load and a hard failure all read as "no room here", and
+     * the panel renders nothing for all of them: it must not advertise a back
+     * channel it will not let the viewer read.
      */
-    visible: envelope.data != null,
+    visible: readable,
     send,
     remove,
     setVisibility,

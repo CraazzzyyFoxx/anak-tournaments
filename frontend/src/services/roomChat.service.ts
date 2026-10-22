@@ -5,10 +5,11 @@ import type { ChatEnvelope, ChatMessage, ChatMute, ChatSettings } from "@/types/
 
 class RoomChatService {
   /**
-   * Everything the panel needs, in one round trip. `null` means 403 — the
-   * viewer may not read this room, which is a normal outcome for a spectator
-   * of a closed room and not a failure: the panel simply does not exist for
-   * them. Every other non-2xx still throws an `ApiError`, so a real outage
+   * Everything the panel needs, in one round trip. A spectator of a room closed
+   * to spectators gets the room as closed (no messages, `spectators_can_read`
+   * false), not an error. `null` means 403 -- the room refused the viewer
+   * outright (a draft session that is gone): the panel simply does not exist
+   * for them. Every other non-2xx still throws an `ApiError`, so a real outage
    * stays distinguishable from "no chat for you".
    *
    * `afterId` is the catch-up read: only what was said after the newest
