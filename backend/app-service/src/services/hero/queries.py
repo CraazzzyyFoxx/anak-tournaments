@@ -14,7 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import enums, pagination
 from shared.division_grid import DivisionGrid, division_case_expr
-from shared.services.division_grid.access import effective_division_number_expr
+from shared.services.division_grid.access import (
+    effective_division_number_expr,
+    tournament_effective_version_id_expr,
+)
 from shared.services.tournament.visibility import visible_tournament_ids_subquery
 from src.services.discipline_queries import DisciplineQueries
 
@@ -507,14 +510,9 @@ class HeroQueries(DisciplineQueries):
                 models.Player.name,
                 models.Player.role,
                 models.Player.sub_role,
+                models.Player.rank,
+                models.Player.tournament_id,
                 models.Tournament.discipline,
-                (
-                    # All-workspaces read: the player's division belongs to
-                    # their own tournament's grid, not to one request grid.
-                    division_case_expr(models.Player.rank, grid)
-                    if workspace_id is not None
-                    else effective_division_number_expr(models.Player.rank, models.Player.tournament_id)
-                ).label("div"),
                 models.Team.id.label("team_id"),
                 models.Team.name.label("team"),
                 sa.func.row_number()
@@ -530,6 +528,16 @@ class HeroQueries(DisciplineQueries):
             .where(models.Player.is_substitution.is_(False), models.Tournament.discipline == self.discipline)
         ).subquery("player_rn")
 
+        # The division and the grid it is a number on, for each player's latest row only. The all-workspaces read
+        # resolves both on the player's own tournament grid (correlated subqueries, so once per player rather than
+        # once per tournament played); a scoped read puts every rank on the one request grid.
+        if workspace_id is not None:
+            div_expr: sa.ColumnElement[typing.Any] = division_case_expr(player_rn_subq.c.rank, grid)
+            grid_version_expr: sa.ColumnElement[typing.Any] = sa.literal(grid.version_id, sa.Integer)
+        else:
+            div_expr = effective_division_number_expr(player_rn_subq.c.rank, player_rn_subq.c.tournament_id)
+            grid_version_expr = tournament_effective_version_id_expr(player_rn_subq.c.tournament_id)
+
         player_latest_subq = (
             sa.select(
                 player_rn_subq.c.user_id,
@@ -537,7 +545,8 @@ class HeroQueries(DisciplineQueries):
                 player_rn_subq.c.role,
                 player_rn_subq.c.sub_role,
                 player_rn_subq.c.discipline,
-                player_rn_subq.c.div,
+                div_expr.label("div"),
+                grid_version_expr.label("division_grid_version_id"),
                 player_rn_subq.c.team_id,
                 player_rn_subq.c.team,
             ).where(player_rn_subq.c.rn == 1)
@@ -562,6 +571,7 @@ class HeroQueries(DisciplineQueries):
                 player_latest_subq.c.sub_role,
                 player_latest_subq.c.discipline,
                 player_latest_subq.c.div,
+                player_latest_subq.c.division_grid_version_id,
                 player_latest_subq.c.team_id,
                 player_latest_subq.c.team,
                 stats_agg_cte.c.games_played,

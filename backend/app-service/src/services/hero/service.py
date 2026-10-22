@@ -9,6 +9,7 @@ from shared.division_grid import DivisionGrid
 from shared.repository import CatalogEntityRepository
 from shared.schemas.catalog import CatalogEntityRead
 from shared.schemas.role import RoleRef
+from shared.services.division_grid.access import load_division_grid_version_read_payloads
 from src import schemas
 
 from .queries import HeroQueries
@@ -33,7 +34,7 @@ class HeroService:
         params: schemas.CharacterLeaderboardParams,
         workspace_id: int | None = None,
         grid: DivisionGrid,
-    ) -> pagination.Paginated[schemas.CharacterLeaderboardEntry]:
+    ) -> schemas.CharacterLeaderboardResponse:
         """The ranking of one character of ``discipline``; an id of another game or kind is a 404, never an empty board."""
         entity = await CatalogEntityRepository("character", discipline=discipline).get(session, entity_id)
         if entity is None:
@@ -50,10 +51,19 @@ class HeroService:
             workspace_id=workspace_id,
             grid=grid,
         )
-        return pagination.Paginated(
+        # Every grid the page's divisions are numbers on, once each (cached reads, one query for the misses).
+        grid_payloads = await load_division_grid_version_read_payloads(
+            session,
+            {row.division_grid_version_id for row in rows if row.division_grid_version_id is not None},
+        )
+        return schemas.CharacterLeaderboardResponse(
             page=params.page,
             per_page=params.per_page,
             total=total,
+            division_grids=[
+                schemas.DivisionGridVersionRead.model_validate(grid_payloads[version_id])
+                for version_id in sorted(grid_payloads)
+            ],
             results=[
                 schemas.CharacterLeaderboardEntry(
                     rank=row.rank,
@@ -62,6 +72,7 @@ class HeroService:
                     player_name=row.player_name,
                     role=RoleRef.of(discipline_spec(row.discipline).rated_dimension.code, row.role, row.sub_role),
                     div=row.div,
+                    division_grid_version_id=row.division_grid_version_id,
                     team=row.team,
                     team_id=row.team_id,
                     games_played=int(row.games_played),

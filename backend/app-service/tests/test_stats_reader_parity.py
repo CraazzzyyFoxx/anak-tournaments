@@ -271,6 +271,10 @@ def _leaderboard_page(page: Any) -> dict[str, Any]:
     result = _json(page)
     # SQL orders by rank only; retain ranks, stabilize equal-rank peers.
     result["results"].sort(key=lambda row: (row["rank"], row["user_id"]))
+    # The grid each row's division lives on, and those grids; not reader output the frozen capture had.
+    del result["division_grids"]
+    for row in result["results"]:
+        del row["division_grid_version_id"]
     return result
 
 
@@ -1068,6 +1072,47 @@ def test_native_ow_readers_exclude_same_player_foreign_discipline(
                 == []
             )
             await session.rollback()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("workspace_scoped", [False, True])
+def test_hero_leaderboard_ships_the_grid_each_division_is_a_number_on(
+    stats_parity_database: tuple[str, dict[str, int]],
+    workspace_scoped: bool,
+) -> None:
+    """A row's ``div`` names its grid, and the page carries that grid once, in both workspace scopes."""
+    from shared.division_grid import DivisionGrid
+    from shared.services.division_grid.access import tournament_effective_version_id_expr
+
+    url, ids = stats_parity_database
+
+    async def run() -> None:
+        configure_test_cache()
+        async with _database_session(url) as session:
+            # A real grid version for the scoped read: the one the seed tournament resolves to.
+            version_id = await session.scalar(
+                sa.select(tournament_effective_version_id_expr(sa.literal(ids["tournament"])))
+            )
+            assert version_id is not None
+            page = await heroes.get_hero_leaderboard(
+                session,
+                discipline=OW,
+                entity_id=ids["hero"],
+                params=schemas.CharacterLeaderboardParams(per_page=100, stat=enums.LogStatsName.Eliminations),
+                workspace_id=ids["workspace"] if workspace_scoped else None,
+                grid=DivisionGrid(version_id=version_id, tiers=DEFAULT_GRID.tiers),
+            )
+            assert page.results
+            grids = {grid.id: grid for grid in page.division_grids}
+            assert len(grids) == len(page.division_grids)
+            assert {row.division_grid_version_id for row in page.results} == set(grids)
+            for row in page.results:
+                assert row.division_grid_version_id is not None
+                if workspace_scoped:
+                    assert row.division_grid_version_id == version_id
+                else:
+                    assert row.div in {tier.number for tier in grids[row.division_grid_version_id].tiers}
 
     asyncio.run(run())
 

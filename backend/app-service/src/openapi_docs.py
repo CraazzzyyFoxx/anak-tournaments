@@ -46,7 +46,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.app.statistics.character_leaderboard": {
         "summary": "Character leaderboard",
-        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated player leaderboard for one character of the path discipline, resolved against the workspace context and its division grid. 404 when the id is not a character of that discipline.",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated player leaderboard for one character of the path discipline, resolved against the workspace context and its division grid. A row's `div` is a number on the grid named by its `division_grid_version_id`: the workspace grid in a scoped read, the player's latest tournament grid with `workspace_id=all`; every referenced grid is returned once in `division_grids`. 404 when the id is not a character of that discipline.",
     },
     "rpc.app.statistics.admin_dashboard": {
         "summary": "Organizer dashboard",

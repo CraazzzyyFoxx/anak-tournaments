@@ -72,7 +72,7 @@ OPERATIONS: dict[str, Op] = {
         response=Paginated[schemas.CharacterPlaytime], query=schemas.CharacterPlaytimeQueryPaginationParams
     ),
     "rpc.app.statistics.character_leaderboard": Op(
-        response=Paginated[schemas.CharacterLeaderboardEntry], query=schemas.CharacterLeaderboardQueryParams
+        response=schemas.CharacterLeaderboardResponse, query=schemas.CharacterLeaderboardQueryParams
     ),
     "rpc.app.statistics.admin_dashboard": Op(response=schemas.AdminDashboard, query_params=(_WS_REQUIRED,)),
     "rpc.app.statistics.admin_dashboard_trends": Op(

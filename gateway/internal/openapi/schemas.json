@@ -1865,7 +1865,7 @@
       "summary": "Most-champion players"
     },
     "rpc.app.statistics.character_leaderboard": {
-      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated player leaderboard for one character of the path discipline, resolved against the workspace context and its division grid. 404 when the id is not a character of that discipline.",
+      "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated player leaderboard for one character of the path discipline, resolved against the workspace context and its division grid. A row's `div` is a number on the grid named by its `division_grid_version_id`: the workspace grid in a scoped read, the player's latest tournament grid with `workspace_id=all`; every referenced grid is returned once in `division_grids`. 404 when the id is not a character of that discipline.",
       "query_params": [
         {
           "name": "page",
@@ -1935,7 +1935,7 @@
       ],
       "response": {
         "array": false,
-        "ref": "app.Paginated_CharacterLeaderboardEntry_"
+        "ref": "app.CharacterLeaderboardResponse"
       },
       "summary": "Character leaderboard"
     },
@@ -15039,6 +15039,18 @@
           "title": "Div",
           "type": "integer"
         },
+        "division_grid_version_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Division Grid Version Id"
+        },
         "games_played": {
           "title": "Games Played",
           "type": "integer"
@@ -15253,6 +15265,45 @@
         }
       },
       "title": "CharacterLeaderboardQueryParams",
+      "type": "object"
+    },
+    "app.CharacterLeaderboardResponse": {
+      "description": "One character's leaderboard page plus every division grid its rows' ``div`` refers to.",
+      "properties": {
+        "division_grids": {
+          "items": {
+            "$ref": "#/components/schemas/app.DivisionGridVersionRead"
+          },
+          "title": "Division Grids",
+          "type": "array"
+        },
+        "page": {
+          "title": "Page",
+          "type": "integer"
+        },
+        "per_page": {
+          "title": "Per Page",
+          "type": "integer"
+        },
+        "results": {
+          "items": {
+            "$ref": "#/components/schemas/app.CharacterLeaderboardEntry"
+          },
+          "title": "Results",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "page",
+        "per_page",
+        "total",
+        "results"
+      ],
+      "title": "CharacterLeaderboardResponse",
       "type": "object"
     },
     "app.CharacterPlaytime": {
@@ -18244,37 +18295,6 @@
         "results"
       ],
       "title": "Paginated[CatalogEntityRead]",
-      "type": "object"
-    },
-    "app.Paginated_CharacterLeaderboardEntry_": {
-      "properties": {
-        "page": {
-          "title": "Page",
-          "type": "integer"
-        },
-        "per_page": {
-          "title": "Per Page",
-          "type": "integer"
-        },
-        "results": {
-          "items": {
-            "$ref": "#/components/schemas/app.CharacterLeaderboardEntry"
-          },
-          "title": "Results",
-          "type": "array"
-        },
-        "total": {
-          "title": "Total",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "page",
-        "per_page",
-        "total",
-        "results"
-      ],
-      "title": "Paginated[CharacterLeaderboardEntry]",
       "type": "object"
     },
     "app.Paginated_CharacterPlaytime_": {

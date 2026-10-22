@@ -93,6 +93,9 @@ class CharacterLeaderboardEntry(BaseModel):
     player_name: str
     role: RoleRef | None = None
     div: int
+    #: Which grid ``div`` is a number on: the request's workspace grid in a scoped read, the player's own latest
+    #: tournament grid in the all-workspaces read. The grids ship once per page in ``division_grids``.
+    division_grid_version_id: int | None = None
     team: str | None = None
     team_id: int | None = None
     games_played: int
