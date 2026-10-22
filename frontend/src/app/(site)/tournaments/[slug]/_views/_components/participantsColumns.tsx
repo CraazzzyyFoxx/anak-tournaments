@@ -5,7 +5,7 @@ import { Crown } from "lucide-react";
 import type { RegistrationForm } from "@/types/registration.types";
 import { answerSearchText } from "@/lib/forms/answers";
 import { identityKey, identityMaxCount, isBuiltinKey, isGameIdentityKey } from "@/lib/forms/builtin-keys";
-import type { LadderedOntology } from "@/lib/roster/ontology";
+import { showsRoles, type LadderedOntology } from "@/lib/roster/ontology";
 import type { CatalogEntityChip } from "@/types/catalog.types";
 
 import {
@@ -162,7 +162,13 @@ export function buildParticipantColumns(
     return BUILT_IN_FIELD_DEFS[key];
   };
 
+  // A one-role game names no role (the single-role rule): its roles column would be one identical glyph per row, so
+  // it is not built -- no header, no search, no picker entry. Only a loaded ontology can say so; while it loads the
+  // column stays, so a many-role roster does not shift when the metadata lands.
+  const namesRoles = owner.ontology === null || showsRoles(owner.ontology);
+
   const pushBuiltIn = (key: string, label: string, defaultVisible: boolean) => {
+    if (key === "roles" && !namesRoles) return;
     const def = builtInDef(key);
     if (!def) return;
     columns.push({

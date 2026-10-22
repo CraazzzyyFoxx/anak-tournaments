@@ -7,6 +7,7 @@ import en from "@/i18n/messages/en.json";
 import type { FormField } from "@/types/forms.types";
 import type { RegistrationForm } from "@/types/registration.types";
 
+import { DEADLOCK_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import { buildParticipantColumns } from "./participantsColumns";
 
 const t = ((key: string) => key) as never;
@@ -249,5 +250,24 @@ describe("participant column model", () => {
       { discipline: "lol", identityProvider: null, ontology: null }
     ).map((column) => column.id);
     expect(ids).not.toContain("_identity");
+  });
+
+  it("builds no roles column for a one-role game, and keeps it for a game with several", () => {
+    const asksRoles = form([field("roles", { params: { top_heroes: { enabled: true, required: false, max: 3 } } })]);
+    for (const candidate of [asksRoles, null]) {
+      const deadlock = buildParticipantColumns(candidate, t, {
+        discipline: "deadlock",
+        identityProvider: "steam",
+        ontology: DEADLOCK_METADATA,
+      }).map((column) => column.id);
+      expect(deadlock).not.toContain("roles");
+      // The heroes a player brings still say something when every player has the same role.
+      expect(deadlock).toContain("top_heroes");
+
+      const overwatch = buildParticipantColumns(candidate, t, { ...OWNER, ontology: OW_METADATA }).map(
+        (column) => column.id,
+      );
+      expect(overwatch).toContain("roles");
+    }
   });
 });
