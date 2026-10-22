@@ -5,9 +5,10 @@ import { enableGames, seedModeAndMap, setMapPool } from "../support/workspace";
 
 const ROLES_FORM: FormSchema = { schema_version: 1, sections: [{ key: "main", fields: [{ key: "roles", kind: "builtin", required: true, editable: true }] }] };
 
+// LoL draws each role's glyph; Deadlock has one role, so it shows no role glyph and no role column (5dcbea968).
 for (const { game, role, roleLabel } of [
   { game: "lol", role: "jungle", roleLabel: "Jungle" },
-  { game: "deadlock", role: "agent", roleLabel: "Agent" },
+  { game: "deadlock", role: "agent", roleLabel: null },
 ] as const) {
   test(`${game}: the public tournament and participants pages render the game's roles`, async ({ page, adminApi, makeUser }) => {
     const ws = await createWorkspace(adminApi);
@@ -22,7 +23,11 @@ for (const { game, role, roleLabel } of [
     await openPage(page, `/tournaments/${t.slug}/participants`);
     // Rows are keyed by the game handle (none asked here); the role glyph carries the game's label.
     await expect(page.getByText("1 participant shown")).toBeVisible();
-    await expect(page.getByRole("img", { name: roleLabel }).first()).toBeVisible();
+    if (roleLabel) {
+      await expect(page.getByRole("img", { name: roleLabel }).first()).toBeVisible();
+    } else {
+      await expect(page.getByRole("columnheader", { name: "Roles" }), "a one-role game has no role column").toHaveCount(0);
+    }
   });
 }
 

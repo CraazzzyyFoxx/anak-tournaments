@@ -147,6 +147,7 @@ export const ROUTES: PageRoute[] = [
   { file: "balancer/page.tsx", access: "admin", url: (d) => `/balancer?tournament=${d.tournaments.live.id}` },
   { file: "balancer/mix/page.tsx", access: "public", url: () => "/balancer/mix" },
   { file: "balancer/mix/[gameId]/page.tsx", access: "public", url: (d) => `/balancer/mix/${d.mixId}` },
+  { file: "balancer/mix/[gameId]/lobby/[letter]/page.tsx", access: "public", url: (d) => `/balancer/mix/${d.mixId}/lobby/a` },
   { file: "draft/[id]/page.tsx", access: "public", url: (d) => `/draft/${d.draft.id}` },
 
   // ── admin ─────────────────────────────────────────────────────────────

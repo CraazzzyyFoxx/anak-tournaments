@@ -48,10 +48,10 @@ const ADMIN_PAGES: [string, string | RegExp][] = [
   ["/admin/content/gamemodes", "Game content"],
   ["/admin/content/unresolved", "Game content"],
   ["/admin/members", "Members"],
-  ["/admin/access/roles", "Roles"],
-  ["/admin/access/permissions", "Permissions"],
-  ["/admin/access/api-keys", "API keys"],
-  ["/admin/access/sessions", "Sessions"],
+  ["/admin/access/roles", "Access"],
+  ["/admin/access/permissions", "Access"],
+  ["/admin/access/api-keys", "Access"],
+  ["/admin/access/sessions", "Access"],
   ["/admin/people", "People"],
 ];
 
@@ -67,7 +67,8 @@ test("workspace admin pages render for a multi-game workspace", async ({ page, c
   await openPage(page, "/admin/settings/divisions");
   for (const game of ["Overwatch", "League of Legends", "Deadlock"]) await expect(page.getByText(game, { exact: true }).first()).toBeVisible();
   await openPage(page, "/admin/settings/sub-roles");
-  for (const role of ["Tank", "Jungle", "Agent"]) await expect(page.getByPlaceholder(`New sub-role for ${role}`)).toBeVisible();
+  for (const role of ["Tank", "Jungle", "Agent"]) await expect(page.getByText(role, { exact: true }).first()).toBeVisible();
+  await expect(page.getByPlaceholder("Add a sub-role…")).toHaveCount(3 + 5 + 1);
 });
 
 test("the dashboard shows every game's tournaments", async ({ page, context, adminApi }) => {

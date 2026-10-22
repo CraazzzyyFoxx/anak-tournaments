@@ -19,6 +19,8 @@ const IGNORED_CONSOLE = [
   /webpack-hmr|turbopack-hmr|_next\/webpack-hmr/,
   /Failed to load resource: .*(s3\.invalid|favicon)/,
   /Failed to load resource: .*401.* @ \S*\/(api\/v1\/auth\/me|auth\/refresh)(\?|$)/,
+  // AchievementArt tries `/achievements/<slug>.webp` and falls back to a monogram by design.
+  /Failed to load resource: .*400.* @ \S*\/_next\/image\?url=%2Fachievements%2F/,
 ];
 
 type Fixtures = {
@@ -83,9 +85,10 @@ export const test = base.extend<Fixtures, WorkerFixtures>({
       expect(errors, "page errors / console errors during the test").toEqual([]);
     }
   },
-  // The default page is the platform admin, on a session of its own.
-  context: async ({ context, admin }, use) => {
-    await signIn(context, admin);
+  // In the browser projects the default page is the platform admin, on a
+  // session of its own; an `api` spec's page stays anonymous.
+  context: async ({ context, admin }, use, testInfo) => {
+    if (testInfo.project.name !== "api") await signIn(context, admin);
     await use(context);
   },
   page: async ({ page, pageErrors }, use) => {

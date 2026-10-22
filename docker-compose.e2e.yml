@@ -15,8 +15,9 @@ x-e2e-env: &e2e-env
   POSTGRES_USER: postgres
   POSTGRES_PASSWORD: postgres
   TRACING_ENABLED: "false"
-  # Uploads must never reach the real bucket the dev env names.
-  S3_ENDPOINT_URL: http://s3.invalid
+  # Uploads must never reach the real bucket the dev env names. A refused
+  # local port fails at once; an unresolvable host waits on DNS for ~50 s.
+  S3_ENDPOINT_URL: http://127.0.0.1:9
   OWT_APPLY_LEGACY_DROP: "1"
   # One login lasts the whole run: the suite holds plain bearer tokens.
   ACCESS_TOKEN_EXPIRE_MINUTES: "720"

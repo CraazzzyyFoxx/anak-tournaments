@@ -53,7 +53,10 @@ test("host runs a mix: balance → page options → swap → roll map → record
   expect(mix.lobbies[0].next_map_id).toBe(map.id);
   expect((await adminApi.raw("PUT", `${game}/next-map`, { body: { lobby_index: 0, map_id: 2_000_000_000 } })).status()).toBe(404);
 
-  mix = await adminApi.post<Mix>(`${game}/outcome`, { lobby_index: 0, variant_index: 0, outcome: { winner: 1 } });
+  expect((await adminApi.raw("POST", `${game}/outcome`, { body: { lobby_index: 0, outcome: { winner: 1 } } })).status(), "a result needs a started match").toBe(409);
+  await adminApi.post(`${game}/match/start`, { lobby_index: 0 });
+  expect((await adminApi.raw("POST", `${game}/teams/swap`, { body: { variant_index: 0, first_uuid: a, second_uuid: b } })).status(), "a live match's lineup is frozen").toBe(409);
+  mix = await adminApi.post<Mix>(`${game}/outcome`, { lobby_index: 0, outcome: { winner: 1 } });
   expect(mix.matches_count).toBe(1);
   expect(mix.lobbies[0].next_map_id, "a recorded match consumes the rolled map").toBeNull();
   type Match = { id: number; winner_slot: number | null; map_id: number | null; map_name: string | null; teams: { slot: number; name: string; score: number }[] };
@@ -75,7 +78,11 @@ test("host runs a mix: balance → page options → swap → roll map → record
   const rotation = await anonApi.get<{ workspace_member_id: number; games_played: number }[]>(`${game}/rotation`);
   expect(rotation.find((r) => r.workspace_member_id === Number(variants[0].benched[0]))?.games_played, "benched player sat out").toBe(0);
 
-  mix = await adminApi.post<Mix>(`${game}/outcome`, { lobby_index: 0, variant_index: 0, outcome: { winner: null } });
+  await adminApi.post(`${game}/match/start`, { lobby_index: 0 });
+  await adminApi.post(`${game}/match/cancel`, { lobby_index: 0 });
+  expect((await anonApi.get<Match[]>(`${game}/matches`)).length, "a cancelled match leaves no result").toBe(1);
+  await adminApi.post(`${game}/match/start`, { lobby_index: 0 });
+  mix = await adminApi.post<Mix>(`${game}/outcome`, { lobby_index: 0, outcome: { winner: null } });
   matches = await anonApi.get<Match[]>(`${game}/matches`);
   expect(matches.map((m) => m.winner_slot)).toEqual([null, 1]);
   expect((await adminApi.raw("DELETE", `${game}/matches/${matches[1].id}`)).status(), "only the lobby's newest match can be undone").toBe(409);
