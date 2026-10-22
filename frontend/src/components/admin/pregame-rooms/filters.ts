@@ -26,10 +26,10 @@ export function pregameRoomFilterDefs(rooms: readonly PregameRoomRow[], t: (key:
   }
 
   const defs: FilterDef[] = [
-    { key: "attention", label: t("attention"), kind: "toggle" },
+    { key: "attention", label: t("attentionColumn"), kind: "toggle" },
     // Multi rather than single: "who is still in veto or bans" is the question
     // an organizer actually asks before a round starts.
-    { key: "phase", label: t("phase"), kind: "multi", options: [...phases.values()] }
+    { key: "phase", label: t("phaseColumn"), kind: "multi", options: [...phases.values()] }
   ];
   if (stages.size > 1) {
     defs.push({ key: "stage", label: t("stage"), kind: "single", options: [...stages.values()] });
