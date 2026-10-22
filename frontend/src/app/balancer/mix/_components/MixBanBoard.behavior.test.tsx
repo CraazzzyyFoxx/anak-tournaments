@@ -62,7 +62,13 @@ vi.mock("@/services/discipline.service", () => ({
     }),
   },
 }));
-vi.mock("@/hooks/useRealtimeTopic", () => ({ useRealtimeTopic: vi.fn() }));
+/** Topic -> the board's subscription callbacks, so a case can confirm a subscription the way the hub would. */
+const subscriptions = new Map<string, { onEvent: () => void; onSubscribed?: () => void }>();
+vi.mock("@/hooks/useRealtimeTopic", () => ({
+  useRealtimeTopic: (topic: string, onEvent: () => void, _deps: unknown, onSubscribed?: () => void) => {
+    subscriptions.set(topic, { onEvent, onSubscribed });
+  },
+}));
 vi.mock("@/lib/notify", () => ({
   notify: { apiError: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
@@ -110,14 +116,14 @@ function pool(): PickBanEntry[] {
   }));
 }
 
-/** The hero room as the host reads it: the first ban open, or the room after a host cancelled it. */
-function heroState(status: "active" | "cancelled"): PickBanState {
-  const open = status === "active";
+/** The hero room as the host reads it: the first ban open (or held by a host), or the room after a host cancelled it. */
+function heroState(status: "active" | "paused" | "cancelled"): PickBanState {
+  const open = status !== "cancelled";
   return {
     session: {
       id: 1,
       kind: "hero",
-      status,
+      status: open ? "active" : "cancelled",
       first_team_id: 71,
       awaiting_choice: false,
       pending_chooser_team_id: null,
@@ -125,7 +131,7 @@ function heroState(status: "active" | "cancelled"): PickBanState {
       slot_reserves: null,
       started_at: "2026-10-22T20:00:00Z",
       current_step_started_at: null,
-      paused_at: null,
+      paused_at: status === "paused" ? "2026-10-22T20:01:00Z" : null,
     },
     readiness: { 71: true, 72: true },
     sequence: [BAN],
@@ -156,6 +162,7 @@ let root: Root;
 let client: QueryClient;
 
 beforeEach(() => {
+  subscriptions.clear();
   vi.clearAllMocks();
   Element.prototype.scrollIntoView = vi.fn();
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -233,5 +240,19 @@ describe("MixBanBoard", () => {
     // The room re-renders while its lobby reloads, with a new callback each time: still one refresh.
     await render(() => (refreshes += 1));
     expect(refreshes).toBe(1);
+  });
+
+  it("catches up on a resume made before its live subscription landed", async () => {
+    // The first read finds the room held; a host resumes it before this page subscribes, and a fresh topic replays
+    // nothing -- so the board must re-read on the subscription itself.
+    getPickBanState.mockResolvedValue(heroState("paused"));
+    await render(() => {});
+    expect(document.body.textContent).toContain(en.pickBan.room.pausedBanner);
+
+    getPickBanState.mockResolvedValue(heroState("active"));
+    await act(async () => subscriptions.get("encounter:50:pick-ban:hero")?.onSubscribed?.());
+    await settle();
+
+    expect(document.body.textContent).not.toContain(en.pickBan.room.pausedBanner);
   });
 });
