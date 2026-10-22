@@ -633,4 +633,5 @@ export const ROUTES: Route[] = [
   {"method":"PUT","pattern":"/api/v1/workspaces/{workspace_id}/team-formats/{discipline}","auth":"required","success":200,"table":"app.WorkspaceWriteRoutes"},
   {"method":"POST","pattern":"/api/v1/workspaces/{workspace_id}/verification","auth":"required","success":200,"table":"app.WorkspaceWriteRoutes"},
   {"method":"GET","pattern":"/api/v1/workspaces/by-host","auth":"none","success":200,"table":"app.ReadRoutes"},
+  {"method":"GET","pattern":"/api/v1/workspaces/by-slug","auth":"optional","success":200,"table":"app.ReadRoutes"},
 ];

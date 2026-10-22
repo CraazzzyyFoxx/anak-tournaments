@@ -4461,7 +4461,7 @@ export interface paths {
         };
         /**
          * List workspaces
-         * @description Permission: public; no authentication required — an optional identity only widens `scope=admin`/`all`. Lists workspaces (unpaginated). `scope=public` (the default) is the home-page directory and is byte-identical for every caller, superusers included: hidden and `unverified` workspaces never appear. `scope=admin` is the management list -- every workspace for a superuser, otherwise only the caller's own memberships at any tier. `scope=all` is that unioned with the public directory (the workspace switcher). Any other value is a 422.
+         * @description Permission: public; no authentication required — an optional identity only widens `scope=admin`/`all`. Lists workspaces (unpaginated). `scope=public` (the default) is the home-page directory and is byte-identical for every caller, superusers included: hidden and `unverified` workspaces never appear. `scope=admin` is the management list -- every workspace for a superuser, otherwise only the caller's own memberships at any tier. `scope=all` is that unioned with the public directory (the workspace switcher). Any other value is a 422. Rows carry no `effective_division_grid_versions`: read one workspace for its grids.
          *
          *     RPC subject: `rpc.app.workspaces.list`
          */
@@ -4494,6 +4494,28 @@ export interface paths {
          *     RPC subject: `rpc.app.workspaces.by_host`
          */
         get: operations["get__api_v1_workspaces_by_host"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workspaces/by-slug": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get workspace by slug
+         * @description Permission: public; no authentication required -- an optional identity widens what resolves. The community page's lookup: the workspace whose slug is `slug`, with its grids, when `scope=all` of the list would include it for the caller (listed, one of their memberships, or any for a superuser); 404 otherwise, so a hidden or `unverified` workspace never opens to anyone else by its slug.
+         *
+         *     RPC subject: `rpc.app.workspaces.by_slug`
+         */
+        get: operations["get__api_v1_workspaces_by_slug"];
         put?: never;
         post?: never;
         delete?: never;
@@ -14850,7 +14872,175 @@ export interface components {
             /** Workspace Id */
             workspace_id: number;
         };
-        /** WorkspaceRead */
+        /**
+         * WorkspaceListItem
+         * @description One row of ``workspaces.list``: everything but the grids, which a list of every workspace cannot afford.
+         */
+        "app.WorkspaceListItem": {
+            /**
+             * About
+             * @default null
+             */
+            about: string | null;
+            /**
+             * Boosty Url
+             * @default null
+             */
+            boosty_url: string | null;
+            /**
+             * Brand Accent
+             * @default null
+             */
+            brand_accent: string | null;
+            /**
+             * Brand Background
+             * @default null
+             */
+            brand_background: string | null;
+            /**
+             * Brand Border
+             * @default null
+             */
+            brand_border: string | null;
+            /**
+             * Brand Destructive
+             * @default null
+             */
+            brand_destructive: string | null;
+            /**
+             * Brand Foreground
+             * @default null
+             */
+            brand_foreground: string | null;
+            /**
+             * Brand Muted
+             * @default null
+             */
+            brand_muted: string | null;
+            /**
+             * Brand Primary
+             * @default null
+             */
+            brand_primary: string | null;
+            /**
+             * Brand Ring
+             * @default null
+             */
+            brand_ring: string | null;
+            /**
+             * Brand Secondary
+             * @default null
+             */
+            brand_secondary: string | null;
+            /**
+             * Brand Surface
+             * @default null
+             */
+            brand_surface: string | null;
+            /**
+             * Branding Enabled
+             * @default false
+             */
+            branding_enabled: boolean;
+            /**
+             * Custom Domain
+             * @default null
+             */
+            custom_domain: string | null;
+            /**
+             * Custom Domain Verification Token
+             * @default null
+             */
+            custom_domain_verification_token: string | null;
+            /**
+             * Custom Domain Verified At
+             * @default null
+             */
+            custom_domain_verified_at: string | null;
+            /** Default Division Grid Versions */
+            default_division_grid_versions?: {
+                [key: string]: number;
+            };
+            /** Description */
+            description: string | null;
+            /** Disciplines Enabled */
+            disciplines_enabled: string[];
+            /**
+             * Discord Guild Id
+             * @default null
+             */
+            discord_guild_id: string | null;
+            /**
+             * Discord Guild Verified At
+             * @default null
+             */
+            discord_guild_verified_at: string | null;
+            /**
+             * Discord Url
+             * @default null
+             */
+            discord_url: string | null;
+            /** Icon Url */
+            icon_url: string | null;
+            /** Id */
+            id: number;
+            /** Is Active */
+            is_active: boolean;
+            /**
+             * Is Hidden
+             * @default false
+             */
+            is_hidden: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Newcomer Scope
+             * @default global
+             * @enum {string}
+             */
+            newcomer_scope: AppWorkspaceListItemNewcomer_scope;
+            /**
+             * Seo Description
+             * @default null
+             */
+            seo_description: string | null;
+            /**
+             * Seo Title
+             * @default null
+             */
+            seo_title: string | null;
+            /** Slug */
+            slug: string;
+            /**
+             * Subdomain
+             * @default null
+             */
+            subdomain: string | null;
+            /**
+             * Tagline
+             * @default null
+             */
+            tagline: string | null;
+            /**
+             * Timezone
+             * @default Europe/Moscow
+             */
+            timezone: string;
+            /**
+             * Twitch Url
+             * @default null
+             */
+            twitch_url: string | null;
+            /**
+             * Verification Status
+             * @default unverified
+             */
+            verification_status: string;
+        };
+        /**
+         * WorkspaceRead
+         * @description One workspace, with the effective division grid of each of its games.
+         */
         "app.WorkspaceRead": {
             /**
              * About
@@ -46624,7 +46814,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.WorkspaceRead"][];
+                    "application/json": components["schemas"]["app.WorkspaceListItem"][];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -46765,6 +46955,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    get__api_v1_workspaces_by_slug: {
+        parameters: {
+            query?: {
+                slug?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["app.WorkspaceRead"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -79574,6 +79824,10 @@ export enum AppUserCompareMetricBetter_worseAnyOf0 {
     better = "better",
     worse = "worse",
     equal = "equal"
+}
+export enum AppWorkspaceListItemNewcomer_scope {
+    global = "global",
+    workspace = "workspace"
 }
 export enum AppWorkspaceReadNewcomer_scope {
     global = "global",

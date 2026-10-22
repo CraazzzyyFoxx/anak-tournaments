@@ -3855,6 +3855,23 @@
       ],
       "summary": "Resolve workspace by host"
     },
+    "rpc.app.workspaces.by_slug": {
+      "description": "Permission: public; no authentication required -- an optional identity widens what resolves. The community page's lookup: the workspace whose slug is `slug`, with its grids, when `scope=all` of the list would include it for the caller (listed, one of their memberships, or any for a superuser); 404 otherwise, so a hidden or `unverified` workspace never opens to anyone else by its slug.",
+      "query_params": [
+        {
+          "name": "slug",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "app.WorkspaceRead"
+      },
+      "summary": "Get workspace by slug"
+    },
     "rpc.app.workspaces.clear_custom_domain": {
       "description": "Permission: workspace `workspace.update`. Removes the custom domain, its verification token, and verified_at; 404 if workspace missing.",
       "response": {
@@ -3920,10 +3937,10 @@
       "summary": "Upload workspace icon"
     },
     "rpc.app.workspaces.list": {
-      "description": "Permission: public; no authentication required \u2014 an optional identity only widens `scope=admin`/`all`. Lists workspaces (unpaginated). `scope=public` (the default) is the home-page directory and is byte-identical for every caller, superusers included: hidden and `unverified` workspaces never appear. `scope=admin` is the management list -- every workspace for a superuser, otherwise only the caller's own memberships at any tier. `scope=all` is that unioned with the public directory (the workspace switcher). Any other value is a 422.",
+      "description": "Permission: public; no authentication required \u2014 an optional identity only widens `scope=admin`/`all`. Lists workspaces (unpaginated). `scope=public` (the default) is the home-page directory and is byte-identical for every caller, superusers included: hidden and `unverified` workspaces never appear. `scope=admin` is the management list -- every workspace for a superuser, otherwise only the caller's own memberships at any tier. `scope=all` is that unioned with the public directory (the workspace switcher). Any other value is a 422. Rows carry no `effective_division_grid_versions`: read one workspace for its grids.",
       "response": {
         "array": true,
-        "ref": "app.WorkspaceRead"
+        "ref": "app.WorkspaceListItem"
       },
       "summary": "List workspaces"
     },
@@ -24169,6 +24186,381 @@
       "title": "WorkspaceDiscordGuildsRead",
       "type": "object"
     },
+    "app.WorkspaceListItem": {
+      "description": "One row of ``workspaces.list``: everything but the grids, which a list of every workspace cannot afford.",
+      "properties": {
+        "about": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "About"
+        },
+        "boosty_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Boosty Url"
+        },
+        "brand_accent": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brand Accent"
+        },
+        "brand_background": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brand Background"
+        },
+        "brand_border": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brand Border"
+        },
+        "brand_destructive": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brand Destructive"
+        },
+        "brand_foreground": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brand Foreground"
+        },
+        "brand_muted": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brand Muted"
+        },
+        "brand_primary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brand Primary"
+        },
+        "brand_ring": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brand Ring"
+        },
+        "brand_secondary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brand Secondary"
+        },
+        "brand_surface": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Brand Surface"
+        },
+        "branding_enabled": {
+          "default": false,
+          "title": "Branding Enabled",
+          "type": "boolean"
+        },
+        "custom_domain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Custom Domain"
+        },
+        "custom_domain_verification_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Custom Domain Verification Token"
+        },
+        "custom_domain_verified_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Custom Domain Verified At"
+        },
+        "default_division_grid_versions": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Default Division Grid Versions",
+          "type": "object"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Description"
+        },
+        "disciplines_enabled": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Disciplines Enabled",
+          "type": "array"
+        },
+        "discord_guild_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discord Guild Id"
+        },
+        "discord_guild_verified_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discord Guild Verified At"
+        },
+        "discord_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Discord Url"
+        },
+        "icon_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Icon Url"
+        },
+        "id": {
+          "title": "Id",
+          "type": "integer"
+        },
+        "is_active": {
+          "title": "Is Active",
+          "type": "boolean"
+        },
+        "is_hidden": {
+          "default": false,
+          "title": "Is Hidden",
+          "type": "boolean"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "newcomer_scope": {
+          "default": "global",
+          "enum": [
+            "global",
+            "workspace"
+          ],
+          "title": "Newcomer Scope",
+          "type": "string"
+        },
+        "seo_description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seo Description"
+        },
+        "seo_title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seo Title"
+        },
+        "slug": {
+          "title": "Slug",
+          "type": "string"
+        },
+        "subdomain": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Subdomain"
+        },
+        "tagline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tagline"
+        },
+        "timezone": {
+          "default": "Europe/Moscow",
+          "title": "Timezone",
+          "type": "string"
+        },
+        "twitch_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Twitch Url"
+        },
+        "verification_status": {
+          "default": "unverified",
+          "title": "Verification Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "slug",
+        "name",
+        "description",
+        "icon_url",
+        "is_active",
+        "disciplines_enabled"
+      ],
+      "title": "WorkspaceListItem",
+      "type": "object"
+    },
     "app.WorkspaceMemberAutofillResult": {
       "description": "Result of the ``members_autofill_roles`` action: how many role-less\nmembers were granted the baseline ``member`` role.",
       "properties": {
@@ -24525,6 +24917,7 @@
       "type": "object"
     },
     "app.WorkspaceRead": {
+      "description": "One workspace, with the effective division grid of each of its games.",
       "properties": {
         "about": {
           "anyOf": [
