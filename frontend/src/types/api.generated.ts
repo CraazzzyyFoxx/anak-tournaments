@@ -15726,6 +15726,11 @@ export interface components {
             created_at: string | null;
             /** Current Pick Id */
             current_pick_id: number | null;
+            /**
+             * Custom Game Id
+             * @default null
+             */
+            custom_game_id: number | null;
             /** Discipline */
             discipline: string;
             /** Export Status */
@@ -15735,6 +15740,11 @@ export interface components {
             format: components["schemas"]["balancer.DraftFormat"];
             /** Id */
             id: number;
+            /**
+             * Lobby Index
+             * @default null
+             */
+            lobby_index: number | null;
             /** Overtime Seconds */
             overtime_seconds: number;
             /** Pick Time Seconds */
@@ -15751,7 +15761,7 @@ export interface components {
             source_balance_id: number | null;
             status: components["schemas"]["balancer.DraftStatus"];
             /** Tournament Id */
-            tournament_id: number;
+            tournament_id: number | null;
             /** Version */
             version: number;
             /** Workspace Id */
@@ -16017,7 +16027,7 @@ export interface components {
             player_name: string | null;
             primary_role: components["schemas"]["balancer.RoleRef"] | null;
             /** Registration Id */
-            registration_id: number;
+            registration_id: number | null;
             /** Role Ranks */
             role_ranks?: {
                 [key: string]: number;
@@ -16250,6 +16260,11 @@ export interface components {
             created_at: string | null;
             /** Current Pick Id */
             current_pick_id: number | null;
+            /**
+             * Custom Game Id
+             * @default null
+             */
+            custom_game_id: number | null;
             /** Discipline */
             discipline: string;
             /** Export Status */
@@ -16259,6 +16274,11 @@ export interface components {
             format: components["schemas"]["balancer.DraftFormat"];
             /** Id */
             id: number;
+            /**
+             * Lobby Index
+             * @default null
+             */
+            lobby_index: number | null;
             /** Overtime Seconds */
             overtime_seconds: number;
             /** Pick Time Seconds */
@@ -16275,7 +16295,7 @@ export interface components {
             source_balance_id: number | null;
             status: components["schemas"]["balancer.DraftStatus"];
             /** Tournament Id */
-            tournament_id: number;
+            tournament_id: number | null;
             /** Version */
             version: number;
             /** Workspace Id */

@@ -23,8 +23,10 @@ from shared.disciplines import DISCIPLINES, rated_role_codes
 from shared.division_grid import DivisionGrid, ladder_grid
 from shared.domain.custom_game_round import winner_slot
 from shared.domain.encounter_scoring import WINS_END_FORMULA
+from shared.domain.member_rank import ResolvedRank
 from shared.domain.mix_lobby import LOBBY_LETTERS
 from shared.domain.pick_ban_rules import mix_ban_preset
+from shared.domain.roster import PlayerRoster, RosterRole
 from shared.rbac import assign_workspace_system_role
 from shared.repository import (
     CatalogEntityRepository,
@@ -1791,6 +1793,87 @@ class CustomGameService:
     async def host_points_per_win(self, session: AsyncSession, host_user_id: int | None) -> int:
         """How far a decided match moves this host's rank book; 0 means "not at all" (or the ranker moves it)."""
         return _points_per_win(await self._host_config(session, host_user_id))
+
+    async def draft_rosters(
+        self, session: AsyncSession, game: models.CustomGame, member_ids: Sequence[int]
+    ) -> tuple[dict[int, PlayerRoster], frozenset[int]]:
+        """The roles and ranks a mix draft reads for these members (spec §9.1), and which of them are away.
+
+        Ranks are the numbers the mix balance reads (``_lineup_nodes``): the host's book above the workspace canon
+        (``MIX_ORDER``), corrected by the hidden rating for a ranker host, on the roles the mix lets a member play --
+        their explicit order, else every rated role. Lenient like a clone: a member who left the workspace does not
+        resolve rather than failing the board. Away is reported, not filtered: a picked seat still renders.
+        """
+        ids = _uniq(member_ids)
+        if not ids:
+            return {}, frozenset()
+        wanted = set(ids)
+        rows = {
+            row.workspace_member_id: row
+            for row in await self.roster.list_for_game(session, game.id)
+            if row.workspace_member_id in wanted
+        }
+        found = await self.load_roster(
+            session,
+            workspace_id=game.workspace_id,
+            provider=DISCIPLINES[game.discipline].identity_provider,
+            member_ids=ids,
+        )
+        rated = list(rated_role_codes(game.discipline))
+        resolved = await self.ranks.resolve(
+            session,
+            workspace_id=game.workspace_id,
+            discipline=game.discipline,
+            members={member_id: member.player_id for member_id, member in found.items()},
+            roles=rated,
+            order=MIX_ORDER,
+            author_user_id=game.host_user_id,
+            grid=await self.grid(session, game),
+        )
+        if _uses_ranker(await self._host_config(session, game.host_user_id)):
+            effective = await self.ranker.effective_ratings(
+                session,
+                workspace_id=game.workspace_id,
+                discipline=game.discipline,
+                open_ranks={key: rank.value for key, rank in resolved.items() if rank.value is not None},
+            )
+            resolved = {
+                key: ResolvedRank(effective.get(key, rank.value), rank.source) for key, rank in resolved.items()
+            }
+        explicit = await self.player_roles.roles_for_players(
+            session, [row.id for row in rows.values() if row.role_selection_mode == MixRoleSelectionMode.EXPLICIT]
+        )
+        unranked = ResolvedRank(None, "none")
+        out: dict[int, PlayerRoster] = {}
+        for member_id, member in found.items():
+            row = rows.get(member_id)
+            order = (
+                explicit.get(row.id, [])
+                if row is not None and row.role_selection_mode == MixRoleSelectionMode.EXPLICIT
+                else rated
+            )
+            out[member_id] = PlayerRoster(
+                registration_id=None,
+                identity=member.identity,
+                display_name=member.display_name,
+                player_id=member.player_id,
+                auth_user_id=member.auth_user_id,
+                workspace_member_id=member_id,
+                roles=tuple(
+                    RosterRole(
+                        role=role,
+                        rank=(rank := resolved.get((member_id, role), unranked)).value,
+                        source=rank.source,
+                        is_primary=priority == 1,
+                        priority=priority,
+                        subrole=None,
+                    )
+                    for priority, role in enumerate(order, start=1)
+                ),
+                is_full_flex=bool(row is not None and row.is_flex),
+                player_name=member.player_name,
+            )
+        return out, frozenset(member_id for member_id, row in rows.items() if row.away)
 
     async def _lineup_nodes(
         self,

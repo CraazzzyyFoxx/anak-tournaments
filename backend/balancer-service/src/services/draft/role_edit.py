@@ -204,6 +204,9 @@ class DraftRoleEditService:
         preview_only: bool,
     ) -> schemas.DraftRoleEditResponse:
         """Preview a role addition, or write it and publish ``draft.player_updated``."""
+        if draft_session.tournament_id is None:
+            # A mix seat's ranks are the host's book, edited in the mix (spec §9.1), not a registration's roles.
+            raise _err("role_edit_tournament_only", "Edit a mix player's ranks in the mix", status_code=422)
         player = await self.players_repo.get_for_update(
             session, player_id, session_id=draft_session.id, options=loaders.player_options()
         )

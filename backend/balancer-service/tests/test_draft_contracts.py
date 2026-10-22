@@ -15,8 +15,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
-from types import SimpleNamespace
-
 from shared.core.enums import (  # noqa: E402
     DraftAutopickStrategy,
     DraftFormat,
@@ -629,8 +627,8 @@ class _BoardSession:
     ``scalar``: max(WorkspaceEvent.id) over the draft AND bracket topics, then
     the form version's ``schema_json`` (read only when some registration
     actually answered one).
-    ``execute``: teams, picks, players (repository ``list_by_session`` reads),
-    then the owning tournament for every later read.
+    ``execute``: teams, picks, players (repository ``list_by_session`` reads).
+    The owner reads (discipline, rated dimension) come off the session row itself.
     """
 
     def __init__(self, *, schema_json: dict | None, players: list) -> None:
@@ -641,7 +639,7 @@ class _BoardSession:
         return self._scalar.pop(0)
 
     async def execute(self, _statement) -> _ExecuteResult:
-        return _ExecuteResult(self._results.pop(0) if self._results else [SimpleNamespace(discipline="overwatch")])
+        return _ExecuteResult(self._results.pop(0))
 
 
 class _FakeRosters:
@@ -676,6 +674,7 @@ def _live_draft(session_id: int = 1) -> DraftSession:
         id=session_id,
         tournament_id=2,
         workspace_id=3,
+        discipline="overwatch",
         status=DraftStatus.LIVE.value,
         blocked_reason=None,
         format=DraftFormat.SNAKE.value,

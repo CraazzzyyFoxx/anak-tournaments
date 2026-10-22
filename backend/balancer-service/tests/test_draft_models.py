@@ -124,7 +124,7 @@ def test_unique_constraints_present() -> None:
 # row is draft state plus the FK, and these DB-free tests pin exactly that, so
 # a re-added column cannot pass unnoticed.
 # --------------------------------------------------------------------------- #
-def test_seat_is_anchored_on_a_registration_and_carries_no_roles_or_ranks() -> None:
+def test_seat_is_anchored_on_a_registration_or_a_member_and_carries_no_roles_or_ranks() -> None:
     columns = set(DraftPlayer.__table__.columns.keys())
 
     assert columns == {
@@ -144,7 +144,9 @@ def test_seat_is_anchored_on_a_registration_and_carries_no_roles_or_ranks() -> N
         "version",
     }
     registration_id = DraftPlayer.__table__.c.registration_id
-    assert registration_id.nullable is False
+    # A mix seat has no registration (spec §9.1): its member is the anchor, and a seat names at least one of the two.
+    assert registration_id.nullable is True
+    assert "ck_draft_player_identity" in {c.name for c in DraftPlayer.__table__.constraints}
     # RESTRICT: a registration is soft-deleted, so a hard delete is somebody
     # erasing a row a draft depends on. Refusing beats dropping draft history.
     assert registration_id.foreign_keys.pop().ondelete == "RESTRICT"

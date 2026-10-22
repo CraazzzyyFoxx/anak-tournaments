@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import enums
 from shared.models.encounter import Encounter, EncounterTeam, EncounterTeamMember, ScoringRule
-from shared.models.mix import CustomGame, CustomGameRound, CustomGameRoundMember
+from shared.models.mix import CustomGame, CustomGameLobby, CustomGameRound, CustomGameRoundMember
 from shared.testing.db import create_test_async_engine, ensure_test_postgres
 from src import schemas
 from src.services.admin.user_merge import UserMergeService
@@ -281,4 +281,35 @@ class UserMergeRosterTests(IsolatedAsyncioTestCase):
                 (both_seated, target_member.id, False, 2),
             },
             set(rows),
+        )
+
+    async def test_merging_onto_a_survivor_member_moves_a_mix_draft_seat(self):
+        """A mix seat has no registration: its member is its only identity, so the merge moves it to the survivor
+        before the duplicate member goes (the seat FK is NO ACTION, deferred)."""
+        source_member = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.source.id)
+        target_member = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.target.id)
+        mix_rule = ScoringRule(workspace_id=self.workspace.id, preset="wins", game_formula="win", end_formula=_WINS_END)
+        self.session.add_all([source_member, target_member, mix_rule])
+        await self.session.flush()
+        mix = CustomGame(workspace_id=self.workspace.id, name="Mix", scoring_rule_id=mix_rule.id)
+        self.session.add(mix)
+        await self.session.flush()
+        self.session.add(CustomGameLobby(custom_game_id=mix.id, lobby_index=0))
+        await self.session.flush()
+        draft = models.DraftSession(
+            custom_game_id=mix.id, lobby_index=0, workspace_id=self.workspace.id, discipline="overwatch"
+        )
+        self.session.add(draft)
+        await self.session.flush()
+        seat = models.DraftPlayer(session_id=draft.id, workspace_member_id=source_member.id)
+        self.session.add(seat)
+        await self.session.flush()
+
+        await self._merge()
+
+        self.assertEqual(
+            target_member.id,
+            await self.session.scalar(
+                sa.select(models.DraftPlayer.workspace_member_id).where(models.DraftPlayer.id == seat.id)
+            ),
         )

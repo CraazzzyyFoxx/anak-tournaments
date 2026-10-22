@@ -820,7 +820,8 @@ class UserMergeService:
         participation, or both active in the same encounter) is dropped, since
         it is the same person twice. The now seat-free source row is the one
         duplicate-identity row the user delete cascades away. The same holds for
-        ``mix.round_member`` rows (one per round and member).
+        ``mix.round_member`` rows (one per round and member) and ``draft.player``
+        seats (a mix seat has no registration to fall back to).
         """
         source_rows = (
             await session.execute(
@@ -920,6 +921,13 @@ class UserMergeService:
             await session.execute(
                 sa.update(round_member)
                 .where(round_member.workspace_member_id == source_member_id)
+                .values(workspace_member_id=target_member_id)
+                .execution_options(synchronize_session=False)
+            )
+            # Draft seats hang on the member the same way; a seat is moved, never dropped, because picks name it.
+            await session.execute(
+                sa.update(models.DraftPlayer)
+                .where(models.DraftPlayer.workspace_member_id == source_member_id)
                 .values(workspace_member_id=target_member_id)
                 .execution_options(synchronize_session=False)
             )

@@ -227,8 +227,7 @@ class DraftBoardService:
         levels are cached, so this is free on the hot board path.
         """
         shape = await self.feasibility.resolve_shape(session, draft_session)
-        owner = await loaders.tournament(session, draft_session)
-        return schemas.DraftSessionRead.from_session(draft_session, shape=shape, discipline=owner.discipline)
+        return schemas.DraftSessionRead.from_session(draft_session, shape=shape, discipline=draft_session.discipline)
 
     async def list_sessions(self, session: AsyncSession, tournament_id: int) -> list[schemas.DraftSessionRead]:
         """Every session of a tournament, newest first."""

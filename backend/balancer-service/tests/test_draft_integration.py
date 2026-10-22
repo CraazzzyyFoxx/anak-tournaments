@@ -1697,7 +1697,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 shape=_SHAPE,
             )
             captains = [seat for seat in await self._seats(s) if seat.draft_position is not None]
-            pool = await draft_rosters.pool(s, self.tournament_id)
+            pool = await draft_rosters.pool(s, draft)
             self.assertTrue(all(pool[seat.registration_id].player_id is not None for seat in captains))
             await s.commit()
             payload = {

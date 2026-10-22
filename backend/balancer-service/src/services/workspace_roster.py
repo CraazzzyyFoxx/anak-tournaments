@@ -66,6 +66,8 @@ class RosterMember:
     #: picked as a host or co-host, because there is nobody who could log in
     #: and pass the write check.
     auth_user_id: int | None = None
+    #: ``players.user.name`` -- the unique canonical name every profile link is built from (never a game handle).
+    player_name: str | None = None
 
     @property
     def handle(self) -> str | None:
@@ -156,6 +158,7 @@ def _roster_member(
         identity=PlayerIdentityRead.of(provider, handle),
         display_name=display_name or player_name,
         auth_user_id=auth_user_id,
+        player_name=player_name,
     )
 
 

@@ -122,19 +122,23 @@ class DraftSnapshot:
 
 @dataclass(frozen=True)
 class PoolSeat:
-    """One seat a seed creates: a pool registration, and whether it captains.
+    """One seat a seed creates: a pool registration (tournament) or workspace member (mix), and whether it captains.
 
-    All a seed carries. Roles, ranks, sub-role, flex and division are NOT
-    copied: the draft reads them from the registration through the engine, so
-    there is nothing here to go stale. ``captain_role`` is not a copy either: it
-    is the organizer's choice of which of the captain's roles they are seated
-    on (``None`` = their lead role).
+    All a seed carries. Roles, ranks, sub-role, flex and division are NOT copied: the draft reads them from the
+    owner's engine, so there is nothing here to go stale. ``captain_role`` is the organizer's choice of which of the
+    captain's roles they are seated on (``None`` = their lead role).
     """
 
-    registration_id: int
+    registration_id: int | None
     draft_position: int | None = None
     team_name: str | None = None
     captain_role: str | None = None
+    workspace_member_id: int | None = None
+
+    @property
+    def key(self) -> int:
+        """The seat's key in its owner's pool (``DraftRosterService.pool``): registration, else member."""
+        return self.registration_id if self.registration_id is not None else self.workspace_member_id
 
 
 # --- pick selection (domain/draft/rules.py) ----------------------------------

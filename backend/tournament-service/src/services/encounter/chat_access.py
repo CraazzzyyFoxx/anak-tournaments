@@ -15,12 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.services.chat import SPECTATOR_ROLE, ChatMembership, ChatRoom, ChatService
+from shared.services.mix_hosts import is_mix_host
 from shared.services.tournament.display_name import tournament_display_name
 from shared.services.tournament.visibility import ensure_tournament_viewable
 from src.core import auth
 from src.services.encounter.captain import captain_service
 from src.services.encounter.ffa import ffa_encounter_service
-from src.services.encounter.room_owner import is_mix_host, load_room_encounter
+from src.services.encounter.room_owner import load_room_encounter
 
 __all__ = ("EncounterChatAccess", "encounter_chat_service")
 

@@ -22,9 +22,10 @@ from shared.models.encounter.encounter import Encounter
 from shared.models.tournament.pick_ban import PickBanConfig, PickBanConfigItem
 from shared.repository import EncounterRepository
 from shared.rpc.identity import ensure_workspace_permission
+from shared.services.mix_hosts import is_mix_host
 from shared.services.tournament.visibility import ensure_tournament_viewable
 
-__all__ = ("ensure_room_organizer", "ensure_room_viewable", "is_mix_host", "load_room_encounter", "mix_ban_config")
+__all__ = ("ensure_room_organizer", "ensure_room_viewable", "load_room_encounter", "mix_ban_config")
 
 _encounters = EncounterRepository()
 
@@ -45,22 +46,6 @@ async def ensure_room_viewable(session: AsyncSession, auth_user: Any, encounter:
     """A tournament room is visible as its tournament is; a mix room to everyone (spec §4.4)."""
     if encounter.custom_game_id is None:
         await ensure_tournament_viewable(session, auth_user, encounter.tournament_id)
-
-
-async def is_mix_host(session: AsyncSession, auth_user: Any, custom_game_id: int) -> bool:
-    """Host, co-host or superuser of the mix -- the balancer's ``CustomGameService._writable`` audience."""
-    if auth_user.is_superuser:
-        return True
-    co_host = sa.exists().where(
-        models.CustomGameCoHost.custom_game_id == custom_game_id, models.CustomGameCoHost.user_id == auth_user.id
-    )
-    return bool(
-        await session.scalar(
-            sa.select(sa.or_(models.CustomGame.host_user_id == auth_user.id, co_host)).where(
-                models.CustomGame.id == custom_game_id
-            )
-        )
-    )
 
 
 async def ensure_room_organizer(session: AsyncSession, auth_user: Any, encounter_id: int) -> int:

@@ -235,9 +235,9 @@ class DraftPlayerRead(BaseRead):
     model_config = _ReadConfig
 
     session_id: int
-    #: The balancer registration this seat IS. The client uses it to link
+    #: The balancer registration this seat IS (tournament); ``None`` for a mix seat. The client uses it to link
     #: straight to the pool row an organizer must edit to change a rank.
-    registration_id: int
+    registration_id: int | None
     user_id: int | None
     #: The seat's primary handle for the tournament's identity provider; null when the registrant gave none.
     identity: PlayerIdentityRead | None
@@ -374,10 +374,12 @@ _DERIVED_SESSION_FIELDS = frozenset({"roster_shape", "discipline"})
 class DraftSessionRead(BaseRead):
     model_config = _ReadConfig
 
-    tournament_id: int
+    tournament_id: int | None
+    #: The mix owning this draft and the lobby it forms teams for; both ``None`` for a tournament draft (spec §9.1).
+    custom_game_id: int | None = None
+    lobby_index: int | None = None
     workspace_id: int
-    #: The owning tournament's discipline: the owner context a draft page scopes
-    #: its catalog/ontology/identity reads by (not stored on the session row).
+    #: The owner's discipline (a column of the session).
     discipline: str
     status: DraftStatus
     blocked_reason: str | None

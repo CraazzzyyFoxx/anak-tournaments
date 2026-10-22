@@ -27832,6 +27832,18 @@
           ],
           "title": "Current Pick Id"
         },
+        "custom_game_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Custom Game Id"
+        },
         "discipline": {
           "title": "Discipline",
           "type": "string"
@@ -27865,6 +27877,18 @@
         "id": {
           "title": "Id",
           "type": "integer"
+        },
+        "lobby_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lobby Index"
         },
         "overtime_seconds": {
           "title": "Overtime Seconds",
@@ -27904,8 +27928,15 @@
           "$ref": "#/components/schemas/balancer.DraftStatus"
         },
         "tournament_id": {
-          "title": "Tournament Id",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tournament Id"
         },
         "version": {
           "title": "Version",
@@ -28632,8 +28663,15 @@
           ]
         },
         "registration_id": {
-          "title": "Registration Id",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Registration Id"
         },
         "role_ranks": {
           "additionalProperties": {
@@ -29138,6 +29176,18 @@
           ],
           "title": "Current Pick Id"
         },
+        "custom_game_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Custom Game Id"
+        },
         "discipline": {
           "title": "Discipline",
           "type": "string"
@@ -29171,6 +29221,18 @@
         "id": {
           "title": "Id",
           "type": "integer"
+        },
+        "lobby_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lobby Index"
         },
         "overtime_seconds": {
           "title": "Overtime Seconds",
@@ -29210,8 +29272,15 @@
           "$ref": "#/components/schemas/balancer.DraftStatus"
         },
         "tournament_id": {
-          "title": "Tournament Id",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tournament Id"
         },
         "version": {
           "title": "Version",
