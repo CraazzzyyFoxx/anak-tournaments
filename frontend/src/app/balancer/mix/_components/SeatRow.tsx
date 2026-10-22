@@ -132,6 +132,7 @@ export function SeatRow({
 /** The dragged seat's own row, detached from the list, following the pointer. */
 export function SeatDragPreview({ seat, owner }: Readonly<{ seat: PickupSeat; owner: MixOwner }>) {
   const slotLabel = useSlotLabel(owner.ontology);
+  const tRoom = useTranslations("mixes.room");
   return (
     <div
       className={cn(
@@ -147,6 +148,12 @@ export function SeatDragPreview({ seat, owner }: Readonly<{ seat: PickupSeat; ow
       <span className="min-w-0 flex-1 truncate text-base font-semibold text-[color:var(--aqt-fg)]">
         {seat.name}
       </span>
+      {/* No tooltip: the pointer sits on this ghost for the whole drag. */}
+      {seat.isCaptain ? (
+        <span role="img" aria-label={tRoom("captain")} className="flex shrink-0 items-center">
+          <Crown aria-hidden className="size-3.5 text-[color:var(--aqt-amber)]" />
+        </span>
+      ) : null}
       <SeatRating seat={seat} />
     </div>
   );

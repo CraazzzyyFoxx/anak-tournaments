@@ -284,47 +284,54 @@ export function PickupTeamsPanel({
           rare share/close actions demoted to icons on the right -- and the
           history the results write into. */}
       <div className={cn(PANEL_CLASS, "flex flex-col gap-3 px-4 py-3")}>
-        {variant && canWrite && live ? (
+        {live ? (
           <>
-            <PickupResultControls
-              teamCount={variant.teams.length}
-              teamNames={variant.teams.map((team) => team.name)}
-              saving={recordingOutcome}
-              pointsPerWin={pointsPerWin}
-              onRecord={(recordedOutcome) => onRecordOutcome({ outcome: recordedOutcome, lobbyIndex })}
-            />
+            {variant && canWrite ? (
+              <PickupResultControls
+                teamCount={variant.teams.length}
+                teamNames={variant.teams.map((team) => team.name)}
+                saving={recordingOutcome}
+                pointsPerWin={pointsPerWin}
+                onRecord={(recordedOutcome) => onRecordOutcome({ outcome: recordedOutcome, lobbyIndex })}
+              />
+            ) : null}
+            {/* Every viewer hears why the teams stopped moving; only a host can end the match. */}
             <div className="flex flex-wrap items-center gap-2">
               <p className={CAPTION_CLASS}>{tRoom("frozen")}</p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="ml-auto"
-                disabled={cancellingMatch}
-                onClick={() => setCancelOpen(true)}
-              >
-                {cancellingMatch ? (
-                  <Spinner className="mr-1.5 size-3.5" />
-                ) : (
-                  <CircleX className="mr-1.5 size-3.5" aria-hidden="true" />
-                )}
-                {tRoom("cancelMatch")}
-              </Button>
-              <ConfirmDialog
-                open={cancelOpen}
-                onOpenChange={setCancelOpen}
-                intent={{
-                  title: tRoom("cancelTitle"),
-                  description: tRoom("cancelDescription"),
-                  confirmLabel: tRoom("cancelConfirm"),
-                  tone: "danger"
-                }}
-                pending={cancellingMatch}
-                onConfirm={() => {
-                  setCancelOpen(false);
-                  onCancelMatch();
-                }}
-              />
+              {canWrite ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto"
+                    disabled={cancellingMatch}
+                    onClick={() => setCancelOpen(true)}
+                  >
+                    {cancellingMatch ? (
+                      <Spinner className="mr-1.5 size-3.5" />
+                    ) : (
+                      <CircleX className="mr-1.5 size-3.5" aria-hidden="true" />
+                    )}
+                    {tRoom("cancelMatch")}
+                  </Button>
+                  <ConfirmDialog
+                    open={cancelOpen}
+                    onOpenChange={setCancelOpen}
+                    intent={{
+                      title: tRoom("cancelTitle"),
+                      description: tRoom("cancelDescription"),
+                      confirmLabel: tRoom("cancelConfirm"),
+                      tone: "danger"
+                    }}
+                    pending={cancellingMatch}
+                    onConfirm={() => {
+                      setCancelOpen(false);
+                      onCancelMatch();
+                    }}
+                  />
+                </>
+              ) : null}
             </div>
           </>
         ) : variant && canWrite && state === "ready" ? (
@@ -334,7 +341,7 @@ export function PickupTeamsPanel({
         <div
           className={cn(
             "flex flex-wrap items-center gap-2",
-            variant && canWrite && "border-t border-[color:var(--aqt-border)] pt-3"
+            ((variant && canWrite) || live) && "border-t border-[color:var(--aqt-border)] pt-3"
           )}
         >
           {reshape ? (

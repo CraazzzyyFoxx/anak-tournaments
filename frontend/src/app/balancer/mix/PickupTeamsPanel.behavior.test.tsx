@@ -1055,6 +1055,15 @@ describe("PickupTeamsPanel", () => {
     expect(onCancelMatch).toHaveBeenCalledTimes(1);
   });
 
+  it("tells a viewer a live lineup is frozen, without handing them the result or Cancel match", async () => {
+    const scope = await mount(game({ lobbies: [lobbyRow(LIVE)] }), { canWrite: false });
+
+    expect(scope.textContent).toContain("frozen");
+    expect(byName(scope, "Team 1 win")).toBeNull();
+    expect(byName(scope, "Draw")).toBeNull();
+    expect(byName(scope, "cancelMatch")).toBeNull();
+  });
+
   it("crowns each team's captain and lets the host hand the crown to another seat", async () => {
     const captained = lobby([
       {
