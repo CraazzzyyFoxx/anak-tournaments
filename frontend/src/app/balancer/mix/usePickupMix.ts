@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import { useInvalidation } from "@/hooks/useInvalidation";
@@ -21,6 +21,7 @@ import { OPEN_MIXES } from "@/app/balancer/mix/pickup-chrome";
 import {
   computeRotationHintPatches,
   participationEntries,
+  waitingQueuePosition,
   type PickupRecordOutcomeInput,
 } from "@/app/balancer/mix/pickup-lineup";
 import { voiceRefusal } from "@/app/balancer/mix/pickup-voice";
@@ -144,6 +145,29 @@ export function usePickupMix(
     queryFn: () => customGameService.getMySeat(workspaceId, selectedGameId as number),
     enabled: selectedGameId != null && options.seatEnabled === true,
   });
+
+  // The caller's place in the mix-wide waiting line. Each lobby's rotation leaves out whoever is pinned to another
+  // lobby, so the line reads every lobby's -- only while the caller waits, at most six reads. The history is the
+  // whole mix's, so a member two lobbies both rank carries the same numbers in each.
+  const mySeat = mySeatQuery.data?.seat ?? null;
+  const waiting =
+    mySeat != null && !mySeat.away && mySeat.participation !== "benched" && mySeat.current_lobby == null;
+  const queueRotations = useQueries({
+    queries: Array.from({ length: waiting ? (lobbyCount ?? 0) : 0 }, (_, lobbyIndex) => ({
+      queryKey: customGameKeys.rotation(workspaceId, selectedGameId ?? 0, lobbyIndex),
+      queryFn: () => customGameService.rotation(workspaceId, selectedGameId as number, lobbyIndex),
+      enabled: selectedGameId != null,
+    })),
+  });
+  // No number until every lobby has answered: a partial line would rank a player pinned elsewhere as a newcomer.
+  const myQueuePosition =
+    mySeat == null || queueRotations.length === 0 || queueRotations.some((query) => query.data == null)
+      ? null
+      : waitingQueuePosition(
+          gameQuery.data?.players ?? [],
+          queueRotations.flatMap((query) => query.data ?? []),
+          mySeat.workspace_member_id,
+        );
 
   /**
    * The voices this mix may pick, listed from Discord through the workspace's
@@ -603,6 +627,7 @@ export function usePickupMix(
     matchesQuery,
     rotationQuery,
     mySeatQuery,
+    myQueuePosition,
     voiceOptionsQuery,
     setRoster,
     patchPlayer,

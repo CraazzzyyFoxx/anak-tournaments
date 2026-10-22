@@ -26,7 +26,6 @@ import {
   myLobbyTeam,
   playerLabel,
   summarizeLineup,
-  waitingQueuePosition,
 } from "@/app/balancer/mix/pickup-lineup";
 import {
   LEADERBOARD_MIN_GAMES,
@@ -165,6 +164,7 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
     matchesQuery,
     rotationQuery,
     mySeatQuery,
+    myQueuePosition,
     setRoster,
     patchPlayer,
     applyRotationHints,
@@ -259,7 +259,6 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
     myTeam?.nextMapId == null
       ? null
       : ((mapsQuery.data ?? []).find((map) => map.id === myTeam.nextMapId)?.name ?? null);
-  const queuePosition = myMemberId == null ? null : waitingQueuePosition(rows, rotationQuery.data ?? [], myMemberId);
   const waitingCount = rows.filter(
     (row) => row.participation !== "benched" && !row.away && row.current_lobby == null,
   ).length;
@@ -383,7 +382,7 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
         onSave={(patch) => updateMySeat.mutate(patch)}
         myTeam={myTeam}
         nextMapName={nextMapName}
-        queuePosition={queuePosition}
+        queuePosition={myQueuePosition}
         lobbies={lobbies.map((row) => ({ lobbyIndex: row.lobby_index, state: row.state ?? "idle" }))}
         onSetAway={(away) => setMyAway.mutate(away)}
       />

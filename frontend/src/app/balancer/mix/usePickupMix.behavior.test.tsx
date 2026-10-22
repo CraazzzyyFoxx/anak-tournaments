@@ -186,15 +186,18 @@ type HarnessApi = {
   voiceMove: (lobbyIndex: number | null) => void;
   client: QueryClient;
   activeLobby: number;
+  myQueuePosition: number | null;
 };
 
 /** Exposes the mutations these tests drive, plus the shared `QueryClient`, to assertions. */
 function Harness({
   onReady,
   initialLobby,
+  seatEnabled,
 }: {
   onReady: (api: HarnessApi) => void;
   initialLobby?: number;
+  seatEnabled?: boolean;
 }) {
   const client = useQueryClient();
   const {
@@ -205,7 +208,8 @@ function Harness({
     setVariantIndex: paging,
     voiceMove: move,
     activeLobby,
-  } = usePickupMix(WORKSPACE_ID, GAME_ID, { initialLobby });
+    myQueuePosition,
+  } = usePickupMix(WORKSPACE_ID, GAME_ID, { initialLobby, seatEnabled });
   onReady({
     setRoster: (ids) => setRoster.mutate(ids),
     applyRotationHints: () => applyRotationHints.mutate(),
@@ -215,12 +219,13 @@ function Harness({
     voiceMove: (lobbyIndex) => move.mutate(lobbyIndex),
     client,
     activeLobby,
+    myQueuePosition,
   });
   return null;
 }
 
 /** Mounts the hook and returns a reader of its latest render, for state that moves after mount. */
-async function mountLatest(initialLobby?: number) {
+async function mountLatest(initialLobby?: number, seatEnabled = false) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -228,7 +233,7 @@ async function mountLatest(initialLobby?: number) {
   await act(async () => {
     createRoot(container).render(
       <QueryClientProvider client={client}>
-        <Harness onReady={(value) => (api = value)} initialLobby={initialLobby} />
+        <Harness onReady={(value) => (api = value)} initialLobby={initialLobby} seatEnabled={seatEnabled} />
       </QueryClientProvider>,
     );
   });
@@ -493,6 +498,75 @@ describe("usePickupMix", () => {
     });
 
     expect(setParticipation).not.toHaveBeenCalled();
+  });
+
+  // Each lobby's rotation leaves out whoever is pinned to another lobby, so lobby A's read alone -- the overview's --
+  // would rank a player pinned to B as if they had never sat out.
+  it("ranks a waiting player pinned to lobby B by their real sit-out while the overview shows lobby A", async () => {
+    const player = (memberId: number, sortOrder: number, lobbyPin: number | null) => ({
+      id: memberId,
+      workspace_member_id: memberId,
+      display_name: null,
+      identity: null,
+      sort_order: sortOrder,
+      participation: "pool",
+      role_selection_mode: "all_ranked",
+      is_flex: false,
+      roles: null,
+      ranks: {},
+      rank_sources: {},
+      author_ranks: {},
+      away: false,
+      lobby_pin: lobbyPin,
+      current_lobby: null,
+    });
+    const lobby = (lobbyIndex: number) => ({
+      lobby_index: lobbyIndex,
+      balance_result: null,
+      selected_variant_index: 0,
+      next_map_id: null,
+      balanced_at: null,
+      lineup_recorded: true,
+      matches_count: 0,
+    });
+    const history = (memberId: number, sat: number) => ({
+      workspace_member_id: memberId,
+      status: "neutral",
+      reason: "",
+      consecutive_sat: sat,
+      consecutive_played: 0,
+      games_played: 0,
+    });
+    // The newcomer (2) comes first in host order; the player pinned to B (1) has sat out three maps.
+    getGame.mockResolvedValue(
+      game({ lobby_count: 2, lobbies: [lobby(0), lobby(1)], players: [player(2, 0, null), player(1, 1, 1)] }),
+    );
+    rotation.mockImplementation((_workspaceId: number, _gameId: number, lobbyIndex: number) =>
+      Promise.resolve(lobbyIndex === 1 ? [history(1, 3), history(2, 0)] : [history(2, 0)]),
+    );
+    getMySeat.mockResolvedValue({
+      custom_game_id: GAME_ID,
+      lobby_count: 2,
+      seat: {
+        participation: "pool",
+        roles: null,
+        is_flex: false,
+        workspace_member_id: 1,
+        away: false,
+        voice_url: null,
+        ranks: {},
+        current_lobby: null,
+      },
+    });
+
+    const latest = await mountLatest(undefined, true);
+    await act(async () => {
+      await tick();
+      await tick();
+    });
+
+    expect(latest().activeLobby).toBe(0);
+    expect(latest().myQueuePosition).toBe(1);
   });
 
   it("says a voice refusal in the reader's language, and leaves anything else to the generic toast", async () => {
