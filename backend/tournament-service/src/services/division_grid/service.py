@@ -816,7 +816,9 @@ class DivisionGridService:
     ) -> SaveOutcome:
         """Server-authoritative grid save: classify the edit, then either apply it
         in place (cosmetic) or spawn a new version, auto-generate mappings from every
-        used source version, and auto-activate when the mappings are complete."""
+        used source version, and auto-activate when the mappings are complete and the
+        grid already holds the workspace's active version for its game (switching
+        grids is the explicit ``activate_version``)."""
         if data.grid_id is not None:
             grid = await self.get_grid_by_id(session, data.grid_id)
             if grid.workspace_id not in (None, workspace.id):
@@ -825,6 +827,8 @@ class DivisionGridService:
             grid = await self._resolve_workspace_grid(session, workspace)
         assert_discipline_enabled(workspace, grid.discipline)
         active = _pick_active_version(grid, workspace)
+        active_id = workspace.default_division_grid_versions.get(grid.discipline)
+        owns_active = active_id is None or any(version.id == active_id for version in grid.versions)
         change = "structural" if active is None else _classify_tier_change(active.tiers, data.tiers)
 
         if change == "cosmetic" and active is not None:
@@ -862,7 +866,7 @@ class DivisionGridService:
                 workspace_id=workspace.id,
                 target_version_id=new_version.id,
             )
-            if readiness.is_ready:
+            if readiness.is_ready and owns_active:
                 await self.activate_version(session, workspace=workspace, version_id=new_version.id)
                 mode = "new_version_activated"
             else:
