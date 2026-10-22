@@ -45,6 +45,7 @@ export const SEGMENT_LABELS: Record<string, string> = {
   bracket: "breadcrumbBracket",
   matches: "breadcrumbMatches",
   encounters: "breadcrumbEncounters",
+  rooms: "breadcrumbRooms",
   standings: "breadcrumbStandings",
   reports: "breadcrumbReports",
   parsed: "breadcrumbParsed",
