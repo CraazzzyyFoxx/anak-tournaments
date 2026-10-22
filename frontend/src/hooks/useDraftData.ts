@@ -331,10 +331,19 @@ export function useDraftRealtime(
       }
       // Pick options are keyed by pick id, and a role edit or a clock change
       // bumps the pick's version without advancing it. Read only by the captain
-      // on the clock, whose confirm waits on it, so it skips the batch.
+      // on the clock, whose confirm waits on it, so it skips the batch. A pick
+      // the event resolved is only marked stale, never re-read: the server
+      // serves options for the current pick alone (409), and the room still
+      // holds that pick's query until it re-renders off the patched board.
       const affectedPickId = event.data.pick_id ?? cachedBoard.current_pick?.id;
       if (affectedPickId != null) {
-        void queryClient.invalidateQueries({ queryKey: tournamentQueryKeys.draftPickOptions(affectedPickId) });
+        const onClock = queryClient
+          .getQueryData<DraftBoard | null>(queryKey)
+          ?.picks.some((pick) => pick.id === affectedPickId && pick.status === "on_clock");
+        void queryClient.invalidateQueries({
+          queryKey: tournamentQueryKeys.draftPickOptions(affectedPickId),
+          refetchType: onClock ? "active" : "none"
+        });
       }
     },
     [queryClient, queryKey, topic, scheduleDerived]
