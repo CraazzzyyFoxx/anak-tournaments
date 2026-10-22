@@ -846,7 +846,7 @@ def test_reads_of_one_board_state_share_a_snapshot_but_always_see_the_current_qu
         loads.append(state["event_id"])
         return DraftSnapshot(teams=(), players=(), picks=(), rosters={})
 
-    async def _last_event_id(_session, _tournament_id):
+    async def _last_event_id(_session, _draft_session_id):
         return state["event_id"]
 
     class _Teams:

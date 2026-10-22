@@ -189,8 +189,8 @@ var DraftReadRoutes = []edge.RouteSpec{
 }
 
 // DraftRoutes are the authenticated draft endpoints: suggestions (draft-session
-// read), admin lifecycle (keyed by tournament_id for the permission, session_id
-// for the action), and pick actions (keyed by pick_id). Permissions + captain
+// read), admin lifecycle (keyed by session_id; tournament-only admin keyed by
+// tournament_id), and pick actions (keyed by pick_id). Permissions + captain
 // identity for /select are enforced in the worker. The path segments
 // (tournaments/sessions/picks) are distinct, so no subtree matcher is needed.
 var DraftRoutes = []edge.RouteSpec{
@@ -206,17 +206,18 @@ var DraftRoutes = []edge.RouteSpec{
 	{Method: "PUT", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/teams/{team_id}/queue", Queue: "rpc.balancer.draft.queue_set", IDParam: "session_id", Path: []string{"team_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/journal", Queue: "rpc.balancer.draft.journal", IDParam: "session_id", Query: []string{"limit"}, Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "POST", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/players/{player_id}/roles", Queue: "rpc.balancer.draft.player_role_edit", IDParam: "player_id", Path: []string{"session_id"}, Body: true, Auth: edge.AuthRequired},
-	// lifecycle
+	// tournament-only admin
 	{Method: "GET", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions", Queue: "rpc.balancer.draft.session_list", IDParam: "tournament_id", Auth: edge.AuthRequired, Timeout: fastReadTimeout},
 	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions", Queue: "rpc.balancer.draft.session_create", IDParam: "tournament_id", Body: true, Auth: edge.AuthRequired},
 	{Method: "DELETE", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}", Queue: "rpc.balancer.draft.session_delete", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired, Success: 204},
 	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/seed", Queue: "rpc.balancer.draft.seed", IDParam: "session_id", Path: []string{"tournament_id"}, Body: true, Auth: edge.AuthRequired},
 	{Method: "PATCH", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}", Queue: "rpc.balancer.draft.session_patch", IDParam: "session_id", Path: []string{"tournament_id"}, Body: true, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/start", Queue: "rpc.balancer.draft.start", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/pause", Queue: "rpc.balancer.draft.pause", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/resume", Queue: "rpc.balancer.draft.resume", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/cancel", Queue: "rpc.balancer.draft.cancel", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
-	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/rollback", Queue: "rpc.balancer.draft.rollback", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
+	// lifecycle, for a tournament's draft and a mix lobby's alike: the worker authorizes on the session's own owner.
+	{Method: "POST", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/start", Queue: "rpc.balancer.draft.start", IDParam: "session_id", Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/pause", Queue: "rpc.balancer.draft.pause", IDParam: "session_id", Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/resume", Queue: "rpc.balancer.draft.resume", IDParam: "session_id", Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/cancel", Queue: "rpc.balancer.draft.cancel", IDParam: "session_id", Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/balancer/draft/sessions/{session_id}/rollback", Queue: "rpc.balancer.draft.rollback", IDParam: "session_id", Auth: edge.AuthRequired},
 	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/export", Queue: "rpc.balancer.draft.export", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},
 	// Rank-only re-export: leaves the exported teams in place, refreshes their ranks.
 	{Method: "POST", Pattern: "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/export-ranks", Queue: "rpc.balancer.draft.export_ranks", IDParam: "session_id", Path: []string{"tournament_id"}, Auth: edge.AuthRequired},

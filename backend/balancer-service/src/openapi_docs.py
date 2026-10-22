@@ -159,24 +159,24 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.draft.suggestions": {
         "summary": "Get pick suggestions",
-        "description": "Permission: workspace `team.read`. Ranks the top five available players by fit for the current pick; 409 if the draft has no current pick.",
+        "description": "Permission: a tournament workspace's `team.read`, or the mix's hosts. Ranks the top five available players by fit for the current pick; 409 if the draft has no current pick.",
     },
     "rpc.balancer.draft.feasibility": {
         "summary": "Get draft feasibility",
-        "description": "Permission: workspace `team.create`. Reports whether every remaining team-role slot can be filled.",
+        "description": "Permission: a tournament workspace's `team.read`, or the mix's hosts. Reports whether every remaining team-role slot can be filled.",
     },
     "rpc.balancer.draft.pick_options": {
         "summary": "Get safe draft pick options",
-        "description": "Permission: the on-clock captain of the pick's team, or a workspace admin. Returns safe and blocked player-role choices for the current pick.",
+        "description": "Permission: the on-clock captain of the pick's team, or a workspace admin. Returns safe and blocked player-role choices for the current pick. A tournament's workspace admin or a mix's host may pick for whichever team is on the clock.",
     },
     "rpc.balancer.draft.player_role_edit": {
         "summary": "Preview or add a draft player role",
-        "description": "Permission: workspace `team.create`. Previews or commits an emergency role addition to the draft snapshot with optimistic versioning and private audit reason.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Previews or commits an emergency role addition to the draft snapshot with optimistic versioning and private audit reason; 422 `role_edit_tournament_only` on a mix's draft, whose ranks are edited in the mix.",
     },
     "rpc.balancer.draft.team_fit": {
         "summary": "Get team fit scores",
         "description": (
-            "Permission: the team's own captain, or workspace `team.read`. Scores every available "
+            "Permission: that team's own captain, or whoever runs the draft. Scores every available "
             "player against every role this team can still seat, normalized 1..99 across the "
             "response (50 when all candidates tie). `role` is null under a role-less (all-flex) "
             "roster shape, where each player has exactly one entry. Empty once the team's roster is "
@@ -186,7 +186,7 @@ DOCS: dict[str, dict] = {
     "rpc.balancer.draft.queue_get": {
         "summary": "Get captain pick queue",
         "description": (
-            "Permission: the team's own captain, or workspace `team.create`. Returns the team's "
+            "Permission: that team's own captain, or whoever runs the draft. Returns the team's "
             "private autopick priority in stored order, filtered to players still available, plus "
             "`autopick_preview` -- exactly what autopick would take -- while this team is on the "
             "clock. Never part of the public board."
@@ -195,7 +195,7 @@ DOCS: dict[str, dict] = {
     "rpc.balancer.draft.queue_set": {
         "summary": "Set captain pick queue",
         "description": (
-            "Permission: the team's own captain, or workspace `team.create`. Replaces the queue "
+            "Permission: that team's own captain, or whoever runs the draft. Replaces the queue "
             "with the given order (max 60, duplicates collapsed to their first placement); 422 when "
             "an id is not an available non-captain player of this draft, 409 once the draft is "
             "completed or cancelled. Publishes no realtime event -- a queue is private to its team."
@@ -204,7 +204,7 @@ DOCS: dict[str, dict] = {
     "rpc.balancer.draft.journal": {
         "summary": "Get draft organizer journal",
         "description": (
-            "Permission: workspace `team.create`. Returns the session's audit trail newest first -- "
+            "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Returns the session's audit trail newest first -- "
             "picks, autopicks, overrides, clock extensions and every lifecycle move -- with the "
             "acting account's name resolved (null for the clock and other system actions). `limit` "
             "defaults to 100 and is clamped to 500."
@@ -232,23 +232,23 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.draft.start": {
         "summary": "Start draft session",
-        "description": "Permission: workspace `team.create`, and only a superuser may start outside the tournament's draft phase. Starts the draft and opens the first pick, publishing a pick-started realtime event with the clock deadline.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser), and only a superuser may start a tournament's draft outside its draft phase (a mix draft has no phase). Starts the draft and opens the first pick, publishing a pick-started realtime event with the clock deadline.",
     },
     "rpc.balancer.draft.pause": {
         "summary": "Pause draft session",
-        "description": "Permission: workspace `team.create`. Pauses an in-progress draft and publishes a draft-paused realtime event.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Pauses an in-progress draft and publishes a draft-paused realtime event.",
     },
     "rpc.balancer.draft.resume": {
         "summary": "Resume draft session",
-        "description": "Permission: workspace `team.create`. Resumes a paused draft and publishes a draft-resumed realtime event.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Resumes a paused draft and publishes a draft-resumed realtime event.",
     },
     "rpc.balancer.draft.cancel": {
         "summary": "Cancel draft session",
-        "description": "Permission: workspace `team.create`. Cancels the draft and publishes a draft-cancelled realtime event.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Cancels the draft and publishes a draft-cancelled realtime event.",
     },
     "rpc.balancer.draft.rollback": {
         "summary": "Rollback draft pick",
-        "description": "Permission: workspace `team.create`. Rolls back the most recent draft action and publishes a rollback realtime event.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Rolls back the most recent draft action and publishes a rollback realtime event.",
     },
     "rpc.balancer.draft.export": {
         "summary": "Export draft to teams",
@@ -263,19 +263,19 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.draft.pick_select": {
         "summary": "Select draft pick",
-        "description": "Permission: the on-clock captain of the pick's team, or a workspace admin. Makes a pick for the current slot, enforcing role fit and optimistic version, then broadcasts pick-made/next-pick events.",
+        "description": "Permission: the on-clock captain of the pick's team, or a workspace admin. Makes a pick for the current slot, enforcing role fit and optimistic version, then broadcasts pick-made/next-pick events. A tournament's workspace admin or a mix's host may pick for whichever team is on the clock.",
     },
     "rpc.balancer.draft.pick_autopick": {
         "summary": "Autopick draft pick",
-        "description": "Permission: workspace `team.create`. Auto-selects the best-fit available player for a pick using the session's autopick strategy and broadcasts the result.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Auto-selects the best-fit available player for a pick using the session's autopick strategy and broadcasts the result.",
     },
     "rpc.balancer.draft.pick_extend": {
         "summary": "Extend draft pick clock",
-        "description": "Permission: workspace `team.create`. Adds seconds to the current on-clock pick — to its deadline while the draft is live, to the frozen remainder while it is paused — and broadcasts the new deadline.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Adds seconds to the current on-clock pick — to its deadline while the draft is live, to the frozen remainder while it is paused — and broadcasts the new deadline.",
     },
     "rpc.balancer.draft.pick_override": {
         "summary": "Override draft pick",
-        "description": "Permission: workspace `team.create`. Overrides a pick to an arbitrary player, bypassing captain/clock constraints, and broadcasts a pick-made event.",
+        "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Overrides a pick to an arbitrary player, bypassing captain/clock constraints, and broadcasts a pick-made event.",
     },
     "rpc.balancer.custom.create": {
         "summary": "Create custom game",

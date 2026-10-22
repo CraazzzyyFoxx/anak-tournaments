@@ -72,9 +72,6 @@ class DraftSessionRepository(BaseRepository[models.DraftSession]):
         result = await session.scalars(sa.select(self.model.id).where(self.model.status == DraftStatus.LIVE.value))
         return result.all()
 
-    async def get_workspace_id(self, session: AsyncSession, id: int) -> int | None:
-        return await session.scalar(sa.select(self.model.workspace_id).where(self.model.id == id))
-
     async def get_workspace_id_in_tournament(self, session: AsyncSession, id: int, *, tournament_id: int) -> int | None:
         """The session's workspace, or ``None`` unless the session exists AND belongs to ``tournament_id``."""
         return await session.scalar(
@@ -268,13 +265,6 @@ class DraftPickRepository(BaseRepository[models.DraftPick]):
 
     async def delete_by_session(self, session: AsyncSession, session_id: int) -> None:
         await session.execute(sa.delete(self.model).where(self.model.session_id == session_id))
-
-    async def get_workspace_id(self, session: AsyncSession, id: int) -> int | None:
-        return await session.scalar(
-            sa.select(models.DraftSession.workspace_id)
-            .join(self.model, self.model.session_id == models.DraftSession.id)
-            .where(self.model.id == id)
-        )
 
     async def last_resolved(self, session: AsyncSession, session_id: int) -> models.DraftPick | None:
         """The most recent pick that resolved: completed, autopicked or skipped."""

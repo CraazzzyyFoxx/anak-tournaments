@@ -17,10 +17,9 @@ from shared.rbac.workspace_lookup import (
     get_tournament_workspace_id as _get_tournament_workspace_id,  # noqa: F401 -- re-exported for rpc/admin.py, rpc/binary.py, rpc/draft.py
 )
 from shared.repository import BalancerBalanceRepository
-from shared.repository.draft import DraftPickRepository, DraftSessionRepository
+from shared.repository.draft import DraftSessionRepository
 
 _drafts = DraftSessionRepository()
-_draft_picks = DraftPickRepository()
 _balances = BalancerBalanceRepository()
 
 
@@ -152,13 +151,6 @@ async def _get_balance_workspace_id(session: AsyncSession, balance_id: int) -> i
     return int(workspace_id)
 
 
-async def _get_draft_session_workspace_id(session: AsyncSession, session_id: int) -> int:
-    workspace_id = await _drafts.get_workspace_id(session, session_id)
-    if workspace_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft session not found")
-    return int(workspace_id)
-
-
 async def _get_tournament_draft_session_workspace_id(session: AsyncSession, tournament_id: int, session_id: int) -> int:
     """The workspace of a session addressed under a tournament, 404 unless it is that tournament's.
 
@@ -168,11 +160,4 @@ async def _get_tournament_draft_session_workspace_id(session: AsyncSession, tour
     workspace_id = await _drafts.get_workspace_id_in_tournament(session, session_id, tournament_id=tournament_id)
     if workspace_id is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft session not found")
-    return int(workspace_id)
-
-
-async def _get_pick_workspace_id(session: AsyncSession, pick_id: int) -> int:
-    workspace_id = await _draft_picks.get_workspace_id(session, pick_id)
-    if workspace_id is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft pick not found")
     return int(workspace_id)

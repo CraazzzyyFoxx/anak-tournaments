@@ -25,7 +25,9 @@ from shared.services.member_rank import member_rank_service  # noqa: E402
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
 from src.domain.draft.entities import PoolSeat  # noqa: E402
 from src.domain.mix_ranker import HiddenRating, Ranker  # noqa: E402
+from src.rpc import draft as draft_rpc  # noqa: E402
 from src.services.draft import lifecycle  # noqa: E402
+from src.services.draft import realtime as draft_rt  # noqa: E402
 from src.services.draft.board import board_service  # noqa: E402
 from src.services.draft.rosters import draft_rosters  # noqa: E402
 
@@ -41,6 +43,26 @@ _TWO_SEATS = TeamFormat(
 
 #: The workspace canon a host-less mix reads (``MIX_ORDER``): m0 and m2 tank, m1 and m3 damage.
 _RANKS = (("m0", "tank", 3000), ("m1", "damage", 2800), ("m2", "tank", 2500), ("m3", "damage", 2400))
+
+
+class _Broker:
+    def __init__(self) -> None:
+        self.handlers: dict = {}
+
+    def subscriber(self, subject: str):
+        def decorator(function):
+            self.handlers[subject] = function
+            return function
+
+        return decorator
+
+
+class _Quiet:
+    def warning(self, *args, **kwargs) -> None:
+        return None
+
+    def exception(self, *args, **kwargs) -> None:
+        return None
 
 
 class MixDraftTests(EncounterWriterCase):
@@ -271,3 +293,96 @@ class MixDraftTests(EncounterWriterCase):
             )
 
         self.assertEqual((0, 0), (sessions, seats))
+
+    async def _host(self) -> tuple[int, int]:
+        """The mix's host and an account that is nobody here: two real ``auth.user`` rows."""
+        async with self.Session() as s:
+            host = models.AuthUser(username=f"host-{self.cg_id}", email=f"host-{self.cg_id}@example.test")
+            stranger = models.AuthUser(username=f"stranger-{self.cg_id}", email=f"stranger-{self.cg_id}@example.test")
+            s.add_all([host, stranger])
+            await s.flush()
+            self.auth_user_ids.extend((host.id, stranger.id))
+            (await s.get_one(models.CustomGame, self.cg_id)).host_user_id = host.id
+            await s.commit()
+            return host.id, stranger.id
+
+    def _rpc(self) -> _Broker:
+        factory = draft_rpc._SF
+        draft_rpc._SF = self.Session
+        self.addCleanup(setattr, draft_rpc, "_SF", factory)
+        broker = _Broker()
+        draft_rpc.register(broker, _Quiet())
+        return broker
+
+    async def test_the_mix_host_runs_the_draft_and_a_stranger_cannot(self) -> None:
+        host, stranger = await self._host()
+        draft_id = await self._seeded()
+        start = self._rpc().handlers["rpc.balancer.draft.start"]
+
+        refused = await start({"id": draft_id, "identity": {"user_id": stranger, "is_active": True}}, None)
+        started = await start({"id": draft_id, "identity": {"user_id": host, "is_active": True}}, None)
+
+        self.assertEqual("forbidden", refused["error"]["code"])
+        self.assertTrue(started["ok"], started)
+        self.assertEqual("live", started["data"]["status"])
+
+    async def test_a_mix_role_edit_passes_the_hosts_gate_then_stops_at_the_tournament_guard(self) -> None:
+        """R-B1: the role edit authorizes on the session's owner first, so a stranger is refused before the guard."""
+        host, stranger = await self._host()
+        draft_id = await self._seeded()
+        async with self.Session() as s:
+            seat_id, version = (
+                await s.execute(
+                    sa.select(models.DraftPlayer.id, models.DraftPlayer.version).where(
+                        models.DraftPlayer.session_id == draft_id,
+                        models.DraftPlayer.workspace_member_id == self.ids["m3"],
+                    )
+                )
+            ).one()
+        edit = self._rpc().handlers["rpc.balancer.draft.player_role_edit"]
+        request = {
+            "id": seat_id,
+            "session_id": draft_id,
+            "payload": {
+                "expected_version": version,
+                "role": {"dimension": "player_role", "role": "tank"},
+                "rank_value": 2500,
+                "reason": "Emergency tank",
+                "preview_only": True,
+            },
+        }
+
+        refused = await edit({**request, "identity": {"user_id": stranger, "is_active": True}}, None)
+        guarded = await edit({**request, "identity": {"user_id": host, "is_active": True}}, None)
+
+        self.assertEqual("forbidden", refused["error"]["code"])
+        self.assertEqual(
+            ("unprocessable", "role_edit_tournament_only"),
+            (guarded["error"]["code"], guarded["error"]["details"]["fields"][0]["code"]),
+        )
+
+    async def test_board_events_land_on_the_sessions_own_topic(self) -> None:
+        draft_id = await self._seeded()
+        async with self.Session() as s:
+            await lifecycle.lifecycle_service.transition(
+                s,
+                draft_id,
+                lifecycle.lifecycle_service.start,
+                event_type="draft.pick_started",
+                audit_action="started",
+                actor_auth_user_id=None,
+            )
+            await s.commit()
+            topics = set(
+                (
+                    await s.scalars(
+                        sa.select(WorkspaceEvent.topic).where(
+                            WorkspaceEvent.payload["session_id"].astext == str(draft_id)
+                        )
+                    )
+                ).all()
+            )
+            newest = await draft_rt.last_event_id(s, draft_id)
+
+        self.assertEqual({f"draft:{draft_id}:board"}, topics)
+        self.assertIsNotNone(newest)

@@ -54,10 +54,10 @@ class ChatRoom:
     def topic(self) -> str:
         """``encounter:{id}:chat`` / ``draft:{session_id}:chat``.
 
-        Deliberately not a sub-topic of the room's existing public one
-        (``tournament:{id}:draft``): that topic is public spectating and is what
-        the gateway keys presence off. The chat is gated separately, so it is
-        its own topic with its own ACL rule.
+        Deliberately not a sub-topic of the room's public one
+        (``draft:{session_id}:board``): that topic is public spectating and is
+        what the gateway keys presence off. The chat is gated separately, so it
+        is its own topic with its own ACL rule.
         """
         return self.scope.domain_topic(CHAT_DOMAIN)
 

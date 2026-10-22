@@ -1941,9 +1941,8 @@ def _drafted(live: Live, ids: dict[str, Any], game: str) -> dict[str, Any]:
         ids,
         "root",
         "POST",
-        "/api/v1/balancer/draft/tournaments/{tid}/sessions/{sid}/start",
+        "/api/v1/balancer/draft/sessions/{sid}/start",
         expect=200,
-        tid=tid,
         sid=sid,
     )
     board_route = "/api/v1/balancer/draft/sessions/{sid}/board"

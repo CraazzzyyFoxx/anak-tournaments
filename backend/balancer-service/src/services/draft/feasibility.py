@@ -170,7 +170,7 @@ class DraftFeasibilityService:
         that resolves after mutating must see its own change, which a shared
         snapshot of the prior state would hide.
         """
-        event_id = await draft_rt.last_event_id(session, draft_session.tournament_id)
+        event_id = await draft_rt.last_event_id(session, draft_session.id)
         key = f"{draft_session.id}:{draft_session.version}:{event_id or 0}"
         now = time.monotonic()
         for stale in [k for k, (at, _) in _read_snapshots.items() if now - at > _READ_SNAPSHOT_TTL_SECONDS]:

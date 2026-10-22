@@ -104,7 +104,7 @@ OWT_DRAFT_TOURNAMENT_ID=117 OWT_DRAFT_TOKEN=<organizer jwt> \
 
 Reading the report: one row per draft endpoint
 (`…/teams/[id]/fit`, `…/teams/[id]/queue`, `…/feasibility`,
-`…/tournaments/[id]/draft`, `…/picks/[id]/autopick`). Since every viewer fires
+`…/sessions/[id]/board`, `…/picks/[id]/autopick`). Since every viewer fires
 its reads inside the same burst, the fit/queue p50 **is** the per-burst
 latency, and p95 is the tail the slowest captain in the room saw.
 Incident baseline for 26 teams / 130 players, for comparison:

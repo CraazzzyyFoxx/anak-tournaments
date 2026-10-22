@@ -1139,7 +1139,7 @@ export interface paths {
         put?: never;
         /**
          * Autopick draft pick
-         * @description Permission: workspace `team.create`. Auto-selects the best-fit available player for a pick using the session's autopick strategy and broadcasts the result.
+         * @description Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Auto-selects the best-fit available player for a pick using the session's autopick strategy and broadcasts the result.
          *
          *     RPC subject: `rpc.balancer.draft.pick_autopick`
          */
@@ -1161,7 +1161,7 @@ export interface paths {
         put?: never;
         /**
          * Extend draft pick clock
-         * @description Permission: workspace `team.create`. Adds seconds to the current on-clock pick — to its deadline while the draft is live, to the frozen remainder while it is paused — and broadcasts the new deadline.
+         * @description Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Adds seconds to the current on-clock pick — to its deadline while the draft is live, to the frozen remainder while it is paused — and broadcasts the new deadline.
          *
          *     RPC subject: `rpc.balancer.draft.pick_extend`
          */
@@ -1181,7 +1181,7 @@ export interface paths {
         };
         /**
          * Get safe draft pick options
-         * @description Permission: the on-clock captain of the pick's team, or a workspace admin. Returns safe and blocked player-role choices for the current pick.
+         * @description Permission: the on-clock captain of the pick's team, or a workspace admin. Returns safe and blocked player-role choices for the current pick. A tournament's workspace admin or a mix's host may pick for whichever team is on the clock.
          *
          *     RPC subject: `rpc.balancer.draft.pick_options`
          */
@@ -1205,7 +1205,7 @@ export interface paths {
         put?: never;
         /**
          * Override draft pick
-         * @description Permission: workspace `team.create`. Overrides a pick to an arbitrary player, bypassing captain/clock constraints, and broadcasts a pick-made event.
+         * @description Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Overrides a pick to an arbitrary player, bypassing captain/clock constraints, and broadcasts a pick-made event.
          *
          *     RPC subject: `rpc.balancer.draft.pick_override`
          */
@@ -1227,7 +1227,7 @@ export interface paths {
         put?: never;
         /**
          * Select draft pick
-         * @description Permission: the on-clock captain of the pick's team, or a workspace admin. Makes a pick for the current slot, enforcing role fit and optimistic version, then broadcasts pick-made/next-pick events.
+         * @description Permission: the on-clock captain of the pick's team, or a workspace admin. Makes a pick for the current slot, enforcing role fit and optimistic version, then broadcasts pick-made/next-pick events. A tournament's workspace admin or a mix's host may pick for whichever team is on the clock.
          *
          *     RPC subject: `rpc.balancer.draft.pick_select`
          */
@@ -1276,6 +1276,28 @@ export interface paths {
         get: operations["get__api_v1_balancer_draft_sessions__session_id__board"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/balancer/draft/sessions/{session_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel draft session
+         * @description Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Cancels the draft and publishes a draft-cancelled realtime event.
+         *
+         *     RPC subject: `rpc.balancer.draft.cancel`
+         */
+        post: operations["post__api_v1_balancer_draft_sessions__session_id__cancel"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1391,7 +1413,7 @@ export interface paths {
         };
         /**
          * Get draft feasibility
-         * @description Permission: workspace `team.create`. Reports whether every remaining team-role slot can be filled.
+         * @description Permission: a tournament workspace's `team.read`, or the mix's hosts. Reports whether every remaining team-role slot can be filled.
          *
          *     RPC subject: `rpc.balancer.draft.feasibility`
          */
@@ -1413,13 +1435,35 @@ export interface paths {
         };
         /**
          * Get draft organizer journal
-         * @description Permission: workspace `team.create`. Returns the session's audit trail newest first -- picks, autopicks, overrides, clock extensions and every lifecycle move -- with the acting account's name resolved (null for the clock and other system actions). `limit` defaults to 100 and is clamped to 500.
+         * @description Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Returns the session's audit trail newest first -- picks, autopicks, overrides, clock extensions and every lifecycle move -- with the acting account's name resolved (null for the clock and other system actions). `limit` defaults to 100 and is clamped to 500.
          *
          *     RPC subject: `rpc.balancer.draft.journal`
          */
         get: operations["get__api_v1_balancer_draft_sessions__session_id__journal"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/balancer/draft/sessions/{session_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause draft session
+         * @description Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Pauses an in-progress draft and publishes a draft-paused realtime event.
+         *
+         *     RPC subject: `rpc.balancer.draft.pause`
+         */
+        post: operations["post__api_v1_balancer_draft_sessions__session_id__pause"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1437,11 +1481,77 @@ export interface paths {
         put?: never;
         /**
          * Preview or add a draft player role
-         * @description Permission: workspace `team.create`. Previews or commits an emergency role addition to the draft snapshot with optimistic versioning and private audit reason.
+         * @description Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Previews or commits an emergency role addition to the draft snapshot with optimistic versioning and private audit reason; 422 `role_edit_tournament_only` on a mix's draft, whose ranks are edited in the mix.
          *
          *     RPC subject: `rpc.balancer.draft.player_role_edit`
          */
         post: operations["post__api_v1_balancer_draft_sessions__session_id__players__player_id__roles"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/balancer/draft/sessions/{session_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume draft session
+         * @description Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Resumes a paused draft and publishes a draft-resumed realtime event.
+         *
+         *     RPC subject: `rpc.balancer.draft.resume`
+         */
+        post: operations["post__api_v1_balancer_draft_sessions__session_id__resume"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/balancer/draft/sessions/{session_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rollback draft pick
+         * @description Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Rolls back the most recent draft action and publishes a rollback realtime event.
+         *
+         *     RPC subject: `rpc.balancer.draft.rollback`
+         */
+        post: operations["post__api_v1_balancer_draft_sessions__session_id__rollback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/balancer/draft/sessions/{session_id}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start draft session
+         * @description Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser), and only a superuser may start a tournament's draft outside its draft phase (a mix draft has no phase). Starts the draft and opens the first pick, publishing a pick-started realtime event with the clock deadline.
+         *
+         *     RPC subject: `rpc.balancer.draft.start`
+         */
+        post: operations["post__api_v1_balancer_draft_sessions__session_id__start"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1457,7 +1567,7 @@ export interface paths {
         };
         /**
          * Get pick suggestions
-         * @description Permission: workspace `team.read`. Ranks the top five available players by fit for the current pick; 409 if the draft has no current pick.
+         * @description Permission: a tournament workspace's `team.read`, or the mix's hosts. Ranks the top five available players by fit for the current pick; 409 if the draft has no current pick.
          *
          *     RPC subject: `rpc.balancer.draft.suggestions`
          */
@@ -1479,7 +1589,7 @@ export interface paths {
         };
         /**
          * Get team fit scores
-         * @description Permission: the team's own captain, or workspace `team.read`. Scores every available player against every role this team can still seat, normalized 1..99 across the response (50 when all candidates tie). `role` is null under a role-less (all-flex) roster shape, where each player has exactly one entry. Empty once the team's roster is full or the draft is completed/cancelled.
+         * @description Permission: that team's own captain, or whoever runs the draft. Scores every available player against every role this team can still seat, normalized 1..99 across the response (50 when all candidates tie). `role` is null under a role-less (all-flex) roster shape, where each player has exactly one entry. Empty once the team's roster is full or the draft is completed/cancelled.
          *
          *     RPC subject: `rpc.balancer.draft.team_fit`
          */
@@ -1501,14 +1611,14 @@ export interface paths {
         };
         /**
          * Get captain pick queue
-         * @description Permission: the team's own captain, or workspace `team.create`. Returns the team's private autopick priority in stored order, filtered to players still available, plus `autopick_preview` -- exactly what autopick would take -- while this team is on the clock. Never part of the public board.
+         * @description Permission: that team's own captain, or whoever runs the draft. Returns the team's private autopick priority in stored order, filtered to players still available, plus `autopick_preview` -- exactly what autopick would take -- while this team is on the clock. Never part of the public board.
          *
          *     RPC subject: `rpc.balancer.draft.queue_get`
          */
         get: operations["get__api_v1_balancer_draft_sessions__session_id__teams__team_id__queue"];
         /**
          * Set captain pick queue
-         * @description Permission: the team's own captain, or workspace `team.create`. Replaces the queue with the given order (max 60, duplicates collapsed to their first placement); 422 when an id is not an available non-captain player of this draft, 409 once the draft is completed or cancelled. Publishes no realtime event -- a queue is private to its team.
+         * @description Permission: that team's own captain, or whoever runs the draft. Replaces the queue with the given order (max 60, duplicates collapsed to their first placement); 422 when an id is not an available non-captain player of this draft, 409 once the draft is completed or cancelled. Publishes no realtime event -- a queue is private to its team.
          *
          *     RPC subject: `rpc.balancer.draft.queue_set`
          */
@@ -1598,28 +1708,6 @@ export interface paths {
         patch: operations["patch__api_v1_balancer_draft_tournaments__tournament_id__sessions__session_id_"];
         trace?: never;
     };
-    "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/cancel": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Cancel draft session
-         * @description Permission: workspace `team.create`. Cancels the draft and publishes a draft-cancelled realtime event.
-         *
-         *     RPC subject: `rpc.balancer.draft.cancel`
-         */
-        post: operations["post__api_v1_balancer_draft_tournaments__tournament_id__sessions__session_id__cancel"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/export": {
         parameters: {
             query?: never;
@@ -1664,72 +1752,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/pause": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Pause draft session
-         * @description Permission: workspace `team.create`. Pauses an in-progress draft and publishes a draft-paused realtime event.
-         *
-         *     RPC subject: `rpc.balancer.draft.pause`
-         */
-        post: operations["post__api_v1_balancer_draft_tournaments__tournament_id__sessions__session_id__pause"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/resume": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Resume draft session
-         * @description Permission: workspace `team.create`. Resumes a paused draft and publishes a draft-resumed realtime event.
-         *
-         *     RPC subject: `rpc.balancer.draft.resume`
-         */
-        post: operations["post__api_v1_balancer_draft_tournaments__tournament_id__sessions__session_id__resume"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/rollback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Rollback draft pick
-         * @description Permission: workspace `team.create`. Rolls back the most recent draft action and publishes a rollback realtime event.
-         *
-         *     RPC subject: `rpc.balancer.draft.rollback`
-         */
-        post: operations["post__api_v1_balancer_draft_tournaments__tournament_id__sessions__session_id__rollback"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/seed": {
         parameters: {
             query?: never;
@@ -1746,28 +1768,6 @@ export interface paths {
          *     RPC subject: `rpc.balancer.draft.seed`
          */
         post: operations["post__api_v1_balancer_draft_tournaments__tournament_id__sessions__session_id__seed"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/balancer/draft/tournaments/{tournament_id}/sessions/{session_id}/start": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Start draft session
-         * @description Permission: workspace `team.create`, and only a superuser may start outside the tournament's draft phase. Starts the draft and opens the first pick, publishing a pick-started realtime event with the clock deadline.
-         *
-         *     RPC subject: `rpc.balancer.draft.start`
-         */
-        post: operations["post__api_v1_balancer_draft_tournaments__tournament_id__sessions__session_id__start"];
         delete?: never;
         options?: never;
         head?: never;
@@ -35450,6 +35450,84 @@ export interface operations {
             };
         };
     };
+    post__api_v1_balancer_draft_sessions__session_id__cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["balancer.DraftSessionRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     get__api_v1_balancer_draft_sessions__session_id__chat: {
         parameters: {
             query?: {
@@ -36076,6 +36154,84 @@ export interface operations {
             };
         };
     };
+    post__api_v1_balancer_draft_sessions__session_id__pause: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["balancer.DraftSessionRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     post__api_v1_balancer_draft_sessions__session_id__players__player_id__roles: {
         parameters: {
             query?: never;
@@ -36099,6 +36255,240 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["balancer.DraftRoleEditResponse"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_balancer_draft_sessions__session_id__resume: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["balancer.DraftSessionRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_balancer_draft_sessions__session_id__rollback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["balancer.DraftSessionRead"];
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_balancer_draft_sessions__session_id__start: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["balancer.DraftSessionRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -36858,85 +37248,6 @@ export interface operations {
             };
         };
     };
-    post__api_v1_balancer_draft_tournaments__tournament_id__sessions__session_id__cancel: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                tournament_id: string;
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["balancer.DraftSessionRead"];
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     post__api_v1_balancer_draft_tournaments__tournament_id__sessions__session_id__export: {
         parameters: {
             query?: never;
@@ -37095,243 +37406,6 @@ export interface operations {
             };
         };
     };
-    post__api_v1_balancer_draft_tournaments__tournament_id__sessions__session_id__pause: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                tournament_id: string;
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["balancer.DraftSessionRead"];
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    post__api_v1_balancer_draft_tournaments__tournament_id__sessions__session_id__resume: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                tournament_id: string;
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["balancer.DraftSessionRead"];
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    post__api_v1_balancer_draft_tournaments__tournament_id__sessions__session_id__rollback: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                tournament_id: string;
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["balancer.DraftSessionRead"];
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
     post__api_v1_balancer_draft_tournaments__tournament_id__sessions__session_id__seed: {
         parameters: {
             query?: never;
@@ -37355,85 +37429,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["balancer.DraftSeedResponse"];
-                };
-            };
-            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
-            429: {
-                headers: {
-                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
-                    "Retry-After"?: number;
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    post__api_v1_balancer_draft_tournaments__tournament_id__sessions__session_id__start: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                tournament_id: string;
-                session_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Success */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["balancer.DraftSessionRead"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */

@@ -65,22 +65,22 @@ test("captains draft in snake order; admin extend/autopick/pause/resume/rollback
   expect(board.picks[1]).toMatchObject({ status: "autopicked", is_autopick: true, picked_player_id: queueHead });
 
   // Pause freezes picking; resume reopens the same pick.
-  await adminApi.post(`${d.base}/pause`);
+  await adminApi.post(`${d.lifecycle}/pause`);
   board = await draftBoard(anonApi, sid);
   expect(board.session.status).toBe("paused");
   pick = board.current_pick!;
   const paused = await c2.api.raw("POST", `/api/v1/balancer/draft/picks/${pick.id}/select`, { body: { expected_version: pick.version, player_id: available()[0] } });
   expect(paused.status(), "pick while paused").toBe(409);
-  await adminApi.post(`${d.base}/resume`);
+  await adminApi.post(`${d.lifecycle}/resume`);
   expect((await draftBoard(anonApi, sid)).session.status).toBe("live");
 
   // Rollback returns the newest pick's player to the pool.
   const third = await pickFirstSafe(c2.api, pick.id);
-  await adminApi.post(`${d.base}/rollback`);
+  await adminApi.post(`${d.lifecycle}/rollback`);
   board = await draftBoard(anonApi, sid);
   expect(board.players.find((p) => p.id === third.player_id)?.status).toBe("available");
   expect(board.current_pick).toMatchObject({ overall_no: 3, draft_team_id: team2 });
-  if (board.session.status === "paused") await adminApi.post(`${d.base}/resume`);
+  if (board.session.status === "paused") await adminApi.post(`${d.lifecycle}/resume`);
 
   // Override: an admin picks for the on-clock team.
   board = await draftBoard(anonApi, sid);
@@ -135,7 +135,7 @@ test("the server clock autopicks an expired pick", async ({ adminApi, anonApi, m
     `/api/v1/balancer/draft/sessions/${d.session.id}/journal`
   );
   expect(journal.entries[0]).toMatchObject({ action: "pick_autopicked", actor_auth_user_id: null, reason: "expiry" });
-  await adminApi.post(`${d.base}/cancel`);
+  await adminApi.post(`${d.lifecycle}/cancel`);
 });
 
 test("session lifecycle guards: one active draft, delete needs a stopped draft, seed needs captains, preview writes nothing", async ({
@@ -150,19 +150,19 @@ test("session lifecycle guards: one active draft, delete needs a stopped draft, 
     .map((p) => ({ registration_id: p.registration_id }));
   expect((await adminApi.raw("POST", sessions, { body: { pool_source: "manual" } })).status(), "a second active draft").toBe(409);
 
-  expect((await adminApi.post<DraftSession>(`${d.base}/start`)).status).toBe("live");
+  expect((await adminApi.post<DraftSession>(`${d.lifecycle}/start`)).status).toBe("live");
   expect((await adminApi.raw("DELETE", d.base)).status(), "delete while live").toBe(409);
   const outsider = await makeUser("nodraft");
-  expect((await outsider.api.raw("POST", `${d.base}/pause`)).status()).toBe(403);
+  expect((await outsider.api.raw("POST", `${d.lifecycle}/pause`)).status()).toBe(403);
   expect((await anonApi.get<{ session: DraftSession }>(`/api/v1/balancer/draft/tournaments/${d.tournament.id}/draft`)).session.id).toBe(d.session.id);
   expect(await anonApi.get(`/api/v1/balancer/draft/sessions/${d.session.id}`)).toMatchObject({ status: "live" });
-  expect((await adminApi.post<DraftSession>(`${d.base}/cancel`)).status).toBe("cancelled");
+  expect((await adminApi.post<DraftSession>(`${d.lifecycle}/cancel`)).status).toBe("cancelled");
   await adminApi.delete(d.base, 204);
 
   const fresh = await adminApi.post<DraftSession>(sessions, { pool_source: "manual" });
   const base = `${sessions}/${fresh.id}`;
   expect((await adminApi.raw("POST", `${base}/seed`, { body: { pool_captains: [] } })).status()).toBe(422);
-  expect((await adminApi.raw("POST", `${base}/start`)).status(), "start from setup").toBe(400);
+  expect((await adminApi.raw("POST", `/api/v1/balancer/draft/sessions/${fresh.id}/start`)).status(), "start from setup").toBe(400);
   const preview = await adminApi.post<{ preview_only: boolean; diff: { teams_after: number; picks_after: number } }>(`${base}/seed`, {
     pool_captains: captainRegs,
     preview_only: true,
@@ -206,7 +206,7 @@ test("draft room chat: captains write, spectators read while open, moderators mu
   expect((await c2.api.raw("DELETE", `${chat}/${posted.id}`)).status(), "deleting someone else's message").toBe(403);
   await c1.api.delete(`${chat}/${posted.id}`);
   expect((await c2.api.get<Envelope>(chat)).messages.map((m) => m.body)).toEqual(["thanks"]);
-  await adminApi.post(`${d.base}/cancel`);
+  await adminApi.post(`${d.lifecycle}/cancel`);
 });
 
 test("pick options never offer a choice that would starve another team", async ({ adminApi, makeUser }) => {
@@ -218,5 +218,5 @@ test("pick options never offer a choice that would starve another team", async (
     board.players.filter((p) => !p.is_captain).map((p) => p.id).sort()
   );
   expect(new Set(options.options.map((o) => o.role.role))).toEqual(new Set(["damage", "support"]));
-  await adminApi.post(`${d.base}/cancel`);
+  await adminApi.post(`${d.lifecycle}/cancel`);
 });

@@ -87,8 +87,10 @@ export type DraftSetup = {
   pool: Registration[];
   poolTags: string[];
   session: DraftSession;
-  /** `/api/v1/balancer/draft/tournaments/{tid}/sessions/{sid}` */
+  /** `/api/v1/balancer/draft/tournaments/{tid}/sessions/{sid}`: seed, patch, export, delete. */
   base: string;
+  /** `/api/v1/balancer/draft/sessions/{sid}`: start, pause, resume, cancel, rollback. */
+  lifecycle: string;
 };
 
 /**
@@ -120,12 +122,13 @@ export async function seedDraft(
   const sessions = `/api/v1/balancer/draft/tournaments/${tournament.id}/sessions`;
   const created = await api.post<DraftSession>(sessions, { pool_source: "manual", pick_time_seconds: opts.pickTimeSeconds ?? 300 });
   const base = `${sessions}/${created.id}`;
+  const lifecycle = `/api/v1/balancer/draft/sessions/${created.id}`;
   const seeded = await api.post<{ session: DraftSession }>(`${base}/seed`, {
     pool_captains: captainRegs.map((reg) => ({ registration_id: reg.id })),
     captain_order: "manual",
   });
-  const session = opts.start ? await api.post<DraftSession>(`${base}/start`) : seeded.session;
-  return { workspace, tournament, captains, captainTags, pool, poolTags, session, base };
+  const session = opts.start ? await api.post<DraftSession>(`${lifecycle}/start`) : seeded.session;
+  return { workspace, tournament, captains, captainTags, pool, poolTags, session, base, lifecycle };
 }
 
 /** The first feasibility-safe option of the on-clock pick, picked by `as` (its captain or an admin). */

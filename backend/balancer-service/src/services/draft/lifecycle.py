@@ -972,6 +972,7 @@ class DraftLifecycleService:
         await draft_rt.publish_draft_event(
             session, draft_session=draft, event_type=event_type, payload=payload, actor_user_id=actor_auth_user_id
         )
+        await draft_rt.mix_changed(session, draft, actor_user_id=actor_auth_user_id)
         return draft
 
     async def publish_result(

@@ -95,9 +95,9 @@ func TestIsMemberSQLIgnoresObservationOnlyAnchors(t *testing.T) {
 }
 
 // Who is inside a mix match's room: a seated player (through the roster snapshot's member and its linked account)
-// or a host/co-host of its mix. Also the owner lookup the room's rules branch on: a mix match, a tournament
-// encounter, and a missing encounter. Runs against the real schema in a rolled-back transaction; skipped without a
-// test DB.
+// or a host/co-host of its mix. Also the owner lookups the rooms' rules branch on: a mix match, a tournament
+// encounter, a missing encounter, and a draft session of either owner with its mix's hosts. Runs against the real
+// schema in a rolled-back transaction; skipped without a test DB.
 func TestIsMixRoomMemberSQL(t *testing.T) {
 	host, port := os.Getenv("POSTGRES_HOST"), os.Getenv("POSTGRES_PORT")
 	if host == "" || port == "" {
@@ -172,5 +172,36 @@ func TestIsMixRoomMemberSQL(t *testing.T) {
 	// EncounterOwner maps no row to found=false, so a missing encounter must yield none.
 	if _, _, err := owner(-1); !errors.Is(err, pgx.ErrNoRows) {
 		t.Fatalf("encounterOwnerSQL(missing) err = %v, want pgx.ErrNoRows", err)
+	}
+
+	if _, err := tx.Exec(ctx, `INSERT INTO mix.lobby (custom_game_id, lobby_index) VALUES ($1, 0) ON CONFLICT DO NOTHING`, game); err != nil {
+		t.Skipf("cannot seed (schema not the expected one): %v", err)
+	}
+	mixDraft := seed(`INSERT INTO draft.session (custom_game_id, lobby_index, workspace_id, discipline) SELECT id, 0, workspace_id, discipline FROM mix.custom_game WHERE id = $1 RETURNING id`, game)
+	cupDraft := seed(`INSERT INTO draft.session (tournament_id, workspace_id, discipline) SELECT id, workspace_id, discipline FROM tournament.tournament WHERE id = $1 RETURNING id`, cup)
+	draftOwner := func(id int64) (int64, bool, error) {
+		var tournamentID int64
+		var isMix bool
+		err := tx.QueryRow(ctx, draftSessionOwnerSQL, id).Scan(&tournamentID, &isMix)
+		return tournamentID, isMix, err
+	}
+	if tournamentID, isMix, err := draftOwner(mixDraft); err != nil || !isMix || tournamentID != 0 {
+		t.Fatalf("draftSessionOwnerSQL(mix) = (%d, %v, %v), want (0, true, nil)", tournamentID, isMix, err)
+	}
+	if tournamentID, isMix, err := draftOwner(cupDraft); err != nil || isMix || tournamentID != cup {
+		t.Fatalf("draftSessionOwnerSQL(tournament) = (%d, %v, %v), want (%d, false, nil)", tournamentID, isMix, err, cup)
+	}
+	runsDraft := func(session, user int64) bool {
+		var is bool
+		if err := tx.QueryRow(ctx, isDraftSessionMixHostSQL, session, user).Scan(&is); err != nil {
+			t.Fatal(err)
+		}
+		return is
+	}
+	if !runsDraft(mixDraft, hostID) || !runsDraft(mixDraft, coHost) {
+		t.Fatal("the mix's host and co-host run its draft")
+	}
+	if runsDraft(mixDraft, player) || runsDraft(mixDraft, outsider) || runsDraft(cupDraft, hostID) {
+		t.Fatal("only a mix's hosts run its own draft")
 	}
 }

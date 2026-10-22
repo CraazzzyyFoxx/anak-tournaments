@@ -55,13 +55,9 @@ class Scope:
 
     @classmethod
     def draft(cls, draft_session_id: int) -> Scope:
-        """A live draft SESSION's own topics (currently just its chat).
-
-        Keyed by the session and not by the tournament because a session IS the
-        draft: re-seeding one deletes it and creates another, and the two are
-        different events with different participants. Data only, like
-        ``encounter`` -- a draft write stales ``tournament.*`` resources, which
-        are already published under the tournament scope.
+        """A draft SESSION's own topics: its board (``board``) and its chat (``chat``), for a tournament's draft and
+        a mix lobby's alike (spec §9.6). Keyed by the session because a session IS the draft. Data only, like
+        ``encounter``.
         """
         return cls(ScopeKind.DRAFT, int(draft_session_id))
 
