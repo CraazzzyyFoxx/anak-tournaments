@@ -165,7 +165,12 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
   // the summary card replaces them.
   const registrations = registrationList?.registrations ?? [];
   const listHidden = registrationList?.hidden === true;
-  const myRegistration = myRegQuery.data;
+  // Only for a viewer this render knows is signed in. The shell fetches the
+  // same entry as soon as the profile resolves — often before this tab
+  // hydrates — but hydration still sees the server's "idle" profile, and the
+  // server never has the entry: reading it from the cache regardless rendered
+  // a card the server HTML lacks, and the hydration mismatch threw the tab away.
+  const myRegistration = isAuthenticated ? myRegQuery.data : undefined;
   const form = formQuery.data ?? null;
   const canCheckIn =
     Boolean(myRegistration) &&

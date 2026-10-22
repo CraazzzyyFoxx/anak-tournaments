@@ -14,11 +14,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot, hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 import { ApiError } from "@/lib/api/error";
+import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
+import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import type {
   Registration,
   RegistrationForm,
@@ -66,15 +69,19 @@ vi.mock("@/services/rbac.service", () => ({
   rbacService: { listOAuthConnections: () => Promise.resolve({ results: [] }) }
 }));
 
-// Signed in, because an anonymous visitor has no registration to check in.
-vi.mock("@/hooks/useAuthProfile", () => ({
-  useAuthProfile: () => ({
-    status: "authenticated",
-    user: { id: 5 },
-    error: null,
-    refetch: () => {}
-  })
-}));
+// Signed in, because an anonymous visitor has no registration to check in. The
+// real store, not a stubbed hook: a hydrating render reads its INITIAL
+// ("idle") state, exactly as the server did, and that is behaviour under test.
+const SIGNED_IN = {
+  id: 5,
+  username: "anak",
+  roles: [],
+  permissions: [],
+  denies: [],
+  isSuperuser: false,
+  workspaces: [],
+  linkedPlayers: []
+};
 
 /**
  * The roster itself: virtualised, ResizeObserver-driven, and irrelevant to the
@@ -287,6 +294,7 @@ beforeEach(() => {
   listRegistrations.mockResolvedValue(regList([makeRegistration()]));
   getForm.mockResolvedValue(FORM);
   getMyRegistration.mockResolvedValue(makeRegistration());
+  useAuthProfileStore.setState({ status: "authenticated", user: SIGNED_IN, error: undefined });
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -383,6 +391,47 @@ describe("tournament participants check-in", () => {
     await mount();
     expect(dialog()).toBeNull();
     expect(checkInButton()).toBeNull();
+  });
+});
+
+describe("a first visit's hydration", () => {
+  it("hydrates the server's page, then shows the entry the shell already fetched", async () => {
+    const tree = (client: QueryClient) => (
+      <QueryClientProvider client={client}>
+        <NextIntlClientProvider locale="en" messages={en}>
+          <TournamentParticipantsPage slug={String(TOURNAMENT_ID)} />
+        </NextIntlClientProvider>
+      </QueryClientProvider>
+    );
+    const seeded = () => {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      client.setQueryData(tournamentQueryKeys.registrationsList(3, TOURNAMENT_ID), regList([makeRegistration()]));
+      client.setQueryData(tournamentQueryKeys.registrationForm(3, TOURNAMENT_ID), FORM);
+      return client;
+    };
+    // The server's render belongs to no viewer.
+    const html = renderToString(tree(seeded()));
+    // In the browser the shell's Register button reads the viewer's own entry
+    // as soon as the profile resolves — before this tab hydrates.
+    const browserClient = seeded();
+    browserClient.setQueryData(tournamentQueryKeys.registration(3, TOURNAMENT_ID), makeRegistration());
+    const hydrated = document.createElement("div");
+    hydrated.innerHTML = html;
+    document.body.appendChild(hydrated);
+    const mismatches: unknown[] = [];
+
+    let hydratedRoot: Root | undefined;
+    await act(async () => {
+      hydratedRoot = hydrateRoot(hydrated, tree(browserClient), {
+        onRecoverableError: (error) => mismatches.push(error)
+      });
+    });
+    await settle();
+
+    expect(mismatches).toEqual([]);
+    expect(hydrated.textContent).toContain(en.registration.myCard.title);
+    act(() => hydratedRoot?.unmount());
+    hydrated.remove();
   });
 });
 
