@@ -4151,6 +4151,8 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         )
         row = _roster_row(1, 7, 0)
         self.roster.list_for_game.return_value = [row]
+        names: dict[tuple[int, int], str | None] = {}
+        self.team_names.set.side_effect = lambda _s, game_id, index, value: names.__setitem__((game_id, index), value)
 
         await self.service.set_team_names(
             self.session, workspace_id=1, custom_game_id=11, team_names={"0": "Wolves"}, actor_user_id=9
@@ -4164,7 +4166,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             actor_user_id=9,
         )
 
-        self.team_names.set.assert_awaited_once_with(self.session, 11, 0, "Wolves")
+        self.assertEqual({(11, 0): "Wolves"}, names)
         self.assertEqual(MixParticipation.BENCHED, row.participation)
 
     async def test_a_live_lobby_does_not_freeze_its_neighbour(self) -> None:
