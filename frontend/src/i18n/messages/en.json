@@ -7870,8 +7870,6 @@
       "tabsLabel": "Lobbies",
       "tab": "Lobby {letter}",
       "game": "game {number}",
-      "notRecorded": "not recorded",
-      "notBalanced": "not balanced",
       "rebalanceTitle": "Rebalance this lobby?",
       "rebalanceDescription": "The result of the lineup on screen has not been recorded. Balancing replaces it, and there will be nothing left to record it from.",
       "rebalanceConfirm": "Balance anyway",
@@ -8001,7 +7999,12 @@
       "back": "I'm back",
       "awayStatus": "You are away: no lobby seats you until you are back.",
       "waiting": "Waiting for a seat",
-      "queue": "Number {position} in line"
+      "queue": "Number {position} in line",
+      "groups": {
+        "waiting": "Waiting",
+        "away": "Away",
+        "bench": "Bench"
+      }
     }
   },
   "quota": {
