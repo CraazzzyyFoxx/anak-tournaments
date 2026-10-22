@@ -126,6 +126,23 @@ describe("mergeMixStats", () => {
     expect(joined.streak).toBe(1);
   });
 
+  it("keeps one community's form in the server's recording order, even within a millisecond", () => {
+    // The server ordered these by the full recording time: match 5's result landed microseconds after match 9's.
+    const sameMs = "2026-01-31T20:00:00.000Z";
+    const [single] = mergeMixStats([
+      source(1, [
+        member({
+          form: [
+            { outcome: "win", match_id: 5, played_at: sameMs, recorded_at: sameMs },
+            { outcome: "loss", match_id: 9, played_at: sameMs, recorded_at: sameMs },
+          ],
+        }),
+      ]),
+    ]);
+
+    expect(single.form).toEqual(["win", "loss"]);
+  });
+
   it("marks a joined run that fills the whole form window as possibly longer", () => {
     const ids = (from: number) => [...Array(10).keys()].map((i) => from - i * 2);
     const [joined] = mergeMixStats([
