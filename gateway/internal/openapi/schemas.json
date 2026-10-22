@@ -24135,7 +24135,7 @@
         "role": {
           "anyOf": [
             {
-              "pattern": "^(owner|admin|member)$",
+              "pattern": "^(owner|admin|referee|host|player)$",
               "type": "string"
             },
             {
@@ -24309,7 +24309,7 @@
         "role": {
           "anyOf": [
             {
-              "pattern": "^(owner|admin|member)$",
+              "pattern": "^(owner|admin|referee|host|player)$",
               "type": "string"
             },
             {

@@ -368,14 +368,19 @@ class WorkspaceMemberRead(BaseRead):
     rbac_roles: list[WorkspaceMemberRoleRead] = Field(default_factory=list)
 
 
+# The workspace system roles (``shared.rbac.catalog.WORKSPACE_SYSTEM_ROLE_NAMES``);
+# a name outside them has no role to resolve to.
+_SYSTEM_ROLE = r"^(owner|admin|referee|host|player)$"
+
+
 class WorkspaceMemberCreate(BaseModel):
     auth_user_id: int
-    role: str | None = Field(default=None, pattern=r"^(owner|admin|member)$")
+    role: str | None = Field(default=None, pattern=_SYSTEM_ROLE)
     role_ids: list[int] | None = None
 
 
 class WorkspaceMemberUpdate(BaseModel):
-    role: str | None = Field(default=None, pattern=r"^(owner|admin|member)$")
+    role: str | None = Field(default=None, pattern=_SYSTEM_ROLE)
     role_ids: list[int] | None = None
 
 
