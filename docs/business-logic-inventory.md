@@ -264,17 +264,23 @@ solves each lobby. `set_variant_index` refuses a variant that would seat somebod
 already seated: 409 `seat_conflict`.
 
 A lobby's match has a lifecycle (spec §5): **Start match** (`start_match`) opens an encounter of the lobby's shown lineup
-(captains in `encounter.team_member.is_captain`, one `awaiting_result` game on its `next_map_id`) and sets
-`mix.lobby.live_encounter_id` (409 `match_live` when one is already live); **Record** (`record_outcome`, 409
-`no_live_match` without a live match) completes it with `apply_result(source=host)`, stamps `mix.round.lobby_index`,
-writes a `mix.round_member` row per seat of the encounter's roster and a busy one per member seated in another lobby's
-selected variant or away (a seat wins over busy), then clears the pointer and the next map; **Cancel** (`cancel_match`)
-deletes the encounter. Close and cancelling a mix cancel every live match. Host writes of one mix run one at a time:
+(captains in `encounter.team_member.is_captain`, both participations marked ready, one `awaiting_result` game on its
+`next_map_id`) and sets `mix.lobby.live_encounter_id` (409 `match_live` when one is already live). With the mix's
+`hero_ban_preset` set (spec §8) it seats the ban opener in slot 1 (`domain/mix_opener.ban_opener`: the loser of the
+lobby's last round when the same two teams meet again, else the lower average rating; `flip_opener` swaps it), freezes
+the preset into `mix.lobby.live_ban_preset` and, through the outbox, asks tournament-service to open the hero room on it
+(`PickBanRoomOpenRequestedEvent`). **Record** (`record_outcome`, 409 `no_live_match` without a live match) completes it
+with `apply_result(source=host)`, stamps `mix.round.lobby_index`, writes a `mix.round_member` row per seat of the
+encounter's roster and a busy one per member seated in another lobby's selected variant or away (a seat wins over busy),
+then clears the pointer, the frozen preset and the next map; **Cancel** (`cancel_match`) deletes the encounter and
+clears the pointer and the frozen preset. Close and cancelling a mix cancel every live match. Host writes of one mix run
+one at a time:
 `_writable` locks the mix row (`SELECT … FOR UPDATE`) and the lobbies are re-read after the lock. While live, swap /
 variant / next map / captain / balance of that lobby (or `scope="all"` while any lobby is live) and dropping the lobby
 answer 409 `match_live`; balance refuses before it reads the pool (never `empty_lineup`), and `set_next_map` checks the
-map first (404 for one the game does not have). The lobby state (`idle` / `ready` / `live`) is derived (`lobby_state`),
-never stored.
+map first (404 for one the game does not have). The lobby state (`idle` / `ready` / `pregame` / `live`) is derived
+(`lobby_state`), never stored: `pregame` while `live_ban_preset` is set and the encounter's hero room is missing or
+neither completed nor cancelled.
 
 Rounds read in recording order (`encounter.confirmed_at`, then id): the history, undo, rotation, the ranker replay and
 the leaderboard form. `encounter.created_at` is the start: the stats' `played_at`, the leaderboard's period window and
