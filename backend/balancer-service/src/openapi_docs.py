@@ -732,10 +732,10 @@ DOCS: dict[str, dict] = {
             "Permission: self-service -- any authenticated (active) account reads its own "
             "preferences only. "
             "Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, "
-            "the per-role weights, how many balance options to keep, the roster shape its mixes "
-            "field, how far a decided match moves its rank book and whether the mix ranker moves it "
-            "instead (rating_mode) -- plus roster_shape, the read-only resolution of that shape. A null "
-            "value means the setting was never saved and the default applies."
+            "the per-role weights, the open-slot weight, how many balance options to keep, how far a "
+            "decided match moves its rank book and whether the mix ranker moves it instead "
+            "(rating_mode). A null value means the setting was never saved and the default applies. "
+            "The team format is not here: it is frozen on each mix."
         ),
     },
     "rpc.balancer.prefs.upsert": {
@@ -743,10 +743,11 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: self-service -- any authenticated (active) account writes its own "
             "preferences only. "
-            "Replaces all six of the caller's mix settings at once and returns the stored result "
-            "with the re-resolved roster_shape; a null clears one back to the default, and 0 points "
+            "Replaces all six of the caller's mix settings at once and returns the stored result, "
+            "exactly what the next read returns; a null clears one back to the default, and 0 points "
             "per win stores as unset. They apply to every mix this account hosts -- a mix runs on "
-            "its host's preferences whoever presses the button. 422 on an impossible roster shape."
+            "its host's preferences whoever presses the button. 422 on an unknown field or an "
+            "out-of-range value."
         ),
     },
     "rpc.balancer.draft.chat_history": {
