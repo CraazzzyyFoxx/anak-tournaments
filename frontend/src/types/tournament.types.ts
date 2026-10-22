@@ -823,6 +823,8 @@ export interface PickBanPreset {
    * the organizer's rotation alone.
    */
   first_ban_rotation: PickBanFirstBanRotation | null;
+  /** A pickup mix may play it: a hero preset that bans no player on map 1 of a Bo1 (server-computed, spec §8.1). */
+  mix_eligible: boolean;
 }
 
 /** One discipline's constructor vocabulary: groups and presets are that game's, never another's. */

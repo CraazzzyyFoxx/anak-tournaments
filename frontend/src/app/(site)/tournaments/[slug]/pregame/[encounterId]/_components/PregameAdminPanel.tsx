@@ -13,11 +13,11 @@ import type { PickBanKind, PickBanState } from "@/types/tournament.types";
 import { MatchImport } from "@/components/pick-ban/MatchImport";
 import type { PickBanSeat } from "@/components/pick-ban/pick-ban-model";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
+import { PregameAdminBox } from "@/components/pick-ban/PregameAdminBox";
+import { PregameAdminControls } from "@/components/pick-ban/PregameAdminControls";
+import type { PickBanAdminSlot } from "@/components/pick-ban/PickBanPanel";
 
-import { PregameAdminBox } from "./PregameAdminBox";
-import { PregameAdminControls } from "./PregameAdminControls";
 import { PregameRoomHistory } from "./PregameRoomHistory";
-import type { PickBanAdminSlot } from "./PickBanPanel";
 
 const KINDS: readonly PickBanKind[] = ["map", "hero"];
 

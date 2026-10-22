@@ -1,4 +1,5 @@
-"""A mix round is not a tournament encounter (D77): the tournament repository and the result lock do not see it."""
+"""A mix round is not a tournament encounter (D77): the tournament repository and the result lock do not see it --
+only the any-owner lock the pick-ban, readiness and chat paths take (spec §8.2) does."""
 
 from __future__ import annotations
 
@@ -33,3 +34,9 @@ class TournamentEncounterGuardTests(EncounterWriterCase):
             with self.assertRaises(BaseAPIException) as ctx:
                 await lock_encounter(s, self.mix_id)
         self.assertEqual(404, ctx.exception.status_code)
+
+    async def test_the_room_lock_reads_either_owner(self) -> None:
+        repo = EncounterRepository()
+        async with self.Session() as s:
+            self.assertEqual(self.mix_id, (await repo.get_any_owner_for_update(s, self.mix_id, skip_locked=True)).id)
+            self.assertEqual(self.ids["e"], (await repo.get_any_owner_for_update(s, self.ids["e"])).id)

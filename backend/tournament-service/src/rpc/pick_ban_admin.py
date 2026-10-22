@@ -43,6 +43,7 @@ from src.services.encounter.captain import ReportResultIn
 from src.services.encounter.game_correction import game_correction_service
 from src.services.encounter.games import GameResultIn
 from src.services.encounter.pregame_rooms import pregame_rooms_service
+from src.services.encounter.room_owner import ensure_room_organizer, load_room_encounter
 from src.services.encounter.room_reconcile import request_tournament_reconcile
 
 _serialize_config = pick_ban_config.serialize_pick_ban_config
@@ -429,10 +430,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminReset.model_validate(_payload(data))
-            encounter = await _load_encounter(session, encounter_id)
+            encounter = await load_room_encounter(session, encounter_id, for_update=True)
             await record_admin_audit(
                 session,
                 action="pick_ban.session_reset",
@@ -460,8 +460,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminAct.model_validate(_payload(data))
             await record_admin_audit(
                 session,
@@ -502,8 +501,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminSubmit.model_validate(_payload(data))
             await record_admin_audit(
                 session,
@@ -538,8 +536,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminReopen.model_validate(_payload(data))
             await record_admin_audit(
                 session,
@@ -562,8 +559,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminElectOpener.model_validate(_payload(data))
             pick_ban = await pick_ban_session.pick_ban_session_service.get_pick_ban_session(
                 session, encounter_id, body.kind
@@ -603,8 +599,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminPause.model_validate(_payload(data))
             await record_admin_audit(
                 session,
@@ -627,8 +622,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminExtend.model_validate(_payload(data))
             await record_admin_audit(
                 session,
@@ -651,8 +645,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = PickBanAdminCancel.model_validate(_payload(data))
             await record_admin_audit(
                 session,
@@ -766,10 +759,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter_id = _require_id(data)
-            ws_id = await auth.get_encounter_workspace_id(session, encounter_id)
-            ensure_workspace_permission(user, ws_id, "match", "result")
+            ws_id = await ensure_room_organizer(session, user, encounter_id)
             body = AdminReadinessSet.model_validate(_payload(data))
-            encounter = await _load_encounter(session, encounter_id)
+            encounter = await load_room_encounter(session, encounter_id, for_update=True)
             # Same gate the captain's own ready button applies (public_rpc
             # ``_captain_ready``): a preview bracket's room is look-only for an
             # organizer too, or they would confirm readiness into a matchup the

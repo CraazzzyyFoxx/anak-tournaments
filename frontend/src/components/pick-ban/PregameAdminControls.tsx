@@ -67,6 +67,8 @@ interface PregameAdminControlsProps {
    * place a switch reads as "this panel's scope" rather than another command.
    */
   kindSwitch?: React.ReactNode;
+  /** Whether the technical loss is offered: a result, so only where this room writes results (a tournament). */
+  technicalLoss?: boolean;
 }
 
 /** Enough to cover a reconnect, a short break and a long one. */
@@ -159,7 +161,8 @@ export function PregameAdminControls({
   bestOf,
   seriesWins,
   onMutated,
-  kindSwitch
+  kindSwitch,
+  technicalLoss = true
 }: Readonly<PregameAdminControlsProps>) {
   const t = useTranslations("pickBan.room");
   const step = state.current_step;
@@ -590,16 +593,6 @@ export function PregameAdminControls({
           pending={resetMutation.isPending}
           onConfirm={() => resetMutation.mutate()}
         />
-        <Button
-          size="sm"
-          variant="destructive"
-          className="ml-auto"
-          disabled={technicalLossMutation.isPending}
-          onClick={() => setLossOpen(true)}
-        >
-          {technicalLossMutation.isPending ? <Spinner className="mr-2" /> : null}
-          {t("admin.technicalLoss")}
-        </Button>
         <ConfirmDialog
           open={cancelOpen}
           onOpenChange={setCancelOpen}
@@ -624,62 +617,76 @@ export function PregameAdminControls({
           confirmDisabled={cancelReason.trim() === ""}
           onConfirm={() => cancelMutation.mutate()}
         />
-        <ConfirmDialog
-          open={lossOpen}
-          onOpenChange={setLossOpen}
-          intent={{
-            title: t("admin.technicalLossTitle"),
-            description: (
-              <span className="flex flex-col gap-3">
-                <span>{t("admin.technicalLossHint")}</span>
-                <ChoiceGroup
-                  label={t("admin.technicalLossSide")}
-                  options={seats.map((seat) => ({ value: String(seat.id), label: seat.name }))}
-                  value={String(loserTeamId)}
-                  onChange={(next) => {
-                    setLoserTeamId(Number(next));
-                    // The default score is read off who forfeits, so a hand
-                    // edit made for the other team must not survive the switch.
-                    setLossScore(null);
-                  }}
-                />
-                <span className="flex items-end gap-2">
-                  {seats.map((seat) => (
-                    <NumberInput
-                      key={seat.id}
-                      min={0}
-                      integer
-                      className="w-16"
-                      aria-label={t("admin.correctScore", { team: seat.name })}
-                      value={lossScoreShown[seat.id] ?? 0}
-                      onValueChange={(value) =>
-                        setLossScore({ ...lossScoreShown, [seat.id]: value ?? 0 })
-                      }
+        {technicalLoss ? (
+          <>
+            <Button
+              size="sm"
+              variant="destructive"
+              className="ml-auto"
+              disabled={technicalLossMutation.isPending}
+              onClick={() => setLossOpen(true)}
+            >
+              {technicalLossMutation.isPending ? <Spinner className="mr-2" /> : null}
+              {t("admin.technicalLoss")}
+            </Button>
+            <ConfirmDialog
+              open={lossOpen}
+              onOpenChange={setLossOpen}
+              intent={{
+                title: t("admin.technicalLossTitle"),
+                description: (
+                  <span className="flex flex-col gap-3">
+                    <span>{t("admin.technicalLossHint")}</span>
+                    <ChoiceGroup
+                      label={t("admin.technicalLossSide")}
+                      options={seats.map((seat) => ({ value: String(seat.id), label: seat.name }))}
+                      value={String(loserTeamId)}
+                      onChange={(next) => {
+                        setLoserTeamId(Number(next));
+                        // The default score is read off who forfeits, so a hand
+                        // edit made for the other team must not survive the switch.
+                        setLossScore(null);
+                      }}
                     />
-                  ))}
-                </span>
-                <Input
-                  aria-label={t("admin.technicalLossReason")}
-                  placeholder={t("admin.correctReasonPlaceholder")}
-                  value={lossReason}
-                  onChange={(event) => setLossReason(event.target.value)}
-                />
-              </span>
-            ),
-            confirmLabel: t("admin.technicalLossAction"),
-            tone: "danger"
-          }}
-          pending={technicalLossMutation.isPending}
-          confirmDisabled={
-            lossReason.trim() === "" ||
-            seats.some(
-              (seat) =>
-                seat.id !== loserTeamId &&
-                (lossScoreShown[loserTeamId] ?? 0) >= (lossScoreShown[seat.id] ?? 0)
-            )
-          }
-          onConfirm={() => technicalLossMutation.mutate()}
-        />
+                    <span className="flex items-end gap-2">
+                      {seats.map((seat) => (
+                        <NumberInput
+                          key={seat.id}
+                          min={0}
+                          integer
+                          className="w-16"
+                          aria-label={t("admin.correctScore", { team: seat.name })}
+                          value={lossScoreShown[seat.id] ?? 0}
+                          onValueChange={(value) =>
+                            setLossScore({ ...lossScoreShown, [seat.id]: value ?? 0 })
+                          }
+                        />
+                      ))}
+                    </span>
+                    <Input
+                      aria-label={t("admin.technicalLossReason")}
+                      placeholder={t("admin.correctReasonPlaceholder")}
+                      value={lossReason}
+                      onChange={(event) => setLossReason(event.target.value)}
+                    />
+                  </span>
+                ),
+                confirmLabel: t("admin.technicalLossAction"),
+                tone: "danger"
+              }}
+              pending={technicalLossMutation.isPending}
+              confirmDisabled={
+                lossReason.trim() === "" ||
+                seats.some(
+                  (seat) =>
+                    seat.id !== loserTeamId &&
+                    (lossScoreShown[loserTeamId] ?? 0) >= (lossScoreShown[seat.id] ?? 0)
+                )
+              }
+              onConfirm={() => technicalLossMutation.mutate()}
+            />
+          </>
+        ) : null}
       </div>
 
       {correctable.length > 0 ? (

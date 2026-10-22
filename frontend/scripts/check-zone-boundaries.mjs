@@ -105,7 +105,8 @@ const mentions = new Map();
 const edges = new Map();
 
 const MESSAGES = join(SRC, "i18n/messages/en.json");
-const NAMESPACES = Object.keys(JSON.parse(readFileSync(MESSAGES, "utf8")));
+const EN = JSON.parse(readFileSync(MESSAGES, "utf8"));
+const NAMESPACES = Object.keys(EN);
 const isTest = (id) => /\.(test|spec)\.|\.behavior\./.test(id);
 /** Z6/Z7's exemption, exactly: `*.test.ts(x)` (incl. `*.behavior.test.tsx`) and the shared test support in `src/test/`. */
 const isTestCode = (id) => /\.test$/.test(id) || id.startsWith("test/");
@@ -153,15 +154,51 @@ function disciplineFinding(from, to) {
  */
 const MENTION = NAMESPACES.map((ns) => [ns, new RegExp(`["'\`]${ns}[."'\`]`)]);
 
+/**
+ * Namespaces a zone may ship by subtree. For these a mention's dotted literal
+ * (`"pickBan.rules.preset"`, or the static head of `` `pickBan.room.${key}` ``)
+ * is what the module needs, and a zone ships the union of its modules'
+ * subtrees -- the whole namespace only when one of them names it bare. The mix
+ * header and account settings render in the tools and root zones and need two
+ * labels and the preset names, not the ~33 kB constructor and room copy.
+ */
+const SPLIT = new Map(
+  ["pickBan"].map((ns) => [ns, new RegExp(`["'\`](${ns}(?:\\.[A-Za-z0-9_]+)*)(?=[."'\`])`, "g")]),
+);
+
+/** The deepest message node a dotted literal names: a full key ships itself, a literal past the tree its parent. */
+function messageNode(path) {
+  const keys = path.split(".");
+  let node = EN;
+  let depth = 0;
+  while (depth < keys.length && node !== null && typeof node === "object" && keys[depth] in node) {
+    node = node[keys[depth]];
+    depth += 1;
+  }
+  return keys.slice(0, Math.max(depth, 1)).join(".");
+}
+
+/** Bare namespaces win over their subtrees, and a subtree over its own descendants. */
+function normalized(entries) {
+  const all = [...new Set(entries)];
+  return all.filter((entry) => !all.some((other) => entry.startsWith(`${other}.`))).sort();
+}
+
 for (const file of ALL) {
   const from = idOf(file);
   const fromZone = zoneOf(from);
   const source = readFileSync(file, "utf8");
   const deps = new Set();
 
-  if (!isTest(from)) {
+  // Query-key factories hold cache keys, never message keys: `["teams", id]` is not the `teams` namespace.
+  if (!isTest(from) && !/(^|\/)query-keys$/.test(from)) {
     const found = new Set();
-    for (const [ns, re] of MENTION) if (re.test(source)) found.add(ns);
+    for (const [ns, re] of MENTION) {
+      if (!re.test(source)) continue;
+      const split = SPLIT.get(ns);
+      if (split === undefined) found.add(ns);
+      else for (const [, path] of source.matchAll(split)) found.add(messageNode(path));
+    }
     if (found.size > 0) mentions.set(from, found);
   }
 
@@ -240,7 +277,7 @@ const expected = {};
 for (const zone of ZONES) {
   const set = new Set(rootNamespaces);
   for (const id of reachableFrom(seeds[zone])) for (const ns of mentions.get(id) ?? []) set.add(ns);
-  expected[zone] = [...set].sort();
+  expected[zone] = normalized([...set]);
 }
 
 if (process.argv.includes("--write-i18n")) {
@@ -261,7 +298,9 @@ try {
   findings.push({ rule: "Z4", from: relative(SRC, ZONE_FILE), to: "(missing)", what: "run --write-i18n" });
 }
 if (committed !== null) {
-  const unassigned = NAMESPACES.filter((ns) => !ZONES.some((z) => committed[z]?.includes(ns)));
+  const unassigned = NAMESPACES.filter(
+    (ns) => !ZONES.some((z) => committed[z]?.some((entry) => entry === ns || entry.startsWith(`${ns}.`))),
+  );
   for (const ns of unassigned) {
     findings.push({ rule: "Z4", from: `namespace ${ns}`, to: "(no zone)", what: "dead namespace or missing assignment" });
   }

@@ -348,7 +348,8 @@ export function usePickupMix(
 
   /** Opens the lobby's match on the lineup it shows; the server splits the team voices when it has them. */
   const startMatch = useMutation({
-    mutationFn: (lobbyIndex: number) => customGameService.startMatch(workspaceId, selectedGameId as number, lobbyIndex),
+    mutationFn: ({ lobbyIndex, flipOpener }: { lobbyIndex: number; flipOpener: boolean }) =>
+      customGameService.startMatch(workspaceId, selectedGameId as number, lobbyIndex, flipOpener),
     onSuccess: (game) => {
       applyGame(game);
       notify.success(tRoom("started"));
@@ -547,6 +548,13 @@ export function usePickupMix(
     onError: (error) => notify.apiError(error),
   });
 
+  /** The mix's hero ban preset. Returns the game, so the board is seeded like any other host write. */
+  const setBanPreset = useMutation({
+    mutationFn: (preset: string | null) => customGameService.setBanPreset(workspaceId, selectedGameId as number, preset),
+    onSuccess: applyGame,
+    onError: (error) => notify.apiError(error),
+  });
+
   /**
    * Opens signup and hands the card to the bot. The mix's own `self_signup`
    * moves server-side, so the board is refetched; the message itself is
@@ -653,6 +661,7 @@ export function usePickupMix(
     updateMySeat,
     setMyAway,
     setSelfService,
+    setBanPreset,
     postSignup,
     deleteDiscordPost,
     setVoiceChannels,

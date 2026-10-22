@@ -197,13 +197,43 @@ describe("PickupLobbyCards", () => {
     await click(byName(scope, "balance"));
     expect(onBalance).toHaveBeenCalledWith(0);
     await click(byName(scope, "startMatch"));
-    expect(onStartMatch).toHaveBeenCalledWith(1);
+    expect(onStartMatch).toHaveBeenCalledWith(1, false);
 
     await click(byName(scope, "record"));
     const items = [...document.querySelectorAll('[role="menuitem"]')];
     expect(items.map((item) => item.textContent)).toEqual(["teamWin:team:1", "draw", "teamWin:team:2"]);
     await click(items[1]);
     expect(onRecordOutcome).toHaveBeenCalledWith({ outcome: { winner: null }, lobbyIndex: 2 });
+  });
+
+  it("names who bans first before a card starts its match, and starts it with the host's swap", async () => {
+    const scope = await mount(game([lobby(0), lobby(1, { state: "ready", opener_index: 1 })]));
+
+    await click(byName(scope, "startMatch"));
+    expect(onStartMatch).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("opener:team:2");
+
+    await click(document.querySelector('[role="switch"]'));
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("opener:team:1");
+    await click(byName(document, "startConfirm"));
+
+    expect(onStartMatch).toHaveBeenCalledWith(1, true);
+  });
+
+  it("times a lobby's Pre-game the way it times a live match, with no result to record yet", async () => {
+    // On a minute boundary, so the card's minute clock reads exactly twelve.
+    const startedAt = new Date(Math.floor(Date.now() / 60_000) * 60_000 - 12 * 60_000).toISOString();
+    const scope = await mount(
+      game([lobby(0), lobby(1, { state: "pregame", live_encounter_id: 50, live_started_at: startedAt })]),
+    );
+
+    expect(scope.textContent).toContain("state.pregame");
+    expect(scope.textContent).toContain("elapsed:12");
+    expect(byName(scope, "record")).toBeNull();
+    expect(byName(scope, "startMatch")).toBeNull();
+    expect([...scope.querySelectorAll("a")].map((link) => link.getAttribute("href"))).toContain(
+      "/balancer/mix/3/lobby/B",
+    );
   });
 
   it("keeps Balance off, with the reason, while the lobby cannot fill its seats", async () => {

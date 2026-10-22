@@ -12,8 +12,6 @@ import pickBanService, {
   type PickBanActionInput,
   type PickBanSubmitInput
 } from "@/services/pickBan.service";
-import type { Encounter } from "@/types/encounter.types";
-import { buildSeriesSlots } from "@/lib/encounter/detail";
 import type {
   PickBanAction,
   PickBanKind,
@@ -29,7 +27,8 @@ import {
   pickBanSeats,
   seatName,
   stepSubmissions,
-  viewerSubmission
+  viewerSubmission,
+  type PickBanSeat
 } from "@/components/pick-ban/pick-ban-model";
 import { PickBanCommandBar } from "@/components/pick-ban/PickBanCommandBar";
 import { PickBanDraftTray } from "@/components/pick-ban/PickBanDraftTray";
@@ -71,6 +70,9 @@ export interface PickBanAdminSlot {
   onMutated: () => void;
 }
 
+/** What the board reads off its room: the game, its two seats. A mix room has no Encounter read (D77). */
+export type PickBanBoardEncounter = { workspace_id: number; discipline: string; teams: readonly PickBanSeat[] };
+
 /** The board for whichever pick-ban kind is on the clock: timeline, pool, command bar. */
 export function PickBanPanel({
   kind,
@@ -82,11 +84,12 @@ export function PickBanPanel({
   itemsById,
   isAdmin,
   adminPanel,
-  header
+  header,
+  previousMatchId
 }: Readonly<{
   kind: PickBanKind;
   encounterId: number;
-  encounter: Encounter;
+  encounter: PickBanBoardEncounter;
   state: PickBanState;
   session: NonNullable<PickBanState["session"]>;
   queryKey: unknown[];
@@ -98,6 +101,8 @@ export function PickBanPanel({
    */
   adminPanel?: (slot: PickBanAdminSlot) => React.ReactNode;
   header: React.ReactNode;
+  /** The previous map's parsed match, for a per-player ban's "last played" hints; null when there is none. */
+  previousMatchId: number | null;
 }>) {
   const t = useTranslations("pickBan.room");
   const queryClient = useQueryClient();
@@ -348,16 +353,7 @@ export function PickBanPanel({
                   targets={targetRoster}
                   discipline={encounter.discipline}
                   ontology={metadata.data ?? null}
-                  previousMatchId={
-                    encounter.games?.length
-                      ? (buildSeriesSlots(encounter).find(
-                          (slot) => slot.index === (state.current_round ?? step?.round ?? 1) - 1
-                        )?.match?.id ?? null)
-                      : ((encounter.matches ?? []).find(
-                          (match) =>
-                            match.map_index === (state.current_round ?? step?.round ?? 1) - 1
-                        )?.id ?? null)
-                  }
+                  previousMatchId={previousMatchId}
                   selectedPlayerId={selectedTargetId}
                   assignedByPlayer={assignedByPlayer}
                   itemsById={itemsById}

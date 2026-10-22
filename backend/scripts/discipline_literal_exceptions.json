@@ -2172,7 +2172,7 @@
       "remove_when": "identifier is migrated with its data/URL"
     },
     {
-      "path": "frontend/src/app/(site)/tournaments/[slug]/pregame/[encounterId]/_components/PregameAdminControls.tsx",
+      "path": "frontend/src/components/pick-ban/PregameAdminControls.tsx",
       "rule": "catalog-label",
       "token": "hero",
       "context": "<span>{t(kind === \"hero\" ? \"admin.cancelHeroHint\" : \"admin.cancelMapHint\")}</span>",

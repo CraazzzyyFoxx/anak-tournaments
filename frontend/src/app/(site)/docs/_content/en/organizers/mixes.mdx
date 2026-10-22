@@ -13,9 +13,9 @@ A mix always belongs to one workspace: players come from its members, and the **
 1. **Name** — required, for example "Evening mix".
 2. **Starting lineup** — **No players** or **From a previous mix**.
 
-Copying a previous mix brings over the lineup, each player's role setup, the team names, the co-hosts, the number of lobbies and the lobby pins. Match history is not copied and every player starts in the pool: last session's **Must play** pins and benchings are not inherited.
+Copying a previous mix brings over the lineup, each player's role setup, the team names, the co-hosts, the number of lobbies, the lobby pins and the hero bans. Match history is not copied and every player starts in the pool: last session's **Must play** pins and benchings are not inherited.
 
-The mix itself carries no settings. The roster shape, how a lobby is split and what a win is worth belong to your account and are the same for every mix you host. They live in **Account settings → Mixes**.
+The mix itself carries one setting, its hero bans (see **Hero bans** below). The roster shape, how a lobby is split and what a win is worth belong to your account and are the same for every mix you host. They live in **Account settings → Mixes**.
 
 ## Who plays: three columns
 
@@ -53,12 +53,13 @@ With one lobby the mix page is that lobby's room: everything below happens right
 
 Each lobby's room has its own address, for example `/balancer/mix/12/lobby/B`. Anyone with the link can watch it, signed out included — send it to that lobby's players and casters. Hosts get the full controls there, the pool with that lobby's rotation hints included.
 
-Every lobby is in one of three stages, shown on its card and at the top of its room:
+Every lobby is in one of these stages, shown on its card and at the top of its room; **Pre-game** comes only in a mix with hero bans:
 
 | Stage | What it means | What comes next |
 | --- | --- | --- |
 | **Idle** | No teams yet. | **Balance** |
 | **Ready** | A lineup is on screen: page the options, swap players, make a captain, roll the map. | **Start match** |
+| **Pre-game** | The match has started and the teams ban heroes; the lineup is frozen. | **Live** once the bans are done, or **Cancel match** |
 | **Live** | The match is being played and its lineup is frozen. | Record the result, or **Cancel match** |
 
 **Balance teams** in a room (**Balance** on its card) balances that lobby alone. Its candidates exclude anyone seated in another lobby, pinned to another lobby or away. A player's card (**Advanced settings**) has a **Lobby** choice — **Auto** or **Lobby A** … **Lobby F** — a pin that takes effect at the next balance. Each lineup row shows where that player is right now: the lobby letter, or **waiting**. With several lobbies the role-supply strip asks for that many times more people per role.
@@ -106,15 +107,25 @@ Your account settings also hold **Points per win**. When it is filled in, record
 
 The **Next map** block rolls a map: **Any** rolls from all competitive maps, or limit it to a mode or pick a map by hand. Everyone watching sees the same map. Each lobby has its own, and the roll skips the maps already played in this mix, in any lobby, while fresh ones remain.
 
-When the players are in the game lobby, press **Start match**. The lineup on screen and the map are fixed for this match and the lobby goes **Live**. If the lobby has both team voices picked, its players are moved into them at the same moment — only those already sitting in a voice of the mix's category; **Split** under **Voice channels** stays for a second try. If somebody seated is away, Start says so first and starts anyway once you confirm.
+When the players are in the game lobby, press **Start match**. The lineup on screen and the map are fixed for this match and the lobby goes **Live** — or first **Pre-game** if the mix bans heroes (see **Hero bans** below). If the lobby has both team voices picked, its players are moved into them at the same moment — only those already sitting in a voice of the mix's category; **Split** under **Voice channels** stays for a second try. If somebody seated is away, Start says so first and starts anyway once you confirm.
 
-While the match is live its lineup is frozen: no new balance of this lobby or of all lobbies, no paging the options, no swaps, no new captain, no new map, and the lobby cannot be dropped. Team names, roles and the rest of the pool stay editable. The card and the room show how long the match has been running; nothing ends it on its own.
+From **Start match** until the result the lineup is frozen: no new balance of this lobby or of all lobbies, no paging the options, no swaps, no new captain, no new map, and the lobby cannot be dropped. Team names, roles and the rest of the pool stay editable. The card and the room show how long the match has been running; nothing ends it on its own.
+
+Once a match has started, its room has a chat for the players of both teams and for the mix's host and co-hosts. Nobody else sees it, signed in or not, so the in-game lobby code can go there.
 
 Record the result with the three buttons under the teams — the first team's win, **Draw**, the second team's win — or from the **Record** menu on the lobby card. The match goes into the history, ranks move as before, the map is cleared for a fresh roll, the **Must play** pins of everyone who played are released — the promise covered one game, not the whole evening — and the lobby is **Ready** for its next start.
 
 **Cancel match** throws a live match away: nothing is recorded, no rank moves, and the lineup is ready to start again. **Close mix** cancels every live match first. A match played without pressing Start is recorded with **Start match**, then the result.
 
 A recorded match can be undone — it leaves the history and the ranks go back exactly where they were. The history lists matches in the order their results were recorded, and only the most recently recorded match of each lobby can be undone; older mistakes are fixed by recording the correct result again.
+
+### Hero bans
+
+Pick **Hero bans** in the mix's header: one of the ban presets of the mix's game — Deadlock has **Two bans each, A-B-A-B**, 30 s a turn — **Side selection** for LoL, or **No bans**. A preset whose later maps ban particular players plays only its first-map bans, since every mix match is a first map. Everyone else sees the choice in the header, read-only. **Account settings → Mixes** holds a default per game (**Hero bans in new mixes of this game**): every new mix of that game starts with it, and a mix copied from a previous one keeps that mix's bans. A change applies from the next **Start match**; a match already started keeps the bans it started with.
+
+With bans, **Start match** first names the team that bans first and lets you swap it (**Swap who bans first**): the team that lost this lobby's last match when the same two teams meet again, otherwise — or after a draw — the team with the lower average rating. The lobby then goes **Pre-game**: the room shows the ban board, and each team's captain (the crown) bans on their team's turn; with **Side selection** that team picks its side instead. A turn whose clock runs out is filled at random. The board's host controls let you act for either team, **Pause** the clock, add time, start the bans over (**Reset session**) or drop them (**Cancel session**). When the bans are done or dropped, the lobby goes **Live**; **Cancel match** works in Pre-game too.
+
+Bans are informational: players honour them in the game. While the lobby is **Live**, its room shows everyone the finished bans and, with **Side selection**, which team starts on which side, until the result is recorded or the match is cancelled. The match history shows each match's bans, with the team that banned first named first.
 
 ## Mix statuses
 
@@ -150,6 +161,7 @@ Deleting a mix erases it completely and is available only to a workspace admin. 
 | A swap, a balance or a new map is refused | The lobby's match is live and its lineup is frozen. Record the result or **Cancel match**. |
 | Somebody went for a break | Mark them **Away** on their card; they are skipped until they come back. |
 | Someone always sits out | Press **Apply rotation hints** — the queue is built from who has waited longest. |
+| The lobby stays in **Pre-game** and the ban board never appears | The ban room did not open. Press **Cancel match** and start again. |
 
 ## See also
 

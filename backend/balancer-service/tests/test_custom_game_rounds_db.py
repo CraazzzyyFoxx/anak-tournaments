@@ -18,6 +18,13 @@ for candidate in (str(REPO_BACKEND_ROOT), str(REPO_BACKEND_ROOT / "balancer-serv
 import sqlalchemy as sa  # noqa: E402
 
 from shared import models  # noqa: E402
+from shared.core.enums import (  # noqa: E402
+    MapPoolEntryStatus,
+    MapVetoSessionStatus,
+    PickBanActorKind,
+    PickBanKind,
+    VetoSeedSource,
+)
 from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.disciplines import DISCIPLINES  # noqa: E402
 from shared.domain.custom_game_round import winner_slot  # noqa: E402
@@ -60,6 +67,19 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
             await s.execute(sa.delete(models.Encounter).where(models.Encounter.id == mix.id))
             await s.commit()
         self.rounds = CustomGameRoundRepository()
+        #: Every live match a test saw: a Start with bans leaves its room request in the outbox.
+        self.started: set[int] = set()
+
+    async def asyncTearDown(self) -> None:
+        # Nothing drains the outbox here, and the encounter a room request names goes with the workspace.
+        async with self.Session() as s:
+            await s.execute(
+                sa.delete(models.EventOutbox).where(
+                    models.EventOutbox.event_id.in_([f"pick_ban_room_open:{live}" for live in self.started])
+                )
+            )
+            await s.commit()
+        await super().asyncTearDown()
 
     def _draft(self, *, lobby=0, winner=1, busy=frozenset(), deltas=(None, None), points=25, map_id=None):
         """One match of this mix as Start and Record are handed it: ``(MixMatchDraft, the result's fields)``."""
@@ -79,7 +99,8 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
         result = {
             "lobby_index": lobby,
             "names": ("Wolves", "Team 2"),
-            "winner_slot": winner,
+            "lineup_first_team": frozenset({m0, m1}),
+            "winner": winner,
             "points_per_win_applied": points,
             "rank_deltas": {member: delta for member, delta in ((m0, deltas[0]), (m2, deltas[1])) if delta is not None},
             "busy": busy,
@@ -437,7 +458,9 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
             "SELECT live_encounter_id FROM mix.lobby WHERE custom_game_id = :id ORDER BY lobby_index",
             id=self.cg.id if game_id is None else game_id,
         )
-        return [live for (live,) in rows]
+        lives = [live for (live,) in rows]
+        self.started.update(live for live in lives if live is not None)
+        return lives
 
     async def _hidden_book(self) -> list[tuple]:
         rows = await self._rows(
@@ -764,3 +787,237 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
             },
             {rec.member_id: (rec.consecutive_sat, rec.consecutive_played, rec.games_played) for rec in rotation},
         )
+
+    async def test_a_host_sets_and_clears_the_ban_preset_of_the_mixs_own_game(self) -> None:
+        service = CustomGameService()
+
+        async def stored() -> str | None:
+            [(value,)] = await self._rows("SELECT hero_ban_preset FROM mix.custom_game WHERE id = :id", id=self.cg.id)
+            return value
+
+        async with self.Session() as s:
+            await service.set_ban_preset(s, **self._host(), hero_ban_preset="hero_classic")
+            await s.commit()
+        self.assertEqual("hero_classic", await stored())
+
+        async with self.Session() as s:
+            with self.assertRaises(HTTPException) as refused:
+                await service.set_ban_preset(s, **self._host(), hero_ban_preset="deadlock_hero_bans")
+        self.assertEqual((422, "unknown_ban_preset"), (refused.exception.status_code, refused.exception.detail))
+
+        async with self.Session() as s:
+            await service.set_ban_preset(s, **self._host(), hero_ban_preset=None)
+            await s.commit()
+        self.assertIsNone(await stored())
+
+    async def _rated_lobby(self, first: int, second: int, *, preset: str | None = "hero_classic") -> None:
+        """Lobby A: m0 (rated ``first``) against m1 (rated ``second``), on a mix playing ``preset``."""
+
+        def team(member: str, rating: int) -> dict[str, object]:
+            return {
+                "roster": {"tank": [{"uuid": str(self.ids[member]), "name": member.upper(), "assigned_rating": rating}]}
+            }
+
+        async with self.Session() as s:
+            (await s.get_one(models.CustomGame, self.cg.id)).hero_ban_preset = preset
+            s.add(
+                models.CustomGameLobby(
+                    custom_game_id=self.cg.id,
+                    lobby_index=0,
+                    balance_result_json=lobby_document([{"teams": [team("m0", first), team("m1", second)]}]),
+                )
+            )
+            await s.commit()
+
+    async def _set_preset(self, preset: str | None) -> None:
+        """The host's header edit."""
+        async with self.Session() as s:
+            await CustomGameService().set_ban_preset(s, **self._host(), hero_ban_preset=preset)
+            await s.commit()
+
+    async def _slots(self, encounter_id: int) -> list[tuple[int, int]]:
+        rows = await self._rows(
+            "SELECT et.slot, tm.workspace_member_id FROM encounter.team et"
+            " JOIN encounter.team_member tm ON tm.encounter_team_id = et.id"
+            " WHERE et.encounter_id = :id ORDER BY et.slot",
+            id=encounter_id,
+        )
+        return [tuple(row) for row in rows]
+
+    async def _ready(self, encounter_id: int) -> int:
+        [(count,)] = await self._rows(
+            "SELECT count(*) FROM encounter.readiness WHERE encounter_id = :id", id=encounter_id
+        )
+        return count
+
+    async def _room_requests(self, encounter_id: int) -> list[tuple[str, int]]:
+        rows = await self._rows(
+            "SELECT routing_key, (payload_json->>'encounter_id')::bigint FROM event_outbox WHERE event_id = :id",
+            id=f"pick_ban_room_open:{encounter_id}",
+        )
+        return [tuple(row) for row in rows]
+
+    async def _frozen_preset(self) -> str | None:
+        [(preset,)] = await self._rows(
+            "SELECT live_ban_preset FROM mix.lobby WHERE custom_game_id = :id", id=self.cg.id
+        )
+        return preset
+
+    async def _pregame(self, *encounter_ids: int) -> frozenset[int]:
+        async with self.Session() as s:
+            return await CustomGameService().lobbies.pregame_ids(s, list(encounter_ids))
+
+    async def _hero_room(self, encounter_id: int, status: MapVetoSessionStatus = MapVetoSessionStatus.ACTIVE) -> int:
+        """The hero room tournament-service opens on the match; its id."""
+        async with self.Session() as s:
+            room = models.PickBanSession(
+                encounter_id=encounter_id,
+                kind=PickBanKind.HERO,
+                pool_json={},
+                seed_source=VetoSeedSource.FALLBACK_FIRST_SLOT,
+                resolved_sequence_json=[],
+                ruleset_json={},
+                status=status,
+            )
+            s.add(room)
+            await s.commit()
+            return room.id
+
+    async def test_a_start_with_bans_seats_the_weaker_team_first_and_asks_for_the_room(self) -> None:
+        await self._rated_lobby(3000, 2000)
+
+        await self._write(CustomGameService().start_match, 0)
+
+        [live] = await self._live_ids()
+        m0, m1 = self.ids["m0"], self.ids["m1"]
+        self.assertEqual([(1, m1), (2, m0)], await self._slots(live))
+        self.assertEqual(2, await self._ready(live))
+        self.assertEqual([("tournament.encounter.pick_ban_room_open_requested", live)], await self._room_requests(live))
+        self.assertEqual("hero_classic", await self._frozen_preset())
+        self.assertEqual(frozenset({live}), await self._pregame(live))
+
+    async def test_the_host_flips_the_opener_and_a_mix_without_bans_keeps_the_lineup_order(self) -> None:
+        await self._rated_lobby(3000, 2000)
+        service = CustomGameService()
+        await self._write(service.start_match, 0, flip_opener=True)
+        [flipped] = await self._live_ids()
+        self.assertEqual([(1, self.ids["m0"]), (2, self.ids["m1"])], await self._slots(flipped))
+        await self._write(service.cancel_match, 0)
+        self.assertIsNone(await self._frozen_preset())
+
+        await self._set_preset(None)
+        await self._write(service.start_match, 0, flip_opener=True)
+        [plain] = await self._live_ids()
+        self.assertEqual([(1, self.ids["m0"]), (2, self.ids["m1"])], await self._slots(plain))
+        # Both seats are ready with or without bans (spec §5.1); only the room request needs a preset.
+        self.assertEqual(2, await self._ready(plain))
+        self.assertEqual([], await self._room_requests(plain))
+        self.assertIsNone(await self._frozen_preset())
+        # No preset, no Pre-game: the match is live at once.
+        self.assertEqual(frozenset(), await self._pregame(plain))
+
+    async def test_last_times_loser_opens_and_the_result_lands_on_the_lineup_team(self) -> None:
+        await self._rated_lobby(3000, 2000)
+        service = CustomGameService()
+        await self._write(service.start_match, 0)
+        [first] = await self._live_ids()
+        self.assertEqual([(1, self.ids["m1"]), (2, self.ids["m0"])], await self._slots(first))  # the weaker opens
+        await self._write(service.record_outcome, 0, winner=2)  # lineup team 2 = m1 wins
+
+        scores = await self._rows(
+            "SELECT tm.workspace_member_id, et.score FROM encounter.team et"
+            " JOIN encounter.team_member tm ON tm.encounter_team_id = et.id WHERE et.encounter_id = :id",
+            id=first,
+        )
+        self.assertEqual({self.ids["m0"]: 0.0, self.ids["m1"]: 1.0}, dict(scores))
+        self.assertIsNone(await self._frozen_preset())
+
+        await self._write(service.start_match, 0)
+        [second] = await self._live_ids()
+        # Same two teams: m0 lost, so m0 opens although it is the stronger team.
+        self.assertEqual([(1, self.ids["m0"]), (2, self.ids["m1"])], await self._slots(second))
+
+    async def test_a_preset_edit_after_start_keeps_the_preset_the_room_opens_on(self) -> None:
+        await self._rated_lobby(3000, 2000)
+        await self._write(CustomGameService().start_match, 0)
+        [live] = await self._live_ids()
+
+        await self._set_preset(None)
+
+        # tournament-service opens -- and any reset reopens -- the room on the lobby's frozen copy, not the header.
+        self.assertEqual("hero_classic", await self._frozen_preset())
+        self.assertEqual(frozenset({live}), await self._pregame(live))
+
+    async def test_pregame_lasts_until_the_hero_room_is_completed_or_cancelled(self) -> None:
+        await self._rated_lobby(3000, 2000)
+        await self._write(CustomGameService().start_match, 0)
+        [live] = await self._live_ids()
+        room = await self._hero_room(live)
+
+        for status, pregame in (
+            (MapVetoSessionStatus.ACTIVE, {live}),
+            (MapVetoSessionStatus.COMPLETED, set()),
+            (MapVetoSessionStatus.CANCELLED, set()),
+        ):
+            async with self.Session() as s:
+                (await s.get_one(models.PickBanSession, room)).status = status
+                await s.commit()
+            self.assertEqual(frozenset(pregame), await self._pregame(live), status)
+
+    async def test_the_history_lists_a_rounds_hero_bans_in_the_order_they_were_made(self) -> None:
+        encounter_id = await self._record(self._draft())
+        team_of = dict(
+            await self._rows("SELECT slot, id FROM encounter.team WHERE encounter_id = :id", id=encounter_id)
+        )
+        room = await self._hero_room(encounter_id, MapVetoSessionStatus.COMPLETED)
+        async with self.Session() as s:
+            # The candidates go in in pool order; slot 1 bans the last of them first, slot 2 the first one after.
+            for item_id, slot, action_index in ((40, 2, 1), (41, None, None), (42, 1, 0)):
+                s.add(
+                    models.PickBanEntry(
+                        session_id=room,
+                        encounter_id=encounter_id,
+                        item_id=item_id,
+                        status=MapPoolEntryStatus.AVAILABLE if slot is None else MapPoolEntryStatus.BANNED,
+                        action_index=action_index,
+                        picked_by_kind=None if slot is None else PickBanActorKind.TEAM,
+                        picked_by_team_id=None if slot is None else team_of[slot],
+                    )
+                )
+                await s.flush()
+            await s.commit()
+
+        async with self.Session() as s:
+            [played] = await custom._dump_rounds(s, list(await self.rounds.list_for_custom_game(s, self.cg.id)))
+
+        self.assertEqual([{"slot": 1, "item_id": 42}, {"slot": 2, "item_id": 40}], played["bans"])
+
+    async def test_a_side_picked_game_keeps_its_sides_and_takes_its_score(self) -> None:
+        match, result = self._draft()
+        async with self.Session() as s:
+            encounter = await start_mix_match(s, match)
+            [game_id] = await s.scalars(
+                sa.select(models.EncounterGame.id).where(models.EncounterGame.encounter_id == encounter.id)
+            )
+            teams = await s.scalars(
+                sa.select(models.EncounterTeam.id)
+                .where(models.EncounterTeam.encounter_id == encounter.id)
+                .order_by(models.EncounterTeam.slot)
+            )
+            # A LoL room's side pick writes the game's lines before the result does.
+            for team_id, side in zip(teams.all(), ("red", "blue"), strict=True):
+                s.add(
+                    models.EncounterGameTeam(
+                        game_id=game_id, encounter_id=encounter.id, encounter_team_id=team_id, starting_side=side
+                    )
+                )
+            await s.flush()
+            await record_mix_result(s, MixResultDraft(encounter_id=encounter.id, **result))
+            await s.commit()
+
+        rows = await self._rows(
+            "SELECT et.slot, gt.starting_side, gt.score FROM encounter.game_team gt"
+            " JOIN encounter.team et ON et.id = gt.encounter_team_id WHERE gt.encounter_id = :id ORDER BY et.slot",
+            id=encounter.id,
+        )
+        self.assertEqual([(1, "red", 1), (2, "blue", 0)], [tuple(row) for row in rows])

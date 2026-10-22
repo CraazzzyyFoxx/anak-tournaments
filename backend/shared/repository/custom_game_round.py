@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased, selectinload
 
 from shared import models
+from shared.core.enums import MapPoolEntryStatus, PickBanKind
 from shared.repository.base import BaseRepository
 
 __all__ = ("CustomGameRoundRepository",)
@@ -244,6 +245,28 @@ class CustomGameRoundRepository(BaseRepository[models.CustomGameRound]):
         if since is not None:
             stmt = stmt.where(models.Encounter.created_at >= since)
         return (await session.execute(stmt)).all()
+
+    async def hero_bans(self, session: AsyncSession, encounter_ids: Sequence[int]) -> dict[int, list[dict[str, int]]]:
+        """``encounter_id -> [{slot, item_id}, ...]``: each round's hero bans in the order they were made (spec §8.4)
+        -- the room's applied-action order, not the candidates' insertion order. No ids, no query."""
+        if not encounter_ids:
+            return {}
+        entry = models.PickBanEntry
+        rows = await session.execute(
+            sa.select(entry.encounter_id, models.EncounterTeam.slot, entry.item_id)
+            .join(models.PickBanSession, models.PickBanSession.id == entry.session_id)
+            .join(models.EncounterTeam, models.EncounterTeam.id == entry.picked_by_team_id)
+            .where(
+                entry.encounter_id.in_(encounter_ids),
+                models.PickBanSession.kind == PickBanKind.HERO,
+                entry.status == MapPoolEntryStatus.BANNED,
+            )
+            .order_by(entry.encounter_id, entry.action_index, entry.id)
+        )
+        bans: dict[int, list[dict[str, int]]] = {}
+        for row in rows:
+            bans.setdefault(row.encounter_id, []).append({"slot": row.slot, "item_id": row.item_id})
+        return bans
 
     async def delete_round(self, session: AsyncSession, encounter_id: int) -> None:
         """Undo, or Cancel match: the encounter goes, and seats, game, journal and ``mix.round*`` cascade with it."""

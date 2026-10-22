@@ -74,6 +74,7 @@ from src.services.encounter.games import (
 )
 from src.services.encounter.realtime_commit import emit_pick_ban_update
 from src.services.encounter.room_journal import record_room_event
+from src.services.encounter.room_owner import mix_ban_config
 from src.services.encounter.room_reconcile import request_room_reconcile
 from src.services.encounter.veto_session import (
     REASON_BRACKET_PREVIEW,
@@ -455,15 +456,17 @@ class PickBanSessionService:
         )
         return pick_config(result.scalars().all(), stage_id=stage_id, round=round)
 
-    async def _resolve_config(
+    async def resolve_config(
         self, session: AsyncSession, encounter: Encounter, kind: PickBanKind
     ) -> PickBanConfig | None:
-        """The cascade, scoped by ``kind``, at this encounter's bracket coordinate.
+        """The config this encounter's ``kind`` room plays, from its owner (spec §4.2).
 
-        The coordinate lives on ``tournament.bracket_encounter``; an encounter
-        with no position -- a scrim, a mix -- resolves against the
-        tournament-wide level alone.
+        A mix encounter plays the preset its Start froze (``room_owner.mix_ban_config``). A tournament encounter
+        resolves the cascade at its bracket coordinate; one with no position -- a scrim -- against the tournament-wide
+        level.
         """
+        if encounter.custom_game_id is not None:
+            return await mix_ban_config(session, encounter, kind)
         position = await _positions.get_position(session, encounter.id)
         return await self.resolve_config_at_level(
             session,
@@ -501,7 +504,7 @@ class PickBanSessionService:
         -- the precondition for that round's hero bans opening. An encounter with
         no map pick-ban configured -- or one that resolves to a pool-less rules
         template, which opens no room either -- has no map phase to wait on."""
-        map_config = await self._resolve_config(session, encounter, PickBanKind.MAP)
+        map_config = await self.resolve_config(session, encounter, PickBanKind.MAP)
         if map_config is None or not has_pool(map_config):
             return True
         return await self.settled_map_rounds(session, encounter.id) >= round_number
@@ -627,7 +630,7 @@ class PickBanSessionService:
         the answer: asking the map session for a hero room that is blocked on
         its seats or its readiness anyway would be a query with no effect.
         """
-        config = await self._resolve_config(session, encounter, kind)
+        config = await self.resolve_config(session, encounter, kind)
         live = await is_encounter_live(session, encounter)
         teams = await self.teams_of(session, encounter.id)
         ready = await self.all_ready(session, encounter.id)
@@ -676,13 +679,7 @@ class PickBanSessionService:
     async def _select_encounter_locked(
         self, session: AsyncSession, encounter_id: int, *, skip_locked: bool
     ) -> Encounter | None:
-        result = await session.execute(
-            _encounters.select()
-            .where(Encounter.id == encounter_id)
-            .with_for_update(skip_locked=skip_locked)
-            .execution_options(populate_existing=True)
-        )
-        return result.unique().scalars().first()
+        return await _encounters.get_any_owner_for_update(session, encounter_id, skip_locked=skip_locked)
 
     async def _lock_encounter(self, session: AsyncSession, encounter_id: int) -> Encounter:
         """Room mutation lock; discard the pre-lock encounter snapshot."""
@@ -721,7 +718,7 @@ class PickBanSessionService:
             return None
         if not await is_encounter_live(session, encounter):
             return None
-        config = await self._resolve_config(session, encounter, kind)
+        config = await self.resolve_config(session, encounter, kind)
         if config is None or not has_pool(config):
             return None
 
@@ -1051,7 +1048,7 @@ class PickBanSessionService:
         if any(entry.round == next_round for entry in entries):
             return pick_ban  # already appended (idempotent re-entry)
 
-        encounter = await _encounters.get(session, pick_ban.encounter_id)
+        encounter = await session.get(Encounter, pick_ban.encounter_id)
         if encounter is None or next_round > encounter.best_of:
             return pick_ban
         candidate_item_ids = round_candidates(pool, next_round)
@@ -1481,7 +1478,7 @@ class PickBanSessionService:
         allowed = min(standing.games + 1, int(encounter.best_of))
         if kind != PickBanKind.HERO:
             return allowed
-        map_config = await self._resolve_config(session, encounter, PickBanKind.MAP)
+        map_config = await self.resolve_config(session, encounter, PickBanKind.MAP)
         map_session = await self.get_pick_ban_session(
             session, encounter.id, PickBanKind.MAP, for_update=encounter_locked
         )

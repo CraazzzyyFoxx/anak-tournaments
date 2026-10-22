@@ -32,6 +32,7 @@ import {
   type StatsPeriodKey,
 } from "@/app/balancer/mix/pickup-stats";
 import { usePickupMix } from "@/app/balancer/mix/usePickupMix";
+import { RoomChat } from "@/components/chat/RoomChat";
 import { Card } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -43,6 +44,7 @@ import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
 import { slotCodeOrder, type RoleOntology } from "@/lib/roster/ontology";
+import { encounterChatRoom } from "@/lib/realtime/chat-rooms";
 import { cn } from "@/lib/utils";
 import { customGameKeys, customGameService, type CustomGame } from "@/services/custom-game.service";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
@@ -207,6 +209,7 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
     updateMySeat,
     setMyAway,
     setSelfService,
+    setBanPreset,
     postSignup,
     deleteDiscordPost,
     voiceOptionsQuery,
@@ -327,7 +330,8 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
         variantIndex={lobby?.selected_variant_index ?? 0}
         onVariantIndexChange={(index) => setVariantIndex.mutate({ lobbyIndex: shownLobby, variantIndex: index })}
         startingMatch={startMatch.isPending}
-        onStartMatch={() => startMatch.mutate(shownLobby)}
+        onStartMatch={(flipOpener) => startMatch.mutate({ lobbyIndex: shownLobby, flipOpener })}
+        onBansComplete={() => void gameQuery.refetch()}
         cancellingMatch={cancelMatch.isPending}
         onCancelMatch={() => cancelMatch.mutate(shownLobby)}
         onMakeCaptain={(workspaceMemberId) => setCaptain.mutate({ lobbyIndex: shownLobby, workspaceMemberId })}
@@ -492,6 +496,11 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
     </>
   );
 
+  // A room has a chat while its match is on (spec §7.5 amended); a viewer the chat refuses (a spectator's 403) gets
+  // none. A several-lobby overview shows no room, so no chat.
+  const chatDock =
+    lobby?.live_encounter_id != null ? <RoomChat room={encounterChatRoom(lobby.live_encounter_id)} /> : null;
+
   if (roomLobby != null) {
     // One column, the player's own panel right under the teams: the same room reads on a phone (spec §7.5).
     return (
@@ -517,6 +526,7 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
           {voicePanel}
         </div>
         {dialogs}
+        {chatDock}
       </>
     );
   }
@@ -543,6 +553,8 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
               onRename={(name) => renameMix.mutateAsync(name)}
               onSetSelfService={(patch) => setSelfService.mutate(patch)}
               savingSelfService={setSelfService.isPending}
+              onSetBanPreset={(preset) => setBanPreset.mutate(preset)}
+              savingBanPreset={setBanPreset.isPending}
               onPostSignup={(selfSignup) => postSignup.mutate(selfSignup)}
               postingSignup={postSignup.isPending}
               onDeleteDiscordPost={(postId) => deleteDiscordPost.mutate(postId)}
@@ -562,11 +574,11 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
                   balancingLobby={
                     balance.isPending && balance.variables?.scope === "lobby" ? balance.variables.lobbyIndex : null
                   }
-                  startingLobby={startMatch.isPending ? (startMatch.variables ?? null) : null}
+                  startingLobby={startMatch.isPending ? (startMatch.variables?.lobbyIndex ?? null) : null}
                   recordingLobby={recordOutcome.isPending ? (recordOutcome.variables?.lobbyIndex ?? null) : null}
                   shufflingAll={balance.isPending && balance.variables?.scope === "all"}
                   onBalance={(lobbyIndex) => balance.mutate({ scope: "lobby", lobbyIndex })}
-                  onStartMatch={(lobbyIndex) => startMatch.mutate(lobbyIndex)}
+                  onStartMatch={(lobbyIndex, flipOpener) => startMatch.mutate({ lobbyIndex, flipOpener })}
                   onRecordOutcome={(input) => recordOutcome.mutate(input)}
                   onShuffleAll={() => balance.mutate({ scope: "all" })}
                 />
@@ -578,6 +590,7 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
                       canWrite={canWrite}
                       undoingMatchId={undoMatch.isPending ? (undoMatch.variables ?? null) : null}
                       onUndoMatch={(matchId) => undoMatch.mutate(matchId)}
+                      discipline={discipline}
                     />
                   </Card>
                 ) : null}
@@ -592,6 +605,7 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
         </div>
       </div>
       {dialogs}
+      {chatDock}
     </>
   );
 }

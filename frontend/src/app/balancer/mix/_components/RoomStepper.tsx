@@ -8,20 +8,23 @@ import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 import type { MixLobbyState } from "@/services/custom-game.service";
 
-/** The stages a lobby walks in П0; the draft and pre-game stages slot in between when they ship. */
-const STEPS: readonly MixLobbyState[] = ["idle", "ready", "live"];
-
 /**
- * A lobby's stage (spec §5): where it is, and -- while a match is live -- for how long. There is no automatic
- * timeout, so the elapsed minutes are how a host notices a match nobody recorded.
+ * A lobby's stage (spec §5): where it is, and -- once its match has started -- for how long. There is no automatic
+ * timeout, so the elapsed minutes are how a host notices a match nobody recorded. Pre-game shows only where a match
+ * bans.
  */
-export function RoomStepper({ state, startedAt }: Readonly<{ state: MixLobbyState; startedAt: string | null }>) {
+export function RoomStepper({
+  state,
+  startedAt,
+  bans,
+}: Readonly<{ state: MixLobbyState; startedAt: string | null; bans: boolean }>) {
   const t = useTranslations("mixes.room");
-  const current = STEPS.indexOf(state);
+  const steps: readonly MixLobbyState[] = bans ? ["idle", "ready", "pregame", "live"] : ["idle", "ready", "live"];
+  const current = steps.indexOf(state);
   const minutes = useLiveMinutes(state, startedAt);
   return (
     <ol aria-label={t("steps")} className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-      {STEPS.map((step, index) => (
+      {steps.map((step, index) => (
         <li
           key={step}
           aria-current={index === current ? "step" : undefined}
@@ -36,7 +39,7 @@ export function RoomStepper({ state, startedAt }: Readonly<{ state: MixLobbyStat
             className="size-2"
           />
           <span>{t(`state.${step}`)}</span>
-          {step === "live" && minutes != null ? (
+          {index === current && minutes != null ? (
             <span className={CAPTION_CLASS}>{t("elapsed", { minutes })}</span>
           ) : null}
         </li>

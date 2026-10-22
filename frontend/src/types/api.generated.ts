@@ -2065,7 +2065,7 @@ export interface paths {
         };
         /**
          * Read the pre-game room chat
-         * @description Permission: optional authentication. Captains of either team and the workspace's staff always read; anybody else reads only while the room's `spectators_can_read` is on, which a pre-game room has OFF by default (captains trade custom-lobby codes there). A hidden tournament is visible only to its workspace's admins and its preview allowlist. Returns the messages plus the room settings, the caller's own viewer rights and — for moderators only — the active mutes. `after_id` tails the room; `limit` pages it.
+         * @description Permission: optional authentication. Captains of either team and the workspace's staff always read; anybody else reads only while the room's `spectators_can_read` is on, which a pre-game room has OFF by default (captains trade custom-lobby codes there). A hidden tournament is visible only to its workspace's admins and its preview allowlist. Returns the messages plus the room settings, the caller's own viewer rights and — for moderators only — the active mutes. `after_id` tails the room; `limit` pages it. A mix match's chat is read and written only by its seated players (role captain or player) and the mix's hosts (staff); everyone else gets 403.
          *
          *     RPC subject: `rpc.tournament.encounter_chat_history`
          */
@@ -2283,7 +2283,7 @@ export interface paths {
         put?: never;
         /**
          * Ban, pick or protect
-         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Applies one ban, pick or protect to the encounter's live pick/ban session of the given `kind`, under the session's row lock, and returns the caller's new room state. OPEN steps only: a blind step is a 400 that says to use the submit route. Acting when the caller's side does not owe the current step, sending the wrong action for it, naming an item the step's rules do not allow, or omitting the opponent player a per-player ban must name is a 400, as is a session that is not initialized or no longer active.
+         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Applies one ban, pick or protect to the encounter's live pick/ban session of the given `kind`, under the session's row lock, and returns the caller's new room state. OPEN steps only: a blind step is a 400 that says to use the submit route. Acting when the caller's side does not owe the current step, sending the wrong action for it, naming an item the step's rules do not allow, or omitting the opponent player a per-player ban must name is a 400, as is a session that is not initialized or no longer active. On a mix match the captain is the roster snapshot's (the lineup's crown).
          *
          *     RPC subject: `rpc.tournament.captain_pick_ban_act`
          */
@@ -2305,7 +2305,7 @@ export interface paths {
         put?: never;
         /**
          * Dispute the last revealed step
-         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Unilateral, no opponent consent: voids the last fully revealed BLIND step and re-opens it for a fresh attempt with each side's previous items prefilled, so a captain who named the wrong opponent player can redo it. Allowed only while that step's `dispute` is enabled, its attempt budget is not spent, no later step has been acted in, and the map that round settled has no result yet; anything else is a 400. Returns the caller's new room state.
+         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Unilateral, no opponent consent: voids the last fully revealed BLIND step and re-opens it for a fresh attempt with each side's previous items prefilled, so a captain who named the wrong opponent player can redo it. Allowed only while that step's `dispute` is enabled, its attempt budget is not spent, no later step has been acted in, and the map that round settled has no result yet; anything else is a 400. Returns the caller's new room state. On a mix match the captain is the roster snapshot's (the lineup's crown).
          *
          *     RPC subject: `rpc.tournament.captain_pick_ban_dispute`
          */
@@ -2327,7 +2327,7 @@ export interface paths {
         put?: never;
         /**
          * Elect the next round's opener
-         * @description Permission: authenticated user who captains one of the encounter's two teams, and only the side that LOST the previous round may choose (403 otherwise). Resolves a round the `result_loser_choice` rotation is holding by naming which side opens it, then appends that round and returns the session. 400 when no round is awaiting a choice. An organizer overrides an unreachable captain through admin_pick_ban_elect_opener.
+         * @description Permission: authenticated user who captains one of the encounter's two teams, and only the side that LOST the previous round may choose (403 otherwise). Resolves a round the `result_loser_choice` rotation is holding by naming which side opens it, then appends that round and returns the session. 400 when no round is awaiting a choice. An organizer overrides an unreachable captain through admin_pick_ban_elect_opener. On a mix match the captain is the roster snapshot's (the lineup's crown).
          *
          *     RPC subject: `rpc.tournament.captain_pick_ban_elect_opener`
          */
@@ -2347,7 +2347,7 @@ export interface paths {
         };
         /**
          * Get pick-ban room state
-         * @description Permission: public; no authentication required — gated only by the tournament's visibility rule. Returns the live pick/ban room for an encounter and the `kind` path segment ('map' or 'hero', 422 otherwise): the resolved steps, the candidate pool, which sides still owe the current step, both sides' readiness, any open undo request, and for maps the captains' per-map result claims. A captain additionally gets their own side annotated, their eligible items, why their draft cannot be locked yet, and their own unrevealed draft — a blind step never serializes the other side's. When no session can exist yet the payload names why (teams unknown, bracket still a preview, no pick-ban configured, slot count mismatch, sides not ready, waiting on the map round) instead of erroring.
+         * @description Permission: public; no authentication required — gated only by the tournament's visibility rule; a mix match's room is public. Returns the live pick/ban room for an encounter and the `kind` path segment ('map' or 'hero', 422 otherwise): the resolved steps, the candidate pool, which sides still owe the current step, both sides' readiness, any open undo request, and for maps the captains' per-map result claims. A captain additionally gets their own side annotated, their eligible items, why their draft cannot be locked yet, and their own unrevealed draft — a blind step never serializes the other side's. When no session can exist yet the payload names why (teams unknown, bracket still a preview, no pick-ban configured, slot count mismatch, sides not ready, waiting on the map round) instead of erroring.
          *
          *     RPC subject: `rpc.tournament.captain_pick_ban_state`
          */
@@ -2371,7 +2371,7 @@ export interface paths {
         put?: never;
         /**
          * Submit a blind draft
-         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Replaces the caller's whole draft for the current BLIND step and, with `lock: true`, locks it — a locked submission is final, and once every acting side has locked the step reveals for both. Returns the caller's new room state; while the step is unrevealed it carries the caller's own items and only the opponent's progress counts. 400 when the current step is not blind, when the caller already locked, or when the items break the step's rules (the reasons are also listed in the state's `draft_issues`).
+         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Replaces the caller's whole draft for the current BLIND step and, with `lock: true`, locks it — a locked submission is final, and once every acting side has locked the step reveals for both. Returns the caller's new room state; while the step is unrevealed it carries the caller's own items and only the opponent's progress counts. 400 when the current step is not blind, when the caller already locked, or when the items break the step's rules (the reasons are also listed in the state's `draft_issues`). On a mix match the captain is the roster snapshot's (the lineup's crown).
          *
          *     RPC subject: `rpc.tournament.captain_pick_ban_submit`
          */
@@ -2393,7 +2393,7 @@ export interface paths {
         put?: never;
         /**
          * Request or withdraw an undo
-         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Records the calling captain's consent to undo the session's last action and applies it the moment the opposing captain consents too; `consent=false` withdraws an open request (either side may). An applied undo of a `side_pick` takes that game's sides back. Returns the resulting undo block. 400 when the session is not initialized or cancelled, when there is nothing left to undo, or when the target is a map pick whose hero round has already started -- undo those hero actions first; 409 `side_locked` when the undo would take back a side whose game already has a claim or a confirmed result.
+         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Records the calling captain's consent to undo the session's last action and applies it the moment the opposing captain consents too; `consent=false` withdraws an open request (either side may). An applied undo of a `side_pick` takes that game's sides back. Returns the resulting undo block. 400 when the session is not initialized or cancelled, when there is nothing left to undo, or when the target is a map pick whose hero round has already started -- undo those hero actions first; 409 `side_locked` when the undo would take back a side whose game already has a claim or a confirmed result. On a mix match the captain is the roster snapshot's (the lineup's crown).
          *
          *     RPC subject: `rpc.tournament.captain_pick_ban_undo`
          */
@@ -2415,7 +2415,7 @@ export interface paths {
         put?: never;
         /**
          * Confirm readiness
-         * @description Permission: authenticated user who captains one of the encounter's live participations (403 when the account captains none of them or has no linked player profile). Marks the calling captain's seat ready to begin the encounter's pre-game phase and returns the resulting readiness map, keyed by participation id; idempotent. The pick/ban session only opens once every seat is ready, and any change of team assignment clears them all.
+         * @description Permission: authenticated user who captains one of the encounter's live participations (403 when the account captains none of them or has no linked player profile). Marks the calling captain's seat ready to begin the encounter's pre-game phase and returns the resulting readiness map, keyed by participation id; idempotent. The pick/ban session only opens once every seat is ready, and any change of team assignment clears them all. On a mix match the captain is the roster snapshot's (the lineup's crown).
          *
          *     RPC subject: `rpc.tournament.captain_ready`
          */
@@ -2683,7 +2683,7 @@ export interface paths {
         };
         /**
          * Get the pick-ban ruleset catalog
-         * @description Permission: public; no authentication required — the catalog describes the rules ENGINE (which condition leaves and constraints exist, what parameters they take) plus ONE discipline's vocabulary: its item groups per kind (character classes declared by its module, mode slugs for maps) and its presets (the module's own plus the generic map presets; a preset's `first_ban_rotation`, when set, is the rotation the preset needs). `discipline` is required: 422 when absent, 404 `discipline_not_installed` for a code no module declares, never another game's presets. The pick-ban constructor loads it before a config exists to attach it to.
+         * @description Permission: public; no authentication required — the catalog describes the rules ENGINE (which condition leaves and constraints exist, what parameters they take) plus ONE discipline's vocabulary: its item groups per kind (character classes declared by its module, mode slugs for maps) and its presets (the module's own plus the generic map presets; a preset's `first_ban_rotation`, when set, is the rotation the preset needs; `mix_eligible` says whether a pickup mix may play it -- a hero preset that bans no player on map 1 of a Bo1). `discipline` is required: 422 when absent, 404 `discipline_not_installed` for a code no module declares, never another game's presets. The pick-ban constructor loads it before a config exists to attach it to.
          *
          *     RPC subject: `rpc.tournament.pick_ban_rules_catalog`
          */
@@ -6133,7 +6133,7 @@ export interface paths {
         put?: never;
         /**
          * Act for a side
-         * @description Permission: workspace `match.result` on the encounter's workspace. Performs one ban, pick or protect on behalf of the given side (admin override of the captain flow) against the current OPEN step, optionally naming the opponent roster player a per-player ban is spent on, and returns the full room state with nothing hidden. 400 when the current step is blind — use admin_pick_ban_submit for those.
+         * @description Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Performs one ban, pick or protect on behalf of the given side (admin override of the captain flow) against the current OPEN step, optionally naming the opponent roster player a per-player ban is spent on, and returns the full room state with nothing hidden. 400 when the current step is blind — use admin_pick_ban_submit for those.
          *
          *     RPC subject: `rpc.tournament.admin_pick_ban_act`
          */
@@ -6155,7 +6155,7 @@ export interface paths {
         put?: never;
         /**
          * Cancel a pick-ban session
-         * @description Permission: workspace `match.result` on the encounter's workspace. Retires one kind's session (body `{kind, reason}`) as CANCELLED and clears any pause, for a room whose veto cannot be played out. A cancelled HERO session simply stops opening rounds; a cancelled MAP session hands the series back to FREEPLAY — the maps it already settled keep their positions and every later one is named by the captains through `captain_select_game_map`. The way back is the session reset. 409 when no session of that kind exists or it is already cancelled.
+         * @description Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Retires one kind's session (body `{kind, reason}`) as CANCELLED and clears any pause, for a room whose veto cannot be played out. A cancelled HERO session simply stops opening rounds; a cancelled MAP session hands the series back to FREEPLAY — the maps it already settled keep their positions and every later one is named by the captains through `captain_select_game_map`. The way back is the session reset. 409 when no session of that kind exists or it is already cancelled.
          *
          *     RPC subject: `rpc.tournament.admin_pick_ban_cancel`
          */
@@ -6177,7 +6177,7 @@ export interface paths {
         put?: never;
         /**
          * Elect a round's opener for a side
-         * @description Permission: workspace `match.result` on the encounter's workspace. Names who opens the round a `result_loser_choice` rotation is holding and appends it, on behalf of a losing captain who is unreachable; returns the new room state.
+         * @description Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Names who opens the round a `result_loser_choice` rotation is holding and appends it, on behalf of a losing captain who is unreachable; returns the new room state.
          *
          *     RPC subject: `rpc.tournament.admin_pick_ban_elect_opener`
          */
@@ -6199,7 +6199,7 @@ export interface paths {
         put?: never;
         /**
          * Extend the open step's timer
-         * @description Permission: workspace `match.result` on the encounter's workspace. Adds `seconds` (10..3600) to the open step's clock by moving its start forward, and returns the room state. Allowed while paused. 409 when no session of that kind is active or the open step has no timer (an untimed or already settled step has nothing to extend).
+         * @description Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Adds `seconds` (10..3600) to the open step's clock by moving its start forward, and returns the room state. Allowed while paused. 409 when no session of that kind is active or the open step has no timer (an untimed or already settled step has nothing to extend).
          *
          *     RPC subject: `rpc.tournament.admin_pick_ban_extend`
          */
@@ -6221,7 +6221,7 @@ export interface paths {
         put?: never;
         /**
          * Pause or resume a pick-ban session
-         * @description Permission: workspace `match.result` on the encounter's workspace. Freezes (`{kind, paused: true}`) or releases one kind's room and returns its state. A paused session has no deadline at all: the open step's timer stops, nothing auto-resolves, reveals or times out, and every CAPTAIN write (act, submit, dispute, undo, elect-opener) answers 409 `Pick-ban session is paused` while the admin overrides keep working. Resuming gives the step back exactly the time it had left; a step that opened during the pause gets its full timer. Idempotent, and 409 when no session of that kind exists or it is not active.
+         * @description Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Freezes (`{kind, paused: true}`) or releases one kind's room and returns its state. A paused session has no deadline at all: the open step's timer stops, nothing auto-resolves, reveals or times out, and every CAPTAIN write (act, submit, dispute, undo, elect-opener) answers 409 `Pick-ban session is paused` while the admin overrides keep working. Resuming gives the step back exactly the time it had left; a step that opened during the pause gets its full timer. Idempotent, and 409 when no session of that kind exists or it is not active.
          *
          *     RPC subject: `rpc.tournament.admin_pick_ban_pause`
          */
@@ -6243,7 +6243,7 @@ export interface paths {
         put?: never;
         /**
          * Reopen the last revealed step
-         * @description Permission: workspace `match.result` on the encounter's workspace. Voids the last fully revealed step's submissions and re-opens it for a fresh attempt — the organizer's version of a captain dispute, with no attempt budget and no `dispute.enabled` requirement. A reopened open (non-blind) step starts with an empty draft, the voided items available again, so its captain answers it afresh; a blind step's new drafts are prefilled with each side's previous items (still private until everyone locks). A reopened `side_pick` also takes back that game's sides and un-binds the round's side-bound steps, so the re-choice binds them afresh. Returns the new room state. 400 when there is no revealed step to reopen or a later step has already been acted in; 409 `side_locked` when the step is a `side_pick` whose game already has a claim or a confirmed result.
+         * @description Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Voids the last fully revealed step's submissions and re-opens it for a fresh attempt — the organizer's version of a captain dispute, with no attempt budget and no `dispute.enabled` requirement. A reopened open (non-blind) step starts with an empty draft, the voided items available again, so its captain answers it afresh; a blind step's new drafts are prefilled with each side's previous items (still private until everyone locks). A reopened `side_pick` also takes back that game's sides and un-binds the round's side-bound steps, so the re-choice binds them afresh. Returns the new room state. 400 when there is no revealed step to reopen or a later step has already been acted in; 409 `side_locked` when the step is a `side_pick` whose game already has a claim or a confirmed result.
          *
          *     RPC subject: `rpc.tournament.admin_pick_ban_reopen`
          */
@@ -6265,7 +6265,7 @@ export interface paths {
         put?: never;
         /**
          * Reset pick-ban session
-         * @description Permission: workspace `match.result` on the encounter's workspace. Drops an encounter's pick-ban session (map or hero, per the body's `kind`) and its entries, re-creates them with freshly resolved seeds and returns the new room state.
+         * @description Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Drops an encounter's pick-ban session (map or hero, per the body's `kind`) and its entries, re-creates them with freshly resolved seeds and returns the new room state.
          *
          *     RPC subject: `rpc.tournament.admin_pick_ban_session_reset`
          */
@@ -6287,7 +6287,7 @@ export interface paths {
         put?: never;
         /**
          * Submit a blind draft for a side
-         * @description Permission: workspace `match.result` on the encounter's workspace. Replaces one side's draft on a BLIND step on behalf of an absent captain and, with `lock: true`, locks it; every side locked reveals the step. Returns the full room state with nothing hidden. 400 when the current step is not blind, when the side already locked, or when the items break the step's rules.
+         * @description Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Replaces one side's draft on a BLIND step on behalf of an absent captain and, with `lock: true`, locks it; every side locked reveals the step. Returns the full room state with nothing hidden. 400 when the current step is not blind, when the side already locked, or when the items break the step's rules.
          *
          *     RPC subject: `rpc.tournament.admin_pick_ban_submit`
          */
@@ -6309,7 +6309,7 @@ export interface paths {
         put?: never;
         /**
          * Force a captain's readiness
-         * @description Permission: workspace `match.result` on the encounter's workspace. Sets one participation's captain readiness (body `{encounter_team_id, ready}`) for an organizer starting a match whose captain is unreachable, and answers `{readiness}` keyed by participation. Signals the room (`encounter:{id}:map-veto`) exactly as the captain's own ready does, so the other captains' screens move without a reload. 404 for an unknown encounter, 409 for a preview bracket's encounter, and 409 on `ready: false` once a pick-ban session of either kind exists — readiness gates session CREATION only, so clearing it afterwards would change nothing; reset the session instead. The readiness row stays unattributed (it names a player identity, which an organizer may not have); the admin audit records who forced it.
+         * @description Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Sets one participation's captain readiness (body `{encounter_team_id, ready}`) for an organizer starting a match whose captain is unreachable, and answers `{readiness}` keyed by participation. Signals the room (`encounter:{id}:map-veto`) exactly as the captain's own ready does, so the other captains' screens move without a reload. 404 for an unknown encounter, 409 for a preview bracket's encounter, and 409 on `ready: false` once a pick-ban session of either kind exists — readiness gates session CREATION only, so clearing it afterwards would change nothing; reset the session instead. The readiness row stays unattributed (it names a player identity, which an organizer may not have); the admin audit records who forced it.
          *
          *     RPC subject: `rpc.tournament.admin_encounter_readiness_set`
          */
@@ -9799,7 +9799,7 @@ export interface paths {
         };
         /**
          * Get custom game
-         * @description Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace.
+         * @description Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace. It carries the mix's hero_ban_preset (null = no bans). Each lobby carries state (idle | ready | pregame | live), live_seats (the live match's participations {id, slot, name}) and opener_index (the lineup team that bans first in the next match, null without bans).
          *
          *     RPC subject: `rpc.balancer.custom.get`
          */
@@ -9821,14 +9821,14 @@ export interface paths {
         };
         /**
          * Get my pickup mix preferences
-         * @description Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, the open-slot weight, how many balance options to keep, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode). A null value means the setting was never saved and the default applies. The team format is not here: it is frozen on each mix.
+         * @description Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, the open-slot weight, how many balance options to keep, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode). A null value means the setting was never saved and the default applies. The team format is not here: it is frozen on each mix. hero_ban_presets maps a game to the hero ban preset a new mix of it starts with.
          *
          *     RPC subject: `rpc.balancer.prefs.get`
          */
         get: operations["get__api_v1_balancer_me_mix_preferences"];
         /**
          * Set my pickup mix preferences
-         * @description Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all six of the caller's mix settings at once and returns the stored result, exactly what the next read returns; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an unknown field or an out-of-range value.
+         * @description Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all seven of the caller's mix settings at once and returns the stored result, exactly what the next read returns; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an unknown field or an out-of-range value. 422 when a hero_ban_presets entry is not a hero preset of its own game.
          *
          *     RPC subject: `rpc.balancer.prefs.upsert`
          */
@@ -10050,6 +10050,28 @@ export interface paths {
          *     RPC subject: `rpc.balancer.custom.balance`
          */
         post: operations["post__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__balance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/ban-preset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set custom game ban preset
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Sets the hero ban preset the lobbies' next Start opens a room on -- a hero preset of the mix's own game that bans no player on map 1 (deadlock_hero_bans, lol_side_selection, the Overwatch hero presets) -- or null for no bans, and returns the refreshed mix. A live match keeps the room it started with. 422 unknown_ban_preset for any other code.
+         *
+         *     RPC subject: `rpc.balancer.custom.set_ban_preset`
+         */
+        put: operations["put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__ban_preset"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -10287,7 +10309,7 @@ export interface paths {
         put?: never;
         /**
          * Start custom game match
-         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Starts the lobby's match on the option it is showing: an open encounter with both teams' rosters (captains flagged) and one game on the lobby's next map. The lineup is then frozen until the result is recorded or the match is cancelled. When the lobby has both team voices, its seated players are then moved into them (as voice_move; a Discord failure leaves the match started). 409 match_live when the lobby already has a live match, 404 when the shown option is gone, 422 unless it seats two teams.
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Starts the lobby's match on the option it is showing: an open encounter with both teams' rosters (captains flagged) and one game on the lobby's next map. The lineup is then frozen until the result is recorded or the match is cancelled. When the lobby has both team voices, its seated players are then moved into them (as voice_move; a Discord failure leaves the match started). 409 match_live when the lobby already has a live match, 404 when the shown option is gone, 422 unless it seats two teams. Both seats are marked ready. With a hero ban preset the team that bans first (the last round's loser when the same two teams meet again, else the lower average rating; flip_opener swaps it) is seated in slot 1 and tournament-service opens the ban room; the lobby reads pregame until the room is done.
          *
          *     RPC subject: `rpc.balancer.custom.start_match`
          */
@@ -10307,7 +10329,7 @@ export interface paths {
         };
         /**
          * List custom game matches
-         * @description Permission: public; no authentication required. Returns every round recorded for the mix, newest first: its two teams by slot with name and score, the winning slot (null for a draw), lobby, map, recorder and the rank points it applied.
+         * @description Permission: public; no authentication required. Returns every round recorded for the mix, newest first: its two teams by slot (slot 1 banned first) with name and score, its hero bans {slot, item_id} in order, the winning slot (null for a draw), lobby, map, recorder and the rank points it applied.
          *
          *     RPC subject: `rpc.balancer.custom.match_history`
          */
@@ -10459,7 +10481,7 @@ export interface paths {
         put?: never;
         /**
          * Record custom game match
-         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Records the result of the lobby's live match -- the one Start match opened on the lineup it froze -- and completes its encounter, moving both teams' ranks in the host's book (by points_per_win when a winner is given, or seat by seat by the mix ranker when the host's rating_mode is 'ranker'), advancing the workspace's hidden ratings and redeeming every seat's must_play pin back to the pool. The match is stamped with its lobby and with whoever was playing another lobby at that moment, whom rotation then counts as neither played nor sat out. The lobby's next map is cleared. 409 no_live_match when nothing was started. Repeatable until the mix is closed.
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Records the result of the lobby's live match -- the one Start match opened on the lineup it froze -- and completes its encounter, moving both teams' ranks in the host's book (by points_per_win when a winner is given, or seat by seat by the mix ranker when the host's rating_mode is 'ranker'), advancing the workspace's hidden ratings and redeeming every seat's must_play pin back to the pool. The match is stamped with its lobby and with whoever was playing another lobby at that moment, whom rotation then counts as neither played nor sat out. The lobby's next map is cleared. 409 no_live_match when nothing was started. Repeatable until the mix is closed. The winner names the lineup team (1 or 2), whichever slot Start seated it in.
          *
          *     RPC subject: `rpc.balancer.custom.record_outcome`
          */
@@ -23055,6 +23077,14 @@ export interface components {
             scope: BalancerCustomGameBalanceRequestScope;
         };
         /**
+         * CustomGameBanPresetPatch
+         * @description The mix's hero ban preset; ``null`` turns bans off.
+         */
+        "balancer.CustomGameBanPresetPatch": {
+            /** Hero Ban Preset */
+            hero_ban_preset: string | null;
+        };
+        /**
          * CustomGameCaptainPatch
          * @description Who captains their team in the lobby's shown option.
          */
@@ -23124,9 +23154,25 @@ export interface components {
         };
         /**
          * CustomGameMatchRun
-         * @description Which lobby's match to start or cancel.
+         * @description Which lobby's match to cancel.
          */
         "balancer.CustomGameMatchRun": {
+            /**
+             * Lobby Index
+             * @default 0
+             */
+            lobby_index: number;
+        };
+        /**
+         * CustomGameMatchStart
+         * @description Which lobby's match to start, and whether the host swaps the computed ban opener (spec §8.3).
+         */
+        "balancer.CustomGameMatchStart": {
+            /**
+             * Flip Opener
+             * @default false
+             */
+            flip_opener: boolean;
             /**
              * Lobby Index
              * @default 0
@@ -23533,6 +23579,13 @@ export interface components {
          */
         "balancer.UserMixPreferencesRead": {
             /**
+             * Hero Ban Presets
+             * @description Per game (discipline code): the hero ban preset a new mix of that game starts with. A game left out starts without bans.
+             */
+            hero_ban_presets?: {
+                [key: string]: string;
+            };
+            /**
              * Max Result Variants
              * @description How many balance options the solver keeps for the host to page through; null leaves the mix default.
              * @default null
@@ -23573,6 +23626,13 @@ export interface components {
          * @description A full replacement; nullable knobs unset the corresponding override.
          */
         "balancer.UserMixPreferencesUpsert": {
+            /**
+             * Hero Ban Presets
+             * @description Per game (discipline code): the hero ban preset a new mix of that game starts with. A game left out starts without bans.
+             */
+            hero_ban_presets: {
+                [key: string]: string;
+            };
             /**
              * Max Result Variants
              * @description How many balance options the solver keeps for the host to page through; null leaves the mix default.
@@ -70919,6 +70979,89 @@ export interface operations {
             };
         };
     };
+    put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__ban_preset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["balancer.CustomGameBanPresetPatch"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__captain: {
         parameters: {
             query?: never;
@@ -71751,7 +71894,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["balancer.CustomGameMatchRun"];
+                "application/json": components["schemas"]["balancer.CustomGameMatchStart"];
             };
         };
         responses: {

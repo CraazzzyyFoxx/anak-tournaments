@@ -183,6 +183,38 @@ def test_a_module_cannot_shadow_a_generic_preset_id():
         pbr.presets_for(spec.code)
 
 
+def test_a_mix_plays_its_own_games_hero_presets() -> None:
+    assert pbr.mix_ban_preset("deadlock", "deadlock_hero_bans").id == "deadlock_hero_bans"
+    assert pbr.mix_ban_preset("lol", "lol_side_selection").id == "lol_side_selection"
+    assert pbr.mix_ban_preset("overwatch", "hero_classic").id == "hero_classic"
+
+
+def test_a_mix_refuses_a_map_preset() -> None:
+    assert pbr.mix_ban_preset("overwatch", "map_bracket") is None
+
+
+def test_a_mix_plays_a_preset_whose_per_player_bans_only_start_on_map_two() -> None:
+    """A mix round is map 1 of a Bo1: anti-one-trick's map-1 phase is a blind two-ban, its per-player phase never runs."""
+    assert pbr.mix_ban_preset("overwatch", "hero_anti_one_trick").id == "hero_anti_one_trick"
+
+
+def test_a_mix_refuses_a_preset_that_bans_a_player_on_map_one() -> None:
+    per_player = pbr.Ruleset(phases=[ANTI.phases[1].model_copy(update={"when": {}})])
+    presets = (
+        pbr.Preset("per_player_always", "hero", ("pool",), per_player),
+        pbr.Preset("per_player_later", "hero", ("pool",), ANTI),
+    )
+    spec = DisciplineSpec("targeting", "Targeting", (), pick_ban_presets=lambda: presets)
+    with patch.dict(DISCIPLINES, {spec.code: spec}):
+        assert pbr.mix_ban_preset(spec.code, "per_player_always") is None
+        assert pbr.mix_ban_preset(spec.code, "per_player_later").id == "per_player_later"
+
+
+def test_a_mix_refuses_another_games_preset_and_an_unknown_game() -> None:
+    assert pbr.mix_ban_preset("overwatch", "deadlock_hero_bans") is None
+    assert pbr.mix_ban_preset("not-a-game", "deadlock_hero_bans") is None
+
+
 # ── preview ─────────────────────────────────────────────────────────────────
 
 

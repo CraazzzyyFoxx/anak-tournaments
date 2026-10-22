@@ -14,6 +14,7 @@ from src.domain.mix_self_service import MAX_ROSTER
 
 __all__ = (
     "CustomGameBalanceRequest",
+    "CustomGameBanPresetPatch",
     "CustomGameCaptainPatch",
     "CustomGameCoHostPatch",
     "CustomGameCreate",
@@ -24,6 +25,7 @@ __all__ = (
     "CustomGameLobbyCountPatch",
     "CustomGameLobbyVoice",
     "CustomGameMatchRun",
+    "CustomGameMatchStart",
     "CustomGameNextMapPatch",
     "CustomGameOutcome",
     "CustomGamePlayerPatch",
@@ -204,7 +206,13 @@ class CustomGameRecordOutcome(_LobbyScoped):
 
 
 class CustomGameMatchRun(_LobbyScoped):
-    """Which lobby's match to start or cancel."""
+    """Which lobby's match to cancel."""
+
+
+class CustomGameMatchStart(_LobbyScoped):
+    """Which lobby's match to start, and whether the host swaps the computed ban opener (spec §8.3)."""
+
+    flip_opener: StrictBool = False
 
 
 class CustomGameSelfUpdate(_Request):
@@ -230,6 +238,12 @@ class CustomGameSelfServicePatch(_Request):
 
     self_signup: MixSelfSignup | None = None
     self_role_edit: StrictBool | None = None
+
+
+class CustomGameBanPresetPatch(_Request):
+    """The mix's hero ban preset; ``null`` turns bans off."""
+
+    hero_ban_preset: str | None = Field(max_length=64)
 
 
 class CustomGamePostSignup(_Request):

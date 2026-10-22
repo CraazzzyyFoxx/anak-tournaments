@@ -451,6 +451,25 @@ TOURNAMENT_CHALLONGE_PUSH_DLQ = RabbitQueue(
     durable=True,
 )
 
+# Owner: tournament-service. A mix match started with hero bans (balancer-service's Start match): its encounter's
+# pick-ban room is opened by the room healer (``reconcile_encounter``), which is idempotent -- a redelivery opens
+# nothing twice.
+TOURNAMENT_PICK_BAN_ROOM_OPEN_QUEUE = RabbitQueue(
+    "tournament_pick_ban_room_open",
+    durable=True,
+    routing_key="tournament.encounter.pick_ban_room_open_requested",
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "tournament_pick_ban_room_open.dlq",
+        "x-message-ttl": 600000,  # 10 minutes
+    },
+)
+
+TOURNAMENT_PICK_BAN_ROOM_OPEN_DLQ = RabbitQueue(
+    "tournament_pick_ban_room_open.dlq",
+    durable=True,
+)
+
 # ============================================================================
 # Workspace membership changes (app-service -> identity-service)
 # ============================================================================

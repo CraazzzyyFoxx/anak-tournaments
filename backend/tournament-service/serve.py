@@ -18,6 +18,7 @@ from shared.messaging.config import (
     TOURNAMENT_BRACKET_JOBS_QUEUE,
     TOURNAMENT_CHALLONGE_PUSH_DLQ,
     TOURNAMENT_COMPUTE_EXCHANGE,
+    TOURNAMENT_PICK_BAN_ROOM_OPEN_DLQ,
     TOURNAMENT_STANDINGS_INVALIDATED_DLQ,
     TOURNAMENT_STANDINGS_JOBS_DLQ,
     TOURNAMENT_STANDINGS_JOBS_QUEUE,
@@ -64,7 +65,7 @@ from src.services.challonge import sync as challonge_sync
 from src.services.computation.bracket_worker import process_bracket_job
 from src.services.computation.standings_worker import process_standings_job
 from src.services.division_grid.import_jobs import process_import_job, recover_stale_import_jobs
-from src.services.encounter import challonge_push_events, log_evidence_events, room_reconcile
+from src.services.encounter import challonge_push_events, log_evidence_events, room_open_events, room_reconcile
 from src.services.registration import sheet_sync
 from src.services.tournament import auto_transitions, recalculation_events
 
@@ -150,6 +151,8 @@ broker.include_router(recalculation_events.task_router)
 broker.include_router(log_evidence_events.task_router)
 # Confirmed results of Challonge-linked encounters, staged by every confirm path, pushed here.
 broker.include_router(challonge_push_events.task_router)
+# A mix match started with hero bans: open its room.
+broker.include_router(room_open_events.task_router)
 
 
 async def settle_due_pick_ban_rooms() -> None:
@@ -237,6 +240,7 @@ async def start_worker() -> None:
     await declare_dead_letter_queue(broker, MATCH_INGESTED_TOURNAMENT_DLQ)
     await declare_dead_letter_queue(broker, TOURNAMENT_STANDINGS_INVALIDATED_DLQ)
     await declare_dead_letter_queue(broker, TOURNAMENT_CHALLONGE_PUSH_DLQ)
+    await declare_dead_letter_queue(broker, TOURNAMENT_PICK_BAN_ROOM_OPEN_DLQ)
     setup_sentry(
         dsn=config.settings.sentry_dsn,
         traces_sample_rate=config.settings.sentry_traces_sample_rate,

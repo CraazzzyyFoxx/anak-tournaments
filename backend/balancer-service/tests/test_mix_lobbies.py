@@ -122,12 +122,13 @@ def test_a_seated_captain_is_kept_and_one_who_left_is_replaced() -> None:
 
 
 @pytest.mark.parametrize(
-    ("document", "live", "state"),
+    ("document", "live", "pregame", "state"),
     [
-        (None, None, "idle"),
-        (lobby_document([_payload({"tank": [7]}, {"tank": [8]})]), None, "ready"),
-        (lobby_document([_payload({"tank": [7]}, {"tank": [8]})]), 900, "live"),
+        (None, None, False, "idle"),
+        (lobby_document([_payload({"tank": [7]}, {"tank": [8]})]), None, False, "ready"),
+        (lobby_document([_payload({"tank": [7]}, {"tank": [8]})]), 900, True, "pregame"),
+        (lobby_document([_payload({"tank": [7]}, {"tank": [8]})]), 900, False, "live"),
     ],
 )
-def test_a_lobby_state_is_derived_never_stored(document, live, state) -> None:
-    assert lobby_state(document, 0, live) == state
+def test_a_lobby_state_is_derived_never_stored(document, live, pregame, state) -> None:
+    assert lobby_state(document, 0, live, pregame) == state

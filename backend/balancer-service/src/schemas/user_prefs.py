@@ -10,8 +10,9 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, BeforeValidator, ConfigDict, Field
 
+from shared.domain.pick_ban_rules import mix_ban_preset
 from src.domain.balancer.config.defaults import MAX_RESULT_VARIANTS, validate_role_settings
 
 __all__ = (
@@ -43,6 +44,20 @@ _MODE_DOC = (
     "mix ranker (each seat by its own amount; mixes then balance on the effective rating). The workspace's "
     "hidden ratings advance in both."
 )
+_BANS_DOC = (
+    "Per game (discipline code): the hero ban preset a new mix of that game starts with. "
+    "A game left out starts without bans."
+)
+
+
+def _valid_ban_presets(value: dict[str, str]) -> dict[str, str]:
+    for discipline, code in value.items():
+        if mix_ban_preset(discipline, code) is None:
+            raise ValueError(f"{code!r} is not a hero ban preset a {discipline!r} mix can play")
+    return value
+
+
+_BanPresets = Annotated[dict[str, str], AfterValidator(_valid_ban_presets)]
 
 RatingMode = Literal["points", "ranker"]
 
@@ -72,6 +87,7 @@ class UserMixPreferencesRead(BaseModel):
     open_slot_settings: MixRoleSettings | None = None
     points_per_win: int | None = Field(default=None, ge=0, le=MAX_POINTS_PER_WIN, description=_POINTS_DOC)
     rating_mode: RatingMode = Field(default="points", description=_MODE_DOC)
+    hero_ban_presets: dict[str, str] = Field(default_factory=dict, description=_BANS_DOC)
 
 
 class UserMixPreferencesUpsert(BaseModel):
@@ -85,3 +101,4 @@ class UserMixPreferencesUpsert(BaseModel):
     open_slot_settings: MixRoleSettings | None
     points_per_win: int | None = Field(ge=0, le=MAX_POINTS_PER_WIN, description=_POINTS_DOC)
     rating_mode: RatingMode = Field(description=_MODE_DOC)
+    hero_ban_presets: _BanPresets = Field(description=_BANS_DOC)

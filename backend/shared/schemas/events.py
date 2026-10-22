@@ -349,6 +349,24 @@ class ChallongePushRequestedEvent(BaseEvent):
         return self
 
 
+class PickBanRoomOpenRequestedEvent(BaseEvent):
+    """A mix match started with hero bans: its encounter's pick-ban room is to be opened.
+
+    Published by: balancer-service ``start_mix_match``, in the transaction that started the match.
+    Consumed by: tournament-service ``tournament_pick_ban_room_open``, which runs the room healer on the encounter.
+
+    ``event_id`` is deterministic (``pick_ban_room_open:<encounter>``): one request per started match.
+    """
+
+    event_type: str = Field(default="pick_ban_room_open_requested", frozen=True)
+    encounter_id: int = Field(..., description="The started mix encounter")
+
+    @model_validator(mode="after")
+    def _deterministic_id(self):
+        self.event_id = f"pick_ban_room_open:{self.encounter_id}"
+        return self
+
+
 class WorkspaceMemberChangedEvent(BaseEvent):
     """Workspace membership or workspace roles changed for some auth users.
 

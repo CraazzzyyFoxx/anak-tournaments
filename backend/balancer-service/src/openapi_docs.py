@@ -311,6 +311,10 @@ DOCS: dict[str, dict] = {
             "order, the ranks the balancer would use and which layer each came from. "
             "Resolves ownership from the mix id; an optional workspace_id restricts the read "
             "and returns 404 if the mix belongs to another workspace."
+            " It carries the mix's hero_ban_preset (null = no bans)."
+            " Each lobby carries state (idle | ready | pregame | live), live_seats (the live match's participations"
+            " {id, slot, name}) and opener_index (the lineup team that bans first in the next match, null without"
+            " bans)."
         ),
     },
     "rpc.balancer.custom.update_roster": {
@@ -399,6 +403,16 @@ DOCS: dict[str, dict] = {
             "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
             "Sets whether players may seat themselves (closed, into the pool, or onto the bench) and "
             "whether a seated player may re-order their own roles, then returns the refreshed mix."
+        ),
+    },
+    "rpc.balancer.custom.set_ban_preset": {
+        "summary": "Set custom game ban preset",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
+            "Sets the hero ban preset the lobbies' next Start opens a room on -- a hero preset of the mix's own "
+            "game that bans no player on map 1 (deadlock_hero_bans, lol_side_selection, the Overwatch hero "
+            "presets) -- or null for no bans, and returns the refreshed mix. A live match keeps the room it "
+            "started with. 422 unknown_ban_preset for any other code."
         ),
     },
     "rpc.balancer.custom.balance": {
@@ -540,6 +554,9 @@ DOCS: dict[str, dict] = {
             "recorded or the match is cancelled. When the lobby has both team voices, its seated players are then "
             "moved into them (as voice_move; a Discord failure leaves the match started). 409 match_live when the lobby "
             "already has a live match, 404 when the shown option is gone, 422 unless it seats two teams."
+            " Both seats are marked ready. With a hero ban preset the team that bans first (the last round's loser when"
+            " the same two teams meet again, else the lower average rating; flip_opener swaps it) is seated in slot 1"
+            " and tournament-service opens the ban room; the lobby reads pregame until the room is done."
         ),
     },
     "rpc.balancer.custom.cancel_match": {
@@ -561,15 +578,16 @@ DOCS: dict[str, dict] = {
             "workspace's hidden ratings and redeeming every seat's must_play pin back to the pool. The match is "
             "stamped with its lobby and with whoever was playing another lobby at that moment, whom rotation then "
             "counts as neither played nor sat out. The lobby's next map is cleared. 409 no_live_match when nothing was "
-            "started. Repeatable until the mix is closed."
+            "started. Repeatable until the mix is closed. The winner names the lineup team (1 or 2), whichever slot "
+            "Start seated it in."
         ),
     },
     "rpc.balancer.custom.match_history": {
         "summary": "List custom game matches",
         "description": (
             "Permission: public; no authentication required. Returns every round recorded for the mix, newest first: "
-            "its two teams by slot with name and score, the winning slot (null for a draw), lobby, map, recorder and "
-            "the rank points it applied."
+            "its two teams by slot (slot 1 banned first) with name and score, its hero bans {slot, item_id} in order, "
+            "the winning slot (null for a draw), lobby, map, recorder and the rank points it applied."
         ),
     },
     "rpc.balancer.custom.undo_match": {
@@ -736,6 +754,7 @@ DOCS: dict[str, dict] = {
             "decided match moves its rank book and whether the mix ranker moves it instead "
             "(rating_mode). A null value means the setting was never saved and the default applies. "
             "The team format is not here: it is frozen on each mix."
+            " hero_ban_presets maps a game to the hero ban preset a new mix of it starts with."
         ),
     },
     "rpc.balancer.prefs.upsert": {
@@ -743,11 +762,12 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: self-service -- any authenticated (active) account writes its own "
             "preferences only. "
-            "Replaces all six of the caller's mix settings at once and returns the stored result, "
+            "Replaces all seven of the caller's mix settings at once and returns the stored result, "
             "exactly what the next read returns; a null clears one back to the default, and 0 points "
             "per win stores as unset. They apply to every mix this account hosts -- a mix runs on "
             "its host's preferences whoever presses the button. 422 on an unknown field or an "
             "out-of-range value."
+            " 422 when a hero_ban_presets entry is not a hero preset of its own game."
         ),
     },
     "rpc.balancer.draft.chat_history": {

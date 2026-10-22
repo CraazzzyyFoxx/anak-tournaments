@@ -162,6 +162,7 @@ class _HostPrefs:
             config_json=fields.get("config_json", {}),
             points_per_win=fields.get("points_per_win"),
             rating_mode=fields.get("rating_mode", "points"),
+            hero_ban_presets=fields.get("hero_ban_presets", {}),
         )
 
     async def get_by_user(self, _session: Any, user_id: int) -> Any:
@@ -418,7 +419,9 @@ class MixFlowTests(IsolatedAsyncioTestCase):
         self.assertEqual(recorded.status, "balanced")
         self.assertEqual(len(self.store.drafts), 1)
         draft = self.store.drafts[0]
-        self.assertEqual((draft.encounter_id, draft.names, draft.winner_slot), (501, ("Wolves", "Team 2"), 1))
+        self.assertEqual((draft.encounter_id, draft.names, draft.winner), (501, ("Wolves", "Team 2"), 1))
+        # No bans: Start kept the lineup order, so lineup team 1 is the team in slot 1.
+        self.assertEqual(draft.lineup_first_team, frozenset(seat.workspace_member_id for seat in match.seats[0]))
         # The pin was redeemed by the seat it guaranteed; the win moved ranks.
         self.assertEqual(by_member[7].participation, MixParticipation.POOL)
         self.assertEqual(len(self.ranks.set_ranks.await_args_list), 9)

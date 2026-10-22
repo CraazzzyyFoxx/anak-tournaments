@@ -29,16 +29,22 @@
 //     configured, and posts the option the pager is on, not always the first;
 // 11. a lobby walks Ready -> Live: Start match opens it (asking first while an
 //     away player is still seated), a live lineup is frozen to its result and
-//     Cancel match, and each team's captain wears the crown.
+//     Cancel match, and each team's captain wears the crown;
+// 12. with bans, Pre-game sits between Ready and Live: the ban board on the
+//     frozen lineup, Live keeps what the bans settled, and each recorded
+//     round lists its bans.
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
+import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import type { CustomGame, CustomGameLobby, CustomGameMatch, CustomGamePlayer } from "@/services/custom-game.service";
 import { catalogMap, catalogMode } from "@/test/catalog";
 import type { CatalogEntityRead } from "@/types/catalog.types";
+import type { PickBanEntry, PickBanState } from "@/types/tournament.types";
 
 import { PickupTeamsPanel } from "./PickupTeamsPanel";
 import { DEADLOCK_OWNER, LOL_OWNER, OW_OWNER } from "./mix-owner.fixture";
@@ -53,6 +59,7 @@ globalThis.ResizeObserver ??= class {
   unobserve() {}
   disconnect() {}
 } as unknown as typeof ResizeObserver;
+
 
 vi.mock("@/lib/datetime/client", () => ({ useFormatter: () => ({ relativeTime: () => "just now" }) }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
@@ -89,6 +96,26 @@ vi.mock("@/hooks/useNodeCapture", () => ({
     capture: captureSpies.capture,
   }),
 }));
+// The history's ban strip names its heroes from the game's catalog (the fields it reads).
+vi.mock("@/services/catalog.service", () => ({
+  default: {
+    list: async () => ({
+      results: [
+        { id: 101, name: "Ana", image_path: null },
+        { id: 102, name: "Genji", image_path: null },
+      ],
+    }),
+  },
+}));
+// The ban board is the shared pick-ban library's (`MixBanBoard.behavior.test.tsx`); the room only places it.
+vi.mock("./_components/MixBanBoard", () => ({
+  MixBanBoard: ({ encounterId, seats }: { encounterId: number; seats: { name: string }[] }) => (
+    <div data-testid="ban-board">{`${encounterId}: ${seats.map((seat) => seat.name).join(" vs ")}`}</div>
+  ),
+}));
+// The Live summary reads the settled ban room once: the bans and the starting sides.
+const getPickBanState = vi.hoisted(() => vi.fn());
+vi.mock("@/services/pickBan.service", () => ({ default: { getPickBanState } }));
 
 const onBalance = vi.fn();
 const onVariantIndexChange = vi.fn();
@@ -200,6 +227,7 @@ function match(overrides: Partial<CustomGameMatch> = {}): CustomGameMatch {
     recorded_at: new Date().toISOString(),
     points_per_win_applied: null,
     lobby_index: 0,
+    bans: [],
     ...overrides,
   };
 }
@@ -225,6 +253,36 @@ function player(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
 
 /** The lobby while its match is on. */
 const LIVE = { state: "live", live_encounter_id: 50, live_started_at: "2026-01-01T20:00:00Z" } as const;
+
+/** The live match's seats, slot 1 bans first. */
+const SEATS = [
+  { id: 71, slot: 1, name: "Team 2" },
+  { id: 72, slot: 2, name: "Team 1" },
+];
+
+/** One hero of the room's pool: banned by `teamId`, or still available without one. */
+function poolEntry(id: number, itemId: number, teamId: number | null, actionIndex: number | null): PickBanEntry {
+  return {
+    id,
+    item_id: itemId,
+    round: 1,
+    order: 0,
+    action_index: actionIndex,
+    picked_by_kind: teamId == null ? null : "team",
+    picked_by_team_id: teamId,
+    protected_by_kind: null,
+    protected_by_team_id: null,
+    status: teamId == null ? "available" : "banned",
+    carried_from_round: null,
+  };
+}
+
+/** The ban room once it completed: Genji (102) banned first by slot 1, then Ana (101) by slot 2; slot 1 on blue. */
+const SETTLED_ROOM = {
+  is_complete: true,
+  pool: [poolEntry(30, 101, 72, 1), poolEntry(31, 102, 71, 0), poolEntry(32, 103, null, null)],
+  starting_sides: [{ game_id: 900, position: 1, sides: { "71": "blue", "72": "red" } }],
+} as Partial<PickBanState> as PickBanState;
 
 // The history row paints the winning team's name in the full foreground tone and the other in the dim one.
 const WINNER_TONE = "text-[color:var(--aqt-fg)]";
@@ -276,6 +334,7 @@ function panel(current: CustomGame | undefined, props: PanelOptions) {
       activeCount={props.activeCount ?? 10}
       onBalance={onBalance}
       startingMatch={false}
+      onBansComplete={vi.fn()}
       onStartMatch={onStartMatch}
       cancellingMatch={false}
       onCancelMatch={onCancelMatch}
@@ -302,15 +361,21 @@ function panel(current: CustomGame | undefined, props: PanelOptions) {
   );
 }
 
-async function mount(current: CustomGame | undefined, props: PanelOptions = {}) {
+async function mount(
+  current: CustomGame | undefined,
+  props: PanelOptions = {},
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
   await act(async () => {
     root.render(
-      <NextIntlClientProvider locale="en" messages={en}>
-        {panel(current, props)}
-      </NextIntlClientProvider>,
+      <QueryClientProvider client={client}>
+        <NextIntlClientProvider locale="en" messages={en}>
+          {panel(current, props)}
+        </NextIntlClientProvider>
+      </QueryClientProvider>,
     );
   });
   await act(async () => {
@@ -1027,6 +1092,29 @@ describe("PickupTeamsPanel", () => {
     expect(scope.querySelector('[data-testid="match-lobby"]')).toBeNull();
   });
 
+  it("shows a round's hero bans in the order they were made", async () => {
+    const scope = await mount(game({ discipline: "overwatch" }), {
+      matches: [match({ id: 12, bans: [{ slot: 2, item_id: 102 }, { slot: 1, item_id: 101 }, { slot: 2, item_id: 999 }] })],
+    });
+    await act(async () => {
+      await tick();
+    });
+
+    const strip = scope.querySelector('[aria-label="Bans"]');
+    // A hero the catalog no longer has still shows, by its id.
+    expect([...(strip?.querySelectorAll("[title]") ?? [])].map((node) => node.getAttribute("title"))).toEqual([
+      "Genji",
+      "Ana",
+      "#999",
+    ]);
+  });
+
+  it("leaves a round without bans with no ban strip", async () => {
+    const scope = await mount(game({ discipline: "overwatch" }), { matches: [match({ id: 12 })] });
+
+    expect(scope.querySelector('[aria-label="Bans"]')).toBeNull();
+  });
+
   it("starts the match from a Ready lobby, which offers no result yet", async () => {
     const scope = await mount(game());
 
@@ -1034,7 +1122,7 @@ describe("PickupTeamsPanel", () => {
     expect(scope.querySelector('[aria-current="step"]')?.textContent).toContain("Ready");
     await click(byName(scope, "Start match"));
 
-    expect(onStartMatch).toHaveBeenCalledTimes(1);
+    expect(onStartMatch).toHaveBeenCalledWith(false);
   });
 
   it("warns before starting with an away player seated, and starts once confirmed", async () => {
@@ -1045,7 +1133,7 @@ describe("PickupTeamsPanel", () => {
     expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("Start with away players?");
 
     await click(byName(document, "Start anyway"));
-    expect(onStartMatch).toHaveBeenCalledTimes(1);
+    expect(onStartMatch).toHaveBeenCalledWith(false);
   });
 
   it("freezes a live lineup: results and Cancel match, but no balance, pager, swap or captaincy", async () => {
@@ -1068,6 +1156,105 @@ describe("PickupTeamsPanel", () => {
     expect(onCancelMatch).not.toHaveBeenCalled();
     await click(byName(document, "Yes, cancel the match"));
     expect(onCancelMatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("bans heroes in Pre-game on the frozen lineup, with Cancel match and no result yet", async () => {
+    const pregame = lobbyRow({
+      state: "pregame",
+      live_encounter_id: 50,
+      live_started_at: "2026-01-01T20:00:00Z",
+      live_seats: [
+        { id: 71, slot: 1, name: "Team 2" },
+        { id: 72, slot: 2, name: "Team 1" },
+      ],
+    });
+    const scope = await mount(game({ hero_ban_preset: "hero_bo1_simple", lobbies: [pregame] }));
+
+    expect([...scope.querySelectorAll("ol li")].map((step) => step.textContent)).toEqual([
+      "Idle",
+      "Ready",
+      expect.stringContaining("Pre-game"),
+      "Live",
+    ]);
+    expect(scope.querySelector('[aria-current="step"]')?.textContent).toContain("Pre-game");
+    // The team that bans first sits in slot 1.
+    expect(scope.querySelector('[data-testid="ban-board"]')?.textContent).toBe("50: Team 2 vs Team 1");
+    expect(scope.textContent).toContain("Lineup frozen while the match is live");
+    expect(byName(scope, "Draw")).toBeNull();
+    expect(byName(scope, "Balance teams")).toBeNull();
+    expect(byName(scope, "Start match")).toBeNull();
+
+    await click(byName(scope, "Cancel match"));
+    await click(byName(document, "Yes, cancel the match"));
+    expect(onCancelMatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists no Pre-game step for a mix without bans", async () => {
+    const scope = await mount(game({ hero_ban_preset: null }));
+
+    expect([...scope.querySelectorAll("ol li")].map((step) => step.textContent)).toEqual([
+      "Idle",
+      "Ready",
+      "Live",
+    ]);
+  });
+
+  it("keeps the settled bans and the starting sides on screen while the match is live", async () => {
+    getPickBanState.mockResolvedValue(SETTLED_ROOM);
+    const settled = lobbyRow({ ...LIVE, live_ban_preset: "lol_side_selection", live_seats: SEATS });
+    // A viewer too: spectating is public.
+    const scope = await mount(game({ discipline: "lol", lobbies: [settled] }), { canWrite: false, owner: LOL_OWNER });
+    await act(async () => {
+      await tick();
+    });
+
+    expect(scope.querySelector('[data-testid="ban-board"]')).toBeNull();
+    expect(scope.textContent).toContain("Hero bans");
+    const strip = scope.querySelector('[aria-label="Bans"]');
+    expect([...(strip?.querySelectorAll("[title]") ?? [])].map((node) => node.getAttribute("title"))).toEqual([
+      "Genji",
+      "Ana",
+    ]);
+    expect(scope.textContent).toContain("Blue side: Team 2");
+    expect(scope.textContent).toContain("Red side: Team 1");
+  });
+
+  it("rereads a ban room it last saw unfinished when the live summary mounts", async () => {
+    // Production keeps queries fresh for 60 s; the viewer last saw this room mid-Pre-game.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 60_000 } } });
+    client.setQueryData(encounterQueryKeys.pregameHeroState(50), {
+      ...SETTLED_ROOM,
+      is_complete: false,
+      pool: [poolEntry(30, 101, null, null), poolEntry(31, 102, null, null), poolEntry(32, 103, null, null)],
+      starting_sides: [],
+    });
+    getPickBanState.mockResolvedValue(SETTLED_ROOM);
+    const settled = lobbyRow({ ...LIVE, live_ban_preset: "lol_side_selection", live_seats: SEATS });
+    const current = game({ discipline: "lol", lobbies: [settled] });
+    const scope = await mount(current, { canWrite: false, owner: LOL_OWNER }, client);
+    await act(async () => {
+      await tick();
+    });
+
+    const strip = scope.querySelector('[aria-label="Bans"]');
+    expect([...(strip?.querySelectorAll("[title]") ?? [])].map((node) => node.getAttribute("title"))).toEqual([
+      "Genji",
+      "Ana",
+    ]);
+    expect(scope.textContent).toContain("Blue side: Team 2");
+  });
+
+  it("shows no ban summary for a live match that started without bans", async () => {
+    getPickBanState.mockResolvedValue(SETTLED_ROOM);
+    const scope = await mount(game({ lobbies: [lobbyRow({ ...LIVE, live_ban_preset: null, live_seats: SEATS })] }));
+    await act(async () => {
+      await tick();
+    });
+
+    expect(scope.textContent).toContain("Live");
+    expect(scope.textContent).not.toContain("Hero bans");
+    expect(scope.querySelector('[aria-label="Bans"]')).toBeNull();
+    expect(scope.textContent).not.toContain("Blue side: Team 2");
   });
 
   it("tells a viewer a live lineup is frozen, without handing them the result or Cancel match", async () => {

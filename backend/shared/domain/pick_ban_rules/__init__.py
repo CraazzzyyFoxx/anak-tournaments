@@ -22,7 +22,7 @@ from .compile import (
     select_phase,
     steps_from_v1_tokens,
 )
-from .presets import GENERIC_PRESETS, GENERIC_PRESETS_BY_ID, Preset, UnknownDiscipline, presets_for
+from .presets import GENERIC_PRESETS, GENERIC_PRESETS_BY_ID, Preset, UnknownDiscipline, mix_ban_preset, presets_for
 from .preview import preview_series
 from .registry import (
     CONSTRAINTS,
@@ -150,6 +150,7 @@ __all__ = (
     "evaluate",
     "history_of",
     "leaf",
+    "mix_ban_preset",
     "normalize_group",
     "parse_ruleset",
     "phase_matches",

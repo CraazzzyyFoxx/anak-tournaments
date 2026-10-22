@@ -10,6 +10,7 @@
 //
 // Switching mixes and creating one moved to the list at `/balancer/mix` --
 // those contracts live in `PickupMixList.behavior.test.tsx` now.
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,28 +28,59 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // the few controls whose accessible names were localized are mapped to their
 // existing English contract below.
 vi.mock("next-intl", () => ({
-  useTranslations: () => (key: string, values?: Record<string, unknown>) => {
-    const label = String(values?.label ?? "");
-    const labels: Record<string, string> = {
-      more: "more",
-      edit: label ? `Edit ${label}` : "edit",
-      save: label ? `Save ${label}` : "save",
-      cancel: label ? `Cancel ${label} edit` : "cancel",
-      roleEdit: "roleEdit",
-      signupTrigger: "signupTrigger",
-      "discord.trigger": "discord.trigger",
-      "discord.allPosts": "discord.allPosts",
-      "posts.delete": "posts.delete",
-      nameLabel: "mix name",
-      noMix: "No mix yet",
-      "start.addPlayers": "Add players",
-      deleteConfirm: "Delete permanently"
-    };
-    const value = labels[key] ?? key;
-    if (key === "edit" || key === "save" || key === "cancel") return value;
-    return values ? `${value}(${Object.values(values).join(",")})` : value;
-  }
+  useTranslations: () =>
+    Object.assign(
+      (key: string, values?: Record<string, unknown>) => {
+        const label = String(values?.label ?? "");
+        const labels: Record<string, string> = {
+          more: "more",
+          edit: label ? `Edit ${label}` : "edit",
+          save: label ? `Save ${label}` : "save",
+          cancel: label ? `Cancel ${label} edit` : "cancel",
+          roleEdit: "roleEdit",
+          signupTrigger: "signupTrigger",
+          "discord.trigger": "discord.trigger",
+          "discord.allPosts": "discord.allPosts",
+          "posts.delete": "posts.delete",
+          nameLabel: "mix name",
+          noMix: "No mix yet",
+          "start.addPlayers": "Add players",
+          deleteConfirm: "Delete permanently"
+        };
+        const value = labels[key] ?? key;
+        if (key === "edit" || key === "save" || key === "cancel") return value;
+        return values ? `${value}(${Object.values(values).join(",")})` : value;
+      },
+      // Preset names read as their codes.
+      { has: () => false }
+    )
 }));
+// The server's catalog for the mix's game, with the `mix_eligible` flag it computes.
+vi.mock("@/services/pickBan.service", () => {
+  const preset = (id: string, kind: "hero" | "map", mix_eligible: boolean) => ({
+    id,
+    kind,
+    modes: ["pool"],
+    first_ban_rotation: null,
+    ruleset: { version: 2, timer_seconds: null, on_timeout: "random_fill", phases: [] },
+    mix_eligible
+  });
+  return {
+    default: {
+      getRulesCatalog: async () => ({
+        leaves: [],
+        constraints: [],
+        groups: { hero: [], map: [] },
+        presets: [
+          preset("hero_classic", "hero", true),
+          preset("hero_targeted", "hero", false),
+          preset("hero_anti_one_trick", "hero", true),
+          preset("map_bracket", "map", false)
+        ]
+      })
+    }
+  };
+});
 
 const onOpenPool = vi.fn();
 const onOpenAccess = vi.fn();
@@ -58,11 +90,13 @@ const onLobbyCountChange = vi.fn();
 const onDeleteDiscordPost = vi.fn();
 const onDeleteMix = vi.fn();
 const onRename = vi.fn();
+const onSetBanPreset = vi.fn();
 
 function game(overrides: Partial<CustomGame> = {}): CustomGame {
   return {
     id: 12,
     workspace_id: 7,
+    discipline: "overwatch",
     host_user_id: 9,
     co_hosts: [],
     host_display_name: "Host",
@@ -85,6 +119,7 @@ function game(overrides: Partial<CustomGame> = {}): CustomGame {
     last_match_at: null,
     self_signup: "closed",
     self_role_edit: false,
+    hero_ban_preset: null,
     settings: { points_per_win: 0, team_names: {}, workspace_discord_channel_id: "555" },
     ...overrides
   } as CustomGame;
@@ -121,22 +156,25 @@ async function mount(
     const root = createRoot(container);
     roots.push(root);
     root.render(
-      <PickupMixHeader
-        canWrite={props.canWrite ?? true}
-        game={currentGame}
-        gameLoading={props.gameLoading ?? false}
-        onOpenPool={onOpenPool}
-        showsRoles={props.showsRoles ?? true}
-        onOpenAccess={onOpenAccess}
-        canDelete={props.canDelete ?? false}
-        onDeleteMix={onDeleteMix}
-        onRename={onRename}
-        onSetSelfService={onSetSelfService}
-        onPostSignup={onPostSignup}
-        settingLobbyCount={false}
-        onLobbyCountChange={onLobbyCountChange}
-        onDeleteDiscordPost={onDeleteDiscordPost}
-      />
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <PickupMixHeader
+          canWrite={props.canWrite ?? true}
+          game={currentGame}
+          gameLoading={props.gameLoading ?? false}
+          onOpenPool={onOpenPool}
+          showsRoles={props.showsRoles ?? true}
+          onOpenAccess={onOpenAccess}
+          canDelete={props.canDelete ?? false}
+          onDeleteMix={onDeleteMix}
+          onRename={onRename}
+          onSetSelfService={onSetSelfService}
+          onSetBanPreset={onSetBanPreset}
+          onPostSignup={onPostSignup}
+          settingLobbyCount={false}
+          onLobbyCountChange={onLobbyCountChange}
+          onDeleteDiscordPost={onDeleteDiscordPost}
+        />
+      </QueryClientProvider>
     );
   });
   await act(async () => {
@@ -174,6 +212,7 @@ beforeEach(() => {
   onDeleteDiscordPost.mockReset();
   onDeleteMix.mockReset();
   onRename.mockReset();
+  onSetBanPreset.mockReset();
 });
 
 // The `⋯` menu: what a host sets once per mix, and the irreversible delete.
@@ -328,6 +367,35 @@ describe("PickupMixHeader", () => {
 
     await click(byName(document, "Delete permanently"));
     expect(onDeleteMix).toHaveBeenCalledTimes(1);
+  });
+});
+
+// R-HDR: everyone reads which hero bans the next Start opens; only a host changes them.
+describe("PickupMixHeader hero bans", () => {
+  it("names the mix's ban preset to a viewer, with no control to change it", async () => {
+    const scope = await mount(game({ hero_ban_preset: "hero_classic" }), { canWrite: false });
+
+    expect(scope.textContent).toContain("hero_classic");
+    expect(scope.querySelector('[role="combobox"]')).toBeNull();
+  });
+
+  it("tells a viewer a mix without a preset plays no bans", async () => {
+    const scope = await mount(game({ hero_ban_preset: null }), { canWrite: false });
+
+    expect(scope.textContent).toContain("none");
+  });
+
+  it("gives a host the select, on the mix's preset, offering only what a mix of its game may play", async () => {
+    const scope = await mount(game({ hero_ban_preset: "hero_anti_one_trick" }));
+    const select = scope.querySelector('[role="combobox"][aria-label="label"]');
+
+    expect(select?.textContent?.trim()).toBe("hero_anti_one_trick");
+    await click(select);
+    expect([...document.querySelectorAll('[role="option"]')].map((node) => node.textContent?.trim())).toEqual([
+      "none",
+      "hero_classic",
+      "hero_anti_one_trick"
+    ]);
   });
 });
 

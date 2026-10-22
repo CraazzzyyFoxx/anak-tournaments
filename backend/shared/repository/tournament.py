@@ -489,14 +489,17 @@ class EncounterRepository(BaseRepository[models.Encounter]):
         result = await session.execute(query)
         return result.unique().scalars().first()
 
-    async def get_any_owner_for_update(self, session: AsyncSession, encounter_id: int) -> models.Encounter | None:
-        """``get_for_update`` without the tournament-owned predicate: a mix round is no tournament encounter, but
-        a consumer that must leave it a refusal receipt still locks it first."""
+    async def get_any_owner_for_update(
+        self, session: AsyncSession, encounter_id: int, *, skip_locked: bool = False
+    ) -> models.Encounter | None:
+        """``get_for_update`` without the tournament-owned predicate (D77's one exception): the pick-ban, readiness
+        and chat paths run a mix round's room (spec §8.2), and a consumer that must leave a mix round a refusal
+        receipt locks it first. ``skip_locked`` is for the scheduled healers, which must never queue."""
         result = await session.execute(
             super()
             .select()
             .where(models.Encounter.id == encounter_id)
-            .with_for_update()
+            .with_for_update(skip_locked=skip_locked)
             .execution_options(populate_existing=True)
         )
         return result.unique().scalars().first()

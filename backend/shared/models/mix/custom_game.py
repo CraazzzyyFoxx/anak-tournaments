@@ -106,6 +106,8 @@ class CustomGame(db.TimeStampIntegerMixin):
     )
     #: The mix's own ``wins`` rule: Bo1, draws allowed. Every round encounter points at it.
     scoring_rule_id: Mapped[int] = mapped_column(BigInteger())
+    #: The hero ban preset Start opens a room on (``pick_ban_rules.mix_ban_preset`` of this game); NULL = no bans.
+    hero_ban_preset: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class CustomGameCoHost(db.Base):
@@ -171,12 +173,16 @@ class CustomGameLobby(db.Base):
     team1_voice_channel_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     team2_voice_channel_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     # The match this lobby has on the floor: started, not yet recorded or cancelled (spec §5.1). Its lineup is
-    # frozen meanwhile; the lobby's state (idle / ready / live) is derived from this and the document, never stored.
+    # frozen meanwhile; the lobby's state (idle / ready / pregame / live) is derived from this, the document,
+    # ``live_ban_preset`` and the match's hero room, never stored.
     live_encounter_id: Mapped[int | None] = mapped_column(
         BigInteger(),
         ForeignKey("encounter.encounter.id", ondelete="SET NULL", name="fk_custom_game_lobby_live_encounter"),
         nullable=True,
     )
+    # The hero ban preset Start froze for ``live_encounter_id`` (the mix's ``hero_ban_preset`` then; NULL = no bans):
+    # the match's room opens -- and any reset reopens -- on it, whatever the header says meanwhile.
+    live_ban_preset: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class CustomGamePlayer(db.TimeStampIntegerMixin):

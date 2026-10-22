@@ -65,9 +65,27 @@ const (
 	// existing member/superuser/preview-allowlist check already covers the wider
 	// "any member" audience the workspace dimension needs, so no other change
 	// is required here.
-	tournamentHiddenSQL    = `SELECT t.is_hidden OR w.is_hidden FROM tournament.tournament t JOIN workspace w ON w.id = t.workspace_id WHERE t.id = $1`
-	previewAllowedSQL      = `SELECT EXISTS(SELECT 1 FROM tournament.tournament_preview_access WHERE tournament_id = $1 AND auth_user_id = $2)`
-	encounterTournamentSQL = `SELECT tournament_id FROM encounter.encounter WHERE id = $1 AND tournament_id IS NOT NULL`
+	tournamentHiddenSQL = `SELECT t.is_hidden OR w.is_hidden FROM tournament.tournament t JOIN workspace w ON w.id = t.workspace_id WHERE t.id = $1`
+	previewAllowedSQL   = `SELECT EXISTS(SELECT 1 FROM tournament.tournament_preview_access WHERE tournament_id = $1 AND auth_user_id = $2)`
+	// The encounter's owner: its tournament, or (tournament_id NULL) a pickup mix. found is false only for a missing
+	// encounter, so a mix room is "known, public" rather than "unknown, denied".
+	encounterOwnerSQL = `SELECT COALESCE(tournament_id, 0), custom_game_id IS NOT NULL FROM encounter.encounter WHERE id = $1`
+	// Inside a mix match's room (spec §4.4): a seated player -- the roster snapshot's live row, through its workspace
+	// member's player and that player's linked account -- or the mix's host or a co-host.
+	isMixRoomMemberSQL = `SELECT EXISTS(
+		SELECT 1
+		FROM encounter.encounter e
+		JOIN mix.custom_game g ON g.id = e.custom_game_id
+		WHERE e.id = $1
+		  AND (g.host_user_id = $2
+		    OR EXISTS (SELECT 1 FROM mix.co_host ch WHERE ch.custom_game_id = g.id AND ch.user_id = $2)
+		    OR EXISTS (
+		      SELECT 1
+		      FROM encounter.team_member tm
+		      JOIN workspace_member wm ON wm.id = tm.workspace_member_id
+		      JOIN players."user" u ON u.id = wm.player_id
+		      WHERE tm.encounter_id = e.id AND tm.active AND u.auth_user_id = $2))
+	)`
 	// Same players."user" bridge as isMemberSQL above, for the other direction:
 	// tournament.team.captain_id references players."user".id, while the gateway
 	// only ever holds an auth user id (from the JWT). An encounter's participants
@@ -165,7 +183,8 @@ type Store struct {
 	customDomains *ttlCache[string, bool]
 	hidden        *ttlCache[int64, bool]
 	preview       *ttlCache[previewKey, bool]
-	encTournament *ttlCache[int64, int64]
+	encOwner      *ttlCache[int64, encounterOwner]
+	mixMembers    *ttlCache[captainKey, bool]
 	captains      *ttlCache[captainKey, bool]
 	draftCaptains *ttlCache[draftCaptainKey, bool]
 	draftTourn    *ttlCache[int64, int64]
@@ -202,6 +221,11 @@ type wsRPM struct {
 	exists  bool
 }
 
+type encounterOwner struct {
+	tournamentID int64
+	mix          bool
+}
+
 // New returns a workspace Store backed by the given pool.
 func New(pool *pgxpool.Pool) *Store {
 	return &Store{
@@ -212,7 +236,8 @@ func New(pool *pgxpool.Pool) *Store {
 		customDomains: newBoundedTTLCache[string, bool](customDomainCacheTTL, customDomainCacheMaxEntries),
 		hidden:        newTTLCache[int64, bool](hiddenCacheTTL),
 		preview:       newTTLCache[previewKey, bool](previewCacheTTL),
-		encTournament: newTTLCache[int64, int64](tournamentCacheTTL),
+		encOwner:      newTTLCache[int64, encounterOwner](tournamentCacheTTL),
+		mixMembers:    newTTLCache[captainKey, bool](membershipCacheTTL),
 		captains:      newTTLCache[captainKey, bool](membershipCacheTTL),
 		draftCaptains: newTTLCache[draftCaptainKey, bool](membershipCacheTTL),
 		draftTourn:    newTTLCache[int64, int64](tournamentCacheTTL),
@@ -423,24 +448,37 @@ func (s *Store) IsPreviewAllowed(ctx context.Context, userID, tournamentID int64
 	return allowed, nil
 }
 
-// EncounterTournamentID returns the tournament that owns an encounter. found is
-// false when the encounter does not exist or is owned by a mix (no tournament).
-func (s *Store) EncounterTournamentID(ctx context.Context, encounterID int64) (int64, bool, error) {
-	if v, ok := s.encTournament.get(encounterID); ok {
-		return v, true, nil
+// EncounterOwner returns who owns an encounter: its tournament, or mix=true for a pickup mix's match. found is false
+// when the encounter does not exist (callers must deny).
+func (s *Store) EncounterOwner(ctx context.Context, encounterID int64) (int64, bool, bool, error) {
+	if v, ok := s.encOwner.get(encounterID); ok {
+		return v.tournamentID, v.mix, true, nil
 	}
-
-	var tournamentID int64
-	err := s.pool.QueryRow(ctx, encounterTournamentSQL, encounterID).Scan(&tournamentID)
+	var owner encounterOwner
+	err := s.pool.QueryRow(ctx, encounterOwnerSQL, encounterID).Scan(&owner.tournamentID, &owner.mix)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, false, nil
+		return 0, false, false, nil
 	}
 	if err != nil {
-		return 0, false, fmt.Errorf("encounter tournament lookup: %w", err)
+		return 0, false, false, fmt.Errorf("encounter owner lookup: %w", err)
 	}
+	s.encOwner.set(encounterID, owner)
+	return owner.tournamentID, owner.mix, true, nil
+}
 
-	s.encTournament.set(encounterID, tournamentID)
-	return tournamentID, true, nil
+// IsMixRoomMember reports whether the auth user sits in the mix encounter or hosts its mix. Cached like
+// IsEncounterCaptain: both outcomes, nothing on a query error.
+func (s *Store) IsMixRoomMember(ctx context.Context, authUserID, encounterID int64) (bool, error) {
+	key := captainKey{userID: authUserID, encounterID: encounterID}
+	if v, ok := s.mixMembers.get(key); ok {
+		return v, nil
+	}
+	var inside bool
+	if err := s.pool.QueryRow(ctx, isMixRoomMemberSQL, encounterID, authUserID).Scan(&inside); err != nil {
+		return false, fmt.Errorf("mix room member lookup: %w", err)
+	}
+	s.mixMembers.set(key, inside)
+	return inside, nil
 }
 
 // IsDraftSessionCaptain reports whether the auth user captains one of the

@@ -15,6 +15,8 @@ from typing import Any
 
 from shared.core.enums import FirstBanRotation
 
+from .compile import select_phase
+from .registry import RoundCtx
 from .schema import Ruleset, parse_ruleset
 
 
@@ -37,6 +39,19 @@ class Preset:
         if self.first_ban_rotation is not None:
             FirstBanRotation(self.first_ban_rotation)  # ValueError on a spelling the config column rejects
 
+    @property
+    def mix_eligible(self) -> bool:
+        """Whether a pickup mix may play this preset (spec §8.1).
+
+        A mix plays character presets (kind ``hero``) and every round is map 1 of a Bo1, so only the phase that round
+        selects matters. It must ban no player: a per-player ban targets a tournament roster, and a mix seat has none.
+        A preset whose per-player bans start on a later map is playable.
+        """
+        if self.kind != "hero":
+            return False
+        phase = select_phase(self.ruleset, RoundCtx(round=1, best_of=1, kind=self.kind))
+        return phase is None or not any(step.target is not None for step in phase.steps)
+
     def to_json(self) -> dict[str, Any]:
         return {
             "id": self.id,
@@ -44,6 +59,7 @@ class Preset:
             "modes": list(self.modes),
             "ruleset": self.ruleset.to_json(),
             "first_ban_rotation": self.first_ban_rotation,
+            "mix_eligible": self.mix_eligible,
         }
 
 
@@ -88,3 +104,15 @@ def presets_for(discipline: str) -> tuple[Preset, ...]:
     if len(set(ids)) != len(ids):
         raise ValueError(f"discipline {discipline!r} declares a pick-ban preset id more than once: {sorted(ids)}")
     return presets
+
+
+def mix_ban_preset(discipline: str, code: str) -> Preset | None:
+    """The preset ``code`` a pickup mix of ``discipline`` may play (:attr:`Preset.mix_eligible`), or ``None``.
+
+    An unknown game or code answers ``None``, never another game's preset.
+    """
+    try:
+        presets = presets_for(discipline)
+    except UnknownDiscipline:
+        return None
+    return next((preset for preset in presets if preset.id == code and preset.mix_eligible), None)

@@ -57,6 +57,7 @@ def _list_row(**fields) -> SimpleNamespace:
             "lobby_count": 1,
             "self_signup": "pool",
             "self_role_edit": True,
+            "hero_ban_preset": None,
             "general_voice_channel_id": None,
             "created_at": datetime(2026, 1, 1, tzinfo=UTC),
             **fields,
@@ -271,6 +272,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
             lobby_count=2,
             self_signup="closed",
             self_role_edit=False,
+            hero_ban_preset="hero_classic",
             general_voice_channel_id=None,
             created_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
@@ -286,6 +288,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
                 team1_voice_channel_id=None,
                 team2_voice_channel_id=None,
                 live_encounter_id=900,
+                live_ban_preset="hero_classic",
                 balance_result_json=document,
             ),
             SimpleNamespace(
@@ -297,6 +300,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
                 team1_voice_channel_id=None,
                 team2_voice_channel_id=None,
                 live_encounter_id=None,
+                live_ban_preset=None,
                 balance_result_json=None,
             ),
         ]
@@ -329,6 +333,9 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
         service.lobbies.list_for_game = AsyncMock(return_value=lobbies)
         started_at = datetime(2026, 1, 1, 22, 30, tzinfo=UTC)
         service.lobbies.live_started_at = AsyncMock(return_value={900: started_at})
+        service.lobbies.pregame_ids = AsyncMock(return_value=frozenset())
+        service.lobbies.live_seats = AsyncMock(return_value={900: [{"id": 51, "slot": 1, "name": "A"}]})
+        service.ban_opener = AsyncMock(return_value=None)
         service.team_names.mapping_for_game = AsyncMock(return_value={})
         service.workspace_discord_target = AsyncMock(return_value=(None, "42"))
         service.host_points_per_win = AsyncMock(return_value=0)
@@ -354,6 +361,8 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
         self.assertTrue(read["ok"], read)
         data = read["data"]
         self.assertEqual("overwatch", data["discipline"])
+        # Public like the rest of the read: a viewer sees which bans the next Start opens.
+        self.assertEqual("hero_classic", data["hero_ban_preset"])
         self.assertNotIn("balance_result", data)
         by_member = {row["workspace_member_id"]: row for row in data["players"]}
         self.assertEqual(
@@ -371,10 +380,23 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
         self.assertEqual(0, data["lobbies"][1]["matches_count"])
         self.assertFalse(data["lobbies"][1]["lineup_recorded"])
         self.assertIsNotNone(data["lobbies"][0]["balance_result"])
-        # Derived on read, never stored: A has a match on the floor (and its clock), B shows nothing.
+        # Derived on read, never stored: A has a match on the floor (its clock, its seats and the preset it started on,
+        # so a Live room still shows its bans), B shows nothing.
         self.assertEqual(
-            [("live", 900, started_at.isoformat()), ("idle", None, None)],
-            [(lobby["state"], lobby["live_encounter_id"], lobby["live_started_at"]) for lobby in data["lobbies"]],
+            [
+                ("live", 900, started_at.isoformat(), [{"id": 51, "slot": 1, "name": "A"}], "hero_classic"),
+                ("idle", None, None, [], None),
+            ],
+            [
+                (
+                    lobby["state"],
+                    lobby["live_encounter_id"],
+                    lobby["live_started_at"],
+                    lobby["live_seats"],
+                    lobby["live_ban_preset"],
+                )
+                for lobby in data["lobbies"]
+            ],
         )
 
     async def test_detail_read_captains_every_team_of_a_lineup_stored_without_captains(self) -> None:
@@ -406,6 +428,7 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
             lobby_count=1,
             self_signup="closed",
             self_role_edit=False,
+            hero_ban_preset=None,
             general_voice_channel_id=None,
             created_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
@@ -418,12 +441,16 @@ class CustomMixPublicReadTests(IsolatedAsyncioTestCase):
             team1_voice_channel_id=None,
             team2_voice_channel_id=None,
             live_encounter_id=None,
+            live_ban_preset=None,
             balance_result_json=stored,
         )
         service = MagicMock()
         service.get = AsyncMock(return_value=game)
         service.roster.list_for_game = AsyncMock(return_value=[])
         service.lobbies.list_for_game = AsyncMock(return_value=[lobby])
+        service.lobbies.pregame_ids = AsyncMock(return_value=frozenset())
+        service.lobbies.live_seats = AsyncMock(return_value={})
+        service.ban_opener = AsyncMock(return_value=None)
         service.team_names.mapping_for_game = AsyncMock(return_value={})
         service.workspace_discord_target = AsyncMock(return_value=(None, None))
         service.host_points_per_win = AsyncMock(return_value=0)
@@ -496,6 +523,7 @@ class DiscordPostsPayloadTests(IsolatedAsyncioTestCase):
             lobby_count=1,
             self_signup="pool",
             self_role_edit=False,
+            hero_ban_preset=None,
             general_voice_channel_id=None,
             created_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
@@ -503,6 +531,9 @@ class DiscordPostsPayloadTests(IsolatedAsyncioTestCase):
         service.get = AsyncMock(return_value=game)
         service.roster.list_for_game = AsyncMock(return_value=[])
         service.lobbies.list_for_game = AsyncMock(return_value=[])
+        service.lobbies.pregame_ids = AsyncMock(return_value=frozenset())
+        service.lobbies.live_seats = AsyncMock(return_value={})
+        service.ban_opener = AsyncMock(return_value=None)
         service.team_names.mapping_for_game = AsyncMock(return_value={})
         service.workspace_discord_target = AsyncMock(return_value=(None, guild_id))
         service.host_points_per_win = AsyncMock(return_value=0)

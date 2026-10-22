@@ -24,7 +24,7 @@ function catalog(presetId: string): PickBanRulesCatalog {
     constraints: [],
     groups: { hero: [], map: [] },
     presets: [
-      { id: presetId, kind: "hero", modes: ["pool"], ruleset: { version: 2, timer_seconds: null, on_timeout: "wait", phases: [] }, first_ban_rotation: null }
+      { id: presetId, kind: "hero", modes: ["pool"], ruleset: { version: 2, timer_seconds: null, on_timeout: "wait", phases: [] }, first_ban_rotation: null, mix_eligible: true }
     ]
   };
 }

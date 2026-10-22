@@ -168,6 +168,9 @@ announces nothing:
   `discord_commands`: `custom.post_signup` (the delete of the previous card, then the new one),
   `custom.post_discord` (the new lineup), `custom.delete_discord_post` and `custom.hard_delete`
   (deletes).
+- `PickBanRoomOpenRequestedEvent` (`event_id` `pick_ban_room_open:<encounter>`) onto tournament-service's
+  `tournament_pick_ban_room_open`: `custom.start_match` on a mix with a hero ban preset, which it
+  freezes on the lobby (`live_ban_preset`) for the room to open on.
 
 **Realtime topics** (published to Redis, relayed to clients by the gateway):
 
@@ -315,9 +318,10 @@ Writes, in the `balancer`, `mix` and `draft` schemas unless noted:
   the points-per-win applied, and per member the frozen `rank_delta_applied` or "busy" (in another lobby, or away).
 - `encounter.encounter`, `encounter.team` (two participations), `encounter.team_member` (+
   `team_member_role (team_member_id, dimension_id, role_id)` for leaf assignments, `is_captain` from the lineup),
-  `encounter.game` (one game), `encounter.game_team`, and one `encounter.result_audit` journal row, written through
-  the shared result writer (`apply_result`) — all owned by the mix (`custom_game_id`, result source `host`).
-  `start_match` opens the encounter, its rosters and its awaiting game through `start_mix_match`;
+  `encounter.game` (one game), `encounter.game_team`, `encounter.readiness` (both seats, at Start), and one
+  `encounter.result_audit` journal row, written through the shared result writer (`apply_result`) — all owned by the
+  mix (`custom_game_id`, result source `host`). `start_match` opens the encounter, its rosters and its awaiting game
+  through `start_mix_match`, seating the ban opener in slot 1 when the mix has a hero ban preset;
   `record_outcome` scores and completes it and writes `mix.round*` through `record_mix_result`;
   `cancel_match` (and closing the mix) deletes it. Recorded, they are the only durable trace of a played mix game.
 - `roster.team_format`, `team_format_dimension`, `format_role_rule` — the mix-owned format copy.

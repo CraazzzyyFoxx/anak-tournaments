@@ -45,12 +45,13 @@ type PickupLobbyCardsProps = {
   recordingLobby: number | null;
   shufflingAll: boolean;
   onBalance: (lobbyIndex: number) => void;
-  onStartMatch: (lobbyIndex: number) => void;
+  /** `flipOpener` swaps who bans first, with bans. */
+  onStartMatch: (lobbyIndex: number, flipOpener: boolean) => void;
   onRecordOutcome: (input: PickupRecordOutcomeInput) => void;
   onShuffleAll: () => void;
 };
 
-const STATE_TONE = { idle: "neutral", ready: "accent", live: "danger" } as const;
+const STATE_TONE = { idle: "neutral", ready: "accent", pregame: "accent", live: "danger" } as const;
 
 /**
  * The overview of a mix running several lobbies (spec §7.5, A1): one card per lobby with its stage, one line about
@@ -145,11 +146,14 @@ function LobbyCard({
     .flatMap((team) => team.seats)
     .filter((seat) => away.has(seat.uuid))
     .map((seat) => seat.name);
-  const teamNames = [variant?.teams[0]?.name ?? defaultName(0), variant?.teams[1]?.name ?? defaultName(1)];
+  const teamNames: [string, string] = [
+    variant?.teams[0]?.name ?? defaultName(0),
+    variant?.teams[1]?.name ?? defaultName(1),
+  ];
   const minutes = useLiveMinutes(state, lobby.live_started_at);
   const gap = variant?.stats.ratingGap ?? null;
   const detail =
-    state === "live"
+    state === "live" || state === "pregame"
       ? minutes == null
         ? null
         : t("elapsed", { minutes })
@@ -199,8 +203,9 @@ function LobbyCard({
           {canWrite && state === "ready" ? (
             <StartMatchButton
               awayNames={awayNames}
+              opener={lobby.opener_index != null ? { names: teamNames, index: lobby.opener_index } : null}
               starting={startingLobby === index}
-              onStart={() => onStartMatch(index)}
+              onStart={(flip) => onStartMatch(index, flip)}
             />
           ) : null}
           {canWrite && state === "live" ? (
