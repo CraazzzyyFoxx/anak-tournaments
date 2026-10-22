@@ -250,6 +250,8 @@ class DraftPlayerRead(BaseRead):
     primary_role: RoleRef | None
     is_flex: bool
     status: DraftPlayerStatus
+    #: The crown: this seat is its team's current captain (the one who picks). A mix host may hand a team to a
+    #: teammate mid-draft, so it can differ from the seeded seat, which keeps ``captain_role``.
     is_captain: bool
     drafted_by_team_id: int | None
     #: A captain's seat role -- the one the organizer pinned while it stays
@@ -292,7 +294,10 @@ class DraftPlayerRead(BaseRead):
         shape: Any,
         custom_fields: list[Any],
         dimension: str,
+        crowned: bool | None = None,
     ) -> DraftPlayerRead:
+        """``crowned`` is the crown the board shows -- whether this seat is its team's current captain -- when the
+        caller knows; ``None`` reads the seed flag. ``captain_role`` stays the seeded seat's: it has no pick."""
         from src.services.draft.board import player_custom_fields
 
         seat = seat_role(roster, player.captain_role)
@@ -309,7 +314,7 @@ class DraftPlayerRead(BaseRead):
             primary_role=RoleRef.of(dimension, lead.role, lead.subrole) if lead is not None else None,
             is_flex=bool(roster.is_full_flex) if roster is not None else False,
             status=player.status,
-            is_captain=player.is_captain,
+            is_captain=player.is_captain if crowned is None else crowned,
             drafted_by_team_id=player.drafted_by_team_id,
             captain_role=RoleRef.of(dimension, seat) if player.is_captain else None,
             secondary_roles=[

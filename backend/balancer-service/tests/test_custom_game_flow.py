@@ -318,6 +318,9 @@ class MixFlowTests(IsolatedAsyncioTestCase):
             load_member_user_ids=AsyncMock(return_value=set()),
             run_balance=AsyncMock(),
             ranker=in_memory_ranker(),
+            drafts=SimpleNamespace(
+                active_lobby_pools=AsyncMock(return_value={}), active_for_custom_game=AsyncMock(return_value=[])
+            ),
         )
         self.enterContext(
             patch.object(

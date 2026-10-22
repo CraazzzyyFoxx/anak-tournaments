@@ -124,6 +124,12 @@ var RosterRoutes = []edge.RouteSpec{
 	{Method: "PUT", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/ban-preset", Queue: "rpc.balancer.custom.set_ban_preset", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	// Host-only: how the lobbies form teams by default and the draft's pick clock (spec §4.3).
 	{Method: "PUT", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft-settings", Queue: "rpc.balancer.custom.set_draft_settings", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	// A lobby's captain draft (spec §9.2-9.5): seed one lobby, split the pool over every lobby, replace a captain,
+	// add a waiting player. The draft itself runs on /api/v1/balancer/draft/sessions/{session_id}/...
+	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft", Queue: "rpc.balancer.custom.draft_seed", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft/split", Queue: "rpc.balancer.custom.draft_split", IDParam: "game_id", Path: []string{"workspace_id"}, Auth: edge.AuthRequired},
+	{Method: "PUT", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft/captain", Queue: "rpc.balancer.custom.draft_captain", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft/players", Queue: "rpc.balancer.custom.draft_add_player", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	// One click: open signup AND post the card that announces it. A separate
 	// "open" write would let a host post a card whose buttons refuse everybody.
 	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/discord/signup", Queue: "rpc.balancer.custom.post_signup", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},

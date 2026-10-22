@@ -315,6 +315,9 @@ DOCS: dict[str, dict] = {
             " Each lobby carries state (idle | ready | pregame | live), live_seats (the live match's participations"
             " {id, slot, name}) and opener_index (the lineup team that bans first in the next match, null without"
             " bans)."
+            " A lobby's `state` reads `draft_setup` / `draft_live` while its draft runs, with `draft_session_id`;"
+            " a drafted lineup's document carries `source: \"draft\"`. A player in a drafting lobby's pool reads"
+            " that lobby as `current_lobby`; an unpicked player who stepped away leaves the pool."
         ),
     },
     "rpc.balancer.custom.update_roster": {
@@ -328,7 +331,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.balancer.custom.update_player": {
         "summary": "Update custom game player",
-        "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Patches one seat's participation state, role order, flex flag or away flag and returns the refreshed mix; 404 when the member is not on this mix's roster.",
+        "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Patches one seat's participation state, role order, flex flag or away flag and returns the refreshed mix; 404 when the member is not on this mix's roster. An away flag reaches the lobby's running draft: a picked player stepping away, or a pool left unable to fill every role, pauses a live draft; otherwise, a return included, its board re-reads.",
     },
     "rpc.balancer.custom.set_participation": {
         "summary": "Set custom game participation",
@@ -394,7 +397,8 @@ DOCS: dict[str, dict] = {
             "edit their own roles' switch is not. Sets or clears the caller's own away flag: an away player keeps "
             "their row, roles and must-play mark, but no balance, lobby split or rotation seats them until they are "
             "back, and every match recorded meanwhile counts them as busy (neither played nor sat out). It never "
-            "clears itself. 404 when the caller has no seat, 409 once the mix is over."
+            "clears itself. It reaches the lobby's running draft as the host's away flag does. 404 when the caller "
+            "has no seat, 409 once the mix is over."
         ),
     },
     "rpc.balancer.custom.set_self_service": {
@@ -424,6 +428,46 @@ DOCS: dict[str, dict] = {
             "draft keeps its clock; both apply from the next formation. 422 for any other value."
         ),
     },
+    "rpc.balancer.custom.draft_seed": {
+        "summary": "Draft a custom game lobby",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Re-forms one "
+            "lobby (`lobby_index`) as a captain draft: its seated set -- present, non-benched players, must-play "
+            "first, then rotation order, minus whoever another lobby plays; exactly whom a balance of the lobby "
+            "would seat -- with the two strongest as captains, the weaker picking first, snake order on the mix's "
+            "pick clock. The lobby's lineup is cleared and its running draft cancelled; it reads `draft_setup` "
+            "until a host starts the draft (`POST /api/v1/balancer/draft/sessions/{session_id}/start`). The last "
+            "pick writes the lobby's lineup; a finished mix draft is never rolled back (409 mix_draft_completed: "
+            "re-form instead). 409 match_live; 422 empty_lineup, missing_ranked_role or a split code."
+        ),
+    },
+    "rpc.balancer.custom.draft_split": {
+        "summary": "Split custom game pool into lobby drafts",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Splits the "
+            "seated set over every lobby by strength and seeds one captain draft per lobby, forming no team. Every "
+            "running draft is cancelled and every lineup cleared. 422 single_lobby or a split code "
+            "(not_enough_players, too_many_must_play, too_many_pinned, roles_infeasible); 409 match_live."
+        ),
+    },
+    "rpc.balancer.custom.draft_captain": {
+        "summary": "Replace a custom game draft captain",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Before the "
+            "draft starts, any present pool player (`player_id`, a draft player id) captains `team_id` and the "
+            "draft re-seeds with the weaker captain picking first, leaving out whoever stepped away; during it, a "
+            "player already on that team takes over its picks and its crown, and the picks made stand. 404 "
+            "draft_not_found; 409 already_captain or not_in_pool; 422 captain_not_on_team."
+        ),
+    },
+    "rpc.balancer.custom.draft_add_player": {
+        "summary": "Add a waiting player to a custom game draft",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Adds a present "
+            "player no lobby seats to the lobby's draft as an available pick -- before the start too -- the way out "
+            "of a draft short of a role. 404 not_on_roster or draft_not_found; 409 player_away or already_seated."
+        ),
+    },
     "rpc.balancer.custom.balance": {
         "summary": "Balance custom game",
         "description": (
@@ -436,7 +480,7 @@ DOCS: dict[str, dict] = {
             "mix has one lobby (`single_lobby`) or the pool cannot be split (`not_enough_players`, "
             "`too_many_must_play`, `too_many_pinned`, `roles_infeasible`)."
             " 409 match_live when the lobby -- for scope all, any lobby -- has a live match."
-            " An away player is never a candidate."
+            " An away player is never a candidate. A balanced lobby's running draft is cancelled."
         ),
     },
     "rpc.balancer.custom.set_team_names": {
@@ -641,8 +685,9 @@ DOCS: dict[str, dict] = {
         "summary": "Close custom game",
         "description": (
             "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
-            "Cancels every live match, then marks the mix completed so no further writes land. Nothing is "
-            "destroyed -- the mix and every match it recorded stay readable -- so this is the reversible end of a mix."
+            "Cancels every live match and every running draft, then marks the mix completed so no further writes "
+            "land. Nothing is destroyed -- the mix and every match it recorded stay readable -- so this is the "
+            "reversible end of a mix."
         ),
     },
     "rpc.balancer.custom.set_lobby_count": {

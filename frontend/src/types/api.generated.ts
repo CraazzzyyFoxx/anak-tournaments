@@ -9799,7 +9799,7 @@ export interface paths {
         };
         /**
          * Get custom game
-         * @description Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace. It carries the mix's hero_ban_preset (null = no bans). Each lobby carries state (idle | ready | pregame | live), live_seats (the live match's participations {id, slot, name}) and opener_index (the lineup team that bans first in the next match, null without bans).
+         * @description Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace. It carries the mix's hero_ban_preset (null = no bans). Each lobby carries state (idle | ready | pregame | live), live_seats (the live match's participations {id, slot, name}) and opener_index (the lineup team that bans first in the next match, null without bans). A lobby's `state` reads `draft_setup` / `draft_live` while its draft runs, with `draft_session_id`; a drafted lineup's document carries `source: "draft"`. A player in a drafting lobby's pool reads that lobby as `current_lobby`; an unpicked player who stepped away leaves the pool.
          *
          *     RPC subject: `rpc.balancer.custom.get`
          */
@@ -10045,7 +10045,7 @@ export interface paths {
         put?: never;
         /**
          * Balance custom game
-         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). With `scope="lobby"` (the default) balances the non-benched lineup of ONE lobby (`lobby_index`, default 0) -- everyone another lobby is already playing or holds a pin on is left out. With `scope="all"` it splits the whole pool into `lobby_count` equally strong lobbies and balances them all. Ranks come from the host's own book above the workspace canon. 422 when the lineup is empty, a seated player has no ranked role, the mix has one lobby (`single_lobby`) or the pool cannot be split (`not_enough_players`, `too_many_must_play`, `too_many_pinned`, `roles_infeasible`). 409 match_live when the lobby -- for scope all, any lobby -- has a live match. An away player is never a candidate.
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). With `scope="lobby"` (the default) balances the non-benched lineup of ONE lobby (`lobby_index`, default 0) -- everyone another lobby is already playing or holds a pin on is left out. With `scope="all"` it splits the whole pool into `lobby_count` equally strong lobbies and balances them all. Ranks come from the host's own book above the workspace canon. 422 when the lineup is empty, a seated player has no ranked role, the mix has one lobby (`single_lobby`) or the pool cannot be split (`not_enough_players`, `too_many_must_play`, `too_many_pinned`, `roles_infeasible`). 409 match_live when the lobby -- for scope all, any lobby -- has a live match. An away player is never a candidate. A balanced lobby's running draft is cancelled.
          *
          *     RPC subject: `rpc.balancer.custom.balance`
          */
@@ -10111,7 +10111,7 @@ export interface paths {
         put?: never;
         /**
          * Close custom game
-         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Cancels every live match, then marks the mix completed so no further writes land. Nothing is destroyed -- the mix and every match it recorded stay readable -- so this is the reversible end of a mix.
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Cancels every live match and every running draft, then marks the mix completed so no further writes land. Nothing is destroyed -- the mix and every match it recorded stay readable -- so this is the reversible end of a mix.
          *
          *     RPC subject: `rpc.balancer.custom.close`
          */
@@ -10232,6 +10232,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft a custom game lobby
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Re-forms one lobby (`lobby_index`) as a captain draft: its seated set -- present, non-benched players, must-play first, then rotation order, minus whoever another lobby plays; exactly whom a balance of the lobby would seat -- with the two strongest as captains, the weaker picking first, snake order on the mix's pick clock. The lobby's lineup is cleared and its running draft cancelled; it reads `draft_setup` until a host starts the draft (`POST /api/v1/balancer/draft/sessions/{session_id}/start`). The last pick writes the lobby's lineup; a finished mix draft is never rolled back (409 mix_draft_completed: re-form instead). 409 match_live; 422 empty_lineup, missing_ranked_role or a split code.
+         *
+         *     RPC subject: `rpc.balancer.custom.draft_seed`
+         */
+        post: operations["post__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__draft"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft-settings": {
         parameters: {
             query?: never;
@@ -10248,6 +10270,72 @@ export interface paths {
          */
         put: operations["put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__draft_settings"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft/captain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Replace a custom game draft captain
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Before the draft starts, any present pool player (`player_id`, a draft player id) captains `team_id` and the draft re-seeds with the weaker captain picking first, leaving out whoever stepped away; during it, a player already on that team takes over its picks and its crown, and the picks made stand. 404 draft_not_found; 409 already_captain or not_in_pool; 422 captain_not_on_team.
+         *
+         *     RPC subject: `rpc.balancer.custom.draft_captain`
+         */
+        put: operations["put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__draft_captain"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft/players": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add a waiting player to a custom game draft
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Adds a present player no lobby seats to the lobby's draft as an available pick -- before the start too -- the way out of a draft short of a role. 404 not_on_roster or draft_not_found; 409 player_away or already_seated.
+         *
+         *     RPC subject: `rpc.balancer.custom.draft_add_player`
+         */
+        post: operations["post__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__draft_players"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/draft/split": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Split custom game pool into lobby drafts
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Splits the seated set over every lobby by strength and seeds one captain draft per lobby, forming no team. Every running draft is cancelled and every lineup cleared. 422 single_lobby or a split code (not_enough_players, too_many_must_play, too_many_pinned, roles_infeasible); 409 match_live.
+         *
+         *     RPC subject: `rpc.balancer.custom.draft_split`
+         */
+        post: operations["post__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__draft_split"];
         delete?: never;
         options?: never;
         head?: never;
@@ -10436,7 +10524,7 @@ export interface paths {
         get?: never;
         /**
          * Step away from my mix
-         * @description Permission: a seated account; the account links are required as for a role edit, the host's 'players edit their own roles' switch is not. Sets or clears the caller's own away flag: an away player keeps their row, roles and must-play mark, but no balance, lobby split or rotation seats them until they are back, and every match recorded meanwhile counts them as busy (neither played nor sat out). It never clears itself. 404 when the caller has no seat, 409 once the mix is over.
+         * @description Permission: a seated account; the account links are required as for a role edit, the host's 'players edit their own roles' switch is not. Sets or clears the caller's own away flag: an away player keeps their row, roles and must-play mark, but no balance, lobby split or rotation seats them until they are back, and every match recorded meanwhile counts them as busy (neither played nor sat out). It never clears itself. It reaches the lobby's running draft as the host's away flag does. 404 when the caller has no seat, 409 once the mix is over.
          *
          *     RPC subject: `rpc.balancer.custom.self_away`
          */
@@ -10546,7 +10634,7 @@ export interface paths {
         get?: never;
         /**
          * Update custom game player
-         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Patches one seat's participation state, role order, flex flag or away flag and returns the refreshed mix; 404 when the member is not on this mix's roster.
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Patches one seat's participation state, role order, flex flag or away flag and returns the refreshed mix; 404 when the member is not on this mix's roster. An away flag reaches the lobby's running draft: a picked player stepping away, or a pool left unable to fill every role, pauses a live draft; otherwise, a return included, its board re-reads.
          *
          *     RPC subject: `rpc.balancer.custom.update_player`
          */
@@ -23162,6 +23250,45 @@ export interface components {
              * @default null
              */
             team_format_preset: string | null;
+        };
+        /**
+         * CustomGameDraftCaptainPatch
+         * @description Replace a draft team's captain: the team and the draft player who takes over (spec §9.3, §9.5).
+         */
+        "balancer.CustomGameDraftCaptainPatch": {
+            /**
+             * Lobby Index
+             * @default 0
+             */
+            lobby_index: number;
+            /** Player Id */
+            player_id: number;
+            /** Team Id */
+            team_id: number;
+        };
+        /**
+         * CustomGameDraftPlayerAdd
+         * @description A waiting player added to a lobby's draft (spec §9.5).
+         */
+        "balancer.CustomGameDraftPlayerAdd": {
+            /**
+             * Lobby Index
+             * @default 0
+             */
+            lobby_index: number;
+            /** Workspace Member Id */
+            workspace_member_id: number;
+        };
+        /**
+         * CustomGameDraftSeed
+         * @description Which lobby drafts its teams (spec §9.2).
+         */
+        "balancer.CustomGameDraftSeed": {
+            /**
+             * Lobby Index
+             * @default 0
+             */
+            lobby_index: number;
         };
         /**
          * CustomGameDraftSettingsPatch
@@ -71714,6 +71841,89 @@ export interface operations {
             };
         };
     };
+    post__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__draft: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["balancer.CustomGameDraftSeed"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__draft_settings: {
         parameters: {
             query?: never;
@@ -71729,6 +71939,251 @@ export interface operations {
                 "application/json": components["schemas"]["balancer.CustomGameDraftSettingsPatch"];
             };
         };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__draft_captain: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["balancer.CustomGameDraftCaptainPatch"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__draft_players: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["balancer.CustomGameDraftPlayerAdd"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    post__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__draft_split: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Success */
             200: {

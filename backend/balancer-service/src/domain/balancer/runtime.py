@@ -21,6 +21,7 @@ from src.domain.balancer.progress import ProgressCallback, emit_progress
 from src.domain.balancer.rating_normalizer import RatingNormalizer
 from src.domain.balancer.result_serializer import _build_response_payload
 from src.domain.balancer.role_assignment_service import find_feasible_role_assignment
+from src.domain.mix_lobby_split import seated_set
 
 
 @dataclasses.dataclass(slots=True)
@@ -175,8 +176,9 @@ def _prepare_balance_context(
     # Players past the last full team sit out. ``must_play`` players move to the
     # front before the tail is cut, so trimming reaches an optional player first
     # unless there are more must-play players than slots; among optional players
-    # ``rotation_priority`` (ascending) breaks the tie, and ``sorted``'s stability
-    # keeps input order when nobody sets it.
+    # ``rotation_priority`` (ascending) breaks the tie, and input order -- the
+    # loader's uuid order -- after it. ``seated_set`` is that one rule, shared with
+    # the lobby splitter and a mix draft's seated set.
     usable_count = num_teams * players_per_team
     if usable_count < len(valid_players):
         must_play_players = [player for player in valid_players if player.must_play]
@@ -186,12 +188,7 @@ def _prepare_balance_context(
                 f"{usable_count} team slots exist for {len(valid_players)} players. "
                 f"Unflag {len(must_play_players) - usable_count} of them or add more players."
             )
-        optional_players = sorted(
-            (player for player in valid_players if not player.must_play),
-            key=lambda player: player.rotation_priority,
-        )
-        ordered = must_play_players + optional_players
-        valid_players, overflow_benched = ordered[:usable_count], ordered[usable_count:]
+        valid_players, overflow_benched = seated_set(valid_players, usable_count)
         valid_players, role_capable_counts = _filter_valid_players_and_role_counts(valid_players, needed_roles)
         logger.info(
             f"{len(overflow_benched)} player(s) sit out: only {usable_count} of "

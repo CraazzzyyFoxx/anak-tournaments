@@ -20,6 +20,9 @@ __all__ = (
     "CustomGameCreate",
     "CustomGameDiscordLineup",
     "CustomGameDiscordView",
+    "CustomGameDraftCaptainPatch",
+    "CustomGameDraftPlayerAdd",
+    "CustomGameDraftSeed",
     "CustomGameDraftSettingsPatch",
     "CustomGameHostTransfer",
     "CustomGameListQuery",
@@ -132,6 +135,23 @@ class _LobbyScoped(_Request):
     single-lobby mix has, which is why it is the default."""
 
     lobby_index: int = Field(0, ge=0, le=MAX_LOBBIES - 1)
+
+
+class CustomGameDraftSeed(_LobbyScoped):
+    """Which lobby drafts its teams (spec §9.2)."""
+
+
+class CustomGameDraftCaptainPatch(_LobbyScoped):
+    """Replace a draft team's captain: the team and the draft player who takes over (spec §9.3, §9.5)."""
+
+    team_id: int
+    player_id: int
+
+
+class CustomGameDraftPlayerAdd(_LobbyScoped):
+    """A waiting player added to a lobby's draft (spec §9.5)."""
+
+    workspace_member_id: int
 
 
 class CustomGameNextMapPatch(_LobbyScoped):

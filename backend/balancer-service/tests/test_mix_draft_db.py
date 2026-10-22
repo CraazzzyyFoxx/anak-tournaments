@@ -15,7 +15,7 @@ import sqlalchemy as sa  # noqa: E402
 from sqlalchemy.exc import IntegrityError  # noqa: E402
 
 from shared import models  # noqa: E402
-from shared.core.enums import DraftStatus  # noqa: E402
+from shared.core.enums import DraftPlayerStatus, DraftStatus, MixStatus  # noqa: E402
 from shared.core.errors import ApiHTTPException  # noqa: E402
 from shared.domain.team_format import FormatDimension, FormatRule, TeamFormat  # noqa: E402
 from shared.models.platform.realtime import WorkspaceEvent  # noqa: E402
@@ -24,12 +24,17 @@ from shared.services import team_format  # noqa: E402
 from shared.services.member_rank import member_rank_service  # noqa: E402
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
 from src.domain.draft.entities import PoolSeat  # noqa: E402
+from src.domain.mix_lobbies import seated_member_ids  # noqa: E402
 from src.domain.mix_ranker import HiddenRating, Ranker  # noqa: E402
+from src.rpc import custom  # noqa: E402
 from src.rpc import draft as draft_rpc  # noqa: E402
-from src.services.draft import lifecycle  # noqa: E402
+from src.services.custom_game import CustomGameService, custom_game_service  # noqa: E402
+from src.services.draft import lifecycle, selection  # noqa: E402
 from src.services.draft import realtime as draft_rt  # noqa: E402
 from src.services.draft.board import board_service  # noqa: E402
+from src.services.draft.feasibility import feasibility_service  # noqa: E402
 from src.services.draft.rosters import draft_rosters  # noqa: E402
+from src.services.mix_draft import mix_draft_service  # noqa: E402
 
 #: A 2v2: one tank and one damage seat a team, so a draft is one round of two picks.
 _TWO_SEATS = TeamFormat(
@@ -169,8 +174,9 @@ class MixDraftTests(EncounterWriterCase):
             (read.discipline, read.tournament_id, read.custom_game_id, read.lobby_index),
         )
 
-    async def test_a_ranker_host_drafts_on_the_effective_rating_the_balance_uses(self) -> None:
-        """U3: a ranker-mode host's draft shows the open rank corrected by the hidden one, like the mix balance."""
+    async def _ranker_host(self) -> tuple[int, int]:
+        """The mix's host balances on the ranker, and m0's hidden rating corrects their open 3000 tank: the host and
+        m0's effective tank rank."""
         hidden = HiddenRating(Ranker().initial(3500).mu, 3.0)
         async with self.Session() as s:
             host = models.AuthUser(
@@ -196,14 +202,31 @@ class MixDraftTests(EncounterWriterCase):
                 )
             )
             await s.commit()
+            return host.id, round(Ranker().effective(3000, hidden))
+
+    async def test_a_ranker_host_drafts_on_the_effective_rating_the_balance_uses(self) -> None:
+        """U3: a ranker-mode host's draft shows the open rank corrected by the hidden one, like the mix balance."""
+        _host, corrected = await self._ranker_host()
 
         ranks = await self._seat_ranks(await self._seeded())
 
-        corrected = round(Ranker().effective(3000, hidden))
         self.assertNotEqual(3000, corrected)
         self.assertEqual(
             {self.ids["m0"]: corrected, self.ids["m1"]: 2800, self.ids["m2"]: 2500, self.ids["m3"]: 2400}, ranks
         )
+
+    async def test_a_ranker_hosts_drafted_lineup_keeps_the_open_rank_a_match_moves(self) -> None:
+        """Like a balanced lineup: the seat plays on its effective rank, and a recorded match moves the open one."""
+        host, corrected = await self._ranker_host()
+        draft_id = await self._seed_lobby(host)
+        await self._start(draft_id, host)
+        await self._autopick(draft_id)
+        await self._autopick(draft_id)
+        async with self.Session() as s:
+            lobby = await s.get_one(models.CustomGameLobby, (self.cg_id, 0))
+        m0 = lobby.balance_result_json["players"][str(self.ids["m0"])]
+
+        self.assertEqual((corrected, 3000), (m0["ratings"]["tank"], m0["open_ratings"]["tank"]))
 
     async def test_a_lobby_runs_one_active_draft_at_a_time(self) -> None:
         await self._seeded()
@@ -386,3 +409,359 @@ class MixDraftTests(EncounterWriterCase):
 
         self.assertEqual({f"draft:{draft_id}:board"}, topics)
         self.assertIsNotNone(newest)
+
+    async def _member(self, name: str, role: str, rank: int, *, away: bool = False, sort_order: int = 99) -> int:
+        """One more player of this mix: a workspace member with a canon rank and a pool row."""
+        async with self.Session() as s:
+            user = models.User(name=f"{name}-{self.cg_id}")
+            s.add(user)
+            await s.flush()
+            self.users.append(user.id)
+            member = models.WorkspaceMember(workspace_id=self.ids["ws"], player_id=user.id)
+            s.add(member)
+            await s.flush()
+            s.add(
+                models.CustomGamePlayer(
+                    custom_game_id=self.cg_id, workspace_member_id=member.id, sort_order=sort_order, away=away
+                )
+            )
+            await member_rank_service.set_ranks(
+                s,
+                workspace_id=self.ids["ws"],
+                discipline="overwatch",
+                workspace_member_id=member.id,
+                ranks={role: rank},
+            )
+            await s.commit()
+            return member.id
+
+    def _as_host(self, host: int, **extra: object) -> dict[str, object]:
+        return {"workspace_id": self.ids["ws"], "custom_game_id": self.cg_id, "actor_user_id": host, **extra}
+
+    async def _seed_lobby(self, host: int, lobby_index: int = 0) -> int:
+        async with self.Session() as s:
+            await mix_draft_service.seed_lobby(s, **self._as_host(host, lobby_index=lobby_index))
+            await s.commit()
+            pools = await CustomGameService().draft_lobbies(s, self.cg_id)
+        self.draft_ids.append(pools[lobby_index][0])
+        return pools[lobby_index][0]
+
+    async def _teams(self, draft_id: int) -> list[models.DraftTeam]:
+        async with self.Session() as s:
+            return list(
+                (
+                    await s.scalars(
+                        sa.select(models.DraftTeam)
+                        .where(models.DraftTeam.session_id == draft_id)
+                        .order_by(models.DraftTeam.draft_position)
+                    )
+                ).all()
+            )
+
+    async def _seat(self, s, draft_id: int, member: str) -> int:
+        return await s.scalar(
+            sa.select(models.DraftPlayer.id).where(
+                models.DraftPlayer.session_id == draft_id, models.DraftPlayer.workspace_member_id == self.ids[member]
+            )
+        )
+
+    async def _start(self, draft_id: int, host: int) -> None:
+        async with self.Session() as s:
+            await lifecycle.lifecycle_service.transition(
+                s,
+                draft_id,
+                lifecycle.lifecycle_service.start,
+                event_type="draft.pick_started",
+                audit_action="started",
+                actor_auth_user_id=host,
+            )
+            await s.commit()
+
+    async def _autopick(self, draft_id: int) -> None:
+        """The clock runs out on the pick on the clock: the engine's own expiry path."""
+        async with self.Session() as s:
+            draft = await s.get_one(models.DraftSession, draft_id)
+            pick = await s.get_one(models.DraftPick, draft.current_pick_id)
+            await selection.selection_service.autopick(
+                s, draft, pick, expected_version=pick.version, actor_auth_user_id=None, reason="expiry"
+            )
+            await s.commit()
+
+    async def _status(self, draft_id: int) -> str:
+        async with self.Session() as s:
+            return (await s.get_one(models.DraftSession, draft_id)).status
+
+    async def _away(self, host: int, member_id: int, away: bool) -> None:
+        """The host marks a player away or back, and the mix's draft hears it (the RPC's two calls)."""
+        async with self.Session() as s:
+            await CustomGameService().update_player(
+                s, **self._as_host(host, workspace_member_id=member_id, patch={"away": away})
+            )
+            await mix_draft_service.on_away(
+                s, custom_game_id=self.cg_id, workspace_member_id=member_id, away=away, actor_auth_user_id=host
+            )
+            await s.commit()
+
+    async def _overview_signals(self) -> int:
+        """``pickup_mix_changed`` facts this mix staged for a draft: the overview's (and the bot's) re-read."""
+        async with self.Session() as s:
+            return await s.scalar(
+                sa.text(
+                    "SELECT count(*) FROM event_outbox "
+                    "WHERE payload_json->>'custom_game_id' = :id AND payload_json->>'change' = 'draft'"
+                ),
+                {"id": str(self.cg_id)},
+            )
+
+    async def test_draft_seeds_the_seated_set_with_the_two_strongest_as_captains(self) -> None:
+        host, _ = await self._host()
+        await self._member("m4", "tank", 3500, away=True)  # strongest, but away: in no seated set (§7.4)
+        draft_id = await self._seed_lobby(host)
+        async with self.Session() as s:
+            pools = await CustomGameService().draft_lobbies(s, self.cg_id)
+            session_id, status, pool = pools[0]
+            lobby = await s.get_one(models.CustomGameLobby, (self.cg_id, 0))
+
+        self.assertEqual((draft_id, "ready"), (session_id, status))
+        self.assertEqual({self.ids[f"m{i}"] for i in range(4)}, set(pool))
+        # The weaker of the two strongest (m1, 2800) picks first; m0 (3000) second.
+        self.assertEqual(
+            [self.ids["m1"], self.ids["m0"]],
+            [team.captain_workspace_member_id for team in await self._teams(draft_id)],
+        )
+        self.assertIsNone(lobby.balance_result_json)
+
+    async def test_an_idle_draft_still_ends_in_the_lobbys_lineup(self) -> None:
+        host, _ = await self._host()
+        draft_id = await self._seed_lobby(host)
+        await self._start(draft_id, host)
+        await self._autopick(draft_id)
+        before = await self._overview_signals()
+        await self._autopick(draft_id)
+
+        async with self.Session() as s:
+            lobby = await s.get_one(models.CustomGameLobby, (self.cg_id, 0))
+            game = await s.get_one(models.CustomGame, self.cg_id)
+        document = lobby.balance_result_json
+        [variant] = document["variants"]
+        m0, m1, m2, m3 = (str(self.ids[f"m{i}"]) for i in range(4))
+
+        self.assertEqual("completed", await self._status(draft_id))
+        self.assertEqual("draft", document["source"])
+        self.assertEqual(MixStatus.BALANCED, game.status)
+        self.assertEqual(
+            [({"damage": [m1], "tank": [m2]}, int(m1)), ({"tank": [m0], "damage": [m3]}, int(m0))],
+            [(team["roster"], team["captain_member_id"]) for team in variant["teams"]],
+        )
+        self.assertEqual(100, variant["statistics"]["max_total_rating_gap"])
+        self.assertEqual(0, variant["statistics"]["off_role_count"])
+        # The clock's last pick tells the overview the lobby moved Draft -> Ready.
+        self.assertEqual(before + 1, await self._overview_signals())
+
+    async def test_a_finished_mix_draft_is_not_rolled_back(self) -> None:
+        """R-S2: the finished draft is the lobby's lineup, maybe already on the floor; the host re-forms instead."""
+        host, _ = await self._host()
+        draft_id = await self._seed_lobby(host)
+        await self._start(draft_id, host)
+        await self._autopick(draft_id)
+        await self._autopick(draft_id)
+        async with self.Session() as s:
+            with self.assertRaises(ApiHTTPException) as caught:
+                await lifecycle.lifecycle_service.transition(
+                    s,
+                    draft_id,
+                    lifecycle.lifecycle_service.rollback,
+                    event_type="draft.rollback",
+                    audit_action="rollback",
+                    actor_auth_user_id=host,
+                )
+
+        self.assertEqual(
+            (409, "mix_draft_completed"), (caught.exception.status_code, caught.exception.detail[0]["code"])
+        )
+        self.assertEqual("completed", await self._status(draft_id))
+
+    async def test_a_host_rolls_a_pick_back_and_the_player_is_draftable_again(self) -> None:
+        host, _ = await self._host()
+        draft_id = await self._seed_lobby(host)
+        await self._start(draft_id, host)
+        await self._autopick(draft_id)
+        async with self.Session() as s:
+            await lifecycle.lifecycle_service.transition(
+                s,
+                draft_id,
+                lifecycle.lifecycle_service.rollback,
+                event_type="draft.rollback",
+                audit_action="rollback",
+                actor_auth_user_id=host,
+            )
+            await s.commit()
+            seat = await s.get_one(models.DraftPlayer, await self._seat(s, draft_id, "m2"))
+
+        self.assertEqual("paused", await self._status(draft_id))
+        self.assertEqual(DraftPlayerStatus.AVAILABLE.value, seat.status)
+
+    async def test_replacing_a_captain_before_the_start_reseeds_the_weaker_first(self) -> None:
+        host, _ = await self._host()
+        draft_id = await self._seed_lobby(host)
+        [_, second] = await self._teams(draft_id)
+        async with self.Session() as s:
+            m2_seat = await self._seat(s, draft_id, "m2")
+            await mix_draft_service.replace_captain(
+                s, **self._as_host(host, lobby_index=0, team_id=second.id, player_id=m2_seat)
+            )
+            await s.commit()
+
+        # m0's team now has m2 (2500): weaker than m1 (2800), so m2 picks first.
+        self.assertEqual(
+            [self.ids["m2"], self.ids["m1"]],
+            [team.captain_workspace_member_id for team in await self._teams(draft_id)],
+        )
+
+    async def test_replacing_a_captain_mid_draft_hands_the_team_to_a_teammate(self) -> None:
+        host, _ = await self._host()
+        draft_id = await self._seed_lobby(host)
+        await self._start(draft_id, host)
+        await self._autopick(draft_id)  # team 1 (m1) takes m2
+        [first, _] = await self._teams(draft_id)
+        async with self.Session() as s:
+            m2_seat = await self._seat(s, draft_id, "m2")
+            m1_seat = await self._seat(s, draft_id, "m1")
+            await mix_draft_service.replace_captain(
+                s, **self._as_host(host, lobby_index=0, team_id=first.id, player_id=m2_seat)
+            )
+            await s.commit()
+            resolved = await s.scalar(
+                sa.select(sa.func.count())
+                .select_from(models.DraftPick)
+                .where(models.DraftPick.session_id == draft_id, models.DraftPick.picked_player_id.is_not(None))
+            )
+        async with self.Session() as s:
+            board = await board_service.build_board(s, await s.get_one(models.DraftSession, draft_id))
+            m2_player = (await s.get_one(models.WorkspaceMember, self.ids["m2"])).player_id
+        crowns = {player.id: player.is_captain for player in board.players}
+
+        self.assertEqual(self.ids["m2"], (await self._teams(draft_id))[0].captain_workspace_member_id)
+        self.assertEqual(1, resolved)  # the pick made stands
+        # U2: the crown the board shows, and the team's captain identity, follow the team's current captain.
+        self.assertEqual((True, False), (crowns[m2_seat], crowns[m1_seat]))
+        self.assertEqual(m2_player, board.teams[0].captain_user_id)
+
+    async def test_a_picked_player_going_away_pauses_the_draft(self) -> None:
+        host, _ = await self._host()
+        draft_id = await self._seed_lobby(host)
+        await self._start(draft_id, host)
+        await self._autopick(draft_id)  # m2 is picked
+        await self._away(host, self.ids["m2"], True)
+
+        self.assertEqual("paused", await self._status(draft_id))
+
+    async def test_an_unpicked_player_going_away_leaves_the_pool_and_a_short_draft_pauses(self) -> None:
+        host, _ = await self._host()
+        draft_id = await self._seed_lobby(host)
+        await self._start(draft_id, host)
+        await self._away(host, self.ids["m3"], True)
+        async with self.Session() as s:
+            draft = await s.get_one(models.DraftSession, draft_id)
+            report = await feasibility_service.analyze_session(s, draft)
+            pool = (await CustomGameService().draft_lobbies(s, self.cg_id))[0][2]
+
+        # m3 was the only damage player left for team 2: the draft cannot be finished without a waiting player.
+        self.assertFalse(report.is_feasible)
+        self.assertEqual("paused", await self._status(draft_id))
+        self.assertNotIn(self.ids["m3"], pool)
+
+    async def test_a_ready_draft_repairs_an_away_player_and_every_read_names_the_lobby(self) -> None:
+        """R-S1: ready -> m3 steps away (leaves the pool, the draft cannot start) -> m4 comes back and the host adds
+        them -> start. Meanwhile the busy, detail and self reads agree on who the draft holds."""
+        host, _ = await self._host()
+        waiting = await self._member("m4", "damage", 2300, away=True)
+        async with self.Session() as s:
+            account = models.AuthUser(username=f"waiting-{self.cg_id}", email=f"waiting-{self.cg_id}@example.test")
+            s.add(account)
+            await s.flush()
+            self.auth_user_ids.append(account.id)
+            (await s.get_one(models.User, self.users[-1])).auth_user_id = account.id
+            await s.commit()
+        draft_id = await self._seed_lobby(host)
+
+        await self._away(host, self.ids["m3"], True)
+        async with self.Session() as s:
+            with self.assertRaises(ApiHTTPException):
+                await lifecycle.lifecycle_service.start(s, await s.get_one(models.DraftSession, draft_id))
+        await self._away(host, waiting, False)
+        async with self.Session() as s:
+            await mix_draft_service.add_player(s, **self._as_host(host, lobby_index=0, workspace_member_id=waiting))
+            await s.commit()
+        await self._start(draft_id, host)
+
+        async with self.Session() as s:
+            game = await s.get_one(models.CustomGame, self.cg_id)
+            read = await custom._with_roster(s, game)
+            seat = (await custom_game_service.self_state(s, custom_game_id=self.cg_id, auth_user=account))["seat"]
+        current = {row["workspace_member_id"]: row["current_lobby"] for row in read["players"]}
+
+        self.assertEqual("live", await self._status(draft_id))
+        self.assertEqual(
+            {self.ids["m0"]: 0, self.ids["m1"]: 0, self.ids["m2"]: 0, self.ids["m3"]: None, waiting: 0}, current
+        )
+        self.assertEqual((0, False), (seat["current_lobby"], seat["away"]))
+
+    async def test_reforming_the_lobby_or_closing_the_mix_cancels_its_draft(self) -> None:
+        host, _ = await self._host()
+        first = await self._seed_lobby(host)
+        second = await self._seed_lobby(host)  # Draft again: re-forming the lobby
+        async with self.Session() as s:
+            await CustomGameService().close(s, **self._as_host(host))
+            await s.commit()
+
+        self.assertEqual(("cancelled", "cancelled"), (await self._status(first), await self._status(second)))
+
+    async def test_a_drafting_lobby_reads_draft_setup_and_its_pool_is_seated(self) -> None:
+        host, _ = await self._host()
+        draft_id = await self._seed_lobby(host)
+        async with self.Session() as s:
+            read = await custom._with_roster(s, await s.get_one(models.CustomGame, self.cg_id))
+
+        [lobby] = read["lobbies"]
+        self.assertEqual(("draft_setup", draft_id), (lobby["state"], lobby["draft_session_id"]))
+        self.assertEqual({0}, {row["current_lobby"] for row in read["players"]})
+
+    async def test_a_tied_overflow_pool_seats_the_same_players_in_a_draft_as_in_a_balance(self) -> None:
+        """R-S3: nobody has a rotation history, so the overflow tie falls to the balancer's own input order. m4 heads
+        the roster's order -- a draft that read the roster would seat them and leave m3 waiting."""
+        host, _ = await self._host()
+        await self._member("m4", "damage", 2600, sort_order=-1)
+        await self._seed_lobby(host)
+        async with self.Session() as s:
+            drafted = (await CustomGameService().draft_lobbies(s, self.cg_id))[0][2]
+            await CustomGameService().balance(s, **self._as_host(host))
+            await s.commit()
+            lobby = await s.get_one(models.CustomGameLobby, (self.cg_id, 0))
+
+        self.assertEqual(4, len(drafted))
+        self.assertEqual(seated_member_ids(lobby.balance_result_json, 0), drafted)
+
+    async def test_split_pool_seeds_one_draft_per_lobby_from_disjoint_halves(self) -> None:
+        host, _ = await self._host()
+        for name, role, rank in (
+            ("m4", "tank", 2300),
+            ("m5", "damage", 2200),
+            ("m6", "tank", 2100),
+            ("m7", "damage", 2000),
+        ):
+            await self._member(name, role, rank)
+        async with self.Session() as s:
+            (await s.get_one(models.CustomGame, self.cg_id)).lobby_count = 2
+            s.add(models.CustomGameLobby(custom_game_id=self.cg_id, lobby_index=1))
+            await s.commit()
+        async with self.Session() as s:
+            await mix_draft_service.split_pool(s, **self._as_host(host))
+            await s.commit()
+            pools = await CustomGameService().draft_lobbies(s, self.cg_id)
+        self.draft_ids.extend(entry[0] for entry in pools.values())
+
+        self.assertEqual({0, 1}, set(pools))
+        self.assertEqual({"ready"}, {entry[1] for entry in pools.values()})
+        self.assertEqual([4, 4], [len(pools[index][2]) for index in (0, 1)])
+        self.assertFalse(pools[0][2] & pools[1][2])

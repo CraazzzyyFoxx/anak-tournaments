@@ -132,3 +132,16 @@ def test_a_seated_captain_is_kept_and_one_who_left_is_replaced() -> None:
 )
 def test_a_lobby_state_is_derived_never_stored(document, live, pregame, state) -> None:
     assert lobby_state(document, 0, live, pregame) == state
+
+
+@pytest.mark.parametrize(
+    ("draft_status", "live", "state"),
+    [
+        ("setup", None, "draft_setup"),
+        ("ready", None, "draft_setup"),
+        ("live", None, "draft_live"),
+        ("paused", None, "draft_live"),
+    ],
+)
+def test_an_active_draft_names_the_lobbys_stage(draft_status, live, state) -> None:
+    assert lobby_state(None, 0, live, draft_status=draft_status) == state

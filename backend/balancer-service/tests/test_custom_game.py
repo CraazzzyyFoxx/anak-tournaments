@@ -465,6 +465,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.scoring_rules.create = AsyncMock(side_effect=lambda _s, row: setattr(row, "id", 5) or row)
         self.scoring_rules.get = AsyncMock(return_value=None)
         self.scoring_rules.delete = AsyncMock()
+        self.drafts = SimpleNamespace(
+            active_lobby_pools=AsyncMock(return_value={}), active_for_custom_game=AsyncMock(return_value=[])
+        )
         self.service = CustomGameService(
             games=self.games,
             workspaces=SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(disciplines_enabled=["overwatch"]))),
@@ -491,6 +494,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             enroll_member=self.enroll_member,
             grant_player_role=self.grant_player_role,
             ranker=self.ranker,
+            drafts=self.drafts,
         )
         self.session = _session()
 

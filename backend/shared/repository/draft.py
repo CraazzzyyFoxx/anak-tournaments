@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.strategy_options import _AbstractLoad
 
 from shared import models
-from shared.core.enums import DraftPickStatus, DraftStatus
+from shared.core.enums import DraftPickStatus, DraftPlayerStatus, DraftStatus
 from shared.repository.base import BaseRepository
 
 # One active draft per tournament: SETUP/READY/LIVE/PAUSED.
@@ -71,6 +71,56 @@ class DraftSessionRepository(BaseRepository[models.DraftSession]):
     async def list_live_ids(self, session: AsyncSession) -> Sequence[int]:
         result = await session.scalars(sa.select(self.model.id).where(self.model.status == DraftStatus.LIVE.value))
         return result.all()
+
+    async def active_for_custom_game(self, session: AsyncSession, custom_game_id: int) -> Sequence[models.DraftSession]:
+        """Every active draft of a mix, one per lobby at most."""
+        result = await session.scalars(
+            self.select().where(
+                self.model.custom_game_id == custom_game_id, self.model.status.in_(ACTIVE_DRAFT_STATUSES)
+            )
+        )
+        return result.all()
+
+    async def active_lobby_pools(
+        self, session: AsyncSession, custom_game_id: int
+    ) -> dict[int, tuple[int, str, frozenset[int]]]:
+        """Each drafting lobby of a mix: its session, that session's status and the members its draft holds.
+
+        The one definition of draft membership (spec §9.2, §9.5) every "who is in which lobby" read uses: every seat
+        but an unpicked one whose player stepped away -- they left the pool -- while a picked seat stays history.
+        """
+        player = models.DraftPlayer
+        row = models.CustomGamePlayer
+        rows = (
+            await session.execute(
+                sa.select(self.model.lobby_index, self.model.id, self.model.status, player.workspace_member_id)
+                .join(player, player.session_id == self.model.id, isouter=True)
+                .join(
+                    row,
+                    sa.and_(
+                        row.custom_game_id == self.model.custom_game_id,
+                        row.workspace_member_id == player.workspace_member_id,
+                    ),
+                    isouter=True,
+                )
+                .where(self.model.custom_game_id == custom_game_id, self.model.status.in_(ACTIVE_DRAFT_STATUSES))
+                .where(
+                    sa.or_(
+                        player.status.is_(None),
+                        player.status != DraftPlayerStatus.AVAILABLE.value,
+                        row.away.is_not(True),
+                    )
+                )
+            )
+        ).all()
+        found: dict[int, tuple[int, str, set[int]]] = {}
+        for lobby_index, session_id, status, member_id in rows:
+            entry = found.setdefault(lobby_index, (session_id, status, set()))
+            if member_id is not None:
+                entry[2].add(member_id)
+        return {
+            index: (session_id, status, frozenset(members)) for index, (session_id, status, members) in found.items()
+        }
 
     async def get_workspace_id_in_tournament(self, session: AsyncSession, id: int, *, tournament_id: int) -> int | None:
         """The session's workspace, or ``None`` unless the session exists AND belongs to ``tournament_id``."""

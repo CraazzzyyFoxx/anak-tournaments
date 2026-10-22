@@ -284,6 +284,9 @@ class DraftBoardService:
         )
         shape = await self.feasibility.resolve_shape(session, draft_session)
         dimension = await loaders.rated_dimension(session, draft_session)
+        # The crown a seat shows is its team's current captain (a mix host may hand a team over mid-draft); a team
+        # whose captain has no member falls back to the seed flag.
+        crowns = {team.id: team.captain_workspace_member_id for team in teams}
         snapshot = schemas.DraftBoardSnapshot(
             session=await self.session_read(session, draft_session),
             teams=[schemas.DraftTeamRead.model_validate(t) for t in teams],
@@ -295,6 +298,9 @@ class DraftBoardService:
                     shape=shape,
                     custom_fields=custom_field_defs,
                     dimension=dimension,
+                    crowned=None
+                    if crowns.get(p.drafted_by_team_id) is None
+                    else p.workspace_member_id == crowns[p.drafted_by_team_id],
                 )
                 for p in players
             ],

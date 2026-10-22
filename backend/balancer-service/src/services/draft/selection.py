@@ -33,6 +33,7 @@ from src.domain.draft import rules
 from src.domain.draft.entities import AutopickChoice, DraftAssignment, DraftResult, DraftSnapshot
 from src.domain.draft.errors import err as _err
 from src.domain.draft.fit import best_fit, fit_players
+from src.services.custom_game import custom_game_service
 from src.services.draft import loaders
 from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
 from src.services.draft.journal import journal_service
@@ -142,6 +143,9 @@ class DraftSelectionService:
             draft_session.current_pick_id = None
             # No actor: the last pick completed the draft, nobody decided to.
             await journal_service.record_lifecycle(session, draft_session, action="completed", actor_auth_user_id=None)
+            if draft_session.custom_game_id is not None:
+                # A mix draft forms its lobby's teams the moment it finishes (spec §9.4).
+                await custom_game_service.write_draft_lineup(session, draft_session)
             await session.flush()
             return None
 
@@ -214,6 +218,17 @@ class DraftSelectionService:
             sums[tid] = sums.get(tid, 0.0) + rank
             counts[tid] = counts.get(tid, 0) + 1
         return {tid: sums[tid] / counts[tid] for tid in sums}
+
+    async def _hold_owner(self, session: AsyncSession, draft_session: DraftSession, pick: DraftPick) -> None:
+        """A mix draft's pick may be its last, and the last pick writes the lobby's lineup (spec §9.4): take the mix
+        row first -- the lock and the order every host write of the mix takes (``CustomGameService._writable``) --
+        then re-read the session and the pick under it, so a Close or a re-form that committed while this pick waited
+        is seen, never overwritten. A tournament draft owns no lineup."""
+        if draft_session.custom_game_id is None:
+            return
+        await custom_game_service.games.get(session, draft_session.custom_game_id, for_update=True)
+        await session.refresh(draft_session)
+        await session.refresh(pick)
 
     async def _lost_race(self, session: AsyncSession, pick: DraftPick) -> Exception:
         """The 409 for a finalize that lost: re-read the row a concurrent writer moved, then say why."""
@@ -288,6 +303,7 @@ class DraftSelectionService:
         actor_player_ids: Collection[int] = (),
         is_admin: bool,
     ) -> DraftResult:
+        await self._hold_owner(session, draft_session, pick)
         rules.validate_current_pick(draft_session, pick, expected_version=expected_version)
         # captain_user_id (read in rules.is_on_clock_captain) resolves via
         # captain_member; eager-load it so the property read never triggers an
@@ -434,6 +450,7 @@ class DraftSelectionService:
         actor_auth_user_id: int | None = None,
         reason: str = "expiry",
     ) -> DraftResult:
+        await self._hold_owner(session, draft_session, pick)
         rules.validate_current_pick(draft_session, pick, expected_version=expected_version)
         snapshot = await self.feasibility.load_snapshot(session, draft_session)
         shape = await self.feasibility.resolve_shape(session, draft_session)
@@ -492,6 +509,7 @@ class DraftSelectionService:
         actor_user_id: int | None,
         target_role: str | None = None,
     ) -> DraftResult:
+        await self._hold_owner(session, draft_session, pick)
         if not draft_session.allow_admin_override:
             raise _err("override_disabled", "Admin override is disabled for this draft")
         rules.validate_current_pick(draft_session, pick, expected_version=expected_version)

@@ -883,6 +883,10 @@ class DraftLifecycleService:
 
     async def rollback(self, session: AsyncSession, draft_session: DraftSession) -> DraftSession:
         """Rollback the last resolved pick, resetting player/pick states and pausing the draft."""
+        if draft_session.custom_game_id is not None and draft_session.status == DraftStatus.COMPLETED.value:
+            # A finished mix draft IS its lobby's lineup, maybe already on the floor (spec §5.1, §9.4): reopening it
+            # would overwrite that lineup at the next last pick. The host re-forms the lobby instead.
+            raise _err("mix_draft_completed", "A finished mix draft is its lobby's lineup: re-form the lobby instead")
         draft_state.validate_transition(DraftStatus(draft_session.status), DraftStatus.PAUSED)
 
         last_resolved = await self.picks_repo.last_resolved(session, draft_session.id)
@@ -944,8 +948,15 @@ class DraftLifecycleService:
         actor_auth_user_id: int,
         **action_kwargs: Any,
     ) -> DraftSession:
-        """Run a status move on the session, journal it and publish ``event_type``."""
+        """Run a status move on the session, journal it and publish ``event_type``.
+
+        A mix draft's move takes the mix row first and re-reads the session under it -- the order the last pick, which
+        writes the lobby's lineup, takes too (``selection``) -- so a pause or a rollback never lands on a draft that
+        finished, or was cancelled, while it waited."""
         draft = await self.get_session(session, session_id)
+        if draft.custom_game_id is not None:
+            await self.custom_games.get(session, draft.custom_game_id, for_update=True)
+            await session.refresh(draft)
         await action(session, draft, **action_kwargs)
         current = await self.picks_repo.get(session, draft.current_pick_id) if draft.current_pick_id else None
         payload: dict[str, Any] = {"session_id": draft.id, "status": draft.status}
