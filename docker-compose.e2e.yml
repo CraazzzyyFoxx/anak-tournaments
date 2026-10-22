@@ -20,6 +20,8 @@ x-e2e-env: &e2e-env
   OWT_APPLY_LEGACY_DROP: "1"
   # One login lasts the whole run: the suite holds plain bearer tokens.
   JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "720"
+  # DEBUG logs every RPC payload (whole division grids): noise and memory.
+  LOG_LEVEL: INFO
 
 x-e2e-db: &e2e-db
   depends_on:
@@ -30,6 +32,13 @@ x-e2e-db: &e2e-db
   healthcheck:
     test: ["CMD", "true"]
     interval: 5s
+  # Parallel suites push a worker past the dev 512M (OOM kill → 504s); a
+  # dead consumer must come back on its own.
+  restart: unless-stopped
+  deploy:
+    resources:
+      limits:
+        memory: 1024M
 
 services:
   postgres:
