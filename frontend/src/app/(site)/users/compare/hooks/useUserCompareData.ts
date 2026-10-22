@@ -19,7 +19,7 @@ import {
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useCatalogEntities, useCatalogSelection } from "@/hooks/useCatalogEntities";
 import { useCurrentWorkspaceId, useDivisionGrid } from "@/hooks/useCurrentWorkspace";
-import { getDivisionLabel } from "@/lib/divisions/grid";
+import { divisionRangeEnds } from "@/components/DivisionRangePicker";
 import { useRoleName } from "@/hooks/useRoleName";
 import { findRole } from "@/lib/roster/ontology";
 import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
@@ -178,9 +178,10 @@ export const useUserCompareData = ({
     if (effectiveBaseline === "cohort") {
       const roleNode = roleFilter && metadata ? findRole(metadata, roleFilter) : null;
       const roleText = roleNode ? nameOf(roleNode) : t("users.compare.allRoles");
-      const rangeText = `${getDivisionLabel(divisionGrid, divMin) ?? t("common.any")} - ${
-        getDivisionLabel(divisionGrid, divMax) ?? t("common.any")
-      }`;
+      const rangeText =
+        divisionRangeEnds(divisionGrid, divMin, divMax)
+          .map((tier) => tier.name)
+          .join(" – ") || t("common.any");
       return t("users.compare.comparingAgainstCohort", { role: roleText, range: rangeText });
     }
 

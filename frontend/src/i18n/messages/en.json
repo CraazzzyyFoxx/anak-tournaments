@@ -229,6 +229,7 @@
       "gridMissingAcross": "{game} has no usable division grid across communities, so ranks cannot be resolved here. Choose a community to see its {game} ranks.",
       "scopeSuffix": "— change scope",
       "filterHint": "Some filters need a game",
+      "gameHint": "{game} · switch the game in the header",
       "areaNote": "{game} isn't played in this community — showing all games",
       "ownerLock": {
         "tournament": "Game set by this tournament: {game}",
@@ -251,6 +252,11 @@
     },
     "divisionWithId": "Division {id}",
     "anyDivision": "Any division",
+    "divisionRange": {
+      "pickFirst": "Pick a division, then another for a range",
+      "pickSecond": "Now pick the other end of the range",
+      "wholeRow": "All of {name}"
+    },
     "searchDivision": "Search division...",
     "stageWithId": "Stage {id}",
     "showingRange": "Showing {start}–{end} of {total}",
@@ -5564,20 +5570,7 @@
         "breadcrumb": "Compare",
         "title": "Compare players",
         "lede": "Put a player against the global field, a focused cohort, or a direct rival — then inspect the metrics that separate them.",
-        "guideAction": "How it works",
-        "scope": "Scope",
-        "baseline": "Baseline",
-        "sample": "Sample",
-        "metrics": "Metrics",
-        "overall": "Overall",
-        "heroMap": "Hero / Map",
-        "global": "Global",
-        "cohort": "Cohort",
-        "target": "Head-to-head",
-        "activeView": "Active view",
-        "players": "players",
-        "metricsReady": "metrics ready",
-        "refreshing": "Updating"
+        "guideAction": "How it works"
       },
       "guideAria": "Open compare guide",
       "guide": {
@@ -5613,18 +5606,16 @@
       "colDelta": "Δ",
       "colDeltaTitle": "Difference from the baseline",
       "selectSubjectUser": "Select subject user",
+      "sampleSize": "{count, plural, one {# player} other {# players}}",
       "filters": {
-        "title": "Filters",
         "compareScope": "Compare scope",
         "scopePlaceholder": "Scope",
         "overallPerformance": "Overall performance",
         "heroMapPerformance": "Hero / map performance",
         "roleFilter": "Role filter",
         "roleIconAlt": "{role} icon",
-        "divisionMin": "Division from",
-        "divisionMax": "Division to",
+        "divisions": "Divisions",
         "cohortLockedHint": "Role and division narrow the all-players baseline. Clear the second player to use them.",
-        "heroAndMap": "Hero & Map",
         "primaryHero": "Primary hero",
         "compareHero": "Compare hero",
         "mapFilter": "Map filter",
@@ -5641,7 +5632,6 @@
     },
     "heroesCompare": {
       "selectHeroPrompt": "Select a hero above to rank every player who's logged time on it.",
-      "gameHint": "{game} · switch the game in the header",
       "stat": {
         "elims": "Elims / 10",
         "healing": "Healing / 10",

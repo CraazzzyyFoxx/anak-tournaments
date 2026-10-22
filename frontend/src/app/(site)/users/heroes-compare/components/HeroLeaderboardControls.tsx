@@ -67,7 +67,7 @@ const HeroLeaderboardControls = ({
     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
       {gameHint ? (
         <GameFilterHint className="self-start sm:self-auto">
-          {t("users.heroesCompare.gameHint", { game: gameHint })}
+          {t("common.discipline.gameHint", { game: gameHint })}
         </GameFilterHint>
       ) : null}
 

@@ -23,12 +23,12 @@ export function GameFilterHint({ className, children }: Readonly<{ className?: s
       size="sm"
       onClick={() => setOpen(true)}
       className={cn(
-        "gap-1.5 rounded-full border-dashed bg-transparent text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-2)] [&_svg]:size-3.5",
+        "max-w-full gap-1.5 rounded-full border-dashed bg-transparent text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-2)] [&_svg]:size-3.5",
         className
       )}
     >
       <Gamepad2 aria-hidden />
-      {children ?? t("filterHint")}
+      <span className="truncate">{children ?? t("filterHint")}</span>
     </Button>
   );
 }

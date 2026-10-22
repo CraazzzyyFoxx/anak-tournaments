@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import * as compareUtils from "@/app/(site)/users/compare/utils";
-import { getComparePageHeroModel } from "@/app/(site)/users/compare/components/compare-page-hero.model";
 import * as perspective from "@/app/(site)/users/components/shared/encounter-perspective";
 import * as history from "@/app/(site)/users/components/tournaments/tournaments-history.helpers";
 import { avgMvpPlacement } from "@/disciplines/overwatch/character/AvgMvpCell";
@@ -47,15 +46,13 @@ const removedFields = (value: unknown): unknown => {
   return value;
 };
 
-describe("users/compare/utils.ts + compare-page-hero.model.ts", () => {
+describe("users/compare/utils.ts", () => {
   const RENAMED_QUERY: Record<string, string> = { left_entity_id: "left_hero_id", right_entity_id: "right_hero_id" };
   const text = (values: (number | null)[]) => values.map((v) => compareUtils.formatMetricValue(v ?? NaN));
 
   it.each(COMPARE_PLAYERS)("reproduces every captured compare derivation from the real native wire: %s", (player) => {
     const expectedUtils = read(PRE, `users-compare-utils.${player}.json`).output;
-    const expectedModel = read(PRE, `compare-page-hero-model.${player}.json`).output;
     const utils: Record<string, unknown> = {};
-    const models: Record<string, unknown> = {};
     for (const [label, rec] of ok(
       native<UserCompareResponse | UserCharacterCompareResponse>(`users-compare.${player}.json`),
       () => true
@@ -100,24 +97,8 @@ describe("users/compare/utils.ts + compare-page-hero.model.ts", () => {
             .map(([key, value]) => [RENAMED_QUERY[key] ?? key, compareUtils.parseOptionalInt(value)])
         )
       };
-      models[label] = [false, true].flatMap((isLoading) =>
-        [true, false].map((hasSubject) => ({
-          isLoading,
-          hasSubject,
-          model: getComparePageHeroModel({
-            hasSubject,
-            hasData: rec.body.metrics.length > 0,
-            isLoading,
-            scope: isCharacter ? "hero" : "overall",
-            baseline: rec.body.baseline.mode,
-            sampleSize: rec.body.baseline.sample_size,
-            metricCount: rec.body.metrics.length
-          })
-        }))
-      );
     }
     expect(norm({ per_response: utils })).toEqual(expectedUtils);
-    expect(norm({ per_response: models })).toEqual(expectedModel);
   });
 
   it("keeps parseScope over the captured domain tokens (parseRole/roleLabelKey removed, see header)", () => {

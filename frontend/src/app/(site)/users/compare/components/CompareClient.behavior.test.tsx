@@ -14,6 +14,7 @@ import { ApiError } from "@/lib/api/error";
 import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
 import type { GameScopeInit } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import { useScopePillOpen } from "@/components/workspace/scope-pill-store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { catalogEntity } from "@/test/catalog";
 import { navigation } from "@/test/url-navigation";
@@ -230,27 +231,18 @@ describe("the game of the comparison", () => {
     mocks.getEntity.mockImplementation(async (_game: string, kind: CatalogKind, id: number) => catalogEntity({ id, kind }));
   });
 
-  it("offers the area's games as tabs under all games; a tab writes the game and drops another game's ids", async () => {
-    await mount("/users/compare?user_id=5&scope=hero&left_hero_id=7&map_id=3");
+  it("names the game it shows under all games, with no tabs of its own; the chip opens the site's switcher", async () => {
+    useWorkspaceStore.setState({ lastGame: "lol" });
+    useScopePillOpen.setState({ open: false });
 
-    const tab = [...container.querySelectorAll<HTMLElement>('[role="tab"]')].find((node) =>
-      node.textContent?.includes("League of Legends")
-    );
-    expect(tab).toBeTruthy();
-    await act(async () => {
-      tab!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
-    });
-    await settle();
+    await mount("/users/compare?user_id=5");
 
-    const url = new URL(navigation.pushes.at(-1)!, "http://x");
-    expect(url.pathname).toBe("/users/compare");
-    expect(url.searchParams.get("discipline")).toBe("lol");
-    expect(url.searchParams.get("user_id")).toBe("5");
-    expect(url.searchParams.has("left_hero_id")).toBe(false);
-    expect(url.searchParams.has("map_id")).toBe(false);
-    // A tab is a last-game pick, never a scope change.
-    expect(useWorkspaceStore.getState().lastGame).toBe("lol");
-    expect(useWorkspaceStore.getState().gameScope).toBe("all");
+    expect(container.querySelector('[role="tab"]')).toBeNull();
+    const hint = messages.common.discipline.gameHint.replace("{game}", "League of Legends");
+    const chip = [...container.querySelectorAll("button")].find((button) => button.textContent === hint);
+    expect(chip).toBeTruthy();
+    await act(async () => chip!.click());
+    expect(useScopePillOpen.getState().open).toBe(true);
   });
 
   it("shows no tabs when the scope is a game, and compares in that game", async () => {
@@ -314,7 +306,7 @@ describe("a game without a division grid", () => {
 });
 
 describe("the server render", () => {
-  it("draws the game tabs under all games, and the browser hydrates it without a mismatch", async () => {
+  it("names the game it shows under all games, and the browser hydrates it without a mismatch", async () => {
     navigation.reset("/users/compare");
     const page = await UserComparePage();
     // The same tree on both sides; only the query client differs, as one request's and the browser's do.
@@ -323,8 +315,11 @@ describe("the server render", () => {
         <QueryClientProvider client={queryClient}>{page}</QueryClientProvider>
       </NextIntlClientProvider>
     );
+    const hint = messages.common.discipline.gameHint.replace("{game}", "League of Legends");
     const html = renderToString(tree(new QueryClient()));
-    expect(html).toContain('role="tablist"');
+    // The last game the visitor played, and no game tabs of the page's own.
+    expect(html).toContain(hint);
+    expect(html).not.toContain('role="tablist"');
 
     // The browser already holds the area's games (the header read them) when the page's boundary hydrates, and its
     // store carries the visitor's cookies.
@@ -345,7 +340,7 @@ describe("the server render", () => {
 
     expect(recoverable).toEqual([]);
     expect(mismatches).toEqual([]);
-    expect(host.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain("League of Legends");
+    expect(host.textContent).toContain(hint);
     await act(async () => hydrated?.unmount());
     host.remove();
   });

@@ -318,7 +318,7 @@ describe("the server render", () => {
         <QueryClientProvider client={queryClient}>{page}</QueryClientProvider>
       </NextIntlClientProvider>
     );
-    const hint = messages.users.heroesCompare.gameHint.replace("{game}", "League of Legends");
+    const hint = messages.common.discipline.gameHint.replace("{game}", "League of Legends");
     const html = renderToString(tree(new QueryClient()));
     // The last game the visitor played, and no game tabs of the page's own.
     expect(html).toContain(hint);

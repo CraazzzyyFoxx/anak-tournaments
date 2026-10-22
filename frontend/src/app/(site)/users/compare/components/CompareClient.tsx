@@ -99,8 +99,10 @@ const PageContent = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: 
       ? heroCompareQuery.data
       : undefined
     : compareQuery.data;
-  const sampleSize = activeData?.baseline.sample_size;
+  const sampleSize = activeLoading ? undefined : activeData?.baseline.sample_size;
   const gameName = gameScope.games?.find((entry) => entry.code === discipline)?.name ?? discipline ?? "";
+  // Under "all games" the page picked its game itself; the switcher in the header does not name it.
+  const gameHint = gameScope.resolution?.tabs && discipline ? gameName : null;
   const retryActiveQuery = () => {
     void (compareParams.isHeroScope ? heroCompareQuery.refetch() : compareQuery.refetch());
   };
@@ -115,23 +117,11 @@ const PageContent = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: 
 
   return (
     <div className="aqt-player space-y-3.5">
-      {gameScope.resolution?.tabs ? (
-        <div className="flex justify-end">
-          <GameScopeControl scope={gameScope} variant="single" dropParams={COMPARE_GAME_PARAMS} />
-        </div>
-      ) : null}
       <ComparePageHero
-        hasSubject={compareParams.subjectUserId !== undefined}
-        hasData={activeData !== undefined}
-        isLoading={activeLoading}
-        isRefreshing={activeRefreshing}
+        gameHint={gameHint}
         scope={compareParams.scope}
-        baseline={compareParams.effectiveBaseline}
-        baselineSummary={baselineSummary}
-        sampleSize={sampleSize}
-        metricCount={rows.length}
+        onScopeChange={(next) => compareParams.updateParams({ scope: next })}
       />
-
       <CardSurface bodyClassName="space-y-5">
         <CompareFiltersPanel
           ontology={roleMetadata.data}
@@ -190,40 +180,51 @@ const PageContent = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: 
           </div>
         </CardSurface>
       ) : compareParams.subjectUserId ? (
-        <CompareUnifiedTable
-          subjectName={
-            selectedSubjectName ??
-            t("users.compare.userNumber", { id: String(compareParams.subjectUserId) })
-          }
-          baselineName={compareDisplayName}
-          rows={rows}
-          loading={activeLoading}
-          refreshing={activeRefreshing}
-          errorMessage={activeError ? activeErrorMessage : undefined}
-          onRetry={retryActiveQuery}
-          isHeroScope={compareParams.isHeroScope}
-          isTargetBaseline={compareParams.isTargetBaseline}
-          subjectHero={{
-            name:
-              heroCompareQuery.data?.subject_character?.name ??
-              leftHero?.name ??
-              t("users.compare.allHeroes"),
-            imagePath: heroCompareQuery.data?.subject_character?.image_path ?? imageOf(leftHero),
-            dominantColor: colorOf(heroCompareQuery.data?.subject_character ?? leftHero),
-            playtimeSeconds: heroCompareQuery.data?.left_playtime_seconds ?? 0,
-            playtimeLabel: t("users.compare.playtime")
-          }}
-          baselineHero={{
-            name:
-              heroCompareQuery.data?.target_character?.name ??
-              rightHero?.name ??
-              t("users.compare.allHeroes"),
-            imagePath: heroCompareQuery.data?.target_character?.image_path ?? imageOf(rightHero),
-            dominantColor: colorOf(heroCompareQuery.data?.target_character ?? rightHero),
-            playtimeSeconds: heroCompareQuery.data?.right_playtime_seconds ?? 0,
-            playtimeLabel: t("users.compare.avgPlaytime")
-          }}
-        />
+        <>
+          <p aria-live="polite" className="flex items-center gap-1.5 px-1 text-caption text-[color:var(--aqt-fg-dim)]">
+            {activeRefreshing ? <Spinner className="size-3 shrink-0" /> : null}
+            <span>
+              {baselineSummary}
+              {sampleSize !== undefined && !compareParams.isTargetBaseline
+                ? ` · ${t("users.compare.sampleSize", { count: sampleSize })}`
+                : null}
+            </span>
+          </p>
+          <CompareUnifiedTable
+            subjectName={
+              selectedSubjectName ??
+              t("users.compare.userNumber", { id: String(compareParams.subjectUserId) })
+            }
+            baselineName={compareDisplayName}
+            rows={rows}
+            loading={activeLoading}
+            refreshing={activeRefreshing}
+            errorMessage={activeError ? activeErrorMessage : undefined}
+            onRetry={retryActiveQuery}
+            isHeroScope={compareParams.isHeroScope}
+            isTargetBaseline={compareParams.isTargetBaseline}
+            subjectHero={{
+              name:
+                heroCompareQuery.data?.subject_character?.name ??
+                leftHero?.name ??
+                t("users.compare.allHeroes"),
+              imagePath: heroCompareQuery.data?.subject_character?.image_path ?? imageOf(leftHero),
+              dominantColor: colorOf(heroCompareQuery.data?.subject_character ?? leftHero),
+              playtimeSeconds: heroCompareQuery.data?.left_playtime_seconds ?? 0,
+              playtimeLabel: t("users.compare.playtime")
+            }}
+            baselineHero={{
+              name:
+                heroCompareQuery.data?.target_character?.name ??
+                rightHero?.name ??
+                t("users.compare.allHeroes"),
+              imagePath: heroCompareQuery.data?.target_character?.image_path ?? imageOf(rightHero),
+              dominantColor: colorOf(heroCompareQuery.data?.target_character ?? rightHero),
+              playtimeSeconds: heroCompareQuery.data?.right_playtime_seconds ?? 0,
+              playtimeLabel: t("users.compare.avgPlaytime")
+            }}
+          />
+        </>
       ) : (
         <CardSurface>
           <div

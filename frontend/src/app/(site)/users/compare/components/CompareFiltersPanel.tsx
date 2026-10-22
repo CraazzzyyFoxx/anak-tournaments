@@ -13,9 +13,7 @@ import { UserSearchCombobox } from "@/components/kit/ServerSearchCombobox";
 import SearchableImageSelect, {
   type SearchableImageOption,
 } from "@/components/ui/searchable-image-select";
-import { Eyebrow } from "@/components/ui/eyebrow";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { DivisionCombobox } from "@/components/DivisionCombobox";
+import { DivisionRangePicker } from "@/components/DivisionRangePicker";
 import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import { Tournament } from "@/types/tournament.types";
@@ -119,81 +117,56 @@ const CompareFiltersPanel = ({
 
   const isHeroScope = scope === "hero";
 
-  const setDivisionBound = (bound: "min" | "max", division: number | undefined) => {
-    let nextMin = bound === "min" ? division : divMin;
-    let nextMax = bound === "max" ? division : divMax;
-    // The API takes division numbers and rejects min > max; a crossed pick
-    // swaps the bounds instead of producing a request that can only fail.
-    if (nextMin !== undefined && nextMax !== undefined && nextMin > nextMax) {
-      [nextMin, nextMax] = [nextMax, nextMin];
-    }
-    updateParams({ div_min: nextMin, div_max: nextMax });
-  };
-
   return (
-    <div className="space-y-5">
-      <section className="space-y-3">
-        <Eyebrow as="h2" className="aqt-tnum">{t("common.playersLabel")}</Eyebrow>
-        <div className="grid gap-3 md:grid-cols-2">
-          <FilterField label={t("users.compare.selectedUser")}>
-            <UserSearchCombobox
-              value={subjectUserId}
-              selectedLabel={selectedSubjectName}
-              labelLoading={subjectNameLoading}
-              placeholder={t("users.compare.selectSubjectUser")}
-              triggerAriaLabel={t("users.compare.selectedUser")}
-              clearLabel={null}
-              variant="toolbar"
-              size="sm"
-              onSelect={(user) => {
-                if (user) updateParams({ user_id: user.id });
-              }}
-            />
-          </FilterField>
-
-          <FilterField label={t("users.compare.compareAgainst")}>
-            <UserSearchCombobox
-              value={targetUserId}
-              selectedLabel={selectedTargetName}
-              labelLoading={targetNameLoading}
-              placeholder={t("users.compare.allPlayersAverage")}
-              triggerAriaLabel={t("users.compare.compareAgainst")}
-              clearLabel={t("users.compare.compareWithAllAvg")}
-              variant="toolbar"
-              size="sm"
-              onSelect={(user) =>
-                updateParams(
-                  user
-                    ? { target_user_id: user.id, div_min: undefined, div_max: undefined }
-                    : { target_user_id: undefined }
-                )
-              }
-            />
-          </FilterField>
-        </div>
-      </section>
-
-      <section className="space-y-3 border-t border-[color:var(--aqt-border)] pt-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Eyebrow as="h2" className="aqt-tnum">{t("users.compare.filters.title")}</Eyebrow>
-          <ToggleGroup
-            type="single"
-            variant="pill"
+    <div className="space-y-4">
+      {/* The matchup: who, against whom. */}
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-end">
+        <FilterField label={t("users.compare.selectedUser")}>
+          <UserSearchCombobox
+            value={subjectUserId}
+            selectedLabel={selectedSubjectName}
+            labelLoading={subjectNameLoading}
+            placeholder={t("users.compare.selectSubjectUser")}
+            triggerAriaLabel={t("users.compare.selectedUser")}
+            clearLabel={null}
+            variant="toolbar"
             size="sm"
-            value={scope}
-            onValueChange={(value) => updateParams({ scope: value as CompareScope })}
-            aria-label={t("users.compare.filters.compareScope")}
-          >
-            <ToggleGroupItem value="overall">
-              {t("users.compare.filters.overallPerformance")}
-            </ToggleGroupItem>
-            <ToggleGroupItem value="hero">
-              {t("users.compare.filters.heroMapPerformance")}
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </div>
+            onSelect={(user) => {
+              if (user) updateParams({ user_id: user.id });
+            }}
+          />
+        </FilterField>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <span
+          aria-hidden
+          className="hidden h-8 items-center px-1 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)] md:flex"
+        >
+          {t("common.vs")}
+        </span>
+
+        <FilterField label={t("users.compare.compareAgainst")}>
+          <UserSearchCombobox
+            value={targetUserId}
+            selectedLabel={selectedTargetName}
+            labelLoading={targetNameLoading}
+            placeholder={t("users.compare.allPlayersAverage")}
+            triggerAriaLabel={t("users.compare.compareAgainst")}
+            clearLabel={t("users.compare.compareWithAllAvg")}
+            variant="toolbar"
+            size="sm"
+            onSelect={(user) =>
+              updateParams(
+                user
+                  ? { target_user_id: user.id, div_min: undefined, div_max: undefined }
+                  : { target_user_id: undefined }
+              )
+            }
+          />
+        </FilterField>
+      </div>
+
+      <div className="border-t border-[color:var(--aqt-border)] pt-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {/* A one-role game has nothing to filter by. */}
           {showsRoles(ontology) ? (
             <FilterField label={t("users.compare.filters.roleFilter")}>
@@ -208,22 +181,13 @@ const CompareFiltersPanel = ({
             </FilterField>
           ) : null}
 
-          <FilterField label={t("users.compare.filters.divisionMin")}>
-            <DivisionCombobox
-              value={divMin}
-              onValueChange={(division) => setDivisionBound("min", division)}
+          <FilterField label={t("users.compare.filters.divisions")}>
+            <DivisionRangePicker
               grid={divisionGrid}
-              ariaLabel={t("users.compare.filters.divisionMin")}
-              disabled={isTargetBaseline}
-            />
-          </FilterField>
-
-          <FilterField label={t("users.compare.filters.divisionMax")}>
-            <DivisionCombobox
-              value={divMax}
-              onValueChange={(division) => setDivisionBound("max", division)}
-              grid={divisionGrid}
-              ariaLabel={t("users.compare.filters.divisionMax")}
+              min={divMin}
+              max={divMax}
+              onChange={(min, max) => updateParams({ div_min: min, div_max: max })}
+              ariaLabel={t("users.compare.filters.divisions")}
               disabled={isTargetBaseline}
             />
           </FilterField>
@@ -241,23 +205,20 @@ const CompareFiltersPanel = ({
         </div>
 
         {isTargetBaseline ? (
-          <p className="text-xs text-[color:var(--aqt-fg-dim)]">
+          <p className="mt-2 text-xs text-[color:var(--aqt-fg-dim)]">
             {t("users.compare.filters.cohortLockedHint")}
           </p>
         ) : null}
-      </section>
 
-      {/* Hero & map: revealed with the scope; `inert` keeps the collapsed
-          pickers out of the tab order. */}
-      <div
-        className="grid transition-[grid-template-rows] duration-300 ease-in-out motion-reduce:transition-none"
-        style={{ gridTemplateRows: isHeroScope ? "1fr" : "0fr" }}
-        inert={!isHeroScope}
-      >
-        <div className="overflow-hidden">
-          <section className="space-y-3 border-t border-[color:var(--aqt-border)] pt-5 pb-0.5">
-            <Eyebrow as="h2" className="aqt-tnum">{t("users.compare.filters.heroAndMap")}</Eyebrow>
-            <div className="grid gap-3 md:grid-cols-3">
+        {/* Hero & map, in the columns above: revealed with the scope; `inert` keeps the collapsed pickers out of
+            the tab order. */}
+        <div
+          className="grid transition-[grid-template-rows] duration-300 ease-in-out motion-reduce:transition-none"
+          style={{ gridTemplateRows: isHeroScope ? "1fr" : "0fr" }}
+          inert={!isHeroScope}
+        >
+          <div className="overflow-hidden">
+            <div className="grid gap-3 pt-3 pb-0.5 sm:grid-cols-2 lg:grid-cols-3">
               <FilterField label={t("users.compare.filters.primaryHero")}>
                 <SearchableImageSelect
                   value={leftHeroId ? String(leftHeroId) : undefined}
@@ -304,7 +265,7 @@ const CompareFiltersPanel = ({
                 />
               </FilterField>
             </div>
-          </section>
+          </div>
         </div>
       </div>
     </div>
