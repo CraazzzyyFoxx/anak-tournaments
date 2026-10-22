@@ -52,7 +52,7 @@ describe("pickMessages", () => {
 
   it("ships a dotted entry as just that subtree, under its own key path", () => {
     // The mix header and account settings render in tools (and root): the preset names and two labels, not the
-    // ~33 kB constructor and room copy.
+    // ~33 kB constructor copy. Tools also ships the room copy, for the shared ban board in a mix room; root does not.
     expect(ZONE_NAMESPACES.tools).toEqual(expect.arrayContaining(["pickBan.mixBans", "pickBan.rules.preset"]));
     const tools = pickMessages(en, "tools");
     const t = createTranslator({ locale: "en", messages: tools as typeof en });
@@ -60,8 +60,9 @@ describe("pickMessages", () => {
     expect(t("pickBan.rules.preset.hero_classic")).toBe(en.pickBan.rules.preset.hero_classic);
     expect(t("pickBan.mixBans.none")).toBe(en.pickBan.mixBans.none);
     expect(tools.pickBan?.rules.preset).toBe(en.pickBan.rules.preset);
-    expect(Object.keys(tools.pickBan ?? {}).sort()).toEqual(["mixBans", "rules"]);
+    expect(Object.keys(tools.pickBan ?? {}).sort()).toEqual(["mixBans", "room", "rules"]);
     expect(Object.keys(tools.pickBan?.rules ?? {})).toEqual(["preset"]);
+    expect(Object.keys(pickMessages(en, "root").pickBan ?? {}).sort()).toEqual(["mixBans", "rules"]);
     // Projected into fresh nodes: the shared tree keeps everything.
     expect(Object.keys(en.pickBan.rules)).toContain("summary");
   });
