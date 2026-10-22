@@ -4,9 +4,11 @@ makes of it (D74-D76)."""
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_BACKEND_ROOT = Path(__file__).resolve().parents[2]
 for candidate in (str(REPO_BACKEND_ROOT), str(REPO_BACKEND_ROOT / "balancer-service")):
@@ -23,6 +25,7 @@ from shared.repository import CatalogRoleRepository, CustomGamePlayerRepository,
 from shared.services.discord_messages import mix_subject  # noqa: E402
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
 from src.domain.balancer.result_serializer import lobby_document  # noqa: E402
+from src.rpc import custom  # noqa: E402
 from src.services.custom_game import CustomGameService  # noqa: E402
 from src.services.mix_ranker import mix_ranker_service  # noqa: E402
 from src.services.mix_rounds import (  # noqa: E402
@@ -32,6 +35,20 @@ from src.services.mix_rounds import (  # noqa: E402
     record_mix_result,
     start_mix_match,
 )
+
+
+class _Broker:
+    """Collects the RPC handlers ``custom.register`` subscribes, so a test can call one the way the broker would."""
+
+    def __init__(self) -> None:
+        self.handlers: dict[str, object] = {}
+
+    def subscriber(self, subject: str):
+        def decorator(function):
+            self.handlers[subject] = function
+            return function
+
+        return decorator
 
 
 class CustomGameRoundStoreTests(EncounterWriterCase):
@@ -549,6 +566,119 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
         ):
             [(count,)] = await self._rows(f"SELECT count(*) FROM {table} WHERE {column} = ANY(:ids)", ids=list(started))
             self.assertEqual(0, count, table)
+
+    async def test_start_freezes_the_shown_lineup_on_the_next_map_and_goes_live(self) -> None:
+        tag = f"cgs-{self.ids['ws']}"
+        async with self.Session() as s:
+            kings_row = models.CatalogEntity(discipline="overwatch", kind="map", slug=f"{tag}-kr", name=f"{tag} KR")
+            s.add(kings_row)
+            await s.commit()
+        self.addAsyncCleanup(self._drop_maps, [kings_row.id])
+
+        def seat(member: str, name: str, rating: int) -> dict[str, object]:
+            return {"uuid": str(self.ids[member]), "name": name, "assigned_rating": rating}
+
+        option = {
+            "teams": [
+                {"roster": {"tank": [seat("m0", "Alpha", 3200)], "damage": [seat("m1", "Bravo", 2900)]}},
+                {"roster": {"tank": [seat("m2", "Charlie", 2600)], "damage": [seat("m3", "Delta", 3000)]}},
+            ]
+        }
+        async with self.Session() as s:
+            s.add(
+                models.CustomGameLobby(
+                    custom_game_id=self.cg.id,
+                    lobby_index=0,
+                    balance_result_json=lobby_document([option]),
+                    next_map_id=kings_row.id,
+                )
+            )
+            s.add(models.CustomGameTeamName(custom_game_id=self.cg.id, team_index=0, name="Wolves"))
+            await s.commit()
+
+        await self._write(CustomGameService().start_match, 0)
+
+        # Live on the encounter Start opened; the map is the match's now and stays on the card.
+        [live] = await self._live_ids()
+        [(next_map,)] = await self._rows("SELECT next_map_id FROM mix.lobby WHERE custom_game_id = :id", id=self.cg.id)
+        self.assertEqual(kings_row.id, next_map)
+        encounters = await self._rows(
+            "SELECT id, status::text FROM encounter.encounter WHERE custom_game_id = :id", id=self.cg.id
+        )
+        self.assertEqual([(live, "OPEN")], [tuple(r) for r in encounters])
+        games = await self._rows("SELECT map_id, state::text FROM encounter.game WHERE encounter_id = :id", id=live)
+        self.assertEqual([(kings_row.id, "awaiting_result")], [tuple(r) for r in games])
+        # The snapshot: each team's name and every seat as the lineup stood -- role, rating, name, and the captain,
+        # the team's strongest seat.
+        seats = await self._rows(
+            "SELECT et.slot, et.name, tm.workspace_member_id, cr.code, tm.rank, tm.display_name_snapshot, tm.is_captain"
+            " FROM encounter.team et JOIN encounter.team_member tm ON tm.encounter_team_id = et.id"
+            " LEFT JOIN encounter.team_member_role r ON r.team_member_id = tm.id"
+            " LEFT JOIN catalog.role cr ON cr.id = r.role_id"
+            " WHERE et.encounter_id = :id ORDER BY et.slot, tm.display_name_snapshot",
+            id=live,
+        )
+        m0, m1, m2, m3 = (self.ids[f"m{i}"] for i in range(4))
+        self.assertEqual(
+            [
+                (1, "Wolves", m0, "tank", 3200, "Alpha", True),
+                (1, "Wolves", m1, "damage", 2900, "Bravo", False),
+                (2, "Team 2", m2, "tank", 2600, "Charlie", False),
+                (2, "Team 2", m3, "damage", 3000, "Delta", True),
+            ],
+            [tuple(r) for r in seats],
+        )
+        # Started, not recorded: no round yet.
+        async with self.Session() as s:
+            self.assertEqual([], list(await self.rounds.list_for_custom_game(s, self.cg.id)))
+
+    async def test_a_failed_voice_split_leaves_the_started_match_committed(self) -> None:
+        await self._lobbies(("m0", "m1"))
+        async with self.Session() as s:
+            await s.execute(
+                sa.update(models.CustomGameLobby)
+                .where(models.CustomGameLobby.custom_game_id == self.cg.id)
+                .values(team1_voice_channel_id=101, team2_voice_channel_id=102)
+            )
+            await s.commit()
+        broker = _Broker()
+        custom.register(broker, logging.getLogger(__name__))
+
+        async def unannounced(*_args, **_kwargs) -> None:
+            """The realtime and outbox signal is not what this test is about."""
+
+        identity = {
+            "user_id": 1,
+            "is_superuser": True,
+            "is_active": True,
+            "roles": [],
+            "permissions": [],
+            "workspaces": [{"workspace_id": self.ids["ws"], "role": "owner", "rbac_roles": [], "rbac_permissions": []}],
+        }
+        with (
+            patch.object(custom, "_SF", self.Session),
+            patch.object(custom, "emit_pickup_mix_changed", unannounced),
+            self.assertLogs(__name__, "WARNING") as logs,
+        ):
+            result = await broker.handlers["rpc.balancer.custom.start_match"](
+                {
+                    "identity": identity,
+                    "workspace_id": self.ids["ws"],
+                    "custom_game_id": self.cg.id,
+                    "payload": {"lobby_index": 0},
+                },
+                None,
+            )
+
+        # The lobby has both team voices, but the workspace has no voice category: the split fails after the commit,
+        # and Start still answers with the mix ...
+        self.assertIn("voice split skipped (voice_not_configured)", "\n".join(logs.output))
+        self.assertTrue(result["ok"], result)
+        # ... whose match is committed and live.
+        [live] = await self._live_ids()
+        self.assertIsNotNone(live)
+        rows = await self._rows("SELECT status::text FROM encounter.encounter WHERE id = :id", id=live)
+        self.assertEqual([("OPEN",)], [tuple(r) for r in rows])
 
     async def test_hard_delete_waits_for_the_mix_lock_before_it_touches_the_mix_posts(self) -> None:
         async with self.Session() as s:

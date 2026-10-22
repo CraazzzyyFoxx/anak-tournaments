@@ -52,7 +52,7 @@ from src.domain.mix_ranker import Ranker  # noqa: E402
 from src.domain.mix_self_service import MAX_ROSTER  # noqa: E402
 from src.services import custom_game as custom_game_module
 from src.services.custom_game import _MAX_CO_HOSTS, CustomGameService  # noqa: E402
-from src.services.mix_rounds import MixMatchDraft, MixResultDraft  # noqa: E402
+from src.services.mix_rounds import MixResultDraft  # noqa: E402
 from src.services.workspace_roster import RosterMember  # noqa: E402
 from tests.mix_ranker_fakes import in_memory_ranker  # noqa: E402
 
@@ -530,9 +530,6 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
     def _draft(self) -> MixResultDraft:
         return self.write_result.await_args.args[1]
-
-    def _match(self) -> MixMatchDraft:
-        return self.open_match.await_args.args[1]
 
     async def _roles_for_players(self, _session, player_ids):
         """The explicit role order of whichever rows the test put in the roster."""
@@ -3962,30 +3959,6 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(ctx.exception.status_code, 404)
         self.assertEqual([7, 10], self._captains())
-
-    async def test_start_match_snapshots_the_shown_lineup_on_the_next_map(self) -> None:
-        self.games.get.return_value = _game(status="balanced")
-        self.lobby_rows[0] = _lobby(0, balance_result_json=self._captained_result(), next_map_id=42)
-        self.team_names.mapping_for_game.return_value = {0: "Wolves"}
-
-        await self.service.start_match(self.session, workspace_id=1, custom_game_id=11, actor_user_id=9)
-
-        match = self._match()
-        self.assertEqual((match.custom_game_id, match.map_id, match.names), (11, 42, ("Wolves", "Team 2")))
-        self.assertEqual(
-            [
-                [(7, "tank", 3200, "Alpha", True), (8, "damage", 2900, "Bravo", False)],
-                [(9, "tank", 2600, "Charlie", False), (10, "damage", 3000, "Delta", True)],
-            ],
-            [
-                [(s.workspace_member_id, s.role, s.rank, s.display_name, s.is_captain) for s in team]
-                for team in match.seats
-            ],
-        )
-        # Live until the result or a cancel; the map is the match's now and stays on the card.
-        self.assertEqual(900, self.lobby_rows[0].live_encounter_id)
-        self.assertEqual(42, self.lobby_rows[0].next_map_id)
-        self.write_result.assert_not_awaited()
 
     async def test_start_match_on_a_live_lobby_409(self) -> None:
         self.games.get.return_value = _game(status="balanced")

@@ -22,7 +22,6 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from src.rpc import custom  # noqa: E402
 
 WORKSPACE_ID = 9
@@ -195,13 +194,4 @@ class MixStartMatchRpcTests(IsolatedAsyncioTestCase):
         result = await self._start()
 
         self.assertTrue(result["ok"], result)
-        self.assertEqual(["commit"], self.session.events)
-
-    async def test_a_failed_voice_split_leaves_the_match_started(self) -> None:
-        self.service.voice_move = AsyncMock(side_effect=HTTPException(status_code=503, detail="discord_unavailable"))
-
-        result = await self._start()
-
-        self.assertTrue(result["ok"], result)
-        self.assertEqual({"id": GAME_ID}, result["data"])
         self.assertEqual(["commit"], self.session.events)
