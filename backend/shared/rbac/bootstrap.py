@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -10,27 +11,36 @@ from shared.models.tenancy.workspace import Workspace
 from .catalog import PERMISSION_CATALOG, WORKSPACE_SYSTEM_ROLE_NAMES, permission_names_for_workspace_role
 
 
-async def ensure_permission_catalog(session: AsyncSession) -> dict[str, Permission]:
+async def _catalog_permissions(session: AsyncSession) -> dict[str, Permission]:
     result = await session.execute(
         sa.select(Permission).where(Permission.name.in_([p.name for p in PERMISSION_CATALOG]))
     )
-    existing = {permission.name: permission for permission in result.scalars().all()}
+    return {permission.name: permission for permission in result.scalars().all()}
+
+
+async def ensure_permission_catalog(session: AsyncSession) -> dict[str, Permission]:
+    existing = await _catalog_permissions(session)
+    missing = [spec for spec in PERMISSION_CATALOG if spec.name not in existing]
+    if missing:
+        # ON CONFLICT: two bootstraps racing on a fresh catalog (concurrent
+        # workspace creates) wait on each other's row instead of one 500ing.
+        await session.execute(
+            pg_insert(Permission)
+            .values(
+                [
+                    {"name": s.name, "resource": s.resource, "action": s.action, "description": s.description}
+                    for s in missing
+                ]
+            )
+            .on_conflict_do_nothing(index_elements=["name"])
+        )
+        existing = await _catalog_permissions(session)
 
     for spec in PERMISSION_CATALOG:
-        permission = existing.get(spec.name)
-        if permission is None:
-            permission = Permission(
-                name=spec.name,
-                resource=spec.resource,
-                action=spec.action,
-                description=spec.description,
-            )
-            session.add(permission)
-            existing[spec.name] = permission
-        else:
-            permission.resource = spec.resource
-            permission.action = spec.action
-            permission.description = spec.description
+        permission = existing[spec.name]
+        permission.resource = spec.resource
+        permission.action = spec.action
+        permission.description = spec.description
 
     await session.flush()
     return existing
@@ -49,33 +59,45 @@ async def get_workspace_system_role(
     return result.scalar_one_or_none()
 
 
-async def ensure_workspace_system_roles(session: AsyncSession, workspace_id: int) -> dict[str, Role]:
-    permissions = await ensure_permission_catalog(session)
-
+async def _workspace_system_roles(session: AsyncSession, workspace_id: int) -> dict[str, Role]:
     result = await session.execute(
         sa.select(Role)
         .options(selectinload(Role.permissions))
         .where(Role.workspace_id == workspace_id, Role.name.in_(WORKSPACE_SYSTEM_ROLE_NAMES))
     )
-    roles = {role.name: role for role in result.scalars().all()}
+    return {role.name: role for role in result.scalars().all()}
+
+
+async def ensure_workspace_system_roles(session: AsyncSession, workspace_id: int) -> dict[str, Role]:
+    permissions = await ensure_permission_catalog(session)
+
+    roles = await _workspace_system_roles(session, workspace_id)
+    missing = [name for name in WORKSPACE_SYSTEM_ROLE_NAMES if name not in roles]
+    if missing:
+        # Same race as the catalog: a concurrent caller seeding this workspace
+        # first is waited on and re-read, never a unique violation.
+        await session.execute(
+            pg_insert(Role)
+            .values(
+                [
+                    {
+                        "name": name,
+                        "description": f"Workspace {name} system role",
+                        "is_system": True,
+                        "workspace_id": workspace_id,
+                    }
+                    for name in missing
+                ]
+            )
+            .on_conflict_do_nothing(index_elements=["name", "workspace_id"], index_where=Role.workspace_id.is_not(None))
+        )
+        roles = await _workspace_system_roles(session, workspace_id)
 
     for role_name in WORKSPACE_SYSTEM_ROLE_NAMES:
-        role = roles.get(role_name)
-        if role is None:
-            role = Role(
-                name=role_name,
-                description=f"Workspace {role_name} system role",
-                is_system=True,
-                workspace_id=workspace_id,
-            )
-            session.add(role)
-            roles[role_name] = role
-        else:
-            role.is_system = True
-            role.workspace_id = workspace_id
-            if not role.description:
-                role.description = f"Workspace {role_name} system role"
-
+        role = roles[role_name]
+        role.is_system = True
+        if not role.description:
+            role.description = f"Workspace {role_name} system role"
         role.permissions = [permissions[name] for name in permission_names_for_workspace_role(role_name)]
 
     await session.flush()
