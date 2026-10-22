@@ -11,7 +11,7 @@ for candidate in (str(REPO_BACKEND_ROOT), str(BALANCER_SERVICE_ROOT)):
         sys.path.insert(0, candidate)
 
 
-from src.domain.mix_rotation import PlayerHistory, RotationStatus, recommend_rotation  # noqa: E402
+from src.domain.mix_rotation import PlayerHistory, RotationReason, RotationStatus, recommend_rotation  # noqa: E402
 
 
 def _status_by_id(recommendations, member_id):
@@ -25,7 +25,9 @@ def test_pool_fits_without_rotation_everyone_neutral() -> None:
     ]
     recommendations = recommend_rotation(histories, usable_count=2)
     assert {r.status for r in recommendations} == {RotationStatus.NEUTRAL}
-    assert all(r.reason == "Мест хватает на весь пул" for r in recommendations)
+    # A machine code, worded by the client: a sentence here reached English hosts in Russian.
+    assert {r.reason for r in recommendations} == {RotationReason.POOL_FITS}
+    assert RotationReason.POOL_FITS.value == "pool_fits"
 
 
 def test_sat_out_players_take_priority_over_long_streak_player() -> None:
@@ -45,7 +47,10 @@ def test_sat_out_players_take_priority_over_long_streak_player() -> None:
     assert by_id[2].status == RotationStatus.MUST_PLAY  # sat out last map
     assert by_id[3].status == RotationStatus.NEUTRAL  # fills the last seat, no fatigue signal
     assert by_id[1].status == RotationStatus.SHOULD_REST  # longest active play streak
-    assert by_id[1].reason == "Сыграл 3 карт(ы) подряд"
+    assert by_id[1].reason == RotationReason.PLAYED_STREAK
+    assert by_id[4].reason == RotationReason.OWED_SEAT
+    assert by_id[2].reason == RotationReason.OWED_SEAT
+    assert by_id[3].reason == RotationReason.DEFAULT
 
     # must_play and should_rest are always in sync with the seat math: exactly
     # `pool_size - usable_count` rest, the rest play.
@@ -64,7 +69,7 @@ def test_host_pinned_must_play_always_gets_a_seat() -> None:
     by_id = {r.member_id: r for r in recommendations}
 
     assert by_id[4].status == RotationStatus.MUST_PLAY
-    assert by_id[4].reason == "Закреплён хостом (must_play)"
+    assert by_id[4].reason == RotationReason.PINNED
     # Identical histories tie-break on input order: player 1 keeps the one
     # remaining seat, 2 and 3 rest.
     assert by_id[1].status == RotationStatus.NEUTRAL
@@ -81,6 +86,7 @@ def test_no_history_yet_recommends_nothing() -> None:
 
     assert {r.status for r in recommendations} == {RotationStatus.NEUTRAL}
     assert all(r.games_played == 0 for r in recommendations)
+    assert {r.reason for r in recommendations} == {RotationReason.NO_HISTORY}
 
     # Re-running with the same input is stable -- no hidden randomness.
     assert recommend_rotation(histories, usable_count=2) == recommendations
@@ -96,6 +102,6 @@ def test_no_history_yet_still_honours_a_host_pin() -> None:
     by_id = {r.member_id: r for r in recommendations}
 
     assert by_id[3].status == RotationStatus.MUST_PLAY
-    assert by_id[3].reason == "Закреплён хостом (must_play)"
+    assert by_id[3].reason == RotationReason.PINNED
     assert by_id[1].status == RotationStatus.NEUTRAL
     assert by_id[2].status == RotationStatus.NEUTRAL

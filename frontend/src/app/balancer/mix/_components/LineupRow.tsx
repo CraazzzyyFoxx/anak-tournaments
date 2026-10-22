@@ -45,8 +45,8 @@ function RowAction({ children }: Readonly<{ children: ReactNode }>) {
  * map history yet looks exactly like it did before this existed. `must_play`
  * (owed a seat the longest) and `should_rest` (played the most in a row) are
  * the only two a host acts on, so they are the only two with an icon; the
- * reason string carries the specific streak into the tooltip instead of a
- * wider label competing with the role rail for room. A row the host already
+ * reason code, worded with the streak it names, goes into the tooltip instead
+ * of a wider label competing with the role rail for room. A row the host already
  * pinned (the `must_play` column) never renders one either -- the backend always
  * verdicts a pin `must_play` too (see `mix_rotation.recommend_rotation`), and
  * repeating "owed a seat" next to a seat already guaranteed by the Pin icon
@@ -56,14 +56,29 @@ function RotationHintBadge({
   hint,
   pinned
 }: Readonly<{ hint: RotationRecommendation | undefined; pinned: boolean }>) {
+  const t = useTranslations("mixes.rotation");
   if (!hint || hint.status === "neutral" || pinned) {
     return null;
   }
   const isOwed = hint.status === "must_play";
   const Icon = isOwed ? RotateCw : Armchair;
+  let label: string;
+  switch (hint.reason) {
+    case "owed_seat":
+      label = t("owed_seat", { count: hint.consecutive_sat });
+      break;
+    case "played_streak":
+      label = t("played_streak", { count: hint.consecutive_played });
+      break;
+    case "played_most":
+      label = t("played_most", { count: hint.games_played });
+      break;
+    default:
+      label = t(hint.reason);
+  }
   return (
     <IconTooltip
-      label={hint.reason}
+      label={label}
       className={cn(
         "size-[18px] shrink-0 items-center justify-center",
         isOwed ? "text-[color:var(--aqt-amber)]" : "text-[color:var(--aqt-fg-faint)]"

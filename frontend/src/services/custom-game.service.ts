@@ -432,6 +432,17 @@ export type CustomGameParticipationEntry = {
 /** A pool member's fairness-rotation verdict for the next map, from `rotation`. */
 type RotationStatus = "must_play" | "should_rest" | "neutral";
 
+/** Why a verdict was given (`mix_rotation.RotationReason`), worded by the client
+ *  under `mixes.rotation`; the counts it names are the fields beside it. */
+export type RotationReason =
+  | "pool_fits"
+  | "pinned"
+  | "no_history"
+  | "owed_seat"
+  | "default"
+  | "played_streak"
+  | "played_most";
+
 /**
  * One roster row's rotation-fairness read, computed server-side from this
  * mix's own map history (see `mix_rotation.recommend_rotation`). Read-only --
@@ -440,7 +451,7 @@ type RotationStatus = "must_play" | "should_rest" | "neutral";
 export type RotationRecommendation = {
   workspace_member_id: number;
   status: RotationStatus;
-  reason: string;
+  reason: RotationReason;
   consecutive_sat: number;
   consecutive_played: number;
   games_played: number;

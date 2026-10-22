@@ -25,7 +25,7 @@ function hint(status: "must_play" | "should_rest" | "neutral"): RotationRecommen
   return {
     workspace_member_id: 7,
     status,
-    reason: "",
+    reason: "default",
     consecutive_sat: 0,
     consecutive_played: 0,
     games_played: 0,

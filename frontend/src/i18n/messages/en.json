@@ -7635,6 +7635,15 @@
       "mixes": "Mixes",
       "rating": "Leaderboard"
     },
+    "rotation": {
+      "pool_fits": "Seats cover the whole pool",
+      "pinned": "Pinned by the host",
+      "no_history": "No map history yet — nothing to rank",
+      "owed_seat": "{count, plural, one {Sat out # map in a row — next to play} other {Sat out # maps in a row — next to play}}",
+      "default": "Plays by default",
+      "played_streak": "{count, plural, one {Played # map in a row} other {Played # maps in a row}}",
+      "played_most": "{count, plural, one {Played # map — time to give up the seat} other {Played # maps — time to give up the seat}}"
+    },
     "now": {
       "title": "Now",
       "loading": "Loading open mixes...",

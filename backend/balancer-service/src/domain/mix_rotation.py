@@ -22,13 +22,37 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
-__all__ = ("RotationStatus", "PlayerHistory", "RotationRecommendation", "recommend_rotation", "rotation_priority")
+__all__ = (
+    "RotationStatus",
+    "RotationReason",
+    "PlayerHistory",
+    "RotationRecommendation",
+    "recommend_rotation",
+    "rotation_priority",
+)
 
 
 class RotationStatus(Enum):
     MUST_PLAY = "must_play"
     SHOULD_REST = "should_rest"
     NEUTRAL = "neutral"
+
+
+class RotationReason(Enum):
+    """Why a verdict was given, as a machine code the client words in its own locale.
+
+    The counts a sentence needs are already on the recommendation
+    (``consecutive_sat``, ``consecutive_played``, ``games_played``), so a code
+    carries no parameters of its own.
+    """
+
+    POOL_FITS = "pool_fits"
+    PINNED = "pinned"
+    NO_HISTORY = "no_history"
+    OWED_SEAT = "owed_seat"
+    DEFAULT = "default"
+    PLAYED_STREAK = "played_streak"
+    PLAYED_MOST = "played_most"
 
 
 @dataclass(frozen=True)
@@ -53,7 +77,7 @@ class PlayerHistory:
 class RotationRecommendation:
     member_id: int
     status: RotationStatus
-    reason: str
+    reason: RotationReason
     consecutive_sat: int
     consecutive_played: int
     games_played: int
@@ -105,7 +129,7 @@ def recommend_rotation(histories: Sequence[PlayerHistory], *, usable_count: int)
             RotationRecommendation(
                 member_id=h.member_id,
                 status=RotationStatus.NEUTRAL,
-                reason="Мест хватает на весь пул",
+                reason=RotationReason.POOL_FITS,
                 consecutive_sat=_streak_from_end(h.played, value=False),
                 consecutive_played=_streak_from_end(h.played, value=True),
                 games_played=sum(h.played),
@@ -120,11 +144,7 @@ def recommend_rotation(histories: Sequence[PlayerHistory], *, usable_count: int)
             RotationRecommendation(
                 member_id=h.member_id,
                 status=RotationStatus.MUST_PLAY if h.pinned_must_play else RotationStatus.NEUTRAL,
-                reason=(
-                    "Закреплён хостом (must_play)"
-                    if h.pinned_must_play
-                    else "Ещё нет истории карт — нечего ранжировать"
-                ),
+                reason=RotationReason.PINNED if h.pinned_must_play else RotationReason.NO_HISTORY,
                 consecutive_sat=_streak_from_end(h.played, value=False),
                 consecutive_played=_streak_from_end(h.played, value=True),
                 games_played=sum(h.played),
@@ -153,15 +173,15 @@ def recommend_rotation(histories: Sequence[PlayerHistory], *, usable_count: int)
         total_played = sum(h.played)
         if h.member_id in playing_ids:
             if h.pinned_must_play:
-                status, reason = RotationStatus.MUST_PLAY, "Закреплён хостом (must_play)"
+                status, reason = RotationStatus.MUST_PLAY, RotationReason.PINNED
             elif sat > 0:
-                status, reason = RotationStatus.MUST_PLAY, f"Сидел {sat} карт(ы) подряд — очередь играть"
+                status, reason = RotationStatus.MUST_PLAY, RotationReason.OWED_SEAT
             else:
-                status, reason = RotationStatus.NEUTRAL, "Играет по умолчанию"
+                status, reason = RotationStatus.NEUTRAL, RotationReason.DEFAULT
         elif played_streak > 0:
-            status, reason = RotationStatus.SHOULD_REST, f"Сыграл {played_streak} карт(ы) подряд"
+            status, reason = RotationStatus.SHOULD_REST, RotationReason.PLAYED_STREAK
         else:
-            status, reason = RotationStatus.SHOULD_REST, f"Сыграл {total_played} карт — пора уступить место"
+            status, reason = RotationStatus.SHOULD_REST, RotationReason.PLAYED_MOST
         recommendations.append(
             RotationRecommendation(
                 member_id=h.member_id,

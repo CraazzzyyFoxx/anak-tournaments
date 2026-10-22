@@ -56,7 +56,7 @@ function hint(overrides: Partial<RotationRecommendation> = {}): RotationRecommen
   return {
     workspace_member_id: 7,
     status: "neutral",
-    reason: "",
+    reason: "default",
     consecutive_sat: 0,
     consecutive_played: 0,
     games_played: 0,

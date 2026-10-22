@@ -572,7 +572,7 @@ def _dump_rotation(recommendations: list[Any]) -> list[dict[str, Any]]:
         {
             "workspace_member_id": rec.member_id,
             "status": rec.status.value,
-            "reason": rec.reason,
+            "reason": rec.reason.value,
             "consecutive_sat": rec.consecutive_sat,
             "consecutive_played": rec.consecutive_played,
             "games_played": rec.games_played,

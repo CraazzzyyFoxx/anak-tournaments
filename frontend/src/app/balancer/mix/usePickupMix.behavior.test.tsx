@@ -431,7 +431,7 @@ describe("usePickupMix", () => {
       {
         workspace_member_id: 9,
         status: "must_play",
-        reason: "Owed a seat",
+        reason: "owed_seat",
         consecutive_sat: 1,
         consecutive_played: 0,
         games_played: 2,
@@ -482,7 +482,7 @@ describe("usePickupMix", () => {
       {
         workspace_member_id: 9,
         status: "must_play",
-        reason: "Owed a seat",
+        reason: "owed_seat",
         consecutive_sat: 1,
         consecutive_played: 0,
         games_played: 2,
@@ -532,7 +532,7 @@ describe("usePickupMix", () => {
     const history = (memberId: number, sat: number) => ({
       workspace_member_id: memberId,
       status: "neutral",
-      reason: "",
+      reason: "default",
       consecutive_sat: sat,
       consecutive_played: 0,
       games_played: 0,

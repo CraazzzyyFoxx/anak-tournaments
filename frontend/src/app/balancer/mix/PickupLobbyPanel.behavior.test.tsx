@@ -289,7 +289,7 @@ describe("PickupLobbyPanel rotation hints", () => {
         {
           workspace_member_id: 7,
           status: "must_play",
-          reason: "Sat 1 map(s) in a row \u2014 owed a seat",
+          reason: "owed_seat",
           consecutive_sat: 1,
           consecutive_played: 0,
           games_played: 2,
@@ -297,7 +297,8 @@ describe("PickupLobbyPanel rotation hints", () => {
       ],
     });
 
-    const badge = scope.querySelector('[aria-label="Sat 1 map(s) in a row \u2014 owed a seat"]');
+    // `next-intl` is the identity mock here: the label is the reason's message key.
+    const badge = scope.querySelector('[aria-label="owed_seat"]');
     expect(badge?.getAttribute("role")).toBe("img");
   });
 
@@ -307,7 +308,7 @@ describe("PickupLobbyPanel rotation hints", () => {
         {
           workspace_member_id: 7,
           status: "should_rest",
-          reason: "Played 3 map(s) in a row",
+          reason: "played_streak",
           consecutive_sat: 0,
           consecutive_played: 3,
           games_played: 3,
@@ -315,7 +316,7 @@ describe("PickupLobbyPanel rotation hints", () => {
       ],
     });
 
-    expect(scope.querySelector('[aria-label="Played 3 map(s) in a row"]')).not.toBeNull();
+    expect(scope.querySelector('[aria-label="played_streak"]')).not.toBeNull();
   });
 
   it("renders no hint for a row already pinned must_play -- the Pin already says it", async () => {
@@ -324,7 +325,7 @@ describe("PickupLobbyPanel rotation hints", () => {
         {
           workspace_member_id: 7,
           status: "must_play",
-          reason: "Закреплён хостом (must_play)",
+          reason: "pinned",
           consecutive_sat: 0,
           consecutive_played: 2,
           games_played: 2,
@@ -332,7 +333,7 @@ describe("PickupLobbyPanel rotation hints", () => {
       ],
     });
 
-    expect(scope.querySelector('[aria-label="Закреплён хостом (must_play)"]')).toBeNull();
+    expect(scope.querySelector('[aria-label="pinned"]')).toBeNull();
   });
 
   it("renders no hint for a neutral verdict or when no rotation data has loaded", async () => {
@@ -341,17 +342,17 @@ describe("PickupLobbyPanel rotation hints", () => {
         {
           workspace_member_id: 7,
           status: "neutral",
-          reason: "Seats cover the whole pool",
+          reason: "pool_fits",
           consecutive_sat: 0,
           consecutive_played: 0,
           games_played: 0,
         },
       ],
     });
-    expect(neutral.textContent).not.toContain("Seats cover the whole pool");
+    expect(neutral.querySelector('[aria-label="pool_fits"]')).toBeNull();
 
     const noData = await mount([row()]);
-    expect(noData.querySelector('[aria-label*="owed a seat"]')).toBeNull();
+    expect(noData.querySelector('[aria-label="owed_seat"]')).toBeNull();
   });
 });
 
@@ -367,7 +368,7 @@ describe("PickupLobbyPanel apply hints button", () => {
         {
           workspace_member_id: 7,
           status: "neutral",
-          reason: "",
+          reason: "default",
           consecutive_sat: 0,
           consecutive_played: 0,
           games_played: 0,
@@ -385,7 +386,7 @@ describe("PickupLobbyPanel apply hints button", () => {
         {
           workspace_member_id: 7,
           status: "must_play",
-          reason: "Owed a seat",
+          reason: "owed_seat",
           consecutive_sat: 1,
           consecutive_played: 0,
           games_played: 2,
