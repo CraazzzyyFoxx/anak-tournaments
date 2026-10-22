@@ -7,6 +7,7 @@ blacklist and RBAC invalidations must succeed before the database merge commits.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Any
 
@@ -17,16 +18,35 @@ from shared.rbac import RBAC_USER_KEY_PREFIX
 from shared.schemas.realtime import WorkspaceEventEnvelope
 from shared.services.realtime.scope import Scope
 from shared.services.realtime_publisher import publish_envelope_to_redis
-from src.core.cache import RedisStore
+from src.core.cache import _UNAVAILABLE, RedisStore
 from src.core.redis import get_redis
 
 # The cached payload carries the user's workspace memberships (id + slug) too,
 # so a hit answers the token path with no database round trip at all.
 RBAC_TTL_SECONDS = 60
 
+# Bumped by every RBAC drop. A fill reads it BEFORE its database reads and
+# writes only while it is unchanged (``_SET_IF_GENERATION``), so a validation
+# that read the database before a membership commit cannot put the pre-change
+# RBAC back after that change's invalidation. The TTL only has to outlive one
+# fill: a generation that expired mid-fill reads "0" again, the value a fill
+# that started before the very first bump would still match.
+RBAC_GENERATION_KEY_PREFIX = "rbac:gen:"
+RBAC_GENERATION_TTL_SECONDS = 3600
+
+# KEYS: entry, generation. ARGV: generation the fill read, payload, TTL.
+_SET_IF_GENERATION = """
+if (redis.call('GET', KEYS[2]) or '0') ~= ARGV[1] then
+  return 0
+end
+redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+return 1
+"""
+
 # ``user:{id}:rbac`` -- announced after every RBAC drop so the gateway evicts
-# the principals it cached for that user (gateway/internal/principal, which
-# mirrors this topic). Ephemeral (event_id 0): nothing to replay.
+# the principals and workspace memberships it cached for that user
+# (gateway/internal/principal and ws.TopicRevoker, which mirror this topic).
+# Ephemeral (event_id 0): nothing to replay.
 RBAC_DOMAIN = "rbac"
 RBAC_CHANGED_EVENT = "rbac.changed"
 
@@ -45,6 +65,9 @@ class SessionCache:
         refresh_idem_ttl: int = REFRESH_IDEM_TTL_SECONDS,
     ) -> None:
         self._rbac = RedisStore(RBAC_USER_KEY_PREFIX, ttl=rbac_ttl, purpose="RBAC cache")
+        self._rbac_generation = RedisStore(
+            RBAC_GENERATION_KEY_PREFIX, ttl=RBAC_GENERATION_TTL_SECONDS, purpose="RBAC generation"
+        )
         # Access tokens are stateless and short-lived, so revoking a session
         # (logout / revoke / reuse-detection) must also block the still-valid
         # access tokens carrying its ``sid``. Entries are written with a TTL
@@ -59,16 +82,31 @@ class SessionCache:
         """Cached RBAC payload, or None on a miss/outage."""
         return await self._rbac.get_json(user_id)
 
+    async def rbac_generation(self, user_id: int) -> str | None:
+        """The generation a fill hands to ``set_rbac``; read it BEFORE the database.
+
+        None on an outage -- nothing could be written then anyway.
+        """
+        try:
+            return await get_redis().get(self._rbac_generation.key(user_id)) or "0"
+        except _UNAVAILABLE as exc:
+            logger.warning(f"Redis unavailable during RBAC generation read; falling back gracefully: {exc}")
+            return None
+
     async def set_rbac(
         self,
         user_id: int,
         *,
+        generation: str | None,
         roles: list[str],
         permissions: list[dict[str, str]],
         workspaces: list[list[Any]] | None = None,
         workspace_roles: dict[str, dict] | None = None,
         denies: list[dict[str, Any]] | None = None,
     ) -> None:
+        """Store what a fill loaded, unless the user's RBAC was dropped since it read ``generation``."""
+        if generation is None:
+            return
         # Every component is stored unconditionally, empty included. A missing
         # key means "unknown, go and load it", so omitting an empty answer
         # ("this user has no denies", "no memberships") would make the entry a
@@ -81,13 +119,40 @@ class SessionCache:
             "workspace_roles": workspace_roles or {},
             "denies": denies or [],
         }
-        await self._rbac.put_json(user_id, payload)
+        try:
+            await get_redis().eval(
+                _SET_IF_GENERATION,
+                2,
+                self._rbac.key(user_id),
+                self._rbac_generation.key(user_id),
+                generation,
+                json.dumps(payload),
+                self._rbac.ttl,
+            )
+        except _UNAVAILABLE as exc:
+            logger.warning(f"Redis unavailable during RBAC cache write; falling back gracefully: {exc}")
 
     async def invalidate_rbac(self, *user_ids: int) -> None:
-        for user_id in user_ids:
-            await self._rbac.drop(user_id)
-            logger.info(f"RBAC cache invalidated for user {user_id}")
+        if not user_ids:
+            return
+        try:
+            async with get_redis().pipeline(transaction=True) as pipeline:
+                self._queue_rbac_drop(pipeline, user_ids)
+                await pipeline.execute()
+        except _UNAVAILABLE as exc:
+            logger.warning(f"Redis unavailable during RBAC invalidation; falling back gracefully: {exc}")
+        else:
+            for user_id in user_ids:
+                logger.info(f"RBAC cache invalidated for user {user_id}")
         await self._announce_rbac_changed(user_ids)
+
+    def _queue_rbac_drop(self, pipeline: Any, user_ids: tuple[int, ...] | list[int]) -> None:
+        """Drop the entries and bump their generations, so no fill already in flight can restore them."""
+        for user_id in user_ids:
+            generation_key = self._rbac_generation.key(user_id)
+            pipeline.incr(generation_key)
+            pipeline.expire(generation_key, self._rbac_generation.ttl)
+            pipeline.delete(self._rbac.key(user_id))
 
     async def _announce_rbac_changed(self, user_ids: tuple[int, ...] | list[int]) -> None:
         """Tell the gateway, AFTER the Redis entries are gone, to forget these users' principals.
@@ -130,7 +195,7 @@ class SessionCache:
         async with get_redis().pipeline(transaction=True) as pipeline:
             for session_id in sorted(session_ids):
                 pipeline.set(self._revoked_sessions.key(session_id), "1", ex=ttl_seconds)
-            pipeline.delete(*(self._rbac.key(user_id) for user_id in auth_user_ids))
+            self._queue_rbac_drop(pipeline, auth_user_ids)
             await pipeline.execute()
         await self._announce_rbac_changed(auth_user_ids)
 

@@ -88,8 +88,9 @@ already sees the change; the queued copy is the durable fallback.
 It publishes no domain events or outbox rows. Its one Redis realtime topic is
 `user:{id}:rbac` (`rbac.changed`, ephemeral): every RBAC-cache drop — membership events, role,
 permission and deny edits, account deletion, profile merge, `invalidate_session` — announces it
-after the entry is gone, and the gateway evicts every token it cached for that user
-(`gateway/internal/principal`).
+after the entry is gone, and the gateway evicts every token and workspace membership it cached
+for that user and re-checks that user's live WebSocket subscriptions (`gateway/internal/principal`,
+`gateway/internal/ws` `TopicRevoker`).
 
 ## Data owned
 
@@ -163,7 +164,10 @@ mounted `identity-service/` and `shared/` sources.
 - **RBAC cache.** Resolved permissions, denies and workspace memberships are cached in Redis
   under a versioned key (`rbac:v3:user:<id>`) with a 60-second TTL, and invalidated explicitly
   on every RBAC mutation, account deletion, and via `invalidate_session` from another service.
-  The version prefix is what retires entries whose payload shape changed. The cache is
+  The version prefix is what retires entries whose payload shape changed. Every drop also bumps
+  `rbac:gen:<id>`; a fill reads that generation before its database reads and writes the entry
+  only while it is unchanged (one Lua compare-and-set), so a validation that read the database
+  just before a membership commit cannot put the old RBAC back after the drop. The cache is
   best-effort: a Redis outage costs extra database work, never a failed request.
 - **Refresh-token rotation.** Rotation is single-use with reuse detection — replaying a
   revoked token revokes the whole session family. Two escape hatches keep honest clients out of

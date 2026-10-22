@@ -262,6 +262,9 @@ class FakeSessionCache:
         self.reads += 1
         return self.rbac_entry
 
+    async def rbac_generation(self, user_id: int) -> str:
+        return "0"
+
     async def set_rbac(self, user_id: int, **payload: object) -> None:
         self.writes.append((user_id, payload))
 

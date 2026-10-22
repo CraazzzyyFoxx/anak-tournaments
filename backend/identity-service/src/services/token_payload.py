@@ -65,11 +65,15 @@ class TokenPayloadBuilder:
         # list means "member of nothing".
         memberships_cached: list[list[Any]] | None = entry.get("workspaces")
 
-        loaded_from_db = False
+        # Any missing component makes this a fill. Its generation is read before
+        # the first query, so set_rbac refuses the entry if the user's RBAC was
+        # dropped meanwhile -- these reads may then predate that change. (A hit
+        # is never partial: set_rbac writes every component.)
+        fill = roles is None or denies is None or memberships_cached is None or workspace_roles_cached is None
+        generation = await self.cache.rbac_generation(user.id) if fill else None
 
         if roles is None:
             roles, permissions = await self.roles.global_rbac_for_user(session, user.id)
-            loaded_from_db = True
         if permissions is None:
             permissions = []
 
@@ -77,11 +81,9 @@ class TokenPayloadBuilder:
             # Loaded on the DB path too, so the deny overlay still applies when
             # Redis is unavailable — a negative grant must never fail open.
             denies = await self.load_denies(session, user.id)
-            loaded_from_db = True
 
         if memberships_cached is None:
             memberships = await self.members.list_memberships_for_auth_user(session, user.id)
-            loaded_from_db = True
         else:
             memberships = [(int(workspace_id), slug) for workspace_id, slug in memberships_cached]
 
@@ -92,14 +94,14 @@ class TokenPayloadBuilder:
             ws_rbac = {int(k): (v["roles"], v["permissions"]) for k, v in workspace_roles_cached.items()}
         else:
             ws_rbac = await self.roles.workspace_rbac_for_user(session, user.id, workspace_ids)
-            loaded_from_db = True
 
-        if loaded_from_db:
+        if fill:
             # Nothing changed on a full hit, so rewriting the entry would only
             # extend its TTL — which is exactly what the 60s window is meant to
             # bound — at the cost of a round trip on every gateway request.
             await self.cache.set_rbac(
                 user.id,
+                generation=generation,
                 roles=roles,
                 permissions=permissions,
                 workspaces=[[workspace_id, slug] for workspace_id, slug in memberships],
