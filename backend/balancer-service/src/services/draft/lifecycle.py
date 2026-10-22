@@ -179,6 +179,20 @@ class DraftLifecycleService:
         if await self.sessions_repo.exists_active_for_tournament(session, tournament_id):
             raise _err("draft_already_active", f"Tournament {tournament_id} already has an active draft")
 
+    async def assert_draft_formation(self, session: AsyncSession, tournament_id: int) -> None:
+        """A draft forms the teams only of a tournament that says it does: the
+        balancer and team registration write `tournament.team` their own way.
+
+        Checked on create, seed and start: a session created before the check
+        existed, or a tournament switched away from draft since, is stopped too.
+        """
+        formation = await self.tournaments_repo.get_team_formation(session, tournament_id)
+        if formation != "draft":
+            raise _err(
+                "tournament_not_draft_formation",
+                f"Tournament {tournament_id} forms its teams by {formation!r}, not by draft",
+            )
+
     async def tournament_draft_format(
         self, session: AsyncSession, tournament_id: int, *, rounds: int
     ) -> tuple[DraftFormat, dict]:
@@ -243,14 +257,7 @@ class DraftLifecycleService:
         actor_user_id: int,
     ) -> DraftSession:
         """Create a session for the tournament and publish ``draft.session_updated``."""
-        # A draft forms the teams only of a tournament that says it does: the
-        # balancer and team registration write `tournament.team` their own way.
-        formation = await self.tournaments_repo.get_team_formation(session, tournament_id)
-        if formation != "draft":
-            raise _err(
-                "tournament_not_draft_formation",
-                f"Tournament {tournament_id} forms its teams by {formation!r}, not by draft",
-            )
+        await self.assert_draft_formation(session, tournament_id)
         # The roster shape is the tournament's, not the request's: a draft
         # cannot be created at a size the tournament does not run. The format
         # is the tournament's for the same reason -- it is a rule organizers
@@ -395,6 +402,7 @@ class DraftLifecycleService:
         """
         if draft_session.status not in (DraftStatus.SETUP.value, DraftStatus.READY.value):
             raise _err("draft_not_seedable", "Draft can only be seeded in SETUP or READY")
+        await self.assert_draft_formation(session, draft_session.tournament_id)
         captains = [seat for seat in seats if seat.draft_position is not None]
         if not captains:
             raise _err("draft_no_captains", "At least one captain is required to seed a draft")
@@ -679,6 +687,8 @@ class DraftLifecycleService:
 
     async def start(self, session: AsyncSession, draft_session: DraftSession, *, force: bool = False) -> DraftSession:
         draft_state.validate_transition(DraftStatus(draft_session.status), DraftStatus.LIVE)
+        # Not bypassed by ``force``: no draft forms another formation's teams.
+        await self.assert_draft_formation(session, draft_session.tournament_id)
         # The phase gate keeps organizers from going live before the tournament
         # reaches its draft phase. A superuser may bypass it (``force``) to run a
         # draft out of band — a test run, or a rescue after the schedule drifted.

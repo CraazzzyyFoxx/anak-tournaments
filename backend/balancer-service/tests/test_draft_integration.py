@@ -146,6 +146,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 name=f"T {self._suffix}",
                 slug=f"t-{self._suffix}",
                 status=DraftStatus.SETUP.value,
+                team_formation="draft",
             )
             # Tournament.status is TournamentStatus; reuse "draft" value via enum string.
             tourn.status = "draft"
@@ -406,7 +407,9 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             )
 
         async with self.Session() as s:
-            # The fixture tournament keeps the column default: balancer-formed.
+            await s.execute(
+                sa.update(Tournament).values(team_formation="balancer").where(Tournament.id == self.tournament_id)
+            )
             with self.assertRaises(ApiHTTPException) as ctx:
                 await _create(s)
             self.assertEqual(ctx.exception.status_code, 409)
@@ -418,6 +421,27 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             draft = await _create(s)
             await s.commit()
             self.assertEqual(draft.status, DraftStatus.SETUP.value)
+
+    async def test_a_session_older_than_the_formation_rule_cannot_seed_or_start(self) -> None:
+        async with self.Session() as s:
+            # Seeded while the tournament ran a draft; it forms its teams by the
+            # balancer now -- as a session created before the create guard can.
+            draft = await self._new_session(s)
+            await s.execute(
+                sa.update(Tournament).values(team_formation="balancer").where(Tournament.id == self.tournament_id)
+            )
+            await s.commit()
+
+            with self.assertRaises(ApiHTTPException) as ctx:
+                await lifecycle.lifecycle_service.seed(s, draft, seats=[])
+            self.assertEqual(ctx.exception.status_code, 409)
+            self.assertEqual(ctx.exception.detail[0]["code"], "tournament_not_draft_formation")
+            for force in (False, True):
+                with self.assertRaises(ApiHTTPException) as ctx:
+                    await lifecycle.lifecycle_service.start(s, draft, force=force)
+                self.assertEqual(ctx.exception.status_code, 409)
+                self.assertEqual(ctx.exception.detail[0]["code"], "tournament_not_draft_formation")
+            self.assertEqual(draft.status, DraftStatus.READY.value)
 
     async def test_session_settings_lock_once_the_draft_starts(self) -> None:
         patch = schemas.DraftSessionPatchRequest(pick_time_seconds=90)
