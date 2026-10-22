@@ -56,7 +56,7 @@ var AdminMiscRoutes = []edge.RouteSpec{
 	// A technical loss IS a result write (same `match.result` gate, same bracket
 	// and source-correction guards as /result), so it answers the result shape.
 	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/technical-loss", Queue: "rpc.tournament.admin_encounter_technical_loss", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
-	// Captain readiness, forced by an organizer: `{side, ready}`. Worker enforces
+	// Captain readiness, forced by an organizer: `{encounter_team_id, ready}`. Worker enforces
 	// the same "match"/"result" gate; `ready: false` is a 409 once a pick-ban
 	// session exists (readiness gates session creation only — reset instead).
 	{Method: "POST", Pattern: "/api/v1/admin/encounters/{encounter_id}/readiness", Queue: "rpc.tournament.admin_encounter_readiness_set", IDParam: "encounter_id", Body: true, Auth: edge.AuthRequired},
