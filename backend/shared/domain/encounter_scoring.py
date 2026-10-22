@@ -64,9 +64,10 @@ FFA_MAX_COLUMNS = 10
 #: The biggest value a game may record: past it the number is a typo.
 FFA_STAT_MAX = 1_000_000_000.0
 #: What a stage that configured nothing scores: one column of raw score, paid
-#: one for one.
+#: one for one. The label is stored data the UI shows verbatim, so it is the
+#: stage editor's own "Score only" preset label, not a locale's word.
 DEFAULT_COLUMN_KEY = "score"
-DEFAULT_COLUMN_LABEL = "Счёт"
+DEFAULT_COLUMN_LABEL = "Score"
 DEFAULT_FORMULA = DEFAULT_COLUMN_KEY
 #: Float noise must not become a false inequality in a tiebreak.
 GAME_POINTS_DIGITS = 4

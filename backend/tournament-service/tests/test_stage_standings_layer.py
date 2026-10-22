@@ -244,6 +244,13 @@ class StageScoringCrudTests(StageLayerCase):
         # An explicit preset wins over the type's default.
         self.assertEqual("points", rule_values(enums.StageType.SWISS, {"preset": "points"})["preset"])
 
+    async def test_an_unconfigured_lobby_stage_labels_its_column_like_the_editors_default(self) -> None:
+        # The label is shown verbatim in every locale: it matches the editor's "Score only" preset.
+        self.assertEqual(
+            [{"key": "score", "label": "Score", "public": True, "better": "higher"}],
+            rule_values(enums.StageType.FFA_LEAGUE, {})["columns"],
+        )
+
 
 class GenerationTests(StageLayerCase):
     """Generation writes the five things the encounter layer needs."""

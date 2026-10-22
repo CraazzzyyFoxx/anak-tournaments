@@ -21,7 +21,7 @@ from typing import Any
 WINS_END_FORMULA = "games >= best_of or max_wins * 2 > best_of"
 POINTS_END_FORMULA = "games >= best_of"
 
-_DEFAULT_COLUMNS = [{"key": "score", "label": "Счёт", "public": True, "better": "higher"}]
+_DEFAULT_COLUMNS = [{"key": "score", "label": "Score", "public": True, "better": "higher"}]
 
 
 def scoring_rule(
