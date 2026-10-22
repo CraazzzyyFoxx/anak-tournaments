@@ -141,7 +141,6 @@ export interface BalanceJobCreateResponse {
   status: BalanceJobStatus;
   status_url: string;
   result_url: string;
-  stream_url: string;
 }
 
 export interface BalanceJobStatusResponse {

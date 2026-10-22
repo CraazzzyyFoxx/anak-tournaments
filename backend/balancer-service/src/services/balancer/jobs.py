@@ -108,10 +108,10 @@ def _api_key_id_of(user) -> int | None:
 
 
 def _build_job_urls(job_id: str) -> dict[str, str]:
+    """Only routes the gateway serves for this job, under its canonical prefix."""
     return {
-        "status_url": f"/api/balancer/jobs/{job_id}",
-        "result_url": f"/api/balancer/jobs/{job_id}/result",
-        "stream_url": f"/api/balancer/jobs/{job_id}/stream",
+        "status_url": f"/api/v1/balancer/jobs/{job_id}",
+        "result_url": f"/api/v1/balancer/jobs/{job_id}/result",
     }
 
 

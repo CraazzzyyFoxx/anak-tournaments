@@ -150,6 +150,16 @@ class CreateJobTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(response.job_id, "job-123")
         self.assertEqual(response.status, "queued")
+        # Only routes the gateway serves, under its canonical prefix.
+        self.assertEqual(
+            response.model_dump(),
+            {
+                "job_id": "job-123",
+                "status": "queued",
+                "status_url": "/api/v1/balancer/jobs/job-123",
+                "result_url": "/api/v1/balancer/jobs/job-123/result",
+            },
+        )
         self.assertEqual(created["workspace_id"], 77)
         self.assertEqual(created["created_by"], 9)
         self.assertEqual(created["published_job_id"], "job-123")

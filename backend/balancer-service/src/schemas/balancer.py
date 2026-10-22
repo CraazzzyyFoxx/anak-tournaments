@@ -160,7 +160,6 @@ class CreateJobResponse(BaseModel):
     status: JobStatus
     status_url: str
     result_url: str
-    stream_url: str
 
 
 class JobStatusResponse(BaseModel):
