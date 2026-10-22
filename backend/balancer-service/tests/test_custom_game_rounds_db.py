@@ -20,6 +20,7 @@ from shared.core.errors import BaseAPIException as HTTPException  # noqa: E402
 from shared.disciplines import DISCIPLINES  # noqa: E402
 from shared.domain.custom_game_round import winner_slot  # noqa: E402
 from shared.repository import CatalogRoleRepository, CustomGamePlayerRepository, CustomGameRoundRepository  # noqa: E402
+from shared.services.discord_messages import mix_subject  # noqa: E402
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
 from src.domain.balancer.result_serializer import lobby_document  # noqa: E402
 from src.services.custom_game import CustomGameService  # noqa: E402
@@ -548,6 +549,47 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
         ):
             [(count,)] = await self._rows(f"SELECT count(*) FROM {table} WHERE {column} = ANY(:ids)", ids=list(started))
             self.assertEqual(0, count, table)
+
+    async def test_hard_delete_waits_for_the_mix_lock_before_it_touches_the_mix_posts(self) -> None:
+        async with self.Session() as s:
+            post = models.DiscordMessage(
+                channel="discord_channel",
+                target="1",
+                subject=mix_subject(self.cg.id),
+                slot="signup",
+                kind="mix_signup",
+                workspace_id=self.ids["ws"],
+                status="posted",
+            )
+            s.add(post)
+            await s.commit()
+        service = CustomGameService()
+        try:
+            async with self.Session() as host, self.Session() as admin:
+                # A host write holds the mix row, the way every `_writable` write does ...
+                await service.rename(host, **self._host(), name="Night")
+                deleting = asyncio.create_task(
+                    service.hard_delete(admin, workspace_id=self.ids["ws"], custom_game_id=self.cg.id)
+                )
+                await asyncio.sleep(0.2)
+                self.assertFalse(deleting.done())
+                # ... then goes on to the mix's post (mix -> message). The delete must be queued on the mix, not
+                # holding the post: otherwise the two wait on each other and Postgres aborts one as a deadlock.
+                _game, taken_down = await service.delete_discord_post(host, **self._host(), post_id=post.id)
+                await host.commit()
+                left_over = await deleting
+                await admin.commit()
+
+            # The host's delete went out; the hard delete found the post already on its way out.
+            self.assertEqual(([post.id], []), ([command.message_ref for command in taken_down], left_over))
+            self.assertEqual([], await self._rows("SELECT id FROM mix.custom_game WHERE id = :id", id=self.cg.id))
+            self.assertEqual(
+                [("deleting",)], await self._rows("SELECT status FROM discord_message WHERE id = :id", id=post.id)
+            )
+        finally:
+            async with self.Session() as s:
+                await s.execute(sa.delete(models.DiscordMessage).where(models.DiscordMessage.id == post.id))
+                await s.commit()
 
     async def test_a_round_spent_away_drops_out_of_the_rotation_history(self) -> None:
         # Two matches of m0 against m1. m2 waits through both; m3 waits through the first and is away for the second.

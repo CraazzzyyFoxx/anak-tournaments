@@ -3256,8 +3256,14 @@ class CustomGameService:
         business leaving cards in the channel, so they are all marked for
         deletion here. The caller publishes the returned commands after the
         commit that destroys the mix.
+
+        The mix row is locked first (``FOR UPDATE``), like every host write in ``_writable`` -- mix, then its
+        messages -- so a hard delete racing ``delete_discord_post`` waits for it instead of deadlocking. Not through
+        ``_writable`` itself: a completed or cancelled mix is deleted too.
         """
-        game = await self.get(session, workspace_id=workspace_id, custom_game_id=custom_game_id)
+        game = await self.games.get(session, custom_game_id, for_update=True)
+        if game is None or game.workspace_id != workspace_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Custom game not found")
         commands = await discord_messages.delete_commands(
             session, await discord_messages.repository.for_subject(session, mix_subject(custom_game_id))
         )
