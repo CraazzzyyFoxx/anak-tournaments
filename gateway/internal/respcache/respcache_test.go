@@ -718,6 +718,119 @@ func TestTTLOnlyCachedButEventImmune(t *testing.T) {
 	}
 }
 
+// gatedUpstream is upstream whose FIRST call blocks until release closes: a
+// read that went upstream before a write committed and is still in flight.
+func gatedUpstream(calls *atomic.Int64, release <-chan struct{}) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		n := calls.Add(1)
+		if n == 1 {
+			<-release
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprintf(w, `{"n":%d}`, n)
+	})
+}
+
+func waitForCalls(t *testing.T, calls *atomic.Int64, want int64) {
+	t.Helper()
+	deadline := time.After(2 * time.Second)
+	for calls.Load() < want {
+		select {
+		case <-deadline:
+			t.Fatalf("upstream calls = %d, want %d", calls.Load(), want)
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+}
+
+// A read that went upstream before a write committed returns its pre-write
+// body AFTER the write's invalidation ran — and found nothing to evict, the
+// entry not existing yet. Storing that body served the pre-export teams list
+// as a HIT for a whole TTL.
+func TestFlightStartedBeforeInvalidationIsNotStored(t *testing.T) {
+	var calls atomic.Int64
+	release := make(chan struct{})
+	c := testCache(t)
+	h := c.Wrap(gatedUpstream(&calls, release), Rule{Extract: FromQuery("tournament_id")})
+	const target = "/api/v1/teams?tournament_id=72"
+
+	done := make(chan struct{})
+	go func() { defer close(done); doGet(h, target, "") }()
+	waitForCalls(t, &calls, 1)
+	c.Broadcast("tournament:72:invalidation", invalidationFrame("tournament.teams"))
+	close(release)
+	<-done
+
+	if rec := doGet(h, target, ""); rec.Header().Get("X-Cache") == "HIT" {
+		t.Fatalf("pre-invalidation body %s was stored and served as a HIT", rec.Body.String())
+	}
+}
+
+// A request arriving after the invalidation must not be handed the in-flight
+// pre-write body by joining that flight, and the late pre-write body must not
+// overwrite the fresh entry its own flight stored.
+func TestRequestAfterInvalidationDoesNotJoinEarlierFlight(t *testing.T) {
+	var calls atomic.Int64
+	release := make(chan struct{})
+	releaseOnce := sync.OnceFunc(func() { close(release) })
+	defer releaseOnce()
+	c := testCache(t)
+	h := c.Wrap(gatedUpstream(&calls, release), Rule{Extract: FromQuery("tournament_id")})
+	const target = "/api/v1/teams?tournament_id=72"
+
+	early := make(chan struct{})
+	go func() { defer close(early); doGet(h, target, "") }()
+	waitForCalls(t, &calls, 1)
+	c.Broadcast("tournament:72:invalidation", invalidationFrame("tournament.teams"))
+
+	late := make(chan *httptest.ResponseRecorder, 1)
+	go func() { late <- doGet(h, target, "") }()
+	select {
+	case rec := <-late:
+		if rec.Body.String() != `{"n":2}` {
+			t.Fatalf("late request got %s, want a fresh upstream read", rec.Body.String())
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("request after the invalidation joined the flight that went upstream before it")
+	}
+	releaseOnce()
+	<-early
+
+	if rec := doGet(h, target, ""); rec.Header().Get("X-Cache") != "HIT" || rec.Body.String() != `{"n":2}` {
+		t.Fatalf("got %s (X-Cache %q), want the post-invalidation entry", rec.Body.String(), rec.Header().Get("X-Cache"))
+	}
+}
+
+// The invalidation lands here right after the writer's commit, but a service
+// caching the same read without owning the write drops its copy only when the
+// outbox relay delivers (tournament-service's teams list after a balancer
+// export). A fill in that gap may carry the upstream's pre-write copy, so it
+// lives only until upstreamSettle passes; a fill after the window gets the
+// full TTL.
+func TestFillRightAfterInvalidationLivesOnlyTheSettleWindow(t *testing.T) {
+	var calls atomic.Int64
+	c := testCache(t)
+	fake := time.Now()
+	c.now = func() time.Time { return fake }
+	h := c.Wrap(upstream(&calls), Rule{Extract: FromQuery("tournament_id")})
+	const target = "/api/v1/teams?tournament_id=72"
+
+	c.Broadcast("tournament:72:invalidation", invalidationFrame("tournament.teams"))
+	fake = fake.Add(time.Second)
+	doGet(h, target, "")
+	if rec := doGet(h, target, ""); rec.Header().Get("X-Cache") != "HIT" {
+		t.Fatal("a fill inside the settle window must still absorb the herd")
+	}
+	fake = fake.Add(upstreamSettle)
+	if rec := doGet(h, target, ""); rec.Header().Get("X-Cache") == "HIT" {
+		t.Fatal("a fill inside the settle window outlived it")
+	}
+	fake = fake.Add(time.Minute - time.Second)
+	if rec := doGet(h, target, ""); rec.Header().Get("X-Cache") != "HIT" {
+		t.Fatal("a fill after the settle window must live its full TTL")
+	}
+}
+
 // The LRU bound: a flood of distinct anonymous URLs must never grow the map
 // past max, and must evict oldest-used first.
 func TestLRUBound(t *testing.T) {
