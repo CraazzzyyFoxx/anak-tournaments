@@ -14,6 +14,16 @@ export function lobbyLetter(lobbyIndex: number) {
   return String.fromCharCode(65 + lobbyIndex);
 }
 
+/** A lobby's 0-based index from its room's route letter (`A`..`F`, either case); `null` for anything else. */
+export function lobbyIndexFromLetter(letter: string | undefined): number | null {
+  if (letter == null || !/^[A-Fa-f]$/.test(letter)) return null;
+  return letter.toUpperCase().charCodeAt(0) - 65;
+}
+
+/** The "Away" chip: on a seat, a lineup row and the player's own panel. */
+export const AWAY_CHIP_CLASS =
+  "shrink-0 rounded-[4px] border border-[color:color-mix(in_srgb,var(--aqt-amber)_35%,transparent)] px-1.5 py-0.5 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-amber)]";
+
 /**
  * The recurring chrome of the mix surface, named once.
  *

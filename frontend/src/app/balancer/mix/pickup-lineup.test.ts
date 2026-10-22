@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { slotCodeOrder } from "@/lib/roster/ontology";
-import type { CustomGamePlayer, RotationRecommendation } from "@/services/custom-game.service";
+import type { CustomGame, CustomGamePlayer, RotationRecommendation } from "@/services/custom-game.service";
 import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import { TEST_LADDER_TIERS } from "@/test/native-ladder";
 
@@ -10,6 +10,8 @@ import {
   buildMixOwner,
   computeRotationHintPatches,
   getLineupIssue,
+  lobbyCandidateCount,
+  myLobbyTeam,
   parseVariants as parseVariantsOrdered,
   participationEntries,
   playerLabel,
@@ -20,6 +22,7 @@ import {
   summarizeRoleSupply,
   teamNamesByIndex,
   toggleRole,
+  waitingQueuePosition,
 } from "./pickup-lineup";
 import { DEADLOCK_OWNER, LOL_OWNER, LOL_SHAPE, OW_OWNER, OW_SHAPE, flexOnlyOwner } from "./mix-owner.fixture";
 
@@ -40,6 +43,7 @@ function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
     participation: "pool",
     role_selection_mode: "all_ranked",
     is_flex: false,
+    away: false,
     roles: null,
     ranks: { tank: 2400, damage: 2600, support: 2500 },
     rank_sources: { tank: "workspace", damage: "workspace", support: "workspace" },
@@ -120,6 +124,18 @@ describe("computeRotationHintPatches", () => {
   it("skips a member with no hint at all", () => {
     const patches = computeRotationHintPatches([row({ workspace_member_id: 9, participation: "benched" })], []);
     expect(patches).toEqual([]);
+  });
+
+  it("never moves an away member, whatever a cached verdict says", () => {
+    const rows = [
+      row({ workspace_member_id: 1, participation: "benched", away: true }),
+      row({ workspace_member_id: 2, participation: "pool", away: true }),
+    ];
+    const recommendations = [
+      hint({ workspace_member_id: 1, status: "must_play" }),
+      hint({ workspace_member_id: 2, status: "should_rest" }),
+    ];
+    expect(computeRotationHintPatches(rows, recommendations)).toEqual([]);
   });
 
   it("applies only the rows that actually need to change, across a mixed pool", () => {
@@ -662,5 +678,118 @@ describe("parseVariants for a League mix", () => {
     const [plain] = variant.teams[1].seats;
     expect(capitalised).toMatchObject({ role: "top", rating: 2150, openRating: 2050, subRole: "roamer", offRole: false });
     expect(plain).toMatchObject({ role: "top", rating: 1900, openRating: 1800, subRole: "split", offRole: false });
+  });
+});
+
+describe("lineup captains", () => {
+  it("crowns the seat the lineup names per team, and nobody on a team without one", () => {
+    const [variant] = parseVariants({
+      players: { "7": { name: "karin" }, "8": { name: "Tolgrn" }, "9": { name: "Egor" } },
+      variants: [
+        {
+          teams: [
+            { captain_member_id: 8, roster: { Tank: ["7"], Damage: ["8"] } },
+            { roster: { Support: ["9"] } },
+          ],
+        },
+      ],
+    });
+    expect(variant.teams.map((team) => team.captainUuid)).toEqual(["8", null]);
+    expect(variant.teams[0].seats.map((seat) => [seat.name, seat.isCaptain])).toEqual([
+      ["karin", false],
+      ["Tolgrn", true],
+    ]);
+    expect(variant.teams[1].seats[0].isCaptain).toBe(false);
+  });
+});
+
+describe("lobbyCandidateCount", () => {
+  it("counts who a lobby can seat: in the lineup, present, not on another lobby's floor or pin", () => {
+    const rows = [
+      row({ workspace_member_id: 1 }),
+      row({ workspace_member_id: 2, current_lobby: 1 }),
+      row({ workspace_member_id: 3, current_lobby: 0 }),
+      row({ workspace_member_id: 4, lobby_pin: 0 }),
+      row({ workspace_member_id: 5, away: true }),
+      row({ workspace_member_id: 6, participation: "benched" }),
+    ];
+    expect(lobbyCandidateCount(rows, 1)).toBe(2);
+  });
+});
+
+describe("waitingQueuePosition", () => {
+  it("lines the waiting players up by how long each has sat out, then by games played", () => {
+    const rows = [
+      row({ id: 1, workspace_member_id: 7, sort_order: 0 }),
+      row({ id: 2, workspace_member_id: 8, sort_order: 1 }),
+      row({ id: 3, workspace_member_id: 9, sort_order: 2, current_lobby: 0 }),
+      row({ id: 4, workspace_member_id: 10, sort_order: 3 }),
+    ];
+    const rotation = [
+      hint({ workspace_member_id: 8, consecutive_sat: 2 }),
+      hint({ workspace_member_id: 10, consecutive_sat: 2, games_played: 1 }),
+      hint({ workspace_member_id: 7, games_played: 3 }),
+    ];
+    expect([7, 8, 9, 10].map((id) => waitingQueuePosition(rows, rotation, id))).toEqual([3, 1, null, 2]);
+  });
+
+  it("puts the host's must-play pin first, even with no sit-out behind it", () => {
+    const rows = [
+      row({ id: 1, workspace_member_id: 7, sort_order: 0 }),
+      row({ id: 2, workspace_member_id: 8, sort_order: 1, participation: "must_play" }),
+    ];
+    const rotation = [
+      hint({ workspace_member_id: 7, consecutive_sat: 1, games_played: 1 }),
+      hint({ workspace_member_id: 8, consecutive_played: 2, games_played: 4 }),
+    ];
+    expect([7, 8].map((id) => waitingQueuePosition(rows, rotation, id))).toEqual([2, 1]);
+  });
+
+  it("breaks an equal sit-out by the shorter playing streak before total games", () => {
+    const rows = [
+      row({ id: 1, workspace_member_id: 7, sort_order: 0 }),
+      row({ id: 2, workspace_member_id: 8, sort_order: 1 }),
+    ];
+    const rotation = [
+      hint({ workspace_member_id: 7, consecutive_played: 3, games_played: 3 }),
+      hint({ workspace_member_id: 8, consecutive_played: 1, games_played: 5 }),
+    ];
+    expect([7, 8].map((id) => waitingQueuePosition(rows, rotation, id))).toEqual([2, 1]);
+  });
+});
+
+describe("myLobbyTeam", () => {
+  it("finds the player's own team in the lobby whose shown option seats them", () => {
+    const game = {
+      settings: { points_per_win: 0, team_names: { "2": "Owls" }, workspace_discord_channel_id: null },
+      lobbies: [
+        {
+          lobby_index: 0,
+          selected_variant_index: 0,
+          next_map_id: null,
+          balance_result: { players: { "7": { name: "karin" } }, variants: [{ teams: [{ roster: { Tank: ["7"] } }] }] },
+        },
+        {
+          lobby_index: 1,
+          selected_variant_index: 1,
+          next_map_id: 42,
+          balance_result: {
+            players: { "8": { name: "Tolgrn" }, "9": { name: "Egor" } },
+            variants: [{ teams: [] }, { teams: [{ captain_member_id: 9, roster: { Tank: ["9"], Damage: ["8"] } }] }],
+          },
+        },
+      ],
+    } as unknown as CustomGame;
+
+    expect(myLobbyTeam(game, 8, OW_ORDER)).toEqual({
+      lobbyIndex: 1,
+      teamName: "Owls",
+      nextMapId: 42,
+      members: [
+        { uuid: "9", name: "Egor", isCaptain: true, isMe: false },
+        { uuid: "8", name: "Tolgrn", isCaptain: false, isMe: true },
+      ],
+    });
+    expect(myLobbyTeam(game, 99, OW_ORDER)).toBeNull();
   });
 });

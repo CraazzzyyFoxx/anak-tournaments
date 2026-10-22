@@ -77,10 +77,11 @@ export type PickupMySeatInput = { roles: RoleRef[] | null; is_flex: boolean };
 export function usePickupMix(
   workspaceId: number,
   pickedGameId: number | null,
-  options: { seatEnabled?: boolean; voiceEnabled?: boolean; initialGame?: CustomGame } = {},
+  options: { seatEnabled?: boolean; voiceEnabled?: boolean; initialGame?: CustomGame; initialLobby?: number } = {},
 ) {
   const queryClient = useQueryClient();
   const tVoiceError = useTranslations("mixes.voice.errors");
+  const tRoom = useTranslations("mixes.room");
 
   // Every open mix of the workspace, whatever its game: the voice panel names the channels this workspace's OTHER
   // open mixes already took, and voice channels are shared across games. The same page the directory's "now" block
@@ -108,8 +109,8 @@ export function usePickupMix(
   });
 
   // The lobby on screen. Page state, not server state: two co-hosts may well be
-  // watching different lobbies of the same mix.
-  const [activeLobby, setActiveLobby] = useState(0);
+  // watching different lobbies of the same mix. A room opens on its own lobby.
+  const [activeLobby, setActiveLobby] = useState(options.initialLobby ?? 0);
   const lobbyCount = gameQuery.data?.lobby_count ?? 1;
   // Dropping lobbies while a later one is open would leave the page pointing at
   // a lobby the mix no longer has. Reset during render, React's own pattern for
@@ -315,17 +316,39 @@ export function usePickupMix(
 
   const recordOutcome = useMutation({
     mutationFn: (input: PickupRecordOutcomeInput) =>
-      customGameService.recordOutcome(
-        workspaceId,
-        selectedGameId as number,
-        input.lobbyIndex,
-        input.outcome,
-        input.variantIndex,
-      ),
+      customGameService.recordOutcome(workspaceId, selectedGameId as number, input.lobbyIndex, input.outcome),
     onSuccess: (game) => {
       applyGame(game);
       notify.success("Result recorded");
     },
+    onError: (error) => notify.apiError(error),
+  });
+
+  /** Opens the lobby's match on the lineup it shows; the server splits the team voices when it has them. */
+  const startMatch = useMutation({
+    mutationFn: (lobbyIndex: number) => customGameService.startMatch(workspaceId, selectedGameId as number, lobbyIndex),
+    onSuccess: (game) => {
+      applyGame(game);
+      notify.success(tRoom("started"));
+    },
+    onError: (error) => notify.apiError(error),
+  });
+
+  /** Throws the lobby's live match away; the lineup is ready to start again. */
+  const cancelMatch = useMutation({
+    mutationFn: (lobbyIndex: number) => customGameService.cancelMatch(workspaceId, selectedGameId as number, lobbyIndex),
+    onSuccess: (game) => {
+      applyGame(game);
+      notify.success(tRoom("cancelled"));
+    },
+    onError: (error) => notify.apiError(error),
+  });
+
+  /** "Make captain" on a seat of the lobby's shown option. */
+  const setCaptain = useMutation({
+    mutationFn: ({ lobbyIndex, workspaceMemberId }: { lobbyIndex: number; workspaceMemberId: number }) =>
+      customGameService.setCaptain(workspaceId, selectedGameId as number, lobbyIndex, workspaceMemberId),
+    onSuccess: applyGame,
     onError: (error) => notify.apiError(error),
   });
 
@@ -487,6 +510,13 @@ export function usePickupMix(
     onError: (error) => notify.apiError(error),
   });
 
+  /** The caller's own away switch: answers with their seat, and moves the board every viewer reads. */
+  const setMyAway = useMutation({
+    mutationFn: (away: boolean) => customGameService.setMyAway(workspaceId, selectedGameId as number, away),
+    onSuccess: applySeat,
+    onError: (error) => notify.apiError(error),
+  });
+
   /** The host's switches. Returns the game, so the board is seeded like any other host write. */
   const setSelfService = useMutation({
     mutationFn: (patch: { self_signup?: MixSelfSignup; self_role_edit?: boolean }) =>
@@ -578,6 +608,9 @@ export function usePickupMix(
     applyRotationHints,
     balance,
     recordOutcome,
+    startMatch,
+    cancelMatch,
+    setCaptain,
     undoMatch,
     setNextMap,
     setVariantIndex,
@@ -595,6 +628,7 @@ export function usePickupMix(
     joinMix,
     leaveMix,
     updateMySeat,
+    setMyAway,
     setSelfService,
     postSignup,
     deleteDiscordPost,

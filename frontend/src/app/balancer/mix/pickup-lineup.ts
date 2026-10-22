@@ -5,6 +5,7 @@ import { roleOf, toRoleRef, type RoleRef } from "@/lib/roster/role-ref";
 import { OPEN_SLOT_CODE, solverSlotCode, type RosterShape } from "@/lib/roster/shape";
 import {
   RANK_SOURCE_LABELS,
+  type CustomGame,
   type CustomGameOutcome,
   type CustomGameParticipationEntry,
   type CustomGamePlayer,
@@ -15,10 +16,9 @@ import {
   type RotationRecommendation,
 } from "@/services/custom-game.service";
 
-/** What recording a match needs: the click, which balance option it was played from, and whose lobby it was. */
+/** What recording a match needs: the click, and whose lobby's live match it was. */
 export type PickupRecordOutcomeInput = {
   outcome: CustomGameOutcome;
-  variantIndex: number;
   lobbyIndex: number;
 };
 
@@ -288,7 +288,8 @@ const PARTICIPATION_BY_HINT: Record<"must_play" | "should_rest", MixParticipatio
  * (`mix_rotation.recommend_rotation`): whoever is owed a seat is pinned, and
  * whoever should rest is benched -- each exactly like the host's own drag into
  * that column. A row already in its hinted column, or with no actionable hint,
- * is left alone, so applying is idempotent.
+ * is left alone, so applying is idempotent. An away row is never moved: a
+ * cached verdict must not bench or seat someone who stepped away.
  */
 export function computeRotationHintPatches(
   rows: readonly CustomGamePlayer[],
@@ -299,7 +300,7 @@ export function computeRotationHintPatches(
   for (const row of rows) {
     const status = hintByMember.get(row.workspace_member_id)?.status;
     const wanted = status == null || status === "neutral" ? null : PARTICIPATION_BY_HINT[status];
-    if (wanted == null || wanted === row.participation) {
+    if (row.away || wanted == null || wanted === row.participation) {
       continue;
     }
     patches.push({ workspaceMemberId: row.workspace_member_id, patch: { participation: wanted } });
@@ -334,6 +335,7 @@ export type PickupSeat = {
   /** The solver put them off their first choice. */
   offRole: boolean;
   isFlex: boolean;
+  /** Wears the team's crown: the lineup's `captain_member_id` (spec §7.2), not the solver's own flag. */
   isCaptain: boolean;
   subRole: string | null;
 };
@@ -343,6 +345,8 @@ export type PickupTeam = {
   /** The host's override, or the computed `Team N` default. */
   name: string;
   averageRank: number | null;
+  /** The seat uuid of the team's captain; `null` while the team has none. */
+  captainUuid: string | null;
   seats: PickupSeat[];
 };
 
@@ -433,6 +437,7 @@ function parseSeats(
   roster: Record<string, unknown>,
   players: Record<string, unknown>,
   roleOrder: readonly string[],
+  captainUuid: string | null,
 ): PickupSeat[] {
   const seats: PickupSeat[] = [];
   for (const [name, group] of Object.entries(roster)) {
@@ -463,7 +468,7 @@ function parseSeats(
         // A flex player is never off-role: any seat is their first choice -- and an open seat names no role.
         offRole: !isFlex && role !== OPEN_SLOT_CODE && first != null && first !== role,
         isFlex,
-        isCaptain: player.is_captain === true,
+        isCaptain: uuid === captainUuid,
         subRole: typeof subRole === "string" ? subRole : null,
       });
     }
@@ -512,7 +517,16 @@ export function parseVariants(
           if (team == null || roster == null) {
             return [];
           }
-          return [{ id: asNumber(team.id), averageRank: asNumber(team.average_mmr), seats: parseSeats(roster, players, roleOrder) }];
+          const captain = asNumber(team.captain_member_id);
+          const captainUuid = captain == null ? null : String(captain);
+          return [
+            {
+              id: asNumber(team.id),
+              averageRank: asNumber(team.average_mmr),
+              captainUuid,
+              seats: parseSeats(roster, players, roleOrder, captainUuid),
+            },
+          ];
         })
         // Named by final render position, not the raw payload index: a
         // malformed entry dropped above must not shift every name after it.
@@ -545,4 +559,85 @@ export function parseVariants(
     });
   }
   return out;
+}
+
+/**
+ * How many players one lobby's next balance can seat: in the lineup (not benched), present (not away), not on another
+ * lobby's floor and not pinned to another lobby -- the server's `_lobby_candidates`, read off the board.
+ */
+export function lobbyCandidateCount(rows: readonly CustomGamePlayer[], lobbyIndex: number): number {
+  return rows.filter(
+    (row) =>
+      row.participation !== "benched" &&
+      !row.away &&
+      (row.current_lobby == null || row.current_lobby === lobbyIndex) &&
+      (row.lobby_pin == null || row.lobby_pin === lobbyIndex),
+  ).length;
+}
+
+/**
+ * A waiting player's place in line, 1-based, or `null` when no seat is being waited for: the present lineup players
+ * no lobby seats, ordered the way rotation owes seats (`mix_rotation.recommend_rotation`) -- the host's must-play pin
+ * first, then the longest sit-out, the shortest playing streak, the fewest games and the host's own order.
+ */
+export function waitingQueuePosition(
+  rows: readonly CustomGamePlayer[],
+  rotation: readonly RotationRecommendation[],
+  memberId: number,
+): number | null {
+  const hints = new Map(rotation.map((rec) => [rec.workspace_member_id, rec]));
+  const waiting = rows
+    .filter((row) => row.participation !== "benched" && !row.away && row.current_lobby == null)
+    .sort((a, b) => {
+      const first = hints.get(a.workspace_member_id);
+      const second = hints.get(b.workspace_member_id);
+      return (
+        Number(b.participation === "must_play") - Number(a.participation === "must_play") ||
+        (second?.consecutive_sat ?? 0) - (first?.consecutive_sat ?? 0) ||
+        (first?.consecutive_played ?? 0) - (second?.consecutive_played ?? 0) ||
+        (first?.games_played ?? 0) - (second?.games_played ?? 0) ||
+        a.sort_order - b.sort_order ||
+        a.id - b.id
+      );
+    });
+  const index = waiting.findIndex((row) => row.workspace_member_id === memberId);
+  return index < 0 ? null : index + 1;
+}
+
+/** A player's own team as the phone view shows it (spec §7.5, G1). */
+export type MySeatTeam = {
+  lobbyIndex: number;
+  teamName: string;
+  nextMapId: number | null;
+  members: { uuid: string; name: string; isCaptain: boolean; isMe: boolean }[];
+};
+
+/** The team the lobby's shown option seats this member in, or `null` while no lobby seats them. */
+export function myLobbyTeam(
+  game: CustomGame | undefined,
+  memberId: number | null,
+  roleOrder: readonly string[],
+): MySeatTeam | null {
+  if (game == null || memberId == null) return null;
+  const me = String(memberId);
+  for (const lobby of game.lobbies) {
+    const variant = parseVariants(lobby.balance_result, teamNamesByIndex(game.settings, lobby.lobby_index), roleOrder)[
+      lobby.selected_variant_index
+    ];
+    const team = variant?.teams.find((candidate) => candidate.seats.some((seat) => seat.uuid === me));
+    if (team != null) {
+      return {
+        lobbyIndex: lobby.lobby_index,
+        teamName: team.name,
+        nextMapId: lobby.next_map_id,
+        members: team.seats.map((seat) => ({
+          uuid: seat.uuid,
+          name: seat.name,
+          isCaptain: seat.isCaptain,
+          isMe: seat.uuid === me,
+        })),
+      };
+    }
+  }
+  return null;
 }
