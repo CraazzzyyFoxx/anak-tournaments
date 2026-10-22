@@ -106,6 +106,8 @@ class CustomGame(db.TimeStampIntegerMixin):
     )
     #: The mix's own ``wins`` rule: Bo1, draws allowed. Every round encounter points at it.
     scoring_rule_id: Mapped[int] = mapped_column(BigInteger())
+    #: The hero ban preset Start opens a room on (``pick_ban_rules.mix_ban_preset`` of this game); NULL = no bans.
+    hero_ban_preset: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class CustomGameCoHost(db.Base):

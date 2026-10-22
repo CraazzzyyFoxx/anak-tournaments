@@ -159,6 +159,7 @@ OPERATIONS: dict[str, Op] = {
     "rpc.balancer.custom.self_update": Op(request=custom_game.CustomGameSelfUpdate),
     "rpc.balancer.custom.self_away": Op(request=custom_game.CustomGameSelfAway),
     "rpc.balancer.custom.set_self_service": Op(request=custom_game.CustomGameSelfServicePatch),
+    "rpc.balancer.custom.set_ban_preset": Op(request=custom_game.CustomGameBanPresetPatch),
     "rpc.balancer.custom.set_participation": Op(request=custom_game.CustomGamePlayersParticipationPatch),
     "rpc.balancer.custom.balance": Op(request=custom_game.CustomGameBalanceRequest),
     "rpc.balancer.custom.set_lobby_count": Op(request=custom_game.CustomGameLobbyCountPatch),

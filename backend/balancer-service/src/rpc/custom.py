@@ -5,7 +5,7 @@ balance,set_team_names,set_next_map,set_variant_index,
 post_discord,post_signup,delete_discord_post,discord_view,set_voice_channels,voice_options,voice_move,voice_return,
 transfer_host,add_co_host,remove_co_host,swap_seats,set_captain,start_match,cancel_match,record_outcome,
 match_history,undo_match,rotation,stats,close,delete,hard_delete,
-self_get,self_current,self_join,self_leave,self_update,self_away,set_self_service,hosted_active}``.
+self_get,self_current,self_join,self_leave,self_update,self_away,set_self_service,set_ban_preset,hosted_active}``.
 
 Writes require ``actor`` to be the host, a co-host or a superuser; the per-mix check lives in
 ``CustomGameService._writable``. The reads (``list``, ``get``, ``stats``,
@@ -386,6 +386,8 @@ def _dump_game(
         # board's host controls and by the player's own panel.
         "self_signup": game.self_signup,
         "self_role_edit": game.self_role_edit,
+        # The hero ban preset Start opens a room on; null = no bans (spec §4.3).
+        "hero_ban_preset": game.hero_ban_preset,
         # Where "return everyone" sends them: the mix's own general voice.
         "general_voice_channel_id": snowflake(game.general_voice_channel_id),
         # Every Discord message this mix has out there -- the signup card and
@@ -926,6 +928,31 @@ def register(broker: Any, logger: Any) -> None:
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.set_self_service", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.set_ban_preset")
+    async def _set_ban_preset(data: dict, msg: RabbitMessage) -> dict:
+        """The mix's hero ban preset: an ordinary mix write, membership plus host-or-co-host in ``_writable``."""
+
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(user, workspace_id, "update")
+            body = _body(schemas.CustomGameBanPresetPatch, data)
+            game = await custom_game_service.set_ban_preset(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                hero_ban_preset=body.hero_ban_preset,
+                actor_user_id=user.id,
+                actor_is_superuser=user.is_superuser,
+            )
+            await emit_pickup_mix_changed(
+                session, workspace_id, custom_game_id=game.id, change="member", actor_user_id=user.id
+            )
+            await session.commit()
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.set_ban_preset", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.set_lobby_count")
     async def _set_lobby_count(data: dict, msg: RabbitMessage) -> dict:

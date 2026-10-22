@@ -4350,7 +4350,7 @@
       "summary": "Delete one custom game Discord post"
     },
     "rpc.balancer.custom.get": {
-      "description": "Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace.",
+      "description": "Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace. It carries the mix's hero_ban_preset (null = no bans).",
       "query_params": [
         {
           "name": "workspace_id",
@@ -4541,6 +4541,14 @@
         "ref": "balancer.CustomGameSelfUpdate"
       },
       "summary": "Update my mix seat"
+    },
+    "rpc.balancer.custom.set_ban_preset": {
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Sets the hero ban preset the lobbies' next Start opens a room on -- a hero preset of the mix's own game that bans no player on map 1 (deadlock_hero_bans, lol_side_selection, the Overwatch hero presets) -- or null for no bans, and returns the refreshed mix. A live match keeps the room it started with. 422 unknown_ban_preset for any other code.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameBanPresetPatch"
+      },
+      "summary": "Set custom game ban preset"
     },
     "rpc.balancer.custom.set_captain": {
       "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Makes one seated player the captain of their team in the option the lobby is showing and returns the refreshed mix. A balance captains each team by its strongest seat; a swap that moves a captain re-captains both teams. 404 when that option does not seat the player. 409 match_live while the lobby's match is live.",
@@ -5164,7 +5172,7 @@
       "summary": "Upsert workspace player"
     },
     "rpc.balancer.prefs.get": {
-      "description": "Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, how many balance options to keep, the roster shape its mixes field, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode) -- plus roster_shape, the read-only resolution of that shape. A null value means the setting was never saved and the default applies.",
+      "description": "Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, how many balance options to keep, the roster shape its mixes field, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode) -- plus roster_shape, the read-only resolution of that shape. A null value means the setting was never saved and the default applies. hero_ban_presets maps a game to the hero ban preset a new mix of it starts with.",
       "response": {
         "array": false,
         "ref": "balancer.UserMixPreferencesRead"
@@ -5172,7 +5180,7 @@
       "summary": "Get my pickup mix preferences"
     },
     "rpc.balancer.prefs.upsert": {
-      "description": "Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all six of the caller's mix settings at once and returns the stored result with the re-resolved roster_shape; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an impossible roster shape.",
+      "description": "Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all seven of the caller's mix settings at once and returns the stored result with the re-resolved roster_shape; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an impossible roster shape. 422 when a hero_ban_presets entry is not a hero preset of its own game.",
       "request": {
         "array": false,
         "ref": "balancer.UserMixPreferencesUpsert"
@@ -26472,6 +26480,29 @@
       "title": "CustomGameBalanceRequest",
       "type": "object"
     },
+    "balancer.CustomGameBanPresetPatch": {
+      "additionalProperties": false,
+      "description": "The mix's hero ban preset; ``null`` turns bans off.",
+      "properties": {
+        "hero_ban_preset": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Hero Ban Preset"
+        }
+      },
+      "required": [
+        "hero_ban_preset"
+      ],
+      "title": "CustomGameBanPresetPatch",
+      "type": "object"
+    },
     "balancer.CustomGameCaptainPatch": {
       "additionalProperties": false,
       "description": "Who captains their team in the lobby's shown option.",
@@ -30244,6 +30275,14 @@
     "balancer.UserMixPreferencesRead": {
       "description": "Stored preferences; unset knobs use the engine defaults.",
       "properties": {
+        "hero_ban_presets": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Per game (discipline code): the hero ban preset a new mix of that game starts with. A game left out starts without bans.",
+          "title": "Hero Ban Presets",
+          "type": "object"
+        },
         "max_result_variants": {
           "anyOf": [
             {
@@ -30334,6 +30373,14 @@
       "additionalProperties": false,
       "description": "A full replacement; nullable knobs unset the corresponding override.",
       "properties": {
+        "hero_ban_presets": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Per game (discipline code): the hero ban preset a new mix of that game starts with. A game left out starts without bans.",
+          "title": "Hero Ban Presets",
+          "type": "object"
+        },
         "max_result_variants": {
           "anyOf": [
             {
@@ -30417,7 +30464,8 @@
         "max_result_variants",
         "open_slot_settings",
         "points_per_win",
-        "rating_mode"
+        "rating_mode",
+        "hero_ban_presets"
       ],
       "title": "UserMixPreferencesUpsert",
       "type": "object"

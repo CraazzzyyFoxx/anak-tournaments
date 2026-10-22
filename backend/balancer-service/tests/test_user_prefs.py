@@ -43,6 +43,7 @@ class UserMixPrefsServiceTests(IsolatedAsyncioTestCase):
             open_slot_settings=None,
             points_per_win=None,
             rating_mode="points",
+            hero_ban_presets={},
         )
 
         self.assertEqual(config.config_json, {"mix_comfort_tilt": 0.75})
@@ -59,6 +60,7 @@ class UserMixPrefsServiceTests(IsolatedAsyncioTestCase):
             open_slot_settings=None,
             points_per_win=None,
             rating_mode="points",
+            hero_ban_presets={},
         )
 
         self.assertEqual(config.config_json, {"role_settings": {"tank": {"mix_weight": 2.5}}})
@@ -73,6 +75,7 @@ class UserMixPrefsServiceTests(IsolatedAsyncioTestCase):
             open_slot_settings=None,
             points_per_win=None,
             rating_mode="points",
+            hero_ban_presets={},
         )
 
         self.assertEqual(config.config_json, {})
@@ -88,6 +91,7 @@ class UserMixPrefsServiceTests(IsolatedAsyncioTestCase):
             max_result_variants=None,
             points_per_win=None,
             rating_mode="points",
+            hero_ban_presets={},
         )
         self.assertEqual(config.config_json, {"open_slot_settings": {"mix_weight": 0.5}})
 
@@ -102,9 +106,27 @@ class UserMixPrefsServiceTests(IsolatedAsyncioTestCase):
             open_slot_settings=None,
             points_per_win=0,
             rating_mode="points",
+            hero_ban_presets={},
         )
 
         self.assertIsNone(config.points_per_win)
+
+    async def test_the_per_game_ban_defaults_are_stored_as_given(self) -> None:
+        config = await self.service.upsert(
+            self.session,
+            user_id=9,
+            mix_comfort_tilt=None,
+            role_settings=None,
+            max_result_variants=None,
+            open_slot_settings=None,
+            points_per_win=None,
+            rating_mode="points",
+            hero_ban_presets={"deadlock": "deadlock_hero_bans"},
+        )
+
+        self.assertEqual({"deadlock": "deadlock_hero_bans"}, config.hero_ban_presets)
+        # Not a solver knob: the blob the solver reads stays clean.
+        self.assertEqual({}, config.config_json)
 
 
 class UserMixPreferencesBoundsTests(TestCase):
@@ -118,6 +140,7 @@ class UserMixPreferencesBoundsTests(TestCase):
         "open_slot_settings": None,
         "points_per_win": None,
         "rating_mode": "points",
+        "hero_ban_presets": {},
     }
 
     def _validate(self, **overrides: object) -> UserMixPreferencesUpsert:
@@ -168,3 +191,13 @@ class UserMixPreferencesBoundsTests(TestCase):
     def test_an_unknown_rating_mode_is_rejected(self) -> None:
         with self.assertRaises(ValidationError):
             self._validate(rating_mode="elo")
+
+    def test_a_ban_default_must_be_a_mix_preset_of_its_own_game(self) -> None:
+        self._validate(hero_ban_presets={"deadlock": "deadlock_hero_bans", "overwatch": "hero_anti_one_trick"})
+        for presets in (
+            {"overwatch": "deadlock_hero_bans"},
+            {"overwatch": "map_bracket"},
+            {"not-a-game": "hero_classic"},
+        ):
+            with self.subTest(presets=presets), self.assertRaises(ValidationError):
+                self._validate(hero_ban_presets=presets)

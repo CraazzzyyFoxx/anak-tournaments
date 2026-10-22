@@ -120,6 +120,8 @@ var RosterRoutes = []edge.RouteSpec{
 	// Host-only: whether players may seat themselves at all, and whether a
 	// seated one may re-order their own roles.
 	{Method: "PUT", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/self-service", Queue: "rpc.balancer.custom.set_self_service", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
+	// Host-only: the hero ban preset a Start opens a room on (spec §4.3).
+	{Method: "PUT", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/ban-preset", Queue: "rpc.balancer.custom.set_ban_preset", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},
 	// One click: open signup AND post the card that announces it. A separate
 	// "open" write would let a host post a card whose buttons refuse everybody.
 	{Method: "POST", Pattern: "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/discord/signup", Queue: "rpc.balancer.custom.post_signup", IDParam: "game_id", Path: []string{"workspace_id"}, Body: true, Auth: edge.AuthRequired},

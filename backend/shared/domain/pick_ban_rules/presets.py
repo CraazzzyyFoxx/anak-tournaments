@@ -15,6 +15,8 @@ from typing import Any
 
 from shared.core.enums import FirstBanRotation
 
+from .compile import select_phase
+from .registry import RoundCtx
 from .schema import Ruleset, parse_ruleset
 
 
@@ -88,3 +90,23 @@ def presets_for(discipline: str) -> tuple[Preset, ...]:
     if len(set(ids)) != len(ids):
         raise ValueError(f"discipline {discipline!r} declares a pick-ban preset id more than once: {sorted(ids)}")
     return presets
+
+
+def mix_ban_preset(discipline: str, code: str) -> Preset | None:
+    """The preset ``code`` a pickup mix of ``discipline`` may play, or ``None`` (spec §8.1).
+
+    A mix plays its game's own character presets (kind ``hero``) and every round is map 1 of a Bo1, so only the phase
+    that round selects matters. It must ban no player: a per-player ban targets a tournament roster, and a mix seat has
+    none. A preset whose per-player bans start on a later map is playable. An unknown game or code answers ``None``,
+    never another game's preset.
+    """
+    try:
+        presets = presets_for(discipline)
+    except UnknownDiscipline:
+        return None
+    for preset in presets:
+        if preset.id == code and preset.kind == "hero":
+            phase = select_phase(preset.ruleset, RoundCtx(round=1, best_of=1, kind=preset.kind))
+            targeted = phase is not None and any(step.target is not None for step in phase.steps)
+            return None if targeted else preset
+    return None

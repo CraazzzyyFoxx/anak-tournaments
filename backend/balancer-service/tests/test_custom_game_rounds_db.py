@@ -764,3 +764,25 @@ class CustomGameRoundStoreTests(EncounterWriterCase):
             },
             {rec.member_id: (rec.consecutive_sat, rec.consecutive_played, rec.games_played) for rec in rotation},
         )
+
+    async def test_a_host_sets_and_clears_the_ban_preset_of_the_mixs_own_game(self) -> None:
+        service = CustomGameService()
+
+        async def stored() -> str | None:
+            [(value,)] = await self._rows("SELECT hero_ban_preset FROM mix.custom_game WHERE id = :id", id=self.cg.id)
+            return value
+
+        async with self.Session() as s:
+            await service.set_ban_preset(s, **self._host(), hero_ban_preset="hero_classic")
+            await s.commit()
+        self.assertEqual("hero_classic", await stored())
+
+        async with self.Session() as s:
+            with self.assertRaises(HTTPException) as refused:
+                await service.set_ban_preset(s, **self._host(), hero_ban_preset="deadlock_hero_bans")
+        self.assertEqual((422, "unknown_ban_preset"), (refused.exception.status_code, refused.exception.detail))
+
+        async with self.Session() as s:
+            await service.set_ban_preset(s, **self._host(), hero_ban_preset=None)
+            await s.commit()
+        self.assertIsNone(await stored())

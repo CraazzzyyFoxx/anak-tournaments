@@ -311,6 +311,7 @@ DOCS: dict[str, dict] = {
             "order, the ranks the balancer would use and which layer each came from. "
             "Resolves ownership from the mix id; an optional workspace_id restricts the read "
             "and returns 404 if the mix belongs to another workspace."
+            " It carries the mix's hero_ban_preset (null = no bans)."
         ),
     },
     "rpc.balancer.custom.update_roster": {
@@ -399,6 +400,16 @@ DOCS: dict[str, dict] = {
             "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
             "Sets whether players may seat themselves (closed, into the pool, or onto the bench) and "
             "whether a seated player may re-order their own roles, then returns the refreshed mix."
+        ),
+    },
+    "rpc.balancer.custom.set_ban_preset": {
+        "summary": "Set custom game ban preset",
+        "description": (
+            "Permission: workspace membership plus being the mix's host or co-host (or a superuser). "
+            "Sets the hero ban preset the lobbies' next Start opens a room on -- a hero preset of the mix's own "
+            "game that bans no player on map 1 (deadlock_hero_bans, lol_side_selection, the Overwatch hero "
+            "presets) -- or null for no bans, and returns the refreshed mix. A live match keeps the room it "
+            "started with. 422 unknown_ban_preset for any other code."
         ),
     },
     "rpc.balancer.custom.balance": {
@@ -736,6 +747,7 @@ DOCS: dict[str, dict] = {
             "field, how far a decided match moves its rank book and whether the mix ranker moves it "
             "instead (rating_mode) -- plus roster_shape, the read-only resolution of that shape. A null "
             "value means the setting was never saved and the default applies."
+            " hero_ban_presets maps a game to the hero ban preset a new mix of it starts with."
         ),
     },
     "rpc.balancer.prefs.upsert": {
@@ -743,10 +755,11 @@ DOCS: dict[str, dict] = {
         "description": (
             "Permission: self-service -- any authenticated (active) account writes its own "
             "preferences only. "
-            "Replaces all six of the caller's mix settings at once and returns the stored result "
+            "Replaces all seven of the caller's mix settings at once and returns the stored result "
             "with the re-resolved roster_shape; a null clears one back to the default, and 0 points "
             "per win stores as unset. They apply to every mix this account hosts -- a mix runs on "
             "its host's preferences whoever presses the button. 422 on an impossible roster shape."
+            " 422 when a hero_ban_presets entry is not a hero preset of its own game."
         ),
     },
     "rpc.balancer.draft.chat_history": {

@@ -24,6 +24,7 @@ from shared.division_grid import DivisionGrid, ladder_grid
 from shared.domain.custom_game_round import winner_slot
 from shared.domain.encounter_scoring import WINS_END_FORMULA
 from shared.domain.mix_lobby import LOBBY_LETTERS
+from shared.domain.pick_ban_rules import mix_ban_preset
 from shared.rbac import assign_workspace_system_role
 from shared.repository import (
     CatalogEntityRepository,
@@ -744,6 +745,7 @@ class CustomGameService:
         the clone. The points knob and Discord target belong to the host and workspace.
         The team format is frozen per mix: a clone keeps its source's,
         otherwise the host's preset or the workspace default.
+        The hero ban preset is the source's on a clone, else the host's default for the game.
         """
         _require_host(actor_user_id, host_user_id)
         trimmed = name.strip() if isinstance(name, str) else ""
@@ -792,6 +794,14 @@ class CustomGameService:
                 workspace_id=workspace_id, preset="wins", game_formula="win", end_formula=WINS_END_FORMULA
             ),
         )
+        # A clone keeps its source's bans; a new mix starts from its host's default for this game (spec §4.3). A
+        # stored default the game no longer offers is no default.
+        if source is not None:
+            ban_preset = source.hero_ban_preset
+        else:
+            host_config = await self._host_config(session, host_user_id)
+            default = (host_config.hero_ban_presets or {}).get(effective) if host_config is not None else None
+            ban_preset = default if default is not None and mix_ban_preset(effective, default) is not None else None
         game = models.CustomGame(
             scoring_rule_id=rule.id,
             workspace_id=workspace_id,
@@ -806,6 +816,7 @@ class CustomGameService:
             # How this host runs a session -- one lobby or two -- travels with
             # the clone; the matchups played in them do not.
             lobby_count=source.lobby_count if source is not None else 1,
+            hero_ban_preset=ban_preset,
         )
         await self.games.create(session, game)
         await copy_for_custom_game(
@@ -1490,6 +1501,33 @@ class CustomGameService:
                     detail="self_role_edit must be a boolean",
                 )
             game.self_role_edit = patch["self_role_edit"]
+        await session.flush()
+        return game
+
+    async def set_ban_preset(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+        hero_ban_preset: str | None,
+        actor_user_id: int,
+        actor_is_superuser: bool = False,
+    ) -> models.CustomGame:
+        """The hero ban preset the next Start opens a room on (spec §4.3): a preset of the mix's own game, or ``None``.
+
+        A live match keeps the room it started with; the change applies from the next Start. 422 ``unknown_ban_preset``.
+        """
+        game = await self._writable(
+            session,
+            workspace_id=workspace_id,
+            custom_game_id=custom_game_id,
+            actor_user_id=actor_user_id,
+            actor_is_superuser=actor_is_superuser,
+        )
+        if hero_ban_preset is not None and mix_ban_preset(game.discipline, hero_ban_preset) is None:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="unknown_ban_preset")
+        game.hero_ban_preset = hero_ban_preset
         await session.flush()
         return game
 

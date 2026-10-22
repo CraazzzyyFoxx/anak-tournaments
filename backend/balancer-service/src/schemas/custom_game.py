@@ -14,6 +14,7 @@ from src.domain.mix_self_service import MAX_ROSTER
 
 __all__ = (
     "CustomGameBalanceRequest",
+    "CustomGameBanPresetPatch",
     "CustomGameCaptainPatch",
     "CustomGameCoHostPatch",
     "CustomGameCreate",
@@ -230,6 +231,12 @@ class CustomGameSelfServicePatch(_Request):
 
     self_signup: MixSelfSignup | None = None
     self_role_edit: StrictBool | None = None
+
+
+class CustomGameBanPresetPatch(_Request):
+    """The mix's hero ban preset; ``null`` turns bans off."""
+
+    hero_ban_preset: str | None = Field(max_length=64)
 
 
 class CustomGamePostSignup(_Request):

@@ -9679,7 +9679,7 @@ export interface paths {
         };
         /**
          * Get custom game
-         * @description Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace.
+         * @description Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace. It carries the mix's hero_ban_preset (null = no bans).
          *
          *     RPC subject: `rpc.balancer.custom.get`
          */
@@ -9701,14 +9701,14 @@ export interface paths {
         };
         /**
          * Get my pickup mix preferences
-         * @description Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, how many balance options to keep, the roster shape its mixes field, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode) -- plus roster_shape, the read-only resolution of that shape. A null value means the setting was never saved and the default applies.
+         * @description Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, how many balance options to keep, the roster shape its mixes field, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode) -- plus roster_shape, the read-only resolution of that shape. A null value means the setting was never saved and the default applies. hero_ban_presets maps a game to the hero ban preset a new mix of it starts with.
          *
          *     RPC subject: `rpc.balancer.prefs.get`
          */
         get: operations["get__api_v1_balancer_me_mix_preferences"];
         /**
          * Set my pickup mix preferences
-         * @description Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all six of the caller's mix settings at once and returns the stored result with the re-resolved roster_shape; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an impossible roster shape.
+         * @description Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all seven of the caller's mix settings at once and returns the stored result with the re-resolved roster_shape; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an impossible roster shape. 422 when a hero_ban_presets entry is not a hero preset of its own game.
          *
          *     RPC subject: `rpc.balancer.prefs.upsert`
          */
@@ -9930,6 +9930,28 @@ export interface paths {
          *     RPC subject: `rpc.balancer.custom.balance`
          */
         post: operations["post__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__balance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/balancer/workspaces/{workspace_id}/custom-games/{game_id}/ban-preset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set custom game ban preset
+         * @description Permission: workspace membership plus being the mix's host or co-host (or a superuser). Sets the hero ban preset the lobbies' next Start opens a room on -- a hero preset of the mix's own game that bans no player on map 1 (deadlock_hero_bans, lol_side_selection, the Overwatch hero presets) -- or null for no bans, and returns the refreshed mix. A live match keeps the room it started with. 422 unknown_ban_preset for any other code.
+         *
+         *     RPC subject: `rpc.balancer.custom.set_ban_preset`
+         */
+        put: operations["put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__ban_preset"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -21750,6 +21772,14 @@ export interface components {
             scope: BalancerCustomGameBalanceRequestScope;
         };
         /**
+         * CustomGameBanPresetPatch
+         * @description The mix's hero ban preset; ``null`` turns bans off.
+         */
+        "balancer.CustomGameBanPresetPatch": {
+            /** Hero Ban Preset */
+            hero_ban_preset: string | null;
+        };
+        /**
          * CustomGameCaptainPatch
          * @description Who captains their team in the lobby's shown option.
          */
@@ -22228,6 +22258,13 @@ export interface components {
          */
         "balancer.UserMixPreferencesRead": {
             /**
+             * Hero Ban Presets
+             * @description Per game (discipline code): the hero ban preset a new mix of that game starts with. A game left out starts without bans.
+             */
+            hero_ban_presets?: {
+                [key: string]: string;
+            };
+            /**
              * Max Result Variants
              * @description How many balance options the solver keeps for the host to page through; null leaves the mix default.
              * @default null
@@ -22268,6 +22305,13 @@ export interface components {
          * @description A full replacement; nullable knobs unset the corresponding override.
          */
         "balancer.UserMixPreferencesUpsert": {
+            /**
+             * Hero Ban Presets
+             * @description Per game (discipline code): the hero ban preset a new mix of that game starts with. A game left out starts without bans.
+             */
+            hero_ban_presets: {
+                [key: string]: string;
+            };
             /**
              * Max Result Variants
              * @description How many balance options the solver keeps for the host to page through; null leaves the mix default.
@@ -68616,6 +68660,89 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["balancer.CustomGameBalanceRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not authorized (`forbidden`). Authenticated, but the credential lacks the permission, workspace, or scope. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Validation error (`unprocessable`). JSON parsed but failed schema or business validation. See `fields` / `error.details.fields`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Rate limited (`rate_limited`). Wait `retry_after` seconds (also sent as `Retry-After`). */
+            429: {
+                headers: {
+                    /** @description Seconds to wait before retrying. Mirrors `retry_after` in the body. */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description Internal error (`internal`). Unexpected failure. Do not retry blindly on writes. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    put__api_v1_balancer_workspaces__workspace_id__custom_games__game_id__ban_preset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+                game_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["balancer.CustomGameBanPresetPatch"];
             };
         };
         responses: {

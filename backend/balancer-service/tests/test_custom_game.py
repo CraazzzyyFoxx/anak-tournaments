@@ -151,6 +151,7 @@ def _game(**overrides) -> SimpleNamespace:
         "lobby_count": 1,
         "self_signup": "closed",
         "self_role_edit": False,
+        "hero_ban_preset": None,
         "general_voice_channel_id": None,
         "discipline": "overwatch",
         "scoring_rule_id": 5,
@@ -211,7 +212,7 @@ def _seated(*teams: list[tuple[int, str]]) -> dict[str, object]:
 
 def _prefs(**overrides) -> SimpleNamespace:
     """The host's solver and rating knobs, never the mix's team format."""
-    fields = {"config_json": {}, "points_per_win": None, "rating_mode": "points"}
+    fields = {"config_json": {}, "points_per_win": None, "rating_mode": "points", "hero_ban_presets": {}}
     fields.update(overrides)
     return _row(**fields)
 
@@ -682,6 +683,34 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
 
         self.assertTrue(game.self_role_edit)
         self.assertEqual(game.self_signup, "closed")
+
+    async def test_create_starts_with_the_hosts_ban_default_for_its_game(self) -> None:
+        self.host_prefs.get_by_user.return_value = _prefs(
+            hero_ban_presets={"overwatch": "hero_classic", "deadlock": "deadlock_hero_bans"}
+        )
+
+        game = await self.service.create(
+            self.session, workspace_id=1, discipline="overwatch", host_user_id=9, name="Scrim", actor_user_id=9
+        )
+
+        self.assertEqual("hero_classic", game.hero_ban_preset)
+
+    async def test_create_clone_keeps_its_sources_ban_preset_over_the_host_default(self) -> None:
+        self.games.get.return_value = _game(id=5, hero_ban_preset=None)
+        self.roster.list_for_game.return_value = []
+        self.host_prefs.get_by_user.return_value = _prefs(hero_ban_presets={"overwatch": "hero_classic"})
+
+        game = await self.service.create(
+            self.session,
+            workspace_id=1,
+            discipline="overwatch",
+            host_user_id=9,
+            name="Rematch",
+            actor_user_id=9,
+            clone_from_game_id=5,
+        )
+
+        self.assertIsNone(game.hero_ban_preset)
 
     async def test_create_clone_copies_the_lobby_layout(self) -> None:
         """Two lobbies and who is pinned where are how this host runs the

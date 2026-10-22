@@ -90,6 +90,7 @@ class WithRosterIdentityTests(IsolatedAsyncioTestCase):
                     lobby_count=1,
                     self_signup="closed",
                     self_role_edit=False,
+                    hero_ban_preset=None,
                     general_voice_channel_id=None,
                     created_at=None,
                 )
