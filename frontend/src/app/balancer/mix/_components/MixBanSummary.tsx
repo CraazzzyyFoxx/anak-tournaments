@@ -28,6 +28,8 @@ export function MixBanSummary({
   const { data: state } = useQuery({
     queryKey: encounterQueryKeys.pregameHeroState(encounterId),
     queryFn: () => pickBanService.getPickBanState("hero", encounterId),
+    // That one read is a real one: the key may still hold the unfinished room Pre-game cached, still "fresh".
+    refetchOnMount: "always",
   });
   const slotOf = new Map(seats.map((seat) => [seat.id, seat.slot]));
   // The history's order (`hero_bans`): as the room applied them, each by the team that banned it.

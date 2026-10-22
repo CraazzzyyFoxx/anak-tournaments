@@ -38,6 +38,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import type { CustomGame, CustomGameLobby, CustomGameMatch, CustomGamePlayer } from "@/services/custom-game.service";
 import { catalogMap, catalogMode } from "@/test/catalog";
 import type { CatalogEntityRead } from "@/types/catalog.types";
@@ -375,16 +376,16 @@ function panel(current: CustomGame | undefined, props: PanelOptions) {
   );
 }
 
-async function mount(current: CustomGame | undefined, props: PanelOptions = {}) {
+async function mount(
+  current: CustomGame | undefined,
+  props: PanelOptions = {},
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        {panel(current, props)}
-      </QueryClientProvider>,
-    );
+    root.render(<QueryClientProvider client={client}>{panel(current, props)}</QueryClientProvider>);
   });
   await act(async () => {
     await tick();
@@ -1225,6 +1226,31 @@ describe("PickupTeamsPanel", () => {
     ]);
     expect(scope.textContent).toContain("blue: Team 2");
     expect(scope.textContent).toContain("red: Team 1");
+  });
+
+  it("rereads a ban room it last saw unfinished when the live summary mounts", async () => {
+    // Production keeps queries fresh for 60 s; the viewer last saw this room mid-Pre-game.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 60_000 } } });
+    client.setQueryData(encounterQueryKeys.pregameHeroState(50), {
+      ...SETTLED_ROOM,
+      is_complete: false,
+      pool: [poolEntry(30, 101, null, null), poolEntry(31, 102, null, null), poolEntry(32, 103, null, null)],
+      starting_sides: [],
+    });
+    getPickBanState.mockResolvedValue(SETTLED_ROOM);
+    const settled = lobbyRow({ ...LIVE, live_ban_preset: "lol_side_selection", live_seats: SEATS });
+    const current = game({ discipline: "lol", lobbies: [settled] });
+    const scope = await mount(current, { canWrite: false, owner: LOL_OWNER }, client);
+    await act(async () => {
+      await tick();
+    });
+
+    const strip = scope.querySelector('[aria-label="bans"]');
+    expect([...(strip?.querySelectorAll("[title]") ?? [])].map((node) => node.getAttribute("title"))).toEqual([
+      "Genji",
+      "Ana",
+    ]);
+    expect(scope.textContent).toContain("blue: Team 2");
   });
 
   it("shows no ban summary for a live match that started without bans", async () => {
