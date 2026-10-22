@@ -500,7 +500,7 @@ class AdminTournamentService:
             if not has_encounters and not _stage_has_ready_inputs(stage):
                 return
             if has_encounters:
-                await stage_service.activate_stage(session, stage.id)
+                await stage_service.activate_stage(session, stage.id, commit=False)
             else:
                 await request_bracket_job(
                     session,
@@ -619,12 +619,15 @@ class AdminTournamentService:
         )
         await lifecycle_notifier.on_status_entered(session, tournament)
         await publish_tournament_invalidation(session, tournament_id, STRUCTURE_RESOURCES)
-        await session.commit()
+        # Before the commit: the bracket job it requests is a row in this
+        # session, and neither caller (the RPC envelope, the worker tick)
+        # commits after us.
         await self._maybe_auto_start_group_stage(
             session,
             tournament,
             target_status=target_status,
         )
+        await session.commit()
         return await self.get_tournament(session, tournament_id)
 
 
