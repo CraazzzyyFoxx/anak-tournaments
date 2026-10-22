@@ -211,6 +211,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_admin_panel(user)
             workspace_id = c.require_id(data)
             ensure_workspace_permission(user, workspace_id, "workspace", "read")
+            await _ensure_workspace_exists(session, workspace_id)
             cfg = await balancer_admin_service.get_workspace_balancer_config(session, workspace_id)
             return _config_to_read(cfg, workspace_id)
 
@@ -261,6 +262,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_admin_panel(user)
             workspace_id = c.require_id(data)
             ensure_workspace_permission(user, workspace_id, "workspace", "read")
+            await _ensure_workspace_exists(session, workspace_id)
             return await _ranker_read(session, workspace_id)
 
         return await c.envelope(logger, "admin.workspace_ranker_get", op, session_factory=_SF)
@@ -294,6 +296,7 @@ def register(broker: Any, logger: Any) -> None:
             c.require_admin_panel(user)
             workspace_id = c.require_id(data)
             ensure_workspace_permission(user, workspace_id, "team", "update")
+            await _ensure_workspace_exists(session, workspace_id)
             matches, hidden_ratings = await mix_ranker_service.rebuild(session, workspace_id)
             await session.commit()
             return schemas.WorkspaceRankerRebuildRead(matches=matches, hidden_ratings=hidden_ratings)

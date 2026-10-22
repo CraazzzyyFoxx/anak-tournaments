@@ -57,6 +57,18 @@ class PermissionDenyService:
         self._workspaces = workspaces
         self._cache = cache
 
+    async def _targets(
+        self, session: AsyncSession, user_id: int, permission_id: int
+    ) -> tuple[models.AuthUser, Permission]:
+        """The deny's user and permission, or 404."""
+        user = await self._users.get(session, user_id)
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        permission = await self._permissions.get(session, permission_id)
+        if permission is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Permission not found")
+        return user, permission
+
     async def list(
         self,
         session: AsyncSession,
@@ -83,12 +95,7 @@ class PermissionDenyService:
         """Deny a permission to a user (idempotent). Rejects governance permissions."""
         self._policy.require_permission(current_user, "auth_user", "update")
 
-        user = await self._users.get(session, user_id)
-        if user is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-        permission = await self._permissions.get(session, permission_id)
-        if permission is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Permission not found")
+        user, permission = await self._targets(session, user_id, permission_id)
         if permission.resource in self._policy.DENY_PROTECTED_RESOURCES:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -158,6 +165,10 @@ class PermissionDenyService:
         removed = await self._denies.delete_scoped(
             session, user_id=user_id, permission_id=permission_id, workspace_id=workspace_id
         )
+        if not removed:
+            # Idempotent for a real user and permission; a missing one is a 404,
+            # the same answer ``add`` gives, never a 200 about nothing.
+            await self._targets(session, user_id, permission_id)
         # Idempotent by contract: a remove that matched nothing lifted nothing, and
         # must not claim in the journal that it did.
         if removed:

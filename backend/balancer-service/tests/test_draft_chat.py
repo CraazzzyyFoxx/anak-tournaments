@@ -143,8 +143,8 @@ class DraftChatAccessTests(IsolatedAsyncioTestCase):
         self.assertEqual(membership.role, SPECTATOR_ROLE)
         self.assertFalse(membership.can_write)
 
-    async def test_unknown_session_is_refused_without_disclosing_it(self) -> None:
+    async def test_unknown_session_is_not_found_like_a_hidden_one(self) -> None:
         with self.assertRaises(HTTPException) as caught:
             await _access().resolve(object(), STAFF, ChatRoom.draft(404404))
 
-        self.assertEqual(caught.exception.status_code, 403)
+        self.assertEqual(caught.exception.status_code, 404)

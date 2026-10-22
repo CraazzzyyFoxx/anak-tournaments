@@ -258,13 +258,17 @@ class MissingWorkspaceTests(IsolatedAsyncioTestCase):
     if sys.platform == "win32":
         loop_factory = asyncio.SelectorEventLoop
 
-    async def test_both_workspace_writes_404_for_a_missing_workspace(self) -> None:
+    async def test_workspace_reads_and_writes_404_for_a_missing_workspace(self) -> None:
         engine = create_test_async_engine()
         superuser = {"user_id": 1, "is_superuser": True, "is_active": True}
         try:
             for subject, payload in (
                 (SUBJECT, {"rank_delta_threshold": 700, "rank_delta_hide_from_pool": False}),
                 ("rpc.balancer.admin.workspace_ranker_upsert", {}),
+                # Answered 200 with defaults / an empty rebuild for any id.
+                ("rpc.balancer.admin.workspace_config_get", {}),
+                ("rpc.balancer.admin.workspace_ranker_get", {}),
+                ("rpc.balancer.admin.workspace_ranker_rebuild", {}),
             ):
                 with self.subTest(subject=subject), patch.object(admin_rpc, "_SF", async_sessionmaker(engine)):
                     response = await _handler(subject)(

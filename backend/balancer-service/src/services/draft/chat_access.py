@@ -47,9 +47,9 @@ class DraftChatAccess:
     ) -> ChatMembership:
         draft = await self.sessions_repo.get(session, room.ref_id)
         if draft is None:
-            # 403, not 404: the caller may not see this room, and which of the
-            # two reasons applies is not theirs to learn.
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Draft chat is not available")
+            # 404, the same answer a hidden tournament gets just below: a 403 here
+            # would tell "no such draft" apart from "a draft you may not see".
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Draft session not found")
         # Before anything else: an outsider must not learn that a hidden
         # tournament is drafting, chat setting or not.
         await ensure_tournament_viewable(session, auth_user, draft.tournament_id)
