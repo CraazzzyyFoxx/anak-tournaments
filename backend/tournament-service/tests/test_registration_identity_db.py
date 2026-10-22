@@ -22,6 +22,7 @@ from shared.services.roster import roster_engine
 from shared.services.team_format import save_tournament_format
 from shared.testing import create_test_async_engine
 from src.services.registration.lifecycle import lifecycle_service
+from src.services.registration.serializers import serialize_registration
 from src.services.registration.service import registration_service
 from src.services.registration.sheet_sync import sheet_sync_service
 from src.services.registration.teams import teams_service
@@ -146,6 +147,22 @@ class RegistrationIdentityTests(IsolatedAsyncioTestCase):
             loaded = await lifecycle_service.get_registration_by_id(s, registration_id)
             assert loaded.identities == []
             assert loaded.workspace_member.player_id == self.user_id
+
+    async def test_approve_and_check_in_responses_name_who_did_it(self) -> None:
+        """The refetch after the write reads the row already in the session, whose
+        ``reviewer`` / ``checked_in_by_user`` were loaded as None before the FK moved."""
+        async with self.Session() as s:
+            username = await s.scalar(sa.select(models.AuthUser.username).where(models.AuthUser.id == self.auth_id))
+        async with self.Session() as s:
+            created = await lifecycle_service.create_manual_registration(
+                s, tournament_id=self.tournament_id, display_name="Walk-in", admin_notes=None, roles=[]
+            )
+            approved = await lifecycle_service.approve_registration(s, created.id, reviewed_by=self.auth_id)
+            read = serialize_registration(approved, workspace_id=self.workspace_id, provider="riot")
+            assert read.reviewed_by_username == username
+            checked = await lifecycle_service.check_in_registration(s, created.id, checked_in_by=self.auth_id)
+            read = serialize_registration(checked, workspace_id=self.workspace_id, provider="riot")
+            assert read.checked_in_by_username == username
 
     async def test_sheet_without_game_identity_persists_and_reloads(self) -> None:
         async with self.Session() as s:

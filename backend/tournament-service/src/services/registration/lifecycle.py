@@ -241,7 +241,12 @@ class RegistrationLifecycleService:
         return reads
 
     async def get_registration_by_id(self, session: AsyncSession, registration_id: int) -> models.Registration:
-        registration = await self.registration_repo.get(session, registration_id, options=_registration_read_options())
+        # ``populate_existing``: the post-write refetches go through here, and a row
+        # already in the identity map otherwise keeps the ``reviewer`` /
+        # ``checked_in_by_user`` it was first loaded with (None) after the FK moved.
+        registration = await self.registration_repo.get(
+            session, registration_id, options=_registration_read_options(), populate_existing=True
+        )
         if registration is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Registration not found")
         return registration
