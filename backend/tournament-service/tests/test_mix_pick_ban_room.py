@@ -148,6 +148,14 @@ class MixBanRoomCase(EncounterWriterCase):
         with patch.object(rpc_helpers.db, "async_session_maker", self.Session):
             return await broker.handlers[subject](data, None)
 
+    async def host_room_call(self, subject: str, payload: dict) -> dict:
+        """One of the organizer's room controls, called by the mix's host."""
+        return await self.rpc(
+            pick_ban_admin.register,
+            subject,
+            {"identity": make_identity(user_id=self.auth["host"]), "id": self.encounter_id, "payload": payload},
+        )
+
     async def captain_ban(self, who: str, item_id: int) -> dict:
         return await self.rpc(
             public_rpc.register,
@@ -300,21 +308,37 @@ class MixBanRoomTests(MixBanRoomCase):
         self.assertEqual(enums.MapVetoSessionStatus.COMPLETED, (await self.hero_session()).status)
         self.assertEqual(1, await self.pickup_mix_invalidations())
 
+    async def test_a_finished_room_a_host_reopens_tells_the_mix_overview_again(self) -> None:
+        await self.open_room()
+        for who, hero in zip(("p0", "p2", "p0", "p2"), self.heroes, strict=True):
+            await self.captain_ban(who, hero)
+
+        reopened = await self.host_room_call("rpc.tournament.admin_pick_ban_reopen", {"kind": "hero"})
+
+        self.assertTrue(reopened["ok"], reopened)
+        self.assertEqual(enums.MapVetoSessionStatus.ACTIVE, (await self.hero_session()).status)
+        # Live -> Pre-game is a change of the overview too, not only Pre-game -> Live.
+        self.assertEqual(2, await self.pickup_mix_invalidations())
+
     async def test_a_host_cancelling_the_room_tells_the_mix_overview(self) -> None:
         await self.open_room()
 
-        cancelled = await self.rpc(
-            pick_ban_admin.register,
-            "rpc.tournament.admin_pick_ban_cancel",
-            {
-                "identity": make_identity(user_id=self.auth["host"]),
-                "id": self.encounter_id,
-                "payload": {"kind": "hero", "reason": "playing without bans"},
-            },
+        cancelled = await self.host_room_call(
+            "rpc.tournament.admin_pick_ban_cancel", {"kind": "hero", "reason": "playing without bans"}
         )
 
         self.assertTrue(cancelled["ok"], cancelled)
         self.assertEqual(1, await self.pickup_mix_invalidations())
+
+    async def test_a_cancelled_room_a_host_resets_tells_the_mix_overview_again(self) -> None:
+        await self.open_room()
+        await self.host_room_call("rpc.tournament.admin_pick_ban_cancel", {"kind": "hero", "reason": "oops"})
+
+        reset = await self.host_room_call("rpc.tournament.admin_pick_ban_session_reset", {"kind": "hero"})
+
+        self.assertTrue(reset["ok"], reset)
+        self.assertEqual(enums.MapVetoSessionStatus.ACTIVE, (await self.hero_session()).status)
+        self.assertEqual(2, await self.pickup_mix_invalidations())
 
 
 class MixWithoutBansTests(MixBanRoomCase):
