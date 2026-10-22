@@ -386,6 +386,7 @@ export default function MyTeamPanel({
         benchOpen={benchOpen}
         busy={busy}
         slotLabel={slotLabel}
+        ontology={ontology}
         showsSlots={showsSlots}
       />
 

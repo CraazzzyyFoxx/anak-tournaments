@@ -219,14 +219,16 @@ function LineupChip({
 
       {canWrite ? (
         <IconTooltip control label="Remove from this mix" className="shrink-0">
-          <button
+          <Button
             type="button"
+            variant="ghost-destructive"
+            size="icon-xs"
             onClick={onRemove}
-            className="flex size-5 items-center justify-center rounded text-[color:var(--aqt-fg-faint)] opacity-0 transition-opacity hover:text-[color:var(--aqt-rose)] focus-visible:opacity-100 group-hover:opacity-100"
+            className="opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
           >
-            <X className="size-3.5" aria-hidden="true" />
+            <X aria-hidden="true" />
             <span className="sr-only">{`Remove ${label} from this mix`}</span>
-          </button>
+          </Button>
         </IconTooltip>
       ) : (
         <span aria-hidden="true" className="size-5 shrink-0" />

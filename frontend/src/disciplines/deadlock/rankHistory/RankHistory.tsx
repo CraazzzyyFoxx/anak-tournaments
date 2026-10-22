@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
 import { ChartEmptyState, RankHistorySkeleton } from "@/components/RankHistoryState";
+import { Card } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart";
 import Image from "@/components/ui/image";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
@@ -78,7 +79,7 @@ export default function RankHistory({ userId, axis }: Readonly<SlotProps["rankHi
 
   return (
     <div className="space-y-4">
-      <dl className="flex items-center gap-3 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-4">
+      <Card variant="flat" asChild><dl className="flex items-center gap-3 p-4">
         {tier ? <Image src={tier.icon_url} alt="" width={40} height={40} aria-hidden /> : null}
         <div>
           <dt className="text-caption text-[color:var(--aqt-fg-dim)]">{t("deadlock.current")}</dt>
@@ -86,7 +87,7 @@ export default function RankHistory({ userId, axis }: Readonly<SlotProps["rankHi
             {tier?.name ?? best?.division ?? t("deadlock.unranked")}
           </dd>
         </div>
-      </dl>
+      </dl></Card>
       {rows.length === 0 ? (
         <p className="text-sm text-[color:var(--aqt-fg-dim)]">{t("deadlock.empty")}</p>
       ) : (

@@ -5,15 +5,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowRight, ShieldCheck } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import {
@@ -150,156 +143,152 @@ export function ResolveRoleConflictDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{t("title")}</DialogTitle>
-          <DialogDescription>{t("description")}</DialogDescription>
-        </DialogHeader>
+    <EntityFormDialog
+      open={open}
+      onOpenChange={handleOpenChange}
+      title={t("title")}
+      description={t("description")}
+      onSubmit={() => {
+        if (!canCommit) {
+          notify.warning(t("completeFields"));
+          return;
+        }
+        commitMutation.mutate();
+      }}
+      submitLabel={t("commit")}
+      isSubmitting={commitMutation.isPending}
+      footerStart={
+        <Button
+          type="button"
+          variant="outline"
+          disabled={previewMutation.isPending}
+          onClick={() => previewMutation.mutate()}
+        >
+          {t("preview")}
+        </Button>
+      }
+      contentClassName="max-w-3xl"
+    >
+      {unmatchedSummary && (
+        <section>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-danger">
+            <AlertTriangle className="h-4 w-4" aria-hidden />
+            {t("unmatchedSlots")}
+          </h3>
+          <p className="mt-1 text-sm tabular-nums">{unmatchedSummary}</p>
+        </section>
+      )}
 
-        {unmatchedSummary && (
-          <section>
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-danger">
-              <AlertTriangle className="h-4 w-4" aria-hidden />
-              {t("unmatchedSlots")}
-            </h3>
-            <p className="mt-1 text-sm tabular-nums">{unmatchedSummary}</p>
-          </section>
-        )}
-
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="role-conflict-player">{t("player")}</Label>
-            <Select
-              value={playerId?.toString() ?? ""}
-              onValueChange={(value) => {
-                setPlayerId(Number(value));
-                setRole(null);
-                resetPreview();
-              }}
-            >
-              <SelectTrigger id="role-conflict-player" aria-label={t("player")}>
-                <SelectValue placeholder={t("selectPlayer")} />
-              </SelectTrigger>
-              <SelectContent>
-                {players.map((candidate) => (
-                  <SelectItem key={candidate.id} value={candidate.id.toString()}>
-                    {playerName(candidate)} · {candidate.primary_role ? slotLabel(roleOf(candidate.primary_role)) : t("noRole")}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {player && (
-              <p className="text-xs text-muted-foreground">
-                {tAdmin("rolesSummary", {
-                  label: t("declaredRoles"),
-                  roles: (player.primary_role
-                    ? [player.primary_role, ...player.secondary_roles]
-                    : player.secondary_roles
-                  ).map((entry) => slotLabel(roleOf(entry))).join(", ") || t("noRole")
-                })}
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="role-conflict-role">{t("newRole")}</Label>
-            <Select
-              value={role ?? ""}
-              disabled={!player}
-              onValueChange={(value) => {
-                setRole(value as DraftRole);
-                resetPreview();
-              }}
-            >
-              <SelectTrigger
-                id="role-conflict-role"
-                aria-label={player ? tAdmin("newRoleFor", { role: t("newRole"), player: playerName(player) }) : t("newRole")}
-              >
-                <SelectValue placeholder={t("selectRole")} />
-              </SelectTrigger>
-              <SelectContent>
-                {availableRoles.map((entry) => (
-                  <SelectItem key={entry} value={entry}>{slotLabel(entry)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="role-conflict-rank">{t("rank")}</Label>
-            <NumberInput
-              id="role-conflict-rank"
-              integer
-              min={1}
-              value={rankValue}
-              onValueChange={(next) => {
-                setRankValue(next);
-                resetPreview();
-              }}
-            />
-            <p className="text-xs text-muted-foreground">{t("rankRequired")}</p>
-          </div>
-
-          <div className="space-y-2 sm:col-span-2">
-            <Label htmlFor="role-conflict-reason">{t("reason")}</Label>
-            <Textarea
-              id="role-conflict-reason"
-              value={reason}
-              onChange={(event) => {
-                setReason(event.target.value);
-                resetPreview();
-              }}
-              placeholder={t("reasonPlaceholder")}
-            />
-            <p className="text-xs text-muted-foreground">{t("reasonPrivate")}</p>
-          </div>
-        </div>
-
-        {preview && (
-          <section role="status" className="border-t border-border pt-4">
-            <h3 className="flex items-center gap-2 text-sm font-semibold">
-              <ShieldCheck className="h-4 w-4 text-primary" aria-hidden />
-              {t(`impact.${roleEditImpact(preview)}`)}
-            </h3>
-            <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-center">
-              <ImpactValue
-                label={t("before")}
-                value={`${preview.before.matched_slots}/${preview.before.total_open_slots}`}
-              />
-              <ArrowRight className="h-4 w-4 text-muted-foreground" aria-hidden />
-              <ImpactValue
-                label={t("after")}
-                value={`${preview.after.matched_slots}/${preview.after.total_open_slots}`}
-                good={preview.after.is_feasible}
-              />
-            </div>
-          </section>
-        )}
-
-        <DialogFooter>
-          <Button
-            variant="outline"
-            disabled={previewMutation.isPending}
-            onClick={() => previewMutation.mutate()}
-          >
-            {t("preview")}
-          </Button>
-          <Button
-            disabled={commitMutation.isPending}
-            onClick={() => {
-              if (!canCommit) {
-                notify.warning(t("completeFields"));
-                return;
-              }
-              commitMutation.mutate();
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-2 sm:col-span-2">
+          <Label htmlFor="role-conflict-player">{t("player")}</Label>
+          <Select
+            value={playerId?.toString() ?? ""}
+            onValueChange={(value) => {
+              setPlayerId(Number(value));
+              setRole(null);
+              resetPreview();
             }}
           >
-            {t("commit")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            <SelectTrigger id="role-conflict-player" aria-label={t("player")}>
+              <SelectValue placeholder={t("selectPlayer")} />
+            </SelectTrigger>
+            <SelectContent>
+              {players.map((candidate) => (
+                <SelectItem key={candidate.id} value={candidate.id.toString()}>
+                  {playerName(candidate)} · {candidate.primary_role ? slotLabel(roleOf(candidate.primary_role)) : t("noRole")}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {player && (
+            <p className="text-xs text-muted-foreground">
+              {tAdmin("rolesSummary", {
+                label: t("declaredRoles"),
+                roles: (player.primary_role
+                  ? [player.primary_role, ...player.secondary_roles]
+                  : player.secondary_roles
+                ).map((entry) => slotLabel(roleOf(entry))).join(", ") || t("noRole")
+              })}
+            </p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="role-conflict-role">{t("newRole")}</Label>
+          <Select
+            value={role ?? ""}
+            disabled={!player}
+            onValueChange={(value) => {
+              setRole(value as DraftRole);
+              resetPreview();
+            }}
+          >
+            <SelectTrigger
+              id="role-conflict-role"
+              aria-label={player ? tAdmin("newRoleFor", { role: t("newRole"), player: playerName(player) }) : t("newRole")}
+            >
+              <SelectValue placeholder={t("selectRole")} />
+            </SelectTrigger>
+            <SelectContent>
+              {availableRoles.map((entry) => (
+                <SelectItem key={entry} value={entry}>{slotLabel(entry)}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="role-conflict-rank">{t("rank")}</Label>
+          <NumberInput
+            id="role-conflict-rank"
+            integer
+            min={1}
+            value={rankValue}
+            onValueChange={(next) => {
+              setRankValue(next);
+              resetPreview();
+            }}
+          />
+          <p className="text-xs text-muted-foreground">{t("rankRequired")}</p>
+        </div>
+
+        <div className="space-y-2 sm:col-span-2">
+          <Label htmlFor="role-conflict-reason">{t("reason")}</Label>
+          <Textarea
+            id="role-conflict-reason"
+            value={reason}
+            onChange={(event) => {
+              setReason(event.target.value);
+              resetPreview();
+            }}
+            placeholder={t("reasonPlaceholder")}
+          />
+          <p className="text-xs text-muted-foreground">{t("reasonPrivate")}</p>
+        </div>
+      </div>
+
+      {preview && (
+        <section role="status" className="border-t border-border pt-4">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <ShieldCheck className="h-4 w-4 text-primary" aria-hidden />
+            {t(`impact.${roleEditImpact(preview)}`)}
+          </h3>
+          <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3 text-center">
+            <ImpactValue
+              label={t("before")}
+              value={`${preview.before.matched_slots}/${preview.before.total_open_slots}`}
+            />
+            <ArrowRight className="h-4 w-4 text-muted-foreground" aria-hidden />
+            <ImpactValue
+              label={t("after")}
+              value={`${preview.after.matched_slots}/${preview.after.total_open_slots}`}
+              good={preview.after.is_feasible}
+            />
+          </div>
+        </section>
+      )}
+    </EntityFormDialog>
   );
 }
 

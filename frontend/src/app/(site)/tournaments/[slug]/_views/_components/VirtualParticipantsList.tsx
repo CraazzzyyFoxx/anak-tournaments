@@ -5,6 +5,7 @@ import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 
 import RankHistory from "@/components/RankHistory";
 import { cn } from "@/lib/utils";
@@ -36,7 +37,7 @@ const COLUMN_TRACKS = {
   icon: { min: 6.75, grow: 0.5 },
 } as const;
 
-/** Fixed expander track; matches `.participantExpander`'s 2.25rem hit area. */
+/** Fixed expander track; holds the 2.25rem `icon` button. */
 const EXPANDER_TRACK_REM = 3;
 
 function orderedColumns(
@@ -286,24 +287,22 @@ const VirtualParticipantsList = memo(function VirtualParticipantsList({
                         chevron carry open/closed, and the details region below
                         borrows this name via `aria-labelledby`, so a toggling
                         "Collapse" here would name the region "Collapse". */}
-                    <button
+                    <Button
                       aria-controls={detailsId}
                       aria-expanded={expanded}
                       aria-label={t("registration.myCard.details")}
-                      className={styles.participantExpander}
+                      className={cn(styles.participantExpander, "text-[color:var(--aqt-fg-dim)]")}
                       id={expanderId}
                       onClick={(event) => {
                         onToggleExpanded(registration.id);
                         if (expanded) event.currentTarget.focus();
                       }}
+                      size="icon"
                       type="button"
+                      variant="ghost"
                     >
-                      {expanded ? (
-                        <ChevronUp aria-hidden="true" className="size-4" />
-                      ) : (
-                        <ChevronDown aria-hidden="true" className="size-4" />
-                      )}
-                    </button>
+                      {expanded ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+                    </Button>
                   </div>
                 </div>
 

@@ -1,8 +1,8 @@
 "use client";
 
 import {
+  AccentBadge,
   RoleRankControls,
-  accentChipStyle,
   accentRowStyle,
   accentTextStyle,
   roleRankAccent,
@@ -274,12 +274,9 @@ function RoleCardBody({
             {name}
           </span>
           {isPrimary ? (
-            <span
-              className="shrink-0 rounded border px-1.5 py-px text-label font-bold uppercase tracking-label"
-              style={accentChipStyle(accent)}
-            >
+            <AccentBadge accent={accent} className="shrink-0 font-bold uppercase tracking-label">
               First
-            </span>
+            </AccentBadge>
           ) : null}
         </div>
 
@@ -291,7 +288,7 @@ function RoleCardBody({
               disabled={disabled}
               aria-label={`${name} for ${label}`}
               onCheckedChange={onToggle}
-              className="h-4 w-7 [&>span]:size-3 [&>span]:data-[state=checked]:translate-x-3"
+              size="sm"
             />
             <span
               className="text-label font-semibold uppercase tracking-label"

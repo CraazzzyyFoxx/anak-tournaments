@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import StandingsTable from "@/components/StandingsTable";
 import { BracketView, type BracketSlotRef } from "@/components/bracket/BracketView";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { previewToBracketMatches } from "@/lib/bracket/view";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
@@ -114,58 +115,60 @@ export function EliminationStagePanel({
   const isPreview = isStagePreview(stage);
 
   return (
-    <Tabs
-      defaultValue={defaultView === "standings" && hasStandings ? "standings" : "bracket"}
-      className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]"
-    >
-      <StagePanelHeader
-        bracketTabs={bracketTabs}
-        title={stage.name}
-        subtitle={stage.stage_type.replace(/_/g, " ")}
-        isPreview={isPreview}
-        railSuffix={isPreview && <Badge variant="outline">{t("common.bracketPreview")}</Badge>}
-        viewTabs={<ViewTabs hasStandings={hasStandings} bracketValue="bracket" />}
-      />
+    <Card asChild variant="flat">
+      <Tabs
+        defaultValue={defaultView === "standings" && hasStandings ? "standings" : "bracket"}
+        className="overflow-hidden"
+      >
+        <StagePanelHeader
+          bracketTabs={bracketTabs}
+          title={stage.name}
+          subtitle={stage.stage_type.replace(/_/g, " ")}
+          isPreview={isPreview}
+          railSuffix={isPreview && <Badge variant="outline">{t("common.bracketPreview")}</Badge>}
+          viewTabs={<ViewTabs hasStandings={hasStandings} bracketValue="bracket" />}
+        />
 
-      {hasStandings && (
-        <TabsContent value="standings" className="mt-0">
-          <div className="min-w-0 overflow-x-auto">
-            <StandingsTable
-              standings={standings}
-              stages={stages}
-              is_groups={false}
-              crownTop={crownTop}
-            />
-          </div>
-        </TabsContent>
-      )}
-
-      <TabsContent value="bracket" className="mt-0 p-4">
-        {encounters.length === 0 ? (
-          stage.is_completed ? (
-            <div className="py-8 text-center text-[color:var(--aqt-fg-muted)]">
-              {t("common.noMatches", { stage: stage.name })}
+        {hasStandings && (
+          <TabsContent value="standings" className="mt-0">
+            <div className="min-w-0 overflow-x-auto">
+              <StandingsTable
+                standings={standings}
+                stages={stages}
+                is_groups={false}
+                crownTop={crownTop}
+              />
             </div>
-          ) : (
-            <ProjectedBracket stage={stage} workspaceId={workspaceId} />
-          )
-        ) : (
-          <BracketScroller>
-            <ResponsiveBracket
-              encounters={encounters}
-              type={stage.stage_type}
-              onEdit={onEdit}
-              onReport={onReport}
-              canEdit={canEdit}
-              canReport={canReport}
-              onSwapSlots={onSwapSlots}
-              liveTeamStreams={liveTeamStreams}
-              interactive={!isPreview}
-              highlightMatchId={highlightMatchId}
-            />
-          </BracketScroller>
+          </TabsContent>
         )}
-      </TabsContent>
-    </Tabs>
+
+        <TabsContent value="bracket" className="mt-0 p-4">
+          {encounters.length === 0 ? (
+            stage.is_completed ? (
+              <div className="py-8 text-center text-[color:var(--aqt-fg-muted)]">
+                {t("common.noMatches", { stage: stage.name })}
+              </div>
+            ) : (
+              <ProjectedBracket stage={stage} workspaceId={workspaceId} />
+            )
+          ) : (
+            <BracketScroller>
+              <ResponsiveBracket
+                encounters={encounters}
+                type={stage.stage_type}
+                onEdit={onEdit}
+                onReport={onReport}
+                canEdit={canEdit}
+                canReport={canReport}
+                onSwapSlots={onSwapSlots}
+                liveTeamStreams={liveTeamStreams}
+                interactive={!isPreview}
+                highlightMatchId={highlightMatchId}
+              />
+            </BracketScroller>
+          )}
+        </TabsContent>
+      </Tabs>
+    </Card>
   );
 }

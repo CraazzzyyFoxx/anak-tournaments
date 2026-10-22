@@ -9,6 +9,7 @@ import { useTranslations } from "next-intl";
 import { DataTable, type DataTableGroup } from "@/components/data-table";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialog";
+import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { useFilters } from "@/components/kit/useFilters";
 import {
   EMPTY_STATUS_FORM,
@@ -16,14 +17,6 @@ import {
   type StatusFormState
 } from "@/components/admin/statuses/StatusForm";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
@@ -54,7 +47,8 @@ export function StatusesBrowser({ workspaceId }: Readonly<{ workspaceId: number 
   const { canAccessPermission } = usePermissions();
   const queryClient = useQueryClient();
   const filters = useFilters(filterDefs);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  // `null` while the dialog creates; the status it edits otherwise.
   const [editingStatus, setEditingStatus] = useState<BalancerCustomStatus | null>(null);
   const [pendingStatus, setPendingStatus] = useState<BalancerCustomStatus | null>(null);
   const [form, setForm] = useState<StatusFormState>(EMPTY_STATUS_FORM);
@@ -78,8 +72,7 @@ export function StatusesBrowser({ workspaceId }: Readonly<{ workspaceId: number 
       balancerAdminService.createCustomStatus(workspaceId, data),
     onSuccess: async () => {
       await invalidateStatuses();
-      setCreateOpen(false);
-      setForm(EMPTY_STATUS_FORM);
+      setDialogOpen(false);
       notify.success(t("toast.customCreated"));
     },
     onError: (error) => {
@@ -92,8 +85,7 @@ export function StatusesBrowser({ workspaceId }: Readonly<{ workspaceId: number 
       balancerAdminService.updateCustomStatus(workspaceId, statusId, data),
     onSuccess: async () => {
       await invalidateStatuses();
-      setEditingStatus(null);
-      setForm(EMPTY_STATUS_FORM);
+      setDialogOpen(false);
       notify.success(t("toast.customUpdated"));
     },
     onError: (error) => {
@@ -114,8 +106,7 @@ export function StatusesBrowser({ workspaceId }: Readonly<{ workspaceId: number 
       balancerAdminService.upsertBuiltinStatusOverride(workspaceId, scope, slug, data),
     onSuccess: async () => {
       await invalidateStatuses();
-      setEditingStatus(null);
-      setForm(EMPTY_STATUS_FORM);
+      setDialogOpen(false);
       notify.success(t("toast.systemUpdated"));
     },
     onError: (error) => {
@@ -166,6 +157,8 @@ export function StatusesBrowser({ workspaceId }: Readonly<{ workspaceId: number 
       excludes_from_balancer: statusRow.excludes_from_balancer,
       excludes_from_ready: statusRow.excludes_from_ready
     });
+    setFormError(null);
+    setDialogOpen(true);
   }, []);
 
   const columns = useStatusColumns({
@@ -287,13 +280,15 @@ export function StatusesBrowser({ workspaceId }: Readonly<{ workspaceId: number 
                 <Button
                   size="sm"
                   onClick={() => {
+                    setEditingStatus(null);
                     setForm({
                       ...EMPTY_STATUS_FORM,
                       // The scope chip is the admin's current context, so a new
                       // status starts in the scope they are looking at.
                       scope: scopeFilter === "balancer" ? "balancer" : "registration"
                     });
-                    setCreateOpen(true);
+                    setFormError(null);
+                    setDialogOpen(true);
                   }}
                 >
                   <Plus className="mr-2 size-4" aria-hidden />
@@ -307,81 +302,40 @@ export function StatusesBrowser({ workspaceId }: Readonly<{ workspaceId: number 
 
       <p className="max-w-prose text-xs text-muted-foreground">{t("note")}</p>
 
-      <Dialog
-        open={createOpen}
-        onOpenChange={(open) => {
-          setCreateOpen(open);
-          if (!open) setFormError(null);
-        }}
+      <EntityFormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        title={
+          editingStatus === null
+            ? t("createTitle")
+            : editingStatus.kind === "builtin"
+              ? t("editSystemTitle")
+              : t("editCustomTitle")
+        }
+        description={
+          editingStatus === null
+            ? t("createDescription")
+            : editingStatus.kind === "builtin"
+              ? t("editSystemDescription")
+              : t("editCustomDescription")
+        }
+        onSubmit={editingStatus === null ? submitCreate : submitEdit}
+        submitLabel={editingStatus === null ? t("create") : t("save")}
+        submittingLabel={editingStatus === null ? t("creating") : t("saving")}
+        isSubmitting={
+          createMutation.isPending || updateMutation.isPending || updateBuiltinMutation.isPending
+        }
+        isReadOnly={!canManageStatuses}
+        errorMessage={formError ?? undefined}
+        contentClassName="max-w-lg"
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("createTitle")}</DialogTitle>
-            <DialogDescription>
-              {t("createDescription")}
-            </DialogDescription>
-          </DialogHeader>
-          <StatusForm value={form} onChange={setForm} />
-          {formError && <p className="text-sm text-danger">{formError}</p>}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              {t("cancel")}
-            </Button>
-            <Button
-              onClick={submitCreate}
-              disabled={createMutation.isPending || !canManageStatuses}
-            >
-              {createMutation.isPending ? t("creating") : t("create")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={editingStatus !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setEditingStatus(null);
-            setForm(EMPTY_STATUS_FORM);
-            setFormError(null);
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {editingStatus?.kind === "builtin" ? t("editSystemTitle") : t("editCustomTitle")}
-            </DialogTitle>
-            <DialogDescription>
-              {editingStatus?.kind === "builtin"
-                ? t("editSystemDescription")
-                : t("editCustomDescription")}
-            </DialogDescription>
-          </DialogHeader>
-          <StatusForm
-            value={form}
-            onChange={setForm}
-            disableScope
-            isBuiltin={editingStatus?.kind === "builtin"}
-          />
-          {formError && <p className="text-sm text-danger">{formError}</p>}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingStatus(null)}>
-              {t("cancel")}
-            </Button>
-            <Button
-              onClick={submitEdit}
-              disabled={
-                updateMutation.isPending || updateBuiltinMutation.isPending || !canManageStatuses
-              }
-            >
-              {updateMutation.isPending || updateBuiltinMutation.isPending
-                ? t("saving")
-                : t("save")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        <StatusForm
+          value={form}
+          onChange={setForm}
+          disableScope={editingStatus !== null}
+          isBuiltin={editingStatus?.kind === "builtin"}
+        />
+      </EntityFormDialog>
 
       <ConfirmDialog
         open={pendingStatus !== null}

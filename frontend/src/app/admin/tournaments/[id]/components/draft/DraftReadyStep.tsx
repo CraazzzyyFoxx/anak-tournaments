@@ -6,12 +6,11 @@ import { ArrowUpRight, CheckCircle2, ShieldAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { FactList } from "@/components/kit/FactList";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import type { DraftFeasibility, DraftSession } from "@/types/draft.types";
-
-import { DraftFacts } from "./DraftFacts";
 
 interface DraftReadyStepProps {
   tournamentId: number;
@@ -96,7 +95,8 @@ export function DraftReadyStep({
         </Button>
       </div>
 
-      <DraftFacts
+      <FactList
+        size="sm"
         facts={[
           { label: t("teamSize"), value: session.roster_shape.team_size },
           { label: t("rounds"), value: session.rounds },

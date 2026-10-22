@@ -5,6 +5,8 @@ import { useTranslations } from "next-intl";
 import { ChevronLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { RowButton } from "@/components/ui/row-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -96,42 +98,39 @@ export function MasterList<K extends string | number>({
   onSelect: (key: K) => void;
 }>) {
   return (
-    <nav aria-label={label} className="rounded-xl border border-border bg-card p-2">
-      <ul className="flex flex-col gap-0.5">
-        {items.map((item) => {
-          const isSelected = item.key === selectedKey;
-          return (
-            <li key={item.key}>
-              <button
-                type="button"
-                aria-current={isSelected ? "true" : undefined}
-                onClick={() => onSelect(item.key)}
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  isSelected
-                    ? "bg-accent/40 font-medium text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {item.icon}
-                <span className="min-w-0 flex-1 truncate">{item.label}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+    <Card asChild variant="flat" className="p-2">
+      <nav aria-label={label}>
+        <ul className="flex flex-col gap-0.5">
+          {items.map((item) => {
+            const isSelected = item.key === selectedKey;
+            return (
+              <li key={item.key}>
+                <RowButton
+                  aria-current={isSelected ? "true" : undefined}
+                  onClick={() => onSelect(item.key)}
+                  className="flex items-center gap-2 rounded-md px-2 py-1.5 text-muted-foreground hover:text-foreground aria-[current=true]:text-foreground"
+                >
+                  {item.icon}
+                  <span className={cn("min-w-0 flex-1 truncate text-sm", isSelected && "font-medium")}>
+                    {item.label}
+                  </span>
+                </RowButton>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+    </Card>
   );
 }
 
 /** `MasterList` while its rows load: the same frame with placeholder rows. */
 export function MasterListSkeleton() {
   return (
-    <div aria-hidden className="flex flex-col gap-0.5 rounded-xl border border-border bg-card p-2">
+    <Card aria-hidden variant="flat" className="flex flex-col gap-0.5 p-2">
       {[0, 1, 2, 3].map((row) => (
         <Skeleton key={row} className="h-8 w-full rounded-md" />
       ))}
-    </div>
+    </Card>
   );
 }

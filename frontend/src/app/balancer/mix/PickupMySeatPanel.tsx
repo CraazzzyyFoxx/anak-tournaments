@@ -6,8 +6,8 @@ import { Crown, LogIn, LogOut } from "lucide-react";
 
 import { PickupRoleOrderEditor } from "@/app/balancer/mix/PickupRoleOrderEditor";
 import { AWAY_CHIP_CLASS, CAPTION_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { roleOf, type RoleRef } from "@/lib/roster/role-ref";
@@ -162,7 +162,7 @@ export function PickupMySeatPanel({
   };
 
   return (
-    <div className={cn(PANEL_CLASS, "flex flex-col gap-3 px-4 py-3.5")}>
+    <Card variant="flat" className="flex flex-col gap-3 px-4 py-3.5">
       <div className="flex flex-wrap items-center gap-2.5">
         <Eyebrow>{t("title")}</Eyebrow>
         <span className="text-caption font-semibold text-[color:var(--aqt-fg)]">
@@ -333,6 +333,6 @@ export function PickupMySeatPanel({
           />
         </div>
       )}
-    </div>
+    </Card>
   );
 }

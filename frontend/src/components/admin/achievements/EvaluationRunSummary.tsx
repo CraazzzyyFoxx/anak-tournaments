@@ -13,9 +13,10 @@ import {
   type LucideIcon
 } from "lucide-react";
 
+import { FactList } from "@/components/kit/FactList";
 import { TONE_TEXT, type Tone } from "@/components/ui/tone";
-import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
@@ -176,15 +177,6 @@ function signed(value: number, sign: string, format: (value: number) => string):
   return value === 0 ? "0" : `${sign}${format(value)}`;
 }
 
-function Figure({ label, value }: Readonly<{ label: string; value: string }>) {
-  return (
-    <div>
-      <dt className={eyebrowClass("muted")}>{label}</dt>
-      <dd className="mt-1 text-heading font-semibold tabular-nums">{value}</dd>
-    </div>
-  );
-}
-
 function SlugList({ slugs, t }: Readonly<{ slugs: string[]; t: Translate }>) {
   const [expanded, setExpanded] = useState(false);
   const shown = expanded ? slugs : slugs.slice(0, SLUG_PREVIEW);
@@ -246,49 +238,56 @@ export function EvaluationRunSummary({
   const meta = [scope, formatDuration(run, format)].filter(Boolean).join(" · ");
 
   return (
-    <section role="status" className="space-y-4 rounded-xl border bg-card p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          {Icon ? <Icon className={iconClass} aria-hidden /> : <Spinner className={iconClass} />}
-          <div className="min-w-0">
-            <p className="text-body font-medium">{digest.headline}</p>
-            <p className="text-caption text-muted-foreground">{meta}</p>
-            {digest.note ? <p className="text-caption text-muted-foreground">{digest.note}</p> : null}
+    <Card asChild variant="flat">
+      <section role="status" className="space-y-4 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            {Icon ? <Icon className={iconClass} aria-hidden /> : <Spinner className={iconClass} />}
+            <div className="min-w-0">
+              <p className="text-body font-medium">{digest.headline}</p>
+              <p className="text-caption text-muted-foreground">{meta}</p>
+              {digest.note ? <p className="text-caption text-muted-foreground">{digest.note}</p> : null}
+            </div>
           </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            onClick={onDismiss}
+            aria-label={t("evaluation.dismissSummary")}
+            title={t("evaluation.dismissSummary")}
+          >
+            <X className="size-4" aria-hidden />
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="shrink-0"
-          onClick={onDismiss}
-          aria-label={t("evaluation.dismissSummary")}
-          title={t("evaluation.dismissSummary")}
-        >
-          <X className="size-4" aria-hidden />
-        </Button>
-      </div>
 
-      {settled ? (
-        <dl className="flex flex-wrap gap-x-10 gap-y-3">
-          <Figure label={t("evaluation.rulesRun")} value={format.number(run.rules_evaluated)} />
-          <Figure label={t("evaluation.resultsAdded")} value={signed(run.results_created, "+", format.number)} />
-          <Figure
-            label={t("evaluation.resultsRemoved")}
-            value={signed(run.results_removed, "\u2212", format.number)}
+        {settled ? (
+          <FactList
+            facts={[
+              { label: t("evaluation.rulesRun"), value: format.number(run.rules_evaluated) },
+              {
+                label: t("evaluation.resultsAdded"),
+                value: signed(run.results_created, "+", format.number)
+              },
+              {
+                label: t("evaluation.resultsRemoved"),
+                value: signed(run.results_removed, "\u2212", format.number)
+              }
+            ]}
           />
-        </dl>
-      ) : null}
+        ) : null}
 
-      {digest.failures.length > 0 ? (
-        <ul className="divide-y border-t">
-          {digest.failures.map((group) => (
-            <li key={group.cause} className="py-3 last:pb-0">
-              <p className="text-body">{group.cause}</p>
-              {group.slugs.length > 0 ? <SlugList slugs={group.slugs} t={t as unknown as Translate} /> : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </section>
+        {digest.failures.length > 0 ? (
+          <ul className="divide-y border-t">
+            {digest.failures.map((group) => (
+              <li key={group.cause} className="py-3 last:pb-0">
+                <p className="text-body">{group.cause}</p>
+                {group.slugs.length > 0 ? <SlugList slugs={group.slugs} t={t as unknown as Translate} /> : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
+    </Card>
   );
 }

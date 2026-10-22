@@ -30,6 +30,7 @@ import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 import { PickBanSideChoice } from "@/components/pick-ban/PickBanSideChoice";
 import { Spinner } from "@/components/ui/spinner";
 
+import { PregameAdminBox } from "./PregameAdminBox";
 import type { PickBanAdminSlot } from "./PickBanPanel";
 
 interface PregameAdminControlsProps {
@@ -324,13 +325,7 @@ export function PregameAdminControls({
   );
 
   return (
-    <section className="rounded-xl border border-dashed border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <ShieldCheck className="h-4 w-4 text-[color:var(--aqt-amber)]" aria-hidden />
-        <h2 className="text-sm font-semibold">{t("admin.title")}</h2>
-        {kindSwitch != null ? <div className="ml-auto">{kindSwitch}</div> : null}
-      </div>
-
+    <PregameAdminBox icon={ShieldCheck} title={t("admin.title")} aside={kindSwitch}>
       {/* A completed or cancelled session has no step to act on and no opener
           to name, so this row -- and the divider under it -- would be empty,
           unless a settled side pick can still be reopened. */}
@@ -702,7 +697,7 @@ export function PregameAdminControls({
           ))}
         </div>
       ) : null}
-    </section>
+    </PregameAdminBox>
   );
 }
 

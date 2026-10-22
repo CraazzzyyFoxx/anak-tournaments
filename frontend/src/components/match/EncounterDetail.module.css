@@ -601,57 +601,9 @@
   gap: 8px;
 }
 
-/* Token-native button. shadcn's <Button> resolves against the shadcn theme
-   vars, which read a shade off against these surfaces. */
-.button {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 32px;
-  padding: 0 12px;
-  border-radius: 8px;
-  border: 1px solid var(--ed-border-2);
-  background: var(--aqt-overlay-2);
-  color: var(--ed-fg);
-  font-family: inherit;
-  font-size: var(--text-caption);
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  outline: none;
-  transition: 0.15s;
-}
-
-.button:hover:not(:disabled) {
-  background: var(--aqt-overlay-3);
-  border-color: var(--ed-border-3);
-}
-
-.button:focus-visible {
-  outline: 2px solid var(--ed-teal);
-  outline-offset: 2px;
-}
-
-.button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.buttonAccent {
-  border-color: color-mix(in srgb, var(--ed-teal) 32%, transparent);
-  background: color-mix(in srgb, var(--ed-teal) 12%, transparent);
-  color: var(--ed-teal);
-}
-
-.buttonAccent:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--ed-teal) 18%, transparent);
-  border-color: color-mix(in srgb, var(--ed-teal) 45%, transparent);
-}
-
-/* Square sibling of `.button`, for a control whose whole label is its icon.
-   `MatchLogIndicator` merges `className` last, so this overrides its default
-   28px `h-7 w-7 rounded-[7px]` box while leaving its emerald availability tint
-   intact — the two hero actions then share one height and radius. */
+/* A 32px square beside the `Button size="sm"` hero action. `MatchLogIndicator`
+   merges `className` last, so this overrides its default 28px `h-7 w-7
+   rounded-[7px]` box while leaving its emerald availability tint intact. */
 .iconButton {
   height: 32px;
   width: 32px;
@@ -990,28 +942,6 @@
   text-decoration: underline;
 }
 
-/* ============ Skeleton ============ */
-.skeleton {
-  border-radius: 8px;
-  background: linear-gradient(
-    105deg,
-    color-mix(in srgb, var(--aqt-card-2) 90%, transparent) 0%,
-    color-mix(in srgb, var(--aqt-teal) 7%, var(--aqt-card-2)) 45%,
-    color-mix(in srgb, var(--aqt-card-2) 90%, transparent) 90%
-  );
-  background-size: 220% 100%;
-  animation: edSkeletonSweep 1.8s ease-in-out infinite;
-}
-
-@keyframes edSkeletonSweep {
-  0% {
-    background-position: 120% 0;
-  }
-  100% {
-    background-position: -40% 0;
-  }
-}
-
 /* ============ Responsive ============
    Three max-width steps; the first two mirror Encounters.module.css. */
 @media (max-width: 1280px) {
@@ -1085,10 +1015,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .skeleton {
-    animation: none;
-  }
-
   .livePulse {
     animation: none;
   }

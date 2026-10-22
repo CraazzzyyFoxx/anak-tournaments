@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { useUnsavedGuard } from "@/components/kit/useUnsavedGuard";
 import { useReportUnsaved } from "@/components/kit/SettingsContinuation";
@@ -97,10 +98,10 @@ export function SaveBar({
 
   return (
     <>
-      <div
+      <Card
         role="region"
         aria-label={t("unsavedChanges")}
-        className="sticky bottom-4 z-10 mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card/95 px-4 py-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/80"
+        className="sticky bottom-4 z-10 mt-4 flex flex-wrap items-center gap-3 bg-card/95 px-4 py-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/80"
       >
         {error ? (
           <p role="alert" className="flex min-w-0 flex-1 items-start gap-1.5 text-sm text-danger">
@@ -118,7 +119,7 @@ export function SaveBar({
           {saving ? <Spinner /> : null}
           {primaryLabel ?? t("save")}
         </Button>
-      </div>
+      </Card>
 
       <ConfirmDialog
         open={pendingHref !== null}

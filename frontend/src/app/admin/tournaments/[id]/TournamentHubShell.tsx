@@ -2,10 +2,9 @@
 
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import type messages from "@/i18n/messages/en.json";
 import { formatDateRange } from "@/lib/datetime";
 import { useFormatter } from "@/lib/datetime/client";
 import { isNotFoundError } from "@/lib/api/error";
@@ -26,23 +25,8 @@ import {
   useHubTeamsCountQuery,
   useHubTournamentQuery
 } from "./hubQueries";
-import { allowedTab, isLegacyTabSegment, isTabKey, TAB_KEYS, type TabKey } from "./tab-guards";
-
-/**
- * Hub tabs are the tournament's lifecycle, in the order it happens (§5).
- *
- * Four entries left the bar: `stages` became `bracket`, `draft` a sub-tab of
- * `teams`, and `pickBan`/`links` sections of `settings` — configuration is not
- * a phase, and the bar was nine items wide because it pretended otherwise.
- */
-const TAB_LABEL_KEYS: Record<TabKey, keyof typeof messages.adminTournament.shell.tabs> = {
-  overview: "overview",
-  registration: "registration",
-  teams: "teams",
-  bracket: "bracket",
-  matches: "matches",
-  settings: "settings"
-};
+import { useSubTabSegment, useTabAccess } from "./sub-tabs";
+import { allowedTab, isLegacyTabSegment, TAB_KEYS } from "./tab-guards";
 
 // Trailing debounce for readiness invalidations (§3): bulk registration edits
 // flush the tournament and the workspace scope back to back — a burst must cost
@@ -67,7 +51,6 @@ export function TournamentHubShell({
   const tStatus = useTranslations("common.statusBadge");
   const format = useFormatter();
   const router = useRouter();
-  const pathname = usePathname();
   const isValidTournamentId = Number.isFinite(tournamentId) && tournamentId > 0;
   const { canAccessPermission, isLoaded: permissionsLoaded, isSuperuser } = usePermissions();
 
@@ -76,11 +59,8 @@ export function TournamentHubShell({
   // registration/entries) still resolve to their parent tab. A segment that
   // used to be a tab and has not moved yet highlights nothing rather than
   // pretending to be Overview.
-  const tabSegment = pathname.startsWith(basePath)
-    ? (pathname.slice(basePath.length).split("/").find(Boolean) ?? "overview")
-    : "overview";
+  const { segment: tabSegment, active: activeTab } = useSubTabSegment(basePath, TAB_KEYS, "overview");
   const isLegacySegment = isLegacyTabSegment(tabSegment);
-  const activeTab: TabKey = isTabKey(tabSegment) ? tabSegment : "overview";
 
   const tournamentQuery = useHubTournamentQuery(tournamentId);
 
@@ -145,43 +125,20 @@ export function TournamentHubShell({
   });
 
   const tournament = tournamentQuery.data;
-  const canUpdateTournament = canAccessPermission("tournament.update", tournamentWorkspaceId);
-  const canDeleteTournament = canAccessPermission("tournament.delete", tournamentWorkspaceId);
+  const tabAccess = useTabAccess(tournament);
+  const { canUpdateTournament, canDeleteTournament, canUpdateEncounter, canReadTournamentLink, canTeamCreate } =
+    tabAccess;
   const canReadAnalytics = canAccessPermission("analytics.read", tournamentWorkspaceId);
-  const canTeamRead = canAccessPermission("team.read", tournamentWorkspaceId);
-  const canReadTournamentLink = canAccessPermission(
-    "tournament_link.read",
-    tournamentWorkspaceId
-  );
-  const canCreateTeam = canAccessPermission("team.create", tournamentWorkspaceId);
   const canUpdateTeam = canAccessPermission("team.update", tournamentWorkspaceId);
   const canDeleteTeam = canAccessPermission("team.delete", tournamentWorkspaceId);
-  const canImportTeams = canAccessPermission("team.create", tournamentWorkspaceId);
   const canCreatePlayer = canAccessPermission("player.create", tournamentWorkspaceId);
   const canUpdatePlayer = canAccessPermission("player.update", tournamentWorkspaceId);
   const canDeletePlayer = canAccessPermission("player.delete", tournamentWorkspaceId);
   const canCreateEncounter = canAccessPermission("match.create", tournamentWorkspaceId);
-  const canUpdateEncounter = canAccessPermission("match.update", tournamentWorkspaceId);
   const canDeleteEncounter = canAccessPermission("match.delete", tournamentWorkspaceId);
   const canSyncEncounters = canAccessPermission("challonge.update", tournamentWorkspaceId);
   const canUpdateStanding = canAccessPermission("standing.update", tournamentWorkspaceId);
   const canDeleteStanding = canAccessPermission("standing.delete", tournamentWorkspaceId);
-  const canRecalculateStandings = canAccessPermission(
-    "standing.update",
-    tournamentWorkspaceId
-  );
-
-  const teamFormation: "balancer" | "draft" =
-    tournament?.team_formation === "draft" ? "draft" : "balancer";
-  const tabAccess = {
-    canUpdateTournament,
-    canUpdateEncounter,
-    canTeamRead,
-    canTeamCreate: canCreateTeam,
-    canReadTournamentLink,
-    canDeleteTournament,
-    teamFormation
-  };
   // A segment awaiting its WU is not a tab, so it has no tab gate to fail —
   // its own page keeps gating itself until the move.
   const activeTabAllowed = isLegacySegment || allowedTab(activeTab, tabAccess);
@@ -226,10 +183,9 @@ export function TournamentHubShell({
       canUpdateTournament,
       canDeleteTournament,
       canReadAnalytics,
-      canCreateTeam,
+      canTeamCreate,
       canUpdateTeam,
       canDeleteTeam,
-      canImportTeams,
       canCreatePlayer,
       canUpdatePlayer,
       canDeletePlayer,
@@ -239,7 +195,6 @@ export function TournamentHubShell({
       canSyncEncounters,
       canUpdateStanding,
       canDeleteStanding,
-      canRecalculateStandings,
       // Otherwise a caller granted only `tournament_link.read` sees
       // "Unauthorized" instead of the Links tab `allowedTab` just cleared.
       canReadTournamentLink
@@ -256,7 +211,7 @@ export function TournamentHubShell({
 
   const tabItems: LinkTabItem[] = TAB_KEYS.map((key) => ({
     key,
-    label: t(`tabs.${TAB_LABEL_KEYS[key]}` as `tabs.${keyof typeof messages.adminTournament.shell.tabs}`),
+    label: t(`tabs.${key}`),
     href: `${basePath}/${key}`,
     hidden: !allowedTab(key, tabAccess)
   }));

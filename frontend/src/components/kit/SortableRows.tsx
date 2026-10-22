@@ -23,6 +23,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 /**
@@ -160,20 +161,20 @@ export function SortableGrip({
   className
 }: Readonly<SortableGripProps>) {
   return (
-    <button
+    <Button
       type="button"
+      variant="subtle"
+      size="icon-sm"
       disabled={disabled}
       aria-label={label}
       className={cn(
-        "flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-md",
-        "border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-dim)]",
+        "cursor-grab touch-none text-[color:var(--aqt-fg-dim)]",
         "hover:text-[color:var(--aqt-fg)] active:cursor-grabbing",
-        "disabled:cursor-default disabled:opacity-40",
         className
       )}
       {...handleProps}
     >
-      <GripVertical className="size-3" aria-hidden="true" />
-    </button>
+      <GripVertical aria-hidden="true" />
+    </Button>
   );
 }

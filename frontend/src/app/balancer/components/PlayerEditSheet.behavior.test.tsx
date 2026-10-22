@@ -189,12 +189,11 @@ afterEach(async () => {
 describe("owner-grid receiving controls", () => {
   it("slides the LoL support tier and sends its floor, never the OW floor", async () => {
     await render(sheet("lol"));
-    const slider = document.querySelector<HTMLInputElement>('input[type="range"]')!;
+    const slider = document.querySelector<HTMLElement>('[role="slider"]')!;
     expect(slider).not.toBeNull();
     expect(crestNames()).toContain("LoL 1");
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(slider, "1");
-      slider.dispatchEvent(new Event("input", { bubbles: true }));
+      slider.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
     });
     expect(onSave).not.toHaveBeenCalled();
     expect(crestNames()).toContain("LoL 2");
@@ -216,12 +215,12 @@ describe("owner-grid receiving controls", () => {
 
   it("exposes no OW controls while owner metadata is unresolved or unavailable", async () => {
     await render(sheet(undefined));
-    expect(document.querySelector('input[type="range"]')).toBeNull();
+    expect(document.querySelector('[role="slider"]')).toBeNull();
     expect(crestNames()).toEqual([]);
     await render(sheet("lol"));
     expect(crestNames()).toContain("LoL 1");
     await render(sheet(undefined));
-    expect(document.querySelector('input[type="range"]')).toBeNull();
+    expect(document.querySelector('[role="slider"]')).toBeNull();
     expect(crestNames()).toEqual([]);
     expect(onSave).not.toHaveBeenCalled();
   });
@@ -231,7 +230,7 @@ describe("owner-grid receiving controls", () => {
       workspaces: [{ ...workspace, effective_division_grid_versions: { overwatch: ow } }]
     });
     await render(sheet("lol"));
-    expect(document.querySelector('input[type="range"]')).toBeNull();
+    expect(document.querySelector('[role="slider"]')).toBeNull();
     expect(crestNames()).toEqual([]);
     expect(onSave).not.toHaveBeenCalled();
   });
@@ -250,17 +249,16 @@ describe("owner-grid receiving controls", () => {
       ]
     });
     await render(sheet(undefined, undefined));
-    expect(document.querySelector('input[type="range"]')).toBeNull();
+    expect(document.querySelector('[role="slider"]')).toBeNull();
     await render(sheet("lol", pinned.id));
-    expect(document.querySelector('input[type="range"]')).toBeNull();
+    expect(document.querySelector('[role="slider"]')).toBeNull();
     expect(crestNames()).toEqual([]);
     await act(async () => pending.resolve(pinned));
     await render(sheet("lol", pinned.id));
     expect(crestNames()).toContain("LoL Pin 1");
-    const slider = document.querySelector<HTMLInputElement>('input[type="range"]')!;
+    const slider = document.querySelector<HTMLElement>('[role="slider"]')!;
     await act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(slider, "1");
-      slider.dispatchEvent(new Event("input", { bubbles: true }));
+      slider.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
     });
     expect(crestNames()).toContain("LoL Pin 2");
     await clickButton("Save");
@@ -277,11 +275,11 @@ describe("owner-grid receiving controls", () => {
     await render(sheet("lol", pinned.id, pinned));
     expect(crestNames()).toContain("LoL Pin 1");
     await render(sheet("lol", 4));
-    expect(document.querySelector('input[type="range"]')).toBeNull();
+    expect(document.querySelector('[role="slider"]')).toBeNull();
     expect(crestNames()).toEqual([]);
     await act(async () => pending.reject(new Error("Pinned version unavailable")));
     await render(sheet("lol", 4));
-    expect(document.querySelector('input[type="range"]')).toBeNull();
+    expect(document.querySelector('[role="slider"]')).toBeNull();
     expect(crestNames()).toEqual([]);
     expect(onSave).not.toHaveBeenCalled();
   });

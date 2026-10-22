@@ -4,6 +4,7 @@ import { Ban, History, Shield } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { classRank } from "./pick-ban-model";
 import { PickBanItemThumb } from "./PickBanItemThumb";
 import { seatTeam, seatsBySlot } from "@/lib/encounter/seats";
@@ -30,7 +31,7 @@ export default function CharacterBansBoard({
   const t = useTranslations("pickBan.room");
   const caption =
     eyebrow === undefined ? (
-      <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-rose)]">
+      <span className={cn(eyebrowClass(), "text-[color:var(--aqt-rose)]")}>
         {t("characterBans.eyebrow")}
       </span>
     ) : (

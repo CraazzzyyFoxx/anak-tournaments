@@ -48,7 +48,7 @@ export default function FieldShell({
   error = null,
   layout = "stacked",
   className,
-  children,
+  children
 }: Readonly<FieldShellProps>) {
   const helpId = help ? `${id}-help` : undefined;
   const errorId = error ? `${id}-error` : undefined;
@@ -56,7 +56,7 @@ export default function FieldShell({
     id,
     "aria-invalid": Boolean(error),
     // The error first: it is what the reader has to act on.
-    "aria-describedby": [errorId, helpId].filter(Boolean).join(" ") || undefined,
+    "aria-describedby": [errorId, helpId].filter(Boolean).join(" ") || undefined
   };
   const body = typeof children === "function" ? children(control) : children;
   const labelNode = (

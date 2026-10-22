@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 
+import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   filterSortTeams,
@@ -115,81 +116,80 @@ export function TeamsPanel({
   ];
 
   return (
-    <section
-      aria-labelledby={headingId}
-      className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] shadow-[0_1px_2px_rgb(0_0_0/0.25)] xl:h-full"
-    >
-      <Tabs
-        value={tab}
-        onValueChange={(value) => {
-          if (isTeamsTab(value)) onTabChange(value);
-        }}
-        className="flex min-h-0 flex-1 flex-col"
-      >
-        <div className="flex flex-col gap-2 px-4 pb-3 pt-3.5">
-          <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
-            <h2 id={headingId} className="font-onest text-heading font-semibold">
-              {t("teams.title")}
-            </h2>
-            <span className="ml-auto whitespace-nowrap text-caption tabular-nums text-[color:var(--aqt-fg-dim)]">
-              {caption}
-            </span>
-          </div>
-          <TabsList aria-label={t("teams.tabsLabel")}>
-            {tabs.map((entry) => (
-              <TabsTrigger key={entry.value} value={entry.value} badge={entry.count} className="max-sm:h-11">
-                {entry.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </div>
-
-        <TabsContent
-          value="rosters"
-          className="@container/roster mt-0 flex min-h-0 flex-1 flex-col focus-visible:ring-inset"
+    <Card asChild className="flex min-h-0 flex-col overflow-hidden xl:h-full">
+      <section aria-labelledby={headingId}>
+        <Tabs
+          value={tab}
+          onValueChange={(value) => {
+            if (isTeamsTab(value)) onTabChange(value);
+          }}
+          className="flex min-h-0 flex-1 flex-col"
         >
-          <TeamRosters
-            board={board}
-            teamViews={teamViews}
-            teams={teams}
-            filter={filter}
-            onFilterChange={onFilterChange}
-            sort={sort}
-            onSortChange={onSortChange}
-            followed={followed}
-            onToggleFollow={onToggleFollow}
-            myTeamId={myTeamId}
-            onlineCaptainIds={onlineCaptainIds}
-            onOpenProfile={onOpenProfile}
-            onSlotFilter={onSlotFilter}
-            divisionGrid={divisionGrid}
-            ontology={ontology}
-            clockColor={clockColor}
-          />
-        </TabsContent>
-        <TabsContent value="queue" className="mt-0 flex min-h-0 flex-1 flex-col focus-visible:ring-inset">
-          <DraftQueue
-            board={board}
-            teamViews={teamViews}
-            remaining={remaining}
-            myTeamId={myTeamId}
-            clockColor={clockColor}
-            ontology={ontology}
-          />
-        </TabsContent>
-        <TabsContent value="order" className="mt-0 flex min-h-0 flex-1 flex-col focus-visible:ring-inset">
-          <DraftOrderGrid
-            board={board}
-            rounds={rounds}
-            directions={directions}
-            kind={kind}
-            myTeamId={myTeamId}
-            followed={followed}
-            clockColor={clockColor}
-            ontology={ontology}
-          />
-        </TabsContent>
-      </Tabs>
-    </section>
+          <div className="flex flex-col gap-2 px-4 pb-3 pt-3.5">
+            <div className="flex flex-wrap items-center gap-x-3.5 gap-y-1">
+              <h2 id={headingId} className="font-onest text-heading font-semibold">
+                {t("teams.title")}
+              </h2>
+              <span className="ml-auto whitespace-nowrap text-caption tabular-nums text-[color:var(--aqt-fg-dim)]">
+                {caption}
+              </span>
+            </div>
+            <TabsList aria-label={t("teams.tabsLabel")}>
+              {tabs.map((entry) => (
+                <TabsTrigger key={entry.value} value={entry.value} badge={entry.count} className="max-sm:h-11">
+                  {entry.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+
+          <TabsContent
+            value="rosters"
+            className="@container/roster mt-0 flex min-h-0 flex-1 flex-col focus-visible:ring-inset"
+          >
+            <TeamRosters
+              board={board}
+              teamViews={teamViews}
+              teams={teams}
+              filter={filter}
+              onFilterChange={onFilterChange}
+              sort={sort}
+              onSortChange={onSortChange}
+              followed={followed}
+              onToggleFollow={onToggleFollow}
+              myTeamId={myTeamId}
+              onlineCaptainIds={onlineCaptainIds}
+              onOpenProfile={onOpenProfile}
+              onSlotFilter={onSlotFilter}
+              divisionGrid={divisionGrid}
+              ontology={ontology}
+              clockColor={clockColor}
+            />
+          </TabsContent>
+          <TabsContent value="queue" className="mt-0 flex min-h-0 flex-1 flex-col focus-visible:ring-inset">
+            <DraftQueue
+              board={board}
+              teamViews={teamViews}
+              remaining={remaining}
+              myTeamId={myTeamId}
+              clockColor={clockColor}
+              ontology={ontology}
+            />
+          </TabsContent>
+          <TabsContent value="order" className="mt-0 flex min-h-0 flex-1 flex-col focus-visible:ring-inset">
+            <DraftOrderGrid
+              board={board}
+              rounds={rounds}
+              directions={directions}
+              kind={kind}
+              myTeamId={myTeamId}
+              followed={followed}
+              clockColor={clockColor}
+              ontology={ontology}
+            />
+          </TabsContent>
+        </Tabs>
+      </section>
+    </Card>
   );
 }

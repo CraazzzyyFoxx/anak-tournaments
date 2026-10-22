@@ -1,15 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
+import { BackLink } from "@/components/site/BackLink";
 import { HeroFrame, HeroStat } from "@/components/site/PageHero";
 import { AchievementArt } from "@/components/achievements/AchievementArt";
 import { Badge } from "@/components/ui/badge";
-import { eyebrowClass } from "@/components/ui/eyebrow";
-import { cn } from "@/lib/utils";
 import type { Achievement } from "@/types/achievement.types";
 import { classifyRarity, localizedText } from "@/lib/achievements/rarity";
 
@@ -29,16 +26,9 @@ const AchievementDetailHeader = ({ achievement }: { achievement: Achievement }) 
           <AchievementArt achievement={achievement} sizes="132px" className="aqt-ach-crest" />
 
           <div className="flex min-w-0 flex-col gap-3">
-            <Link
-              href="/achievements"
-              className={cn(
-                eyebrowClass(),
-                "inline-flex items-center gap-1.5 self-start transition-colors hover:text-[color:var(--aqt-teal)]"
-              )}
-            >
-              <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
+            <BackLink href="/achievements" className="self-start">
               {t("achievements.detail.backToCatalog")}
-            </Link>
+            </BackLink>
 
             <h1 className="font-onest text-[clamp(1.7rem,3.4vw,2.6rem)] font-semibold leading-[1.05] tracking-[-0.01em] text-[color:var(--aqt-fg)]">
               {achievement.name}

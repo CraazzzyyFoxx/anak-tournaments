@@ -6,6 +6,7 @@ import { AlertCircle, Copy, Download, Images } from "lucide-react";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -33,13 +34,9 @@ import type { DivisionGrid } from "@/types/workspace.types";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import type { RoleOntology } from "@/lib/roster/ontology";
 
-import {
-  MUTED_BUTTON_CLASS,
-  TEAM_BADGE_ACCENTS,
-  calculateTeamAverageFromPayload,
-  calculateTeamTotalFromPayload
-} from "@/components/balancer/balancer-page-helpers";
+import { MUTED_BUTTON_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { balanceBucketKeys } from "@/components/balancer/balance-editor-helpers";
+import { BalanceTeamHeader } from "@/components/balancer/BalanceTeamHeader";
 import { Spinner } from "@/components/ui/spinner";
 
 const TEAMS_PER_IMAGE = 10;
@@ -282,10 +279,7 @@ export function BalanceImageExportDialog({
             {!isGenerating && !error ? (
               <div className="flex flex-col gap-4">
                 {images.map((image, index) => (
-                  <div
-                    key={image.id}
-                    className="overflow-hidden rounded-xl border border-border bg-card"
-                  >
+                  <Card key={image.id} variant="flat" className="overflow-hidden">
                     <div className="flex items-center justify-between gap-3 border-b border-[color:var(--aqt-border)] px-3 py-2.5">
                       <Eyebrow as="div" tone="muted">
                         {image.label}
@@ -313,7 +307,7 @@ export function BalanceImageExportDialog({
                         className="h-auto w-full rounded-xl border border-[color:var(--aqt-border)]"
                       />
                     </div>
-                  </div>
+                  </Card>
                 ))}
               </div>
             ) : null}
@@ -403,38 +397,10 @@ function BalanceExportTeamCard({
   ontology: RoleOntology | null;
 }>) {
   const slotLabel = useSlotLabel(ontology);
-  const total = Math.round(calculateTeamTotalFromPayload(team));
-  const average = Math.round(calculateTeamAverageFromPayload(team));
-  const teamAccent = TEAM_BADGE_ACCENTS[teamIndex % TEAM_BADGE_ACCENTS.length];
 
   return (
     <div className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] shadow-[0_16px_48px_rgba(0,0,0,0.24)]">
-      <div className="flex items-start justify-between gap-3 border-b border-[color:var(--aqt-border)] px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <div
-            className={cn(
-              "rounded-full border px-2.5 py-1 text-label font-semibold uppercase tracking-label",
-              teamAccent
-            )}
-          >
-            #{team.id}
-          </div>
-          <div className="truncate text-sm font-semibold text-[color:var(--aqt-fg)]" title={team.name}>
-            {team.name}
-          </div>
-        </div>
-
-        <div className="shrink-0 text-right">
-          <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-label font-medium text-[color:var(--aqt-fg-muted)]">
-            <span>
-              Total: <span className="tabular-nums text-[color:var(--aqt-fg)]">{total}</span>
-            </span>
-            <span>
-              Avg: <span className="tabular-nums text-[color:var(--aqt-fg)]">{average}</span>
-            </span>
-          </div>
-        </div>
-      </div>
+      <BalanceTeamHeader team={team} teamIndex={teamIndex} />
 
       <table className="w-full min-w-90 caption-bottom text-sm">
         <thead>

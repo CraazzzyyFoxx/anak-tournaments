@@ -8,6 +8,7 @@ import { ArrowLeft, Bell, Check, ChevronsUpDown } from "lucide-react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Popover, PopoverClose, PopoverTrigger } from "@/components/ui/popover";
+import { RowButton } from "@/components/ui/row-button";
 import {
   SidebarMenu,
   SidebarMenuButton,
@@ -198,14 +199,13 @@ export function SidebarUserDropdown() {
                 actions={
                   // The admin shell has no notification bell, so its settings live here.
                   <PopoverClose asChild>
-                    <button
-                      type="button"
+                    <RowButton
                       className={ACCOUNT_MENU_ITEM_CLASS}
                       onClick={() => openSettings("notifications")}
                     >
                       <Bell className="size-4 shrink-0" aria-hidden />
                       <span className="min-w-0 flex-1 truncate">{tCommon("notificationSettings")}</span>
-                    </button>
+                    </RowButton>
                   </PopoverClose>
                 }
               >
@@ -221,8 +221,7 @@ export function SidebarUserDropdown() {
                       </p>
                       {workspaces.map((ws) => (
                         <PopoverClose key={ws.id} asChild>
-                          <button
-                            type="button"
+                          <RowButton
                             onClick={() => pickWorkspace(ws)}
                             aria-current={ws.id === currentWorkspaceId ? "true" : undefined}
                             className={ACCOUNT_MENU_ITEM_CLASS}
@@ -232,7 +231,7 @@ export function SidebarUserDropdown() {
                             {ws.id === currentWorkspaceId && (
                               <Check aria-hidden className="size-4 shrink-0 text-[color:var(--aqt-teal)]" />
                             )}
-                          </button>
+                          </RowButton>
                         </PopoverClose>
                       ))}
                     </div>

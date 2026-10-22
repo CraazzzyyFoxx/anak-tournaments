@@ -3,15 +3,7 @@
 import { useId, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { AuthUserSearchCombobox, type AuthUserOption } from "@/components/kit/ServerSearchCombobox";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
+import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -77,53 +69,45 @@ export function AddMemberDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t("addMember")}</DialogTitle>
-          <DialogDescription>{tm("addDescription")}</DialogDescription>
-        </DialogHeader>
+    <EntityFormDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t("addMember")}
+      description={tm("addDescription")}
+      onSubmit={submit}
+      submitLabel={t("addMember")}
+      submittingLabel={tm("adding")}
+      isSubmitting={addMemberMutation.isPending}
+      contentClassName="max-w-md"
+    >
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={userFieldId}>{t("user")}</Label>
+        <AuthUserSearchCombobox
+          id={userFieldId}
+          workspaceId={workspaceId}
+          value={user?.id}
+          selectedLabel={user?.label}
+          onSelect={(picked) => setUser(picked ?? null)}
+          placeholder={tm("selectUser")}
+          searchPlaceholder={t("searchUser")}
+        />
+      </div>
 
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={userFieldId}>{t("user")}</Label>
-            <AuthUserSearchCombobox
-              id={userFieldId}
-              workspaceId={workspaceId}
-              value={user?.id}
-              selectedLabel={user?.label}
-              onSelect={(picked) => setUser(picked ?? null)}
-              placeholder={tm("selectUser")}
-              searchPlaceholder={t("searchUser")}
-            />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={roleFieldId}>{t("role")}</Label>
-            <Select value={role} onValueChange={(value) => setRole(value as WorkspaceSystemRole)}>
-              <SelectTrigger id={roleFieldId}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SYSTEM_ROLES.map((name) => (
-                  <SelectItem key={name} value={name}>
-                    {tm(`${name}Role`)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {t("cancel")}
-          </Button>
-          <Button onClick={submit} disabled={addMemberMutation.isPending}>
-            {addMemberMutation.isPending ? tm("adding") : t("addMember")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor={roleFieldId}>{t("role")}</Label>
+        <Select value={role} onValueChange={(value) => setRole(value as WorkspaceSystemRole)}>
+          <SelectTrigger id={roleFieldId}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SYSTEM_ROLES.map((name) => (
+              <SelectItem key={name} value={name}>
+                {tm(`${name}Role`)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </EntityFormDialog>
   );
 }

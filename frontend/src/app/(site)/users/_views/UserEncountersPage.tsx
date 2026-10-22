@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import userService from "@/services/user.service";
 import { User } from "@/types/user.types";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import MatchesTable, { type MatchesFilters } from "@/app/(site)/users/components/matches/MatchesTable";
 import type { StageStats } from "@/app/(site)/users/components/matches/MatchesSidebars";
@@ -69,9 +70,7 @@ export const UserEncountersPage = async ({
     ]);
   } catch {
     return (
-      <div className="aqt-player rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)] px-6 py-10 text-center text-caption text-[color:var(--aqt-fg-muted)]">
-        {t("users.matches.loadError")}
-      </div>
+      <PageStateCard state="error" description={t("users.matches.loadError")} className="aqt-player" />
     );
   }
 

@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
+import { EmptyNote } from "@/components/kit/EmptyNote";
 import { cn } from "@/lib/utils";
 import type { EncounterOverview } from "@/types/encounter.types";
 
@@ -73,7 +74,7 @@ export function EncountersRail({ overview }: Readonly<{ overview: EncounterOverv
               </div>
             ))
           ) : (
-            <div className={styles.empty}>{t("encounters.hotMaps.empty")}</div>
+            <EmptyNote className="m-4">{t("encounters.hotMaps.empty")}</EmptyNote>
           )}
         </div>
       </div>

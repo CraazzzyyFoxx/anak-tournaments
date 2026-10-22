@@ -10,6 +10,7 @@ import { HandleLabel } from "@/components/HandleLabel";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import DivisionIcon from "@/components/DivisionIcon";
 import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
+import { Card } from "@/components/ui/card";
 import { answerFlag } from "@/lib/forms/answers";
 import { resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
@@ -289,60 +290,62 @@ function RoleColumn({
   );
 
   return (
-    <section
-      className="relative overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2 pt-3"
-      style={{ "--pool-role": roleColor(ontology, role) ?? NEUTRAL_ROLE_COLOR } as CSSProperties}
-      aria-label={
-        named
-          ? t("tournamentDetail.participantsPool.columnLabel", { role: title, count: entries.length })
-          : title
-      }
-      data-pool-column={role}
-    >
-      {/* The column's identity: a role-tinted edge, readable before the label. */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,var(--pool-role),transparent_75%)]"
-      />
-      <h3 className="mb-2 flex items-center gap-2 px-1.5">
-        {named ? (
-          <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--pool-role)_26%,transparent)] bg-[color:color-mix(in_srgb,var(--pool-role)_12%,transparent)] text-[color:var(--pool-role)]">
-            <PlayerRoleIcon
-              role={rated ? { dimension: rated.code, role } : null}
-              ontology={ontology}
-              size={13}
-              decorative
-            />
+    <Card asChild variant="flat">
+      <section
+        className="relative overflow-hidden p-2 pt-3"
+        style={{ "--pool-role": roleColor(ontology, role) ?? NEUTRAL_ROLE_COLOR } as CSSProperties}
+        aria-label={
+          named
+            ? t("tournamentDetail.participantsPool.columnLabel", { role: title, count: entries.length })
+            : title
+        }
+        data-pool-column={role}
+      >
+        {/* The column's identity: a role-tinted edge, readable before the label. */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,var(--pool-role),transparent_75%)]"
+        />
+        <h3 className="mb-2 flex items-center gap-2 px-1.5">
+          {named ? (
+            <span className="inline-flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--pool-role)_26%,transparent)] bg-[color:color-mix(in_srgb,var(--pool-role)_12%,transparent)] text-[color:var(--pool-role)]">
+              <PlayerRoleIcon
+                role={rated ? { dimension: rated.code, role } : null}
+                ontology={ontology}
+                size={13}
+                decorative
+              />
+            </span>
+          ) : null}
+          <span className="aqt-display text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg)]">
+            {title}
           </span>
+          <span className="aqt-tnum ml-auto rounded-md bg-[color:var(--aqt-overlay-2)] px-1.5 py-px text-label tabular-nums text-[color:var(--aqt-fg-muted)]">
+            {entries.length}
+          </span>
+        </h3>
+        {entries.length === 0 ? (
+          <p className="px-1.5 py-1 text-xs text-[color:var(--aqt-fg-dim)]">
+            {t("tournamentDetail.participantsPool.columnEmpty")}
+          </p>
+        ) : (
+          <ul>{visible.map(renderRow)}</ul>
+        )}
+        {rest.length > 0 ? (
+          <details className="group mt-1 border-t border-[color:var(--aqt-border)] pt-1">
+            <summary className="flex cursor-pointer list-none items-center gap-1 rounded-md px-1.5 py-1 text-label text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)]">
+              <ChevronDown
+                size={12}
+                aria-hidden
+                className="transition-transform group-open:rotate-180"
+              />
+              {t("tournamentDetail.participantsPool.more", { count: rest.length })}
+            </summary>
+            <ul>{rest.map((entry, index) => renderRow(entry, index + VISIBLE_PER_COLUMN))}</ul>
+          </details>
         ) : null}
-        <span className="aqt-display text-label font-bold uppercase tracking-label text-[color:var(--aqt-fg)]">
-          {title}
-        </span>
-        <span className="aqt-tnum ml-auto rounded-md bg-[color:var(--aqt-overlay-2)] px-1.5 py-px text-label tabular-nums text-[color:var(--aqt-fg-muted)]">
-          {entries.length}
-        </span>
-      </h3>
-      {entries.length === 0 ? (
-        <p className="px-1.5 py-1 text-xs text-[color:var(--aqt-fg-dim)]">
-          {t("tournamentDetail.participantsPool.columnEmpty")}
-        </p>
-      ) : (
-        <ul>{visible.map(renderRow)}</ul>
-      )}
-      {rest.length > 0 ? (
-        <details className="group mt-1 border-t border-[color:var(--aqt-border)] pt-1">
-          <summary className="flex cursor-pointer list-none items-center gap-1 rounded-md px-1.5 py-1 text-label text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)]">
-            <ChevronDown
-              size={12}
-              aria-hidden
-              className="transition-transform group-open:rotate-180"
-            />
-            {t("tournamentDetail.participantsPool.more", { count: rest.length })}
-          </summary>
-          <ul>{rest.map((entry, index) => renderRow(entry, index + VISIBLE_PER_COLUMN))}</ul>
-        </details>
-      ) : null}
-    </section>
+      </section>
+    </Card>
   );
 }
 
@@ -510,50 +513,54 @@ export default function ParticipantsPool({
       ) : null}
 
       {reserves.length > 0 ? (
-        <section
-          aria-label={t("tournamentDetail.participantsPool.reserve", {
-            count: reserves.length
-          })}
-          className="rounded-xl border border-[color:color-mix(in_srgb,var(--aqt-blue)_25%,transparent)] bg-[color:var(--aqt-card)] px-3 py-2"
-          data-pool-reserve="true"
-        >
-          <h3 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-blue)]">
-            {t("tournamentDetail.participantsPool.reserve", { count: reserves.length })}
-          </h3>
-          <p className="mt-0.5 text-xs text-[color:var(--aqt-fg-dim)]">
-            {t("tournamentDetail.participantsPool.reserveDesc")}
-          </p>
-          <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-            {reserves.map((registration) => (
-              <li key={registration.id} className="text-xs text-[color:var(--aqt-fg-muted)]">
-                {registration.primary_handle ?? "\u2014"}
-              </li>
-            ))}
-          </ul>
-        </section>
+        <Card asChild variant="flat">
+          <section
+            aria-label={t("tournamentDetail.participantsPool.reserve", {
+              count: reserves.length
+            })}
+            className="border-[color:color-mix(in_srgb,var(--aqt-blue)_25%,transparent)] px-3 py-2"
+            data-pool-reserve="true"
+          >
+            <h3 className="text-label font-semibold uppercase tracking-label text-[color:var(--aqt-blue)]">
+              {t("tournamentDetail.participantsPool.reserve", { count: reserves.length })}
+            </h3>
+            <p className="mt-0.5 text-xs text-[color:var(--aqt-fg-dim)]">
+              {t("tournamentDetail.participantsPool.reserveDesc")}
+            </p>
+            <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              {reserves.map((registration) => (
+                <li key={registration.id} className="text-xs text-[color:var(--aqt-fg-muted)]">
+                  {registration.primary_handle ?? "\u2014"}
+                </li>
+              ))}
+            </ul>
+          </section>
+        </Card>
       ) : null}
 
       {withdrawn.length > 0 ? (
-        <details className="group rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-3 py-2">
-          <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)]">
-            <ChevronDown
-              size={12}
-              aria-hidden
-              className="transition-transform group-open:rotate-180"
-            />
-            {t("tournamentDetail.participantsPool.withdrawn", { count: withdrawn.length })}
-          </summary>
-          <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-            {withdrawn.map((registration) => (
-              <li
-                key={registration.id}
-                className="text-xs text-[color:var(--aqt-fg-dim)] line-through"
-              >
-                {registration.primary_handle ?? "\u2014"}
-              </li>
-            ))}
-          </ul>
-        </details>
+        <Card asChild variant="flat">
+          <details className="group px-3 py-2">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-xs text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)]">
+              <ChevronDown
+                size={12}
+                aria-hidden
+                className="transition-transform group-open:rotate-180"
+              />
+              {t("tournamentDetail.participantsPool.withdrawn", { count: withdrawn.length })}
+            </summary>
+            <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              {withdrawn.map((registration) => (
+                <li
+                  key={registration.id}
+                  className="text-xs text-[color:var(--aqt-fg-dim)] line-through"
+                >
+                  {registration.primary_handle ?? "\u2014"}
+                </li>
+              ))}
+            </ul>
+          </details>
+        </Card>
       ) : null}
     </div>
   );

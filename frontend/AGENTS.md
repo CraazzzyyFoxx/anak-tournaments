@@ -12,4 +12,4 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 Before any UI work, read [`DESIGN.md`](DESIGN.md): tokens, type roles, the components to reuse, layout and canonical patterns. Its chip policy (§4) is strict — a chip only for a filter, a lifecycle status, a colour key or a count; every other fact is plain text.
 
-Controls come from `src/components/ui/` only: no native `<button>`, `<input>`, `<select>` or `<textarea>` in feature code, and no `text-*` / `font-*` / height overrides on a control — its `size` prop sets both (DESIGN.md §3, Control text). Missing a control? Add it to `components/ui/`.
+Controls come from `src/components/ui/` only: no native `<button>`, `<input>`, `<select>`, `<textarea>` or `<img>` in feature code, and no `text-*` / `font-*` / height overrides on a control — its `size` prop sets both (DESIGN.md §3, Control text). Missing a control? Add a variant or primitive to `components/ui/`. `bun run lint:design` (R8, R9) fails on a native control or image outside `ui/`.

@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 import DivisionIcon from "@/components/DivisionIcon";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { NumberInput } from "@/components/ui/number-input";
+import { Slider } from "@/components/ui/slider";
+import { tint } from "@/lib/colors";
 import {
   getDivisionLabel,
   resolveDivisionFromRank,
@@ -32,9 +36,6 @@ export function roleRankAccent(ontology: RoleOntology | null | undefined, code: 
   return { color: roleColor(ontology, code) };
 }
 
-const tint = (color: string, percent: number) =>
-  `color-mix(in srgb, ${color} ${percent}%, transparent)`;
-
 /** Card frame for the active state. */
 export function accentRowStyle({ color }: RoleRankAccent): CSSProperties {
   return color
@@ -50,14 +51,23 @@ export function accentTextStyle({ color }: RoleRankAccent): CSSProperties {
   return { color: color ?? "var(--aqt-fg-muted)" };
 }
 
-export function accentChipStyle({ color }: RoleRankAccent): CSSProperties {
-  return color
-    ? { borderColor: tint(color, 30), backgroundColor: tint(color, 12), color }
-    : {
-        borderColor: "var(--aqt-border-2)",
-        backgroundColor: "var(--aqt-overlay-3)",
-        color: "var(--aqt-fg-muted)"
-      };
+/** A role-tinted label chip (a rank's source, "First", a sub-role): the role's colour, neutral without one. */
+export function AccentBadge({
+  accent,
+  className,
+  children
+}: Readonly<{ accent: RoleRankAccent; className?: string; children: ReactNode }>) {
+  return (
+    <Badge
+      palette="aqt"
+      tone={accent.color ? undefined : "neutral"}
+      size="sm"
+      className={className}
+      style={accent.color ? ({ "--badge-hue": accent.color } as CSSProperties) : undefined}
+    >
+      {children}
+    </Badge>
+  );
 }
 
 /** Long enough that a slider drag or a four-digit number is one write, not twenty. */
@@ -168,7 +178,6 @@ export function RoleRankControls({
     tiers.findIndex((tier) => tier.number === divisionNumber),
     0
   );
-  const fillPercent = tiers.length <= 1 ? 100 : (sliderIndex / (tiers.length - 1)) * 100;
 
   return (
     <>
@@ -178,34 +187,33 @@ export function RoleRankControls({
           {rankValue == null ? (
             <span className="text-label text-[color:var(--aqt-fg-dim)]">No rank</span>
           ) : (
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1 text-label">
               <span
-                className="flex items-center gap-1 text-label font-semibold"
+                className="flex items-center gap-1 font-semibold"
                 style={active ? accentTextStyle(accent) : { color: "var(--aqt-fg-dim)" }}
               >
                 {rankValue}
                 {sourceLabel ? (
-                  <span
-                    className="inline-flex h-4 items-center rounded-md border px-1.5 text-label uppercase"
-                    style={accentChipStyle(accent)}
-                  >
+                  <AccentBadge accent={accent} className="uppercase">
                     {sourceLabel}
-                  </span>
+                  </AccentBadge>
                 ) : null}
               </span>
               {/* Emptying the number field also clears, but nothing said so: the
                   slider under it reads as a required value, and the only visible
                   way out was deleting the whole role. */}
               {onClear ? (
-                <button
+                <Button
                   type="button"
+                  variant="ghost-destructive"
+                  size="inline"
                   disabled={disabled}
                   onClick={onClear}
                   title="Clear this role's rank"
-                  className="rounded px-1 text-label font-semibold uppercase tracking-label text-[color:var(--aqt-fg-dim)] transition-colors hover:text-rose-200 disabled:opacity-50"
+                  className="px-1 uppercase tracking-label"
                 >
                   Clear
-                </button>
+                </Button>
               ) : null}
             </span>
           )}
@@ -223,24 +231,16 @@ export function RoleRankControls({
           value={rankValue}
           onValueChange={(next) => onChange(next, resolveDivisionFromRank(grid, next))}
         />
-        <input
-          type="range"
+        <Slider
+          accent={sliderColor}
           min={0}
           max={Math.max(tiers.length - 1, 0)}
           step={1}
           disabled={disabled || !active}
-          value={sliderIndex}
-          onChange={(event) => {
-            const nextDivision = tiers[Number(event.target.value)]?.number ?? null;
+          value={[sliderIndex]}
+          onValueChange={([index]) => {
+            const nextDivision = tiers[index]?.number ?? null;
             onChange(resolveRankFromDivision(grid, nextDivision), nextDivision);
-          }}
-          className={cn(
-            "h-1 w-full cursor-pointer appearance-none rounded-full bg-[color:var(--aqt-overlay-3)]",
-            (disabled || !active) && "cursor-not-allowed opacity-50"
-          )}
-          style={{
-            accentColor: sliderColor,
-            background: `linear-gradient(90deg, ${sliderColor} 0%, ${sliderColor} ${fillPercent}%, rgba(255,255,255,0.08) ${fillPercent}%, rgba(255,255,255,0.08) 100%)`
           }}
         />
       </div>

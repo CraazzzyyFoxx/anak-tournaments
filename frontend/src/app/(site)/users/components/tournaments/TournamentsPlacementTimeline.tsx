@@ -3,6 +3,7 @@
 import React from "react";
 import { useTranslations } from "next-intl";
 import { CardSurface, ProfileStat } from "@/components/profile/atoms";
+import { Button } from "@/components/ui/button";
 import { UserProfile, UserTournament } from "@/types/user.types";
 
 interface Props {
@@ -85,10 +86,11 @@ const TournamentsPlacementTimeline = ({ tournaments, profile = null, selectedIds
             };
             if (onSelect) {
               return (
-                <button
+                <Button
                   key={t.id}
-                  type="button"
-                  className={`aqt-dot ${cls} appearance-none p-0`}
+                  variant="ghost"
+                  size="inline"
+                  className={`aqt-dot ${cls}`}
                   style={style}
                   title={label}
                   aria-label={label}

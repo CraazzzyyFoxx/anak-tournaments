@@ -4,6 +4,7 @@ import { Lock, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { RowButton } from "@/components/ui/row-button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import type {
@@ -144,14 +145,10 @@ export function PickBanDraftTray({
                 {locked ? (
                   thumb
                 ) : (
-                  <button
-                    type="button"
+                  <RowButton
                     aria-label={t("draft.remove", { item: label })}
                     onClick={() => onRemove(index)}
-                    className={cn(
-                      "group relative flex outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
-                      kind === "hero" ? "rounded-full" : "rounded-md"
-                    )}
+                    className={cn("group relative flex w-auto", kind === "hero" ? "rounded-full" : "rounded-md")}
                   >
                     {thumb}
                     <span
@@ -160,7 +157,7 @@ export function PickBanDraftTray({
                     >
                       <X className="h-3 w-3" />
                     </span>
-                  </button>
+                  </RowButton>
                 )}
               </li>
             );

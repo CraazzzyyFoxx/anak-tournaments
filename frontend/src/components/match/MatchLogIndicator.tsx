@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { ScrollText, FileDown, FileX } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
@@ -115,18 +116,20 @@ const MatchLogIndicator = ({ hasLogs, logs, size = 15, className }: MatchLogIndi
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           onClick={(e) => {
             stop(e);
             setOpen((v) => !v);
           }}
-          className={cn(BASE, HAS, "hover:brightness-125", className)}
+          className={cn("rounded-[7px] border", HAS, "hover:brightness-125", className)}
           title={allLabel}
           aria-label={allLabel}
         >
           <FileDown size={size} strokeWidth={1.9} aria-hidden />
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent className="w-56 p-1.5" onClick={stop}>
         <Eyebrow as="div" tone="muted" className="px-2 pb-1.5 pt-1">

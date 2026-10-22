@@ -1,6 +1,7 @@
 import { flexRender, type Header, type SortingState } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown, Info } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/components/data-table/host";
 import { ariaSortValue } from "@/components/data-table/types";
@@ -60,12 +61,14 @@ export function renderHeadCell<TData>(
       {header.isPlaceholder ? null : (
         <span className={cn("inline-flex w-full items-center gap-1", ALIGN_FLEX_CLASS[align])}>
           {canSort ? (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="inline"
               onClick={header.column.getToggleSortingHandler()}
               title={isClientMode ? i18n("sortHint") : undefined}
               className={cn(
-                "inline-flex items-center gap-1 rounded transition-colors hover:text-foreground",
+                "gap-1 hover:bg-transparent hover:text-foreground [&_svg]:size-3",
                 sorted ? "text-foreground" : "text-muted-foreground",
               )}
             >
@@ -80,7 +83,7 @@ export function renderHeadCell<TData>(
               {sortIndex >= 0 ? (
                 <span aria-label={i18n("sortPriority", { index: sortIndex + 1 })} className="text-xs tabular-nums opacity-70">{sortIndex + 1}</span>
               ) : null}
-            </button>
+            </Button>
           ) : (
             flexRender(header.column.columnDef.header, header.getContext())
           )}

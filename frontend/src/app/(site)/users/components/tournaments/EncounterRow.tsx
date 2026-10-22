@@ -2,15 +2,17 @@
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { useTranslations } from "next-intl";
-import { cn } from "@/lib/utils";
-import { mapWithModeName } from "@/lib/catalog/mode";
 import { EncounterWithUserStats } from "@/types/user.types";
-import type { CatalogEntityRead } from "@/types/catalog.types";
 import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
-import { type ScoreKind } from "@/components/match/cells";
+import { ScoreCell, type ScoreKind } from "@/components/match/cells";
 import MatchRowBadge from "@/components/match/MatchRowBadge";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
-import { encounterPerspective, mapKind } from "@/app/(site)/users/components/shared/encounter-perspective";
+import {
+  encounterLogEntries,
+  encounterPerspective,
+  mapKind,
+  uniqueViewerCharacters
+} from "@/app/(site)/users/components/shared/encounter-perspective";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 // ─── Encounter row (expanded matches table) ─────────────────────────────────────
@@ -43,17 +45,7 @@ const EncounterRow = ({
   const mapsWon = mapPips.filter((k) => k === "win").length;
   const mapsLost = mapPips.filter((k) => k === "loss").length;
 
-  // Unique heroes across all maps in the encounter.
-  const heroes: CatalogEntityRead[] = [];
-  const seen = new Set<number>();
-  for (const m of enc.matches ?? []) {
-    for (const character of m.viewer?.characters ?? []) {
-      if (!seen.has(character.id)) {
-        seen.add(character.id);
-        heroes.push(character);
-      }
-    }
-  }
+  const heroes = uniqueViewerCharacters(enc);
 
   const stageLabel = enc.stage_item?.name ?? enc.stage?.name ?? enc.name ?? "—";
 
@@ -111,16 +103,7 @@ const EncounterRow = ({
       )}
 
       {/* Score */}
-      <span
-        className={cn(
-          "aqt-tnum min-w-[52px] text-right text-base font-bold",
-          scoreKind === "win" && "text-[color:var(--aqt-emerald)]",
-          scoreKind === "loss" && "text-[color:var(--aqt-rose)]",
-          scoreKind === "draw" && "text-[color:var(--aqt-amber)]"
-        )}
-      >
-        {userScore} – {oppScore}
-      </span>
+      <ScoreCell kind={scoreKind} value={`${userScore} – ${oppScore}`} className="min-w-[52px] text-right" />
 
       {/* Logs — click shield, not a control: the whole row is one link, so a
           click on the log badge must not navigate. No keyboard twin by design:
@@ -131,18 +114,7 @@ const EncounterRow = ({
         className="hidden justify-end md:flex"
         onClick={(e) => e.preventDefault()}
       >
-        <MatchLogIndicator
-          hasLogs={enc.has_logs}
-          logs={
-            enc.has_logs
-              ? (enc.matches ?? []).map((m) => ({
-                  matchId: m.id,
-                  rawAvailable: m.raw_available,
-                  label: `${mapWithModeName(m.map, m.mode) ?? t("encounters.match.mapAlt")} · #${m.id}`
-                }))
-              : undefined
-          }
-        />
+        <MatchLogIndicator hasLogs={enc.has_logs} logs={encounterLogEntries(enc, t("encounters.match.mapAlt"))} />
       </div>
     </HoverPrefetchLink>
   );

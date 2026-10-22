@@ -1341,7 +1341,6 @@
       "loadError": "Could not load the ranks.",
       "lobby": "Lobby {letter}",
       "unauthorized": {
-        "title": "Not available",
         "description": "Reading the workspace rank table needs the team.update permission here."
       },
       "columns": {
@@ -6199,7 +6198,6 @@
       "autopickDescription": "The server picks the best remaining fit for the team on the clock and the draft moves on.",
       "rollbackTitle": "Roll the last pick back?",
       "rollbackDescription": "The last completed pick returns to the pool and that team goes back on the clock.",
-      "cancel": "Cancel",
       "feasible": "Feasible",
       "infeasible": "Not feasible. Fix roles.",
       "done": {
@@ -7503,7 +7501,6 @@
       },
       "pickWorkspace": "Pick a workspace to read and write its announcements.",
       "unauthorized": {
-        "title": "Unauthorized",
         "description": "You do not have permission to read announcements in this workspace."
       },
       "readOnly": "Read-only: you cannot publish here.",
@@ -7565,7 +7562,6 @@
       "description": "Notifications sent by this workspace.",
       "pickWorkspace": "Pick a workspace to review the notifications it produced.",
       "unauthorized": {
-        "title": "Unauthorized",
         "description": "You do not have permission to read the notifications this workspace produced."
       },
       "readOnly": "Read-only: you cannot retire notifications.",
@@ -8188,7 +8184,6 @@
       "streamsAria": "Stream collector views"
     },
     "access": {
-      "title": "Not available",
       "rank": "You do not have access to rank collection health.",
       "subscriptions": "You do not have access to subscription collection health.",
       "streams": "You do not have access to stream poller health. The poller is platform-wide, so workspace access does not cover it."
@@ -9959,7 +9954,6 @@
     },
     "workspace": {
       "deleted": "Workspace deleted",
-      "unauthorized": "Unauthorized",
       "unauthorizedDescription": "You do not administer any workspace, so there is none to list here.",
       "description": "Isolated tournament environments. Open one to edit its settings.",
       "noWorkspaces": "No workspaces yet. Use “Create workspace” to add the first one.",
@@ -10412,8 +10406,7 @@
       "selectAll": "Select all",
       "clear": "Clear",
       "selectEvery": "Select every {category} achievement",
-      "evaluate": "Evaluate {name}",
-      "cancel": "Cancel"
+      "evaluate": "Evaluate {name}"
     },
     "overrideDialog": {
       "description": "Grant or revoke this achievement for one player. The override survives future evaluation runs, so record why it was needed.",
@@ -10595,7 +10588,6 @@
       "note": "System statuses stay system-controlled: an edit here is a workspace override of their name, icon and color, and can be reset. Custom statuses add extra labels this workspace owns.",
       "createTitle": "Create custom status",
       "createDescription": "The slug is generated automatically from the name and stays stable after edits.",
-      "cancel": "Cancel",
       "creating": "Creating…",
       "create": "Create status",
       "editSystemTitle": "Edit system status",
@@ -11152,7 +11144,6 @@
     "newWorkspace": {
       "title": "New workspace",
       "description": "A name and an address, then the profile, colours and Discord. Everything after step 1 can be skipped and set up later.",
-      "unauthorized": "Unauthorized",
       "unauthorizedDescription": "Creating workspaces is turned off for your account. If that is a mistake, message the platform team.",
       "stepOf": "Step {current} of {total}",
       "saveError": "Could not save the changes",
@@ -11585,7 +11576,6 @@
         "merge": "Merge into another identity",
         "delete": "Delete identity"
       },
-      "unauthorized": "Unauthorized",
       "noPermission": "You do not have permission to read player identities in this workspace.",
       "title": "People",
       "description": "Player identities, the handles linked to them, and the accounts that sign in as them.",
@@ -11615,7 +11605,6 @@
     },
     "person": {
       "error": "Player identity #{id} does not exist.",
-      "unauthorized": "Unauthorized",
       "noPermission": "You do not have permission to read player identities in this workspace.",
       "notFound": "No such player identity",
       "notFoundDescription": "Nothing in this workspace is player #{id}.",
@@ -11653,7 +11642,6 @@
       "captainPlaceholder": "Select captain from roster",
       "notFound": "Team not found",
       "deletedNotice": "This team may have been deleted. <link>Go back to the teams list</link> and pick another roster.",
-      "unauthorized": "Unauthorized",
       "noPermission": "You do not have permission to read teams in this workspace.",
       "title": "Teams",
       "search": "Search teams…",
@@ -12028,7 +12016,6 @@
       "parsed": "Parsed maps",
       "logs": "Logs",
       "views": "Matches views",
-      "unauthorized": "No access",
       "noPermission": "You do not have permission to read matches in this workspace.",
       "title": "Matches"
     },
@@ -12046,7 +12033,6 @@
       "onlyRecord": "Only this record",
       "title": "Audit log",
       "scopeDescription": "Pick a workspace to read its audit log.",
-      "unauthorized": "Unauthorized",
       "noPermission": "You do not have permission to read the audit log",
       "workspace": "Workspace",
       "ipAddress": "IP address",

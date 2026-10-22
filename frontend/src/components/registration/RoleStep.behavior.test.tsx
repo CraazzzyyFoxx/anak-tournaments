@@ -399,7 +399,7 @@ describe("RoleStep all-roles mode", () => {
 
   it("stays reachable by keyboard while nothing is chosen", () => {
     // With no checked radio every tabIndex would be -1 and the only control of
-    // the mode would fall out of the tab order.
+    // the mode would fall out of the tab order: the first option keeps the stop.
     mount("all_roles");
 
     expect(container.querySelectorAll('[role="radio"][tabindex="0"]').length).toBe(1);

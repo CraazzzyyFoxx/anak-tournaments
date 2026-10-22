@@ -5,10 +5,10 @@ import { Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-export interface SearchFieldProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "type" | "onChange" | "value"> {
-  value: string;
-  onValueChange: (value: string) => void;
+type SearchFieldBaseProps = Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  "type" | "onChange" | "value" | "defaultValue"
+> & {
   /**
    * Accessible name. Required: a placeholder is never a label — it disappears
    * the moment the user types.
@@ -17,7 +17,19 @@ export interface SearchFieldProps
   /** Render the label visibly above the field instead of only for AT. */
   showLabel?: boolean;
   containerClassName?: string;
-}
+};
+
+export type SearchFieldProps = SearchFieldBaseProps &
+  (
+    | { value: string; onValueChange: (value: string) => void; defaultValue?: never; onChange?: never }
+    /** Uncontrolled: the caller owns the DOM value through `ref` (e.g. a debounced, URL-backed search). */
+    | {
+        defaultValue?: string;
+        onChange: React.ChangeEventHandler<HTMLInputElement>;
+        value?: never;
+        onValueChange?: never;
+      }
+  );
 
 /**
  * The single search input for the public site.
@@ -36,7 +48,17 @@ export interface SearchFieldProps
  */
 export const SearchField = React.forwardRef<HTMLInputElement, SearchFieldProps>(
   (
-    { value, onValueChange, label, showLabel = false, className, containerClassName, id, ...props },
+    {
+      value,
+      onValueChange,
+      onChange,
+      label,
+      showLabel = false,
+      className,
+      containerClassName,
+      id,
+      ...props
+    },
     ref
   ) => {
     const reactId = React.useId();
@@ -64,7 +86,7 @@ export const SearchField = React.forwardRef<HTMLInputElement, SearchFieldProps>(
             id={inputId}
             type="search"
             value={value}
-            onChange={(event) => onValueChange(event.target.value)}
+            onChange={onValueChange ? (event) => onValueChange(event.target.value) : onChange}
             className={cn(
               "h-8 w-full rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] pl-8 pr-3",
               "text-base text-[color:var(--aqt-fg)] placeholder:text-[color:var(--aqt-fg-faint)] sm:text-caption",

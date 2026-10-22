@@ -17,6 +17,7 @@ import {
   Scale,
   Users
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
 import { cn } from "@/lib/utils";
@@ -152,10 +153,12 @@ export default function TournamentSectionNav({
         className={cn(styles.railFrame, railState.hasOverflow && styles.railFrameWithControls)}
         aria-label={t("tournamentDetail.sectionsNav")}
       >
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           className={cn(
-            styles.scrollControl,
+            "place-self-center",
             styles.scrollPrevious,
             !railState.hasOverflow && styles.scrollControlHidden
           )}
@@ -165,7 +168,7 @@ export default function TournamentSectionNav({
           disabled={!railState.hasOverflow || !railState.canScrollPrevious}
         >
           <ArrowLeft aria-hidden="true" />
-        </button>
+        </Button>
 
         <div className={styles.railViewport}>
           {railState.canScrollPrevious ? (
@@ -188,13 +191,17 @@ export default function TournamentSectionNav({
 
                 if (!item.available && item.reasonKey) {
                   const reason = t(item.reasonKey);
+                  // The rail's own tab look (module CSS, unlayered) wins over the
+                  // button's box; `ghost` adds only the focus ring.
                   return (
                     <Tooltip key={item.id}>
                       <TooltipTrigger asChild>
-                        <button
+                        <Button
                           ref={item.active ? setActiveRef : undefined}
                           type="button"
+                          variant="ghost"
                           className={cn(
+                            "rounded-none",
                             styles.navItem,
                             styles.locked,
                             item.active && styles.active
@@ -206,7 +213,7 @@ export default function TournamentSectionNav({
                         >
                           {content}
                           <span className="sr-only"> — {reason}</span>
-                        </button>
+                        </Button>
                       </TooltipTrigger>
                       <TooltipContent side="bottom">{reason}</TooltipContent>
                     </Tooltip>
@@ -233,10 +240,12 @@ export default function TournamentSectionNav({
           ) : null}
         </div>
 
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           className={cn(
-            styles.scrollControl,
+            "place-self-center",
             styles.scrollNext,
             !railState.hasOverflow && styles.scrollControlHidden
           )}
@@ -246,7 +255,7 @@ export default function TournamentSectionNav({
           disabled={!railState.hasOverflow || !railState.canScrollNext}
         >
           <ArrowRight aria-hidden="true" />
-        </button>
+        </Button>
       </nav>
       {collapsed && collapsedActions ? (
         <div className={styles.railTrail}>{collapsedActions}</div>

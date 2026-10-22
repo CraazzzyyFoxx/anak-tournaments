@@ -8,7 +8,9 @@ import { useTranslations } from "next-intl";
 import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { useCanAccessAdminEntry } from "@/components/site/useCanAccessAdminEntry";
+import { Button } from "@/components/ui/button";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { RowButton } from "@/components/ui/row-button";
 import { getAuthProfileHref } from "@/lib/auth/profile-links";
 import { logout } from "@/lib/auth/logout";
 import { cn } from "@/lib/utils";
@@ -95,13 +97,14 @@ export function AccountMenuPanel({
               </>
             ) : (
               <PopoverClose asChild>
-                <button
-                  type="button"
-                  className="text-[color:var(--aqt-teal)] outline-none focus-visible:underline"
+                <Button
+                  variant="link"
+                  size="inline"
+                  className="text-[color:var(--aqt-teal)]"
                   onClick={() => openSettings("profile")}
                 >
                   {t("common.linkPlayer")}
-                </button>
+                </Button>
               </PopoverClose>
             )}
           </span>
@@ -118,10 +121,10 @@ export function AccountMenuPanel({
       ) : null}
       {actions}
       <PopoverClose asChild>
-        <button type="button" className={ACCOUNT_MENU_ITEM_CLASS} onClick={() => openSettings("profile")}>
+        <RowButton className={ACCOUNT_MENU_ITEM_CLASS} onClick={() => openSettings("profile")}>
           <Settings className="size-4 shrink-0" aria-hidden />
           <span className="min-w-0 flex-1 truncate">{t("common.accountSettings")}</span>
-        </button>
+        </RowButton>
       </PopoverClose>
       {children}
       <AccountMenuSeparator />
@@ -130,14 +133,10 @@ export function AccountMenuPanel({
         <LanguageSwitcher />
       </div>
       <AccountMenuSeparator />
-      <button
-        type="button"
-        className={cn(ACCOUNT_MENU_ITEM_CLASS, "text-[color:var(--aqt-fg-muted)]")}
-        onClick={signOut}
-      >
+      <RowButton className={cn(ACCOUNT_MENU_ITEM_CLASS, "text-[color:var(--aqt-fg-muted)]")} onClick={signOut}>
         <LogOut className="size-4 shrink-0" aria-hidden />
         <span className="min-w-0 flex-1 truncate">{t("common.logout")}</span>
-      </button>
+      </RowButton>
     </PopoverContent>
   );
 }
@@ -153,17 +152,18 @@ const UserMenu = ({ user }: Readonly<{ user: AuthProfile }>) => {
 
   return (
     <Popover>
-      {/* A real <button>, not `asChild` onto Avatar: Avatar.Root renders a
+      {/* A real button, not `asChild` onto Avatar: Avatar.Root renders a
           <span>, which is neither focusable nor nameable. The name lives on
           the button, so it survives the avatar image replacing the fallback. */}
       <PopoverTrigger asChild>
-        <button
-          type="button"
+        <Button
+          variant="subtle"
+          size="icon"
           aria-label={t("common.openMenu")}
-          className="relative flex size-9 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-full border-2 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card-2)] text-xs font-bold text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:border-[color:var(--aqt-border-3)] focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:border-[color:var(--aqt-border-3)]"
+          className="relative shrink-0 overflow-hidden rounded-full border-2 hover:border-[color:var(--aqt-border-3)] data-[state=open]:border-[color:var(--aqt-border-3)]"
         >
           <PlayerAvatar user={{ name: user.username, avatar_url: user.avatarUrl ?? null }} size={32} className="border-0" />
-        </button>
+        </Button>
       </PopoverTrigger>
       <AccountMenuPanel
         user={user}

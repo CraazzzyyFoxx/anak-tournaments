@@ -79,9 +79,9 @@ export function InlineEditText({
         <span className={cn("truncate", textClassName)}>{value}</span>
         {canEdit ? (
           <Button
-            size="icon"
+            size="icon-sm"
             variant="ghost"
-            className="size-7 shrink-0 text-muted-foreground [&_svg]:size-3.5"
+            className="shrink-0 text-muted-foreground"
             aria-label={t("edit", { label })}
             title={t("edit", { label })}
             onClick={() => setDraft(value)}
@@ -102,7 +102,7 @@ export function InlineEditText({
         value={draft}
         disabled={isSaving}
         size="sm"
-        className={cn("h-7 aria-invalid:border-destructive", inputClassName)}
+        className={cn("h-7", inputClassName)}
         onChange={(event) => {
           setDraft(event.target.value);
           setError(null);
@@ -110,9 +110,9 @@ export function InlineEditText({
         onKeyDown={handleKeyDown}
       />
       <Button
-        size="icon"
+        size="icon-sm"
         variant="ghost"
-        className="size-7 shrink-0 [&_svg]:size-3.5"
+        className="shrink-0"
         aria-label={t("save", { label })}
         disabled={isSaving}
         onClick={() => void commit()}
@@ -120,9 +120,9 @@ export function InlineEditText({
         {isSaving ? <Spinner /> : <Check aria-hidden />}
       </Button>
       <Button
-        size="icon"
+        size="icon-sm"
         variant="ghost"
-        className="size-7 shrink-0 text-muted-foreground [&_svg]:size-3.5"
+        className="shrink-0 text-muted-foreground"
         aria-label={t("cancel", { label })}
         disabled={isSaving}
         onClick={() => {

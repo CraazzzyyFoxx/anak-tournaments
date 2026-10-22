@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 import MatchLogIndicator, { RawLogStatus } from "@/components/match/MatchLogIndicator";
+import { Button } from "@/components/ui/button";
 import type { Match } from "@/types/encounter.types";
 import { cn } from "@/lib/utils";
 import { mapWithModeName } from "@/lib/catalog/mode";
@@ -26,9 +27,11 @@ export default function EncounterHistory({ matches }: Readonly<{ matches: Match[
         {history.map((match) => (
           <li key={match.id} className="flex flex-wrap items-start justify-between gap-3 p-4">
             <div className="min-w-0 space-y-1">
-              <Link href={`/matches/${match.id}`} className={cn(styles.button, styles.buttonAccent)}>
-                {mapWithModeName(match.map, match.mode) ?? t("encounters.match.mapAlt")} · #{match.id}
-              </Link>
+              <Button variant="accent" size="sm" asChild>
+                <Link href={`/matches/${match.id}`}>
+                  {mapWithModeName(match.map, match.mode) ?? t("encounters.match.mapAlt")} · #{match.id}
+                </Link>
+              </Button>
               <p className="text-sm text-[color:var(--aqt-fg-muted)]">
                 {t("encounters.history.unconfirmed")}
               </p>

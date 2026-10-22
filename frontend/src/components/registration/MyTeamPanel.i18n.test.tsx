@@ -236,7 +236,9 @@ describe("MyTeamPanel in a one-role game", () => {
       expect(text).toContain(shortfall);
       expect(text).not.toContain("Agent");
       // Every place is the one role: no slot to move a member to...
-      expect(container.querySelector("select")).toBeNull();
+      expect(
+        container.querySelector(`[role="combobox"][aria-label="${MESSAGES[locale].registrationTeams.invite.slotLabel}"]`)
+      ).toBeNull();
       // ...and each open place invites a player, as the footer does, not "to the Agent slot".
       const invites = [...container.querySelectorAll("button")].filter((button) => button.textContent === invite);
       expect(invites).toHaveLength(3);

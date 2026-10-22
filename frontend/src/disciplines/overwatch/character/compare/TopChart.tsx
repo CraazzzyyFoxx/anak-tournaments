@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import { HandleLabel } from "@/components/HandleLabel";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +28,7 @@ export default function TopChart({
   const best = top[0] ? def.getValue(top[0].entry) : 0;
 
   return (
-    <section className="flex flex-col rounded-[var(--aqt-radius)] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-5">
+    <Card variant="flat" asChild><section className="flex flex-col p-5">
       <header className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h3 className="font-onest text-lg font-semibold text-[color:var(--aqt-fg)]">
           {t("users.heroesCompare.top.title", { stat: t(def.labelKey) })}
@@ -84,6 +85,6 @@ export default function TopChart({
           })}
         </ol>
       )}
-    </section>
+    </section></Card>
   );
 }

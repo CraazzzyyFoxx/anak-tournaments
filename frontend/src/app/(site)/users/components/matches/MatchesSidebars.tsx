@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { CardSurface } from "@/components/profile/atoms";
+import { Button } from "@/components/ui/button";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { winrateColor } from "@/lib/colors";
 import { cn } from "@/lib/utils";
@@ -79,11 +80,13 @@ const MatchesSidebars = ({ opponentStats, stageStats }: MatchesSidebarsProps) =>
         action={
           opponentStats.length > SIDEBAR_LIMIT ? (
             <Dialog>
-              <DialogTrigger className="aqt-pf-link" aria-label={t("users.matches.allOpponents")}>
-                <span className="tabular-nums">
-                  {t("common.all")} {opponentStats.length}
-                </span>
-                <ArrowRight aria-hidden className="size-3" />
+              <DialogTrigger asChild>
+                <Button variant="link" size="inline" className="[&_svg]:size-3" aria-label={t("users.matches.allOpponents")}>
+                  <span className="tabular-nums">
+                    {t("common.all")} {opponentStats.length}
+                  </span>
+                  <ArrowRight aria-hidden />
+                </Button>
               </DialogTrigger>
               <DialogContent className="max-w-[560px] border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)]">
                 <DialogHeader>

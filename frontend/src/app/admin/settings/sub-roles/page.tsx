@@ -18,6 +18,7 @@ import { ColorSwatch } from "@/components/ui/color-swatch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { RowButton } from "@/components/ui/row-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { GameMark } from "@/components/workspace/GameMark";
@@ -441,37 +442,22 @@ function SubRoleRow({
 }>) {
   const t = useTranslations("adminSettings.subRoles");
   const own = presentationOf(entry);
-  const nameClass = cn("truncate text-sm font-medium", entry.is_active ? "text-foreground" : "text-muted-foreground");
 
   return (
-    <li
-      className={cn(
-        "relative flex items-center gap-3 px-4 py-2.5",
-        canEdit && "transition-colors hover:bg-[color:var(--aqt-overlay-2)]"
-      )}
-    >
+    <li className="relative flex items-center gap-3 px-4 py-2.5">
       <SubRoleMark icon={effective(own.icon, parent.icon)} color={effective(own.color, parent.color)} />
       <div className="min-w-0 flex-1">
-        {canEdit ? (
-          // The whole row opens the editor; "Restore" sits above this button's box.
-          <button
-            type="button"
-            onClick={onOpen}
-            aria-label={t("edit", { name: entry.label })}
-            className={cn(
-              nameClass,
-              "block max-w-full text-left after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-ring"
-            )}
-          >
-            {entry.label}
-          </button>
-        ) : (
-          <p className={nameClass}>{entry.label}</p>
-        )}
+        <p className={cn("truncate text-sm font-medium", entry.is_active ? "text-foreground" : "text-muted-foreground")}>
+          {entry.label}
+        </p>
         {entry.description ? (
           <p className="truncate text-caption text-muted-foreground">{entry.description}</p>
         ) : null}
       </div>
+      {canEdit ? (
+        // The whole row opens the editor; "Restore" comes after it and sits above its box.
+        <RowButton onClick={onOpen} aria-label={t("edit", { name: entry.label })} className="absolute inset-0" />
+      ) : null}
       {canEdit && !entry.is_active ? (
         <Button
           type="button"

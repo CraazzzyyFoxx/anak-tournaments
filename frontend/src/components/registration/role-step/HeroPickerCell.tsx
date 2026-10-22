@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { RoleAccent } from "@/lib/registration/role-accent";
@@ -61,8 +62,9 @@ export function HeroPickerCell({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type="button"
+          variant="subtle"
           disabled={disabled}
           aria-label={
             showRole
@@ -70,13 +72,8 @@ export function HeroPickerCell({
               : t("registration.roles.matrix.heroesLabelNoRole", { count: selected.length, max })
           }
           className={cn(
-            "flex h-9 w-full items-center gap-2 rounded-lg border border-[color:var(--aqt-border-2)]",
-            "bg-[color:var(--aqt-overlay-2)] px-2 text-label font-medium transition-colors",
-            "hover:bg-[color:var(--aqt-overlay-3)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[color:var(--aqt-overlay-2)]",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-            selected.length > 0
-              ? "text-[color:var(--aqt-fg)]"
-              : "text-[color:var(--aqt-fg-muted)]",
+            "w-full justify-start px-2",
+            selected.length === 0 && "text-[color:var(--aqt-fg-muted)]",
           )}
         >
           {preview.length > 0 ? (
@@ -96,7 +93,7 @@ export function HeroPickerCell({
           <span className="ml-auto shrink-0 tabular-nums text-[color:var(--aqt-fg-muted)]">
             {t("registration.roles.topHeroes.count", { count: selected.length, max })}
           </span>
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         align="end"

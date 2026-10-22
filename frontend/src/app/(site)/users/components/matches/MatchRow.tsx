@@ -8,12 +8,14 @@ import MatchLogIndicator from "@/components/match/MatchLogIndicator";
 import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import MatchRowBadge from "@/components/match/MatchRowBadge";
-import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
+import {
+  encounterLogEntries,
+  encounterPerspective,
+  uniqueViewerCharacters
+} from "@/app/(site)/users/components/shared/encounter-perspective";
 import { GameIcon } from "@/components/workspace/GameIcon";
 import { EncounterWithUserStats } from "@/types/user.types";
-import type { CatalogEntityRead } from "@/types/catalog.types";
 import { tournamentHref } from "@/lib/tournament/url";
-import { mapWithModeName } from "@/lib/catalog/mode";
 
 interface MatchRowProps {
   enc: EncounterWithUserStats;
@@ -28,18 +30,9 @@ const MatchRow = ({ enc, selfUserId, showGame = false }: MatchRowProps) => {
   const resKind = scoreKind === "win" ? "w" : scoreKind === "loss" ? "l" : "d";
   const opponentName = opponent?.name;
   const tournamentName = enc.tournament?.name ?? `#${enc.tournament_id}`;
-  const heroSet = new Set<number>();
-  const heroList: CatalogEntityRead[] = [];
-  (enc.matches ?? []).forEach((match) => {
-    // `viewer.characters` is already the viewer's characters for this match (the module's eligibility rule is
-    // applied server-side from native character facts).
-    (match.viewer?.characters ?? []).forEach((character) => {
-      if (!heroSet.has(character.id)) {
-        heroSet.add(character.id);
-        heroList.push(character);
-      }
-    });
-  });
+  // `viewer.characters` is already the viewer's characters for each match (the module's eligibility rule is
+  // applied server-side from native character facts).
+  const heroList = uniqueViewerCharacters(enc);
 
   const observedMatches = (enc.matches ?? []).filter((m) => m.viewer != null);
 
@@ -99,18 +92,7 @@ const MatchRow = ({ enc, selfUserId, showGame = false }: MatchRowProps) => {
         {enc.closeness != null ? `${(enc.closeness * 100).toFixed(0)}%` : "—"}
       </td>
       <td className="px-3.5 py-3" onClick={(e) => e.stopPropagation()}>
-        <MatchLogIndicator
-          hasLogs={enc.has_logs}
-          logs={
-            enc.has_logs
-              ? (enc.matches ?? []).map((m) => ({
-                  matchId: m.id,
-                  rawAvailable: m.raw_available,
-                  label: `${mapWithModeName(m.map, m.mode) ?? t("encounters.match.mapAlt")} · #${m.id}`
-                }))
-              : undefined
-          }
-        />
+        <MatchLogIndicator hasLogs={enc.has_logs} logs={encounterLogEntries(enc, t("encounters.match.mapAlt"))} />
       </td>
     </tr>
   );

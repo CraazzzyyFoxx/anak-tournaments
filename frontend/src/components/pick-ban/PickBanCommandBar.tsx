@@ -5,9 +5,11 @@ import { Ban, EyeOff, PauseCircle, Shield } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { OverlayBar } from "@/components/ui/overlay-bar";
-import type { PickBanAction, PickBanKind, PickBanState } from "@/types/tournament.types";
 import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
+import type { PickBanAction, PickBanKind, PickBanState } from "@/types/tournament.types";
 
 import { stepDeadlineMs, stepSummary } from "./pick-ban-model";
 import { PickBanCountdown } from "./PickBanCountdown";
@@ -109,7 +111,7 @@ export function PickBanCommandBar({
             <PickBanCountdown deadline={deadline} totalSeconds={step.timer_seconds} />
           ) : null}
           <div className="min-w-0 flex-1">
-            <p className="text-label uppercase tracking-[0.15em] text-[color:var(--aqt-teal)]">
+            <p className={cn(eyebrowClass(), "text-[color:var(--aqt-teal)]")}>
               {yourTurn ? t("captain.yourTurn") : "\u00A0"}
             </p>
             <p className="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium">

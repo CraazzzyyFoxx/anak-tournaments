@@ -5,28 +5,29 @@ import { useRouter } from "next/navigation";
 import { RefreshCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { owtButton } from "./owt-button";
 
 /**
  * "Повторить" for a server-rendered block that failed to load: re-renders the
  * route's server components, which re-runs the failed read.
  */
-export function RetryButton({ className }: Readonly<{ className?: string }>) {
+export function RetryButton() {
   const t = useTranslations("site.state");
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="subtle"
+      size="sm"
       disabled={pending}
       aria-busy={pending}
       onClick={() => startTransition(() => router.refresh())}
-      className={cn(owtButton({ variant: "outline", size: "sm" }), "mt-2.5", className)}
+      className="mt-2.5"
     >
-      <RefreshCw className={cn("size-3.5", pending && "motion-safe:animate-spin")} aria-hidden />
+      <RefreshCw className={cn(pending && "motion-safe:animate-spin")} aria-hidden />
       {t("retry")}
-    </button>
+    </Button>
   );
 }

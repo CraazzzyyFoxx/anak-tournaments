@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 
 import { activeRoundNumber, bracketRoundShape, buildRoundGroups } from "@/lib/bracket/view";
 import { HEADER_CHIP } from "@/components/bracket/BracketCanvas";
+import { Button } from "@/components/ui/button";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { swissPools } from "@/lib/bracket/swiss";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
@@ -26,9 +27,6 @@ type MobileBracketProps = {
   /** `false`: cards do not link to the encounter page (a stage still in preview). */
   interactive?: boolean;
 };
-
-const ACTION_BUTTON =
-  "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-caption font-semibold transition-colors";
 
 /**
  * The bracket on a phone: one round at a time as a column of `MatchCard`s with
@@ -129,24 +127,26 @@ export function MobileBracket({
                   {editable || reportable ? (
                     <div className="mt-1.5 flex justify-end gap-2">
                       {editable ? (
-                        <button
+                        <Button
                           type="button"
-                          className={`${ACTION_BUTTON} border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]`}
+                          variant="subtle"
+                          size="sm"
                           onClick={() => onEdit(encounter)}
                         >
-                          <Pencil className="size-3.5" aria-hidden />
+                          <Pencil aria-hidden />
                           {t("bracket.editMatch")}
-                        </button>
+                        </Button>
                       ) : null}
                       {reportable ? (
-                        <button
+                        <Button
                           type="button"
-                          className={`${ACTION_BUTTON} border-[color:color-mix(in_srgb,var(--aqt-teal)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] text-[color:var(--aqt-teal)]`}
+                          variant="accent"
+                          size="sm"
                           onClick={() => onReport(encounter)}
                         >
-                          <FileEdit className="size-3.5" aria-hidden />
+                          <FileEdit aria-hidden />
                           {t("bracket.reportMatch")}
-                        </button>
+                        </Button>
                       ) : null}
                     </div>
                   ) : null}

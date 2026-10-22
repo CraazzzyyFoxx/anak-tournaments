@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import dynamic from "next/dynamic";
 import type { SlotProps } from "@/disciplines/types";
+import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -91,7 +92,7 @@ const MatchStatsView = ({ match, home, away }: MatchStatsViewProps) => {
   // column on one team desynced it from the other — the exact comparison this
   // panel exists to make.
   const tables = (
-    <div className="overflow-hidden rounded-[12px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]">
+    <Card variant="flat" className="overflow-hidden">
       <div className="relative w-full overflow-auto">
         <table className="w-full caption-bottom text-sm">
           <TeamTable
@@ -110,7 +111,7 @@ const MatchStatsView = ({ match, home, away }: MatchStatsViewProps) => {
           />
         </table>
       </div>
-    </div>
+    </Card>
   );
 
   return (

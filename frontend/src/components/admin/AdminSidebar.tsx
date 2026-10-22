@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Search } from "lucide-react";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
+import { Button } from "@/components/ui/button";
 import {
   Sidebar,
   SidebarContent,
@@ -65,14 +66,16 @@ export function AdminSidebar() {
         <SidebarWorkspaceLogoItem href="/admin" />
 
         {/* Search trigger */}
-        <button
+        <Button
           type="button"
+          variant="subtle"
+          size="sm"
           onClick={() => setCommandOpen(true)}
           aria-label={t("commandPalette.search")}
           aria-keyshortcuts="Control+K Meta+K"
-          className="mt-1 flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg border border-sidebar-border/60 bg-sidebar-accent/40 px-2.5 text-sm text-sidebar-foreground/60 transition-colors hover:border-sidebar-border hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+          className="mt-1 w-full justify-start rounded-lg px-2.5 text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
         >
-          <Search aria-hidden className="size-3.5 shrink-0" />
+          <Search aria-hidden />
           <span aria-hidden className="truncate group-data-[collapsible=icon]:hidden">
             {t("commandPalette.searchPlaceholder")}
           </span>
@@ -82,7 +85,7 @@ export function AdminSidebar() {
           >
             {t("commandPalette.ctrlK")}
           </kbd>
-        </button>
+        </Button>
       </SidebarHeader>
 
       {/* ── NAVIGATION ─────────────────────────────────── */}

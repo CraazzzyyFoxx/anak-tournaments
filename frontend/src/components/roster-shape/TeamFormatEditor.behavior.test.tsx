@@ -80,12 +80,13 @@ describe("native team-format editor", () => {
   it("uses radio/checkbox selection and prevents identical stale refs crossing owner scope", async () => {
     let selection: RoleSelection = { discipline: "native", workspace_id: 7, refs: [] };
     await mount(<RoleSelector ontology={ontology} dimension="tags" value={selection} onChange={next => { selection = next; }} />);
-    expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(2);
-    await act(async () => container.querySelector<HTMLInputElement>("input")!.click());
+    const boxes = [...container.querySelectorAll<HTMLButtonElement>('[role="checkbox"]')];
+    expect(boxes).toHaveLength(2);
+    await act(async () => boxes.find(box => box.closest("label")?.textContent?.endsWith("Caller"))!.click());
     expect(selection.refs).toEqual([{ dimension: "tags", role: "caller" }]);
     expect(selectedRoleRefs({ ...ontology, workspace_id: 8 }, selection, "tags")).toEqual([]);
     expect(selectedRoleRefs({ ...ontology, discipline: { code: "other" } }, selection, "tags")).toEqual([]);
     await act(async () => root.render(<NextIntlClientProvider locale="en" messages={en}><RoleSelector ontology={ontology} dimension="position" value={{ ...selection, refs: [] }} onChange={() => {}} /></NextIntlClientProvider>));
-    expect(container.querySelectorAll('input[type="radio"]')).toHaveLength(1);
+    expect(container.querySelectorAll('[role="radio"]')).toHaveLength(1);
   });
 });

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -20,7 +21,6 @@ import type { PlayerVM } from "@/disciplines/overwatch/analytics/useAnalyticsVie
 
 import AnomalyFlag, { useAnomalyCopy } from "../AnomalyFlag";
 import { moveTone } from "../DeltaText";
-import DivisionMark from "../DivisionMark";
 import ExplanationPopover from "../ExplanationPopover";
 import InfoDot from "../InfoDot";
 import ChangeShiftDialog from "./ChangeShiftDialog";
@@ -120,7 +120,7 @@ export default function PlayerDetail({
   return (
     <Card className="overflow-hidden">
       <header className="flex items-center gap-3 px-4 py-4">
-        <DivisionMark division={player.division} tournamentGrid={tournamentGrid} size={48} />
+        <DivisionIcon division={player.division} tournamentGrid={tournamentGrid} width={48} height={48} tooltip />
         <div className="min-w-0">
           <h2>
             <PlayerNick player={player} className="text-heading font-semibold" />
@@ -156,9 +156,9 @@ export default function PlayerDetail({
           </div>
           {direction !== "flat" ? (
             <span className="flex shrink-0 items-center gap-1.5">
-              <DivisionMark division={player.division} tournamentGrid={tournamentGrid} size={32} />
+              <DivisionIcon division={player.division} tournamentGrid={tournamentGrid} width={32} height={32} tooltip />
               <ArrowRight aria-hidden className="size-4" style={{ color: moveColor }} />
-              <DivisionMark division={predictedDivision} tournamentGrid={tournamentGrid} size={36} />
+              <DivisionIcon division={predictedDivision} tournamentGrid={tournamentGrid} width={36} height={36} tooltip />
             </span>
           ) : null}
         </div>

@@ -9,6 +9,7 @@ import FfaLobbyTable, { lobbyGamePositions } from "@/components/ffa/FfaLobbyTabl
 import { LinkTabs } from "@/components/kit/LinkTabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
@@ -46,7 +47,7 @@ export function FfaStagePanel({
   const lobbies = lobbiesQuery.data ?? [];
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]">
+    <Card variant="flat" className="overflow-hidden">
       <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-4">
         {bracketTabs && bracketTabs.items.length > 1 ? (
           <div className="flex min-w-0 flex-col items-start gap-2">
@@ -155,6 +156,6 @@ export function FfaStagePanel({
           })
         )}
       </div>
-    </div>
+    </Card>
   );
 }

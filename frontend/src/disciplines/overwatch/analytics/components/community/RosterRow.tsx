@@ -1,5 +1,6 @@
 "use client";
 
+import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { RowButton } from "@/components/ui/row-button";
 import type { RoleOntology } from "@/lib/roster/ontology";
@@ -7,7 +8,6 @@ import type { DivisionGridVersion } from "@/types/workspace.types";
 import type { PlayerVM } from "@/disciplines/overwatch/analytics/useAnalyticsViewModel";
 
 import AnomalyFlag from "../AnomalyFlag";
-import DivisionMark from "../DivisionMark";
 import MoveMark from "../MoveMark";
 import ImpactBar from "./ImpactBar";
 import PlayerNick from "./PlayerNick";
@@ -34,7 +34,7 @@ export default function RosterRow({ player, tournamentGrid, ontology, onSelect }
       className="grid grid-cols-[1.25rem_1.75rem_minmax(0,1fr)_auto] items-center gap-x-2.5 px-4 py-2.5"
     >
       <PlayerRoleIcon role={player.role} ontology={ontology} size={18} />
-      <DivisionMark division={player.division} tournamentGrid={tournamentGrid} size={28} />
+      <DivisionIcon division={player.division} tournamentGrid={tournamentGrid} width={28} height={28} tooltip />
       <span className="flex min-w-0 flex-col gap-1.5">
         <PlayerNick player={player} className="text-ui font-semibold" />
         {/* The flag is a word in the meta line (DESIGN.md §4), beside the impact it qualifies. */}

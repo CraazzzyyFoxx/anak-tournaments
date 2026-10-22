@@ -231,21 +231,20 @@ export function BracketLayoutSection({ stage }: Readonly<{ stage: Stage }>) {
           />
 
           {problems.length > 0 ? (
-            <ul className="space-y-1" aria-label={t("problems")}>
+            <ul className="space-y-1 text-xs" aria-label={t("problems")}>
               {problems.map((problem, index) => (
                 <li key={`${problem.code}-${problem.match_id}-${index}`}>
-                  <button
+                  <Button
                     type="button"
-                    className={cn(
-                      "text-left text-xs underline-offset-4 hover:underline",
-                      TONE_TEXT.danger
-                    )}
+                    variant="link"
+                    size="inline"
+                    className={cn("whitespace-normal text-left", TONE_TEXT.danger)}
                     onClick={() => setHighlightMatchId(problem.match_id)}
                   >
                     {problem.match_id === null
                       ? problem.message
                       : `M${problem.match_id}: ${problem.message}`}
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>

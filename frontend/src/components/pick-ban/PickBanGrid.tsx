@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
+import { RowButton } from "@/components/ui/row-button";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 import { catalogInitials } from "@/lib/catalog/initials";
@@ -159,9 +160,8 @@ export function PickBanGrid({
     const initials = catalogInitials(itemName(entry.item_id));
 
     return (
-      <button
+      <RowButton
         key={entry.id}
-        type="button"
         disabled={!status.selectable}
         aria-pressed={selected}
         title={
@@ -176,15 +176,15 @@ export function PickBanGrid({
         aria-describedby={lockedRound != null ? lockedHintId(lockedRound) : undefined}
         onClick={() => onSelect(entry.item_id)}
         className={cn(
-          "group relative flex flex-col overflow-hidden rounded-xl border text-left outline-none transition-shadow",
+          "group relative flex flex-col overflow-hidden rounded-xl border transition-shadow",
           selected
             ? "border-[color:var(--aqt-teal)] ring-2 ring-[color:var(--aqt-teal)]/45"
             : "border-[color:var(--aqt-border)]",
-          status.selectable
-            ? "cursor-pointer hover:border-[color:var(--aqt-teal)]/60 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-            : "cursor-default",
+          status.selectable ? "hover:border-[color:var(--aqt-teal)]/60" : null,
           lockedRound != null ? "border-dashed opacity-55" : null,
-          status.ineligible ? "opacity-55 grayscale" : null
+          status.ineligible ? "opacity-55 grayscale" : null,
+          // An unselectable tile reads as itself; only the states above dim it.
+          lockedRound == null && !status.ineligible ? "disabled:opacity-100" : null
         )}
       >
         <div className="relative h-20 w-full bg-[color:var(--aqt-card-2)] sm:h-24">
@@ -252,7 +252,7 @@ export function PickBanGrid({
             ) : null}
           </span>
         </div>
-      </button>
+      </RowButton>
     );
   };
 
@@ -290,9 +290,8 @@ export function PickBanGrid({
           : null;
 
     return (
-      <button
+      <RowButton
         key={entry.id}
-        type="button"
         disabled={!status.selectable}
         aria-pressed={selected}
         aria-label={`${name} — ${t(statusLabelKey(entry))}${note != null ? ` — ${note}` : ""}`}
@@ -300,18 +299,17 @@ export function PickBanGrid({
         aria-describedby={lockedRound != null ? lockedHintId(lockedRound) : undefined}
         onClick={() => onSelect(entry.item_id)}
         className={cn(
-          "group relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border p-0.5 outline-none transition-shadow",
+          "group relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border p-0.5 transition-shadow",
           selected
             ? "border-[color:var(--aqt-teal)] ring-2 ring-[color:var(--aqt-teal)]/45"
             : shielded
               ? "border-[color:var(--aqt-amber)]/70"
               : "border-[color:var(--aqt-border)]",
-          status.selectable
-            ? "cursor-pointer hover:border-[color:var(--aqt-teal)]/60 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-            : "cursor-default",
+          status.selectable ? "hover:border-[color:var(--aqt-teal)]/60" : null,
           lockedRound != null ? "border-dashed opacity-55" : null,
           status.ineligible ? "opacity-55 grayscale" : null,
-          expired ? "opacity-45" : null
+          expired ? "opacity-45" : null,
+          lockedRound == null && !status.ineligible && !expired ? "disabled:opacity-100" : null
         )}
       >
         <CatalogEntityImage
@@ -358,7 +356,7 @@ export function PickBanGrid({
             {entry.action_index + 1}
           </span>
         ) : null}
-      </button>
+      </RowButton>
     );
   };
   const renderTile = kind === "hero" ? heroTile : tile;

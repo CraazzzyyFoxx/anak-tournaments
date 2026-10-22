@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 
 import { SocialIcon } from "@/components/social/SocialIcon";
 import Image from "@/components/ui/image";
+import { RowButton } from "@/components/ui/row-button";
 import { TwitchEmbed } from "@/components/stream/TwitchEmbed";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { getSocialProviderConfig } from "@/lib/social/providers";
@@ -100,10 +101,9 @@ export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<Stream
               />
             ) : null}
             {channel ? (
-              <button
-                type="button"
+              <RowButton
                 onClick={onPlay}
-                className="group absolute inset-0 flex items-center justify-center bg-[hsl(220_22%_4%/0.45)] outline-none transition-colors hover:bg-[hsl(220_22%_4%/0.25)] focus-visible:bg-[hsl(220_22%_4%/0.25)] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+                className="group absolute inset-0 flex items-center justify-center bg-[hsl(220_22%_4%/0.45)] hover:bg-[hsl(220_22%_4%/0.25)] focus-visible:bg-[hsl(220_22%_4%/0.25)]"
               >
                 <span className="sr-only">{t("stream.page.play", { name })}</span>
                 {meta.labelKey && meta.pillStatus ? (
@@ -124,7 +124,7 @@ export function StreamTheater({ entry, isPlaying, onPlay, now }: Readonly<Stream
                 >
                   <Play className="size-7 translate-x-0.5 fill-current" />
                 </span>
-              </button>
+              </RowButton>
             ) : meta.labelKey && meta.pillStatus ? (
               <TournamentStatusPill status={meta.pillStatus} className="absolute left-3 top-3">
                 {t(meta.labelKey)}

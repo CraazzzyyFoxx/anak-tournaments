@@ -1,18 +1,16 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 
 import { RoomChat } from "@/components/chat/RoomChat";
+import { BackLink } from "@/components/site/BackLink";
 import TeamName from "@/components/TeamName";
 import { Card, CardContent } from "@/components/ui/card";
-import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { encounterChatRoom } from "@/lib/realtime/chat-rooms";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
-import { cn } from "@/lib/utils";
 import ffaService from "@/services/ffa.service";
 import type { Encounter } from "@/types/encounter.types";
 
@@ -37,13 +35,7 @@ export function FfaPregameRoom({ encounter }: Readonly<{ encounter: Encounter }>
   return (
     <>
       <div className="space-y-4">
-        <Link
-          href={`/encounters/${encounter.id}`}
-          className={cn(eyebrowClass(), "inline-flex items-center gap-1.5 transition-colors hover:text-[color:var(--aqt-teal)]")}
-        >
-          <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-          {t("ffa.backToLobby")}
-        </Link>
+        <BackLink href={`/encounters/${encounter.id}`}>{t("ffa.backToLobby")}</BackLink>
 
         <Card>
           <CardContent className="space-y-4 p-4">

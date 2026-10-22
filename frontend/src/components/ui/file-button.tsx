@@ -45,11 +45,18 @@ export function useFilePicker({ accept, multiple, disabled, onFiles }: FilePicke
 }
 
 export interface FileButtonProps
-  extends Omit<React.ComponentPropsWithoutRef<typeof Button>, "type" | "onClick" | "asChild">,
+  extends
+    Omit<React.ComponentPropsWithoutRef<typeof Button>, "type" | "onClick" | "asChild">,
     FilePickerOptions {}
 
 /** A `Button` that opens the system file picker. */
-export function FileButton({ accept, multiple, disabled, onFiles, ...props }: Readonly<FileButtonProps>) {
+export function FileButton({
+  accept,
+  multiple,
+  disabled,
+  onFiles,
+  ...props
+}: Readonly<FileButtonProps>) {
   const picker = useFilePicker({ accept, multiple, disabled, onFiles });
   return (
     <>

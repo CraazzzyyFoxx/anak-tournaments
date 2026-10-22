@@ -14,6 +14,7 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Badge } from "@/components/ui/badge";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { PlaceBadge } from "@/components/ui/place-badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import EncounterRow from "@/app/(site)/users/components/tournaments/EncounterRow";
 import {
   SummaryStrip,
@@ -163,10 +164,7 @@ const EventBody = ({
           // avoids a misleading "no run recorded" flash on every selection.
           <div className="flex flex-col gap-1.5">
             {Array.from({ length: 4 }).map((_, i) => (
-              <span
-                key={i}
-                className="h-9 w-full animate-pulse rounded bg-[color:var(--aqt-card-2)]"
-              />
+              <Skeleton key={i} className="h-9 w-full" />
             ))}
           </div>
         ) : hasEncounters ? (

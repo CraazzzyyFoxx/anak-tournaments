@@ -223,9 +223,8 @@ export default function MyAccountSection() {
                         />
                       ) : (
                         <Button
-                          size="icon"
+                          size="icon-sm"
                           variant="ghost"
-                          className="h-7 w-7"
                           disabled={!account.is_verified || setPrimary.isPending}
                           onClick={() => setPrimary.mutate(account.id)}
                           aria-label={
@@ -234,13 +233,13 @@ export default function MyAccountSection() {
                               : t("linked.primaryNeedsVerified")
                           }
                         >
-                          <Star className="h-3.5 w-3.5" aria-hidden />
+                          <Star aria-hidden />
                         </Button>
                       )}
                       <Button
-                        size="icon"
+                        size="icon-sm"
                         variant="ghost"
-                        className="h-7 w-7 text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
+                        className="text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
                         disabled={setVisibility.isPending}
                         onClick={() => setVisibility.mutate({ id: account.id, visible: !visible })}
                         aria-label={
@@ -250,16 +249,15 @@ export default function MyAccountSection() {
                         }
                       >
                         {visible ? (
-                          <Eye className="h-3.5 w-3.5" aria-hidden />
+                          <Eye aria-hidden />
                         ) : (
-                          <EyeOff className="h-3.5 w-3.5" aria-hidden />
+                          <EyeOff aria-hidden />
                         )}
                       </Button>
                       {account.is_verified && (
                         <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 text-[color:var(--aqt-fg-muted)] hover:text-destructive"
+                          size="icon-sm"
+                          variant="ghost-destructive"
                           disabled={unlinkAccount.isPending}
                           onClick={() => {
                             const label = getSocialProviderConfig(account.provider).label;
@@ -269,7 +267,7 @@ export default function MyAccountSection() {
                           }}
                           aria-label={t("linked.disconnectAria", { name: account.username })}
                         >
-                          <Unlink className="h-3.5 w-3.5" aria-hidden />
+                          <Unlink aria-hidden />
                         </Button>
                       )}
                     </li>

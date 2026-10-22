@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 
 import { StatusPill } from "@/components/kit/StatusPill";
+import { Button } from "@/components/ui/button";
 import type { Tone } from "@/components/ui/tone";
 import { cn } from "@/lib/utils";
 
@@ -57,13 +58,11 @@ export function EntityHubHeader({
   return (
     <div className="flex flex-wrap items-start gap-3">
       {backHref ? (
-        <Link
-          href={backHref}
-        aria-label={t("back")}
-          className="mt-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <ChevronLeft aria-hidden className="size-4" />
-        </Link>
+        <Button asChild variant="ghost" size="icon-sm" className="mt-1 shrink-0 text-muted-foreground">
+          <Link href={backHref} aria-label={t("back")}>
+            <ChevronLeft aria-hidden />
+          </Link>
+        </Button>
       ) : null}
       {leading ? <div className="shrink-0">{leading}</div> : null}
 

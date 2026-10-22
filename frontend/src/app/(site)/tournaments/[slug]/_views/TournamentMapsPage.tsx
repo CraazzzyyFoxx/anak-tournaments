@@ -22,9 +22,6 @@ import {
 } from "../_hooks/useTournamentMapPool";
 import { getPublicPageQueryPresentation } from "@/lib/public-page-query-presentation";
 
-const EYEBROW =
-  "aqt-tnum block text-label uppercase tracking-[0.06em] text-[color:var(--aqt-fg-faint)]";
-
 type Gamemode = CatalogEntityRead;
 
 /** The one game mode every map here plays, or `null` when they disagree. */
@@ -137,9 +134,9 @@ export default function TournamentMapsPage({
             {/* Title and lede on one line: together they are one caption for
                 everything below, not two blocks of their own. */}
             <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-              <h2 className={EYEBROW}>
+              <Eyebrow as="h2" className="aqt-tnum block">
                 {t("tournamentDetail.mapPool.title", { count: pool.total })}
-              </h2>
+              </Eyebrow>
               <p className="text-caption text-[color:var(--aqt-fg-faint)]">
                 {t("tournamentDetail.mapPool.rounds.lede")}
               </p>

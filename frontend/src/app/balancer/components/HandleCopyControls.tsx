@@ -29,7 +29,6 @@ type HandleCopyButtonProps = {
 type AdditionalHandleStripProps = {
   additionalHandles: string[];
   className?: string;
-  compact?: boolean;
 };
 
 type HandleMenuItemsProps = {
@@ -74,7 +73,7 @@ export function HandleCopyButton({
 }
 
 /** A row's extra accounts behind one collapsed chip: copy one or all of them. */
-export function AdditionalHandleStrip({ additionalHandles, className, compact = false }: Readonly<AdditionalHandleStripProps>) {
+export function AdditionalHandleStrip({ additionalHandles, className }: Readonly<AdditionalHandleStripProps>) {
   const copyHandle = useHandleClipboard();
 
   if (additionalHandles.length === 0) {
@@ -87,16 +86,15 @@ export function AdditionalHandleStrip({ additionalHandles, className, compact = 
     <div data-card-action className={cn("flex shrink-0 items-center gap-1", className)}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             type="button"
-            className={cn(
-              "inline-flex items-center gap-1 rounded-full border border-cyan-300/15 bg-cyan-500/8 font-semibold text-cyan-100/62 transition hover:border-cyan-300/30 hover:bg-cyan-500/14 hover:text-cyan-50",
-              compact ? "px-1.5 py-0.5 text-label" : "px-2 py-0.5 text-label"
-            )}
+            variant="subtle"
+            size="xs"
+            className="rounded-full border-cyan-300/15 bg-cyan-500/8 text-cyan-100/62 hover:border-cyan-300/30 hover:bg-cyan-500/14 hover:text-cyan-50"
             title="Show alt handles"
           >
             {formatAdditionalHandleCount(additionalHandles.length)}
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56">
           <DropdownMenuLabel>Alt handles</DropdownMenuLabel>

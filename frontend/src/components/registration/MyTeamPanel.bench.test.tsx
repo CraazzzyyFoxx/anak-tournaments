@@ -138,8 +138,12 @@ describe("bench invites on a full starting roster", () => {
     await render(FULL_TEAM);
     await click(findButton(en.registrationTeams.invite.action));
 
-    const slots = [...document.querySelectorAll<HTMLInputElement>('input[name="invite-slot"]')];
-    expect(slots.map((input) => input.value)).toEqual(["tank", "damage", "support"]);
+    // Radix radios are `<button role="radio" value>` inside the radiogroup the slot label names.
+    const group = [...document.querySelectorAll('[role="radiogroup"]')].find(
+      (el) => document.getElementById(el.getAttribute("aria-labelledby") ?? "")?.textContent === en.registrationTeams.invite.slotLabel
+    );
+    const slots = [...(group?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [])];
+    expect(slots.map((radio) => radio.value)).toEqual(["tank", "damage", "support"]);
 
     await click(findButton(en.registrationTeams.invite.submit));
 

@@ -4,9 +4,9 @@ import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { CheckCircle2, Send, UserPlus } from "lucide-react";
 
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { postModeOf, signupPostOf } from "@/app/balancer/mix/PickupMixHeader";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
@@ -37,7 +37,8 @@ export function PickupGettingStarted({
   const hasChannel = game.settings.workspace_discord_channel_id != null;
 
   return (
-    <section aria-label={t("title")} className={cn(PANEL_CLASS, "space-y-4 px-5 py-5")}>
+    <Card variant="flat" asChild>
+      <section aria-label={t("title")} className="space-y-4 px-5 py-5">
       <Eyebrow>{t("title")}</Eyebrow>
       <ol className="space-y-4">
         <Step
@@ -85,7 +86,8 @@ export function PickupGettingStarted({
           hint={t("balanceHint")}
         />
       </ol>
-    </section>
+      </section>
+    </Card>
   );
 }
 

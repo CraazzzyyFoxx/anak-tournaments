@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  TEAM_BADGE_ACCENTS,
-  calculateTeamAverageFromPayload,
-  calculateTeamTotalFromPayload,
-} from "@/components/balancer/balancer-page-helpers";
-import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import {
   Table,
@@ -22,6 +17,7 @@ import type {
 } from "@/types/balancer-admin.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 
+import { BalanceTeamHeader } from "./BalanceTeamHeader";
 import { DroppableRoleSection } from "./BalanceEditorPlayerRows";
 import { isRoleDropAllowed, type BalanceActiveDrag } from "./balance-editor-helpers";
 import type { RemoteDrag } from "./useBalancerDragGhosts";
@@ -57,38 +53,10 @@ export function BalanceEditorTeamCard({
   onSelectPlayer,
 }: Readonly<BalanceEditorTeamCardProps>) {
   const slotLabel = useSlotLabel(ontology);
-  const total = Math.round(calculateTeamTotalFromPayload(team));
-  const average = Math.round(calculateTeamAverageFromPayload(team));
-  const teamAccent = TEAM_BADGE_ACCENTS[teamIndex % TEAM_BADGE_ACCENTS.length];
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
-      <div className="flex items-start justify-between gap-3 border-b border-[color:var(--aqt-border)] px-4 py-3">
-        <div className="flex min-w-0 gap-2 items-center">
-          <Badge
-            className={cn(
-              "rounded-full border px-2.5 py-1 text-label font-semibold uppercase tracking-label",
-              teamAccent,
-            )}
-          >
-            #{team.id}
-          </Badge>
-          <div className="truncate text-sm font-semibold text-[color:var(--aqt-fg)]" title={team.name}>
-            {team.name}
-          </div>
-        </div>
-
-        <div className="shrink-0 text-right">
-          <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-label font-medium text-[color:var(--aqt-fg-muted)]">
-            <span>
-              Total: <span className="tabular-nums text-[color:var(--aqt-fg)]">{total}</span>
-            </span>
-            <span>
-              Avg: <span className="tabular-nums text-[color:var(--aqt-fg)]">{average}</span>
-            </span>
-          </div>
-        </div>
-      </div>
+    <Card variant="flat" className="overflow-hidden">
+      <BalanceTeamHeader team={team} teamIndex={teamIndex} />
       {remoteDrags.length > 0 ? (
         <div className="flex flex-col gap-1 border-b border-cyan-300/15 bg-cyan-500/5 px-4 py-2">
           {remoteDrags.map((drag) => (
@@ -146,6 +114,6 @@ export function BalanceEditorTeamCard({
           />
         ))}
       </Table>
-    </div>
+    </Card>
   );
 }

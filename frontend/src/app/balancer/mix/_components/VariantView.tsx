@@ -5,7 +5,7 @@ import { useState } from "react";
 import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 
 import { teamAccent } from "@/app/balancer/mix/pickup-chrome";
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
+import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { InlineEditText } from "@/components/kit/InlineEditText";
 import { useDragSensors } from "@/hooks/useDragSensors";
@@ -66,7 +66,7 @@ export function VariantView({
     // teams and above their rosters -- inside the same border, not a strip
     // floating above the card on its own. Who the option left out is not
     // repeated here: the lineup column already marks them benched.
-    <div className={cn(PANEL_CLASS, "overflow-hidden rounded-2xl")}>
+    <Card variant="flat" className="overflow-hidden rounded-2xl">
       <div className="flex flex-wrap items-center justify-center gap-1.5 border-b border-[color:var(--aqt-border)] px-4 py-2.5">
         <VariantMetrics variant={variant} />
       </div>
@@ -101,7 +101,7 @@ export function VariantView({
               mid-drag (the dragged row snaps back until drop). */}
         <DragOverlay>{activeDrag ? <SeatDragPreview seat={activeDrag.seat} owner={owner} /> : null}</DragOverlay>
       </DndContext>
-    </div>
+    </Card>
   );
 }
 

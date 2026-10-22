@@ -8,6 +8,9 @@ import { aggregateRoleStats } from "@/lib/roster/role-ref";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { RankCrest } from "@/components/RankCrest";
+import { RowButton } from "@/components/ui/row-button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { tint } from "@/lib/colors";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { canSeat, type RoomSelection, type TeamView } from "@/lib/draft/room-model";
 import { playerRoles, roleTopHeroes } from "@/lib/draft/workspace-model";
@@ -19,11 +22,9 @@ import type { UserDraftCard } from "@/types/user.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 import { formatSubRoleLabel, getHeroIconUrl } from "@/lib/player";
 
-import { Bar, MIN_WINRATE_MAPS, winrateColor } from "./PlayerCareer";
+import { MIN_WINRATE_MAPS, winrateColor } from "./PlayerCareer";
 
 const PRIORITY_KEYS = ["primary", "second", "third"] as const;
-
-const tint = (color: string, percent: number) => `color-mix(in srgb, ${color} ${percent}%, transparent)`;
 
 interface RoleTilesProps {
   player: DraftPlayer;
@@ -180,7 +181,13 @@ export function RoleTiles({
                               className="text-label font-semibold leading-none tabular-nums"
                               style={{ color: record ? winrateColor(heroShare, record.maps) : "var(--aqt-fg-muted)" }}
                             >
-                              {cardPending ? <Bar className="w-6" /> : heroLow ? "—" : `${Math.round(heroShare * 100)}%`}
+                              {cardPending ? (
+                                <Skeleton variant="text" aria-hidden className="w-6" />
+                              ) : heroLow ? (
+                                "—"
+                              ) : (
+                                `${Math.round(heroShare * 100)}%`
+                              )}
                             </span>
                           )}
                         </span>
@@ -194,7 +201,7 @@ export function RoleTiles({
                     title={roleStats && roleStats.maps > 0 && lowMaps ? t("island.tile.wrHidden") : t("island.tile.wrTitle")}
                   >
                     {cardPending ? (
-                      <Bar className="w-20" />
+                      <Skeleton variant="text" aria-hidden className="w-20" />
                     ) : roleStats && roleStats.maps > 0 ? (
                       <>
                         {t("island.tile.maps", { n: roleStats.maps })}
@@ -238,9 +245,8 @@ export function RoleTiles({
         }
 
         return (
-          <button
+          <RowButton
             key={role}
-            type="button"
             aria-pressed={on}
             aria-disabled={!usable || undefined}
             aria-label={
@@ -254,21 +260,21 @@ export function RoleTiles({
             }}
             className={cn(
               tileClass,
-              "min-h-11 outline-hidden transition-colors focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-card-2)] motion-reduce:transition-none",
+              "min-h-11 motion-reduce:transition-none",
               on ? "border-2" : "border",
               usable ? "cursor-pointer" : "cursor-default border-dashed opacity-55"
             )}
             style={{
               borderColor: on ? "var(--aqt-teal)" : usable ? tint(accent, 50) : "var(--aqt-border-2)",
               background: on
-                ? "color-mix(in srgb, var(--aqt-teal) 14%, transparent)"
+                ? tint("var(--aqt-teal)", 14)
                 : usable
                   ? tint(accent, 8)
                   : "transparent"
             }}
           >
             {content}
-          </button>
+          </RowButton>
         );
       })}
     </div>

@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 
+import { ProfileStat } from "@/components/profile/atoms";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
 import type { Registration, RegistrationListResponse } from "@/types/registration.types";
@@ -9,7 +10,7 @@ import type { Tournament } from "@/types/tournament.types";
 
 import { PhaseTimeline } from "../../_components/PhaseTimeline";
 import { CardLink, OverviewCard } from "./OverviewCards";
-import { RegistrationSummary, StatTile } from "./RegistrationSummary";
+import { CapacityValue, RegistrationSummary } from "./RegistrationSummary";
 
 /**
  * A: before the first whistle (§3A). The phase timeline IS the page, with the
@@ -76,17 +77,17 @@ export function OverviewRegistrationView({
           >
             {isTeamRegistration ? (
               <div className="grid gap-2 sm:grid-cols-2">
-                <StatTile
+                <ProfileStat
                   label={t("tournamentDetail.overview.registration.teams")}
-                  value={String(teamsCount)}
+                  value={teamsCount}
                 />
-                <StatTile
+                <ProfileStat
                   label={t("tournamentDetail.overview.registration.total")}
-                  value={String(registrationList?.total ?? tournament.registrations_count ?? 0)}
-                  hint={
-                    registrationList?.max_participants
-                      ? `/ ${registrationList.max_participants}`
-                      : undefined
+                  value={
+                    <CapacityValue
+                      value={registrationList?.total ?? tournament.registrations_count ?? 0}
+                      max={registrationList?.max_participants}
+                    />
                   }
                 />
               </div>

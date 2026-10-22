@@ -1,6 +1,7 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { Card } from "@/components/ui/card";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { SearchField } from "@/components/ui/search-field";
 
@@ -35,24 +36,23 @@ const MatchesFilterBar = ({
     { key: "has_logs", label: t("users.matches.filters.hasLogs") }
   ];
   return (
-    <FilterChipGroup
-      label={t("common.filters")}
-      className="mb-3.5 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2.5"
-    >
-      {filters.map((f) => (
-        <FilterChip key={f.key} active={activeFilter === f.key} onClick={() => onApplyFilter(f.key)}>
-          {f.label}
-        </FilterChip>
-      ))}
-      <SearchField
-        label={t("users.matches.searchOpponentLabel")}
-        placeholder={t("users.matches.searchOpponent")}
-        value={search}
-        onValueChange={onSearchChange}
-        containerClassName="ml-auto min-w-[200px] max-w-[300px] flex-1"
-        className="aqt-tnum"
-      />
-    </FilterChipGroup>
+    <Card variant="flat" className="mb-3.5 p-2.5">
+      <FilterChipGroup label={t("common.filters")}>
+        {filters.map((f) => (
+          <FilterChip key={f.key} active={activeFilter === f.key} onClick={() => onApplyFilter(f.key)}>
+            {f.label}
+          </FilterChip>
+        ))}
+        <SearchField
+          label={t("users.matches.searchOpponentLabel")}
+          placeholder={t("users.matches.searchOpponent")}
+          value={search}
+          onValueChange={onSearchChange}
+          containerClassName="ml-auto min-w-[200px] max-w-[300px] flex-1"
+          className="aqt-tnum"
+        />
+      </FilterChipGroup>
+    </Card>
   );
 };
 

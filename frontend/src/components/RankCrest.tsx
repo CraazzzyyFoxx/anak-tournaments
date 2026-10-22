@@ -42,7 +42,13 @@ export function RankCrest({
     const crestClass = cn("inline-flex shrink-0", !showValue && className);
     const icon = (
       <span className={tooltip ? "inline-flex" : crestClass} style={{ width: size, height: size }}>
-        <DivisionIcon division={tier} tournamentGrid={grid} width={size} height={size} className="size-full object-contain" />
+        <DivisionIcon
+          division={tier}
+          tournamentGrid={grid}
+          width={size}
+          height={size}
+          className="size-full object-contain"
+        />
       </span>
     );
     crest = tooltip ? (

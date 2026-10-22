@@ -18,6 +18,7 @@ import { ArrowUpRight, CheckCircle2, Pencil, Plus, Trash2, X } from "lucide-reac
 import { TeamCombobox } from "@/components/admin/TeamCombobox";
 import { InlineEditText } from "@/components/kit/InlineEditText";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -264,10 +265,7 @@ export function StageItemsSection({
                 (entry) => entry.stage_item_id === item.id
               );
               return (
-                <div
-                  key={item.id}
-                  className="flex flex-col gap-3 rounded-lg border border-border bg-card p-3"
-                >
+                <Card key={item.id} variant="flat" className="flex flex-col gap-3 p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <InlineEditText
@@ -511,7 +509,7 @@ export function StageItemsSection({
                       {t("addTeam")}
                     </Button>
                   </div>
-                </div>
+                </Card>
               );
             })}
           </div>

@@ -42,6 +42,36 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
+// Radix's Select reaches for pointer-capture and scroll APIs happy-dom does not
+// implement. Without these the trigger throws before the listbox ever opens.
+for (const [name, value] of Object.entries({
+  hasPointerCapture: () => false,
+  setPointerCapture: () => undefined,
+  releasePointerCapture: () => undefined,
+  scrollIntoView: () => undefined
+})) {
+  if (!(name in Element.prototype)) {
+    Object.defineProperty(Element.prototype, name, { value, writable: true });
+  }
+}
+
+async function press(element: Element | null | undefined) {
+  await act(async () => {
+    element?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    (element as HTMLElement | null | undefined)?.click();
+  });
+}
+
+/** The required community picker is a Radix Select: open its trigger, then pick the option. */
+const COMMUNITY_PICKER = 'button[role="combobox"][aria-required="true"]';
+
+async function chooseCommunity(name: string) {
+  await press(document.body.querySelector(COMMUNITY_PICKER));
+  await press(
+    [...document.body.querySelectorAll('[role="option"]')].find((option) => option.textContent?.trim() === name)
+  );
+}
+
 it("starts all-mode creation without a local fallback and scopes lookup only after explicit choice", async () => {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -62,18 +92,15 @@ it("starts all-mode creation without a local fallback and scopes lookup only aft
     await act(async () => {
       container.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    const chooser = document.body.querySelector("select[required]") as HTMLSelectElement;
+    const chooser = document.body.querySelector(COMMUNITY_PICKER);
     expect(chooser).not.toBeNull();
-    expect(chooser.value).toBe("");
+    expect(chooser?.hasAttribute("data-placeholder")).toBe(true);
     expect(lookup).not.toHaveBeenCalled();
     const submit = [...document.body.querySelectorAll("button")].find(
       (button) => button.textContent === messages.scrims.create.submit
     );
     expect(submit?.disabled).toBe(true);
-    await act(async () => {
-      chooser.value = "4";
-      chooser.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    await chooseCommunity("Community B");
     expect(lookup).toHaveBeenCalledWith(4);
     expect(lookup).not.toHaveBeenCalledWith(3);
   } finally {
@@ -106,16 +133,12 @@ it("drops a custom pool chosen for one game when the community change switches t
     await act(async () => {
       container.querySelector("button")?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    const community = document.body.querySelector("select[required]") as HTMLSelectElement;
-    const choose = async (id: string) => {
-      await act(async () => {
-        community.value = id;
-        community.dispatchEvent(new Event("change", { bubbles: true }));
-      });
+    const choose = async (name: string) => {
+      await chooseCommunity(name);
       await settle();
       await settle();
     };
-    await choose("3");
+    await choose("League club");
     const custom = [...document.body.querySelectorAll("button")].find(
       (button) => button.textContent === messages.scrims.create.sourceCustom
     );
@@ -128,13 +151,13 @@ it("drops a custom pool chosen for one game when the community change switches t
     expect(mapButton("Summoner's Rift")?.getAttribute("aria-pressed")).toBe("true");
 
     // The workspace change is what moves the game from League to Overwatch: the League pick must not follow.
-    await choose("4");
+    await choose("Overwatch club");
     expect(mapButton("Summoner's Rift")).toBeUndefined();
     expect(mapButton("Ilios")?.getAttribute("aria-pressed")).toBe("false");
     expect(document.body.textContent).not.toContain(messages.scrims.pool.selectedCount.replace("{count}", "1"));
 
     // ...and back: the League pool is not remembered either.
-    await choose("3");
+    await choose("League club");
     expect(mapButton("Summoner's Rift")?.getAttribute("aria-pressed")).toBe("false");
   } finally {
     await act(async () => root.unmount());

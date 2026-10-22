@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 
 import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { RoleOntology } from "@/lib/roster/ontology";
 import type { SlotCode } from "@/lib/roster/shape";
 import type { RegistrationTeam, RegistrationTeamMember } from "@/types/registration-team.types";
@@ -80,25 +81,28 @@ export default function MyTeamRosterList({
           {canEditRoster && !member.is_captain && (
             <span className="ml-auto flex flex-wrap gap-1">
               {canEditRoster && member.slot_code && showsSlots && (
-                <select
-                  className="h-8 rounded-md border border-[color:var(--aqt-border)] bg-transparent px-2 text-xs"
-                  aria-label={t("invite.slotLabel")}
+                <Select
                   value={member.slot_code}
                   disabled={busy}
-                  onChange={(event) =>
+                  onValueChange={(slot_code) =>
                     onPlace({
                       registrationId: member.registration_id,
-                      slot_code: event.target.value,
+                      slot_code,
                       is_substitute: member.is_substitute,
                     })
                   }
                 >
-                  {benchSlots.map((code) => (
-                    <option key={code} value={code}>
-                      {slotLabel(code)}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger size="sm" aria-label={t("invite.slotLabel")} className="w-auto">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {benchSlots.map((code) => (
+                      <SelectItem key={code} value={code}>
+                        {slotLabel(code)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
               {canEditRoster && member.slot_code && (
                 <Button

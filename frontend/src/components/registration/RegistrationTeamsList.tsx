@@ -9,6 +9,7 @@ import RosterSlotGlyph from "@/components/registration/RosterSlotGlyph";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
@@ -226,12 +227,11 @@ export default function RegistrationTeamsList({
 
   if (teamsQuery.isError && !teamsQuery.data) {
     return (
-      <section role="alert" className="grid gap-2 rounded-xl border border-[color:var(--aqt-border)] p-4">
-        <h2 className="font-semibold">{t("registrationTeams.list.loadError")}</h2>
-        <Button variant="outline" className="justify-self-start" onClick={() => void teamsQuery.refetch()}>
-          {t("common.retry")}
-        </Button>
-      </section>
+      <PageStateCard
+        state="error"
+        title={t("registrationTeams.list.loadError")}
+        onAction={() => void teamsQuery.refetch()}
+      />
     );
   }
 

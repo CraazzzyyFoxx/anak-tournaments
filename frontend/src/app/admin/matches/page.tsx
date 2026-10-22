@@ -4,9 +4,9 @@ import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
-import { PageStateCard } from "@/components/ui/page-state-card";
+import { AdminTabbedPage } from "@/components/admin/AdminTabbedPage";
+import { PermissionGate } from "@/components/admin/PermissionGate";
+import type { LinkTabItem } from "@/components/kit/LinkTabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GameScopeGate } from "@/components/workspace/GameScopeGate";
 import { useGameScope } from "@/hooks/useGameScope";
@@ -108,60 +108,56 @@ export default function AdminMatchesPage() {
     return { key, label: t(key), href: `/admin/matches?${query.toString()}` };
   });
 
-  if (!isLoaded) return fallback;
-
-  if (!canAccessPermission("match.read", workspaceId)) {
-    return <PageStateCard state="not-found" title={t("unauthorized")} description={t("noPermission")} />;
-  }
-
   return (
-    <div className="space-y-4">
-      <AdminPageHeader title={t("title")} />
-
-      <LinkTabs items={items} activeKey={view} ariaLabel={t("views")} />
-
-      {view === "encounters" ? (
-        <GameScopeGate scope={gameScope}>
-          {(game) => (
-            <EncountersBrowser
-              tournamentId={null}
-              workspaceId={workspaceId}
-              discipline={game}
-              games={gameScope.games}
-            />
-          )}
-        </GameScopeGate>
-      ) : null}
-      {view === "standings" ? (
-        <StandingsBrowser tournamentId={null} workspaceId={workspaceId} />
-      ) : null}
-      {view === "reports" ? (
-        <EncounterReportsBrowser
-          tournamentId={null}
-          workspaceId={workspaceId}
-          canUpdateEncounter={canAccessPermission("match.result", workspaceId)}
-        />
-      ) : null}
-      {view === "parsed" ? (
-        <GameScopeGate scope={gameScope}>
-          {(game) => (
-            <ParsedMatchesBrowser
-              tournamentId={null}
-              discipline={game}
-              workspaceId={workspaceId}
-              games={gameScope.games}
-            />
-          )}
-        </GameScopeGate>
-      ) : null}
-      {view === "logs" ? (
-        <TournamentLogsTab
-          tournamentId={null}
-          workspaceId={workspaceId}
-          encounters={[]}
-          canUploadLogs={false}
-        />
-      ) : null}
-    </div>
+    <PermissionGate
+      loaded={isLoaded}
+      allowed={canAccessPermission("match.read", workspaceId)}
+      description={t("noPermission")}
+    >
+      <AdminTabbedPage title={t("title")} tabs={items} activeKey={view} ariaLabel={t("views")}>
+        {view === "encounters" ? (
+          <GameScopeGate scope={gameScope}>
+            {(game) => (
+              <EncountersBrowser
+                tournamentId={null}
+                workspaceId={workspaceId}
+                discipline={game}
+                games={gameScope.games}
+              />
+            )}
+          </GameScopeGate>
+        ) : null}
+        {view === "standings" ? (
+          <StandingsBrowser tournamentId={null} workspaceId={workspaceId} />
+        ) : null}
+        {view === "reports" ? (
+          <EncounterReportsBrowser
+            tournamentId={null}
+            workspaceId={workspaceId}
+            canUpdateEncounter={canAccessPermission("match.result", workspaceId)}
+          />
+        ) : null}
+        {view === "parsed" ? (
+          <GameScopeGate scope={gameScope}>
+            {(game) => (
+              <ParsedMatchesBrowser
+                tournamentId={null}
+                discipline={game}
+                workspaceId={workspaceId}
+                games={gameScope.games}
+              />
+            )}
+          </GameScopeGate>
+        ) : null}
+        {view === "logs" ? (
+          <TournamentLogsTab
+            tournamentId={null}
+            workspaceId={workspaceId}
+            encounters={[]}
+            canUploadLogs={false}
+          />
+        ) : null}
+      </AdminTabbedPage>
+    </PermissionGate>
   );
 }

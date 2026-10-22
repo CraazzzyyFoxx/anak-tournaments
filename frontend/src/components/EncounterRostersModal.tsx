@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { Users } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -58,15 +59,19 @@ export function EncounterRostersModal({
       {trigger ? (
         <DialogTrigger asChild>{trigger}</DialogTrigger>
       ) : (
-        <DialogTrigger
-          className="flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-          aria-label={t("bracket.viewRosters")}
-          onClick={(e) => {
-            // Keep any future card-level click handler from also firing.
-            e.stopPropagation();
-          }}
-        >
-          <Users className="size-3.5" aria-hidden />
+        <DialogTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="text-[color:var(--aqt-fg-muted)]"
+            aria-label={t("bracket.viewRosters")}
+            onClick={(e) => {
+              // Keep any future card-level click handler from also firing.
+              e.stopPropagation();
+            }}
+          >
+            <Users aria-hidden />
+          </Button>
         </DialogTrigger>
       )}
       <DialogContent className="flex max-h-[85vh] w-[95vw] max-w-[900px] flex-col gap-0 overflow-hidden p-0">

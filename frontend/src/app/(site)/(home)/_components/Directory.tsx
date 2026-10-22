@@ -4,7 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { TrustedBadge } from "@/components/workspace/TrustedBadge";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
-import { Fact, LoadError, Section, SectionHead } from "@/components/site/open-layout";
+import { Fact, OpenLoadError, Section, SectionHead } from "@/components/site/open-layout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFormatter } from "@/lib/datetime/server";
 import { getTournamentStatusMeta, isTournamentStatusActive } from "@/lib/tournament/status";
@@ -79,7 +79,7 @@ export async function Directory() {
     return (
       <Section id="directory" labelledBy={TITLE_ID}>
         <DirectoryHead />
-        <LoadError what={t("error")} dashed />
+        <OpenLoadError what={t("error")} dashed />
       </Section>
     );
   }

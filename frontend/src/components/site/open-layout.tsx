@@ -183,9 +183,9 @@ export function Feat({
       style={{ "--feat-c": FEAT_TONE[tone] } as CSSProperties}
     >
       <div className="min-w-0 self-stretch">
-        <div className="mb-3.5 flex items-center gap-[9px] font-[family-name:var(--aqt-data)] text-label font-semibold uppercase tracking-label text-[color:var(--feat-c)] [&_svg]:size-3.5">
+        <Eyebrow as="div" className="mb-3.5 flex items-center gap-[9px] text-[color:var(--feat-c)] [&_svg]:size-3.5">
           {kicker}
-        </div>
+        </Eyebrow>
         {head}
       </div>
       {children}
@@ -219,45 +219,66 @@ export function LiveDot({ className }: Readonly<{ className?: string }>) {
   );
 }
 
-/**
- * A block that failed to load. `dashed` frames a whole section's body; the
- * default is the inline variant inside a column. Says it is an error and not
- * an empty list, and offers a retry.
- */
-export function LoadError({ what, dashed = false }: Readonly<{ what?: string; dashed?: boolean }>) {
-  const t = useTranslations("site.state");
+/** The open layout's state row (mock `.state`): an icon beside a bold line and its reason. */
+function StateRow({
+  icon,
+  title,
+  dashed = false,
+  role,
+  children
+}: Readonly<{ icon: ReactNode; title: ReactNode; dashed?: boolean; role?: "status"; children?: ReactNode }>) {
   return (
     <div
-      role="status"
+      role={role}
       className={cn(
         "flex items-start gap-3 py-[18px] text-body text-[color:var(--aqt-fg-muted)]",
-        dashed ? "rounded-xl border border-dashed border-[color:var(--aqt-border-2)] px-[18px]" : "px-0"
+        dashed && "rounded-xl border border-dashed border-[color:var(--aqt-border-2)] px-[18px]"
       )}
     >
-      <CircleAlert className="mt-0.5 size-4 shrink-0 text-[color:var(--aqt-rose)]" aria-hidden />
+      {icon}
       <div>
-        <b className="mb-0.5 block font-semibold text-[color:var(--aqt-fg)]">
-          {what ? t("loadFailedWhat", { what }) : t("loadFailed")}
-        </b>
-        {dashed ? t("notEmpty") : null}
-        {dashed ? <br /> : null}
-        <RetryButton />
+        <b className="mb-0.5 block font-semibold text-[color:var(--aqt-fg)]">{title}</b>
+        {children}
       </div>
     </div>
   );
 }
 
-/** "Nothing yet" inside a column, with the reason (mock `.state` + info icon). */
-export function EmptyNote({ children }: Readonly<{ children?: ReactNode }>) {
+/**
+ * A block that failed to load. `dashed` frames a whole section's body; the
+ * default is the inline variant inside a column. Says it is an error and not
+ * an empty list, and offers a retry.
+ */
+export function OpenLoadError({ what, dashed = false }: Readonly<{ what?: string; dashed?: boolean }>) {
   const t = useTranslations("site.state");
   return (
-    <div className="flex items-start gap-3 py-[18px] text-body text-[color:var(--aqt-fg-muted)]">
-      <Info className="mt-0.5 size-4 shrink-0 text-[color:var(--aqt-fg-faint)]" aria-hidden />
-      <div>
-        <b className="mb-0.5 block font-semibold text-[color:var(--aqt-fg)]">{t("empty")}</b>
-        {children}
-      </div>
-    </div>
+    <StateRow
+      role="status"
+      dashed={dashed}
+      icon={<CircleAlert className="mt-0.5 size-4 shrink-0 text-[color:var(--aqt-rose)]" aria-hidden />}
+      title={what ? t("loadFailedWhat", { what }) : t("loadFailed")}
+    >
+      {dashed ? (
+        <>
+          {t("notEmpty")}
+          <br />
+        </>
+      ) : null}
+      <RetryButton />
+    </StateRow>
+  );
+}
+
+/** "Nothing yet" inside a column, with the reason (mock `.state` + info icon). */
+export function OpenEmptyRow({ children }: Readonly<{ children?: ReactNode }>) {
+  const t = useTranslations("site.state");
+  return (
+    <StateRow
+      icon={<Info className="mt-0.5 size-4 shrink-0 text-[color:var(--aqt-fg-faint)]" aria-hidden />}
+      title={t("empty")}
+    >
+      {children}
+    </StateRow>
   );
 }
 

@@ -9,6 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import { StatColumnDef, StatKey } from "./stat-columns";
@@ -53,12 +54,16 @@ const StatColumnHeader = ({
       )}
     >
       <div className="flex items-center justify-center gap-1">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="label"
           onClick={onSort}
           className={cn(
-            "flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-label font-bold uppercase tracking-label outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
-            isActive ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
+            "gap-1.5 whitespace-normal rounded-md px-1.5 py-1 hover:bg-[color:var(--aqt-overlay-3)]",
+            isActive
+              ? "text-[color:var(--aqt-teal)] hover:text-[color:var(--aqt-teal)]"
+              : "text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
           )}
         >
           <span className="flex flex-col items-center">
@@ -70,20 +75,19 @@ const StatColumnHeader = ({
               </span>
             ) : null}
           </span>
-          <SortIcon
-            aria-hidden
-            className={isActive ? "h-3 w-3 shrink-0" : "h-3 w-3 shrink-0 text-[color:var(--aqt-fg-faint)] opacity-60"}
-          />
-        </button>
+          <SortIcon aria-hidden className={isActive ? undefined : "text-[color:var(--aqt-fg-faint)] opacity-60"} />
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-sm"
               aria-label={t("users.heroesCompare.table.selectStat", { stat: label })}
-              className="inline-flex h-[26px] w-[26px] cursor-pointer items-center justify-center rounded-md border border-transparent text-[color:var(--aqt-fg-faint)] outline-none transition-colors hover:border-[color:var(--aqt-border-2)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+              className="text-[color:var(--aqt-fg-faint)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
             >
-              <ChevronDown aria-hidden className="h-3 w-3" />
-            </button>
+              <ChevronDown aria-hidden />
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="center" className="max-h-[340px] w-52 overflow-y-auto">
             {options.map((opt) => (

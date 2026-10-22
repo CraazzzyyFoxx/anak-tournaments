@@ -14,6 +14,7 @@ import {
 import { useBellSignal } from "@/components/notifications/bell-signal";
 import { ACTIONABLE_RANK, KIND_FALLBACK, KIND_VISUAL } from "@/components/notifications/notification-kinds";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { useNotifications } from "@/hooks/useNotifications";
@@ -40,7 +41,7 @@ const HIDDEN_KEY = "owt-urgent-hidden";
 const CARD_CLASS =
   "pointer-events-auto relative rounded-[14px] border shadow-[0_18px_40px_-12px_rgb(0_0_0/0.65),0_2px_6px_rgb(0_0_0/0.3)] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 sm:shadow-[0_14px_30px_-14px_rgb(0_0_0/0.7)] motion-safe:sm:slide-in-from-top-2";
 const CLOSE_CLASS =
-  "absolute right-1.5 top-1.5 size-8 text-[color:var(--aqt-fg-dim)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] sm:top-1/2 sm:-translate-y-1/2";
+  "absolute right-1.5 top-1.5 text-[color:var(--aqt-fg-dim)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] sm:top-1/2 sm:-translate-y-1/2";
 
 interface FloatStackProps {
   /** The layout's server-side read, so the announcement paints with the first frame. */
@@ -163,10 +164,10 @@ function AnnouncementCard({
         "grid min-h-11 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card-2)] py-1.5 pl-3 pr-10 sm:flex sm:gap-3 sm:pl-3.5 sm:pr-11"
       )}
     >
-      <span className="inline-flex items-center gap-1.5 text-label font-bold uppercase leading-[1.25] tracking-label text-[color:var(--aqt-teal)]">
+      <Eyebrow className="inline-flex items-center gap-1.5 text-[color:var(--aqt-teal)]">
         <Megaphone className="size-3.5" aria-hidden />
         <span className="sr-only sm:not-sr-only">{t("eyebrow")}</span>
-      </span>
+      </Eyebrow>
       {href ? (
         <Link
           href={href}
@@ -196,11 +197,11 @@ function AnnouncementCard({
       <Button
         static={false}
         variant="ghost"
-        size="icon"
+        size="icon-sm"
         className={CLOSE_CLASS}
         onClick={onDismiss}
       >
-        <X className="size-3.5" aria-hidden />
+        <X aria-hidden />
         <span className="sr-only">{t("dismiss")}</span>
       </Button>
     </section>
@@ -388,12 +389,12 @@ function UrgentCard({
         <Button
           static={false}
           variant="ghost"
-          size="icon"
+          size="icon-sm"
           className={CLOSE_CLASS}
           title={t("urgent.hideTitle")}
           onClick={onHide}
         >
-          <X className="size-3.5" aria-hidden />
+          <X aria-hidden />
           <span className="sr-only">{t("urgent.hide")}</span>
         </Button>
         <div className="col-start-2 flex flex-wrap items-center gap-2 sm:col-start-3 sm:row-start-1 sm:flex-nowrap">
@@ -407,13 +408,15 @@ function UrgentCard({
             }}
           />
           {pending.length > 1 && (
-            <button
-              type="button"
+            <Button
+              static={false}
+              variant="ghost"
+              size="sm"
               onClick={() => setBellOpen(true)}
-              className="min-h-9 shrink-0 rounded-lg px-2 text-caption font-medium text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="shrink-0 px-2 text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
             >
               {t("urgent.more", { count: pending.length - 1 })}
-            </button>
+            </Button>
           )}
         </div>
       </section>

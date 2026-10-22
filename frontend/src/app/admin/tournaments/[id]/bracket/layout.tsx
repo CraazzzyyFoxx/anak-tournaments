@@ -2,18 +2,15 @@
 
 import { useEffect, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
-import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 
-import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
+import type { LinkTabItem } from "@/components/kit/LinkTabs";
 import { FFA_STAGE_TYPES } from "@/lib/bracket/projection";
 import { useHubStagesQuery } from "../hubQueries";
+import { SubTabShell, useSubTabSegment } from "../sub-tabs";
 import { allowedBracketSubTab, BRACKET_SUB_TABS, type BracketSubTab } from "../tab-guards";
 
 const DEFAULT_SUB_TAB: BracketSubTab = BRACKET_SUB_TABS[0];
-
-function isBracketSubTab(value: string): value is BracketSubTab {
-  return (BRACKET_SUB_TABS as readonly string[]).includes(value);
-}
 
 /**
  * Sub-tab bar of the Bracket hub tab: Stages · Lobbies.
@@ -22,22 +19,18 @@ function isBracketSubTab(value: string): value is BracketSubTab {
  * that already points there keeps landing on the stage editor. `?stage=` rides
  * along on a switch, so the editor's selected stage survives it.
  *
- * A duel tournament has no lobby, which leaves `Stages` alone: a bar of one
- * tab is a label pretending to be navigation, so it is not drawn at all.
+ * A duel tournament has no lobby, which leaves `Stages` alone — and `LinkTabs`
+ * draws no bar for a single tab.
  */
 export default function BracketLayout({ children }: Readonly<{ children: ReactNode }>) {
   const t = useTranslations("adminBracket.layout");
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
-  const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
 
   const basePath = `/admin/tournaments/${tournamentId}/bracket`;
-  const segment = pathname.startsWith(basePath)
-    ? (pathname.slice(basePath.length).split("/").find(Boolean) ?? DEFAULT_SUB_TAB)
-    : DEFAULT_SUB_TAB;
-  const active: BracketSubTab = isBracketSubTab(segment) ? segment : DEFAULT_SUB_TAB;
+  const { active } = useSubTabSegment(basePath, BRACKET_SUB_TABS, DEFAULT_SUB_TAB);
 
   // The Lobbies view exists only where there is a lobby: an FFA stage. The
   // stages are the hub's own query, so asking costs no extra request.
@@ -67,11 +60,8 @@ export default function BracketLayout({ children }: Readonly<{ children: ReactNo
   }));
 
   return (
-    <div className="space-y-4">
-      {items.filter((item) => !item.hidden).length > 1 ? (
-        <LinkTabs items={items} activeKey={active} level={2} ariaLabel={t("views")} />
-      ) : null}
-      {activeAllowed ? children : null}
-    </div>
+    <SubTabShell items={items} activeKey={active} ariaLabel={t("views")} allowed={activeAllowed}>
+      {children}
+    </SubTabShell>
   );
 }

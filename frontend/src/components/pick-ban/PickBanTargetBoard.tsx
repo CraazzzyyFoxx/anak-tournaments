@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { RankCrest } from "@/components/RankCrest";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { RowButton } from "@/components/ui/row-button";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { findRole, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
@@ -93,18 +94,12 @@ export function PickBanTargetBoard({
                   !disabled ? "hover:border-[color:var(--aqt-teal)]/50" : null
                 )}
               >
-                <button
-                  type="button"
+                <RowButton
                   disabled={disabled}
                   data-target-player={target.player_id}
                   aria-pressed={selected}
                   onClick={() => onSelect(target.player_id)}
-                  className={cn(
-                    "flex w-full min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 text-left outline-none",
-                    disabled
-                      ? "cursor-default opacity-70"
-                      : "cursor-pointer focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-                  )}
+                  className="flex min-w-0 items-center gap-3 rounded-lg px-3 py-2.5 disabled:opacity-70"
                 >
                   <RankCrest division={target.division} grid={divisionGrid} size={30} />
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -157,7 +152,7 @@ export function PickBanTargetBoard({
                       )}
                     />
                   )}
-                </button>
+                </RowButton>
                 <PickBanPlayerHeroes playerId={target.player_id} matchId={previousMatchId} />
               </li>
             );

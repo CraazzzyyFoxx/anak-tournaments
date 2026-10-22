@@ -5,6 +5,8 @@ import { useTranslations } from "next-intl";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { characterClassOf, classRank } from "@/components/pick-ban/pick-ban-model";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { useRoleName } from "@/hooks/useRoleName";
 import { findRole, ratedDimension } from "@/lib/roster/ontology";
@@ -47,53 +49,53 @@ export default function HeroRail({
   const dimension = ontology ? (ratedDimension(ontology)?.code ?? null) : null;
 
   return (
-    <section
-      aria-label={t("users.heroesCompare.rail.label")}
-      className="grid gap-2.5 rounded-[var(--aqt-radius)] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] px-4 py-3.5"
-    >
-      {rows.map(([group, list]) => {
-        const role = ontology && dimension && group ? findRole(ontology, { dimension, role: group }) : null;
-        const label = role ? nameOf(role) : (group ?? t("users.heroesCompare.rail.noClass"));
-        return (
-          <div
-            key={group ?? ""}
-            role="group"
-            aria-label={label}
-            className="grid gap-2 md:grid-cols-[8rem_minmax(0,1fr)] md:items-center md:gap-3"
-          >
-            <Eyebrow tone="muted" className="flex items-center gap-2">
-              {role && dimension && group ? (
-                <PlayerRoleIcon role={{ dimension, role: group }} ontology={ontology} size={16} decorative />
-              ) : null}
-              {label}
-              <span className="font-semibold tabular-nums tracking-normal text-[color:var(--aqt-fg-faint)]">{list.length}</span>
-            </Eyebrow>
-            <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0 [&::-webkit-scrollbar]:hidden">
-              {list.map((hero) => {
-                const selected = hero.id === selectedId;
-                return (
-                  <button
-                    key={hero.id}
-                    type="button"
-                    aria-pressed={selected}
-                    aria-label={hero.name}
-                    title={hero.name}
-                    onClick={() => onSelect(hero.id)}
-                    className={cn(
-                      "shrink-0 rounded-[9px] p-px outline-none transition-opacity focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
-                      selected
-                        ? "ring-2 ring-[color:var(--aqt-teal)]"
-                        : selectedId !== undefined && "opacity-60 hover:opacity-100"
-                    )}
-                  >
-                    <CatalogEntityImage entity={hero} size={40} rounded="lg" decorative />
-                  </button>
-                );
-              })}
+    <Card asChild variant="flat" className="grid gap-2.5 rounded-[var(--aqt-radius)] px-4 py-3.5">
+      <section aria-label={t("users.heroesCompare.rail.label")}>
+        {rows.map(([group, list]) => {
+          const role = ontology && dimension && group ? findRole(ontology, { dimension, role: group }) : null;
+          const label = role ? nameOf(role) : (group ?? t("users.heroesCompare.rail.noClass"));
+          return (
+            <div
+              key={group ?? ""}
+              role="group"
+              aria-label={label}
+              className="grid gap-2 md:grid-cols-[8rem_minmax(0,1fr)] md:items-center md:gap-3"
+            >
+              <Eyebrow tone="muted" className="flex items-center gap-2">
+                {role && dimension && group ? (
+                  <PlayerRoleIcon role={{ dimension, role: group }} ontology={ontology} size={16} decorative />
+                ) : null}
+                {label}
+                <span className="font-semibold tabular-nums tracking-normal text-[color:var(--aqt-fg-faint)]">{list.length}</span>
+              </Eyebrow>
+              <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 [scrollbar-width:none] md:mx-0 md:flex-wrap md:overflow-visible md:px-0 [&::-webkit-scrollbar]:hidden">
+                {list.map((hero) => {
+                  const selected = hero.id === selectedId;
+                  return (
+                    <Button
+                      key={hero.id}
+                      variant="ghost"
+                      size="inline"
+                      aria-pressed={selected}
+                      aria-label={hero.name}
+                      title={hero.name}
+                      onClick={() => onSelect(hero.id)}
+                      className={cn(
+                        "shrink-0 rounded-[9px] p-px focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
+                        selected
+                          ? "ring-2 ring-[color:var(--aqt-teal)]"
+                          : selectedId !== undefined && "opacity-60 hover:opacity-100"
+                      )}
+                    >
+                      <CatalogEntityImage entity={hero} size={40} rounded="lg" decorative />
+                    </Button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        );
-      })}
-    </section>
+          );
+        })}
+      </section>
+    </Card>
   );
 }

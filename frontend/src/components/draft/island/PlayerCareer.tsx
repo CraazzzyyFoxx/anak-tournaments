@@ -7,10 +7,11 @@ import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { useFormatter } from "@/lib/datetime/client";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
+import { eyebrowClass } from "@/components/ui/eyebrow";
+import { Skeleton } from "@/components/ui/skeleton";
 import { RankCrest } from "@/components/RankCrest";
 import { roleOf } from "@/lib/roster/role-ref";
 import type { RoleOntology } from "@/lib/roster/ontology";
-import { cn } from "@/lib/utils";
 import type { UserDraftCard } from "@/types/user.types";
 import type { DivisionGrid } from "@/types/workspace.types";
 import { getHeroIconUrl } from "@/lib/player";
@@ -32,29 +33,11 @@ function placeColor(place: number | null): string {
   return "var(--aqt-fg)";
 }
 
-const EYEBROW = "text-label font-semibold text-[color:var(--aqt-fg-muted)]";
+const EYEBROW = eyebrowClass("muted");
 const STATS_GRID =
   "grid grid-cols-[repeat(auto-fit,minmax(112px,1fr))] gap-px bg-[color:var(--aqt-border)]";
 const STAT_CELL = "flex min-w-0 flex-col gap-0.5 bg-[color:var(--aqt-card-2)] px-3.5 py-2.5";
 const STAT_VALUE = "whitespace-nowrap font-onest text-heading font-semibold leading-tight tabular-nums";
-
-/**
- * A loading stand-in for one line of text. It sits in the line box of a parent
- * carrying the real text's classes, so the value that replaces it takes exactly
- * the same height and the card does not shift when the data lands. Never make
- * it a grid or flex item itself: that blockifies it to its own 0.8em height.
- */
-export function Bar({ className }: Readonly<{ className: string }>) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        "inline-block h-[0.8em] animate-pulse rounded bg-[color:var(--aqt-overlay-3)] align-middle motion-reduce:animate-none",
-        className
-      )}
-    />
-  );
-}
 
 interface Stat {
   key: string;
@@ -80,13 +63,13 @@ export function CareerStats({ query }: Readonly<{ query: UseQueryResult<UserDraf
         {[0, 1, 2, 3, 4].map((cell) => (
           <div key={cell} className={STAT_CELL}>
             <div className={EYEBROW}>
-              <Bar className="w-16" />
+              <Skeleton variant="text" aria-hidden className="w-16" />
             </div>
             <div className={STAT_VALUE}>
-              <Bar className="w-10" />
+              <Skeleton variant="text" aria-hidden className="w-10" />
             </div>
             <div className="text-xs">
-              <Bar className="w-20" />
+              <Skeleton variant="text" aria-hidden className="w-20" />
             </div>
           </div>
         ))}
@@ -222,14 +205,14 @@ export function CareerTables({
           <div className={`${HERO_GRID} pb-1.5 ${EYEBROW}`}>
             <span />
             <span>
-              <Bar className="w-14" />
+              <Skeleton variant="text" aria-hidden className="w-14" />
             </span>
           </div>
           {SKELETON_ROWS.map((row) => (
             <div key={row} className={`${HERO_GRID} py-1`}>
-              <span className="h-7 w-7 animate-pulse rounded-full bg-[color:var(--aqt-overlay-3)] motion-reduce:animate-none" />
+              <Skeleton className="h-7 w-7 rounded-full" />
               <span className="text-[13px]">
-                <Bar className="w-20" />
+                <Skeleton variant="text" className="w-20" />
               </span>
             </div>
           ))}
@@ -237,17 +220,17 @@ export function CareerTables({
         <div className={HISTORY_SECTION}>
           <div className={`${HISTORY_GRID} pb-1.5 ${EYEBROW}`}>
             <span>
-              <Bar className="w-28" />
+              <Skeleton variant="text" className="w-28" />
             </span>
           </div>
           {SKELETON_ROWS.map((row) => (
             <div key={row} className={HISTORY_ROW}>
               <span className="min-w-0">
                 <span className="block text-[13px]">
-                  <Bar className="w-32" />
+                  <Skeleton variant="text" className="w-32" />
                 </span>
                 <span className="block text-xs">
-                  <Bar className="w-16" />
+                  <Skeleton variant="text" className="w-16" />
                 </span>
               </span>
             </div>

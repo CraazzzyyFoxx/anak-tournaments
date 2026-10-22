@@ -3,6 +3,7 @@ import { Check, CornerDownLeft, Plus } from "lucide-react";
 import DivisionIcon from "@/components/DivisionIcon";
 import { HandleLabel } from "@/components/HandleLabel";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
+import { RowButton } from "@/components/ui/row-button";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { cn } from "@/lib/utils";
@@ -41,14 +42,13 @@ export function RosterRowItem({
 
   return (
     <li data-roster-row>
-      <button
-        type="button"
+      <RowButton
         disabled={!canWrite}
         aria-pressed={isInMix}
         aria-label={isInMix ? `Remove ${label} from this mix` : `Add ${label} to this mix`}
         onClick={onToggle}
         className={cn(
-          "relative flex w-full items-center gap-2.5 rounded-lg border px-2 py-1.5 text-left transition-colors",
+          "relative flex items-center gap-2.5 rounded-lg border px-2 py-1.5",
           // A left rail rather than a filled row: at 24 rows a wash of teal
           // fought the rank crests for attention, and "already in" is a state, not
           // an emphasis.
@@ -56,7 +56,6 @@ export function RosterRowItem({
             ? "border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] before:absolute before:inset-y-1.5 before:left-0 before:w-[2px] before:rounded-full before:bg-[color:var(--aqt-teal)]"
             : "border-transparent hover:border-[color:var(--aqt-border-2)] hover:bg-[color:var(--aqt-overlay-2)]",
           isCursor && "ring-1 ring-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)]",
-          "disabled:cursor-default"
         )}
       >
         <span
@@ -136,7 +135,7 @@ export function RosterRowItem({
             );
           })}
         </span>
-      </button>
+      </RowButton>
     </li>
   );
 }

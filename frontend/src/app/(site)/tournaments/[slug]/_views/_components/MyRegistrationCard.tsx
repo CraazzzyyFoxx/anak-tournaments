@@ -23,6 +23,7 @@ import {
   RefreshCw
 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import Image from "@/components/ui/image";
 import { StatusDot } from "@/components/ui/status-dot";
@@ -710,48 +711,48 @@ function MyRegistrationCard({
             // Withdraw. The glow is a box-shadow rather than a scaling halo: the
             // card is `overflow-hidden`, so anything growing past the button
             // clips at the card edge.
-            <button
+            <Button
               type="button"
+              variant="positive"
+              static={false}
               onClick={onCheckIn}
               disabled={isCheckingIn}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[color:var(--aqt-emerald)] px-4 py-2 text-sm font-bold text-[color:var(--aqt-bg)] shadow-[0_0_18px_color-mix(in_srgb,var(--aqt-emerald)_40%,transparent)] transition-all hover:brightness-110 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+              className="shadow-[0_0_18px_color-mix(in_srgb,var(--aqt-emerald)_40%,transparent)]"
             >
-              {isCheckingIn ? (
-                <Spinner />
-              ) : (
-                <CheckCircle2 className="size-4" aria-hidden />
-              )}
+              {isCheckingIn ? <Spinner /> : <CheckCircle2 aria-hidden />}
               {isCheckingIn ? t("common.checkingIn") : t("common.checkIn")}
-            </button>
+            </Button>
           )}
           {canRecheck ? (
-            <button
+            <Button
               type="button"
+              variant="subtle"
+              size="xs"
+              static={false}
               data-registration-recheck="true"
               onClick={() => recheckMutation.mutate()}
               disabled={recheckMutation.isPending || recheckLeft > 0}
               title={t("registration.myCard.recheck.title")}
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-2.5 py-1.5 text-label font-semibold tabular-nums text-[color:var(--aqt-fg-muted)] transition-all hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+              className="tabular-nums"
             >
-              {recheckMutation.isPending ? (
-                <Spinner className="size-3" />
-              ) : (
-                <RefreshCw className="size-3" aria-hidden />
-              )}
+              {recheckMutation.isPending ? <Spinner /> : <RefreshCw aria-hidden />}
               {recheckMutation.isPending
                 ? t("registration.myCard.recheck.pending")
                 : recheckLeft > 0
                   ? t("registration.myCard.recheck.cooldown", { seconds: recheckLeft })
                   : t("registration.myCard.recheck.action")}
-            </button>
+            </Button>
           ) : null}
           {/* Edit sits before Withdraw: "fix my answer" is the cheaper of the
               two and the one a player reaches for first. Disabled-with-a-reason
               rather than silently absent, because a registrant who edited
               yesterday and cannot today is owed the reason. */}
           {canEdit || editLockedReason ? (
-            <button
+            <Button
               type="button"
+              variant="subtle"
+              size="xs"
+              static={false}
               data-registration-edit="true"
               onClick={() => setIsEditOpen(true)}
               disabled={!canEdit}
@@ -765,27 +766,29 @@ function MyRegistrationCard({
                   ? t(`registration.edit.reason.${editLockedReason}`)
                   : t("registration.edit.action")
               }
-              className="inline-flex items-center justify-center gap-1 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-2.5 py-1.5 text-label font-semibold text-[color:var(--aqt-fg-muted)] transition-all hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
             >
-              <Pencil className="size-3" aria-hidden />
+              <Pencil aria-hidden />
               {t("registration.edit.action")}
-            </button>
+            </Button>
           ) : null}
           {canWithdraw && (
-            <button
+            <Button
               type="button"
+              variant="subtle"
+              size="xs"
+              static={false}
               onClick={onWithdraw}
               disabled={isWithdrawing || isCheckingIn}
-              className="inline-flex items-center justify-center rounded-md border border-[color:color-mix(in_srgb,var(--aqt-rose)_20%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-rose)_5%,transparent)] px-2.5 py-1.5 text-label font-semibold text-[color:var(--aqt-rose)] transition-all hover:border-[color:color-mix(in_srgb,var(--aqt-rose)_40%,transparent)] hover:bg-[color:color-mix(in_srgb,var(--aqt-rose)_10%,transparent)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50"
+              className="text-[color:var(--aqt-rose)]"
             >
-              {isWithdrawing && (
-                <Spinner className="mr-1 size-3" />
-              )}
+              {isWithdrawing && <Spinner />}
               {isWithdrawing ? t("common.withdrawing") : t("common.withdraw")}
-            </button>
+            </Button>
           )}
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             onClick={() => setIsExpanded(!isExpanded)}
             aria-expanded={isExpanded}
             aria-label={
@@ -798,10 +801,10 @@ function MyRegistrationCard({
                 ? t("registration.myCard.hideDetails")
                 : t("registration.myCard.showDetails")
             }
-            className="flex size-8 shrink-0 items-center justify-center text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg)]"
+            className="text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg)]"
           >
-            {isExpanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
-          </button>
+            {isExpanded ? <ChevronUp /> : <ChevronDown />}
+          </Button>
         </div>
       </div>
 

@@ -21,10 +21,31 @@ const RadioGroup = React.forwardRef<
 })
 RadioGroup.displayName = RadioGroupPrimitive.Root.displayName
 
+/**
+ * `card`: the whole option is the radio — a bordered card holding the caller's
+ * content, tinted teal once checked (the `ToggleGroup` card's on state). No
+ * dot; the content names the radio. An inline `style` (a role's own hue)
+ * overrides the checked colours.
+ */
+const radioCardClass =
+  "rounded-lg border border-[color:var(--aqt-border)] px-3 py-1.5 text-left text-sm transition-[background-color,border-color,scale] duration-150 ease-out active:enabled:scale-[0.96] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)] disabled:cursor-not-allowed disabled:opacity-50 data-[state=unchecked]:hover:bg-[color:var(--aqt-overlay-2)] data-[state=checked]:border-[color:var(--aqt-teal)] data-[state=checked]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_10%,transparent)]"
+
 const RadioGroupItem = React.forwardRef<
   React.ElementRef<typeof RadioGroupPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof RadioGroupPrimitive.Item>
->(({ className, ...props }, ref) => {
+  React.ComponentPropsWithoutRef<typeof RadioGroupPrimitive.Item> & { variant?: "default" | "card" }
+>(({ className, variant = "default", children, ...props }, ref) => {
+  if (variant === "card") {
+    return (
+      <RadioGroupPrimitive.Item
+        ref={ref}
+        data-slot="radio-group-item"
+        className={cn(radioCardClass, className)}
+        {...props}
+      >
+        {children}
+      </RadioGroupPrimitive.Item>
+    )
+  }
   return (
     <RadioGroupPrimitive.Item
       ref={ref}

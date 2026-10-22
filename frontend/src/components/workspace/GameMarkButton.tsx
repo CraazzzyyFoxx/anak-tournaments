@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { GameMark } from "@/components/workspace/GameMark";
 import { cn } from "@/lib/utils";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
@@ -20,20 +21,19 @@ export function GameMarkButton({
   className?: string;
 }>) {
   return (
-    <button
+    <Button
       type="button"
+      variant="ghost"
+      size="inline"
       aria-label={discipline.name}
       title={discipline.name}
       onClick={(event) => {
         event.stopPropagation();
         onSelect(discipline.code);
       }}
-      className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-md outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
-        className
-      )}
+      className={cn("shrink-0 rounded-md transition-opacity hover:bg-transparent hover:opacity-80", className)}
     >
       <GameMark discipline={discipline} size={size} decorative />
-    </button>
+    </Button>
   );
 }

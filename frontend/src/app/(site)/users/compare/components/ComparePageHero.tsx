@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 
 import type { CompareScope } from "@/app/(site)/users/compare/types";
 import { PageHero, HeroCoord } from "@/components/site/PageHero";
+import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
@@ -94,13 +95,10 @@ const ComparePageHero = ({
       actions={
         <Popover>
           <PopoverTrigger asChild>
-            <button
-              type="button"
-              className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.025)] px-3 text-xs font-semibold text-[color:var(--aqt-fg-muted)] transition-colors hover:border-[color:var(--aqt-border-strong)] hover:text-[color:var(--aqt-fg)]"
-            >
-              <CircleHelp className="h-4 w-4" />
+            <Button variant="subtle">
+              <CircleHelp aria-hidden />
               {t("users.compare.hero.guideAction")}
-            </button>
+            </Button>
           </PopoverTrigger>
           <PopoverContent align="start" className="w-90 max-w-[calc(100vw-2rem)]">
             <div className="space-y-2">

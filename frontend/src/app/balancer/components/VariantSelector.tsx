@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { RowButton } from "@/components/ui/row-button";
 import {
   Dialog,
   DialogContent,
@@ -58,13 +59,13 @@ function VariantCard({ variant, isActive, onSelect, onDelete, className }: Reado
     // <button> nested inside another <button> is invalid HTML, and the old
     // role="button" span reimplemented Enter/Space by hand to dodge that.
     <div className={cn("group relative", className)}>
-      <button
-        type="button"
+      <RowButton
+        aria-pressed={isActive}
         onClick={onSelect}
         className={cn(
-          "h-full w-full rounded-lg border px-3 py-2 text-left transition",
+          "h-full rounded-lg border px-3 py-2",
           isActive
-            ? "border-primary/35 bg-primary/[0.12] text-[color:var(--aqt-fg)]"
+            ? "border-primary/35 bg-primary/[0.12] text-[color:var(--aqt-fg)] hover:bg-primary/[0.12]"
             : "border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]",
           onDelete ? "pr-9" : undefined
         )}
@@ -132,17 +133,19 @@ function VariantCard({ variant, isActive, onSelect, onDelete, className }: Reado
             ) : null}
           </div>
         ) : null}
-      </button>
+      </RowButton>
       {onDelete ? (
-        <button
+        <Button
           type="button"
+          variant="ghost-destructive"
+          size="icon-xs"
           onClick={onDelete}
           title="Delete variant"
           aria-label={`Delete ${variant.label}`}
-          className="absolute right-2 top-2 rounded text-[color:var(--aqt-fg-muted)] opacity-0 transition-opacity hover:text-rose-400 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] group-hover:opacity-100"
+          className="absolute right-2 top-2 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
         >
-          <Trash2 className="h-3.5 w-3.5" aria-hidden />
-        </button>
+          <Trash2 aria-hidden />
+        </Button>
       ) : null}
     </div>
   );
@@ -178,12 +181,12 @@ export function VariantSelector({
         </div>
         <Button
           type="button"
-          variant="ghost"
+          variant="subtle"
           size="sm"
           onClick={() => setShowAll(true)}
-          className="shrink-0 self-center border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+          className="shrink-0 self-center"
         >
-          <LayoutGrid className="h-3.5 w-3.5" />
+          <LayoutGrid aria-hidden />
           Show all
         </Button>
       </div>

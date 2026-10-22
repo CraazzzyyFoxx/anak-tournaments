@@ -4,6 +4,7 @@ import { roleOf, subRoleSlugOf } from "@/lib/roster/role-ref";
 import { useMemo } from "react";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -204,12 +205,9 @@ export function SmurfTagsCell({
       {hiddenCount > 0 ? (
         <Dialog>
           <DialogTrigger asChild>
-            <button
-              type="button"
-              className="text-xs font-medium text-[color:var(--aqt-emerald)] outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-            >
+            <Button type="button" variant="link" size="inline">
               +{hiddenCount} {t("common.more")}
-            </button>
+            </Button>
           </DialogTrigger>
           <DialogContent className="border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] sm:max-w-md">
             <DialogHeader>

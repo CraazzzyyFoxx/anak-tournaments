@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 
 import { cn } from "@/lib/utils";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import LabelledSelect from "@/components/match/LabelledSelect";
 import StatsTableView from "@/components/match/StatsTable";
 import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
@@ -143,13 +144,13 @@ function GenericSeriesStatistics({
 function SeriesStatsSkeleton() {
   return (
     <div className={styles.statsStack} aria-busy>
-      <span className={cn(styles.skeleton, "h-[68px] w-full")} />
+      <Skeleton className="h-[68px] w-full" />
       <div className={styles.statsGrid}>
-        <span className={cn(styles.skeleton, "h-[320px] w-full")} />
-        <span className={cn(styles.skeleton, "h-[320px] w-full")} />
+        <Skeleton className="h-[320px] w-full" />
+        <Skeleton className="h-[320px] w-full" />
       </div>
-      <span className={cn(styles.skeleton, "h-[120px] w-full")} />
-      <span className={cn(styles.skeleton, "h-[420px] w-full")} />
+      <Skeleton className="h-[120px] w-full" />
+      <Skeleton className="h-[420px] w-full" />
     </div>
   );
 }

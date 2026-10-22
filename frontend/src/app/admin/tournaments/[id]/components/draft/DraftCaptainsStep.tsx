@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -107,15 +108,16 @@ export function DraftCaptainsStep({
 
   return (
     <div className="@container space-y-5">
-      <div
+      <Card
+        variant="flat"
         role="status"
-        className="sticky top-2 z-10 flex items-center justify-between rounded-xl border border-border bg-card px-4 py-3"
+        className="sticky top-2 z-10 flex items-center justify-between px-4 py-3"
       >
         <span className="text-sm font-medium">{t("captainsSelected")}</span>
         <strong className="tabular-nums">
           {value.ids.length} / {teamCount}
         </strong>
-      </div>
+      </Card>
 
       <div className="grid gap-5 @3xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
         <CaptainPoolPicker
@@ -142,7 +144,7 @@ export function DraftCaptainsStep({
                 if (!row || !registration) return null;
                 const seat = captainSeat(registration, value.roles[id], rosterShape);
                 return (
-                  <div key={id} className="min-w-0 rounded-xl border border-border bg-card p-3">
+                  <Card key={id} variant="flat" className="min-w-0 p-3">
                     <div className="flex items-center gap-2">
                       <span className="min-w-0 flex-1 truncate text-sm font-medium tabular-nums">
                         {index + 1}. {row.label}
@@ -215,7 +217,7 @@ export function DraftCaptainsStep({
                         })
                       }
                     />
-                  </div>
+                  </Card>
                 );
               })}
             </div>

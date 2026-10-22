@@ -12,7 +12,6 @@ import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
 import type { PickBanKind } from "@/types/tournament.types";
 import { matchesItemName } from "@/lib/tournament/pick-ban-config";
 import { EmptyNote } from "@/components/kit/EmptyNote";
@@ -173,23 +172,20 @@ function CatalogueTile({
   onToggle: () => void;
 }>) {
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
       aria-pressed={selected}
       aria-label={option.name}
       disabled={disabled}
       onClick={onToggle}
-      className={cn(
-        "relative flex h-20 flex-col justify-end overflow-hidden rounded-lg border p-2 text-left transition-colors",
-        selected ? "border-primary" : "border-border bg-card hover:border-primary/50",
-        disabled && "cursor-not-allowed"
-      )}
+      className="relative h-20 flex-col items-stretch justify-end overflow-hidden rounded-lg p-2 text-left hover:border-primary/50 aria-pressed:border-primary"
     >
       <ItemArt option={option} />
       <span className="relative z-10 truncate text-xs font-semibold text-foreground">
         {option.name}
       </span>
-    </button>
+    </Button>
   );
 }
 
@@ -380,13 +376,7 @@ export function CataloguePicker(props: Readonly<CataloguePickerProps>) {
   return (
     <Popover open={filter.open} onOpenChange={filter.onOpenChange}>
       <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={disabled}
-          className="gap-1.5 border-dashed"
-        >
+        <Button type="button" variant="dashed" size="sm" disabled={disabled}>
           <Plus aria-hidden className="size-4" />
           {addLabel}
         </Button>

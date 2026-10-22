@@ -5,6 +5,7 @@ import { useFormatter } from "@/lib/datetime/client";
 import { LogStatsName } from "../stat-names";
 import { COMPARISON_STATS, STAT_META, formatStat, teamTotal, type MatchStatsTeam } from "./stats";
 import TeamName from "@/components/TeamName";
+import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 
 interface TeamComparisonProps {
@@ -52,7 +53,7 @@ const TeamComparison = ({ home, away, round }: TeamComparisonProps) => {
   });
 
   return (
-    <div className="rounded-[12px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]">
+    <Card variant="flat">
       <div className="flex items-center justify-between border-b border-[color:var(--aqt-border)] px-4 py-3">
         <TeamName
           team={home}
@@ -120,7 +121,7 @@ const TeamComparison = ({ home, away, round }: TeamComparisonProps) => {
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   );
 };
 

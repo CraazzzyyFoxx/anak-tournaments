@@ -3,7 +3,8 @@
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Plus, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { RowButton } from "@/components/ui/row-button";
 import { LogStatsName } from "../stat-names";
 import { getHumanizedStats } from "../stat-names";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -44,32 +45,34 @@ const RadarAxisPicker = ({ selected, candidates, onToggle }: Props) => {
         <span key={name} className="aqt-filter-chip active inline-flex items-center">
           {getHumanizedStats(name)}
           {canRemove ? (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-sm"
               onClick={() => onToggle(name)}
-              className="-mr-0.5 inline-flex items-center justify-center rounded-sm text-(--aqt-fg-muted) hover:text-[color:var(--aqt-fg)]"
+              className="-mr-2 text-[color:var(--aqt-fg-muted)] hover:bg-transparent hover:text-[color:var(--aqt-fg)]"
               aria-label={t("users.heroes.removeAxis", { stat: getHumanizedStats(name) })}
             >
-              <X aria-hidden className="h-3 w-3" />
-            </button>
+              <X aria-hidden />
+            </Button>
           ) : null}
         </span>
       ))}
 
       <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQuery(""); }}>
         <PopoverTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="subtle"
+            size="sm"
             disabled={!canAdd}
-            className={cn(
-              "aqt-filter-chip inline-flex items-center gap-1",
-              !canAdd && "cursor-not-allowed opacity-40"
-            )}
+            // Pointer events stay on when disabled so the title still says why.
+            className="gap-1 disabled:pointer-events-auto disabled:cursor-not-allowed"
             title={canAdd ? t("users.heroes.addAxis") : t("users.heroes.upToAxes", { count: MAX_AXES })}
           >
-            <Plus aria-hidden className="h-3 w-3" />
+            <Plus aria-hidden />
             {t("common.add")}
-          </button>
+          </Button>
         </PopoverTrigger>
         <PopoverContent
           align="center"
@@ -86,14 +89,13 @@ const RadarAxisPicker = ({ selected, candidates, onToggle }: Props) => {
           </div>
           <div className="max-h-64 overflow-y-auto py-1">
             {filtered.map((name) => (
-              <button
+              <RowButton
                 key={name}
-                type="button"
                 onClick={() => onToggle(name)}
-                className="block w-full px-3 py-1.5 text-left text-caption text-[color:var(--aqt-fg)] transition-colors hover:bg-[hsl(0_0%_100%/0.05)]"
+                className="block px-3 py-1.5 text-caption text-[color:var(--aqt-fg)]"
               >
                 {getHumanizedStats(name)}
-              </button>
+              </RowButton>
             ))}
             {filtered.length === 0 ? (
               <div className="px-3 py-3 text-center text-label text-[color:var(--aqt-fg-dim)]">

@@ -21,6 +21,8 @@ interface EntityFormDialogProps {
   submitLabel?: string;
   cancelLabel?: string;
   isSubmitting?: boolean;
+  /** The form cannot go through yet (nothing picked); the submit button greys out. */
+  submitDisabled?: boolean;
   submittingLabel?: string;
   errorMessage?: string;
   /**
@@ -54,6 +56,7 @@ export function EntityFormDialog({
   submitLabel,
   cancelLabel,
   isSubmitting = false,
+  submitDisabled = false,
   submittingLabel,
   errorMessage,
   fieldErrors,
@@ -147,7 +150,8 @@ export function EntityFormDialog({
         >
           <DialogHeader className="shrink-0 border-b border-border/60 pb-4">
             <DialogTitle>{title}</DialogTitle>
-            {description && <DialogDescription>{description}</DialogDescription>}
+            {/* `wrap-anywhere`: a description naming a file (a log, an import) has no spaces to break at. */}
+            {description && <DialogDescription className="wrap-anywhere">{description}</DialogDescription>}
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -181,7 +185,7 @@ export function EntityFormDialog({
                 {cancelText}
               </Button>
               {!isReadOnly && (
-                <Button type="submit" disabled={isSubmitting}>
+                <Button type="submit" disabled={isSubmitting || submitDisabled}>
                   {isSubmitting ? (
                     <>
                       <Spinner />

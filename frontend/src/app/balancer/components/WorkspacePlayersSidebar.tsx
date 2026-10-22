@@ -12,19 +12,17 @@ import {
   X,
 } from "lucide-react";
 
-import {
-  ICON_BUTTON_CLASS,
-  PANEL_CLASS,
-} from "@/components/balancer/balancer-page-helpers";
+import { ICON_BUTTON_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { HandleLabel } from "@/components/HandleLabel";
 import {
   HandleContextMenuItems,
   HandleCopyButton,
 } from "@/app/balancer/components/HandleCopyControls";
 import { WorkspacePlayerSheet } from "@/app/balancer/components/WorkspacePlayerSheet";
-import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { RankCrest } from "@/components/RankCrest";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
@@ -42,7 +40,6 @@ import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { notify } from "@/lib/notify";
-import { resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { registrationRoles, roleTint, type RoleOntology } from "@/lib/roster/ontology";
 import { displaySocialHandle, getSocialProviderConfig } from "@/lib/social/providers";
 import { cn } from "@/lib/utils";
@@ -130,7 +127,6 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, ontology, grid, 
     const rank = effective[role] as number;
     return best && best.rank >= rank ? best : { role, rank };
   }, null);
-  const division = topRank ? resolveDivisionFromRank(grid, topRank.rank) : null;
 
   return (
     <ContextMenu>
@@ -164,23 +160,21 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, ontology, grid, 
                 ) : (
                   <span className="shrink-0 text-label text-[color:var(--aqt-fg-dim)]">No roles</span>
                 )}
-                <button
+                <Button
                   type="button"
+                  variant="link"
+                  size="inline"
                   data-card-action
                   onClick={() => onOpen(member)}
                   title={`Edit ${label}`}
-                  className="flex min-w-0 items-baseline rounded text-left"
+                  className="min-w-0 justify-start"
                 >
                   <HandleLabel handle={label} className="text-caption font-medium text-[color:var(--aqt-fg)]" />
-                </button>
+                </Button>
               </div>
 
               <div className="flex shrink-0 items-center gap-1.5" data-card-action>
-                {division == null ? null : (
-                  <span title={`Division ${division}`}>
-                    <DivisionIcon division={division} tournamentGrid={grid} width={20} height={20} />
-                  </span>
-                )}
+                {topRank ? <RankCrest rank={topRank.rank} grid={grid} size={20} /> : null}
                 {topRank ? (
                   <span
                     title={`Highest rank: ${slotLabel(topRank.role)} ${topRank.rank}`}
@@ -282,7 +276,7 @@ export function WorkspacePlayersSidebar({
 
   if (collapsed) {
     return (
-      <div className={cn(PANEL_CLASS, "flex min-h-0 min-w-0 flex-col items-center gap-3 p-2")}>
+      <Card variant="flat" className="flex min-h-0 min-w-0 flex-col items-center gap-3 p-2">
         <Button
           type="button"
           variant="ghost"
@@ -320,7 +314,7 @@ export function WorkspacePlayersSidebar({
             <span className="sr-only"> workspace players</span>
           </div>
         )}
-      </div>
+      </Card>
     );
   }
 
@@ -352,7 +346,7 @@ export function WorkspacePlayersSidebar({
   return (
     // `min-w-0`: as a grid item this panel inherits `min-width: auto`, so below
     // roughly 300px it overflowed its own track instead of truncating rows.
-    <div className={cn(PANEL_CLASS, "flex min-h-0 min-w-0 flex-col p-4")}>
+    <Card variant="flat" className="flex min-h-0 min-w-0 flex-col p-4">
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="min-w-0">
           {/* Short enough to hold one line at the narrowest sidebar width; the
@@ -607,6 +601,6 @@ export function WorkspacePlayersSidebar({
           if (editingMemberId != null) saveRank.mutate({ memberId: editingMemberId, role, rank });
         }}
       />
-    </div>
+    </Card>
   );
 }

@@ -6,8 +6,13 @@ import { useEffect, useRef, type CSSProperties } from "react";
 
 import { RankCrest } from "@/components/RankCrest";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
+import { RowButton } from "@/components/ui/row-button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useDraftLayerPad } from "@/hooks/useDraftLayerPad";
+import { tint } from "@/lib/colors";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import {
   teamsNeedingRole,
@@ -53,12 +58,6 @@ const TEAM_SORTS: readonly TeamSort[] = ["order", "next", "avg"];
 /** The colour a slot is drawn in: its role's presentation colour, or the open slot's own. */
 const slotColor = (ontology: RoleOntology | null, code: SlotCode) =>
   code === OPEN_SLOT_CODE ? "var(--aqt-flex)" : roleTint(ontology, code);
-
-const FOCUS_RING = "outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]";
-
-function tint(color: string, percent: number): string {
-  return `color-mix(in srgb, ${color} ${percent}%, transparent)`;
-}
 
 /** Consecutive runs of one slot code: the header spans one icon over each run. */
 function headerGroups(codes: readonly SlotCode[]): { code: SlotCode; span: number }[] {
@@ -140,58 +139,37 @@ export function TeamRosters({
   return (
     <>
       <div className="flex flex-wrap items-center gap-1.5 border-b border-[color:var(--aqt-border)] px-4 pb-3">
-        <div role="group" aria-label={t("teams.chips.label")} className="flex flex-wrap items-center gap-1.5">
-          {chips.map((chip) => {
-            const on = filter === chip.value;
-            const accent = chip.role ? roleTint(ontology, chip.role) : "var(--aqt-teal)";
-            return (
-              <button
-                key={chip.value}
-                type="button"
-                aria-pressed={on}
-                aria-label={chip.aria}
-                onClick={() => onFilterChange(chip.value)}
-                className={cn(
-                  "flex min-h-11 max-w-full items-center gap-1.5 whitespace-nowrap rounded-full border bg-[color:var(--chip-bg)] px-[11px] text-caption font-medium hover:bg-[color:var(--aqt-overlay-3)] sm:min-h-8",
-                  FOCUS_RING,
-                  on ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-muted)]"
-                )}
-                style={
-                  {
-                    "--chip-bg": on ? tint(accent, 12) : "transparent",
-                    borderColor: on ? accent : "var(--aqt-border-2)"
-                  } as CSSProperties
-                }
-              >
-                {chip.role && <PlayerRoleIcon role={chip.role} ontology={ontology} size={17} decorative />}
-                <span className="truncate">{chip.label}</span>
-                <span className="font-normal tabular-nums text-[color:var(--aqt-fg-faint)]">{chip.count}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div role="group" aria-label={t("teams.sort.label")} className="ml-auto flex gap-0.5">
-          {TEAM_SORTS.map((value) => {
-            const on = sort === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={on}
-                onClick={() => onSortChange(value)}
-                className={cn(
-                  "flex min-h-11 items-center whitespace-nowrap rounded-[7px] px-[9px] text-caption font-medium sm:min-h-7",
-                  FOCUS_RING,
-                  on
-                    ? "bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg)]"
-                    : "text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
-                )}
-              >
-                {t(`teams.sort.${value}`)}
-              </button>
-            );
-          })}
-        </div>
+        <FilterChipGroup label={t("teams.chips.label")}>
+          {chips.map((chip) => (
+            <FilterChip
+              key={chip.value}
+              active={filter === chip.value}
+              accent={chip.role ? roleTint(ontology, chip.role) : undefined}
+              aria-label={chip.aria}
+              count={chip.count}
+              onClick={() => onFilterChange(chip.value)}
+              className="min-h-11 max-w-full whitespace-nowrap sm:min-h-8"
+            >
+              {chip.role && <PlayerRoleIcon role={chip.role} ontology={ontology} size={17} decorative />}
+              <span className="truncate">{chip.label}</span>
+            </FilterChip>
+          ))}
+        </FilterChipGroup>
+        <ToggleGroup
+          type="single"
+          variant="pill"
+          size="sm"
+          value={sort}
+          onValueChange={(value) => onSortChange(value as TeamSort)}
+          aria-label={t("teams.sort.label")}
+          className="ml-auto"
+        >
+          {TEAM_SORTS.map((value) => (
+            <ToggleGroupItem key={value} value={value} className="min-h-11 whitespace-nowrap sm:min-h-0">
+              {t(`teams.sort.${value}`)}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
       </div>
 
       <Eyebrow
@@ -279,22 +257,21 @@ export function TeamRosters({
               <span className="text-caption tabular-nums text-[color:var(--aqt-fg-faint)]">{team.draft_position}</span>
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-1.5">
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon-sm"
                     aria-pressed={isFollowed}
                     aria-label={
                       isFollowed ? t("teams.unfollow", { team: team.name }) : t("teams.follow", { team: team.name })
                     }
                     title={t("teams.followTitle")}
                     onClick={() => onToggleFollow(team.id)}
-                    className={cn(
-                      "relative flex h-6 w-6 flex-none items-center justify-center rounded-md after:absolute after:-inset-2.5 after:content-[''] hover:bg-[color:var(--aqt-overlay-3)] sm:after:hidden",
-                      FOCUS_RING
-                    )}
+                    className="relative size-6 flex-none after:absolute after:-inset-2.5 after:content-[''] sm:after:hidden"
                     style={{ color: isFollowed ? "var(--aqt-follow)" : "var(--aqt-fg-faint)" }}
                   >
-                    <Star aria-hidden className="h-[15px] w-[15px]" fill={isFollowed ? "currentColor" : "none"} />
-                  </button>
+                    <Star aria-hidden fill={isFollowed ? "currentColor" : "none"} />
+                  </Button>
                   <span
                     title={team.name}
                     className="truncate text-body font-semibold"
@@ -399,12 +376,11 @@ function RosterCell({
     const borderColor = tint(color, onClock ? 75 : 30);
     if (filterRole != null && onSlotFilter) {
       return (
-        <button
-          type="button"
+        <RowButton
           aria-label={t("filterBySlot", { role: slotLabel })}
           title={t("teams.cell.openFilter", { role: slotLabel })}
           onClick={() => onSlotFilter(filterRole)}
-          className={cn(boxClass, "cursor-pointer hover:bg-[color:var(--aqt-overlay-3)]", FOCUS_RING)}
+          className={cn(boxClass, "hover:bg-[color:var(--aqt-overlay-3)]")}
           style={{ borderColor }}
         />
       );
@@ -442,15 +418,12 @@ function RosterCell({
     .join(" · ");
 
   return (
-    <button
-      type="button"
+    <RowButton
       title={title}
       aria-label={title}
       onClick={() => onOpenProfile(player.id)}
       className={cn(
-        "flex h-[30px] min-w-0 items-center gap-1 overflow-hidden rounded-[7px] border border-transparent bg-[color:var(--cell-bg)] px-[5px] text-left text-label font-medium text-[color:var(--aqt-fg)] hover:bg-[color:var(--cell-bg-hover)]",
-        FOCUS_RING,
-        // Off-role is the one thing a cell still draws a border for.
+        "flex h-[30px] min-w-0 items-center gap-1 overflow-hidden rounded-[7px] border border-transparent bg-[color:var(--cell-bg)] px-[5px] text-label font-medium text-[color:var(--aqt-fg)] hover:bg-[color:var(--cell-bg-hover)]",
         cell.offRole && "border-dashed border-[color:var(--aqt-amber)]"
       )}
       style={
@@ -462,6 +435,6 @@ function RosterCell({
     >
       <RankCrest division={division} grid={divisionGrid} size={18} tooltip={false} />
       <span className="min-w-0 truncate">{splitHandle(tag).name}</span>
-    </button>
+    </RowButton>
   );
 }

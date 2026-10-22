@@ -3,11 +3,12 @@ import Link from "next/link";
 import { dehydrate, HydrationBoundary, QueryClient } from "@tanstack/react-query";
 import { getTranslations } from "next-intl/server";
 import { getFormatter } from "@/lib/datetime/server";
-import { ArrowLeft, MessageSquare } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { BackLink } from "@/components/site/BackLink";
 import { HeroCoord, HeroStamp, PageHero } from "@/components/site/PageHero";
-import { eyebrowClass } from "@/components/ui/eyebrow";
+import { Button } from "@/components/ui/button";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
 import { EntityWorkspace } from "@/components/workspace/EntityWorkspace";
 import { SITE_NAME, SITE_URL } from "@/config/site";
@@ -249,13 +250,7 @@ const EncounterPage = async (props: {
           encounter={encounter}
           crumbs={
             <>
-              <Link
-                href="/encounters"
-                className={cn(styles.crumbLink, "inline-flex items-center gap-1.5")}
-              >
-                <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-                {t("encounters.detail.back")}
-              </Link>
+              <BackLink href="/encounters">{t("encounters.detail.back")}</BackLink>
               <span className="inline-flex flex-wrap items-center gap-2">
                 <Link href={`/tournaments/${encounter.tournament_id}`} className={styles.crumbLink}>
                   {encounter.tournament?.name ?? t("common.tournament")}
@@ -283,7 +278,6 @@ const EncounterPage = async (props: {
                 workspaceId={encounter.workspace_id}
                 discipline={encounter.discipline}
                 liveGames={(encounter.games ?? []).filter((game) => game.state !== "cancelled").length}
-                className={styles.button}
               />
               {logs.length > 0 ? (
                 <MatchLogIndicator hasLogs logs={logs} className={styles.iconButton} />
@@ -446,16 +440,7 @@ const FfaLobbyPage = async ({ encounter }: Readonly<{ encounter: Encounter }>) =
         titleClassName="text-[clamp(1.35rem,2.4vw,2rem)]"
         eyebrow={
           <>
-            <Link
-              href="/encounters"
-              className={cn(
-                eyebrowClass(),
-                "inline-flex items-center gap-1.5 transition-colors hover:text-[color:var(--aqt-teal)]"
-              )}
-            >
-              <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-              {t("encounters.detail.back")}
-            </Link>
+            <BackLink href="/encounters">{t("encounters.detail.back")}</BackLink>
             <HeroCoord className="inline-flex flex-wrap items-center gap-2">
               <Link href={`/tournaments/${encounter.tournament_id}`} className={styles.crumbLink}>
                 {encounter.tournament?.name ?? t("common.tournament")}
@@ -506,13 +491,12 @@ const FfaLobbyPage = async ({ encounter }: Readonly<{ encounter: Encounter }>) =
         })}
         actions={
           <div className={styles.heroActions}>
-            <Link
-              href={`/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`}
-              className={styles.button}
-            >
-              <MessageSquare className="h-4 w-4" aria-hidden />
-              {t("ffa.openRoom")}
-            </Link>
+            <Button variant="subtle" size="sm" asChild>
+              <Link href={`/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`}>
+                <MessageSquare aria-hidden />
+                {t("ffa.openRoom")}
+              </Link>
+            </Button>
           </div>
         }
         stamp={

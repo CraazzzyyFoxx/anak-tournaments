@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 
@@ -70,33 +71,38 @@ export function HeaderMultiCombobox({ options, value, onChange, disabled }: Read
                 <span className="mr-1.5 text-muted-foreground">{index + 1}.</span>
                 {column}
               </span>
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-xs"
                 disabled={disabled || index === 0}
                 onClick={() => onChange(moveItem(value, index, -1))}
                 title={t("moveUp")}
-                className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent disabled:opacity-30"
+                className="text-muted-foreground"
               >
-                <ChevronUp className="size-3.5" />
-              </button>
-              <button
+                <ChevronUp />
+              </Button>
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-xs"
                 disabled={disabled || index === value.length - 1}
                 onClick={() => onChange(moveItem(value, index, 1))}
                 title={t("moveDown")}
-                className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent disabled:opacity-30"
+                className="text-muted-foreground"
               >
-                <ChevronDown className="size-3.5" />
-              </button>
-              <button
+                <ChevronDown />
+              </Button>
+              <Button
                 type="button"
+                variant="ghost-destructive"
+                size="icon-xs"
                 disabled={disabled}
                 onClick={() => onChange(value.filter((item) => item !== column))}
                 title={t("remove")}
-                className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-30"
               >
-                <X className="size-3.5" />
-              </button>
+                <X />
+              </Button>
             </li>
           ))}
         </ul>

@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
 import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { classRank, lobbyCopyText } from "@/components/pick-ban/pick-ban-model";
 import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
 import { seatTeam, seatsBySlot } from "@/lib/encounter/seats";
@@ -44,9 +45,7 @@ export default function PregameCharacterBans({
   const note = hint === undefined ? t("heroBans.hint") : hint;
   const caption =
     eyebrow === undefined ? (
-      <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-rose)]">
-        {t("heroBans.eyebrow")}
-      </span>
+      <Eyebrow className="text-[color:var(--aqt-rose)]">{t("heroBans.eyebrow")}</Eyebrow>
     ) : (
       eyebrow
     );

@@ -1,13 +1,15 @@
 "use client";
 
-import type { CSSProperties, MouseEvent, ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Check, ChevronDown, ChevronUp, Crown, Heart } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { RankCrest } from "@/components/RankCrest";
-import { getImpactColor } from "@/lib/colors";
+import { Button } from "@/components/ui/button";
+import { RowButton } from "@/components/ui/row-button";
+import { getImpactColor, tint } from "@/lib/colors";
 import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import {
   bestSeatRole,
@@ -39,13 +41,7 @@ import { formatSubRoleLabel, getHeroIconUrl } from "@/lib/player";
 export const POOL_GRID =
   "grid grid-cols-[minmax(0,1fr)_56px_32px] gap-x-2 sm:grid-cols-[minmax(128px,0.7fr)_minmax(0,var(--pool-roles))_56px_32px]";
 
-/** A CSS colour at `pct` percent over transparent: a role's tint, or any other accent. */
-export const tint = (color: string, pct: number) => `color-mix(in srgb, ${color} ${pct}%, transparent)`;
-export const teal = (pct: number) => `color-mix(in srgb, var(--aqt-teal) ${pct}%, transparent)`;
-
 const PRIORITY_KEYS = ["primary", "second", "third"] as const;
-
-const stop = (event: MouseEvent) => event.stopPropagation();
 
 interface PoolRowProps {
   player: DraftPlayer;
@@ -135,7 +131,7 @@ export function PoolRow({
       title={clickRole != null ? t("pool.row.select") : t("pool.row.open")}
       style={
         {
-          "--row-bg": selected ? teal(9) : isProfile ? "var(--aqt-overlay-3)" : "transparent",
+          "--row-bg": selected ? tint("var(--aqt-teal)", 9) : isProfile ? "var(--aqt-overlay-3)" : "transparent",
           boxShadow: selected
             ? "inset 3px 0 0 var(--aqt-teal)"
             : isProfile
@@ -151,27 +147,28 @@ export function PoolRow({
       )}
     >
       <div className={cn("min-w-0", dimmed && "opacity-55")}>
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2 text-body">
           {tab === "shortlist" && queued && (
             <span className="shrink-0 text-caption font-semibold tabular-nums text-[color:var(--aqt-teal)]">
               #{queueIndex + 1}
             </span>
           )}
           {/* The name always opens the card; the row and role cells are what pick. */}
-          <button
-            type="button"
+          <Button
+            variant="link"
+            size="inline"
             onClick={(event) => {
-              stop(event);
+              event.stopPropagation();
               onOpenProfile(player.id);
             }}
             aria-label={t("openProfile", { player: name })}
             // Focus target when the pick card closes and its opener is gone.
             data-player-name={player.id}
             title={name}
-            className="min-w-0 truncate rounded text-left text-body font-semibold text-[color:var(--aqt-fg)] outline-hidden hover:text-[color:var(--aqt-teal)] hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+            className="min-w-0 font-semibold text-[color:var(--aqt-fg)] hover:text-[color:var(--aqt-teal)]"
           >
-            {name}
-          </button>
+            <span className="truncate">{name}</span>
+          </Button>
           {player.is_captain && (
             <Crown className="h-[15px] w-[15px] shrink-0 text-[color:var(--aqt-warm)]" role="img" aria-label={t("captain")} />
           )}
@@ -255,21 +252,22 @@ export function PoolRow({
       </div>
 
       {queueEditable && queue && available ? (
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon"
           aria-label={queued ? t("pool.queueRemove") : t("pool.queueAdd")}
           aria-pressed={queued}
           onClick={(event) => {
-            stop(event);
+            event.stopPropagation();
             queue.toggle(player.id);
           }}
           className={cn(
-            "flex h-11 w-11 items-center justify-center justify-self-end rounded-lg outline-hidden hover:bg-[color:var(--aqt-overlay-3)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] sm:h-8 sm:w-8",
+            "size-11 justify-self-end rounded-lg sm:size-8",
             queued ? "text-[color:var(--aqt-teal)]" : "text-[color:var(--aqt-fg-faint)]"
           )}
         >
-          <Heart className={cn("h-[18px] w-[18px]", queued && "fill-current")} aria-hidden="true" />
-        </button>
+          <Heart className={cn(queued && "fill-current")} aria-hidden="true" />
+        </Button>
       ) : (
         <span />
       )}
@@ -284,18 +282,19 @@ function MoveButton({
   children
 }: Readonly<{ label: string; disabled: boolean; onClick: () => void; children: ReactNode }>) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="icon"
       aria-label={label}
       disabled={disabled}
       onClick={(event) => {
-        stop(event);
+        event.stopPropagation();
         onClick();
       }}
-      className="flex h-11 w-11 items-center justify-center rounded-md text-[color:var(--aqt-fg-muted)] outline-hidden hover:bg-[color:var(--aqt-overlay-3)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] disabled:opacity-40 sm:h-6 sm:w-7"
+      className="size-11 text-[color:var(--aqt-fg-muted)] sm:h-6 sm:w-7"
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -500,8 +499,7 @@ function RoleCell({
       : null;
 
   return (
-    <button
-      type="button"
+    <RowButton
       aria-label={named ? t("pickAs", { player: name, role: roleLabel }) : t("island.action.pickPlayer", { player: name })}
       aria-pressed={on}
       // aria-disabled, not `disabled`: the reason stays reachable and announced.
@@ -509,7 +507,7 @@ function RoleCell({
       aria-describedby={reason ? reasonId : undefined}
       title={reason ? `${summary} — ${reason}` : summary}
       onClick={(event) => {
-        stop(event);
+        event.stopPropagation();
         if (usable) onSelect(player.id, role);
       }}
       style={
@@ -519,12 +517,18 @@ function RoleCell({
             : usable && primary
               ? tint(roleTint(ontology, role), 55)
               : "var(--aqt-border-2)",
-          background: on ? teal(18) : usable ? (primary ? tint(roleTint(ontology, role), 9) : "var(--aqt-overlay-2)") : "transparent"
+          background: on
+            ? tint("var(--aqt-teal)", 18)
+            : usable
+              ? primary
+                ? tint(roleTint(ontology, role), 9)
+                : "var(--aqt-overlay-2)"
+              : "transparent"
         } as CSSProperties
       }
       className={cn(
         shell,
-        "border-[color:var(--cell-border)] outline-hidden transition-colors focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
+        "border-[color:var(--cell-border)]",
         // A cell that cannot be taken must not invite the click, and must stay
         // legible: dim foreground, not opacity over the whole cell.
         usable ? "cursor-pointer" : "cursor-default border-dashed [&_img]:grayscale [&_svg]:grayscale",
@@ -543,6 +547,6 @@ function RoleCell({
           <Check className="h-[11px] w-[11px] text-[color:var(--aqt-bg)]" strokeWidth={3} aria-hidden="true" />
         </span>
       )}
-    </button>
+    </RowButton>
   );
 }

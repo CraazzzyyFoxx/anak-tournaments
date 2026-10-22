@@ -11,6 +11,7 @@ import {
   standardTiers
 } from "@/app/admin/settings/divisions/editor/draftReducer";
 import { LadderBar } from "@/app/admin/settings/divisions/LadderBar";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GameMark } from "@/components/workspace/GameMark";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
@@ -43,11 +44,13 @@ export function GamesSummary({
       <h2 id="divisions-games" className="text-ui font-semibold text-foreground">
         {t("games.title")}
       </h2>
-      <ul className="divide-y divide-border rounded-xl border border-border bg-card">
-        {games.map((game) => (
-          <GameRow key={game.code} workspaceId={workspaceId} game={game} workspace={workspace} grids={grids} />
-        ))}
-      </ul>
+      <Card asChild variant="flat">
+        <ul className="divide-y divide-border">
+          {games.map((game) => (
+            <GameRow key={game.code} workspaceId={workspaceId} game={game} workspace={workspace} grids={grids} />
+          ))}
+        </ul>
+      </Card>
     </section>
   );
 }
@@ -57,7 +60,7 @@ export function GamesSummarySkeleton({ rows }: Readonly<{ rows: number }>) {
   return (
     <div aria-hidden className="flex flex-col gap-3">
       <Skeleton className="h-5 w-40" />
-      <div className="divide-y divide-border rounded-xl border border-border bg-card">
+      <Card variant="flat" className="divide-y divide-border">
         {Array.from({ length: rows }, (_, index) => (
           <div key={index} className="flex items-center gap-3 px-4 py-3">
             <Skeleton className="size-7 rounded-md" />
@@ -68,7 +71,7 @@ export function GamesSummarySkeleton({ rows }: Readonly<{ rows: number }>) {
             <Skeleton className="hidden h-1.5 w-48 md:block" />
           </div>
         ))}
-      </div>
+      </Card>
     </div>
   );
 }

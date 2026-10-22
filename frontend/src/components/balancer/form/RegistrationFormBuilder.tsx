@@ -20,9 +20,11 @@ import { eyebrowClass } from "@/components/ui/eyebrow";
 import { registrationRenderers } from "@/components/registration/registrationRenderers";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { RowButton } from "@/components/ui/row-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
@@ -107,11 +109,10 @@ function FieldRow({
           className="size-3.5 shrink-0 text-destructive"
         />
       )}
-      <button
-        type="button"
+      <RowButton
         onClick={onSelect}
         aria-current={selected ? "true" : undefined}
-        className="min-w-0 flex-1 text-left"
+        className="min-w-0 flex-1 rounded-md"
       >
         <span className="block truncate text-sm font-medium">{label}</span>
         <span className="flex flex-wrap items-center gap-1.5 pt-0.5">
@@ -125,7 +126,7 @@ function FieldRow({
           )}
           {field.visible_when && <Badge variant="outline">{t("conditionalBadge")}</Badge>}
         </span>
-      </button>
+      </RowButton>
       <Button
         variant="ghost"
         size="icon"
@@ -365,7 +366,7 @@ export function SchemaEditor({
               onDelete={deleteSection}
             />
 
-            <div className="min-w-0 flex-1 rounded-xl border border-border bg-card p-4">
+            <Card variant="flat" className="min-w-0 flex-1 p-4">
               {section ? (
                 <div className="grid gap-4">
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -470,13 +471,13 @@ export function SchemaEditor({
                   )}
                 </div>
               ) : null}
-            </div>
+            </Card>
           </div>
         </DndContext>
       </TabsContent>
 
       <TabsContent value="preview" className="m-0">
-        <div className="grid gap-3 rounded-xl border border-border bg-card p-4">
+        <Card variant="flat" className="grid gap-3 p-4">
           <p className="text-xs text-muted-foreground">{t("previewNote")}</p>
           <SchemaForm
             readOnly
@@ -510,7 +511,7 @@ export function SchemaEditor({
               </div>
             )}
           />
-        </div>
+        </Card>
       </TabsContent>
     </Tabs>
   );

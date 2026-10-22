@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 
+import { Card } from "@/components/ui/card";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -115,7 +116,7 @@ export function MappingsView({
               })}
             </p>
 
-            <div className="min-w-0 overflow-x-auto rounded-xl border border-border bg-card">
+            <Card variant="flat" className="min-w-0 overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left">
@@ -170,7 +171,7 @@ export function MappingsView({
                   })}
                 </tbody>
               </table>
-            </div>
+            </Card>
           </section>
         );
       })}

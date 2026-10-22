@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
+import { EmptyNote } from "@/components/kit/EmptyNote";
 import TeamName, { type TeamNameInput } from "@/components/TeamName";
 import { StatusDot } from "@/components/ui/status-dot";
 import { duelSeats, seatTeam } from "@/lib/encounter/seats";
@@ -150,7 +151,7 @@ function FeaturedPanel({
             );
           })
         ) : (
-          <div className={styles.empty}>{t("encounters.featured.empty")}</div>
+          <EmptyNote className="m-4">{t("encounters.featured.empty")}</EmptyNote>
         )}
       </div>
     </div>

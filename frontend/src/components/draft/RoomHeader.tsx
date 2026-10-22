@@ -1,10 +1,12 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 import { ConnectionIndicator } from "@/components/realtime/ConnectionIndicator";
+import { Badge } from "@/components/ui/badge";
 import { StatusDot } from "@/components/ui/status-dot";
 import type { DraftGating } from "@/lib/draft/logic";
 import { seatOf, viewerCount } from "@/lib/draft/room-model";
@@ -43,7 +45,6 @@ export function RoomHeader({ tournament, board, gating, presence, connectionStat
   const t = useTranslations("draftRedesign");
   const session = board.session;
   const status = roomStatus(board);
-  const color = STATUS_COLOR[status];
   const seat = seatOf(gating);
   const myTeam = board.teams.find((team) => team.id === gating.myTeamId) ?? null;
 
@@ -59,18 +60,16 @@ export function RoomHeader({ tournament, board, gating, presence, connectionStat
       </Link>
       <span aria-hidden className="hidden h-5 w-px bg-[color:var(--aqt-border-2)] sm:block" />
       <h1 className="font-onest text-heading font-semibold">{t("shell.title")}</h1>
-      <span
-        className="inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-label font-semibold"
-        style={{
-          // Live and stopped are rose: the border keeps the hue, the label uses
-          // the text variant so 12px type still reads.
-          color: status === "live" || status === "blocked" ? "var(--aqt-rose-text)" : color,
-          borderColor: `color-mix(in srgb, ${color} 45%, transparent)`
-        }}
+      <Badge
+        palette="aqt"
+        voice="label"
+        shape="pill"
+        className="shrink-0"
+        style={{ "--badge-hue": STATUS_COLOR[status] } as CSSProperties}
       >
         <StatusDot />
         {t(`shell.status.${status}`)}
-      </span>
+      </Badge>
 
       {/* No live region on the counters: they tick on their own. Only the
           connection state announces itself. */}
@@ -89,11 +88,13 @@ export function RoomHeader({ tournament, board, gating, presence, connectionStat
         <span className="whitespace-nowrap text-caption tabular-nums text-[color:var(--aqt-fg-dim)]">
           {t("shell.viewers", { count: viewerCount(presence) })}
         </span>
-        <span className="inline-flex h-[30px] max-w-full items-center truncate rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-3 text-caption font-medium text-[color:var(--aqt-fg-muted)]">
-          {seat === "captain" || seat === "captain_admin"
-            ? t(`shell.seat.${seat}`, { team: myTeam?.name ?? "" })
-            : t(`shell.seat.${seat}`)}
-        </span>
+        <Badge palette="aqt" tone="neutral" shape="pill" className="max-w-full">
+          <span className="truncate">
+            {seat === "captain" || seat === "captain_admin"
+              ? t(`shell.seat.${seat}`, { team: myTeam?.name ?? "" })
+              : t(`shell.seat.${seat}`)}
+          </span>
+        </Badge>
         <ConnectionIndicator connectionState={connectionState} />
       </div>
     </div>

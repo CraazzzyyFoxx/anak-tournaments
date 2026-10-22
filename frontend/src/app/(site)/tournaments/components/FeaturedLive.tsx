@@ -7,6 +7,7 @@ import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { ArrowRight, Users } from "lucide-react";
 
 import TeamName from "@/components/TeamName";
+import { Button } from "@/components/ui/button";
 import { duelSeats, seatTeam } from "@/lib/encounter/seats";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { tournamentHref } from "@/lib/tournament/url";
@@ -137,14 +138,18 @@ const FeaturedTournamentCard = ({
           </span>
         </div>
         <div className="right">
-          <Link href={tournamentHref(tournament, "/bracket")} className="tn-btn">
-            {t("common.bracket")}
-            <ArrowRight aria-hidden width={11} height={11} />
-          </Link>
-          <Link href={tournamentHref(tournament)} className="tn-btn primary">
-            {t("common.open")}
-            <ArrowRight aria-hidden width={11} height={11} />
-          </Link>
+          <Button asChild variant="subtle" size="xs">
+            <Link href={tournamentHref(tournament, "/bracket")}>
+              {t("common.bracket")}
+              <ArrowRight aria-hidden />
+            </Link>
+          </Button>
+          <Button asChild variant="accent" size="xs">
+            <Link href={tournamentHref(tournament)}>
+              {t("common.open")}
+              <ArrowRight aria-hidden />
+            </Link>
+          </Button>
         </div>
       </div>
     </article>

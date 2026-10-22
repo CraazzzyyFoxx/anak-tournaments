@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 
 import { useBellSignal } from "@/components/notifications/bell-signal";
+import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -52,12 +53,13 @@ function SignedInBell({ authUserId }: Readonly<{ authUserId: number }>) {
 
   const unread = inbox.unreadCount ?? 0;
   const trigger = (
-    <button
-      type="button"
+    <Button
+      variant="subtle"
+      size="icon"
       aria-label={unread > 0 ? t("notifications.bellLabel", { count: unread }) : t("notifications.title")}
-      className="relative inline-flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-[var(--aqt-radius-sm)] border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] text-[color:var(--aqt-fg-muted)] transition-colors hover:border-[color:var(--aqt-border-3)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aria-expanded:text-[color:var(--aqt-fg)]"
+      className="relative shrink-0"
     >
-      <Bell className="size-4" aria-hidden />
+      <Bell aria-hidden />
       {unread > 0 && (
         <span
           aria-hidden
@@ -66,7 +68,7 @@ function SignedInBell({ authUserId }: Readonly<{ authUserId: number }>) {
           {unread > 99 ? "99+" : unread}
         </span>
       )}
-    </button>
+    </Button>
   );
 
   if (isPhone) {

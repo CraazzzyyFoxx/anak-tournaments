@@ -6,11 +6,12 @@ import { useTranslations } from "next-intl";
 import { ChevronDown, DoorOpen, Shuffle } from "lucide-react";
 
 import { CAPTION_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
+import { useLiveMinutes } from "@/app/balancer/mix/_hooks/useLiveMinutes";
 import { LineupRow } from "@/app/balancer/mix/_components/LineupRow";
 import { StartMatchButton } from "@/app/balancer/mix/_components/StartMatchButton";
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,7 +21,6 @@ import {
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Spinner } from "@/components/ui/spinner";
 import { StatusDot } from "@/components/ui/status-dot";
-import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { slotCodeOrder } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { CustomGame, CustomGameLobby, CustomGamePlayer } from "@/services/custom-game.service";
@@ -125,7 +125,6 @@ function LobbyCard({
 }: Readonly<PickupLobbyCardsProps & { lobby: CustomGameLobby }>) {
   const t = useTranslations("mixes.room");
   const tLobby = useTranslations("mixes.lobbies");
-  const now = useMinuteClock();
   const index = lobby.lobby_index;
   const letter = lobbyLetter(index);
   const state = lobby.state ?? "idle";
@@ -142,10 +141,7 @@ function LobbyCard({
     .filter((seat) => away.has(seat.uuid))
     .map((seat) => seat.name);
   const teamNames = [variant?.teams[0]?.name ?? "Team 1", variant?.teams[1]?.name ?? "Team 2"];
-  const minutes =
-    state === "live" && lobby.live_started_at != null && now != null
-      ? Math.max(0, Math.floor((now - Date.parse(lobby.live_started_at)) / 60_000))
-      : null;
+  const minutes = useLiveMinutes(state, lobby.live_started_at);
   const gap = variant?.stats.ratingGap ?? null;
   const detail =
     state === "live"
@@ -161,65 +157,84 @@ function LobbyCard({
           : t("shortSeats", { count: candidates, need });
 
   return (
-    <li className={cn(PANEL_CLASS, "flex flex-col gap-3 px-4 py-3.5")}>
-      <div className="flex items-center gap-2">
-        <span aria-hidden="true" className={cn("h-4 w-[3px] shrink-0 rounded-sm", teamAccent(index).bar)} />
-        <span className="font-display text-base font-bold text-[color:var(--aqt-fg)]">{tLobby("tab", { letter })}</span>
-        <span className="ml-auto flex items-center gap-1.5 text-caption text-[color:var(--aqt-fg-muted)]">
-          <StatusDot tone={STATE_TONE[state]} pulse={state === "live"} className="size-2" />
-          {t(`state.${state}`)}
-        </span>
-      </div>
-      {detail ? <p className={CAPTION_CLASS}>{detail}</p> : null}
-      <div className="flex flex-wrap items-center gap-2">
-        {canWrite && state === "idle" ? (
-          <Button
-            type="button"
-            disabled={short || balancingLobby === index}
-            title={short && need != null ? t("shortSeats", { count: candidates, need }) : undefined}
-            onClick={() => onBalance(index)}
-          >
-            {balancingLobby === index ? (
-              <Spinner className="mr-1.5 size-3.5" />
-            ) : (
-              <Shuffle className="mr-1.5 size-3.5" aria-hidden="true" />
-            )}
-            {t("balance")}
+    <Card variant="flat" asChild>
+      <li className="flex flex-col gap-3 px-4 py-3.5">
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden="true"
+            className={cn("h-4 w-[3px] shrink-0 rounded-sm", teamAccent(index).bar)}
+          />
+          <span className="font-display text-base font-bold text-[color:var(--aqt-fg)]">
+            {tLobby("tab", { letter })}
+          </span>
+          <span className="ml-auto flex items-center gap-1.5 text-caption text-[color:var(--aqt-fg-muted)]">
+            <StatusDot tone={STATE_TONE[state]} pulse={state === "live"} className="size-2" />
+            {t(`state.${state}`)}
+          </span>
+        </div>
+        {detail ? <p className={CAPTION_CLASS}>{detail}</p> : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {canWrite && state === "idle" ? (
+            <Button
+              type="button"
+              disabled={short || balancingLobby === index}
+              title={
+                short && need != null ? t("shortSeats", { count: candidates, need }) : undefined
+              }
+              onClick={() => onBalance(index)}
+            >
+              {balancingLobby === index ? (
+                <Spinner className="mr-1.5 size-3.5" />
+              ) : (
+                <Shuffle className="mr-1.5 size-3.5" aria-hidden="true" />
+              )}
+              {t("balance")}
+            </Button>
+          ) : null}
+          {canWrite && state === "ready" ? (
+            <StartMatchButton
+              awayNames={awayNames}
+              starting={startingLobby === index}
+              onStart={() => onStartMatch(index)}
+            />
+          ) : null}
+          {canWrite && state === "live" ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" disabled={recordingLobby === index}>
+                  {recordingLobby === index ? <Spinner className="mr-1.5 size-3.5" /> : null}
+                  {t("record")}
+                  <ChevronDown className="ml-1.5 size-3.5" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem
+                  onSelect={() => onRecordOutcome({ outcome: { winner: 1 }, lobbyIndex: index })}
+                >
+                  {t("teamWin", { team: teamNames[0] })}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => onRecordOutcome({ outcome: { winner: null }, lobbyIndex: index })}
+                >
+                  {t("draw")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => onRecordOutcome({ outcome: { winner: 2 }, lobbyIndex: index })}
+                >
+                  {t("teamWin", { team: teamNames[1] })}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+          <Button asChild variant="ghost" className="ml-auto">
+            <Link href={`/balancer/mix/${game.id}/lobby/${letter}`}>
+              <DoorOpen className="mr-1.5 size-3.5" aria-hidden="true" />
+              {t("openRoom")}
+            </Link>
           </Button>
-        ) : null}
-        {canWrite && state === "ready" ? (
-          <StartMatchButton awayNames={awayNames} starting={startingLobby === index} onStart={() => onStartMatch(index)} />
-        ) : null}
-        {canWrite && state === "live" ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button type="button" disabled={recordingLobby === index}>
-                {recordingLobby === index ? <Spinner className="mr-1.5 size-3.5" /> : null}
-                {t("record")}
-                <ChevronDown className="ml-1.5 size-3.5" aria-hidden="true" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start">
-              <DropdownMenuItem onSelect={() => onRecordOutcome({ outcome: { winner: 1 }, lobbyIndex: index })}>
-                {t("teamWin", { team: teamNames[0] })}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onRecordOutcome({ outcome: { winner: null }, lobbyIndex: index })}>
-                {t("draw")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onRecordOutcome({ outcome: { winner: 2 }, lobbyIndex: index })}>
-                {t("teamWin", { team: teamNames[1] })}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : null}
-        <Button asChild variant="ghost" className="ml-auto">
-          <Link href={`/balancer/mix/${game.id}/lobby/${letter}`}>
-            <DoorOpen className="mr-1.5 size-3.5" aria-hidden="true" />
-            {t("openRoom")}
-          </Link>
-        </Button>
-      </div>
-    </li>
+        </div>
+      </li>
+    </Card>
   );
 }
 

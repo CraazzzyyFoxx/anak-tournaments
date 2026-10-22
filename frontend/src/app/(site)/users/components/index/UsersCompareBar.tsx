@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { PlayerAvatar, type PlayerIdentity } from "@/components/PlayerAvatar";
+import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { OverlayBar } from "@/components/ui/overlay-bar";
 
@@ -64,36 +65,31 @@ export function UsersCompareBar({ compare }: Readonly<{ compare: CompareSelectio
         {compare.selected.map((user) => (
           <span
             key={user.id}
-            className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] py-1 pl-1 pr-2 text-caption"
+            className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] py-1 pl-1 pr-1.5 text-caption"
           >
             <PlayerAvatar user={user} size={22} />
             <span className="max-w-[12rem] truncate">{user.name}</span>
-            <button
-              type="button"
+            <Button
+              variant="ghost-destructive"
+              size="icon-xs"
               onClick={() => compare.toggle(user)}
               aria-label={t("users.list.compare.remove", { name: user.name })}
-              className="rounded text-[color:var(--aqt-fg-faint)] outline-none transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
             >
-              <X aria-hidden className="size-3.5" />
-            </button>
+              <X aria-hidden />
+            </Button>
           </span>
         ))}
 
         <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={compare.clear}
-            className="h-8 rounded-lg border border-[color:var(--aqt-border)] px-3 text-caption text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-          >
+          <Button variant="subtle" size="sm" onClick={compare.clear}>
             {t("users.list.compare.clear")}
-          </button>
+          </Button>
           {ready ? (
-            <HoverPrefetchLink
-              href={`/users/compare?user_id=${first.id}&target_user_id=${second.id}`}
-              className="inline-flex h-8 items-center rounded-lg bg-[color:var(--aqt-teal)] px-4 text-caption font-semibold text-[color:var(--aqt-bg)] outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-card)]"
-            >
-              {t("users.list.compare.open")}
-            </HoverPrefetchLink>
+            <Button asChild size="sm">
+              <HoverPrefetchLink href={`/users/compare?user_id=${first.id}&target_user_id=${second.id}`}>
+                {t("users.list.compare.open")}
+              </HoverPrefetchLink>
+            </Button>
           ) : (
             <span className="text-caption text-[color:var(--aqt-fg-faint)]">
               {t("users.list.compare.needTwo")}

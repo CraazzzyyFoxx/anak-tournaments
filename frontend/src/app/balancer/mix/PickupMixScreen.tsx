@@ -32,7 +32,7 @@ import {
   type StatsPeriodKey,
 } from "@/app/balancer/mix/pickup-stats";
 import { usePickupMix } from "@/app/balancer/mix/usePickupMix";
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
+import { Card } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
@@ -566,7 +566,7 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
                   onShuffleAll={() => balance.mutate({ scope: "all" })}
                 />
                 {matches.length > 0 ? (
-                  <div className={cn(PANEL_CLASS, "px-4 py-3")}>
+                  <Card variant="flat" className="px-4 py-3">
                     <MatchHistoryList
                       matches={matches}
                       lobbyCount={lobbyCount}
@@ -574,7 +574,7 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
                       undoingMatchId={undoMatch.isPending ? (undoMatch.variables ?? null) : null}
                       onUndoMatch={(matchId) => undoMatch.mutate(matchId)}
                     />
-                  </div>
+                  </Card>
                 ) : null}
               </>
             ) : null}

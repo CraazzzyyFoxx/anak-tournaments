@@ -115,9 +115,11 @@ export default function OwRangePicker({
                 const endpoint = index === low || index === high;
                 const rankLabel = other ? `${rankName(index)}, now in ${other}` : rankName(index);
                 return (
-                  <button
+                  <Button
                     key={index}
                     type="button"
+                    variant="ghost"
+                    size="icon-sm"
                     aria-pressed={inRange}
                     aria-label={rankLabel}
                     title={rankLabel}
@@ -125,20 +127,20 @@ export default function OwRangePicker({
                     onMouseEnter={() => setHovered(index)}
                     onFocus={() => setHovered(index)}
                     className={cn(
-                      "h-7 min-w-9 rounded-md border text-xs tabular-nums transition-colors",
+                      "w-auto min-w-9 border tabular-nums",
                       endpoint
-                        ? "border-primary bg-primary text-primary-foreground"
+                        ? "border-primary bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
                         : inRange
-                          ? "border-primary/40 bg-primary/15"
+                          ? "border-primary/40 bg-primary/15 hover:bg-primary/15"
                           : other
-                            ? "border-transparent bg-muted text-muted-foreground hover:border-border"
+                            ? "border-transparent bg-muted text-muted-foreground hover:border-border hover:bg-muted"
                             : owners && owner === null
                               ? "border-dashed border-warning/60 hover:bg-muted"
                               : "border-transparent hover:border-border hover:bg-muted"
                     )}
                   >
                     {ladder[index].native_tier}
-                  </button>
+                  </Button>
                 );
               })}
             </div>
@@ -153,7 +155,7 @@ export default function OwRangePicker({
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 shrink-0 px-2"
+            className="shrink-0"
             disabled={!value}
             onClick={() => {
               onChange(null);

@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import { ProfileStat } from "@/components/profile/atoms";
+import { RowButton } from "@/components/ui/row-button";
 
 /** One lobby-ranked tournament stat of a player: its rank among the lobby and the displayed value. */
 export interface LobbyStatTile {
@@ -42,13 +43,12 @@ export function LobbyStatGrid({
       {tiles.map((tile) => {
         const p = percentile(tile);
         return (
-          <button
+          <RowButton
             key={tile.stat}
-            type="button"
             onClick={() => onOpen(tile.stat, tile.label)}
             aria-label={t("users.overview.leaderboard.open", { stat: tile.label })}
             title={t("users.overview.lastTournament.percentileHint")}
-            className="-m-2 cursor-pointer rounded-lg p-2 text-left transition-colors hover:bg-[hsl(0_0%_100%/0.03)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]"
+            className="-m-2 w-auto rounded-lg p-2"
           >
             <ProfileStat
               size="md"
@@ -63,7 +63,7 @@ export function LobbyStatGrid({
                 <div className="h-full rounded-full" style={{ width: `${p.barPct}%`, background: "var(--aqt-fg-muted)" }} />
               </div>
             </ProfileStat>
-          </button>
+          </RowButton>
         );
       })}
     </div>

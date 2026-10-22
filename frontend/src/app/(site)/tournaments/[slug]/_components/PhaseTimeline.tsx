@@ -171,9 +171,9 @@ export function PhaseTimeline({
   return (
     <div id={id} className={cn("scroll-mt-28", className)}>
       <div className="mb-2 flex items-baseline justify-between gap-3">
-        <h2 className="aqt-tnum text-label uppercase tracking-[0.06em] text-[color:var(--aqt-fg-faint)]">
+        <Eyebrow as="h2" className="aqt-tnum">
           {t("tournamentDetail.publicPages.schedule.title")}
-        </h2>
+        </Eyebrow>
         <Eyebrow>{zoneLabel}</Eyebrow>
       </div>
       <div className="sm:hidden">{verticalList}</div>

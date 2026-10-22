@@ -4,8 +4,9 @@ import { useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { Lock } from "lucide-react";
 
+import { Card } from "@/components/ui/card";
+import { RowButton } from "@/components/ui/row-button";
 import { SearchField } from "@/components/ui/search-field";
-import { cn } from "@/lib/utils";
 import type { RbacRole } from "@/types/rbac.types";
 
 /**
@@ -36,7 +37,7 @@ export function RoleList({
     : roles;
 
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <Card variant="flat">
       <div className="space-y-2 border-b border-border p-3">
         {actions}
         <SearchField
@@ -59,15 +60,10 @@ export function RoleList({
             const selected = role.id === selectedRoleId;
             return (
               <li key={role.id}>
-                <button
-                  type="button"
+                <RowButton
                   aria-current={selected ? "true" : undefined}
                   onClick={() => onSelect(role.id)}
-                  className={cn(
-                    "flex w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                    selected ? "bg-accent text-accent-foreground" : "hover:bg-accent/50"
-                  )}
+                  className="flex items-center justify-between gap-2 rounded-md px-2.5 py-2"
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium text-foreground">
@@ -88,12 +84,12 @@ export function RoleList({
                       <title>{t("system")}</title>
                     </Lock>
                   ) : null}
-                </button>
+                </RowButton>
               </li>
             );
           })}
         </ul>
       )}
-    </div>
+    </Card>
   );
 }

@@ -12,6 +12,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { FileButton } from "@/components/ui/file-button";
 import { Progress } from "@/components/ui/progress";
 import {
@@ -32,7 +33,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import type { BalancerPlayerExportFormat } from "@/types/balancer-admin.types";
-import { PANEL_CLASS, PRESET_LABELS, TOOLBAR_BUTTON_CLASS } from "@/components/balancer/balancer-page-helpers";
+import { PRESET_LABELS, TOOLBAR_BUTTON_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { Spinner } from "@/components/ui/spinner";
 import { WorkspaceCounter } from "./WorkspaceCounter";
 
@@ -231,7 +232,7 @@ export function PresetRunPanel({
       {headerSlot ? createPortal(headerControls, headerSlot) : null}
 
       {jobStatus ? (
-        <div className={cn(PANEL_CLASS, "px-3 py-2")}>
+        <Card variant="flat" className="px-3 py-2">
           <div className="rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] p-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
@@ -255,7 +256,7 @@ export function PresetRunPanel({
               <Progress value={jobProgress} className="mt-2.5 h-2 bg-[color:var(--aqt-overlay-3)]" />
             ) : null}
           </div>
-        </div>
+        </Card>
       ) : null}
     </>
   );

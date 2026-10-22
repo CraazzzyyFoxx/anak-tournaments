@@ -7,6 +7,7 @@ import type { MatchEvents } from "@/types/killfeed.types";
 import type { MatchWithStats } from "@/types/encounter.types";
 import encounterService from "@/services/encounter.service";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { splitHandle } from "@/lib/player";
@@ -320,7 +321,7 @@ const KillFeedTimeline = ({ matchId, members, home, away }: KillFeedTimelineProp
   };
 
   return (
-    <div className="rounded-[12px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-4">
+    <Card variant="flat" className="p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <Eyebrow className="aqt-tnum">{t("matches.timeline.title")}</Eyebrow>
         {status === "ready" && totalKills > 0 ? legend : null}
@@ -392,7 +393,7 @@ const KillFeedTimeline = ({ matchId, members, home, away }: KillFeedTimelineProp
             ))}
         </div>
       ) : null}
-    </div>
+    </Card>
   );
 };
 

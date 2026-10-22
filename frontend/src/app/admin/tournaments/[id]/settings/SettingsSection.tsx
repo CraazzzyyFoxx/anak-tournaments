@@ -11,7 +11,8 @@ import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { Tournament } from "@/types/tournament.types";
 import { tabFallback, useHubTournamentQuery } from "../hubQueries";
-import { allowedSettingsSection, type SettingsSection, type TabAccess } from "../tab-guards";
+import { useTabAccess } from "../sub-tabs";
+import { allowedSettingsSection, type SettingsSection } from "../tab-guards";
 import { SETTINGS_SECTION_LABEL_KEYS } from "./settings-sections";
 
 interface SettingsSectionContext {
@@ -47,21 +48,11 @@ export function SettingsSectionPage({
   const params = useParams<{ id: string }>();
   const t = useTranslations("adminTournament.settings");
   const tournamentId = Number(params.id);
-  const { canAccessPermission, isLoaded: permissionsLoaded } = usePermissions();
+  const { isLoaded: permissionsLoaded } = usePermissions();
 
   const tournamentQuery = useHubTournamentQuery(tournamentId);
   const tournament = tournamentQuery.data;
-  const workspaceId = tournament?.workspace_id ?? null;
-
-  const access: TabAccess = {
-    canUpdateTournament: canAccessPermission("tournament.update", workspaceId),
-    canUpdateEncounter: canAccessPermission("match.update", workspaceId),
-    canTeamRead: canAccessPermission("team.read", workspaceId),
-    canTeamCreate: canAccessPermission("team.create", workspaceId),
-    canReadTournamentLink: canAccessPermission("tournament_link.read", workspaceId),
-    canDeleteTournament: canAccessPermission("tournament.delete", workspaceId),
-    teamFormation: tournament?.team_formation === "draft" ? "draft" : "balancer"
-  };
+  const access = useTabAccess(tournament);
 
   const sectionLabel = t(
     `sections.${SETTINGS_SECTION_LABEL_KEYS[section]}` as `sections.${keyof typeof messages.adminTournament.settings.sections}`

@@ -22,6 +22,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import {
   type CustomGamePlayer,
@@ -235,51 +236,40 @@ export function PickupPlayerSheet({
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             <section className="space-y-2.5 border-b border-[color:var(--aqt-border)] px-5 py-4">
               <h3 className="text-caption font-medium text-[color:var(--aqt-fg)]">Status</h3>
-              <div
-                role="radiogroup"
+              <ToggleGroup
+                type="single"
+                variant="card"
+                size="sm"
                 aria-label={`Lineup status for ${label}`}
-                className="grid grid-cols-3 gap-1.5"
+                value={draft.participation}
+                onValueChange={(participation) =>
+                  setDraft((current) => ({ ...current, participation: participation as MixParticipation }))
+                }
+                className="grid-cols-3 gap-1.5"
               >
-                {STATUS_OPTIONS.map((option) => {
-                  const selected = draft.participation === option.participation;
-                  return (
-                    <button
-                      key={option.participation}
-                      type="button"
-                      role="radio"
-                      aria-checked={selected}
-                      aria-label={`${option.label} for ${label}`}
-                      disabled={disabled}
-                      onClick={() =>
-                        setDraft((current) => ({ ...current, participation: option.participation }))
-                      }
-                      className={cn(
-                        "flex flex-col items-center gap-0.5 rounded-lg border px-2 py-2 text-center transition-colors",
-                        selected
-                          ? option.participation === "must_play"
-                            ? "border-[color:var(--aqt-amber)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_12%,transparent)] text-[color:var(--aqt-amber)]"
-                            : "border-[color:var(--aqt-teal)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_10%,transparent)] text-[color:var(--aqt-teal)]"
-                          : "border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-3)]",
-                        "disabled:cursor-default disabled:opacity-60",
-                      )}
-                    >
-                      <span className="flex items-center gap-1">
-                        {option.participation === "must_play" ? (
-                          <Pin
-                            className="size-3"
-                            aria-hidden="true"
-                            fill={selected ? "currentColor" : "none"}
-                          />
-                        ) : null}
-                        <span className="text-caption font-semibold">{option.label}</span>
-                      </span>
-                      <span className="text-label text-[color:var(--aqt-fg-dim)]">
-                        {option.description}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+                {STATUS_OPTIONS.map((option) => (
+                  <ToggleGroupItem
+                    key={option.participation}
+                    value={option.participation}
+                    aria-label={`${option.label} for ${label}`}
+                    disabled={disabled}
+                    accent={option.participation === "must_play" ? "var(--aqt-amber)" : undefined}
+                    className="items-center text-center"
+                  >
+                    <span className="flex items-center gap-1 font-semibold">
+                      {option.participation === "must_play" ? (
+                        <Pin
+                          className="size-3"
+                          aria-hidden="true"
+                          fill={draft.participation === "must_play" ? "currentColor" : "none"}
+                        />
+                      ) : null}
+                      {option.label}
+                    </span>
+                    <span className="text-label text-[color:var(--aqt-fg-dim)]">{option.description}</span>
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
               <div className="flex items-center gap-2 pt-1">
                 <Switch
                   checked={draft.away}
@@ -296,42 +286,35 @@ export function PickupPlayerSheet({
                 <h3 className="text-caption font-medium text-[color:var(--aqt-fg)]">
                   {t("pinHeading")}
                 </h3>
-                <div
-                  role="radiogroup"
+                <ToggleGroup
+                  type="single"
+                  variant="card"
+                  size="sm"
                   aria-label={t("pinGroup", { name: label })}
-                  className="grid grid-cols-4 gap-1.5"
+                  value={draft.lobbyPin == null ? "auto" : String(draft.lobbyPin)}
+                  onValueChange={(pin) =>
+                    setDraft((current) => ({ ...current, lobbyPin: pin === "auto" ? null : Number(pin) }))
+                  }
+                  className="grid-cols-4 gap-1.5"
                 >
                   {/* No tie, then one option per lobby the mix actually runs.
                       "Auto" is a word of its own rather than an interpolated
                       letter, so a locale phrases it apart from the tab label. */}
-                  {[null, ...Array.from({ length: lobbyCount }, (_, index) => index)].map(
-                    (value) => {
-                      const selected = draft.lobbyPin === value;
-                      const optionLabel =
-                        value == null ? t("pinAuto") : t("tab", { letter: lobbyLetter(value) });
-                      return (
-                        <button
-                          key={value ?? "auto"}
-                          type="button"
-                          role="radio"
-                          aria-checked={selected}
-                          aria-label={t("pinOption", { option: optionLabel, name: label })}
-                          disabled={disabled}
-                          onClick={() => setDraft((current) => ({ ...current, lobbyPin: value }))}
-                          className={cn(
-                            "rounded-lg border px-2 py-2 text-center text-caption font-semibold transition-colors",
-                            selected
-                              ? "border-[color:var(--aqt-teal)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_10%,transparent)] text-[color:var(--aqt-teal)]"
-                              : "border-[color:var(--aqt-border-2)] text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-3)]",
-                            "disabled:cursor-default disabled:opacity-60",
-                          )}
-                        >
-                          {optionLabel}
-                        </button>
-                      );
-                    },
-                  )}
-                </div>
+                  {[null, ...Array.from({ length: lobbyCount }, (_, index) => index)].map((value) => {
+                    const optionLabel = value == null ? t("pinAuto") : t("tab", { letter: lobbyLetter(value) });
+                    return (
+                      <ToggleGroupItem
+                        key={value ?? "auto"}
+                        value={value == null ? "auto" : String(value)}
+                        aria-label={t("pinOption", { option: optionLabel, name: label })}
+                        disabled={disabled}
+                        className="items-center text-center"
+                      >
+                        {optionLabel}
+                      </ToggleGroupItem>
+                    );
+                  })}
+                </ToggleGroup>
                 <p className="text-label text-[color:var(--aqt-fg-dim)]">{t("pinHint")}</p>
               </section>
             ) : null}

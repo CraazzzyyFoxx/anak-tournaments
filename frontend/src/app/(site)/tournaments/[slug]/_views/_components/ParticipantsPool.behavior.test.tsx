@@ -447,11 +447,11 @@ describe("participants pool", () => {
       [...(segment?.querySelectorAll('[role="radio"]') ?? [])].map((n) => n.textContent)
     ).toEqual(["Table", "By role"]);
 
-    // The switch opens the toolbar and the search closes it: `.filter-search`
-    // owns the one `auto` margin, so a control after it would be pushed into
-    // the right-hand cluster and jump when the view changes.
+    // The switch opens the toolbar and the search closes it: the search owns
+    // the one `auto` margin, so a control after it would be pushed into the
+    // right-hand cluster and jump when the view changes.
     const toolbar = segment?.closest(".filters");
-    const search = toolbar?.querySelector("input");
+    const search = toolbar?.querySelector('input[type="search"]');
     expect(segment && search && segment.compareDocumentPosition(search)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING
     );

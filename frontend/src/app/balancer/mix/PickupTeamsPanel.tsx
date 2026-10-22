@@ -14,11 +14,11 @@ import {
   Shuffle
 } from "lucide-react";
 
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { CAPTION_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import { PickupResultControls } from "@/app/balancer/mix/PickupResultControls";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -205,27 +205,31 @@ export function PickupTeamsPanel({
       {game && lobby ? <RoomStepper state={state} startedAt={lobby.live_started_at ?? null} /> : null}
       <div className="flex flex-col gap-3.5">
         {gamesError ? (
-          <PageStateCard
-            state="error"
-            title="Unable to load mixes"
-            description="Check your connection and try again."
-            actionLabel="Retry"
-            onAction={onRetryGames}
-            className={cn(PANEL_CLASS, "px-4 py-16")}
-          />
+          <Card variant="flat" asChild>
+            <PageStateCard
+              state="error"
+              title="Unable to load mixes"
+              description="Check your connection and try again."
+              actionLabel="Retry"
+              onAction={onRetryGames}
+              className="px-4 py-16"
+            />
+          </Card>
         ) : gamesLoading || gameLoading ? (
           <Skeleton className="h-64 w-full rounded-xl" />
         ) : !hasMix ? (
-          <PageStateCard
-            state="empty"
-            title="No mixes yet"
-            description={
-              canWrite
-                ? "Create a mix from the mixes list, then add players from the workspace pool."
-                : "A host has not created a mix in this workspace yet."
-            }
-            className={cn(PANEL_CLASS, "px-4 py-16")}
-          />
+          <Card variant="flat" asChild>
+            <PageStateCard
+              state="empty"
+              title="No mixes yet"
+              description={
+                canWrite
+                  ? "Create a mix from the mixes list, then add players from the workspace pool."
+                  : "A host has not created a mix in this workspace yet."
+              }
+              className="px-4 py-16"
+            />
+          </Card>
         ) : (
           // The next map sits inside the captured block on purpose: the shared
           // screenshot answers "who is on my team" and "what are we playing"
@@ -244,16 +248,18 @@ export function PickupTeamsPanel({
             ) : null}
             {variant == null ? (
               (emptyState ?? (
-                <PageStateCard
-                  state="empty"
-                  title="No teams yet"
-                  description={
-                    canWrite
-                      ? "Fill the lineup, then press Balance teams to see the matchup."
-                      : "This mix has not been balanced yet."
-                  }
-                  className={cn(PANEL_CLASS, "px-4 py-16")}
-                />
+                <Card variant="flat" asChild>
+                  <PageStateCard
+                    state="empty"
+                    title="No teams yet"
+                    description={
+                      canWrite
+                        ? "Fill the lineup, then press Balance teams to see the matchup."
+                        : "This mix has not been balanced yet."
+                    }
+                    className="px-4 py-16"
+                  />
+                </Card>
               ))
             ) : (
               <VariantView
@@ -286,7 +292,7 @@ export function PickupTeamsPanel({
           screenshot), then the tools -- balance and paging on the left, the
           rare share/close actions demoted to icons on the right -- and the
           history the results write into. */}
-      <div className={cn(PANEL_CLASS, "flex flex-col gap-3 px-4 py-3")}>
+      <Card variant="flat" className="flex flex-col gap-3 px-4 py-3">
         {live ? (
           <>
             {variant && canWrite ? (
@@ -554,7 +560,7 @@ export function PickupTeamsPanel({
             onUndoMatch={onUndoMatch}
           />
         ) : null}
-      </div>
+      </Card>
     </div>
   );
 }

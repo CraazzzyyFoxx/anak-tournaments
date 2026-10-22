@@ -88,8 +88,6 @@ export const TEAM_BADGE_ACCENTS = [
   "border-indigo-400/20 bg-indigo-500/10 text-indigo-200"
 ];
 
-export const PANEL_CLASS = "rounded-xl border border-border bg-card";
-
 /**
  * Secondary-control chrome for the whole tool. `rounded-lg` steps down from the
  * `rounded-xl` panels these sit in, and every surface is a token: the previous

@@ -13,7 +13,9 @@ import {
   ResponsiveContainer,
   Cell
 } from "recharts";
+import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { splitHandle } from "@/lib/player";
 import { LogStatsName } from "../stat-names";
 import { STAT_META, activePlayers, formatStat, playerStat, type MatchStatsTeam } from "./stats";
@@ -67,29 +69,16 @@ const ContributionChart = ({ home, away, round }: ContributionChartProps) => {
   const chartHeight = Math.max(220, data.length * 30 + 24);
 
   return (
-    <div className="rounded-[12px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-4">
+    <Card variant="flat" className="p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <Eyebrow className="aqt-tnum">{t("matches.contribution.title")}</Eyebrow>
-        <div className="flex flex-wrap gap-1.5">
-          {METRICS.map((name) => {
-            const active = name === metric;
-            return (
-              <button
-                key={name}
-                type="button"
-                onClick={() => setMetric(name)}
-                className="rounded-md border px-2.5 py-1 text-label font-semibold transition-colors"
-                style={{
-                  borderColor: active ? "color-mix(in srgb, var(--aqt-teal) 35%, transparent)" : "var(--aqt-border)",
-                  background: active ? "color-mix(in srgb, var(--aqt-teal) 12%, transparent)" : "var(--aqt-overlay-2)",
-                  color: active ? "var(--aqt-teal)" : "var(--aqt-fg-muted)"
-                }}
-              >
-                {t((STAT_META[name]?.labelKey ?? name) as Parameters<typeof t>[0])}
-              </button>
-            );
-          })}
-        </div>
+        <FilterChipGroup label={t("matches.contribution.title")}>
+          {METRICS.map((name) => (
+            <FilterChip key={name} active={name === metric} onClick={() => setMetric(name)}>
+              {t((STAT_META[name]?.labelKey ?? name) as Parameters<typeof t>[0])}
+            </FilterChip>
+          ))}
+        </FilterChipGroup>
       </div>
       <div style={{ height: chartHeight }} className="w-full">
         <ResponsiveContainer width="100%" height="100%">
@@ -135,7 +124,7 @@ const ContributionChart = ({ home, away, round }: ContributionChartProps) => {
           </BarChart>
         </ResponsiveContainer>
       </div>
-    </div>
+    </Card>
   );
 };
 

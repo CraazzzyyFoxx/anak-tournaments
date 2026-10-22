@@ -174,7 +174,7 @@ describe("PickupCreateMixDialog", () => {
     const game = sampleGame(12, "Old Scrim");
     const { scope, onCreate } = await mount([game]);
 
-    const radios = scope.querySelectorAll('input[type="radio"]');
+    const radios = scope.querySelectorAll('[role="radio"]');
     expect(radios.length).toBe(2);
 
     await act(async () => {
@@ -214,7 +214,7 @@ describe("PickupCreateMixDialog", () => {
     await pick(scope, "pickup-workspace", "Beta");
     expect(trigger.getAttribute("aria-invalid")).toBeNull();
     await act(async () => {
-      scope.querySelectorAll('input[type="radio"]')[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      scope.querySelectorAll('[role="radio"]')[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await act(async () => {
       (scope.querySelector("#pickup-clone-from") as HTMLButtonElement).click();
@@ -267,7 +267,7 @@ describe("PickupCreateMixDialog", () => {
     await pick(scope, "pickup-discipline", "League of Legends");
     expect(trigger.textContent).toBe("League of Legends");
     await act(async () => {
-      scope.querySelectorAll('input[type="radio"]')[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      scope.querySelectorAll('[role="radio"]')[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     await act(async () => {
       (scope.querySelector("#pickup-clone-from") as HTMLButtonElement).click();

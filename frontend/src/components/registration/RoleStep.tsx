@@ -3,7 +3,9 @@
 import { useTranslations } from "next-intl";
 
 import FlexIcon from "@/components/icons/FlexIcon";
+import { Button } from "@/components/ui/button";
 import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useRoleName } from "@/hooks/useRoleName";
 import { roleAccent } from "@/lib/registration/role-accent";
 import { cn } from "@/lib/utils";
@@ -24,7 +26,6 @@ import {
   type RoleSelections,
 } from "./types";
 import { RoleMatrixRow } from "./role-step/RoleMatrixRow";
-import { SegmentedRadio, type SegmentedOption } from "./role-step/SegmentedRadio";
 
 interface RoleStepProps {
   /** The `roles` builtin's params, defaults already filled in. */
@@ -87,8 +88,6 @@ export default function RoleStep({
   const roleCodes = roles.map((role) => role.code);
   // A one-role game keeps this step only for its top heroes (the form drops it otherwise): it names no role.
   const named = showsRoles(ontology);
-  const accentOf = (role: (typeof roles)[number]) =>
-    roleAccent(ontology ? rolePresentation(ontology.roles, role.id).color : null);
   const isLocked = lockedRole != null;
   // `flex_allowed: false` is the old `flex_role.enabled: false` — no flex at all.
   const flexMode: FlexMode = params.flex_allowed ? params.flex_mode : "off";
@@ -214,19 +213,6 @@ export default function RoleStep({
     ? "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,13rem)_minmax(0,1fr)_minmax(0,8.5rem)]"
     : "sm:grid-cols-[minmax(6rem,0.8fr)_minmax(0,1fr)_minmax(0,8.5rem)]";
 
-  const priorityOptions: readonly SegmentedOption<RoleCode | "flex">[] = [
-    ...roles.map((role) => ({
-      value: role.code as RoleCode | "flex",
-      label: nameOf(role),
-      selectedStyle: accentOf(role).tile,
-    })),
-    {
-      value: "flex" as const,
-      label: t("registration.roles.matrix.choiceFlex"),
-      selectedStyle: roleAccent(null).tile,
-    },
-  ];
-
   if (roles.length === 0) {
     // Missing, still-loading-failed or invalid (no unique rated dimension) metadata: no rows are
     // guessed, so there is nothing to answer here.
@@ -255,22 +241,18 @@ export default function RoleStep({
         )}
 
         {!isLocked && named && flexMode === "optional" && (
-          <button
+          <Button
             type="button"
+            variant="subtle"
+            size="sm"
             aria-pressed={isFlex}
             onClick={toggleFlex}
-            className={cn(
-              "inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-label font-medium transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-              isFlex
-                ? "text-[color:var(--aqt-fg)]"
-                : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)]",
-            )}
+            className="shrink-0"
             style={isFlex ? roleAccent(null).selectedCard : undefined}
           >
             <FlexIcon width={14} height={14} />
             {t("registration.roles.matrix.flexPreset")}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -283,12 +265,29 @@ export default function RoleStep({
       {isAllRoles && (
         <div className="grid gap-1.5">
           <Eyebrow tone="muted">{t("registration.roles.matrix.choiceLabel")}</Eyebrow>
-          <SegmentedRadio
-            label={t("registration.roles.matrix.choiceLabel")}
-            value={priorityChoice(selections)}
-            options={priorityOptions}
-            onChange={setPriorityChoice}
-          />
+          <ToggleGroup
+            type="single"
+            variant="pill"
+            size="sm"
+            aria-label={t("registration.roles.matrix.choiceLabel")}
+            value={priorityChoice(selections) ?? ""}
+            onValueChange={(choice) => setPriorityChoice(choice as RoleCode | "flex")}
+            className="w-full"
+          >
+            {roles.map((role) => (
+              <ToggleGroupItem
+                key={role.code}
+                value={role.code}
+                accent={ontology ? (rolePresentation(ontology.roles, role.id).color ?? undefined) : undefined}
+                className="flex-1 whitespace-nowrap px-2"
+              >
+                {nameOf(role)}
+              </ToggleGroupItem>
+            ))}
+            <ToggleGroupItem value="flex" className="flex-1 whitespace-nowrap px-2">
+              {t("registration.roles.matrix.choiceFlex")}
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
       )}
 

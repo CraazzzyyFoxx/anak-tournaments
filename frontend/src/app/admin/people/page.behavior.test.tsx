@@ -261,7 +261,7 @@ describe("People", () => {
     permitted = false;
     const container = await mount();
 
-    expect(container.textContent).toContain("Unauthorized");
+    expect(container.textContent).toContain("No access");
     expect(getUsers).not.toHaveBeenCalled();
   });
 

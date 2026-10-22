@@ -2,12 +2,12 @@
 
 import { useTranslations } from "next-intl";
 
+import { PermissionGate } from "@/components/admin/PermissionGate";
 import { SubscriptionHealthDashboard } from "@/components/admin/collectors/subscription-health";
 import { SubscriptionTaskHistory } from "@/components/admin/collectors/subscription-history";
 import { SubscriptionSettingsPanel } from "@/components/admin/collectors/subscription-settings";
 import { useCollectorTab } from "@/components/admin/collectors/useCollectorTab";
 import { LinkTabs } from "@/components/kit/LinkTabs";
-import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useInvalidation } from "@/hooks/useInvalidation";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -26,7 +26,7 @@ import { useWorkspaceStore } from "@/stores/workspace.store";
  */
 export default function SubscriptionCollectorPage() {
   const t = useTranslations("collectors");
-  const { canAccessPermission, isSuperuser } = usePermissions();
+  const { canAccessPermission, isSuperuser, isLoaded } = usePermissions();
   const currentWorkspaceId = useWorkspaceStore((s) => s.currentWorkspaceId);
   const canRead = canAccessPermission("subscription.read");
 
@@ -44,32 +44,24 @@ export default function SubscriptionCollectorPage() {
     scopeId: canRead ? currentWorkspaceId : null
   });
 
-  if (!canRead) {
-    return (
-      <PageStateCard
-        state="not-found"
-        title={t("access.title")}
-        description={t("access.subscriptions")}
-      />
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <LinkTabs
-        items={items}
-        activeKey={activeKey}
-        level={2}
-        ariaLabel={t("views.subscriptionsAria")}
-      />
-      {activeKey === "settings" ? (
-        <SubscriptionSettingsPanel />
-      ) : (
-        <>
-          <SubscriptionHealthDashboard />
-          <SubscriptionTaskHistory />
-        </>
-      )}
-    </div>
+    <PermissionGate loaded={isLoaded} allowed={canRead} description={t("access.subscriptions")}>
+      <div className="space-y-4">
+        <LinkTabs
+          items={items}
+          activeKey={activeKey}
+          level={2}
+          ariaLabel={t("views.subscriptionsAria")}
+        />
+        {activeKey === "settings" ? (
+          <SubscriptionSettingsPanel />
+        ) : (
+          <>
+            <SubscriptionHealthDashboard />
+            <SubscriptionTaskHistory />
+          </>
+        )}
+      </div>
+    </PermissionGate>
   );
 }

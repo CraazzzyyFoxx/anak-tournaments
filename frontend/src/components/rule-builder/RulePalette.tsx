@@ -4,6 +4,7 @@ import { useState } from "react";
 import { GripVertical, Search } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
+import { RowButton } from "@/components/ui/row-button";
 import { StatusDot } from "@/components/ui/status-dot";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 
@@ -57,9 +58,8 @@ export function RulePalette({
           <p className={`${eyebrowClass("muted")} mb-1`}>{group.label}</p>
           <div className="space-y-0.5">
             {group.items.map((item) => (
-              <button
+              <RowButton
                 key={item.label}
-                type="button"
                 draggable
                 onDragStart={(e) => {
                   e.dataTransfer.setData(RULE_NODE_MIME, JSON.stringify(item));
@@ -68,12 +68,12 @@ export function RulePalette({
                 onClick={() => onAdd(item)}
                 title={item.description}
                 aria-label={labels.paletteAdd(item.label)}
-                className="flex w-full items-center gap-1.5 px-2 py-1 rounded text-left cursor-grab hover:bg-accent/50 active:cursor-grabbing transition-colors"
+                className="flex items-center gap-1.5 rounded px-2 py-1 cursor-grab active:cursor-grabbing"
               >
                 <GripVertical className="h-3 w-3 text-muted-foreground" aria-hidden />
                 <StatusDot className="size-2" style={{ color: item.color ?? LEAF_COLOR }} />
                 <span className="truncate">{item.label}</span>
-              </button>
+              </RowButton>
             ))}
           </div>
         </div>

@@ -6,6 +6,8 @@ import { ChevronDown, ChevronUp, Merge, Scissors } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { RowButton } from "@/components/ui/row-button";
 import { cn } from "@/lib/utils";
 
 import {
@@ -81,7 +83,7 @@ export function LadderColumn({
       : t("ladder.hintCustom", { game });
 
   return (
-    <div className="flex max-h-[calc(100vh-13rem)] flex-col rounded-xl border border-border bg-card xl:sticky xl:top-4">
+    <Card variant="flat" className="flex max-h-[calc(100vh-13rem)] flex-col xl:sticky xl:top-4">
       <h2 className="border-b border-border px-3 py-2 font-display text-sm font-semibold">
         {t("ladder.title", { game })}
       </h2>
@@ -130,11 +132,10 @@ export function LadderColumn({
                 selected && "bg-accent/40"
               )}
             >
-              <button
-                type="button"
+              <RowButton
                 disabled={band === null}
                 onClick={() => band && onSelect(band.slug)}
-                className="flex min-w-0 flex-1 items-center gap-2 rounded-sm text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+                className="flex min-w-0 flex-1 items-center gap-2 rounded-sm"
                 aria-label={band ? t("ladder.rankIn", { rank: rank.name, division: band.name }) : t("ladder.rankUnlinked", { rank: rank.name })}
               >
                 <Image
@@ -146,7 +147,7 @@ export function LadderColumn({
                   className="size-4 shrink-0 object-contain"
                 />
                 <span className="truncate text-xs">{rank.name}</span>
-              </button>
+              </RowButton>
 
               {startsRun ? (
                 <span
@@ -163,36 +164,36 @@ export function LadderColumn({
               {canRaise || canLower || canJoin || canCut ? (
                 <span className="absolute inset-y-0 right-0 flex items-center gap-0.5 bg-gradient-to-r from-transparent via-card via-40% to-card pl-6 pr-1 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
                   {canRaise ? (
-                    <RowButton
+                    <NudgeButton
                       label={into(owner, index - 1)}
                       onClick={() => dispatch({ type: "nudge", rank: index, delta: -1 })}
                     >
                       <ChevronUp aria-hidden />
-                    </RowButton>
+                    </NudgeButton>
                   ) : null}
                   {canLower ? (
-                    <RowButton
+                    <NudgeButton
                       label={into(above, index)}
                       onClick={() => dispatch({ type: "nudge", rank: index, delta: 1 })}
                     >
                       <ChevronDown aria-hidden />
-                    </RowButton>
+                    </NudgeButton>
                   ) : null}
                   {canJoin ? (
-                    <RowButton
+                    <NudgeButton
                       label={t("ladder.join", { from: band!.name, into: bands[above!].name })}
                       onClick={() => dispatch({ type: "merge", bandIndex: owner!, into: "up" })}
                     >
                       <Merge aria-hidden />
-                    </RowButton>
+                    </NudgeButton>
                   ) : null}
                   {canCut ? (
-                    <RowButton
+                    <NudgeButton
                       label={t("ladder.startDivision", { rank: rank.name })}
                       onClick={() => dispatch({ type: "splitAt", rank: index })}
                     >
                       <Scissors aria-hidden />
-                    </RowButton>
+                    </NudgeButton>
                   ) : null}
                 </span>
               ) : null}
@@ -206,11 +207,11 @@ export function LadderColumn({
           {t("ladder.gaps", { count: gaps })}
         </p>
       ) : null}
-    </div>
+    </Card>
   );
 }
 
-function RowButton({
+function NudgeButton({
   label,
   onClick,
   children

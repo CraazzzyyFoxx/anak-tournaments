@@ -9,7 +9,7 @@ import type {
   UserMergePreviewResponse
 } from "@/types/admin.types";
 import Image from "@/components/ui/image";
-import { cn } from "@/lib/utils";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 export type FieldKey = keyof UserMergeFieldPolicy;
 
@@ -40,33 +40,28 @@ export function FieldChoiceButtons({
   return (
     <div className="space-y-2">
       <p className="text-sm font-medium" id={groupId}>{label}</p>
-      <div className="grid grid-cols-2 gap-2" role="group" aria-labelledby={groupId}>
+      <ToggleGroup
+        type="single"
+        variant="card"
+        className="grid-cols-2"
+        aria-labelledby={groupId}
+        value={value}
+        onValueChange={(next) => onChange(next as UserMergeFieldChoice)}
+      >
         {options.map(([choice, caption, raw]) => {
-          const selected = value === choice;
           const photo = fieldKey === "avatar_url" && raw && /^https?:\/\//.test(raw) ? raw : null;
           return (
-            <button
-              key={choice}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => onChange(choice)}
-              className={cn(
-                "rounded-md border px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                selected ? "border-foreground bg-foreground/5" : "border-border text-muted-foreground hover:bg-muted/40"
-              )}
-            >
+            <ToggleGroupItem key={choice} value={choice}>
               <span className="block truncate text-xs">{caption}</span>
               {photo ? (
-                <Image src={photo} alt="" width={32} height={32} className="mt-1 h-8 w-8 rounded-full object-cover" />
+                <Image src={photo} alt="" width={32} height={32} className="h-8 w-8 rounded-full object-cover" />
               ) : (
-                <span className={cn("mt-0.5 block truncate text-sm", selected && "text-foreground")}>
-                  {raw || t("none")}
-                </span>
+                <span className="block truncate text-sm">{raw || t("none")}</span>
               )}
-            </button>
+            </ToggleGroupItem>
           );
         })}
-      </div>
+      </ToggleGroup>
     </div>
   );
 }

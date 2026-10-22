@@ -5,7 +5,7 @@ import { getTranslations } from "next-intl/server";
 import { ArrowDown } from "lucide-react";
 
 import { HandleLabel } from "@/components/HandleLabel";
-import { EmptyNote, LoadError, Section, SectionHead } from "@/components/site/open-layout";
+import { OpenEmptyRow, OpenLoadError, Section, SectionHead } from "@/components/site/open-layout";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -77,14 +77,14 @@ export async function PlayersSection({
   if (data === null) {
     return (
       <Shell sort={params.sort}>
-        <LoadError what={t("what")} dashed />
+        <OpenLoadError what={t("what")} dashed />
       </Shell>
     );
   }
   if (data.total === 0 && params.query === "") {
     return (
       <Shell sort={params.sort}>
-        <EmptyNote>{t("empty")}</EmptyNote>
+        <OpenEmptyRow>{t("empty")}</OpenEmptyRow>
       </Shell>
     );
   }

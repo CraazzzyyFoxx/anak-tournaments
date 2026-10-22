@@ -30,7 +30,13 @@ const listAudit = vi.fn();
 let permitted = true;
 let superuser = false;
 
-const MESSAGES = { kit: en.kit, kitAudit: en.kitAudit, kitTable: en.kitTable, adminMatches: { audit: en.adminMatches.audit } };
+const MESSAGES = {
+  common: en.common,
+  kit: en.kit,
+  kitAudit: en.kitAudit,
+  kitTable: en.kitTable,
+  adminMatches: { audit: en.adminMatches.audit }
+};
 
 vi.mock("next-intl", async (importOriginal) => {
   const actual = await importOriginal<typeof import("next-intl")>();
@@ -234,7 +240,7 @@ describe("/admin/audit", () => {
     permitted = false;
     const container = await mount();
 
-    expect(container.textContent).toContain("Unauthorized");
+    expect(container.textContent).toContain("No access");
     // Not even the journal-start probe: every request here would be a 403.
     expect(listAudit).not.toHaveBeenCalled();
   });

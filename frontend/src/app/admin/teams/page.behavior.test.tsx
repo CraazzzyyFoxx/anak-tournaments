@@ -261,7 +261,7 @@ describe("/admin/teams", () => {
     permitted = false;
     const container = await mount();
 
-    expect(container.textContent).toContain("Unauthorized");
+    expect(container.textContent).toContain("No access");
     expect(getTeams).not.toHaveBeenCalled();
   });
 

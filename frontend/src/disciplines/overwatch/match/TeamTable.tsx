@@ -8,6 +8,7 @@ import PlayerName from "@/components/PlayerName";
 import { PerformanceBadge } from "@/components/PerformanceBadge";
 import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { TeamLogo } from "@/components/TeamName";
+import { tint } from "@/lib/colors";
 import {
   STAT_META,
   GROUP_COLOR,
@@ -67,7 +68,7 @@ const TeamTable = ({ team, isHome, matchRound, columns, columnMax }: TeamTablePr
 
   return (
     <TableBody className={isHome ? undefined : "border-t border-[color:var(--aqt-border)]"}>
-      <TableRow style={{ backgroundColor: `color-mix(in srgb, ${teamAccent} 12%, transparent)` }}>
+      <TableRow style={{ backgroundColor: tint(teamAccent, 12) }}>
         <TableHead
           scope="col"
           className="min-w-[220px] sticky left-0 z-5"

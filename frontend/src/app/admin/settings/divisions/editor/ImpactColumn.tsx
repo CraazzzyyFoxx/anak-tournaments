@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { AlertTriangle, Check, Info } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Card } from "@/components/ui/card";
 import { TONE_TEXT } from "@/components/ui/tone";
 import { cn } from "@/lib/utils";
 import type { DivisionGridReadinessSource } from "@/types/workspace.types";
@@ -32,7 +33,7 @@ const SOURCE_GAP_KEY = {
 export function ImpactColumn({ checks, sources, edits }: Readonly<ImpactColumnProps>) {
   const t = useTranslations("adminSettings.divisions");
   return (
-    <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+    <Card variant="flat" className="flex flex-col divide-y divide-border">
       <Panel title={t("impact.title")}>
         {sources.length === 0 ? (
           <p className="text-xs text-muted-foreground">
@@ -83,7 +84,7 @@ export function ImpactColumn({ checks, sources, edits }: Readonly<ImpactColumnPr
           </ol>
         )}
       </Panel>
-    </div>
+    </Card>
   );
 }
 

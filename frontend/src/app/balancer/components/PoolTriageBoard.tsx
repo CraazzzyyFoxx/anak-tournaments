@@ -2,19 +2,11 @@
 
 import { useMemo } from "react";
 import { DndContext, useDraggable, useDroppable, type DragEndEvent } from "@dnd-kit/core";
-import { GripVertical, Pencil, ShieldX } from "lucide-react";
+import { GripVertical } from "lucide-react";
 
-import DivisionIcon from "@/components/DivisionIcon";
-import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { EmptyNote } from "@/components/kit/EmptyNote";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuLabel,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
 import {
   Dialog,
   DialogContent,
@@ -25,24 +17,20 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useDragSensors } from "@/hooks/useDragSensors";
 import { cn } from "@/lib/utils";
-import type { AdminRegistration, BalancerPlayerRecord, BalancerRoleCode } from "@/types/balancer-admin.types";
-import { roleTint, type RoleOntology } from "@/lib/roster/ontology";
+import type { AdminRegistration } from "@/types/balancer-admin.types";
+import type { RoleOntology } from "@/lib/roster/ontology";
 import type { DivisionGrid } from "@/types/workspace.types";
 import {
   POOL_LANES,
   POOL_LANE_LABELS,
   derivePoolLane,
-  hasBlockingIssues,
   getPoolDropPatch,
   type PlayerValidationState,
   type PoolLane,
 } from "@/components/balancer/balancer-page-helpers";
-import { HandleLabel } from "@/components/HandleLabel";
-import { AdditionalHandleStrip, HandleContextMenuItems, HandleCopyButton } from "./HandleCopyControls";
-import { isRoleEntryActive } from "@/components/balancer/workspace-helpers";
-import { IssueChip, issueChipKey } from "./IssueChip";
 
-import { BalancerStatusContextMenuItems, BalancerStatusMenu, type StatusOptionGroups } from "./BalancerStatusMenu";
+import type { StatusOptionGroups } from "./BalancerStatusMenu";
+import { PoolPlayerCard } from "./PoolPlayerCard";
 
 type PoolTriageBoardProps = {
   open: boolean;
@@ -75,14 +63,6 @@ const LANE_COPY: Record<PoolLane, string> = {
   ready: "Included and ready for balancing.",
 };
 
-function sortRoleEntries(player: BalancerPlayerRecord) {
-  return [...player.role_entries_json].sort((left, right) => left.priority - right.priority);
-}
-
-function uniqueRoleCodes(roleCodes: BalancerRoleCode[]): BalancerRoleCode[] {
-  return roleCodes.filter((roleCode, index) => roleCodes.indexOf(roleCode) === index);
-}
-
 function isCardActionTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("[data-card-action]") !== null;
 }
@@ -94,7 +74,7 @@ function TriagePlayerCard({
   divisionGrid,
   statusOptions,
   selectedPlayerId,
-  actionsDisabled,
+  actionsDisabled = false,
   onSelectPlayer,
   onSetPoolMembership,
   onSetBalancerStatus,
@@ -117,161 +97,41 @@ function TriagePlayerCard({
     // Dragging out of Excluded would include the player; that only happens through a status change.
     disabled: actionsDisabled || !onSetPoolMembership || !state.player.is_in_pool,
   });
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : undefined;
-  const sortedEntries = sortRoleEntries(state.player);
-  const rankedEntries = sortedEntries.filter((entry) => isRoleEntryActive(entry) && entry.rank_value !== null);
-  const rankedRoleCodes = uniqueRoleCodes(rankedEntries.map((entry) => entry.role));
-  const primaryEntry = rankedEntries[0] ?? sortedEntries[0] ?? null;
-  const primaryRole = primaryEntry?.role ?? null;
-  const isSelected = selectedPlayerId === state.player.id;
-  const handles = [state.player.identity, ...state.player.additional_handles];
-  const isReady = state.player.is_in_pool && !hasBlockingIssues(state.issues);
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <div
-          ref={setNodeRef}
-          style={style}
-          className={cn(
-            "cursor-pointer rounded-xl border border-border bg-card p-2.5 transition",
-            isSelected && "border-primary/45 bg-primary/[0.08]",
-            isDragging && "z-50 scale-[1.02] opacity-80 shadow-[0_22px_56px_rgba(0,0,0,0.34)]",
-          )}
-          title={state.player.identity}
-        >
-          <div className="flex items-start gap-2">
-            {state.player.is_in_pool ? (
-              <button
-                type="button"
-                data-card-action
-                className="mt-0.5 flex h-6 w-6 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg)] active:cursor-grabbing"
-                {...attributes}
-                {...listeners}
-              >
-                <GripVertical className="h-3.5 w-3.5" />
-                <span className="sr-only">Drag player</span>
-              </button>
-            ) : null}
-
-            <div className="min-w-0 flex-1">
-              <button
-                type="button"
-                data-card-action
-                onClick={() => onSelectPlayer(state.player.id)}
-                title={`Edit ${state.player.identity}`}
-                className="w-full min-w-0 rounded text-left"
-              >
-                <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-                  {rankedRoleCodes.length > 0 ? (
-                    rankedRoleCodes.map((roleCode) => (
-                      <PlayerRoleIcon key={roleCode} role={roleCode} ontology={ontology} size={15} />
-                    ))
-                  ) : (
-                    <span className="text-label text-[color:var(--aqt-fg-faint)]">No roles</span>
-                  )}
-                  <HandleLabel
-                    handle={state.player.identity}
-                    className="text-caption font-semibold text-[color:var(--aqt-fg)]"
-                    tagClassName="text-label"
-                  />
-                </span>
-              </button>
-              {state.player.is_flex || isReady || state.issues.length > 0 || state.player.additional_handles.length > 0 ? (
-                <div className="mt-1 flex min-w-0 items-center gap-1 overflow-x-auto whitespace-nowrap pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {state.player.is_flex ? (
-                    <span className="shrink-0 rounded-full border border-violet-300/20 bg-violet-500/12 px-1.5 py-0.5 text-label font-semibold uppercase tracking-label text-violet-200">
-                      Flex
-                    </span>
-                  ) : null}
-                  {isReady ? (
-                    <span className="shrink-0 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-1.5 py-0.5 text-label font-semibold uppercase tracking-label text-emerald-200">
-                      Ready
-                    </span>
-                  ) : null}
-                  {state.issues.map((issue) => (
-                    <IssueChip
-                      key={`${state.player.id}-${issueChipKey(issue)}`}
-                      issue={issue}
-                      ontology={ontology}
-                      divisionGrid={divisionGrid}
-                    />
-                  ))}
-                  <AdditionalHandleStrip additionalHandles={state.player.additional_handles} compact />
-                </div>
-              ) : null}
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1">
-              {primaryEntry?.division_number != null ? (
-                <DivisionIcon division={primaryEntry.division_number} tournamentGrid={divisionGrid} width={20} height={20} />
-              ) : null}
-              {primaryEntry?.rank_value != null ? (
-                <span
-                  className="min-w-10 text-right text-caption font-semibold tabular-nums text-cyan-300"
-                  style={primaryRole ? { color: roleTint(ontology, primaryRole) } : undefined}
-                >
-                  {primaryEntry.rank_value}
-                </span>
-              ) : (
-                <span className="text-label text-[color:var(--aqt-fg-faint)]">-</span>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-2 flex items-center justify-between gap-2" data-card-action>
-            <BalancerStatusMenu
-              size="compact"
-              value={registration?.balancer_status}
-              statusOptions={statusOptions}
-              disabled={actionsDisabled}
-              onChange={registration ? (status) => onSetBalancerStatus?.(state.player.id, status) : undefined}
-            />
-            <div className="flex items-center gap-1">
-              <HandleCopyButton handle={state.player.identity} className="h-7 w-7" />
-              {state.player.is_in_pool ? (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={actionsDisabled || !onSetPoolMembership}
-                  className="h-7 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-2 text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-                  onClick={() => onSetPoolMembership?.(state.player.id, false)}
-                >
-                  <ShieldX className="mr-1 h-3 w-3" />
-                  Exclude
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </ContextMenuTrigger>
-      <ContextMenuContent className="w-56">
-        <ContextMenuLabel>Player actions</ContextMenuLabel>
-        <ContextMenuItem onClick={() => onSelectPlayer(state.player.id)}>
-          <Pencil className="h-4 w-4" />
-          Edit full profile
-        </ContextMenuItem>
-        <HandleContextMenuItems handles={handles} />
-        {onSetPoolMembership && state.player.is_in_pool ? (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem disabled={actionsDisabled} onClick={() => onSetPoolMembership(state.player.id, false)}>
-              <ShieldX className="h-4 w-4" />
-              Exclude from balancer
-            </ContextMenuItem>
-          </>
-        ) : null}
-        <BalancerStatusContextMenuItems
-          value={registration?.balancer_status}
-          statusOptions={statusOptions}
-          disabled={actionsDisabled}
-          onChange={registration ? (status) => onSetBalancerStatus?.(state.player.id, status) : undefined}
-        />
-      </ContextMenuContent>
-    </ContextMenu>
+    <PoolPlayerCard
+      ref={setNodeRef}
+      variant="card"
+      player={state.player}
+      issues={state.issues}
+      registration={registration}
+      statusOptions={statusOptions}
+      ontology={ontology}
+      divisionGrid={divisionGrid}
+      selected={selectedPlayerId === state.player.id}
+      actionsDisabled={actionsDisabled}
+      onSelectPlayer={onSelectPlayer}
+      onSetPoolMembership={onSetPoolMembership}
+      onSetBalancerStatus={onSetBalancerStatus}
+      style={transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined}
+      className={cn(isDragging && "z-50 scale-[1.02] opacity-80 shadow-[0_22px_56px_rgba(0,0,0,0.34)]")}
+      leading={
+        state.player.is_in_pool ? (
+          <Button
+            type="button"
+            variant="subtle"
+            size="icon-sm"
+            data-card-action
+            aria-label="Drag player"
+            className="shrink-0 cursor-grab touch-none text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg)] active:cursor-grabbing"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical aria-hidden="true" />
+          </Button>
+        ) : null
+      }
+    />
   );
 }
 
@@ -320,9 +180,9 @@ function TriageLaneColumn({
           <div className="text-sm font-semibold text-[color:var(--aqt-fg)]">{POOL_LANE_LABELS[lane]}</div>
           <div className="mt-0.5 text-label text-[color:var(--aqt-fg-dim)]">{LANE_COPY[lane]}</div>
         </div>
-        <div className="rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 py-0.5 text-label font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]">
+        <Badge palette="aqt" tone="neutral" shape="pill" size="sm" className="tabular-nums">
           {states.length}
-        </div>
+        </Badge>
       </div>
       <ScrollArea className="min-h-0 flex-1">
         {states.length > 0 ? (
@@ -358,9 +218,9 @@ function TriageLaneColumn({
             ))}
           </ul>
         ) : (
-          <div className="rounded-xl border border-dashed border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-3 py-8 text-center text-xs text-[color:var(--aqt-fg-dim)]">
+          <EmptyNote size="sm" className="py-8 text-center">
             Drop players here
-          </div>
+          </EmptyNote>
         )}
       </ScrollArea>
     </section>

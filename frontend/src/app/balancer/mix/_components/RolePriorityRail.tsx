@@ -1,6 +1,7 @@
 "use client";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Button } from "@/components/ui/button";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { cn } from "@/lib/utils";
@@ -64,8 +65,10 @@ export function RolePriorityRail({
             label={roleRank == null ? `${name}: no rank` : `${name}: ${roleRank} pts`}
             hint={isOn ? (isPrimary ? "First choice" : "Also plays") : "Off"}
           >
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon-sm"
               disabled={!canWrite || saving || dimension == null}
               aria-pressed={isOn}
               aria-label={`${name} for ${label}, ${
@@ -75,14 +78,14 @@ export function RolePriorityRail({
                 if (dimension != null) onPatch({ roles: roleRefsOf(toggleRole(order, role), dimension) });
               }}
               className={cn(
-                "relative flex size-[30px] items-center justify-center rounded-lg transition-opacity",
-                isOn ? "opacity-100" : "opacity-30",
-                isOn && roleRank == null && "ring-1 ring-amber-400/70",
-                "disabled:cursor-default"
+                "rounded-lg transition-opacity",
+                // A viewer still reads which roles are on: the dim marks "off", not "disabled".
+                isOn ? "opacity-100 disabled:opacity-100" : "opacity-30 disabled:opacity-30",
+                isOn && roleRank == null && "ring-1 ring-amber-400/70"
               )}
             >
               <PlayerRoleIcon role={role} ontology={owner.ontology} size={19} decorative />
-            </button>
+            </Button>
           </IconTooltip>
         );
       })}

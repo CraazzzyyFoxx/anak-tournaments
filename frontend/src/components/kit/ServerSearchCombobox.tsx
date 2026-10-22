@@ -3,7 +3,10 @@
 import { type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
-import { useSearchComboboxQuery, type SearchComboboxMessages } from "@/components/kit/useSearchComboboxQuery";
+import {
+  useSearchComboboxQuery,
+  type SearchComboboxMessages
+} from "@/components/kit/useSearchComboboxQuery";
 import { Combobox, ComboboxCheck, type ComboboxVariant } from "@/components/ui/combobox";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -108,9 +111,17 @@ export function ServerSearchCombobox<TItem>({
     >
       <CommandGroup>
         {results.map((item) => (
-          <CommandItem key={itemId(item)} value={String(itemId(item))} onSelect={() => handleSelect(item)}>
+          <CommandItem
+            key={itemId(item)}
+            value={String(itemId(item))}
+            onSelect={() => handleSelect(item)}
+          >
             <span className="min-w-0 flex-1">
-              {renderItem ? renderItem(item) : <span className="block truncate">{label(item)}</span>}
+              {renderItem ? (
+                renderItem(item)
+              ) : (
+                <span className="block truncate">{label(item)}</span>
+              )}
             </span>
             <ComboboxCheck selected={value === itemId(item)} />
           </CommandItem>
@@ -140,7 +151,9 @@ export function UserSearchCombobox({
   return (
     <ServerSearchCombobox<MinimizedUser>
       {...chrome}
-      selectedLabel={chrome.selectedLabel || (chrome.value ? t("userId", { id: chrome.value }) : undefined)}
+      selectedLabel={
+        chrome.selectedLabel || (chrome.value ? t("userId", { id: chrome.value }) : undefined)
+      }
       onSelect={onSelect}
       queryKey={["users-search-minimized"]}
       fetch={({ query, signal }) => userService.searchUsers(query, signal)}
@@ -152,7 +165,12 @@ export function UserSearchCombobox({
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">#{user.id}</span>
         </span>
       )}
-      messages={{ loading: t("loading"), error: t("error"), minChars: t("minChars"), empty: t("empty") }}
+      messages={{
+        loading: t("loading"),
+        error: t("error"),
+        minChars: t("minChars"),
+        empty: t("empty")
+      }}
       placeholder={placeholder ?? t("placeholder")}
       searchPlaceholder={searchPlaceholder ?? t("searchPlaceholder")}
       clearLabel={clearLabel === null ? undefined : (clearLabel ?? t("clearSelection"))}
@@ -181,7 +199,9 @@ export function AuthUserSearchCombobox({
   return (
     <ServerSearchCombobox<AuthAdminUser>
       {...chrome}
-      selectedLabel={chrome.selectedLabel || (chrome.value ? t("userId", { id: chrome.value }) : undefined)}
+      selectedLabel={
+        chrome.selectedLabel || (chrome.value ? t("userId", { id: chrome.value }) : undefined)
+      }
       onSelect={(user) => onSelect(user && { id: user.id, label: user.username })}
       queryKey={["auth-users-search", workspaceId ?? null]}
       fetch={({ query }) =>
@@ -197,7 +217,12 @@ export function AuthUserSearchCombobox({
           <span className="truncate text-xs text-muted-foreground">{user.email}</span>
         </span>
       )}
-      messages={{ loading: t("loading"), error: t("error"), minChars: t("minChars"), empty: t("empty") }}
+      messages={{
+        loading: t("loading"),
+        error: t("error"),
+        minChars: t("minChars"),
+        empty: t("empty")
+      }}
       placeholder={placeholder ?? t("placeholder")}
       searchPlaceholder={searchPlaceholder ?? t("searchPlaceholder")}
       clearLabel={clearLabel === null ? undefined : (clearLabel ?? t("clearSelection"))}

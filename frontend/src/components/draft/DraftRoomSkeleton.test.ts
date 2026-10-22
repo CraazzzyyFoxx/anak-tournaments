@@ -111,7 +111,13 @@ describe("standalone Draft loading skeleton", () => {
     expect(css).toMatch(/\.skeletonRoom\s*\{[\s\S]*?overflow-x:\s*clip/);
     expect(css).toMatch(/\.skeletonPanel\s*\{[\s\S]*?min-width:\s*0/);
     expect(css).toMatch(/@media\s*\(max-width:\s*640px\)[\s\S]*?\.skeletonHeaderRow/);
-    expect(css).toContain("@media (prefers-reduced-motion: reduce)");
-    expect(css).toMatch(/prefers-reduced-motion:[\s\S]*?\.skeletonBlock[\s\S]*?animation:\s*none/);
+
+    // The blocks are `ui/skeleton`, which stops its pulse under reduced motion.
+    expect(skeletonModule).not.toBeNull();
+    if (!skeletonModule) return;
+    const html = renderToStaticMarkup(React.createElement(skeletonModule.DraftRoomSkeleton));
+    const blocks = html.match(/class="[^"]*animate-pulse[^"]*"/g) ?? [];
+    expect(blocks.length).toBeGreaterThan(0);
+    for (const block of blocks) expect(block).toContain("motion-reduce:animate-none");
   });
 });

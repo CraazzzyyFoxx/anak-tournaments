@@ -281,8 +281,8 @@ function InheritedRuleset({
     <p className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
       <span>{t("overridesScope", { scope })}</span>
       {canManage ? (
-        <Button type="button" variant="ghost" size="sm" className="h-6 px-2" onClick={onReset}>
-          <RotateCcw aria-hidden className="me-1 size-3" />
+        <Button type="button" variant="ghost" size="xs" onClick={onReset}>
+          <RotateCcw aria-hidden />
           {t("useInherited")}
         </Button>
       ) : null}

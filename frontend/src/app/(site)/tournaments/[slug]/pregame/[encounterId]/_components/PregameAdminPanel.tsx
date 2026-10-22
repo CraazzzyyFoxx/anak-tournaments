@@ -14,6 +14,7 @@ import { MatchImport } from "@/components/pick-ban/MatchImport";
 import type { PickBanSeat } from "@/components/pick-ban/pick-ban-model";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 
+import { PregameAdminBox } from "./PregameAdminBox";
 import { PregameAdminControls } from "./PregameAdminControls";
 import { PregameRoomHistory } from "./PregameRoomHistory";
 import type { PickBanAdminSlot } from "./PickBanPanel";
@@ -104,13 +105,9 @@ export function PregameAdminPanel({
   // Filing a match needs no pick-ban session, so it is offered on every branch below.
   const matchImport =
     matchImportGames.length > 0 ? (
-      <section className="rounded-xl border border-dashed border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <FileDown className="h-4 w-4 text-[color:var(--aqt-amber)]" aria-hidden />
-          <h2 className="text-sm font-semibold">{t("matchImport.title")}</h2>
-        </div>
+      <PregameAdminBox icon={FileDown} title={t("matchImport.title")}>
         <MatchImport encounterId={encounterId} games={matchImportGames} admin />
-      </section>
+      </PregameAdminBox>
     ) : null;
 
   if (kind == null) {
@@ -130,11 +127,7 @@ export function PregameAdminPanel({
     }
     return (
       <div className="flex flex-col gap-3">
-        <section className="rounded-xl border border-dashed border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 p-4">
-          <div className="mb-3 flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-[color:var(--aqt-amber)]" aria-hidden />
-            <h2 className="text-sm font-semibold">{t("admin.readinessTitle")}</h2>
-          </div>
+        <PregameAdminBox icon={ShieldCheck} title={t("admin.readinessTitle")}>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
             {seats.map((seat) => {
               const ready = readiness[String(seat.id)] === true;
@@ -162,7 +155,7 @@ export function PregameAdminPanel({
               );
             })}
           </div>
-        </section>
+        </PregameAdminBox>
         {matchImport}
         {history}
       </div>

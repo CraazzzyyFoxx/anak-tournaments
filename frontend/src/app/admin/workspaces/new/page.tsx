@@ -7,10 +7,11 @@ import { useTranslations } from "next-intl";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { PermissionGate } from "@/components/admin/PermissionGate";
 import { WizardShell } from "@/components/kit/WizardShell";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -224,113 +225,106 @@ export default function NewWorkspacePage() {
   const skippable =
     activeStep === "profile" || activeStep === "branding" || activeStep === "discord";
 
-  if (!isLoaded) return <Skeleton className="h-64 w-full rounded-xl" />;
-
-  if (!canUseCapability("workspace.self_create")) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("unauthorized")}</CardTitle>
-          <CardDescription>{t("unauthorizedDescription")}</CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
-
   return (
-    <div className="space-y-5">
-      <AdminPageHeader title={t("title")} description={t("description")} />
+    <PermissionGate
+      loaded={isLoaded}
+      allowed={canUseCapability("workspace.self_create")}
+      description={t("unauthorizedDescription")}
+    >
+      <div className="space-y-5">
+        <AdminPageHeader title={t("title")} description={t("description")} />
 
-      <WizardShell
-        steps={railSteps(activeStep, skipped).map(({ key, state }) => ({
-          key,
-          label: t(`steps.${key}.label`),
-          state
-        }))}
-        aside={
-          id !== null && activeStep !== "done" ? (
-            <Link
-              href="/admin/settings"
-              onClick={() => setCurrentWorkspace(id)}
-              className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-primary"
-            >
-              {t("actions.finishLater")}
-            </Link>
-          ) : null
-        }
-        footer={{
-          back:
-            activeStep !== "basics" && activeStep !== "done"
-              ? () => setParams({ step: previousWizardStep(activeStep) })
-              : undefined,
-          secondary: skippable ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={pending}
-              onClick={() => advance(activeStep, true)}
-            >
-              {t("actions.skip")}
-            </Button>
-          ) : null,
-          next: {
-            label: nextLabel,
-            onClick: onNext[activeStep],
-            disabled: pending || (id !== null && !workspace)
+        <WizardShell
+          steps={railSteps(activeStep, skipped).map(({ key, state }) => ({
+            key,
+            label: t(`steps.${key}.label`),
+            state
+          }))}
+          aside={
+            id !== null && activeStep !== "done" ? (
+              <Link
+                href="/admin/settings"
+                onClick={() => setCurrentWorkspace(id)}
+                className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:text-primary"
+              >
+                {t("actions.finishLater")}
+              </Link>
+            ) : null
           }
-        }}
-      >
-        <div className="space-y-1">
-          <p className={`${eyebrowClass("muted")} tabular-nums`}>
-            {t("stepOf", {
-              current: WIZARD_STEPS.indexOf(activeStep) + 1,
-              total: WIZARD_STEPS.length
-            })}
-          </p>
-          <h2 className="font-display text-xl font-semibold text-foreground">
-            {t(`steps.${activeStep}.label`)}
-          </h2>
-          <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
-            {t(`steps.${activeStep}.description`)}
-          </p>
-        </div>
+          footer={{
+            back:
+              activeStep !== "basics" && activeStep !== "done"
+                ? () => setParams({ step: previousWizardStep(activeStep) })
+                : undefined,
+            secondary: skippable ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={pending}
+                onClick={() => advance(activeStep, true)}
+              >
+                {t("actions.skip")}
+              </Button>
+            ) : null,
+            next: {
+              label: nextLabel,
+              onClick: onNext[activeStep],
+              disabled: pending || (id !== null && !workspace)
+            }
+          }}
+        >
+          <div className="space-y-1">
+            <p className={`${eyebrowClass("muted")} tabular-nums`}>
+              {t("stepOf", {
+                current: WIZARD_STEPS.indexOf(activeStep) + 1,
+                total: WIZARD_STEPS.length
+              })}
+            </p>
+            <h2 className="font-display text-xl font-semibold text-foreground">
+              {t(`steps.${activeStep}.label`)}
+            </h2>
+            <p className="max-w-3xl text-sm leading-relaxed text-muted-foreground">
+              {t(`steps.${activeStep}.description`)}
+            </p>
+          </div>
 
-        {id !== null && !workspace ? (
-          workspaceQuery.isError ? (
+          {id !== null && !workspace ? (
+            workspaceQuery.isError ? (
+              <div className="mt-5">
+                <PageStateCard state="error" onAction={() => void workspaceQuery.refetch()} />
+              </div>
+            ) : (
+              <Skeleton className="mt-5 h-64 w-full rounded-xl" />
+            )
+          ) : activeStep === "done" && workspace ? (
             <div className="mt-5">
-              <PageStateCard state="error" onAction={() => void workspaceQuery.refetch()} />
+              <DoneStep workspace={workspace} />
             </div>
           ) : (
-            <Skeleton className="mt-5 h-64 w-full rounded-xl" />
-          )
-        ) : activeStep === "done" && workspace ? (
-          <div className="mt-5">
-            <DoneStep workspace={workspace} />
-          </div>
-        ) : (
-          <Card className="mt-5 p-4 sm:p-6">
-            {activeStep === "basics" ? (
-              <BasicsStep
-                value={basics}
-                onChange={setBasics}
-                locked={locked}
-                iconSrc={workspace?.icon_url ?? null}
-                errors={basicsErrors}
-              />
-            ) : null}
-            {activeStep === "profile" && profile ? (
-              <ProfileStep value={profile} onChange={setProfile} />
-            ) : null}
-            {activeStep === "branding" && branding ? (
-              <BrandingStep value={branding} onChange={setBranding} />
-            ) : null}
-            {activeStep === "discord" && workspace ? (
-              <DiscordStep workspace={workspace} onLinked={() => refresh(workspace.id)} />
-            ) : null}
-          </Card>
-        )}
-      </WizardShell>
-    </div>
+            <Card className="mt-5 p-4 sm:p-6">
+              {activeStep === "basics" ? (
+                <BasicsStep
+                  value={basics}
+                  onChange={setBasics}
+                  locked={locked}
+                  iconSrc={workspace?.icon_url ?? null}
+                  errors={basicsErrors}
+                />
+              ) : null}
+              {activeStep === "profile" && profile ? (
+                <ProfileStep value={profile} onChange={setProfile} />
+              ) : null}
+              {activeStep === "branding" && branding ? (
+                <BrandingStep value={branding} onChange={setBranding} />
+              ) : null}
+              {activeStep === "discord" && workspace ? (
+                <DiscordStep workspace={workspace} onLinked={() => refresh(workspace.id)} />
+              ) : null}
+            </Card>
+          )}
+        </WizardShell>
+      </div>
+    </PermissionGate>
   );
 }

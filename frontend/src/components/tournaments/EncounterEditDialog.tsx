@@ -405,26 +405,26 @@ function EncounterEditDialogBody({
               </p>
             ) : (
               <>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-0.5">
                   {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                    <button
+                    <Button
                       key={n}
-                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
                       onClick={() => setStars(n === stars ? 0 : n)}
                       aria-pressed={n <= stars}
                       aria-label={t("matchEdit.starsAria", { count: n })}
-                      className="rounded p-0.5 transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                     >
                       <Star
                         aria-hidden
                         className={cn(
-                          "h-5 w-5 transition-colors duration-150",
+                          "transition-colors duration-150",
                           n <= stars
                             ? "fill-[color:var(--aqt-gold)] text-[color:var(--aqt-gold)]"
                             : "text-[color:var(--aqt-fg-faint)]"
                         )}
                       />
-                    </button>
+                    </Button>
                   ))}
                   <span className="ml-2 text-xs font-bold text-[color:var(--aqt-fg-muted)]">
                     {stars > 0 ? `${stars}/10` : t("matchEdit.notSet")}
@@ -458,7 +458,7 @@ function EncounterEditDialogBody({
                 variant="secondary"
                 onClick={() => reopenMutation.mutate()}
                 disabled={reason.trim().length === 0 || reopenMutation.isPending}
-                className="h-10 px-5"
+                size="lg"
               >
                 {reopenMutation.isPending ? t("matchEdit.reopening") : t("matchEdit.reopenResult")}
               </Button>
@@ -474,7 +474,7 @@ function EncounterEditDialogBody({
                   reportsQuery.isPending ||
                   confirmMutation.isPending
                 }
-                className="h-10 px-5"
+                size="lg"
               >
                 {confirmMutation.isPending
                   ? t("matchEdit.confirming")
@@ -492,7 +492,7 @@ function EncounterEditDialogBody({
               <div className="space-y-1.5">
                 <Label className="text-caption font-bold text-[color:var(--aqt-fg-muted)]">{t("matchEdit.bestOf")}</Label>
                 <Select value={String(bestOf)} onValueChange={(value) => setBestOf(Number(value))}>
-                  <SelectTrigger className="w-full rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)]">
+                  <SelectTrigger variant="surface">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -530,7 +530,7 @@ function EncounterEditDialogBody({
           <div className="space-y-1.5">
             <Label className="text-caption font-bold text-[color:var(--aqt-fg-muted)]">{t("matchEdit.status")}</Label>
             <Select value={status} onValueChange={(value) => setStatus(normalizeStatus(value))} disabled={isCompleted}>
-              <SelectTrigger className="w-full rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)]">
+              <SelectTrigger variant="surface">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -560,7 +560,7 @@ function EncounterEditDialogBody({
                 variant="outline"
                 onClick={() => saveMutation.mutate()}
                 disabled={!!settingsError || saveMutation.isPending}
-                className="h-10 px-5"
+                size="lg"
               >
                 {saveMutation.isPending ? t("matchEdit.saving") : t("matchEdit.save")}
               </Button>
@@ -573,7 +573,7 @@ function EncounterEditDialogBody({
         <Button
           variant="outline"
           onClick={() => onOpenChange(false)}
-          className="h-10 px-5"
+          size="lg"
         >
           {t("matchEdit.cancel")}
         </Button>

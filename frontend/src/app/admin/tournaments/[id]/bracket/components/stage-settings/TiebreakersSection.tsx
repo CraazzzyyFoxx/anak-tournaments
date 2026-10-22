@@ -6,6 +6,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
@@ -171,60 +172,62 @@ export function TiebreakersSection({
             {t("resetDefaults")}
           </Button>
         </div>
-        <ol className="flex flex-col divide-y divide-border rounded-lg border border-border bg-card">
-          {active.map((metricId, index) => {
-            const metricLabel =
-              catalogue.find((metric) => metric.id === metricId)?.label ??
-              tiebreakerLabel(metricId, undefined, form.ffaColumns);
-            const isRankingMetric = metricId === "points";
-            return (
-              <li
-                key={metricId}
-                className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs"
-              >
-                <span className="flex items-center gap-2 font-medium text-muted-foreground">
-                  <Checkbox
-                    checked
-                    disabled={isRankingMetric}
-                    aria-label={t("useMetric", { metric: metricLabel })}
-                    onCheckedChange={() => toggleMetric(metricId, false)}
-                  />
-                  <span className="tabular-nums">{index + 1}.</span>
-                  <span className="text-foreground">{metricLabel}</span>
-                  {isRankingMetric ? (
-                    <span className={eyebrowClass("muted")}>{t("rankingMetric")}</span>
-                  ) : null}
-                </span>
-                <span className="flex items-center gap-0.5">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-6 text-muted-foreground hover:text-foreground"
-                    aria-label={t("moveUp", { metric: metricLabel })}
-                    disabled={index === 0 || isPinned(index) || isPinned(index - 1)}
-                    onClick={() => moveMetric(index, -1)}
-                  >
-                    <ChevronUp className="size-3.5" aria-hidden />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-6 text-muted-foreground hover:text-foreground"
-                    aria-label={t("moveDown", { metric: metricLabel })}
-                    disabled={
-                      index === active.length - 1 || isPinned(index) || isPinned(index + 1)
-                    }
-                    onClick={() => moveMetric(index, 1)}
-                  >
-                    <ChevronDown className="size-3.5" aria-hidden />
-                  </Button>
-                </span>
-              </li>
-            );
-          })}
-        </ol>
+        <Card asChild variant="flat">
+          <ol className="flex flex-col divide-y divide-border">
+            {active.map((metricId, index) => {
+              const metricLabel =
+                catalogue.find((metric) => metric.id === metricId)?.label ??
+                tiebreakerLabel(metricId, undefined, form.ffaColumns);
+              const isRankingMetric = metricId === "points";
+              return (
+                <li
+                  key={metricId}
+                  className="flex items-center justify-between gap-2 px-3 py-1.5 text-xs"
+                >
+                  <span className="flex items-center gap-2 font-medium text-muted-foreground">
+                    <Checkbox
+                      checked
+                      disabled={isRankingMetric}
+                      aria-label={t("useMetric", { metric: metricLabel })}
+                      onCheckedChange={() => toggleMetric(metricId, false)}
+                    />
+                    <span className="tabular-nums">{index + 1}.</span>
+                    <span className="text-foreground">{metricLabel}</span>
+                    {isRankingMetric ? (
+                      <span className={eyebrowClass("muted")}>{t("rankingMetric")}</span>
+                    ) : null}
+                  </span>
+                  <span className="flex items-center gap-0.5">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-6 text-muted-foreground hover:text-foreground"
+                      aria-label={t("moveUp", { metric: metricLabel })}
+                      disabled={index === 0 || isPinned(index) || isPinned(index - 1)}
+                      onClick={() => moveMetric(index, -1)}
+                    >
+                      <ChevronUp className="size-3.5" aria-hidden />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-6 text-muted-foreground hover:text-foreground"
+                      aria-label={t("moveDown", { metric: metricLabel })}
+                      disabled={
+                        index === active.length - 1 || isPinned(index) || isPinned(index + 1)
+                      }
+                      onClick={() => moveMetric(index, 1)}
+                    >
+                      <ChevronDown className="size-3.5" aria-hidden />
+                    </Button>
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        </Card>
         {inactive.length > 0 ? (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-dashed border-border px-3 py-2">
             <span className={eyebrowClass("muted")}>{t("notEvaluated")}</span>

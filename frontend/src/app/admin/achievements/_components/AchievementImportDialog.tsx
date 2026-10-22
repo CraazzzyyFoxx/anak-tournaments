@@ -6,15 +6,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleOff } from "lucide-react";
 
 import { StatusIcon } from "@/components/admin/StatusIcon";
+import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -25,7 +19,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import adminService from "@/services/admin.service";
 import { achievementQueryKeys } from "@/lib/achievements/query-keys";
@@ -66,7 +59,6 @@ export function AchievementImportDialog({
   onImported: (result: AchievementRuleImportResult) => void;
 }>) {
   const t = useTranslations("adminAchievements");
-  const tc = useTranslations("common");
   const tGame = useTranslations("common.discipline");
   const workspaceReasonId = useId();
   const queryClient = useQueryClient();
@@ -131,171 +123,160 @@ export function AchievementImportDialog({
   };
 
   return (
-    <Dialog open onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>{t("import.title")}</DialogTitle>
-        </DialogHeader>
-
-        {result ? (
-          <div className="space-y-3 text-sm">
-            <p className="tabular-nums">
-              {t("import.summary", { created: result.created, updated: result.updated })}
-            </p>
-            {result.warnings.length > 0 && (
-              <ul className="max-h-48 divide-y divide-border/60 overflow-y-auto">
-                {result.warnings.map((warning, index) => (
-                  <li key={`${warning.slug}-${index}`} className="py-1.5">
-                    <span className="font-mono text-caption">{warning.slug}</span>{" "}
-                    <span className="text-warning">{warning.message}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="space-y-1">
-              <ToggleGroup
-                type="single"
-                variant="pill"
-                size="sm"
-                aria-label={t("import.source")}
-                value={source}
-                onValueChange={(next) => setSource(next as ImportSource)}
+    <EntityFormDialog
+      open
+      onOpenChange={(next) => !next && onClose()}
+      title={t("import.title")}
+      onSubmit={submit}
+      submitLabel={source === "file" ? t("import.importFile") : t("library.importSelected")}
+      submittingLabel={t("common.importing")}
+      isSubmitting={pending}
+      submitDisabled={!canSubmit}
+      isReadOnly={result !== null}
+      errorMessage={result ? undefined : (shownError ?? undefined)}
+      contentClassName="max-w-3xl"
+    >
+      {result ? (
+        <div className="space-y-3 text-sm">
+          <p className="tabular-nums">
+            {t("import.summary", { created: result.created, updated: result.updated })}
+          </p>
+          {result.warnings.length > 0 && (
+            <ul className="max-h-48 divide-y divide-border/60 overflow-y-auto">
+              {result.warnings.map((warning, index) => (
+                <li key={`${warning.slug}-${index}`} className="py-1.5">
+                  <span className="font-mono text-caption">{warning.slug}</span>{" "}
+                  <span className="text-warning">{warning.message}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <ToggleGroup
+              type="single"
+              variant="pill"
+              size="sm"
+              aria-label={t("import.source")}
+              value={source}
+              onValueChange={(next) => setSource(next as ImportSource)}
+            >
+              <ToggleGroupItem
+                value="workspace"
+                disabled={discipline === null}
+                aria-describedby={discipline === null ? workspaceReasonId : undefined}
               >
-                <ToggleGroupItem
-                  value="workspace"
-                  disabled={discipline === null}
-                  aria-describedby={discipline === null ? workspaceReasonId : undefined}
-                >
-                  {t("import.fromWorkspace")}
-                </ToggleGroupItem>
-                <ToggleGroupItem value="file">{t("import.fromFile")}</ToggleGroupItem>
-              </ToggleGroup>
-              {discipline === null && (
-                <p id={workspaceReasonId} className="text-caption text-muted-foreground">
-                  {tGame("pickGameAction")}
-                </p>
-              )}
-            </div>
-
-            {source === "file" ? (
-              <div className="space-y-2">
-                <Label htmlFor="import-file">{t("import.fileLabel")}</Label>
-                <Input
-                  id="import-file"
-                  type="file"
-                  accept="application/json,.json"
-                  onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                />
-              </div>
-            ) : (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="library-source-workspace">{t("library.sourceWorkspace")}</Label>
-                  <Select
-                    value={sourceWorkspaceId ? String(sourceWorkspaceId) : ""}
-                    onValueChange={(value) => {
-                      setSourceWorkspaceId(value ? Number(value) : undefined);
-                      setSelectedSlugs(new Set());
-                    }}
-                  >
-                    <SelectTrigger id="library-source-workspace">
-                      <SelectValue placeholder={t("library.selectWorkspace")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(libraryWorkspaces ?? []).map((workspace) => (
-                        <SelectItem key={workspace.id} value={String(workspace.id)}>
-                          {workspace.name} ({workspace.rules_count})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {sourceWorkspaceId && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium">
-                        {t.rich("library.achievementSelection", {
-                          count: selectedSlugs.size,
-                          num: (chunks) => <span className="tabular-nums text-muted-foreground">{chunks}</span>,
-                        })}
-                      </p>
-                      {allSlugs.length > 0 && (
-                        <div className="flex gap-2">
-                          {!allSelected && (
-                            <Button variant="ghost" size="sm" onClick={() => setSelectedSlugs(new Set(allSlugs))}>
-                              {t("common.selectAll")}
-                            </Button>
-                          )}
-                          {selectedSlugs.size > 0 && (
-                            <Button variant="ghost" size="sm" onClick={() => setSelectedSlugs(new Set())}>
-                              {t("common.clear")}
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    {(libraryRules?.length ?? 0) === 0 ? (
-                      <p className="text-sm text-muted-foreground">{t("library.empty")}</p>
-                    ) : (
-                      <ScrollArea className="h-[40vh] rounded-lg border">
-                        <div className="divide-y divide-border/60">
-                          {(libraryRules ?? []).map((rule) => (
-                            <label key={rule.slug} className="flex items-center gap-3 px-3 py-2 text-sm">
-                              <Checkbox
-                                checked={selectedSlugs.has(rule.slug)}
-                                onCheckedChange={(checked) => toggleSlug(rule.slug, !!checked)}
-                                aria-label={t("library.copy", { name: rule.name })}
-                              />
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate font-medium">{rule.name}</p>
-                                <p className="truncate text-caption text-muted-foreground">
-                                  {t("library.ruleMeta", {
-                                    slug: rule.slug,
-                                    category: t(`common.categoryValues.${rule.category}`),
-                                  })}
-                                </p>
-                              </div>
-                              {!rule.enabled && (
-                                <StatusIcon icon={CircleOff} label={t("common.disabled")} variant="muted" />
-                              )}
-                            </label>
-                          ))}
-                        </div>
-                      </ScrollArea>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-
-            {shownError && (
-              <p role="alert" className="text-sm text-danger">
-                {shownError}
+                {t("import.fromWorkspace")}
+              </ToggleGroupItem>
+              <ToggleGroupItem value="file">{t("import.fromFile")}</ToggleGroupItem>
+            </ToggleGroup>
+            {discipline === null && (
+              <p id={workspaceReasonId} className="text-caption text-muted-foreground">
+                {tGame("pickGameAction")}
               </p>
             )}
           </div>
-        )}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            {result ? tc("close") : tc("cancel")}
-          </Button>
-          {!result && (
-            <Button onClick={submit} disabled={!canSubmit || pending}>
-              {pending && <Spinner />}
-              {pending
-                ? t("common.importing")
-                : source === "file"
-                  ? t("import.importFile")
-                  : t("library.importSelected")}
-            </Button>
+          {source === "file" ? (
+            <div className="space-y-2">
+              <Label htmlFor="import-file">{t("import.fileLabel")}</Label>
+              <Input
+                id="import-file"
+                type="file"
+                accept="application/json,.json"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="library-source-workspace">{t("library.sourceWorkspace")}</Label>
+                <Select
+                  value={sourceWorkspaceId ? String(sourceWorkspaceId) : ""}
+                  onValueChange={(value) => {
+                    setSourceWorkspaceId(value ? Number(value) : undefined);
+                    setSelectedSlugs(new Set());
+                  }}
+                >
+                  <SelectTrigger id="library-source-workspace">
+                    <SelectValue placeholder={t("library.selectWorkspace")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(libraryWorkspaces ?? []).map((workspace) => (
+                      <SelectItem key={workspace.id} value={String(workspace.id)}>
+                        {workspace.name} ({workspace.rules_count})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {sourceWorkspaceId && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">
+                      {t.rich("library.achievementSelection", {
+                        count: selectedSlugs.size,
+                        num: (chunks) => <span className="tabular-nums text-muted-foreground">{chunks}</span>,
+                      })}
+                    </p>
+                    {allSlugs.length > 0 && (
+                      <div className="flex gap-2">
+                        {!allSelected && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedSlugs(new Set(allSlugs))}
+                          >
+                            {t("common.selectAll")}
+                          </Button>
+                        )}
+                        {selectedSlugs.size > 0 && (
+                          <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedSlugs(new Set())}>
+                            {t("common.clear")}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {(libraryRules?.length ?? 0) === 0 ? (
+                    <p className="text-sm text-muted-foreground">{t("library.empty")}</p>
+                  ) : (
+                    <ScrollArea className="h-[40vh] rounded-lg border">
+                      <div className="divide-y divide-border/60">
+                        {(libraryRules ?? []).map((rule) => (
+                          <label key={rule.slug} className="flex items-center gap-3 px-3 py-2 text-sm">
+                            <Checkbox
+                              checked={selectedSlugs.has(rule.slug)}
+                              onCheckedChange={(checked) => toggleSlug(rule.slug, !!checked)}
+                              aria-label={t("library.copy", { name: rule.name })}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-medium">{rule.name}</p>
+                              <p className="truncate text-caption text-muted-foreground">
+                                {t("library.ruleMeta", {
+                                  slug: rule.slug,
+                                  category: t(`common.categoryValues.${rule.category}`),
+                                })}
+                              </p>
+                            </div>
+                            {!rule.enabled && (
+                              <StatusIcon icon={CircleOff} label={t("common.disabled")} variant="muted" />
+                            )}
+                          </label>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  )}
+                </div>
+              )}
+            </>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      )}
+    </EntityFormDialog>
   );
 }

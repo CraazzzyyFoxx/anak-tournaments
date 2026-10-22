@@ -4,6 +4,7 @@ import { useId, useRef, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { FilePlus, FileUp, FolderOpen, RefreshCw, Settings } from "lucide-react";
+import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FileButton } from "@/components/ui/file-button";
@@ -241,22 +242,23 @@ function DirectoryUploadDialog({
                 </Button>
               </div>
             ) : (
-              <div className="space-y-3 rounded-lg border border-dashed border-[color:var(--aqt-border-2)] px-4 py-5">
-                <div className="space-y-1">
-                  <p className="text-ui font-semibold text-[color:var(--aqt-fg)]">{t("emptyTitle")}</p>
-                  <p className="text-caption text-pretty text-[color:var(--aqt-fg-muted)]">{t("hint")}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button type="button" variant="outline" disabled={locked || directory.isLoading} onClick={() => void loadFiles(true)}>
-                    <FolderOpen className="size-4" aria-hidden />
-                    {t("select")}
-                  </Button>
-                  <FileButton accept={LOG_FILE_ACCEPT} multiple variant="ghost" disabled={locked} onFiles={addPickedFiles}>
-                    <FilePlus className="size-4" aria-hidden />
-                    {t("pickFiles")}
-                  </FileButton>
-                </div>
-              </div>
+              <EmptyNote
+                title={t("emptyTitle")}
+                action={
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <Button type="button" variant="outline" disabled={locked || directory.isLoading} onClick={() => void loadFiles(true)}>
+                      <FolderOpen className="size-4" aria-hidden />
+                      {t("select")}
+                    </Button>
+                    <FileButton accept={LOG_FILE_ACCEPT} multiple variant="ghost" disabled={locked} onFiles={addPickedFiles}>
+                      <FilePlus className="size-4" aria-hidden />
+                      {t("pickFiles")}
+                    </FileButton>
+                  </div>
+                }
+              >
+                <p className="text-pretty">{t("hint")}</p>
+              </EmptyNote>
             )}
             <p className="sr-only" role="status">{busy ? t("scanning") : ""}</p>
             {visibleError ? <p className="text-sm text-destructive" role="alert">{visibleError}</p> : null}
@@ -340,22 +342,29 @@ function DirectoryUploadDialog({
                 <AutoUploadFeed />
                 <p className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">
                   {t("auto.tabNote")}{" "}
-                  <button type="button" className="underline underline-offset-2 hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={openSettings}>
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="inline"
+                    className="text-[color:inherit] underline underline-offset-2 hover:text-[color:var(--aqt-fg)]"
+                    onClick={openSettings}
+                  >
                     {t("auto.manage")}
-                  </button>
+                  </Button>
                 </p>
               </>
             ) : (
-              <div className="space-y-3 rounded-lg border border-dashed border-[color:var(--aqt-border-2)] px-4 py-5">
-                <div className="space-y-1">
-                  <p className="text-ui font-semibold text-[color:var(--aqt-fg)]">{t("auto.offTitle")}</p>
-                  <p className="text-caption text-pretty text-[color:var(--aqt-fg-muted)]">{t("auto.offHint")}</p>
-                </div>
-                <Button type="button" variant="outline" onClick={openSettings}>
-                  <Settings className="size-4" aria-hidden />
-                  {t("auto.openSettings")}
-                </Button>
-              </div>
+              <EmptyNote
+                title={t("auto.offTitle")}
+                action={
+                  <Button type="button" variant="outline" onClick={openSettings}>
+                    <Settings className="size-4" aria-hidden />
+                    {t("auto.openSettings")}
+                  </Button>
+                }
+              >
+                <p className="text-pretty">{t("auto.offHint")}</p>
+              </EmptyNote>
             )}
           </TabsContent>
         </Tabs>

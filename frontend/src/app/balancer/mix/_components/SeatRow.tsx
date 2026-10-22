@@ -5,12 +5,12 @@ import { useTranslations } from "next-intl";
 import { AlertCircle, Crown } from "lucide-react";
 
 import { AWAY_CHIP_CLASS } from "@/app/balancer/mix/pickup-chrome";
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
-import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { RankCrest } from "@/components/RankCrest";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
-import { getDivisionLabel, resolveDivisionFromRank } from "@/lib/divisions/grid";
 import { cn } from "@/lib/utils";
 
 import type { MixOwner, PickupSeat } from "../pickup-lineup";
@@ -50,7 +50,6 @@ export function SeatRow({
   const droppable = useDroppable({ id: seat.uuid, data: dragData, disabled: !canDrag });
   const { grid } = owner;
   const slotLabel = useSlotLabel(owner.ontology);
-  const division = resolveDivisionFromRank(grid, seat.rating);
   const isValidTarget =
     activeDrag != null &&
     activeDrag.uuid !== seat.uuid &&
@@ -84,14 +83,7 @@ export function SeatRow({
           <PlayerRoleIcon role={seat.role} ontology={owner.ontology} size={24} decorative />
         </IconTooltip>
       ) : null}
-      {division == null ? null : (
-        <IconTooltip
-          label={getDivisionLabel(grid, division) ?? String(division)}
-          className="shrink-0"
-        >
-          <DivisionIcon division={division} tournamentGrid={grid} width={32} height={32} />
-        </IconTooltip>
-      )}
+      <RankCrest rank={seat.rating} grid={grid} size={32} />
       <span
         className="min-w-0 flex-1 truncate text-base font-semibold text-[color:var(--aqt-fg)]"
         title={seat.name}
@@ -104,14 +96,16 @@ export function SeatRow({
         </IconTooltip>
       ) : onMakeCaptain ? (
         <IconTooltip control label={tRoom("makeCaptain")}>
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             aria-label={tRoom("makeCaptain")}
             onClick={onMakeCaptain}
-            className="flex size-6 shrink-0 items-center justify-center rounded-md text-[color:var(--aqt-fg-faint)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-amber)]"
+            className="shrink-0 text-[color:var(--aqt-fg-faint)] hover:text-[color:var(--aqt-amber)]"
           >
-            <Crown aria-hidden className="size-3.5" />
-          </button>
+            <Crown aria-hidden />
+          </Button>
         </IconTooltip>
       ) : null}
       {away ? <span className={AWAY_CHIP_CLASS}>{tRoom("away")}</span> : null}
@@ -134,11 +128,9 @@ export function SeatDragPreview({ seat, owner }: Readonly<{ seat: PickupSeat; ow
   const slotLabel = useSlotLabel(owner.ontology);
   const tRoom = useTranslations("mixes.room");
   return (
-    <div
-      className={cn(
-        PANEL_CLASS,
-        "flex cursor-grabbing items-center gap-3 rounded-lg border-[color:var(--aqt-teal)] px-3.5 py-3 shadow-lg"
-      )}
+    <Card
+      variant="flat"
+      className="flex cursor-grabbing items-center gap-3 rounded-lg border-[color:var(--aqt-teal)] px-3.5 py-3 shadow-lg"
     >
       {owner.showsRoles ? (
         <span className="flex size-6 shrink-0 items-center justify-center opacity-90">
@@ -155,7 +147,7 @@ export function SeatDragPreview({ seat, owner }: Readonly<{ seat: PickupSeat; ow
         </span>
       ) : null}
       <SeatRating seat={seat} />
-    </div>
+    </Card>
   );
 }
 

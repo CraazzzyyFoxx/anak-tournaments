@@ -6,6 +6,7 @@ import { useFormatter } from "@/lib/datetime/client";
 import { Bookmark, Pin, Save, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import {
   Dialog,
@@ -14,6 +15,7 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
@@ -60,15 +62,15 @@ export function EncountersViewsBar({
     <>
       <section aria-label={t("encounters.aria.views")}>
         <div className={styles.views}>
-          <span className={styles.viewsLabel}>
+          <Eyebrow className="inline-flex shrink-0 items-center gap-1.5 pl-1 pr-1.5">
             <Bookmark aria-hidden className="h-3 w-3" /> {t("encounters.views")}
-          </span>
+          </Eyebrow>
           {BUILT_IN_VIEWS.map((view) => (
-            <button
+            <FilterChip
               key={view.id}
-              type="button"
-              aria-pressed={activeView === view.id}
-              className={cn(styles.viewTab, activeView === view.id && styles.viewTabActive)}
+              active={activeView === view.id}
+              count={countLabel(format, presetCounts[view.id])}
+              className="shrink-0"
               onClick={() => onApplyFilters(applyBuiltInView(view.id, filters))}
             >
               {view.showPin ? (
@@ -81,28 +83,27 @@ export function EncountersViewsBar({
                 />
               ) : null}
               <span>{t(view.labelKey)}</span>
-              <span className={styles.viewCount}>{countLabel(format, presetCounts[view.id])}</span>
-            </button>
+            </FilterChip>
           ))}
           {savedViews.views?.map((view) => (
-            <div key={view.id} className={styles.savedView}>
-              <button
-                type="button"
-                className={cn(styles.viewTab, styles.savedViewMain)}
+            <div key={view.id} className="flex shrink-0 items-center">
+              <Button
+                variant="subtle"
+                size="sm"
                 onClick={() => onApplyFilters(toSavedFilterState(view))}
               >
-                <Bookmark aria-hidden className="h-3 w-3" />
+                <Bookmark aria-hidden />
                 <span>{view.name}</span>
-              </button>
-              <button
-                type="button"
-                className={styles.savedViewDelete}
+              </Button>
+              <Button
+                variant="ghost-destructive"
+                size="icon-sm"
                 aria-label={t("encounters.savedView.deleteAria", { name: view.name })}
                 disabled={savedViews.deletePending}
                 onClick={() => setViewToDelete(view)}
               >
-                <Trash2 aria-hidden className="h-3 w-3" />
-              </button>
+                <Trash2 aria-hidden />
+              </Button>
             </div>
           ))}
           <ConfirmDialog
@@ -124,9 +125,10 @@ export function EncountersViewsBar({
             }}
           />
           <span className={styles.viewsSpacer} />
-          <button
-            type="button"
-            className={styles.viewSave}
+          <Button
+            variant="dashed"
+            size="sm"
+            className="shrink-0"
             onClick={() => {
               if (!savedViews.requireAuth()) return;
               setSaveName(t("encounters.savedView.promptDefault"));
@@ -134,13 +136,9 @@ export function EncountersViewsBar({
             }}
             disabled={savedViews.savePending}
           >
-            {savedViews.savePending ? (
-              <Spinner className="size-3" />
-            ) : (
-              <Save aria-hidden className="h-3 w-3" />
-            )}
+            {savedViews.savePending ? <Spinner /> : <Save aria-hidden />}
             <span>{t("encounters.savedView.saveCurrent")}</span>
-          </button>
+          </Button>
         </div>
       </section>
 

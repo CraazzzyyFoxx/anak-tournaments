@@ -1,5 +1,6 @@
 import { useId, type ReactNode } from "react";
 
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 /** Heading style of one group inside an account-settings tab; exported for the disclosure summary that cannot be a SettingsGroup. */
@@ -44,5 +45,51 @@ export function SettingsGroup({
       </div>
       {children}
     </section>
+  );
+}
+
+/**
+ * One label + hint + switch tile in an account-settings tab. The switch is
+ * named by `${id}-label` and described by `${id}-desc`; `children` (a nested
+ * list of per-item switches) renders under the row inside the same tile.
+ */
+export function SwitchTile({
+  id,
+  label,
+  desc,
+  checked,
+  disabled,
+  onCheckedChange,
+  children
+}: Readonly<{
+  id: string;
+  label: string;
+  desc: ReactNode;
+  checked: boolean;
+  disabled: boolean;
+  onCheckedChange: (next: boolean) => void;
+  children?: ReactNode;
+}>) {
+  return (
+    <div className="rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-3 py-2.5">
+      <div className="flex items-start gap-3">
+        <div className="flex-1 space-y-1">
+          <p id={`${id}-label`} className="text-sm text-[color:var(--aqt-fg)]">
+            {label}
+          </p>
+          <p id={`${id}-desc`} className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">
+            {desc}
+          </p>
+        </div>
+        <Switch
+          checked={checked}
+          disabled={disabled}
+          onCheckedChange={onCheckedChange}
+          aria-labelledby={`${id}-label`}
+          aria-describedby={`${id}-desc`}
+        />
+      </div>
+      {children}
+    </div>
   );
 }

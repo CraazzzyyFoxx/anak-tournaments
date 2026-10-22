@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 
+import { PermissionGate } from "@/components/admin/PermissionGate";
 import { RankHealthDashboard } from "@/components/admin/collectors/rank-health";
 import { RankTaskHistory } from "@/components/admin/collectors/rank-history";
 import { RankSettingsPanel } from "@/components/admin/collectors/rank-settings";
@@ -36,7 +37,7 @@ import { usePermissions } from "@/hooks/usePermissions";
  */
 export default function RankCollectorPage() {
   const t = useTranslations("collectors");
-  const { canAccessPermission, isSuperuser } = usePermissions();
+  const { canAccessPermission, isSuperuser, isLoaded } = usePermissions();
   const canRead = canAccessPermission("rank.read");
   const gameScope = useGameScope({ pageClass: "platform", axis: "all", filter: collectsRanks });
   const discipline = gameScope.game;
@@ -46,34 +47,26 @@ export default function RankCollectorPage() {
     { key: "settings", label: t("views.settings"), hidden: !isSuperuser }
   ]);
 
-  if (!canRead) {
-    return (
-      <PageStateCard
-        state="not-found"
-        title={t("access.title")}
-        description={t("access.rank")}
-      />
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <LinkTabs items={items} activeKey={activeKey} level={2} ariaLabel={t("views.rankAria")} />
-      <GameScopeControl scope={gameScope} variant="single" />
-      {discipline === null ? (
-        gameScope.isError ? (
-          <PageStateCard state="error" onAction={gameScope.refetch} />
-        ) : gameScope.resolution === null ? (
-          <Skeleton className="h-40 w-full rounded-xl" />
-        ) : null
-      ) : activeKey === "settings" ? (
-        <RankSettingsPanel key={discipline} discipline={discipline} />
-      ) : (
-        <>
-          <RankHealthDashboard discipline={discipline} />
-          <RankTaskHistory discipline={discipline} />
-        </>
-      )}
-    </div>
+    <PermissionGate loaded={isLoaded} allowed={canRead} description={t("access.rank")}>
+      <div className="space-y-4">
+        <LinkTabs items={items} activeKey={activeKey} level={2} ariaLabel={t("views.rankAria")} />
+        <GameScopeControl scope={gameScope} variant="single" />
+        {discipline === null ? (
+          gameScope.isError ? (
+            <PageStateCard state="error" onAction={gameScope.refetch} />
+          ) : gameScope.resolution === null ? (
+            <Skeleton className="h-40 w-full rounded-xl" />
+          ) : null
+        ) : activeKey === "settings" ? (
+          <RankSettingsPanel key={discipline} discipline={discipline} />
+        ) : (
+          <>
+            <RankHealthDashboard discipline={discipline} />
+            <RankTaskHistory discipline={discipline} />
+          </>
+        )}
+      </div>
+    </PermissionGate>
   );
 }

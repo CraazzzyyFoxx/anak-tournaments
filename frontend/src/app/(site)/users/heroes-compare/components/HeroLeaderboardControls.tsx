@@ -1,16 +1,11 @@
 "use client";
 
-import { SlidersHorizontal } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { ThresholdPopover } from "@/app/(site)/users/components/shared/ThresholdPopover";
 import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
-import { Button } from "@/components/ui/button";
-import { Eyebrow } from "@/components/ui/eyebrow";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import SearchableImageSelect, { type SearchableImageOption } from "@/components/ui/searchable-image-select";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { GameFilterHint } from "@/components/workspace/GameFilterHint";
-import { cn } from "@/lib/utils";
 
 /** The sample floor's choices in the popover. */
 const MIN_GAMES_OPTIONS = [1, 3, 5, 10, 20] as const;
@@ -49,9 +44,6 @@ interface HeroLeaderboardControlsProps {
   onMinGamesChange: (value: number) => void;
 }
 
-const TRIGGER =
-  "border-[color:var(--aqt-border-2)] bg-[hsl(0_0%_100%/0.025)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]";
-
 /** The header's controls: which game (a hint), which hero (long rosters only), which tournament, who is ranked. */
 const HeroLeaderboardControls = ({
   gameHint,
@@ -89,7 +81,7 @@ const HeroLeaderboardControls = ({
           ariaLabel={t("users.heroesCompare.filters.heroLabel")}
           isLoading={isLoadingHeroes}
           disabled={isLoadingHeroes || isErrorHeroes}
-          triggerClassName={cn(TRIGGER, "sm:w-56")}
+          triggerClassName="sm:w-56"
         />
       ) : null}
 
@@ -100,41 +92,18 @@ const HeroLeaderboardControls = ({
         ariaLabel={t("users.heroesCompare.filters.tournamentScope")}
         isLoading={isLoadingTournaments}
         disabled={isLoadingTournaments || isErrorTournaments}
-        triggerClassName={cn(TRIGGER, "sm:w-56")}
+        triggerClassName="sm:w-56"
       />
 
-      <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="justify-start gap-2 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]"
-          >
-            <SlidersHorizontal aria-hidden className="size-3.5 shrink-0 opacity-70" />
-            {t("users.heroesCompare.filters.minGamesValue", { value: String(minGames) })}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="end" className="w-64 space-y-2">
-          <Eyebrow as="p">{t("users.heroesCompare.filters.minGames")}</Eyebrow>
-          <ToggleGroup
-            type="single"
-            variant="pill"
-            size="sm"
-            value={String(minGames)}
-            onValueChange={(next) => next && onMinGamesChange(Number(next))}
-            aria-label={t("users.heroesCompare.filters.minGames")}
-            className="w-full"
-          >
-            {MIN_GAMES_OPTIONS.map((option) => (
-              <ToggleGroupItem key={option} value={String(option)} className="flex-1">
-                {option}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-          <p className="text-caption text-[color:var(--aqt-fg-dim)]">{t("users.heroesCompare.filters.minGamesHint")}</p>
-        </PopoverContent>
-      </Popover>
+      <ThresholdPopover
+        label={t("users.heroesCompare.filters.minGames")}
+        hint={t("users.heroesCompare.filters.minGamesHint")}
+        triggerLabel={t("users.heroesCompare.filters.minGamesValue", { value: String(minGames) })}
+        value={minGames}
+        options={MIN_GAMES_OPTIONS}
+        onChange={onMinGamesChange}
+        align="end"
+      />
     </div>
   );
 };

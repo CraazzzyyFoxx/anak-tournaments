@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { bracketRoundShape } from "@/lib/bracket/view";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import { useMinuteClock } from "@/hooks/useMinuteClock";
@@ -42,8 +43,7 @@ import {
   type MatchesView
 } from "./tournamentMatches.model";
 
-const HEADING_CLASS =
-  "aqt-tnum mb-1 mt-5 text-label uppercase tracking-[.06em] text-[color:var(--aqt-fg-faint)]";
+const HEADING_CLASS = `${eyebrowClass()} aqt-tnum mb-1 mt-5`;
 
 /** The stage over its rounds. Every round heading used to carry the stage name
  *  glued in front of it ("DOUBLE ELIMINATION · UB Final"); it is said once here

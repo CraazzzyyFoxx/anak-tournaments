@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { usePathname } from "next/navigation";
 
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
+import { AdminTabbedPage } from "@/components/admin/AdminTabbedPage";
+import type { LinkTabItem } from "@/components/kit/LinkTabs";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import {
   accessApiKeysPermissions,
@@ -84,9 +84,7 @@ export default function AccessAdminLayout({ children }: Readonly<{ children: Rea
     ACCESS_TABS.find((tab) => pathname.startsWith(`/admin/access/${tab.key}`))?.key ?? "";
 
   return (
-    <div className="space-y-4">
-      <AdminPageHeader title={t("title")} />
-      <LinkTabs items={items} activeKey={activeKey} level={1} ariaLabel={t("sections")} />
+    <AdminTabbedPage title={t("title")} tabs={items} activeKey={activeKey} ariaLabel={t("sections")}>
       {items.every((item) => item.hidden) ? (
         <PageStateCard
           state="empty"
@@ -96,6 +94,6 @@ export default function AccessAdminLayout({ children }: Readonly<{ children: Rea
       ) : (
         children
       )}
-    </div>
+    </AdminTabbedPage>
   );
 }

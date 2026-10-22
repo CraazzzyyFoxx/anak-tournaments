@@ -5,9 +5,9 @@ import { ListChecks } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { usePermissions } from "@/hooks/usePermissions";
-import { cn } from "@/lib/utils";
 import captainService from "@/services/captain.service";
 import pickBanService from "@/services/pickBan.service";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
@@ -20,13 +20,6 @@ interface PregameRoomLinkProps {
   discipline: string;
   /** Positions of the series not cancelled: an import-only room needs one to file a match for. */
   liveGames: number;
-  /**
-   * Button styling, supplied by the caller. The link used to hardcode a shadcn
-   * `<Button variant="outline">`, which resolves against the shadcn theme
-   * variables and therefore read a shade off — and a size off — next to the
-   * `--aqt-*` controls it sits beside.
-   */
-  className?: string;
 }
 
 /**
@@ -44,8 +37,7 @@ export function PregameRoomLink({
   tournamentId,
   workspaceId,
   discipline,
-  liveGames,
-  className
+  liveGames
 }: Readonly<PregameRoomLinkProps>) {
   const t = useTranslations();
   const { hasWorkspacePermission } = usePermissions();
@@ -82,9 +74,11 @@ export function PregameRoomLink({
   }
 
   return (
-    <Link href={`/tournaments/${tournamentId}/pregame/${encounterId}`} className={cn(className)}>
-      <ListChecks className="h-4 w-4" aria-hidden />
-      {t("encounters.detail.pregameRoom")}
-    </Link>
+    <Button variant="subtle" size="sm" asChild>
+      <Link href={`/tournaments/${tournamentId}/pregame/${encounterId}`}>
+        <ListChecks aria-hidden />
+        {t("encounters.detail.pregameRoom")}
+      </Link>
+    </Button>
   );
 }

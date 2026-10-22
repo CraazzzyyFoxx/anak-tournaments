@@ -7,8 +7,11 @@ import { CircleHelp } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { SelectContent, SelectGroup, SelectItem } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipSelect } from "@/components/ui/tooltip-select";
 import type { SlotProps } from "@/disciplines/types";
@@ -17,7 +20,6 @@ import analyticsService from "@/services/analytics.service";
 
 import { type GlossaryTerm } from "./analytics-glossary";
 import { getPreferredAnalyticsAlgorithmId, sortAnalyticsAlgorithms } from "./analytics.helpers";
-import BottomSheet, { type SheetState } from "./components/BottomSheet";
 import KpiStats, { KpiStatsSkeleton } from "./components/KpiStats";
 import MasterDetail from "./components/MasterDetail";
 import OrganizerTools from "./components/OrganizerTools";
@@ -40,14 +42,61 @@ function AnalyticsBoardSkeleton() {
         <Skeleton className="h-8 w-28 rounded-lg" />
       </div>
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.55fr)_minmax(21rem,1fr)]">
-        <div className="space-y-px overflow-hidden rounded-xl border border-[color:var(--aqt-border)]">
+        <Card className="space-y-px overflow-hidden">
           {Array.from({ length: 8 }).map((_, index) => (
             <Skeleton key={index} className="h-[3.75rem] rounded-none" />
           ))}
-        </div>
+        </Card>
         <Skeleton className="hidden h-[26rem] rounded-xl lg:block" />
       </div>
     </div>
+  );
+}
+
+type SheetState = { kind: "term"; term: GlossaryTerm } | { kind: "how" };
+
+function TermBody({ term }: Readonly<{ term: GlossaryTerm }>) {
+  const t = useTranslations();
+  return (
+    <SheetHeader>
+      <Eyebrow>{t("analytics.sheet.glossaryKicker")}</Eyebrow>
+      <SheetTitle className="text-heading font-semibold">{t(`analytics.glossary.${term}.label`)}</SheetTitle>
+      <SheetDescription className="text-body text-[color:var(--aqt-fg-muted)]">
+        {t(`analytics.glossary.${term}.plain`)}
+      </SheetDescription>
+    </SheetHeader>
+  );
+}
+
+function HowBody() {
+  const t = useTranslations();
+  const steps = [1, 2, 3] as const;
+  return (
+    <>
+      <SheetHeader>
+        <Eyebrow>{t("analytics.howItWorks.kicker")}</Eyebrow>
+        <SheetTitle className="text-heading font-semibold">{t("analytics.howItWorks.title")}</SheetTitle>
+        <SheetDescription className="text-body text-[color:var(--aqt-fg-muted)]">
+          {t("analytics.howItWorks.intro")}
+        </SheetDescription>
+      </SheetHeader>
+      <ol className="mt-4 flex flex-col gap-4">
+        {steps.map((step) => (
+          <li className="grid grid-cols-[1.25rem_minmax(0,1fr)] gap-x-2" key={step}>
+            <span className="aqt-tnum pt-px text-label text-[color:var(--aqt-fg-faint)]">{`0${step}`}</span>
+            <span>
+              <span className="block text-ui font-semibold text-[color:var(--aqt-fg)]">
+                {t(`analytics.howItWorks.step${step}Title`)}
+              </span>
+              <span className="mt-0.5 block text-body text-[color:var(--aqt-fg-muted)]">
+                {t(`analytics.howItWorks.step${step}Body`)}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-4 text-caption text-[color:var(--aqt-fg-dim)]">{t("analytics.howItWorks.foot")}</p>
+    </>
   );
 }
 
@@ -124,7 +173,6 @@ export default function AnalyticsBoard({
   // Glossary / how-it-works explainer sheet, opened by the info dots and the hero's guide action.
   const [sheet, setSheet] = useState<SheetState | null>(null);
   const explain = useCallback((term: GlossaryTerm) => setSheet({ kind: "term", term }), []);
-  const closeSheet = useCallback(() => setSheet(null), []);
 
   const [standingsMode, setStandingsMode] = useState<StandingsMode>("standings");
 
@@ -259,7 +307,18 @@ export default function AnalyticsBoard({
       })}
       {canUpdate ? <OrganizerTools tournamentId={tournamentId} workspaceId={workspaceId} /> : null}
       {renderBody()}
-      <BottomSheet state={sheet} onClose={closeSheet} />
+      {/* Glossary / how-it-works explainer, a bottom drawer; it only mounts while open (Radix portal). */}
+      <Sheet
+        open={sheet != null}
+        onOpenChange={(open) => {
+          if (!open) setSheet(null);
+        }}
+      >
+        <SheetContent side="bottom" className="mx-auto max-h-[85vh] max-w-lg overflow-y-auto">
+          {sheet?.kind === "term" ? <TermBody term={sheet.term} /> : null}
+          {sheet?.kind === "how" ? <HowBody /> : null}
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

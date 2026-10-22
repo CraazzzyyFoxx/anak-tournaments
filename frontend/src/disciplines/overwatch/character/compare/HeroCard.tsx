@@ -6,11 +6,13 @@ import { useTranslations } from "next-intl";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { Card } from "@/components/ui/card";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { useRoleName } from "@/hooks/useRoleName";
 import { characterClass } from "@/lib/catalog/attrs";
 import { useFormatter } from "@/lib/datetime/client";
 import { findRole, ratedDimension } from "@/lib/roster/ontology";
-import { cn } from "@/lib/utils";
+import { tint } from "@/lib/colors";
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { CharacterLeaderboardEntry } from "@/types/statistics.types";
@@ -72,12 +74,12 @@ export default function HeroCard({
     : undefined;
 
   return (
-    <section className="relative flex flex-col gap-5 overflow-hidden rounded-[var(--aqt-radius)] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-5">
+    <Card variant="flat" asChild><section className="relative flex flex-col gap-5 overflow-hidden p-5">
       {/* The character's own catalog colour, as a soft light from the corner: data colour, not a UI accent. */}
       <span
         aria-hidden
         className="pointer-events-none absolute inset-0"
-        style={{ background: `radial-gradient(ellipse at 0% 0%, color-mix(in srgb, ${heroColor} 16%, transparent), transparent 55%)` }}
+        style={{ background: `radial-gradient(ellipse at 0% 0%, ${tint(heroColor, 16)}, transparent 55%)` }}
       />
       <div className="relative flex items-center gap-4">
         <CatalogEntityImage entity={character} size={84} rounded="lg" decorative className="rounded-xl" />
@@ -129,24 +131,13 @@ export default function HeroCard({
           {columnKeys.map((key, i) => {
             const active = i === sortIndex;
             return (
-              <button
-                key={`${key}-${i}`}
-                type="button"
-                aria-pressed={active}
-                onClick={() => onSortChange(i)}
-                className={cn(
-                  "h-8 shrink-0 rounded-lg border px-3 text-caption font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
-                  active
-                    ? "border-[color:color-mix(in_srgb,var(--aqt-teal)_50%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_13%,transparent)] text-[color:var(--aqt-teal)]"
-                    : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
-                )}
-              >
+              <FilterChip key={`${key}-${i}`} active={active} onClick={() => onSortChange(i)} className="shrink-0">
                 {t(COL[key].labelKey)}
-              </button>
+              </FilterChip>
             );
           })}
         </div>
       </div>
-    </section>
+    </section></Card>
   );
 }

@@ -3,6 +3,7 @@
 import { RotateCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
 import { loadMatchUI } from "@/disciplines/registry/match";
@@ -23,8 +24,10 @@ export default function MatchRowBadge({ match }: Readonly<{ match: MatchWithUser
   if (metadata.isPending) return <Skeleton aria-hidden className="h-4 w-6 rounded" />;
   if (metadata.isError) {
     return (
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon-xs"
         title={t("matches.native.badgeError")}
         aria-label={`${t("matches.native.badgeError")} ${t("common.retry")}`}
         disabled={metadata.isFetching}
@@ -33,10 +36,10 @@ export default function MatchRowBadge({ match }: Readonly<{ match: MatchWithUser
           event.stopPropagation();
           void metadata.refetch();
         }}
-        className="inline-flex h-5 w-5 items-center justify-center rounded text-[color:var(--aqt-rose)] hover:bg-[color:var(--aqt-overlay-2)] disabled:opacity-50"
+        className="text-[color:var(--aqt-rose)] hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-rose)]"
       >
-        <RotateCw aria-hidden className="h-3 w-3" />
-      </button>
+        <RotateCw aria-hidden />
+      </Button>
     );
   }
   return (

@@ -2,9 +2,9 @@
 
 import { useTranslations } from "next-intl";
 
+import { useLiveMinutes } from "@/app/balancer/mix/_hooks/useLiveMinutes";
 import { CAPTION_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import { StatusDot } from "@/components/ui/status-dot";
-import { useMinuteClock } from "@/hooks/useMinuteClock";
 import { cn } from "@/lib/utils";
 import type { MixLobbyState } from "@/services/custom-game.service";
 
@@ -17,12 +17,8 @@ const STEPS: readonly MixLobbyState[] = ["idle", "ready", "live"];
  */
 export function RoomStepper({ state, startedAt }: Readonly<{ state: MixLobbyState; startedAt: string | null }>) {
   const t = useTranslations("mixes.room");
-  const now = useMinuteClock();
   const current = STEPS.indexOf(state);
-  const minutes =
-    state === "live" && startedAt != null && now != null
-      ? Math.max(0, Math.floor((now - Date.parse(startedAt)) / 60_000))
-      : null;
+  const minutes = useLiveMinutes(state, startedAt);
   return (
     <ol aria-label={t("steps")} className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
       {STEPS.map((step, index) => (

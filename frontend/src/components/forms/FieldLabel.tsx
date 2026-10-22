@@ -31,7 +31,7 @@ export default function FieldLabel({
   htmlFor,
   required = false,
   icon,
-  className,
+  className
 }: Readonly<FieldLabelProps>) {
   const t = useTranslations();
   const content = (

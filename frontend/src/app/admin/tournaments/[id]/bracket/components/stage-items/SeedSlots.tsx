@@ -7,6 +7,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { StageItem, StageItemInput } from "@/types/tournament.types";
 import type { InputDisplayLabelInfo } from "@/lib/bracket/projection";
@@ -94,17 +95,19 @@ export function SeedSlotRow({
       )}
     >
       {input.team_id != null ? (
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-xs"
           ref={setActivatorNodeRef}
           {...attributes}
           {...listeners}
           disabled={dragDisabled}
           aria-label={t("drag", { label })}
-          className="shrink-0 cursor-grab rounded p-1 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 active:cursor-grabbing"
+          className="shrink-0 cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
         >
-          <GripVertical className="size-3.5" aria-hidden />
-        </button>
+          <GripVertical aria-hidden />
+        </Button>
       ) : null}
       <span className="min-w-0 flex-1 truncate">
         #{position + 1} {label}

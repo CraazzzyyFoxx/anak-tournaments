@@ -5,18 +5,10 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { encounterScopeLabel } from "@/components/admin/encounters/EncounterCells";
+import { EntityFormDialog } from "@/components/kit/EntityFormDialog";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
 import SearchableImageSelect from "@/components/ui/searchable-image-select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Spinner } from "@/components/ui/spinner";
 import { useBracketRoundLabel, type BracketRoundLabelFormatter } from "@/hooks/useBracketRoundLabel";
 import { UNKNOWN_ROUND_SHAPE } from "@/lib/bracket/round-name";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
@@ -135,176 +127,172 @@ export function AttachLogDialog({
     !isPending &&
     (!bindMode || (mapComplete && revision != null && !observation?.is_historical));
 
+  const submitLabel = bindMode ? tx("bind") : t("attach");
+
   return (
-    <Dialog
+    <EntityFormDialog
       open
       onOpenChange={(open) => {
         if (open) return;
         onClose();
       }}
+      title={bindMode ? tx("bindTitle") : t("attachTitle")}
+      description={
+        bindMode
+          ? tx("bindDescription", { filename: getLogFileName(record.filename) })
+          : t("attachDescriptionWithFile", { filename: getLogFileName(record.filename) })
+      }
+      onSubmit={() => {
+        if (encounterId === undefined || !selectedGame) return;
+        if (!bindMode) return onAttach(encounterId, selectedGame.id);
+        onBind({
+          encounter_game_id: selectedGame.id,
+          teams: Object.fromEntries(record.teams.map((team) => [team.key, Number(teamMap.get(team.key))])),
+          expected_revision: revision ?? 0
+        });
+      }}
+      submitLabel={submitLabel}
+      submittingLabel={submitLabel}
+      isSubmitting={isPending}
+      submitDisabled={!canSubmit}
+      contentClassName="sm:max-w-lg"
     >
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{bindMode ? tx("bindTitle") : t("attachTitle")}</DialogTitle>
-          <DialogDescription className="break-all">
-            {bindMode
-              ? tx("bindDescription", { filename: getLogFileName(record.filename) })
-              : t("attachDescriptionWithFile", { filename: getLogFileName(record.filename) })}
-          </DialogDescription>
-        </DialogHeader>
-        {pickTournament ? (
-          <SearchableImageSelect
-            value={tournamentValue}
-            onValueChange={(next) => {
-              setTournamentValue(next);
-              setValue(undefined);
-              setGameId(undefined);
-              setTeamMap(new Map());
-            }}
-            disabled={isPending}
-            ariaLabel={tx("pickTournament")}
-            options={(tournamentsQuery.data?.results ?? []).map((tournament) => ({
-              value: String(tournament.id),
-              label: tournament.name
-            }))}
-            placeholder={tx("pickTournament")}
-            searchPlaceholder={tx("searchTournament")}
-            variant="default"
-            size="default"
-          />
-        ) : null}
+      {pickTournament ? (
         <SearchableImageSelect
-          value={value}
+          value={tournamentValue}
           onValueChange={(next) => {
-            setValue(next);
+            setTournamentValue(next);
+            setValue(undefined);
             setGameId(undefined);
             setTeamMap(new Map());
           }}
-          disabled={isPending || (pickTournament && tournamentId === undefined)}
-          ariaLabel={t("pickEncounter")}
-          options={encounterOptions.map((encounter) => ({
-            value: String(encounter.id),
-            label: encounterOptionLabel(encounter, formatRound)
+          disabled={isPending}
+          ariaLabel={tx("pickTournament")}
+          options={(tournamentsQuery.data?.results ?? []).map((tournament) => ({
+            value: String(tournament.id),
+            label: tournament.name
           }))}
-          placeholder={t("pickEncounter")}
-          searchPlaceholder={t("searchEncounter")}
+          placeholder={tx("pickTournament")}
+          searchPlaceholder={tx("searchTournament")}
           variant="default"
           size="default"
         />
-        <SearchableImageSelect
-          value={selectedGame ? String(selectedGame.id) : undefined}
-          onValueChange={(next) => {
-            setGameId(next);
-            setTeamMap(new Map());
-          }}
-          options={games.map((game) => ({
-            value: String(game.id),
-            label: t("gameOption", {
-              position: game.position,
-              map: mapWithModeName(game.map, game.mode) ?? t("unknownMap"),
-              id: game.id
-            })
-          }))}
-          placeholder={t("pickGame")}
-          ariaLabel={t("pickGame")}
-          searchPlaceholder={t("searchGame")}
-          disabled={encounterId === undefined || gamesQuery.isFetching || gamesQuery.isError || isPending}
-          variant="default"
-          size="default"
-        />
-        {encounterId !== undefined && loading ? (
-          <div role="status">
-            <span className="sr-only">{t("loadingGames")}</span>
-            <Skeleton aria-hidden className="h-4 w-32" />
-          </div>
-        ) : loadFailed ? (
-          <div role="alert" className="space-y-2 text-sm text-danger">
-            <p>{t("gamesLoadFailed")}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (pickTournament) {
-                  void tournamentsQuery.refetch();
-                  if (tournamentId !== undefined) void encountersQuery.refetch();
-                }
-                if (encounterId !== undefined) void gamesQuery.refetch();
-                if (bindMode && selectedGame) void observationQuery.refetch();
-              }}
-            >
-              {t("reloadGames")}
-            </Button>
-          </div>
-        ) : encounterId !== undefined && gamesQuery.isSuccess && games.length === 0 ? (
-          <p role="status" className="text-sm text-muted-foreground">{t("noGames")}</p>
-        ) : null}
-        {bindMode && selectedGame && !loading && !loadFailed ? (
-          <fieldset className="space-y-2" disabled={isPending}>
-            <legend className="mb-1 text-sm font-medium">{tx("teamMap")}</legend>
-            {mapSeatMismatch ? (
-              <p role="alert" className="text-sm text-danger">
-                {tx("seatMismatch", { seats: seats.length, teams: record.teams.length })}
-              </p>
-            ) : (
-              record.teams.map((team) => (
-                <div key={team.key} className="space-y-1">
-                  <p className="text-xs text-muted-foreground">
-                    {tx("logTeam", { position: team.source_position, key: team.key })}
-                    {team.participants.length > 0 ? ` · ${team.participants.join(", ")}` : ""}
-                  </p>
-                  <SearchableImageSelect
-                    value={teamMap.get(team.key)}
-                    onValueChange={(next) =>
-                      setTeamMap((current) => {
-                        const map = new Map(current);
-                        if (next) map.set(team.key, next);
-                        else map.delete(team.key);
-                        return map;
-                      })
-                    }
-                    // A seat already given to another log team is not offered twice.
-                    options={seats
-                      .filter((seat) => String(seat) === teamMap.get(team.key) || !picked.includes(String(seat)))
-                      .map((seat) => ({
-                        value: String(seat),
-                        label: teamNames.get(seat) ?? `#${seat}`
-                      }))}
-                    placeholder={tx("pickSeat")}
-                    ariaLabel={tx("seatFor", { team: team.key })}
-                    searchPlaceholder={tx("searchSeat")}
-                    variant="default"
-                    size="default"
-                  />
-                </div>
-              ))
-            )}
-            {observation?.is_historical ? (
-              <p role="alert" className="text-sm text-danger">{tx("historicalObservation")}</p>
-            ) : revision ? (
-              <p role="status" className="text-xs text-muted-foreground">
-                {tx("willReplace", { revision })}
-              </p>
-            ) : null}
-          </fieldset>
-        ) : null}
-        <DialogFooter>
+      ) : null}
+      <SearchableImageSelect
+        value={value}
+        onValueChange={(next) => {
+          setValue(next);
+          setGameId(undefined);
+          setTeamMap(new Map());
+        }}
+        disabled={isPending || (pickTournament && tournamentId === undefined)}
+        ariaLabel={t("pickEncounter")}
+        options={encounterOptions.map((encounter) => ({
+          value: String(encounter.id),
+          label: encounterOptionLabel(encounter, formatRound)
+        }))}
+        placeholder={t("pickEncounter")}
+        searchPlaceholder={t("searchEncounter")}
+        variant="default"
+        size="default"
+      />
+      <SearchableImageSelect
+        value={selectedGame ? String(selectedGame.id) : undefined}
+        onValueChange={(next) => {
+          setGameId(next);
+          setTeamMap(new Map());
+        }}
+        options={games.map((game) => ({
+          value: String(game.id),
+          label: t("gameOption", {
+            position: game.position,
+            map: mapWithModeName(game.map, game.mode) ?? t("unknownMap"),
+            id: game.id
+          })
+        }))}
+        placeholder={t("pickGame")}
+        ariaLabel={t("pickGame")}
+        searchPlaceholder={t("searchGame")}
+        disabled={encounterId === undefined || gamesQuery.isFetching || gamesQuery.isError || isPending}
+        variant="default"
+        size="default"
+      />
+      {encounterId !== undefined && loading ? (
+        <div role="status">
+          <span className="sr-only">{t("loadingGames")}</span>
+          <Skeleton aria-hidden className="h-4 w-32" />
+        </div>
+      ) : loadFailed ? (
+        <div role="alert" className="space-y-2 text-sm text-danger">
+          <p>{t("gamesLoadFailed")}</p>
           <Button
-            disabled={!canSubmit}
+            type="button"
+            variant="outline"
+            size="sm"
             onClick={() => {
-              if (encounterId === undefined || !selectedGame) return;
-              if (!bindMode) return onAttach(encounterId, selectedGame.id);
-              onBind({
-                encounter_game_id: selectedGame.id,
-                teams: Object.fromEntries(record.teams.map((team) => [team.key, Number(teamMap.get(team.key))])),
-                expected_revision: revision ?? 0
-              });
+              if (pickTournament) {
+                void tournamentsQuery.refetch();
+                if (tournamentId !== undefined) void encountersQuery.refetch();
+              }
+              if (encounterId !== undefined) void gamesQuery.refetch();
+              if (bindMode && selectedGame) void observationQuery.refetch();
             }}
           >
-            {isPending ? <Spinner /> : null}
-            {bindMode ? tx("bind") : t("attach")}
+            {t("reloadGames")}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      ) : encounterId !== undefined && gamesQuery.isSuccess && games.length === 0 ? (
+        <p role="status" className="text-sm text-muted-foreground">{t("noGames")}</p>
+      ) : null}
+      {bindMode && selectedGame && !loading && !loadFailed ? (
+        <fieldset className="space-y-2" disabled={isPending}>
+          <legend className="mb-1 text-sm font-medium">{tx("teamMap")}</legend>
+          {mapSeatMismatch ? (
+            <p role="alert" className="text-sm text-danger">
+              {tx("seatMismatch", { seats: seats.length, teams: record.teams.length })}
+            </p>
+          ) : (
+            record.teams.map((team) => (
+              <div key={team.key} className="space-y-1">
+                <p className="text-xs text-muted-foreground">
+                  {tx("logTeam", { position: team.source_position, key: team.key })}
+                  {team.participants.length > 0 ? ` · ${team.participants.join(", ")}` : ""}
+                </p>
+                <SearchableImageSelect
+                  value={teamMap.get(team.key)}
+                  onValueChange={(next) =>
+                    setTeamMap((current) => {
+                      const map = new Map(current);
+                      if (next) map.set(team.key, next);
+                      else map.delete(team.key);
+                      return map;
+                    })
+                  }
+                  // A seat already given to another log team is not offered twice.
+                  options={seats
+                    .filter((seat) => String(seat) === teamMap.get(team.key) || !picked.includes(String(seat)))
+                    .map((seat) => ({
+                      value: String(seat),
+                      label: teamNames.get(seat) ?? `#${seat}`
+                    }))}
+                  placeholder={tx("pickSeat")}
+                  ariaLabel={tx("seatFor", { team: team.key })}
+                  searchPlaceholder={tx("searchSeat")}
+                  variant="default"
+                  size="default"
+                />
+              </div>
+            ))
+          )}
+          {observation?.is_historical ? (
+            <p role="alert" className="text-sm text-danger">{tx("historicalObservation")}</p>
+          ) : revision ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              {tx("willReplace", { revision })}
+            </p>
+          ) : null}
+        </fieldset>
+      ) : null}
+    </EntityFormDialog>
   );
 }

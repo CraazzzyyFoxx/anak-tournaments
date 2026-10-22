@@ -3,11 +3,11 @@
 import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import DivisionIcon from "@/components/DivisionIcon";
 import { cn } from "@/lib/utils";
 import type { PlayerAnalytics } from "@/types/analytics.types";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
-import DivisionMark from "./DivisionMark";
 import { moveTone } from "./DeltaText";
 
 interface MoveMarkProps {
@@ -43,7 +43,7 @@ export default function MoveMark({ direction, target, tournamentGrid, withWord =
     >
       <Icon aria-hidden className="size-3.5" />
       <span className={withWord ? undefined : "sr-only"}>{word}</span>
-      <DivisionMark division={target} tournamentGrid={tournamentGrid} size={22} />
+      <DivisionIcon division={target} tournamentGrid={tournamentGrid} width={22} height={22} tooltip />
     </span>
   );
 }

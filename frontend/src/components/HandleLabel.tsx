@@ -25,7 +25,11 @@ export function HandleLabel({
   return (
     <span title={title} className={cn("min-w-0 truncate", className)}>
       <bdi>{name}</bdi>
-      {suffix ? <span className={cn("font-normal text-[color:var(--aqt-fg-faint)]", tagClassName)}>{suffix}</span> : null}
+      {suffix ? (
+        <span className={cn("font-normal text-[color:var(--aqt-fg-faint)]", tagClassName)}>
+          {suffix}
+        </span>
+      ) : null}
     </span>
   );
 }

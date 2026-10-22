@@ -2,7 +2,7 @@ import { useTranslations } from "next-intl";
 import { getTranslations } from "next-intl/server";
 
 import { HeroStat } from "@/components/site/PageHero";
-import { EmptyNote, LoadError } from "@/components/site/open-layout";
+import { OpenEmptyRow, OpenLoadError } from "@/components/site/open-layout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFormatter } from "@/lib/datetime/server";
 import { isTenantHost } from "@/lib/site/tenant-host";
@@ -29,8 +29,8 @@ export async function OverallFigures() {
     statisticsService.getOverallStatistics({ skipWorkspace }).catch(() => null)
   ]);
 
-  if (overall === null) return <LoadError what={t("what")} />;
-  if (overall.tournaments === 0) return <EmptyNote>{t("empty")}</EmptyNote>;
+  if (overall === null) return <OpenLoadError what={t("what")} />;
+  if (overall.tournaments === 0) return <OpenEmptyRow>{t("empty")}</OpenEmptyRow>;
 
   return (
     <div className={GRID_CLASS}>

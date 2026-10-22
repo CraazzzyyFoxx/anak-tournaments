@@ -3,7 +3,7 @@ import { useTranslations } from "next-intl";
 import { getTranslations } from "next-intl/server";
 import { ImageOff } from "lucide-react";
 
-import { EmptyNote, LoadError, Section, SectionHead } from "@/components/site/open-layout";
+import { OpenEmptyRow, OpenLoadError, Section, SectionHead } from "@/components/site/open-layout";
 import { TournamentTeamCardFrame } from "@/components/TournamentTeamCard";
 import Image from "@/components/ui/image";
 import { eyebrowClass } from "@/components/ui/eyebrow";
@@ -42,14 +42,14 @@ export async function MapsSection({ discipline }: Readonly<{ discipline: string 
   if (data === null) {
     return (
       <Shell>
-        <LoadError what={t("what")} dashed />
+        <OpenLoadError what={t("what")} dashed />
       </Shell>
     );
   }
   if (data.total_games === 0) {
     return (
       <Shell>
-        <EmptyNote>{t("empty")}</EmptyNote>
+        <OpenEmptyRow>{t("empty")}</OpenEmptyRow>
       </Shell>
     );
   }

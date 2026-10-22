@@ -3,12 +3,7 @@
 import Link from "next/link";
 import Image from "@/components/ui/image";
 import type { ReactNode } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogTitle
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -29,8 +24,9 @@ const ProviderButton = ({ href, title, icon }: ProviderButtonProps) => {
   return (
     <Button
       asChild
-      variant="outline"
-      className="h-10 w-full justify-start gap-3 rounded-lg border-border/70 bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)] transition-all duration-150 hover:border-border hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+      variant="subtle"
+      size="lg"
+      className="w-full justify-start gap-3 rounded-lg px-4 text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
     >
       {/* Plain <a>, NEVER next/link: /auth/{provider}/login is a GET route
           handler with side effects — every execution mints a fresh OAuth state
@@ -39,10 +35,8 @@ const ProviderButton = ({ href, title, icon }: ProviderButtonProps) => {
           responses race the click's Set-Cookie and desync the cookie from the
           state carried to the provider, failing the callback's CSRF binding. */}
       <a href={href}>
-        <div className="flex h-4 w-4 shrink-0 items-center justify-center">
-          {icon}
-        </div>
-        <span className="text-caption font-medium">{title}</span>
+        <div className="flex h-4 w-4 shrink-0 items-center justify-center">{icon}</div>
+        <span>{title}</span>
       </a>
     </Button>
   );

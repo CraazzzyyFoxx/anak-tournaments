@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -141,13 +142,15 @@ export function PickBanStepTimeline({
             <TooltipProvider delayDuration={150}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button
+                  <Button
                     type="button"
-                    className="inline-flex text-[color:var(--aqt-fg-faint)] outline-none hover:text-[color:var(--aqt-teal)] focus-visible:text-[color:var(--aqt-teal)]"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-[color:var(--aqt-fg-faint)] hover:bg-transparent hover:text-[color:var(--aqt-teal)] focus-visible:text-[color:var(--aqt-teal)]"
                     aria-label={t("steps.deciderHint")}
                   >
-                    <Info className="h-3.5 w-3.5" aria-hidden />
-                  </button>
+                    <Info aria-hidden />
+                  </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-[16rem] text-xs">
                   {t("steps.deciderHint")}

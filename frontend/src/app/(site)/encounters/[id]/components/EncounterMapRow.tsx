@@ -15,7 +15,9 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import MatchLogIndicator, { RawLogStatus } from "@/components/match/MatchLogIndicator";
 import MatchStatistics from "@/components/match/MatchStatistics";
 import encounterService from "@/services/encounter.service";
@@ -197,12 +199,15 @@ export default function EncounterMapRow({
         <Dialog open={open} onOpenChange={setOpen}>
           {/* Every row's button reads "Scoreboard", so the accessible name has
               to carry the map — otherwise a Bo5 offers five identical buttons. */}
-          <DialogTrigger
-            className={cn(styles.button, styles.buttonAccent)}
-            aria-label={t("encounters.match.openStats", { map: mapName })}
-          >
-            <BarChart3 aria-hidden width={14} height={14} />
-            <span className={styles.mapActionLabel}>{t("encounters.detail.openScoreboard")}</span>
+          <DialogTrigger asChild>
+            <Button
+              variant="accent"
+              size="sm"
+              aria-label={t("encounters.match.openStats", { map: mapName })}
+            >
+              <BarChart3 aria-hidden />
+              <span className={styles.mapActionLabel}>{t("encounters.detail.openScoreboard")}</span>
+            </Button>
           </DialogTrigger>
           <DialogContent className="flex max-h-[90vh] w-[95vw] max-w-[1100px] flex-col gap-0 overflow-hidden p-0">
             <DialogHeader className={cn(styles.dialogHead, "space-y-0")}>
@@ -282,7 +287,7 @@ export default function EncounterMapRow({
               ) : (
                 <div className="flex flex-col gap-2" aria-busy>
                   {Array.from({ length: 8 }).map((_, index) => (
-                    <span key={index} className={cn(styles.skeleton, "h-10 w-full")} />
+                    <Skeleton key={index} className="h-10 w-full" />
                   ))}
                 </div>
               )}

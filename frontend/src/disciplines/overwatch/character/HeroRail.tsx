@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { SearchField } from "@/components/ui/search-field";
+import { RowButton } from "@/components/ui/row-button";
 
 export interface HeroRow {
   id: number;
@@ -144,13 +145,14 @@ const HeroRail = ({ rows, selectedId, onSelect, metadata }: Props) => {
         {visible.map((r) => {
           const active = r.id === selectedId;
           return (
-            <button
+            <RowButton
               key={r.id}
-              type="button"
+              aria-current={active || undefined}
               onClick={() => onSelect(r.id)}
               className={cn(
-                "grid w-full grid-cols-[36px_1fr_auto] items-center gap-2.5 border-b border-[color:var(--aqt-border)] px-3 py-2.5 text-left transition-colors hover:bg-[hsl(0_0%_100%/0.025)]",
-                active && "border-l-2 border-l-[color:var(--aqt-teal)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_8%,transparent)] pl-[10px]"
+                "grid grid-cols-[36px_1fr_auto] items-center gap-2.5 border-b border-[color:var(--aqt-border)] px-3 py-2.5",
+                active &&
+                  "border-l-2 border-l-[color:var(--aqt-teal)] pl-[10px] aria-[current=true]:bg-[color:color-mix(in_srgb,var(--aqt-teal)_8%,transparent)]"
               )}
             >
               <CatalogEntityImage entity={r.hero} size="md" />
@@ -183,7 +185,7 @@ const HeroRail = ({ rows, selectedId, onSelect, metadata }: Props) => {
               <span className="aqt-tnum text-right text-body font-bold text-[color:var(--aqt-fg)]">
                 {metricValue(format, sort, r)}
               </span>
-            </button>
+            </RowButton>
           );
         })}
         {visible.length === 0 ? (

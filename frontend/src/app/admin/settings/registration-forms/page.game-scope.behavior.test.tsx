@@ -142,6 +142,15 @@ function buttonNamed(text: string): HTMLElement {
   return found;
 }
 
+/** A row of the template list: under all games it reads as its game mark, then its name. */
+function templateRow(name: string): HTMLElement {
+  const found = [...container.querySelectorAll<HTMLElement>("nav button")].find((element) =>
+    element.textContent?.endsWith(name)
+  );
+  if (!found) throw new Error(`no template row "${name}"`);
+  return found;
+}
+
 /** Types a name into "New template" and adds it; resolves to what was created: name, game, question keys. */
 async function createNamed(text: string) {
   const input = container.querySelector<HTMLInputElement>(`input[aria-label="${en.adminSettings.registrationForms.newTemplateName}"]`);
@@ -191,7 +200,7 @@ it("lists every game's templates with a mark each under all games", async () => 
 it("reads a selected template's roles in its own game", async () => {
   await mount();
 
-  await act(async () => buttonNamed("Rift cup").click());
+  await act(async () => templateRow("Rift cup").click());
   await settle();
 
   expect(getPlayerSubRoles).toHaveBeenLastCalledWith({ workspace_id: 1, discipline: "lol" }, expect.anything());

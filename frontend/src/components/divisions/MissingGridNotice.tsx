@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+
 /**
  * The state behind a missing-grid refusal: an organizer gets the way out (create or select a grid of
  * THIS game in THIS workspace, with the game preselected); anyone else gets a plain message — never a link
@@ -18,24 +21,23 @@ export function MissingGridNotice({
   const t = useTranslations("common.discipline");
   if (acrossCommunities) {
     return (
-      <div role="alert" className="rounded-xl border border-border bg-card p-3 text-sm">
+      <Card variant="flat" role="alert" className="p-3 text-sm">
         <p className="text-muted-foreground">{t("gridMissingAcross", { game: gameName })}</p>
-      </div>
+      </Card>
     );
   }
   return (
-    <div role="alert" className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3 text-sm">
+    <Card variant="flat" role="alert" className="flex flex-col gap-2 p-3 text-sm">
       <p className="text-muted-foreground">{t("gridMissing")}</p>
       {canManage ? (
-        <Link
-          className="self-start font-medium text-primary underline-offset-4 hover:underline"
-          href={`/admin/settings/divisions?discipline=${encodeURIComponent(discipline)}`}
-        >
-          {t("gridMissingAction", { game: gameName })}
-        </Link>
+        <Button asChild variant="link" size="inline" className="self-start whitespace-normal">
+          <Link href={`/admin/settings/divisions?discipline=${encodeURIComponent(discipline)}`}>
+            {t("gridMissingAction", { game: gameName })}
+          </Link>
+        </Button>
       ) : (
         <p>{t("gridMissingOrganizer", { game: gameName })}</p>
       )}
-    </div>
+    </Card>
   );
 }

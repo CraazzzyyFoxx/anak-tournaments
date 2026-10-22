@@ -66,8 +66,6 @@ interface PickIslandProps {
   onPicked: () => void;
 }
 
-const ICON_BUTTON =
-  "flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] outline-hidden hover:bg-[color:var(--aqt-overlay-3)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]";
 const VIEW_PANEL =
   "mt-0 ring-offset-0 focus-visible:ring-inset focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-0";
 
@@ -237,26 +235,30 @@ export function PickIsland(props: Readonly<PickIslandProps>) {
             </ToggleGroup>
           )}
           {queue && available && (
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
               aria-pressed={queued}
               aria-label={queued ? t("island.queue.remove") : t("island.queue.add")}
               title={queued ? t("island.queue.remove") : t("island.queue.add")}
               onClick={() => queue.toggle(player.id)}
-              className={ICON_BUTTON}
+              className="shrink-0"
               style={{ color: queued ? "var(--aqt-teal)" : "var(--aqt-fg-muted)" }}
             >
-              <Heart className="h-5 w-5" fill={queued ? "currentColor" : "none"} aria-hidden />
-            </button>
+              <Heart fill={queued ? "currentColor" : "none"} aria-hidden />
+            </Button>
           )}
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={onClose}
             aria-label={t("island.close")}
-            className={cn(ICON_BUTTON, "text-[color:var(--aqt-fg-muted)]")}
+            className="shrink-0 text-[color:var(--aqt-fg-muted)]"
           >
-            <X className="h-[18px] w-[18px]" aria-hidden />
-          </button>
+            <X aria-hidden />
+          </Button>
         </div>
 
         <Tabs

@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import StatusMetaBadge from "@/components/status/StatusMetaBadge";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
+import { ColorSwatch } from "@/components/ui/color-swatch";
 import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
@@ -88,8 +89,8 @@ function StatusColorPicker({
   const [open, setOpen] = useState(false);
   const triggerId = useId();
   const hexId = useId();
-  // `<input type="color">` and the swatch preview both need a literal hex; the
-  // DOM API cannot take a CSS variable. Data-shaped, not chrome — exempt.
+  // The swatch previews need a literal hex; the DOM API cannot take a CSS
+  // variable. Data-shaped, not chrome — exempt.
   const normalizedValue = normalizeHexColor(value) || "#94a3b8";
 
   return (
@@ -133,13 +134,12 @@ function StatusColorPicker({
               {STATUS_COLOR_PRESETS.map((color) => {
                 const selected = normalizeHexColor(value).toLowerCase() === color.toLowerCase();
                 return (
-                  <button
+                  <Button
                     key={color}
                     type="button"
-                    className={cn(
-                      "h-8 w-8 shrink-0 rounded-md border border-border transition hover:border-[color:var(--aqt-border-3)]",
-                      selected && "ring-2 ring-ring ring-offset-2 ring-offset-background"
-                    )}
+                    variant="outline"
+                    size="icon"
+                    className={cn(selected && "ring-2 ring-ring ring-offset-2 ring-offset-background")}
                     style={{ backgroundColor: color }}
                     onClick={() => onChange(color)}
                     aria-pressed={selected}
@@ -153,15 +153,12 @@ function StatusColorPicker({
           <div className="space-y-2">
             <p className={eyebrowClass("muted")}>{t("custom")}</p>
             <div className="flex items-center gap-2">
-              <span className="flex h-10 w-12 items-center justify-center rounded-md border border-input bg-background">
-                <input
-                  type="color"
-                  className="size-6 cursor-pointer rounded-md border border-border bg-transparent p-0"
-                  aria-label={t("pickCustom")}
-                  value={normalizedValue}
-                  onChange={(event) => onChange(event.target.value)}
-                />
-              </span>
+              <ColorSwatch
+                value={normalizeHexColor(value)}
+                fallback={normalizedValue}
+                label={t("pickCustom")}
+                onChange={onChange}
+              />
               <Label htmlFor={hexId} className="sr-only">
                 {t("hexCode")}
               </Label>

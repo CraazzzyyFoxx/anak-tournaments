@@ -12,10 +12,10 @@ import {
 } from "@/app/balancer/mix/pickup-chrome";
 import { teamNamesByIndex } from "@/app/balancer/mix/pickup-lineup";
 import { busyVoices, voiceBlocker, voicePatch, type BusyVoice } from "@/app/balancer/mix/pickup-voice";
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -268,7 +268,8 @@ export function PickupVoicePanel({
   const reportAt = report == null ? undefined : multi ? (reportLobby ?? null) : 0;
 
   return (
-    <section className={cn(PANEL_CLASS, "flex flex-col gap-3 px-4 py-3.5")}>
+    <Card variant="flat" asChild>
+      <section className="flex flex-col gap-3 px-4 py-3.5">
       <div className="flex min-h-8 items-center justify-between gap-3">
         <h2 className={CARD_TITLE_CLASS}>{t("title")}</h2>
         {options?.category_id != null && configured ? (
@@ -431,6 +432,7 @@ export function PickupVoicePanel({
           (ask.kind === "move" ? onMove : onReturn)(ask.lobbyIndex);
         }}
       />
-    </section>
+      </section>
+    </Card>
   );
 }

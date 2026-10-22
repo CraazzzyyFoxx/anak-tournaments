@@ -77,7 +77,7 @@ export function EncountersFilterBar({
             </FilterChip>
           ))}
         </FilterChipGroup>
-        <span className={styles.filterDivider} />
+        <span aria-hidden className="aqt-filter-divider" />
         {gameBound ? (
           <FilterSelect
             label={t("common.tournament")}
@@ -142,7 +142,7 @@ export function EncountersFilterBar({
           triggerLabel={t("encounters.filter.sortTrigger", {
             label: t(`encounters.sort.${filters.sort}`)
           })}
-          className={styles.filterSelectSort}
+          className="ml-1"
         />
       </div>
     </section>
@@ -166,7 +166,12 @@ function FilterSelect({
 }>) {
   return (
     <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger size="sm" className={cn(styles.filterSelectTrigger, className)} aria-label={label}>
+      <SelectTrigger
+        size="sm"
+        variant="surface"
+        className={cn("w-auto max-w-[220px] flex-none gap-1.5", className)}
+        aria-label={label}
+      >
         {triggerLabel ? <span>{triggerLabel}</span> : <SelectValue />}
       </SelectTrigger>
       <SelectContent>

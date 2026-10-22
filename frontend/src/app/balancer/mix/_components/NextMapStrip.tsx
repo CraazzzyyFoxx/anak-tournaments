@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { Spinner } from "@/components/ui/spinner";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
@@ -107,21 +108,16 @@ export function NextMapStrip({
           data-export-hide
           className={cn("flex flex-wrap items-center gap-1.5", capturing && "invisible")}
         >
-          <div
-            role="group"
-            aria-label="Roll within mode"
-            className="flex flex-wrap items-center gap-1"
-          >
-            <ModeChip label="Any" active={modeId == null} onClick={() => setModeId(null)} />
+          <FilterChipGroup label="Roll within mode" className="gap-1">
+            <FilterChip active={modeId == null} onClick={() => setModeId(null)}>
+              Any
+            </FilterChip>
             {modes.map((mode) => (
-              <ModeChip
-                key={mode.id}
-                label={mode.name}
-                active={modeId === mode.id}
-                onClick={() => setModeId(mode.id)}
-              />
+              <FilterChip key={mode.id} active={modeId === mode.id} onClick={() => setModeId(mode.id)}>
+                {mode.name}
+              </FilterChip>
             ))}
-          </div>
+          </FilterChipGroup>
           <Button
             type="button"
             variant="outline"
@@ -161,28 +157,5 @@ export function NextMapStrip({
         </div>
       ) : null}
     </div>
-  );
-}
-
-/** One mode the roll can stay inside; the same pressed-pill the add-players filters use. */
-function ModeChip({
-  label,
-  active,
-  onClick
-}: Readonly<{ label: string; active: boolean; onClick: () => void }>) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={cn(
-        "inline-flex h-7 shrink-0 items-center rounded-full border px-2.5 text-label transition-colors",
-        active
-          ? "border-[color:color-mix(in_srgb,var(--aqt-teal)_38%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_12%,transparent)] text-[color:var(--aqt-teal)]"
-          : "border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-      )}
-    >
-      {label}
-    </button>
   );
 }

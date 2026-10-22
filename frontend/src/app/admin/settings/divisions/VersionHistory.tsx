@@ -7,6 +7,7 @@ import { useFormatter } from "@/lib/datetime/client";
 
 import { StatusPill } from "@/components/kit/StatusPill";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
@@ -61,90 +62,92 @@ export function VersionHistory({
   return (
     // A container: the list sits in a half-width column beside the divisions table, and the row only has room for a
     // third column of actions when the LIST is wide, not the viewport.
-    <ol className="@container divide-y divide-border rounded-xl border border-border bg-card">
-      {ordered.map((version) => {
-        const state = versionState(version, activeVersionId);
-        const pill = VERSION_PILL[state];
-        const bands = bandsFromTiers(ladder, version.tiers);
-        const isDraft = version.status === "draft";
-        const canActivate = version.id in activatable;
-        const ready = activatable[version.id];
-        const reasonId = `${reasonIdPrefix}-${version.id}`;
+    <Card asChild variant="flat">
+      <ol className="@container divide-y divide-border">
+        {ordered.map((version) => {
+          const state = versionState(version, activeVersionId);
+          const pill = VERSION_PILL[state];
+          const bands = bandsFromTiers(ladder, version.tiers);
+          const isDraft = version.status === "draft";
+          const canActivate = version.id in activatable;
+          const ready = activatable[version.id];
+          const reasonId = `${reasonIdPrefix}-${version.id}`;
 
-        // The pill already says "in force"; a count of readers is only known for the others.
-        const usage =
-          state === "active" || tournamentCounts === null
-            ? null
-            : t("tournamentCount", { count: tournamentCounts[version.id] ?? 0 });
-        // A draft has no date; its pill says so.
-        const when = version.published_at
-          ? format.dateTime(new Date(version.published_at), { dateStyle: "medium" })
-          : null;
+          // The pill already says "in force"; a count of readers is only known for the others.
+          const usage =
+            state === "active" || tournamentCounts === null
+              ? null
+              : t("tournamentCount", { count: tournamentCounts[version.id] ?? 0 });
+          // A draft has no date; its pill says so.
+          const when = version.published_at
+            ? format.dateTime(new Date(version.published_at), { dateStyle: "medium" })
+            : null;
 
-        return (
-          <li
-            key={version.id}
-            className={cn(
-              "grid grid-cols-[3.25rem_minmax(0,1fr)] items-start gap-x-4 gap-y-3 px-4 py-3 @2xl:grid-cols-[3.25rem_minmax(0,1fr)_auto]",
-              state === "archived" && "opacity-60"
-            )}
-          >
-            <span
+          return (
+            <li
+              key={version.id}
               className={cn(
-                "font-display text-lg font-semibold leading-6 tabular-nums",
-                state === "active" ? "text-primary" : "text-foreground"
+                "grid grid-cols-[3.25rem_minmax(0,1fr)] items-start gap-x-4 gap-y-3 px-4 py-3 @2xl:grid-cols-[3.25rem_minmax(0,1fr)_auto]",
+                state === "archived" && "opacity-60"
               )}
             >
-              v{version.version}
-            </span>
+              <span
+                className={cn(
+                  "font-display text-lg font-semibold leading-6 tabular-nums",
+                  state === "active" ? "text-primary" : "text-foreground"
+                )}
+              >
+                v{version.version}
+              </span>
 
-            <div className="flex min-w-0 flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="min-w-0 truncate text-sm font-medium" title={version.label}>
-                  {version.label}
-                </span>
-                {pill ? <StatusPill tone={pill.tone}>{t(pill.key)}</StatusPill> : null}
-              </div>
-              {ladder ? (
-                <LadderBar ladder={ladder} bands={bands} tone={state === "active" ? "accent" : "neutral"} />
-              ) : null}
-              <p className="text-caption text-muted-foreground">
-                {[t("divisionCount", { count: bands.length }), usage, when]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-            </div>
-
-            <div className="col-start-2 flex flex-wrap items-center gap-2 @2xl:col-start-3 @2xl:max-w-xs @2xl:justify-end">
-              {ready === false && onActivate ? (
-                <p id={reasonId} className="basis-full text-caption text-muted-foreground @2xl:text-right">
-                  {t("editorDetails.mappingBlocked")}
+              <div className="flex min-w-0 flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 truncate text-sm font-medium" title={version.label}>
+                    {version.label}
+                  </span>
+                  {pill ? <StatusPill tone={pill.tone}>{t(pill.key)}</StatusPill> : null}
+                </div>
+                {ladder ? (
+                  <LadderBar ladder={ladder} bands={bands} tone={state === "active" ? "accent" : "neutral"} />
+                ) : null}
+                <p className="text-caption text-muted-foreground">
+                  {[t("divisionCount", { count: bands.length }), usage, when]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </p>
-              ) : null}
-              {canActivate && onActivate ? (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={ready !== true}
-                  aria-describedby={ready === false ? reasonId : undefined}
-                  onClick={() => onActivate(version)}
-                >
-                  {t("activateVersion", { version: version.version })}
-                </Button>
-              ) : null}
-              {isDraft ? (
-                <Button size="sm" asChild>
-                  <Link href={editorHref(version.id)}>{t("openEditor")}</Link>
-                </Button>
-              ) : (
-                <Button size="sm" variant="ghost" asChild>
-                  <Link href={editorHref(version.id)}>{t("view")}</Link>
-                </Button>
-              )}
-            </div>
-          </li>
-        );
-      })}
-    </ol>
+              </div>
+
+              <div className="col-start-2 flex flex-wrap items-center gap-2 @2xl:col-start-3 @2xl:max-w-xs @2xl:justify-end">
+                {ready === false && onActivate ? (
+                  <p id={reasonId} className="basis-full text-caption text-muted-foreground @2xl:text-right">
+                    {t("editorDetails.mappingBlocked")}
+                  </p>
+                ) : null}
+                {canActivate && onActivate ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={ready !== true}
+                    aria-describedby={ready === false ? reasonId : undefined}
+                    onClick={() => onActivate(version)}
+                  >
+                    {t("activateVersion", { version: version.version })}
+                  </Button>
+                ) : null}
+                {isDraft ? (
+                  <Button size="sm" asChild>
+                    <Link href={editorHref(version.id)}>{t("openEditor")}</Link>
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="ghost" asChild>
+                    <Link href={editorHref(version.id)}>{t("view")}</Link>
+                  </Button>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </Card>
   );
 }

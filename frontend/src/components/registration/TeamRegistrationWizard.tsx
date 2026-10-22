@@ -247,27 +247,24 @@ export default function TeamRegistrationWizard({
           </div>
         </div>
 
-        {/* A real fieldset/legend, not a div plus `role="radiogroup"`: the radios
-            already form a group, and this is the platform's way to name it. The
-            grid lives on an inner wrapper because a legend inside a grid-display
-            fieldset is laid out inconsistently across browsers. */}
         {/* A one-role game has one kind of slot: the captain takes it without choosing (`slot` starts on it). */}
         {metadata.data == null || showsRoles(metadata.data) ? (
-          <fieldset className="min-w-0" aria-describedby="regteam-slot-hint">
-            <legend className="text-sm font-medium">{t("create.slotLabel")}</legend>
-            <div className="mt-2 grid gap-2">
-              <RosterSlotPicker
-                name="regteam-slot"
-                options={availableSlots}
-                value={slot}
-                onChange={setSlot}
-                ontology={metadata.data ?? null}
-              />
-              <p id="regteam-slot-hint" className="text-xs text-[color:var(--aqt-fg-muted)]">
-                {t("create.slotHint")}
-              </p>
-            </div>
-          </fieldset>
+          <div className="grid min-w-0 gap-2">
+            <p id="regteam-slot-label" className="text-sm font-medium">
+              {t("create.slotLabel")}
+            </p>
+            <RosterSlotPicker
+              aria-labelledby="regteam-slot-label"
+              aria-describedby="regteam-slot-hint"
+              options={availableSlots}
+              value={slot}
+              onChange={setSlot}
+              ontology={metadata.data ?? null}
+            />
+            <p id="regteam-slot-hint" className="text-xs text-[color:var(--aqt-fg-muted)]">
+              {t("create.slotHint")}
+            </p>
+          </div>
         ) : null}
       </section>
 

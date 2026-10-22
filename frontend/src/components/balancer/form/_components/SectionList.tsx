@@ -7,6 +7,8 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 import { SortableGrip, useSortableRow } from "@/components/kit/SortableRows";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { RowButton } from "@/components/ui/row-button";
 import { cn } from "@/lib/utils";
 import type { FormSection } from "@/types/forms.types";
 
@@ -46,17 +48,16 @@ function SectionRow({
       )}
     >
       <SortableGrip handleProps={handleProps} label={t("reorderSection", { section: title })} />
-      <button
-        type="button"
+      <RowButton
         onClick={onSelect}
         aria-current={selected ? "true" : undefined}
-        className="min-w-0 flex-1 text-left"
+        className="min-w-0 flex-1 rounded-md"
       >
         <span className="block truncate text-sm font-medium">{title}</span>
         <span className="block text-xs text-muted-foreground">
           {t("fieldCount", { count: section.fields.length })}
         </span>
-      </button>
+      </RowButton>
       <Button
         variant="ghost"
         size="icon"
@@ -102,7 +103,7 @@ export function SectionList({
   const t = useTranslations("registrationFormAdmin.builder");
 
   return (
-    <div className="flex w-full shrink-0 flex-col gap-2 rounded-xl border border-border bg-card p-3 md:w-64">
+    <Card variant="flat" className="flex w-full shrink-0 flex-col gap-2 p-3 md:w-64">
       <h3 className={eyebrowClass("muted")}>{t("sections")}</h3>
       <SortableContext
         items={sections.map((section) => `${SECTION_DRAG_PREFIX}${section.key}`)}
@@ -127,6 +128,6 @@ export function SectionList({
         <Plus className="mr-1.5 size-3.5" aria-hidden />
         {t("addSection")}
       </Button>
-    </div>
+    </Card>
   );
 }

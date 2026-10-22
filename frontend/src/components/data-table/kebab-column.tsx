@@ -5,6 +5,7 @@ import { MoreHorizontal, type LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Link } from "@/components/data-table/host";
 
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,15 +39,16 @@ function KebabCell({ actions, label, rowId }: Readonly<{ actions: KebabAction[];
   const t = useTranslations("kitTable.dataTableExtra");
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger
-        aria-label={t("actionsFor", { label: label ?? t("rowFallback", { id: rowId }) })}
-        className={cn(
-          "inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-[color,background-color]",
-          "hover:bg-accent/40 hover:text-foreground",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        )}
-      >
-        <MoreHorizontal aria-hidden className="size-4" />
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t("actionsFor", { label: label ?? t("rowFallback", { id: rowId }) })}
+          className="text-muted-foreground"
+        >
+          <MoreHorizontal aria-hidden />
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
         {actions.map((action) => {

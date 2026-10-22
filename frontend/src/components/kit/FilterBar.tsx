@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { ChevronLeft, Plus, X } from "lucide-react";
 import { useDebounce } from "use-debounce";
 
+import { Button } from "@/components/ui/button";
 import { Combobox, ComboboxCheck } from "@/components/ui/combobox";
 import { CommandGroup, CommandItem } from "@/components/ui/command";
 import { FilterChip } from "@/components/ui/filter-chip";
@@ -17,7 +18,6 @@ import {
   type FilterOption,
   type FilterValue
 } from "@/components/kit/useFilters";
-import { cn } from "@/lib/utils";
 
 export interface FilterBarProps {
   defs: FilterDef[];
@@ -248,22 +248,25 @@ export function FilterBar({
             open={open}
             onOpenChange={(next) => (next ? setOpen(true) : closePicker())}
             trigger={
-              <button type="button" className="aqt-filter-chip" aria-label={t("addFilter")}>
+              // A menu trigger, not a toggle: drop the chip's `aria-pressed`.
+              <FilterChip aria-label={t("addFilter")} aria-pressed={undefined}>
                 <Plus aria-hidden className="size-3" />
                 {t("filter")}
-              </button>
+              </FilterChip>
             }
             header={
               picker === null ? null : (
                 <div className="flex items-center gap-1 border-b border-border/60 px-2 py-1.5">
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={() => openLevel(null)}
                     aria-label={t("backToFilterList")}
-                    className="flex size-6 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+                    className="text-muted-foreground"
                   >
-                    <ChevronLeft aria-hidden className="size-4" />
-                  </button>
+                    <ChevronLeft aria-hidden />
+                  </Button>
                   <span className="text-xs font-medium text-foreground">{picker.label}</span>
                 </div>
               )
@@ -313,16 +316,15 @@ export function FilterBar({
         ) : null}
 
         {chips.length > 1 ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={filters.clear}
-            className={cn(
-              "rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors",
-              "hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            )}
+            className="text-muted-foreground"
           >
             {t("clearAll")}
-          </button>
+          </Button>
         ) : null}
       </div>
 

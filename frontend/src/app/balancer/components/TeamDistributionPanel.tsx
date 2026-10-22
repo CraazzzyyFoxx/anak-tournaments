@@ -1,9 +1,11 @@
 import { useMemo, type ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { useLocalStorageState } from "@/hooks/useLocalStorageState";
-import { PANEL_CLASS, TEAM_BADGE_ACCENTS } from "@/components/balancer/balancer-page-helpers";
+import { TEAM_BADGE_ACCENTS } from "@/components/balancer/balancer-page-helpers";
 import { calculateTeamAverageFromPayload } from "@/components/balancer/balancer-page-helpers";
 import type { BalanceVariant } from "@/components/balancer/workspace-helpers";
 
@@ -79,7 +81,7 @@ export function TeamDistributionPanel({ variant, variantSelector }: Readonly<Tea
   }, [distributionPoints]);
 
   return (
-    <div className={cn(PANEL_CLASS, "px-3 py-2")}>
+    <Card variant="flat" className="px-3 py-2">
       {variantSelector ? <div className="mb-2">{variantSelector}</div> : null}
       <div className="flex items-center gap-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
@@ -105,15 +107,17 @@ export function TeamDistributionPanel({ variant, variantSelector }: Readonly<Tea
             </span>
           </div>
         </div>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           onClick={() => setCollapsed((value) => !value)}
           aria-expanded={!collapsed}
           aria-label={collapsed ? "Expand team distribution chart" : "Collapse team distribution chart"}
-          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[color:var(--aqt-fg-dim)] transition hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg-muted)]"
+          className="shrink-0 text-[color:var(--aqt-fg-dim)]"
         >
-          {collapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
-        </button>
+          {collapsed ? <ChevronDown aria-hidden="true" /> : <ChevronUp aria-hidden="true" />}
+        </Button>
       </div>
 
       {collapsed ? null : (
@@ -190,6 +194,6 @@ export function TeamDistributionPanel({ variant, variantSelector }: Readonly<Tea
         </div>
       </div>
       )}
-    </div>
+    </Card>
   );
 }

@@ -7,8 +7,8 @@ import { HandleLabel } from "@/components/HandleLabel";
 import {
   Column,
   ColumnHead,
-  EmptyNote,
-  LoadError,
+  OpenEmptyRow,
+  OpenLoadError,
   Section,
   SectionHead
 } from "@/components/site/open-layout";
@@ -190,14 +190,14 @@ export async function RecordsSection({ discipline }: Readonly<{ discipline: stri
   if (data === null) {
     return (
       <Shell discipline={discipline}>
-        <LoadError what={t("what")} dashed />
+        <OpenLoadError what={t("what")} dashed />
       </Shell>
     );
   }
   if (data.records.length === 0) {
     return (
       <Shell discipline={discipline}>
-        <EmptyNote>{t("empty")}</EmptyNote>
+        <OpenEmptyRow>{t("empty")}</OpenEmptyRow>
       </Shell>
     );
   }

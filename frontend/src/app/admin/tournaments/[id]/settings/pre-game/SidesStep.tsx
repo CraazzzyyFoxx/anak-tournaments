@@ -45,8 +45,8 @@ function InheritedNote({
     <FieldDescription className="flex flex-wrap items-center gap-1">
       <span>{t("inheritedValue", { scope, value })}</span>
       {canManage ? (
-        <Button type="button" variant="ghost" size="sm" className="h-6 px-2" onClick={onReset}>
-          <RotateCcw aria-hidden className="me-1 size-3" />
+        <Button type="button" variant="ghost" size="xs" onClick={onReset}>
+          <RotateCcw aria-hidden />
           {t("useInheritedValue")}
         </Button>
       ) : null}

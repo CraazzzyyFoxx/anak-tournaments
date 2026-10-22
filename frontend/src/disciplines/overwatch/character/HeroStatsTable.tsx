@@ -6,6 +6,7 @@ import { ArrowDown, Crown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogStatsName } from "../stat-names";
 import { formatDelta, formatStatValue } from "./utils";
+import { Button } from "@/components/ui/button";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { SearchField } from "@/components/ui/search-field";
 
@@ -46,18 +47,21 @@ const HeroStatsTable = ({
       scope="col"
       aria-sort={sort === k ? "descending" : "none"}
       className={cn(
+        eyebrowClass(),
         "border-b border-[color:var(--aqt-border)] px-3 py-2.5",
         align === "right" ? "text-right" : "text-left"
       )}
     >
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="label"
         onClick={() => onSortChange(k)}
         className={cn(
-          eyebrowClass(),
-          "aqt-tnum inline-flex select-none items-center gap-1 rounded-sm outline-none transition-colors",
-          "focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
-          sort === k ? "text-[color:var(--aqt-teal)]" : "hover:text-[color:var(--aqt-fg-muted)]"
+          "aqt-tnum select-none hover:bg-transparent",
+          sort === k
+            ? "text-[color:var(--aqt-teal)] hover:text-[color:var(--aqt-teal)]"
+            : "hover:text-[color:var(--aqt-fg-muted)]"
         )}
       >
         {srLabel ? (
@@ -68,8 +72,8 @@ const HeroStatsTable = ({
         ) : (
           label
         )}
-        {sort === k ? <ArrowDown aria-hidden className="h-3 w-3" /> : null}
-      </button>
+        {sort === k ? <ArrowDown aria-hidden /> : null}
+      </Button>
     </th>
   );
 

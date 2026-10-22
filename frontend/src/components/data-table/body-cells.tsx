@@ -1,6 +1,7 @@
 import { flexRender, type Cell, type Row } from "@tanstack/react-table";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { TableCell } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/components/data-table/host";
@@ -54,19 +55,17 @@ export function renderLeadingCell<TData>(
     >
       <div className="flex items-center gap-1.5">
         {hasExpandedDetail ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon-sm"
             onClick={row.getToggleExpandedHandler()}
             aria-expanded={expanded}
             aria-label={expanded ? i18n("collapseDetails") : i18n("expandDetails")}
-            className="flex size-5 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent/30 hover:text-foreground"
+            className="-m-1 shrink-0 text-muted-foreground hover:text-foreground"
           >
-            {expanded ? (
-              <ChevronDown aria-hidden className="size-4" />
-            ) : (
-              <ChevronRight aria-hidden className="size-4" />
-            )}
-          </button>
+            {expanded ? <ChevronDown aria-hidden /> : <ChevronRight aria-hidden />}
+          </Button>
         ) : null}
         {enableRowSelection && row.getCanSelect() ? (
           <Checkbox

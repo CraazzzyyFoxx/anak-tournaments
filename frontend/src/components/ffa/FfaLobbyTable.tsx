@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Lock } from "lucide-react";
 
 import TeamName from "@/components/TeamName";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { straddlingTieGroups } from "@/lib/tournament/tie-clusters";
 import { cn } from "@/lib/utils";
@@ -238,7 +239,7 @@ export default function FfaLobbyTable({ lobby }: Readonly<{ lobby: FfaLobby }>) 
               {showCut && index === advanceCount - 1 && (
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={columnCount} className="p-0" data-ffa-cut>
-                    <span className="flex items-center gap-3 py-1.5 text-label font-bold uppercase tracking-label text-[color:var(--aqt-teal)]">
+                    <span className={cn(eyebrowClass(), "flex items-center gap-3 py-1.5 text-[color:var(--aqt-teal)]")}>
                       {/* Leading and sticky, not centred: on a phone the table
                           scrolls sideways and a centred label sat off-screen. */}
                       <span className="sticky left-5 whitespace-nowrap">

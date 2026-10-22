@@ -3,7 +3,9 @@
 import { useTranslations } from "next-intl";
 
 import type { ComboboxVariant } from "@/components/ui/combobox";
-import SearchableImageSelect, { type SearchableImageOption } from "@/components/ui/searchable-image-select";
+import SearchableImageSelect, {
+  type SearchableImageOption
+} from "@/components/ui/searchable-image-select";
 
 interface TournamentComboboxProps<E extends string = never> {
   /** Forwarded to the trigger so a `<Label htmlFor>` can name it. */
@@ -50,7 +52,10 @@ export function TournamentCombobox<E extends string = never>({
 }: Readonly<TournamentComboboxProps<E>>) {
   const t = useTranslations();
 
-  const options: SearchableImageOption[] = extraOptions.map((o) => ({ value: o.value, label: o.label }));
+  const options: SearchableImageOption[] = extraOptions.map((o) => ({
+    value: o.value,
+    label: o.label
+  }));
   const seen = new Set<number>();
   for (const tournament of tournaments) {
     if (seen.has(tournament.id)) continue;

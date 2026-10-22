@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { EncounterWithUserStats } from "@/types/user.types";
 
-import { encounterPerspective, mapKind } from "./encounter-perspective";
+import { encounterLogEntries, encounterPerspective, mapKind, uniqueViewerCharacters } from "./encounter-perspective";
 
 interface SeatFixture {
   id: number;
@@ -72,5 +72,30 @@ describe("mapKind", () => {
   it("is a draw when the viewer has no seat in the match or a score was not recorded", () => {
     expect(mapKind(logOf(participant(1, 3), participant(2, 1)), null)).toBe("draw");
     expect(mapKind(logOf(participant(1, 3), participant(2)), seat(1, 10, 0))).toBe("draw");
+  });
+});
+
+describe("uniqueViewerCharacters", () => {
+  const hero = (id: number) => ({ id, name: `H${id}` });
+  const enc = (...maps: (number[] | null)[]) =>
+    ({
+      matches: maps.map((ids) => ({ viewer: ids === null ? null : { characters: ids.map(hero) } }))
+    }) as unknown as EncounterWithUserStats;
+
+  it("lists each character once, in first-played order, skipping maps the viewer did not play", () => {
+    expect(uniqueViewerCharacters(enc([3, 1], null, [1, 2])).map((character) => character.id)).toEqual([3, 1, 2]);
+  });
+});
+
+describe("encounterLogEntries", () => {
+  const enc = (hasLogs: boolean) =>
+    ({
+      has_logs: hasLogs,
+      matches: [{ id: 9, raw_available: true, map: null, mode: null }]
+    }) as unknown as EncounterWithUserStats;
+
+  it("is undefined without logs, else one ref per map with the fallback map name", () => {
+    expect(encounterLogEntries(enc(false), "Map")).toBeUndefined();
+    expect(encounterLogEntries(enc(true), "Map")).toEqual([{ matchId: 9, rawAvailable: true, label: "Map · #9" }]);
   });
 });

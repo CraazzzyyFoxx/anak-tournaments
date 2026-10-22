@@ -3,8 +3,8 @@
 import { useTranslations } from "next-intl";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { PermissionGate } from "@/components/admin/PermissionGate";
 import { TeamsBrowser } from "@/components/admin/teams/list/TeamsBrowser";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { GameScopeGate } from "@/components/workspace/GameScopeGate";
 import { useGameScope } from "@/hooks/useGameScope";
@@ -18,32 +18,23 @@ export default function TeamsPage() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const scope = useGameScope({ axis: workspaceId ?? "all" });
 
-  if (!isLoaded) return <Skeleton className="h-64 w-full rounded-xl" />;
-
-  if (!canAccessPermission("team.read", workspaceId)) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("unauthorized")}</CardTitle>
-          <CardDescription>
-            {t("noPermission")}
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <AdminPageHeader title={t("title")} />
-      {workspaceId === null ? (
-        // The rosters are the workspace's: a first visit learns its community after mounting, and reads nothing before.
-        <Skeleton className="h-64 w-full rounded-xl" />
-      ) : (
-        <GameScopeGate scope={scope}>
-          {(game) => <TeamsBrowser workspaceId={workspaceId} discipline={game} games={scope.games} />}
-        </GameScopeGate>
-      )}
-    </div>
+    <PermissionGate
+      loaded={isLoaded}
+      allowed={canAccessPermission("team.read", workspaceId)}
+      description={t("noPermission")}
+    >
+      <div className="space-y-4">
+        <AdminPageHeader title={t("title")} />
+        {workspaceId === null ? (
+          // The rosters are the workspace's: a first visit learns its community after mounting, and reads nothing before.
+          <Skeleton className="h-64 w-full rounded-xl" />
+        ) : (
+          <GameScopeGate scope={scope}>
+            {(game) => <TeamsBrowser workspaceId={workspaceId} discipline={game} games={scope.games} />}
+          </GameScopeGate>
+        )}
+      </div>
+    </PermissionGate>
   );
 }

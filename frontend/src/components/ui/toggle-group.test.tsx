@@ -75,9 +75,9 @@ describe("ToggleGroup", () => {
     expect(onValueChange).toHaveBeenLastCalledWith("all");
   });
 
-  it("falls back to the natural tab order when nothing is selected", async () => {
+  it("keeps one tab stop, on the first option, when nothing is selected", async () => {
     const scope = await mount(group("", () => {}));
 
-    expect(radios(scope).map((item) => item.tabIndex)).toEqual([0, 0, 0]);
+    expect(radios(scope).map((item) => item.tabIndex)).toEqual([0, -1, -1]);
   });
 });

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import DivisionIcon from "@/components/DivisionIcon";
 import { HandleLabel } from "@/components/HandleLabel";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import TeamName from "@/components/TeamName";
@@ -46,7 +47,6 @@ import type { GlossaryTerm } from "@/disciplines/overwatch/analytics/analytics-g
 import { standingsRank } from "@/disciplines/overwatch/analytics/analytics.helpers";
 import AnomalyFlag, { AnomalyKinds } from "@/disciplines/overwatch/analytics/components/AnomalyFlag";
 import DeltaText, { moveTone } from "@/disciplines/overwatch/analytics/components/DeltaText";
-import DivisionMark from "@/disciplines/overwatch/analytics/components/DivisionMark";
 import ExplanationPopover from "@/disciplines/overwatch/analytics/components/ExplanationPopover";
 import InfoDot from "@/disciplines/overwatch/analytics/components/InfoDot";
 import MoveMark from "@/disciplines/overwatch/analytics/components/MoveMark";
@@ -313,7 +313,7 @@ function TeamRows({
                   <PlayerIdentity player={player} />
                 </TableCell>
                 <TableCell className={CELL_CLASS}>
-                  <DivisionMark division={player.division} tournamentGrid={tournamentGrid} size={22} />
+                  <DivisionIcon division={player.division} tournamentGrid={tournamentGrid} width={22} height={22} tooltip />
                 </TableCell>
                 <TableCell className={cn(CELL_CLASS, NUM_CLASS)}>{decimal(player.move_2)}</TableCell>
                 <TableCell className={cn(CELL_CLASS, NUM_CLASS)}>{decimal(player.move_1)}</TableCell>

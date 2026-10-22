@@ -5,6 +5,7 @@ import { ArrowRight, Link2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { SubscriptionProviderBadge } from "@/components/status/RegistrationBadges";
+import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import type { SubscriptionStatus } from "@/types/registration.types";
@@ -84,7 +85,7 @@ export default function SubscriptionRow({
       : null;
 
   return (
-    <div className="grid gap-1.5">
+    <div className="grid gap-1.5 text-xs">
       <SubscriptionProviderBadge
         provider={provider}
         providerLabel={providerLabel}
@@ -93,19 +94,21 @@ export default function SubscriptionRow({
       />
 
       {ctaLabel && (
-        <button
+        <Button
           type="button"
+          variant="link"
+          size="inline"
           onClick={onLinkAccounts}
-          className="inline-flex items-start gap-1.5 justify-self-start text-left text-xs font-medium text-[color:var(--aqt-fg)] underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="items-start justify-self-start gap-1.5 whitespace-normal text-left [&_svg]:size-3.5"
         >
           <Link2 className="mt-0.5 size-3.5 shrink-0" aria-hidden />
           {/* Arrow inside the text run so it trails the last word instead of
               drifting to the right edge once the label wraps. */}
           <span>
             {ctaLabel}
-            <ArrowRight className="ml-1 inline size-3 align-[-0.1em]" aria-hidden />
+            <ArrowRight className="ml-1 inline align-[-0.1em]" aria-hidden />
           </span>
-        </button>
+        </Button>
       )}
 
       {showCodeInput && (
@@ -128,20 +131,16 @@ export default function SubscriptionRow({
               aria-describedby={error ? errorId : undefined}
               variant="surface"
             />
-            <button
+            <Button
               type="button"
+              variant="accent"
               onClick={submit}
               disabled={pending || !code.trim()}
-              // Teal-tinted, not the control surface: with the input's own
-              // border/background it read as a second field rather than the
-              // action that submits the one beside it.
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-[color:color-mix(in_srgb,var(--aqt-teal)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-teal)_16%,transparent)] px-3 text-sm font-medium text-[color:var(--aqt-teal)] transition-colors hover:bg-[color:color-mix(in_srgb,var(--aqt-teal)_24%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-40"
+              className="shrink-0"
             >
-              {pending && (
-                <Spinner className="size-3.5" />
-              )}
+              {pending && <Spinner className="size-3.5" />}
               {t("common.subscription.codeSubmit")}
-            </button>
+            </Button>
           </div>
           <FieldError id={errorId} role="alert" size="sm">
             {error}

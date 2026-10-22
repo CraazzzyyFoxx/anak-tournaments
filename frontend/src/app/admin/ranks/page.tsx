@@ -3,10 +3,9 @@
 import { useTranslations } from "next-intl";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { PermissionGate } from "@/components/admin/PermissionGate";
 import { MixRankerActions } from "@/components/admin/ranks/MixRankerActions";
 import { RankOverviewTable } from "@/components/admin/ranks/RankOverviewTable";
-import { PageStateCard } from "@/components/ui/page-state-card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
@@ -23,27 +22,19 @@ export default function RankOverviewPage() {
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
   const { canAccessPermission, isLoaded } = usePermissions();
 
-  if (!isLoaded) {
-    return <Skeleton className="h-40 w-full rounded-xl" />;
-  }
-
-  if (!canAccessPermission("team.update", workspaceId)) {
-    return (
-      <PageStateCard
-        state="not-found"
-        title={t("unauthorized.title")}
-        description={t("unauthorized.description")}
-      />
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <AdminPageHeader
-        title={t("title")}
-        actions={workspaceId != null ? <MixRankerActions workspaceId={workspaceId} /> : undefined}
-      />
-      <RankOverviewTable />
-    </div>
+    <PermissionGate
+      loaded={isLoaded}
+      allowed={canAccessPermission("team.update", workspaceId)}
+      description={t("unauthorized.description")}
+    >
+      <div className="space-y-4">
+        <AdminPageHeader
+          title={t("title")}
+          actions={workspaceId != null ? <MixRankerActions workspaceId={workspaceId} /> : undefined}
+        />
+        <RankOverviewTable />
+      </div>
+    </PermissionGate>
   );
 }

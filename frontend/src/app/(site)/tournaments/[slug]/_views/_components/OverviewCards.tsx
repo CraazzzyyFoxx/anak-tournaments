@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
+import { Card } from "@/components/ui/card";
 import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import Image from "@/components/ui/image";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
@@ -10,12 +11,10 @@ import { getStreamStatus, STREAM_STATUS_META } from "@/lib/social/stream-platfor
 import { cn } from "@/lib/utils";
 import type { StreamEntry } from "@/types/stream.types";
 
-import styles from "../../TournamentDetail.module.css";
-
 /**
- * One block of the overview: a card on the site's first-level surface with a
- * mono eyebrow (wireframes §11) — see `.block` in the module CSS for the
- * treatment and why it is framed.
+ * One block of the overview: a flat card with a mono eyebrow (wireframes §11).
+ * Deliberately no `overflow: hidden`: the mini-bracket scrolls horizontally
+ * inside its own block, and `#phases` must stay scrollable-to.
  */
 export function OverviewCard({
   title,
@@ -29,15 +28,17 @@ export function OverviewCard({
   children: React.ReactNode;
 }>) {
   return (
-    <section className={cn(styles.block, "scroll-mt-28")} id={id}>
-      {title || action ? (
-        <div className={styles.blockHead}>
-          {title ? <h2 className={styles.blockTitle}>{title}</h2> : <span />}
-          {action}
-        </div>
-      ) : null}
-      {children}
-    </section>
+    <Card asChild variant="flat">
+      <section className="min-w-0 scroll-mt-28 px-4 pb-4 pt-3.5" id={id}>
+        {title || action ? (
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            {title ? <Eyebrow as="h2">{title}</Eyebrow> : <span />}
+            {action}
+          </div>
+        ) : null}
+        {children}
+      </section>
+    </Card>
   );
 }
 
@@ -104,9 +105,6 @@ export function OverviewStreamCard({
     </OverviewCard>
   );
 }
-
-/* `StatTile` and `ROLE_TINT` moved to `_components/RegistrationSummary` so the
-   participants page can render the same registration figures. */
 
 export function KeyValue({ term, children }: Readonly<{ term: string; children: React.ReactNode }>) {
   return (

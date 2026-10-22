@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
+import { AdminTabbedPage } from "@/components/admin/AdminTabbedPage";
+import type { LinkTabItem } from "@/components/kit/LinkTabs";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 import { useGameScope } from "@/hooks/useGameScope";
@@ -76,17 +76,18 @@ export default function GameContentLayout({ children }: Readonly<{ children: Rea
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <AdminPageHeader
-        title={t("header")}
-        actions={
-          activeKey !== "unresolved" && gameScope.game !== null ? (
-            <GameScopeControl scope={gameScope} variant="single" />
-          ) : undefined
-        }
-      />
-      <LinkTabs items={items} activeKey={activeKey} level={1} ariaLabel={t("sectionsLabel")} />
+    <AdminTabbedPage
+      title={t("header")}
+      actions={
+        activeKey !== "unresolved" && gameScope.game !== null ? (
+          <GameScopeControl scope={gameScope} variant="single" />
+        ) : undefined
+      }
+      tabs={items}
+      activeKey={activeKey}
+      ariaLabel={t("sectionsLabel")}
+    >
       {body}
-    </div>
+    </AdminTabbedPage>
   );
 }

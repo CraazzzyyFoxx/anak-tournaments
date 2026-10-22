@@ -4,6 +4,7 @@ import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useRoleName } from "@/hooks/useRoleName";
@@ -39,13 +40,15 @@ export default function TournamentHistoryCell({
   return (
     <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="subtle"
+            size="xs"
             aria-label={t("tournamentDetail.previousTournaments", { count: total })}
-            className="inline-flex items-center rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-1.5 py-0.5 text-xs font-medium tabular-nums text-[color:var(--aqt-fg-muted)] outline-none transition hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] focus-visible:ring-offset-2 focus-visible:ring-offset-[color:var(--aqt-bg)]"
+            className="tabular-nums"
           >
             {total}x
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent
           side="top"

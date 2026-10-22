@@ -7,6 +7,7 @@ import { ArrowLeft, ChevronDown, FileUp, ShieldAlert, ShieldCheck, Users } from 
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 
+import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -195,7 +196,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
             <div>
               <Button variant="outline" asChild>
                 <Link href={returnTo}>
-                  <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
+                  <ArrowLeft aria-hidden />
                   {t("back")}
                 </Link>
               </Button>
@@ -281,12 +282,9 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
           room simply looks like one that never had a veto — and the captains
           naming their own map have no idea why. */}
       {loop.cancelledKinds.map((kind) => (
-        <p
-          key={kind}
-          className="rounded-lg border border-dashed border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 px-3 py-2 text-xs text-[color:var(--aqt-fg-muted)]"
-        >
+        <EmptyNote key={kind} size="sm" tone="warning">
           {t("cancelledNotice", { phase: t(`phase.${kind}`) })}
-        </p>
+        </EmptyNote>
       ))}
     </>
   );

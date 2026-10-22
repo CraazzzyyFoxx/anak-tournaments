@@ -6,10 +6,11 @@ import { useTranslations } from "next-intl";
 import { useDraggable } from "@dnd-kit/core";
 import { Armchair, GripVertical, RotateCw, SlidersHorizontal, X } from "lucide-react";
 
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { AWAY_CHIP_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
 import { HandleLabel } from "@/components/HandleLabel";
 import { RankCrest } from "@/components/RankCrest";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { cn } from "@/lib/utils";
 import type {
@@ -223,28 +224,26 @@ export function LineupRow({
       </div>
 
       <IconTooltip control label="Advanced settings" className="shrink-0">
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="icon-sm"
           disabled={!canWrite}
           onClick={onOpen}
-          className="flex size-6 items-center justify-center rounded-md text-[color:var(--aqt-fg-faint)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg-muted)] disabled:pointer-events-none disabled:opacity-40"
+          className="text-[color:var(--aqt-fg-faint)]"
         >
-          <SlidersHorizontal className="size-[15px]" aria-hidden="true" />
+          <SlidersHorizontal aria-hidden="true" />
           <span className="sr-only">{`Advanced settings for ${label}`}</span>
-        </button>
+        </Button>
       </IconTooltip>
 
       {canWrite ? (
         <RowAction>
           <IconTooltip control label="Remove from this mix">
-            <button
-              type="button"
-              onClick={onRemove}
-              className="flex size-6 shrink-0 items-center justify-center rounded-md text-[color:var(--aqt-fg-faint)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-rose)]"
-            >
-              <X className="size-3.5" aria-hidden="true" />
+            <Button type="button" variant="ghost-destructive" size="icon-sm" onClick={onRemove} className="shrink-0">
+              <X aria-hidden="true" />
               <span className="sr-only">{`Remove ${label} from this mix`}</span>
-            </button>
+            </Button>
           </IconTooltip>
         </RowAction>
       ) : null}
@@ -258,11 +257,9 @@ export function LineupDragPreview({ row, owner }: Readonly<{ row: CustomGamePlay
   const rank = averageRank(row, owner.roles);
 
   return (
-    <div
-      className={cn(
-        PANEL_CLASS,
-        "flex w-[280px] cursor-grabbing items-center gap-2 rounded-lg border-[color:var(--aqt-teal)] px-2.5 py-2 shadow-lg"
-      )}
+    <Card
+      variant="flat"
+      className="flex w-[280px] cursor-grabbing items-center gap-2 rounded-lg border-[color:var(--aqt-teal)] px-2.5 py-2 shadow-lg"
     >
       <GripVertical
         className="size-3.5 shrink-0 text-[color:var(--aqt-fg-faint)]"
@@ -276,6 +273,6 @@ export function LineupDragPreview({ row, owner }: Readonly<{ row: CustomGamePlay
       <span className="shrink-0 text-caption font-semibold tabular-nums text-[color:var(--aqt-fg)]">
         {rank ?? "\u2014"}
       </span>
-    </div>
+    </Card>
   );
 }

@@ -282,7 +282,7 @@ export function ConditionLeafFields({
               <ToggleGroupItem value="false">{t("fields.bothTeams")}</ToggleGroupItem>
             </ToggleGroup>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 text-xs">
             <p className="text-muted-foreground text-xs">{t("fields.scorePatterns")}</p>
             {((params.scores as number[][]) ?? [[2, 3]]).map((pair, i) => (
               <div key={i} className="flex gap-1 items-center">
@@ -312,18 +312,20 @@ export function ConditionLeafFields({
                 </Button>
               </div>
             ))}
-            <button
+            <Button
               type="button"
-              className="flex items-center gap-1 text-xs text-primary hover:underline"
+              variant="link"
+              size="inline"
+              className="gap-1 [&_svg]:size-3"
               aria-label={controlName(t("condition.addScorePattern"))}
               onClick={() => {
                 const scores = [...((params.scores as number[][]) ?? [[2, 3]]), [0, 0]];
                 setParam("scores", scores);
               }}
             >
-              <Plus className="h-3 w-3" aria-hidden />
+              <Plus aria-hidden />
               {t("condition.addScorePattern")}
-            </button>
+            </Button>
           </div>
         </>
       )}

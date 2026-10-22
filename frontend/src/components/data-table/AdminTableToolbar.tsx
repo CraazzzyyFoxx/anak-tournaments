@@ -113,7 +113,6 @@ export function AdminTableToolbar({
           type="button"
           variant="outline"
           size="sm"
-          className="h-8"
           onClick={onExportCsv}
           disabled={!canExport}
           title={selectedCount > 0 ? t("exportSelected", { count: selectedCount }) : t("exportCurrent")}
@@ -125,7 +124,7 @@ export function AdminTableToolbar({
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 w-8 px-0"
+          className="w-8 px-0"
           aria-pressed={density === "compact"}
           aria-label={density === "compact" ? t("comfortableRows") : t("compactRows")}
           title={density === "compact" ? t("comfortableRows") : t("compactRows")}

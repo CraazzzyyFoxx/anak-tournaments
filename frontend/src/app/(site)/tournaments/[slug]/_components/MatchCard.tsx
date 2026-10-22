@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 
 import TeamName from "@/components/TeamName";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
+import { eyebrowClass } from "@/components/ui/eyebrow";
 import { mapWithModeName } from "@/lib/catalog/mode";
 import { encounterSeatScore } from "@/lib/encounter/detail";
 import { getEncounterWinner, isEncounterCompleted, isEncounterLive } from "@/lib/encounter/status";
@@ -98,7 +99,12 @@ export function MatchCard({
       {/* The mini tile sits under a column heading that already names the
           round, so it carries no eyebrow of its own — only the live marker. */}
       {size === "md" || live ? (
-        <div className="flex items-center justify-between gap-2 border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-2.5 py-1 text-label uppercase tracking-label text-[color:var(--aqt-fg-faint)]">
+        <div
+          className={cn(
+            eyebrowClass(),
+            "flex items-center justify-between gap-2 border-b border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-2.5 py-1"
+          )}
+        >
           <span className="truncate">{size === "md" ? eyebrow : null}</span>
           {live ? (
             <TournamentStatusPill status="live" className="shrink-0 px-1.5 py-0">

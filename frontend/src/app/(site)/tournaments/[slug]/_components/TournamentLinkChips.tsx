@@ -4,8 +4,8 @@ import { FileText, Link2, ListVideo, MessagesSquare, Network } from "lucide-reac
 import { useTranslations } from "next-intl";
 import type { ComponentType } from "react";
 
+import { Button } from "@/components/ui/button";
 import type { TournamentLink, TournamentLinkKind } from "@/types/stream.types";
-import { TOURNAMENT_ACTION_CLASS } from "./tournamentActionClass";
 
 type TournamentLinkChipsProps = {
   /** `tournament.links` — absent whenever the read did not ask for the entity. */
@@ -120,18 +120,15 @@ export function TournamentLinkChips({ links, className }: Readonly<TournamentLin
           const Icon = meta.icon;
           return (
             <li key={link.id}>
-              <a
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={TOURNAMENT_ACTION_CLASS}
-              >
-                <Icon className="size-4 opacity-80" aria-hidden />
-                {/* `label` is NULL-able with exactly this meaning (see the column
-                    docstring): fall back to the kind's own name, never to the raw
-                    URL, which would put a tracking query string on screen. */}
-                <span>{link.label?.trim() || t(meta.labelKey)}</span>
-              </a>
+              <Button asChild variant="subtle">
+                <a href={link.url} target="_blank" rel="noopener noreferrer">
+                  <Icon className="opacity-80" aria-hidden />
+                  {/* `label` is NULL-able with exactly this meaning (see the column
+                      docstring): fall back to the kind's own name, never to the raw
+                      URL, which would put a tracking query string on screen. */}
+                  <span>{link.label?.trim() || t(meta.labelKey)}</span>
+                </a>
+              </Button>
             </li>
           );
         })}

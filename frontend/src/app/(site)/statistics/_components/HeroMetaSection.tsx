@@ -6,7 +6,7 @@ import { getTranslations } from "next-intl/server";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { characterClassOf, classRank } from "@/components/pick-ban/pick-ban-model";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { EmptyNote, LoadError, Section, SectionHead } from "@/components/site/open-layout";
+import { OpenEmptyRow, OpenLoadError, Section, SectionHead } from "@/components/site/open-layout";
 import { TournamentTeamCardFrame } from "@/components/TournamentTeamCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFormatter } from "@/lib/datetime/server";
@@ -47,14 +47,14 @@ export async function HeroMetaSection({ discipline, axis }: Readonly<{ disciplin
   if (playtime === null) {
     return (
       <Shell>
-        <LoadError what={t("what")} dashed />
+        <OpenLoadError what={t("what")} dashed />
       </Shell>
     );
   }
   if (playtime.results.length === 0) {
     return (
       <Shell>
-        <EmptyNote>{t("empty")}</EmptyNote>
+        <OpenEmptyRow>{t("empty")}</OpenEmptyRow>
       </Shell>
     );
   }

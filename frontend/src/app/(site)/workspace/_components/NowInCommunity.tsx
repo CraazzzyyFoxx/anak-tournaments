@@ -5,15 +5,15 @@ import { Calendar, Clock, Network, Trophy } from "lucide-react";
 import {
   Column,
   ColumnHead,
-  EmptyNote,
   Facts,
   Fact,
   Feat,
   FEAT_META_CLASS,
   FEAT_NAME_CLASS,
   LiveDot,
-  LoadError,
   MoreLink,
+  OpenEmptyRow,
+  OpenLoadError,
   Roster,
   Section,
   SectionHead
@@ -129,7 +129,7 @@ export async function NowInCommunity({ workspace }: Readonly<{ workspace: Worksp
   } catch {
     return (
       <Shell workspace={workspace}>
-        <LoadError what={t("now.what")} dashed />
+        <OpenLoadError what={t("now.what")} dashed />
       </Shell>
     );
   }
@@ -152,7 +152,7 @@ export async function NowInCommunity({ workspace }: Readonly<{ workspace: Worksp
         ) : finished[0] ? (
           <LeadFinished row={finished[0]} />
         ) : (
-          <EmptyNote>{t("now.noTournaments")}</EmptyNote>
+          <OpenEmptyRow>{t("now.noTournaments")}</OpenEmptyRow>
         )}
         <Column>
           <ColumnHead
@@ -160,7 +160,7 @@ export async function NowInCommunity({ workspace }: Readonly<{ workspace: Worksp
             sub={firstYear === null ? undefined : t("now.pastSince", { year: firstYear })}
           />
           {chronicle.length === 0 ? (
-            <EmptyNote>{t("now.noPast")}</EmptyNote>
+            <OpenEmptyRow>{t("now.noPast")}</OpenEmptyRow>
           ) : (
             <ol className="mt-4">
               {chronicle.map((row, index) => (

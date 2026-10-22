@@ -4,6 +4,7 @@ import { useId } from "react";
 import { useTranslations } from "next-intl";
 import { History, Search, User, X } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
@@ -106,15 +107,16 @@ export function PlayerSearchCombobox({
             />
             {isSearching ? <Spinner className="shrink-0" /> : null}
             {searchValue && !isSearching ? (
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 aria-label={t("nav.search.clear")}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={clearSearch}
-                className="-mr-1 grid size-6 shrink-0 place-items-center rounded-md text-[color:var(--aqt-fg-faint)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:shadow-[inset_0_0_0_2px_var(--aqt-teal)]"
+                className="-mr-1 shrink-0 text-[color:var(--aqt-fg-faint)]"
               >
-                <X className="size-3.5" aria-hidden />
-              </button>
+                <X aria-hidden />
+              </Button>
             ) : null}
           </label>
         </PopoverAnchor>

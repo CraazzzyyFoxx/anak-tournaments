@@ -13,6 +13,7 @@ import MapRow from "@/app/(site)/users/components/maps/MapRow";
 import MapsFilters from "@/app/(site)/users/components/maps/MapsFilters";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { Eyebrow } from "@/components/ui/eyebrow";
+import { RowButton } from "@/components/ui/row-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { winrateColor } from "@/lib/colors";
 import { userQueryKeys } from "@/lib/users/query-keys";
@@ -203,16 +204,12 @@ const MapsView = ({ userId, scope, discipline, axis }: Props) => {
             const wr = totalDecisive > 0 ? (b.win / totalDecisive) * 100 : 0;
             const active = modeFilter === b.mode;
             return (
-              <button
+              <RowButton
                 key={b.mode}
-                type="button"
                 onClick={() => setModeFilter(active ? null : b.mode)}
                 aria-pressed={active}
                 title={active ? t("users.maps.clearModeFilter") : t("users.maps.filterByMode", { mode: b.mode })}
-                className={cn(
-                  "cursor-pointer rounded-lg p-2 text-left transition-colors hover:bg-[hsl(0_0%_100%/0.03)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--aqt-teal)]",
-                  active && "bg-[hsl(0_0%_100%/0.05)]"
-                )}
+                className={cn("rounded-lg p-2", active && "bg-[color:var(--aqt-overlay-3)]")}
               >
                 <ProfileStat
                   size="md"
@@ -228,7 +225,7 @@ const MapsView = ({ userId, scope, discipline, axis }: Props) => {
                     />
                   </div>
                 </ProfileStat>
-              </button>
+              </RowButton>
             );
           })}
         </div>

@@ -236,44 +236,50 @@ plain fact. That ends here.
 | Need                       | Use                                                                                                                                                                                                                                                                                                    |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Titled group card          | `TournamentTeamCardFrame` (`components/TournamentTeamCard.tsx`): `name`, optional `leadingTag` / `positionTag`, `metricLabel` + `metricValue` on the right, `side` for a home/away top edge. Teams, match rounds, map-pool rounds and stat role columns all use it. Do not retype its classes by hand. |
-| Section card               | `Card` (`ui/card.tsx`, keeps `data-ui="card"`)                                                                                                                                                                                                                                                         |
+| Section card               | `Card` (`ui/card.tsx`, keeps `data-ui="card"`); `variant="flat"` for a list or table frame with no shadow — never a hand-typed `rounded-xl border bg-card` |
 | Page hero                  | `PageHero` / `HeroFrame` (`components/site/PageHero.tsx`); `variant="plain"` on `/` and `/get-workspace`                                                                                                                                                                                               |
-| Profile section / open KPI | `CardSurface`, `ProfileStat` (`users/components/shared/atoms.tsx`): uppercase label, Onest figure, dim sub line, colour only for quality                                                                                                                                                               |
+| Profile section / open KPI | `CardSurface`, `ProfileStat`, `SummaryCellBox` (`components/profile/atoms.tsx`): uppercase label, Onest figure, dim sub line, colour only for quality                                                                                                                                                  |
 | Empty / error / not-found  | `PageStateCard` (`ui/page-state-card.tsx`); on tournament sections `TournamentPageState` (adds `refresh-error` under stale content)                                                                                                                                                                    |
-| Skeletons                  | `ui/skeleton.tsx`; tournament sections `_components/TournamentSkeletons.tsx`; open sections draw their own skeleton beside the section (`LeadersSkeleton`, `statistics/_components/*Skeleton`)                                                                                                       |
-| Link with hover prefetch   | `HoverPrefetchLink`                                                                                                                                                                                                                                                                                    |
+| Skeletons                  | `ui/skeleton.tsx` (`variant="text"` for one line of text; stops pulsing under reduced motion); tournament sections `_components/TournamentSkeletons.tsx`; open sections draw their own skeleton beside the section (`LeadersSkeleton`, `statistics/_components/*Skeleton`)            |
+| Link with hover prefetch   | `HoverPrefetchLink`; "← Back to …" text link `BackLink` (`components/site/BackLink.tsx`)                                                                                                                                                                                                              |
 | Team identity              | `TeamName` / `TeamLogo` (`components/TeamName.tsx`) — no fallback glyph when a team has no image                                                                                                                                                                                                       |
-| Player identity            | `PlayerName`, roster rows `RosterPlayer` / `RosterRole` / `RosterRank` (`TournamentTeamCard.tsx`)                                                                                                                                                                                                      |
-| Role / division marker     | `PlayerRoleIcon`, `DivisionIcon`                                                                                                                                                                                                                                                                       |
-| Hero avatars               | `HeroImage`, `HeroStrip` (collapsing `+N` stack)                                                                                                                                                                                                                                                       |
+| Player identity            | `PlayerName` (profile link); a bare handle `HandleLabel` (`components/HandleLabel.tsx`: name + faint `#tag`, the tag truncates first) over `splitHandle` (`lib/player.ts`) — never `split("#")`; avatar `PlayerAvatar`; roster rows `RosterPlayer` / `RosterRole` / `RosterRank` (`TournamentTeamCard.tsx`) |
+| Role / division marker     | `PlayerRoleIcon`; `DivisionIcon` (`tooltip` names the division); a crest from a rank or a division `RankCrest` (`components/RankCrest.tsx`)                                                                                                                                                          |
+| Hero / map images          | `CatalogEntityImage` (`components/catalog/CatalogEntityImage.tsx`): hero faces square, map stills `shape="wide"` (4:3); initials when there is no image                                                                                                                                             |
 | Group colour               | `groupHue(name)`, `groupIndex(name)`, `groupDisplayName(name, word)` (`lib/tournament/group.ts`)                                                                                                                                                                                                       |
+| Media queries              | `useMediaQuery(query)` (`hooks/useMediaQuery.ts`), `usePrefersReducedMotion()` — never a hand-rolled `matchMedia` listener                                                                                                                                                                         |
 
 ### Controls
 
-**Library controls only.** Native `<button>`, `<input>`, `<select>` and
-`<textarea>` appear only inside `components/ui/*`. Feature code uses the
-primitives below; when none fits, add a variant or a primitive to
-`components/ui/` rather than hand-rolling one. Raw controls still in feature
-code are migration debt, not precedent.
+**Library controls only.** Native `<button>`, `<input>`, `<select>`,
+`<textarea>` and `<img>` appear only inside `components/ui/*`. Feature code
+uses the primitives below; when none fits, add a variant or a primitive to
+`components/ui/` rather than hand-rolling one. `lint:design` (R8, R9)
+enforces it; its few exemptions (OG renderer, user markdown, image capture,
+the last-resort `global-error`) are listed in the script with their reason.
 
 | Need                        | Use                                                                                                                     |
 | --------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| Filter chip                 | `FilterChip` in `FilterChipGroup` (`ui/filter-chip.tsx`)                                                                |
+| Filter chip                 | `FilterChip` in `FilterChipGroup` (`ui/filter-chip.tsx`), `accent` for a role-tinted chip                               |
 | Filter + controls row       | `SectionToolbar` (tournament sections): chips at the start, search/sort/view at the end                                 |
 | Search                      | `SearchField` (`ui/search-field.tsx`), `label` required                                                                 |
-| Text / number / time field  | `ui/input.tsx`, `ui/number-input.tsx`, `ui/time-input.tsx`, `ui/textarea.tsx`                                           |
-| Checkbox / switch / radio   | `ui/checkbox.tsx`, `ui/switch.tsx`, `ui/radio-group.tsx`                                                                |
+| Text / number / time field  | `ui/input.tsx`, `ui/number-input.tsx`, `ui/time-input.tsx`, `ui/textarea.tsx`; the public form skin is `variant="surface"` (also on `SelectTrigger` and `Checkbox`) |
+| Labelled form field         | `FieldShell` (`components/forms/FieldShell.tsx`): label, help and error wired by id; `FieldError` / `FieldDescription` (`ui/field.tsx`) for a bare error or hint |
+| Checkbox / switch / radio   | `ui/checkbox.tsx`, `ui/switch.tsx` (`size="sm"`), `ui/radio-group.tsx` (`RadioGroupItem variant="card"` for option cards) |
 | Colour                      | `ui/color-swatch.tsx` — the one native `<input type="color">`; a blank value paints its fallback, dashed                |
+| File                        | `FileButton` / `useFilePicker` (`ui/file-button.tsx`) — the one hidden `<input type="file">`                            |
 | Select                      | `ui/select.tsx` — never a native `<select>`                                                                             |
 | Searchable picker           | `ui/combobox.tsx`; with images or multi-select `ui/searchable-image-select.tsx`; server search `kit/ServerSearchCombobox` |
 | Panels of different content | `ui/tabs.tsx` (Radix), `TabsTrigger badge` for a count                                                                  |
-| Tabs that are addresses     | `kit/LinkTabs.tsx` (`aria-current="page"`, `level={2}` for sub-tabs)                                                    |
-| View/mode of the same data  | `ui/toggle-group.tsx` pill; on tournament sections `ViewSegment` (`?view=` / `?tab=`, default never written to the URL) |
-| Pagination                  | `ui/data-pagination.tsx`                                                                                                |
+| Tabs that are addresses     | `kit/LinkTabs.tsx` (`aria-current="page"`, `level={2}` for sub-tabs, `variant="pill"` for a segmented look)             |
+| View/mode of the same data  | `ui/toggle-group.tsx` pill (`accent` per item; `variant="card"` for option cards); on tournament sections `ViewSegment` (`?view=` / `?tab=`, default never written to the URL) |
+| Pagination                  | `ui/data-pagination.tsx` (`leading` slot for the range or rows-per-page)                                                |
 | Data table                  | `components/data-table/DataTable.tsx`                                                                                   |
 | URL state                   | `hooks/useQueryParams.ts`                                                                                               |
-| Button                      | `ui/button.tsx`; `static={false}` opts into a reduced-motion-safe press; `size="icon-sm"` (28px) for an icon beside text |
+| Button                      | `ui/button.tsx`. Variants `default` · `outline` · `secondary` · `subtle` (overlay fill) · `ghost` · `ghost-destructive` (icon remove) · `accent` (teal row action) · `positive` · `destructive` · `dashed` (add one more) · `link`; sizes `default` · `sm` · `lg` · `xs` · `icon` · `icon-sm` (28px, icon beside text) · `icon-xs` · `inline` (a link in a sentence) · `label` (sortable header). `static={false}` opts into a reduced-motion-safe press |
 | Row that is one action      | `RowButton` (`ui/row-button.tsx`): row hover, `aria-current="true"` selected fill, inset focus ring; the caller lays out |
+| Dialog / sheet chrome       | `DialogContent` / `SheetContent` + their headers, `variant="panel"` for the edge-to-edge panel with a bordered header |
+| Range                       | `ui/slider.tsx`, `accent` for a role-tinted track                                                                       |
 
 ### Status and data
 
@@ -286,7 +292,7 @@ code are migration debt, not precedent.
 | Tinted label chip  | `Badge` (`ui/badge.tsx`): `tone` + `palette="aqt"` for `--aqt-*` hues, `voice="label"` for the uppercase data voice, `size="sm"` for dense tables |
 | Eyebrow / uppercase label | `Eyebrow` / `eyebrowClass(tone)` (`ui/eyebrow.tsx`), tone `faint` (default) · `dim` · `muted` |
 | W/L/D square       | `ResTag` (`components/match/cells.tsx`)                                    |
-| MVP placement      | `MvpOrdinal` (`users/components/shared/MvpOrdinal.tsx`): gold for 1st only |
+| MVP placement      | `MvpOrdinal` (`disciplines/overwatch/match/MvpOrdinal.tsx`): gold for 1st only |
 | Platform totals    | `LeadersContent` (`components/site/leaders.tsx`) on `/` and the community page; `HeroStat` figures in the `/statistics` hero (`statistics/_components/OverallFigures.tsx`) |
 | Markdown           | `components/Markdown.tsx`; editing `components/admin/MarkdownEditor.tsx`   |
 | Spinner (rare)     | `ui/spinner.tsx` — prefer a skeleton                                       |
@@ -533,6 +539,11 @@ Rules on every admin screen:
 | `kit/PhaseStrip.tsx`                         | lifecycle position, indicator only                             |
 | `kit/MasterDetail.tsx`                       | T4 split with the narrow-viewport switch; `MasterList` / `MasterListSkeleton` for the plain list column |
 | `kit/NextActionHero.tsx`                     | the single "do this next" on T1 and hub Overview               |
+| `admin/PermissionGate.tsx`                   | a page's permission gate: skeleton while permissions load, "No access" `PageStateCard` when refused |
+| `admin/AdminTabbedPage.tsx`                  | T2 page header plus level-1 `LinkTabs` for a tabbed admin section |
+| `tournaments/[id]/sub-tabs.tsx`              | hub sub-tabs: `useSubTabSegment` (active segment from the path), `SubTabShell`, `useTabAccess` |
+| `kit/FactList.tsx`                           | a `<dl>` strip of labelled facts in a header or summary          |
+| `kit/ServerSearchCombobox.tsx`               | pickers over a server search (`UserSearchCombobox`, `AuthUserSearchCombobox`) |
 | `ui/tone.ts`                                 | `Tone`, `TONE_CLASS` / `TONE_TEXT` tint recipes                |
 | `admin/AdminDetailTable.tsx`                 | styling for a dense table inside an editor, not a browser      |
 
@@ -571,7 +582,8 @@ Rules on every admin screen:
 - [ ] Every chip on the screen maps to one of the four jobs in §4.
 - [ ] No fact appears twice in one view.
 - [ ] Every control offers a real choice.
-- [ ] Tokens only; type roles only; `npm run lint:design` passes.
+- [ ] Tokens only; type roles only; `bun run lint:design` passes (it also
+      fails a native control or `<img>` outside `components/ui/`).
 - [ ] Skeleton matches the layout; `empty`, `error`, `filtered-empty` all
       render.
 - [ ] Checked at 390 / 768 / 1024 / 1440; no horizontal page scroll.

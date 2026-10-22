@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Star } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -10,11 +10,12 @@ import { getApiErrorMessage } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { eyebrowClass } from "@/components/ui/eyebrow";
+import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import captainService, { type CaptainReportSubmitResult } from "@/services/captain.service";
 import pickBanService from "@/services/pickBan.service";
 import { CaptainReportsView } from "@/components/tournaments/CaptainReportsView";
@@ -57,6 +58,10 @@ const CUSTOM_TEXT_MAX_LENGTH = 500;
 // below don't re-run on every keystroke while the config query is in flight.
 const EMPTY_CUSTOM_FIELDS: ReportCustomFieldDefinition[] = [];
 
+/** One report field's tile. */
+const FIELD_BLOCK_CLASS =
+  "rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4";
+
 function clampCloseness(value: number): MatchQuality {
   return Math.max(1, Math.min(10, Math.round(value))) as MatchQuality;
 }
@@ -68,33 +73,6 @@ function clampCloseness(value: number): MatchQuality {
  */
 export function matchReportDraftKey(encounter: Encounter): string {
   return [encounter.id, encounter.result_version, encounter.closeness ?? "none"].join(":");
-}
-
-/**
- * Arrow keys that move within a radiogroup, and the direction each one moves.
- * Mirrors `ui/toggle-group.tsx`: declaring `role="radiogroup"` promises the ARIA
- * APG contract — one tab stop, arrows moving *and* selecting — so the grid below
- * has to honour it rather than leave eleven tab stops behind the role.
- */
-const RADIO_ARROW_STEP: Record<string, number> = {
-  ArrowRight: 1,
-  ArrowDown: 1,
-  ArrowLeft: -1,
-  ArrowUp: -1
-};
-
-function moveWithinRadioGroup(event: KeyboardEvent<HTMLDivElement>) {
-  const step = RADIO_ARROW_STEP[event.key];
-  if (step === undefined) return;
-
-  const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')];
-  const current = items.indexOf(document.activeElement as HTMLButtonElement);
-  if (current === -1) return;
-
-  event.preventDefault();
-  const next = items[(current + step + items.length) % items.length];
-  next.focus();
-  next.click();
 }
 
 /**
@@ -117,21 +95,13 @@ function BlockHeading({
   hint?: string;
 }>) {
   const t = useTranslations();
-  const headingClass =
-    "text-label font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]";
 
   return (
     <div className="space-y-0.5">
       <div className="flex items-baseline justify-between gap-2">
-        {htmlFor ? (
-          <label id={labelId} htmlFor={htmlFor} className={headingClass}>
-            {label}
-          </label>
-        ) : (
-          <p id={labelId} className={headingClass}>
-            {label}
-          </p>
-        )}
+        <Eyebrow as={htmlFor ? "label" : "p"} id={labelId} htmlFor={htmlFor} tone="dim">
+          {label}
+        </Eyebrow>
         <span className={cn(eyebrowClass(), "shrink-0", required && "text-[color:var(--aqt-gold)]")}>
           {required ? t("common.required") : t("matchReport.optional")}
         </span>
@@ -433,7 +403,7 @@ export function MatchReportForm({
             />
           )
         ) : (
-          <div className="space-y-3 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
+          <div className={cn("space-y-3", FIELD_BLOCK_CLASS)}>
             <BlockHeading label={t("matchReport.pointsLabel")} required />
             {seats.map((seat) => (
               <div key={seat.id} className="flex items-center gap-3">
@@ -450,14 +420,14 @@ export function MatchReportForm({
                   onValueChange={(next) =>
                     setDraft((prev) => ({ ...prev, scores: { ...scores, [seat.id]: next ?? 0 } }))
                   }
-                  className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)]"
+                  variant="surface"
                 />
               </div>
             ))}
           </div>
         )}
 
-        <div className="space-y-1.5 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
+        <div className={cn("space-y-1.5", FIELD_BLOCK_CLASS)}>
           <BlockHeading
             htmlFor={gamesPlayedId}
             label={t("matchReport.gamesPlayed")}
@@ -472,12 +442,12 @@ export function MatchReportForm({
             value={gamesPlayed}
             onValueChange={(next) => setDraft((prev) => ({ ...prev, gamesPlayed: next ?? 0 }))}
             aria-invalid={validation.score != null}
-            className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)]"
+            variant="surface"
           />
         </div>
 
         {closenessConfig.enabled && (
-          <div className="space-y-3 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
+          <div className={cn("space-y-3", FIELD_BLOCK_CLASS)}>
             <div className="flex items-start justify-between gap-3">
               <BlockHeading
                 labelId={qualityLabelId}
@@ -492,76 +462,60 @@ export function MatchReportForm({
               </div>
             </div>
 
-            <div
-              role="radiogroup"
+            <ToggleGroup
+              type="single"
+              variant="card"
+              // A mandatory rating has no "not set" radio, so unset selects nothing.
+              value={closeness == null ? (closenessConfig.required ? "" : "none") : String(closeness)}
+              onValueChange={(value) =>
+                setDraft((prev) => ({
+                  ...prev,
+                  closeness: MATCH_QUALITY_OPTIONS.find((option) => String(option) === value) ?? null
+                }))
+              }
               aria-labelledby={qualityLabelId}
               aria-required={closenessConfig.required}
               aria-invalid={validation.closeness != null}
               aria-describedby={validation.closeness ? qualityErrorId : undefined}
-              onKeyDown={moveWithinRadioGroup}
-              className="grid grid-cols-5 gap-2"
+              className="grid-cols-5"
             >
-              {MATCH_QUALITY_OPTIONS.map((val, position) => {
-                const isSelected = val === closeness;
-                // APG: the group is one tab stop. With nothing chosen the first
-                // option holds it — a mandatory rating has no "not set" radio to hold it.
-                const isTabStop =
-                  isSelected || (closeness == null && closenessConfig.required && position === 0);
-
-                return (
-                  <button
-                    key={val}
-                    type="button"
-                    role="radio"
-                    tabIndex={isTabStop ? 0 : -1}
+              {MATCH_QUALITY_OPTIONS.map((val) => (
+                <ToggleGroupItem
+                  key={val}
+                  value={String(val)}
+                  accent="var(--aqt-gold)"
+                  aria-label={t("matchReport.qualityAria", {
+                    score: String(val),
+                    description: t(`matchReport.qualityDescriptions.${val}`)
+                  })}
+                  className="items-center justify-center text-center"
+                >
+                  <Star
+                    aria-hidden
                     className={cn(
-                      "flex min-h-12 flex-col items-center justify-center gap-1 rounded-lg border px-1.5 py-1.5 text-center transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                      isSelected
-                        ? "border-[color:color-mix(in_srgb,var(--aqt-gold)_50%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-gold)_12%,transparent)] text-[color:var(--aqt-gold)] hover:bg-[color:color-mix(in_srgb,var(--aqt-gold)_20%,transparent)]"
-                        : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+                      "h-4.5 w-4.5 transition-colors duration-150",
+                      val === closeness
+                        ? "fill-[color:var(--aqt-gold)] text-[color:var(--aqt-gold)]"
+                        : "text-[color:var(--aqt-fg-faint)]"
                     )}
-                    onClick={() => setDraft((prev) => ({ ...prev, closeness: val }))}
-                    aria-checked={isSelected}
-                    aria-label={t("matchReport.qualityAria", {
-                      score: String(val),
-                      description: t(`matchReport.qualityDescriptions.${val}`)
-                    })}
-                  >
-                    <Star
-                      aria-hidden
-                      className={cn(
-                        "h-4.5 w-4.5 transition-colors duration-150",
-                        isSelected
-                          ? "fill-[color:var(--aqt-gold)] text-[color:var(--aqt-gold)]"
-                          : "text-[color:var(--aqt-fg-faint)]"
-                      )}
-                    />
-                    <span className="text-label font-bold">{val}/10</span>
-                  </button>
-                );
-              })}
+                  />
+                  <span className="text-label font-bold">{val}/10</span>
+                </ToggleGroupItem>
+              ))}
 
               {/* Only an optional rating can be left unset; offering "not rated"
                   for a mandatory one would advertise an invalid answer. */}
               {!closenessConfig.required && (
-                <button
-                  type="button"
-                  role="radio"
-                  tabIndex={closeness == null ? 0 : -1}
-                  aria-checked={closeness == null}
+                <ToggleGroupItem
+                  value="none"
+                  accent="var(--aqt-fg-muted)"
                   aria-label={t("matchEdit.notSet")}
-                  onClick={() => setDraft((prev) => ({ ...prev, closeness: null }))}
-                  className={cn(
-                    "col-span-5 min-h-9 rounded-lg border px-2 py-1.5 text-label font-bold uppercase tracking-label transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                    closeness == null
-                      ? "border-[color:var(--aqt-border-1)] bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg)]"
-                      : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg)]"
-                  )}
+                  className="col-span-5 items-center"
                 >
                   {t("matchEdit.notSet")}
-                </button>
+                </ToggleGroupItem>
               )}
-            </div>
+            </ToggleGroup>
 
             {validation.closeness ? (
               <p id={qualityErrorId} className="text-xs font-semibold text-danger">
@@ -577,7 +531,7 @@ export function MatchReportForm({
         )}
 
         {mapCodesConfig.enabled && (
-          <div className="space-y-3 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
+          <div className={cn("space-y-3", FIELD_BLOCK_CLASS)}>
             <BlockHeading
               labelId={mapCodesLabelId}
               label={t("matchReport.mapCodes")}
@@ -623,7 +577,7 @@ export function MatchReportForm({
                           codes: { ...codes, [slot.mapIndex]: e.target.value }
                         }))
                       }
-                      className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)]"
+                      variant="surface"
                     />
                   </div>
                 );
@@ -638,7 +592,7 @@ export function MatchReportForm({
         )}
 
         {commentConfig.enabled && (
-          <div className="space-y-2 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
+          <div className={cn("space-y-2", FIELD_BLOCK_CLASS)}>
             <BlockHeading
               htmlFor={commentId}
               label={t("matchReport.comment")}
@@ -655,7 +609,7 @@ export function MatchReportForm({
                 validation.comment ? `${commentCounterId} ${commentErrorId}` : commentCounterId
               }
               onChange={(e) => setDraft((prev) => ({ ...prev, comment: e.target.value }))}
-              className="min-h-20 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)]"
+              variant="surface"
             />
             <p
               id={commentCounterId}
@@ -672,10 +626,10 @@ export function MatchReportForm({
         )}
 
         {customDefs.length > 0 && (
-          <div className="space-y-3 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-4">
-            <p className="text-label font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
+          <div className={cn("space-y-3", FIELD_BLOCK_CLASS)}>
+            <Eyebrow as="p" tone="dim">
               {t("matchReport.customFields")}
-            </p>
+            </Eyebrow>
             {customDefs.map((definition) => {
               const inputId = `${idPrefix}-custom-${definition.key}`;
               const errorId = `${inputId}-error`;
@@ -702,7 +656,7 @@ export function MatchReportForm({
                         customFields: { ...customValues, [definition.key]: e.target.value }
                       }))
                     }
-                    className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)]"
+                    variant="surface"
                   />
                   {error ? (
                     <p id={errorId} className="text-xs font-semibold text-danger">
@@ -735,7 +689,7 @@ export function MatchReportForm({
         <Button
           onClick={() => submitMutation.mutate()}
           disabled={!!validationError || submitMutation.isPending}
-          className="h-10 px-5"
+          size="lg"
         >
           {submitMutation.isPending ? t("matchReport.submitting") : t("matchReport.submit")}
         </Button>

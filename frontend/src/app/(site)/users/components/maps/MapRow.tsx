@@ -6,6 +6,7 @@ import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import CharacterCard, { CharacterMapStats } from "@/components/profile/CharacterCard";
 import ProfileWidget from "@/components/profile/ProfileWidget";
 import { AvatarStack } from "@/components/ui/avatar";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { winrateColor } from "@/lib/colors";
 import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
@@ -24,9 +25,9 @@ const MapRow = ({ row, discipline, axis }: { row: UserMapRead; discipline: strin
       </div>
       <div className="flex flex-col leading-tight">
         <div className="text-body font-semibold text-[color:var(--aqt-fg)]">{row.map.name}</div>
-        <div className="aqt-tnum text-label uppercase tracking-[0.06em] text-[color:var(--aqt-fg-dim)]">
+        <Eyebrow as="div" tone="dim" className="aqt-tnum">
           {row.map.parent?.name ?? "—"}
-        </div>
+        </Eyebrow>
       </div>
       <div className="aqt-wr-bar">
         <div className="aqt-track">

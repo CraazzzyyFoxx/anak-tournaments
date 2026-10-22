@@ -32,7 +32,7 @@ beforeEach(() => {
     },
     media,
     addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
-    removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
+    removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener)
   })) as unknown as typeof window.matchMedia;
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -62,6 +62,8 @@ describe("useMediaQuery", () => {
 
   it.each([true, false])("answers serverDefault=%s on the server", (serverDefault) => {
     matches = !serverDefault;
-    expect(renderToString(createElement(Probe, { serverDefault }))).toContain(String(serverDefault));
+    expect(renderToString(createElement(Probe, { serverDefault }))).toContain(
+      String(serverDefault)
+    );
   });
 });

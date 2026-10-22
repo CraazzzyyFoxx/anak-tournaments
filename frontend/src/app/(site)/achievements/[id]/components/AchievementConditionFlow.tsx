@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 
 import type { TreeNode } from "@/components/rule-builder";
+import { Skeleton } from "@/components/ui/skeleton";
 import { DEFAULT_CONDITION_TYPE, useConditionText } from "@/lib/achievements/condition-text";
 import type { ConditionNode } from "@/types/achievement.types";
 import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
@@ -16,9 +17,7 @@ const RuleBuilder = dynamic(
   () => import("@/components/rule-builder").then((m) => m.RuleBuilder),
   {
     ssr: false,
-    loading: () => (
-      <div className="h-[420px] w-full animate-pulse rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)]" />
-    ),
+    loading: () => <Skeleton className="h-[420px] w-full rounded-lg" />,
   }
 );
 

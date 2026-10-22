@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 
+import { ProfileStat } from "@/components/profile/atoms";
 import { useFormatter } from "@/lib/datetime/client";
 import { isEncounterCompleted } from "@/lib/encounter/status";
 import type { Encounter } from "@/types/encounter.types";
@@ -9,7 +10,6 @@ import type { FfaLobby } from "@/types/ffa.types";
 import type { StreamEntry } from "@/types/stream.types";
 
 import { CardLink, OverviewCard, OverviewStreamCard } from "./OverviewCards";
-import { StatTile } from "./RegistrationSummary";
 
 /**
  * B: while it is being played (§3B). The matches carry the page; the right
@@ -88,7 +88,7 @@ export function OverviewLiveView({
         {/* Teams and players are the header's stamps; the only figure this card
             adds while play runs is how far along it is. */}
         <OverviewCard title={t("tournamentDetail.overview.numbers.title")}>
-          <StatTile
+          <ProfileStat
             label={t("tournamentDetail.overview.numbers.played")}
             value={`${playedCount}/${matchesCount}`}
           />

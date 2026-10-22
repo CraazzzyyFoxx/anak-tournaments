@@ -5,8 +5,9 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { Crown } from "lucide-react";
 
-import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { RankCrest } from "@/components/RankCrest";
+import { Card } from "@/components/ui/card";
 import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import {
   TableBody,
@@ -81,7 +82,7 @@ export function BalanceEditorPlayerPreviewRow({
   onSelectPlayer,
 }: Readonly<BalanceEditorPlayerPreviewRowProps>) {
   return (
-    <div className="w-[24rem] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/40">
+    <Card variant="flat" className="w-[24rem] max-w-[calc(100vw-2rem)] overflow-hidden shadow-2xl shadow-black/40">
       <table className="w-full caption-bottom text-sm">
         <tbody>
           <BalanceEditorPlayerTableRow
@@ -98,7 +99,7 @@ export function BalanceEditorPlayerPreviewRow({
           />
         </tbody>
       </table>
-    </div>
+    </Card>
   );
 }
 
@@ -167,9 +168,7 @@ function BalanceEditorPlayerTableRow({
       <TableCell className="w-18 px-2 py-2.5">
         <div className="flex justify-center">
           {division != null ? (
-            <span title={`Division ${division}`}>
-              <DivisionIcon division={division} tournamentGrid={divisionGrid} width={26} height={26} />
-            </span>
+            <RankCrest division={division} grid={divisionGrid} size={26} />
           ) : (
             <span className="text-xs text-[color:var(--aqt-fg-faint)]">-</span>
           )}

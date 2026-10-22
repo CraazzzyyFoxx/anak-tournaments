@@ -6,11 +6,11 @@ import { ArrowRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { formatRelative } from "@/components/kit/format-time";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { SearchField } from "@/components/ui/search-field";
@@ -86,11 +86,11 @@ export function ActiveMixes({
   }
   if (loading) {
     return (
-      <div role="status" className={cn(PANEL_CLASS, "flex flex-col gap-3 p-5")}>
+      <Card variant="flat" role="status" className="flex flex-col gap-3 p-5">
         <span className="sr-only">{t("loading")}</span>
         <Skeleton className="h-6 w-1/3 motion-reduce:animate-none" />
         <Skeleton className="h-4 w-1/2 motion-reduce:animate-none" />
-      </div>
+      </Card>
     );
   }
   if (games.length === 0) return null;
@@ -263,7 +263,7 @@ export function MixHistory({
     );
   } else if (loading) {
     body = (
-      <div role="status" className={cn(PANEL_CLASS, "w-full min-w-0 divide-y divide-[color:var(--aqt-border)]")}>
+      <Card variant="flat" role="status" className="w-full min-w-0 divide-y divide-[color:var(--aqt-border)]">
         <span className="sr-only">{mixes("loading")}</span>
         {[0, 1, 2, 3].map((row) => (
           <div key={row} aria-hidden="true" className="flex items-center gap-4 px-4 py-3.5">
@@ -276,7 +276,7 @@ export function MixHistory({
             <Skeleton className="h-7 w-10 shrink-0 motion-reduce:animate-none" />
           </div>
         ))}
-      </div>
+      </Card>
     );
   } else if (items.length === 0) {
     body = searching ? (
@@ -309,16 +309,18 @@ export function MixHistory({
             {group.label ? (
               <h3 className="mb-2 text-caption font-semibold text-[color:var(--aqt-fg-muted)]">{group.label}</h3>
             ) : null}
-            <ul className={cn(PANEL_CLASS, "flex min-w-0 flex-col divide-y divide-[color:var(--aqt-border)]")}>
-              {group.items.map((game) => (
-                <HistoryRow
-                  key={game.id}
-                  game={game}
-                  community={communities?.get(game.workspace_id)}
-                  gameMarks={gameMarks}
-                />
-              ))}
-            </ul>
+            <Card variant="flat" asChild>
+              <ul className="flex min-w-0 flex-col divide-y divide-[color:var(--aqt-border)]">
+                {group.items.map((game) => (
+                  <HistoryRow
+                    key={game.id}
+                    game={game}
+                    community={communities?.get(game.workspace_id)}
+                    gameMarks={gameMarks}
+                  />
+                ))}
+              </ul>
+            </Card>
           </section>
         ))}
         {error ? (

@@ -8,6 +8,7 @@ import achievementsService from "@/services/achievements.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { cn } from "@/lib/utils";
 import { useQueryParams } from "@/hooks/useQueryParams";
+import { Card } from "@/components/ui/card";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { SearchField } from "@/components/ui/search-field";
@@ -242,7 +243,7 @@ const AchievementsCatalog = ({ initial }: Readonly<{ initial?: GameScopeInit }>)
       />
 
       {/* Same toolbar shape as /tournaments: chips scroll on phones, one row from md. */}
-      <div className="flex flex-col gap-2.5 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2.5 md:flex-row md:flex-wrap md:items-center md:gap-2">
+      <Card variant="flat" className="flex flex-col gap-2.5 p-2.5 md:flex-row md:flex-wrap md:items-center md:gap-2">
         {categories.length > 0 ? (
           <div
             role="group"
@@ -283,7 +284,8 @@ const AchievementsCatalog = ({ initial }: Readonly<{ initial?: GameScopeInit }>)
             <SelectTrigger
               aria-label={t("common.sortBy")}
               size="sm"
-              className="w-auto min-w-[170px] gap-2 border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)] shadow-none hover:border-[color:var(--aqt-border-2)] focus:ring-0 focus:ring-offset-0 max-md:h-10 max-md:flex-1"
+              variant="surface"
+              className="w-auto min-w-[170px] gap-2 max-md:h-10 max-md:flex-1"
             >
               <SelectValue />
             </SelectTrigger>
@@ -297,7 +299,7 @@ const AchievementsCatalog = ({ initial }: Readonly<{ initial?: GameScopeInit }>)
             {t("achievements.results", { count: visibleCount })}
           </span>
         </div>
-      </div>
+      </Card>
 
       {visibleCount === 0 ? (
         <PageStateCard

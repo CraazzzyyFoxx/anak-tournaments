@@ -3,6 +3,8 @@
 import { useTranslations } from "next-intl";
 import { useEffect, useRef, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+
 import styles from "./docs.module.css";
 
 type MermaidApi = (typeof import("mermaid"))["default"];
@@ -148,28 +150,28 @@ export function MermaidDiagram({ code, diagramKey }: Readonly<MermaidDiagramProp
   return (
     <div className={styles.diagram}>
       <div className={styles.zoomControls}>
-        <button
-          type="button"
-          className={styles.zoomBtn}
+        <Button
+          variant="subtle"
+          size="icon-sm"
           onClick={zoomOut}
           aria-label={t("zoomOut")}
           disabled={zoom <= ZOOM_MIN}
         >
           −
-        </button>
+        </Button>
         <span className={styles.zoomLevel}>{Math.round(zoom * 100)}%</span>
-        <button
-          type="button"
-          className={styles.zoomBtn}
+        <Button
+          variant="subtle"
+          size="icon-sm"
           onClick={zoomIn}
           aria-label={t("zoomIn")}
           disabled={zoom >= ZOOM_MAX}
         >
           +
-        </button>
-        <button type="button" className={styles.zoomBtn} onClick={() => setZoom(1)} aria-label={t("zoomReset")}>
+        </Button>
+        <Button variant="subtle" size="icon-sm" onClick={() => setZoom(1)} aria-label={t("zoomReset")}>
           1:1
-        </button>
+        </Button>
       </div>
 
       <div className={styles.diagramScroll}>

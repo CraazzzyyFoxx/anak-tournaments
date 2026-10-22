@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { RowButton } from "@/components/ui/row-button";
 import { cn } from "@/lib/utils";
 
 import { overlapRange, type MappingChoice, type MappingRow, type MappingTarget } from "./autoMap";
@@ -158,11 +159,10 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
                   inRange && !proposed && "bg-primary/10"
                 )}
               >
-                <button
+                <RowButton
                   ref={index === focusIndex ? focusRef : undefined}
-                  type="button"
                   onClick={() => pick(index)}
-                  className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm"
                 >
                   <span className="w-6 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
                     {band.number}
@@ -173,7 +173,7 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
                   <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                     {rankRangeLabel(band)}
                   </span>
-                </button>
+                </RowButton>
                 <span
                   className={cn(
                     "w-10 shrink-0 text-right text-xs tabular-nums",
@@ -183,13 +183,15 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
                   {share === undefined ? null : `${Math.round(share * 100)}%`}
                 </span>
                 {inRange && shown.length > 1 ? (
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon-xs"
                     aria-pressed={landing}
                     aria-label={t("playersLand", { source: name, target: band.name })}
                     title={t("playersLand", { source: name, target: band.name })}
                     onClick={() => land(index)}
-                    className="mr-1 grid size-6 shrink-0 place-items-center rounded-full hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="mr-1 shrink-0 rounded-full"
                   >
                     <span
                       className={cn(
@@ -197,9 +199,9 @@ export function MappingTargetPicker({ row, bands, target, onChange }: Readonly<M
                         landing ? "border-primary bg-primary" : "border-muted-foreground"
                       )}
                     />
-                  </button>
+                  </Button>
                 ) : (
-                  <span aria-hidden className="mr-1 size-6 shrink-0" />
+                  <span aria-hidden className="mr-1 size-5 shrink-0" />
                 )}
               </li>
             );

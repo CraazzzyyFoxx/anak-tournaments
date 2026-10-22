@@ -105,8 +105,8 @@ export function AdminSavedViews({
     <>
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="h-8">
-            <Bookmark className="h-4 w-4" aria-hidden />
+          <Button variant="outline" size="sm">
+            <Bookmark aria-hidden />
             {t("views")}
           </Button>
         </DropdownMenuTrigger>
@@ -118,10 +118,12 @@ export function AdminSavedViews({
               onSelect={() => applyView(view, extra)}
             >
               <span className="truncate">{view.name}</span>
-              <button
+              <Button
                 type="button"
+                variant="ghost-destructive"
+                size="icon-sm"
                 aria-label={t("deleteView", { name: view.name })}
-                className="shrink-0 rounded-sm p-0.5 text-muted-foreground hover:text-foreground"
+                className="-my-1 shrink-0"
                 // Only the click is stopped: swallowing pointerdown too would make
                 // Radix synthesize a select on pointerup.
                 onClick={(event) => {
@@ -129,8 +131,8 @@ export function AdminSavedViews({
                   commit(views.filter((existing) => existing.name !== view.name));
                 }}
               >
-                <X className="h-3.5 w-3.5" aria-hidden />
-              </button>
+                <X aria-hidden />
+              </Button>
             </DropdownMenuItem>
           ))}
           {views.length > 0 ? <DropdownMenuSeparator /> : null}

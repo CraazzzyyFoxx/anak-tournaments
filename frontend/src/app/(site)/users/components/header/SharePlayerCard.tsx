@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Share2, Download, Link2, Check, Copy } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -35,9 +36,6 @@ export interface ShareCardData {
   mapsTotal: number;
   form: FormResult[];
 }
-
-const BTN =
-  "inline-flex h-8 items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.03)] px-2.5 text-caption font-semibold text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)] disabled:opacity-50";
 
 const CARD_W = 1200;
 const CARD_H = 630;
@@ -427,9 +425,11 @@ const SharePlayerCard = ({ card }: SharePlayerCardProps) => {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger className={BTN} title={t("users.profile.toolbar.share")}>
-        <Share2 size={13} aria-hidden />
-        {t("users.profile.toolbar.share")}
+      <DialogTrigger asChild>
+        <Button variant="subtle" size="sm" title={t("users.profile.toolbar.share")}>
+          <Share2 aria-hidden />
+          {t("users.profile.toolbar.share")}
+        </Button>
       </DialogTrigger>
       <DialogContent className="max-w-[680px] border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)]">
         <DialogHeader>
@@ -451,18 +451,18 @@ const SharePlayerCard = ({ card }: SharePlayerCardProps) => {
         />
 
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          <button type="button" onClick={handleCopyImage} className={BTN}>
-            {copyState === "img" ? <Check size={13} aria-hidden /> : <Copy size={13} aria-hidden />}
+          <Button variant="subtle" size="sm" onClick={handleCopyImage}>
+            {copyState === "img" ? <Check aria-hidden /> : <Copy aria-hidden />}
             {copyState === "img" ? t("users.profile.toolbar.imageCopied") : t("users.profile.toolbar.copyImage")}
-          </button>
-          <button type="button" onClick={handleDownload} className={BTN}>
-            {copyState === "download" ? <Check size={13} aria-hidden /> : <Download size={13} aria-hidden />}
+          </Button>
+          <Button variant="subtle" size="sm" onClick={handleDownload}>
+            {copyState === "download" ? <Check aria-hidden /> : <Download aria-hidden />}
             {copyState === "download" ? t("users.profile.toolbar.downloaded") : t("users.profile.toolbar.download")}
-          </button>
-          <button type="button" onClick={handleCopyLink} className={BTN} title={t("users.profile.toolbar.copyLink")}>
-            {copyState === "link" ? <Check size={13} aria-hidden /> : <Link2 size={13} aria-hidden />}
+          </Button>
+          <Button variant="subtle" size="sm" onClick={handleCopyLink} title={t("users.profile.toolbar.copyLink")}>
+            {copyState === "link" ? <Check aria-hidden /> : <Link2 aria-hidden />}
             {copyState === "link" ? t("users.profile.toolbar.copied") : t("users.profile.toolbar.copyLinkShort")}
-          </button>
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

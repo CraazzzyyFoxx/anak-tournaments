@@ -70,6 +70,7 @@
    density: the same components stay 36px in the hero. Unlayered, so it beats
    the Tailwind utilities on the button, which live in `@layer utilities`. */
 .railRow > .railTrail > * {
+  height: auto;
   min-height: 1.75rem;
   padding-block: 0.1875rem;
   padding-inline: 0.5rem;
@@ -147,37 +148,6 @@
 
 .rail::-webkit-scrollbar {
   display: none;
-}
-
-.scrollControl {
-  display: inline-grid;
-  place-items: center;
-  width: 2rem;
-  min-width: 2rem;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: var(--aqt-bg);
-  color: var(--aqt-fg-dim);
-  cursor: pointer;
-}
-
-.scrollControl svg {
-  width: 0.875rem;
-  height: 0.875rem;
-}
-
-.scrollControl:hover,
-.scrollControl:focus-visible {
-  color: var(--aqt-teal);
-  outline: 1px solid var(--aqt-teal);
-  outline-offset: -3px;
-}
-
-.scrollControl:disabled {
-  color: var(--aqt-fg-faint);
-  cursor: default;
-  opacity: 0.45;
-  outline: none;
 }
 
 .scrollControlHidden {
@@ -291,20 +261,6 @@
   gap: 1rem;
 }
 
-.skeletonBlock {
-  display: block;
-  min-width: 0;
-  border: 1px solid hsl(217 17% 21% / 0.45);
-  border-radius: 0.45rem;
-  background:
-    linear-gradient(105deg, transparent 32%, color-mix(in srgb, var(--aqt-teal) 7%, transparent) 48%, transparent 64%),
-    hsl(220 22% 11% / 0.72);
-  background-size:
-    240% 100%,
-    100% 100%;
-  animation: skeletonSweep 1.8s ease-in-out infinite;
-}
-
 .skeletonHeader {
   display: flex;
   align-items: end;
@@ -375,21 +331,6 @@
   border-bottom: 1px solid var(--aqt-border);
 }
 
-.stateAction {
-  min-height: 2.25rem;
-  padding: 0.45rem 0.75rem;
-  border: 1px solid var(--aqt-border-2);
-  border-radius: 0.4rem;
-  background: color-mix(in srgb, var(--aqt-teal) 8%, transparent);
-  color: var(--aqt-teal);
-  font-family: var(--aqt-data);
-  font-size: var(--text-label);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-
 .refreshState {
   display: grid;
   gap: 0.75rem;
@@ -449,84 +390,6 @@
    0 keeps every overflow owner local. */
 .publicDataPage > * {
   min-width: 0;
-}
-
-/* ── Section vocabulary (wireframes §11, "broadcast scoreboard") ──
-   A block is a CARD: the site's first-level surface (`--aqt-card` at 8% L over
-   the page's 5%), a hairline and a 12px radius — the same treatment as
-   `.aqt-card-surface` and the tournament list's cards, so the overview speaks
-   the site's existing vocabulary.
-
-   This replaced a bare mono eyebrow over a top hairline. The hairline version
-   was chosen to avoid "a third border around every list", but with three to six
-   blocks per column the reader had to infer where one ended and the next began
-   from spacing alone — and the phase timeline, the podium and the numbers grid
-   all bleed to the same edges, so there was no edge to read. Separation is what
-   the eye needs here; the eyebrow stays as the block's anchor (§11), now inside
-   the card instead of straddling a rule.
-
-   Deliberately no `overflow: hidden` (unlike `.aqt-card-surface`): the
-   mini-bracket scrolls horizontally inside its own block, and `#phases`
-   must stay scrollable-to. */
-.block {
-  min-width: 0;
-  padding: 0.875rem 1rem 1rem;
-  border: 1px solid var(--aqt-border);
-  border-radius: 0.75rem;
-  background: var(--aqt-card);
-}
-
-.blockHead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-
-.blockTitle {
-  margin: 0;
-  font-family: var(--aqt-data);
-  font-size: var(--text-label);
-  font-weight: 500;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--aqt-fg-faint);
-}
-
-/* A figure: label above, the number in the display face — the number is what
-   the block is for, so it is the largest thing in it. */
-.figure {
-  display: grid;
-  gap: 0.2rem;
-  min-width: 0;
-}
-
-.figureLabel {
-  font-family: var(--aqt-data);
-  font-size: var(--text-label);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  color: var(--aqt-fg-faint);
-}
-
-.figureValue {
-  font-family: var(--aqt-display);
-  font-size: 2rem;
-  font-weight: 700;
-  line-height: 1;
-  letter-spacing: -0.01em;
-  font-variant-numeric: tabular-nums;
-  color: var(--aqt-fg);
-}
-
-.figureHint {
-  margin-inline-start: 0.35rem;
-  font-family: var(--aqt-data);
-  font-size: var(--text-label);
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--aqt-fg-faint);
 }
 
 /* Score in a match row: the display face, heavier and larger than the team
@@ -741,26 +604,6 @@
   padding-inline: 0.35rem;
 }
 
-.participantExpander {
-  display: inline-flex;
-  min-width: 2.25rem;
-  min-height: 2.25rem;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  border: 1px solid transparent;
-  border-radius: 0.35rem;
-  background: transparent;
-  color: var(--aqt-fg-dim);
-  cursor: pointer;
-}
-
-.participantExpander:hover,
-.participantExpander:focus-visible {
-  color: var(--aqt-teal);
-  outline: none;
-}
-
 .participantExpandedCell {
   min-width: 0;
 }
@@ -836,19 +679,6 @@
   color: var(--aqt-fg-dim);
   font-size: var(--text-label);
   font-style: italic;
-}
-
-@keyframes skeletonSweep {
-  from {
-    background-position:
-      125% 0,
-      0 0;
-  }
-  to {
-    background-position:
-      -125% 0,
-      0 0;
-  }
 }
 
 @keyframes navLivePulse {
@@ -1000,14 +830,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .navItem,
-  .skeletonBlock,
   .liveTag {
     animation: none;
     scroll-behavior: auto;
     transition: none;
-  }
-
-  .skeletonBlock {
-    background: hsl(220 22% 11% / 0.72);
   }
 }

@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { useNow, useTranslations } from "next-intl";
 import { AlertTriangle, ArrowRight, CheckCircle2, ChevronDown, Circle, Lock } from "lucide-react";
 
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { buildChecklist, type ChecklistItem } from "@/components/admin/tournament-checklist";
 import { formatRelative } from "@/components/kit/format-time";
+import { FactList } from "@/components/kit/FactList";
 import { StatusPill } from "@/components/kit/StatusPill";
 import { TONE_TEXT, type Tone } from "@/components/ui/tone";
 import { eyebrowClass } from "@/components/ui/eyebrow";
@@ -221,28 +222,6 @@ function ChecklistRow({ item }: Readonly<{ item: ChecklistItem }>) {
   );
 }
 
-/**
- * A label over a tabular figure; coloured only when it is a non-zero problem.
- * The label wraps instead of truncating (three cards in a row leave ~90px per
- * figure), and `justify-between` keeps a row's values on one baseline when one
- * label takes two lines.
- */
-function Figure({ label, value, tone }: Readonly<{ label: string; value: ReactNode; tone?: Tone }>) {
-  return (
-    <div className="flex min-w-0 flex-col justify-between gap-1">
-      <dt className="text-xs leading-tight text-muted-foreground">{label}</dt>
-      <dd
-        className={cn(
-          "text-lg font-semibold tabular-nums",
-          tone && typeof value === "number" && value > 0 && TONE_TEXT[tone]
-        )}
-      >
-        {value}
-      </dd>
-    </div>
-  );
-}
-
 /** The funnel pending, approved, ranked, checked in; then the pace and the deadline. */
 function RegistrationBody({ card }: Readonly<{ card: DashboardTournamentCard }>) {
   const t = useTranslations("adminShell.dashboard");
@@ -257,12 +236,19 @@ function RegistrationBody({ card }: Readonly<{ card: DashboardTournamentCard }>)
       {readiness.registrations_approved == null ? (
         <NoAccess />
       ) : (
-        <dl className="grid grid-cols-4 gap-2">
-          <Figure label={t("pending")} value={readiness.registrations_pending} tone="warning" />
-          <Figure label={t("approved")} value={readiness.registrations_approved} />
-          <Figure label={t("ranked")} value={readiness.registrations_ranked} />
-          <Figure label={t("checkedIn")} value={readiness.registrations_checked_in} />
-        </dl>
+        <FactList
+          className="grid grid-cols-4 gap-2"
+          facts={[
+            {
+              label: t("pending"),
+              value: readiness.registrations_pending,
+              tone: readiness.registrations_pending ? "warning" : undefined
+            },
+            { label: t("approved"), value: readiness.registrations_approved },
+            { label: t("ranked"), value: readiness.registrations_ranked },
+            { label: t("checkedIn"), value: readiness.registrations_checked_in }
+          ]}
+        />
       )}
       <ul className="space-y-1 text-xs text-muted-foreground">
         {card.registrations_last_24h != null ? (
@@ -283,16 +269,34 @@ function PlayBody({ card }: Readonly<{ card: DashboardTournamentCard }>) {
   const play = card.play;
   if (!play) return <NoAccess />;
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
-      <Figure
-        label={t("play.completed")}
-        value={t("playProgress", { completed: play.encounters_completed, total: play.encounters_total })}
-      />
-      <Figure label={t("play.live")} value={play.encounters_live} />
-      <Figure label={t("play.overdue")} value={play.encounters_overdue} tone="danger" />
-      <Figure label={t("play.pendingConfirmation")} value={play.encounters_pending_confirmation} tone="warning" />
-      <Figure label={t("play.disputed")} value={play.encounters_disputed} tone="danger" />
-    </dl>
+    <FactList
+      className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3"
+      facts={[
+        {
+          label: t("play.completed"),
+          value: t("playProgress", {
+            completed: play.encounters_completed,
+            total: play.encounters_total
+          })
+        },
+        { label: t("play.live"), value: play.encounters_live },
+        {
+          label: t("play.overdue"),
+          value: play.encounters_overdue,
+          tone: play.encounters_overdue ? "danger" : undefined
+        },
+        {
+          label: t("play.pendingConfirmation"),
+          value: play.encounters_pending_confirmation,
+          tone: play.encounters_pending_confirmation ? "warning" : undefined
+        },
+        {
+          label: t("play.disputed"),
+          value: play.encounters_disputed,
+          tone: play.encounters_disputed ? "danger" : undefined
+        }
+      ]}
+    />
   );
 }
 

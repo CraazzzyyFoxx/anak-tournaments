@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { RotateCw } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { DisciplineWidget } from "@/disciplines/DisciplineWidget";
 import { loadProfileUI } from "@/disciplines/registry/profile";
 import type { ProfileSlot, SlotProps } from "@/disciplines/types";
@@ -36,15 +37,10 @@ export default function ProfileWidget<K extends ProfileSlot>({
     return (
       <p role="alert" className="flex items-center gap-2 text-caption text-[color:var(--aqt-rose)]">
         {t("loadError")}
-        <button
-          type="button"
-          disabled={metadata.isFetching}
-          onClick={() => void metadata.refetch()}
-          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-2)] disabled:opacity-50"
-        >
-          <RotateCw aria-hidden className="h-3 w-3" />
+        <Button variant="subtle" size="sm" disabled={metadata.isFetching} onClick={() => void metadata.refetch()}>
+          <RotateCw aria-hidden />
           {t("retry")}
-        </button>
+        </Button>
       </p>
     );
   }

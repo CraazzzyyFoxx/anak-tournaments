@@ -1,6 +1,8 @@
 import type { ScoreKind } from "@/components/match/cells";
+import { mapWithModeName } from "@/lib/catalog/mode";
 import { observedScore } from "@/lib/encounter/detail";
 import { seatsBySlot } from "@/lib/encounter/seats";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 import type { EncounterWithUserStats, MatchWithUserStats } from "@/types/user.types";
 
 /**
@@ -57,4 +59,28 @@ export function mapKind(match: Pick<MatchWithUserStats, "participants">, own: Se
   const others = match.participants.filter((participant) => participant !== mine).map(observedScore);
   if (mineScore == null || others.length === 0 || others.some((score) => score == null)) return "draw";
   return kindOf(mineScore, Math.max(...(others as number[])));
+}
+
+/** The viewer's characters across the encounter's maps, each once, in first-played order. */
+export function uniqueViewerCharacters(enc: Pick<EncounterWithUserStats, "matches">): CatalogEntityRead[] {
+  const byId = new Map<number, CatalogEntityRead>();
+  for (const match of enc.matches ?? []) {
+    for (const character of match.viewer?.characters ?? []) {
+      if (!byId.has(character.id)) byId.set(character.id, character);
+    }
+  }
+  return [...byId.values()];
+}
+
+/**
+ * `MatchLogIndicator`'s per-map log refs ("Map · Mode · #id"), or `undefined` when the encounter has no logs.
+ * `mapAlt` names a map the read did not expand.
+ */
+export function encounterLogEntries(enc: Pick<EncounterWithUserStats, "has_logs" | "matches">, mapAlt: string) {
+  if (!enc.has_logs) return undefined;
+  return (enc.matches ?? []).map((match) => ({
+    matchId: match.id,
+    rawAvailable: match.raw_available,
+    label: `${mapWithModeName(match.map, match.mode) ?? mapAlt} · #${match.id}`
+  }));
 }

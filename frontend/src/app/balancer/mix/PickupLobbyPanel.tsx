@@ -10,11 +10,12 @@ import {
 } from "@dnd-kit/core";
 import { AlertTriangle, Trash2, Wand2 } from "lucide-react";
 
-import { ICON_BUTTON_CLASS, PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
+import { ICON_BUTTON_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { CAPTION_CLASS, CARD_TITLE_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -161,7 +162,7 @@ export function PickupLobbyPanel({
   };
 
   return (
-    <div className={cn(PANEL_CLASS, "flex min-w-0 flex-col")}>
+    <Card variant="flat" className="flex min-w-0 flex-col">
       <div className="flex items-center gap-2.5 border-b border-[color:var(--aqt-border)] px-4 py-3.5">
         <h2 className={CARD_TITLE_CLASS}>Lineup</h2>
         <span className={CAPTION_CLASS}>
@@ -337,6 +338,6 @@ export function PickupLobbyPanel({
           </DndContext>
         )}
       </div>
-    </div>
+    </Card>
   );
 }

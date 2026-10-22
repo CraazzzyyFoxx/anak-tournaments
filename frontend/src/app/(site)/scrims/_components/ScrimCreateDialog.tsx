@@ -241,39 +241,45 @@ export function ScrimCreateDialog({
             {scopedWorkspaceId == null ? (
               <Field>
                 <FieldLabel htmlFor={`${ids}-workspace`}>{t("communityLabel")}</FieldLabel>
-                <select
-                  id={`${ids}-workspace`}
-                  className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
-                  value={workspaceId ?? ""}
+                <Select
+                  value={workspaceId != null ? String(workspaceId) : ""}
                   required
-                  onChange={(event) => {
-                    setChosenWorkspaceId(event.target.value ? Number(event.target.value) : null);
+                  onValueChange={(value) => {
+                    setChosenWorkspaceId(value ? Number(value) : null);
                     setCopyTournamentId(null);
                     setCopyStageId(null);
                     setCopyRound(null);
                   }}
                 >
-                  <option value="">{t("communityPlaceholder")}</option>
-                  {workspaces.map((workspace) => (
-                    <option key={workspace.id} value={workspace.id}>{workspace.name}</option>
-                  ))}
-                </select>
+                  <SelectTrigger id={`${ids}-workspace`}>
+                    <SelectValue placeholder={t("communityPlaceholder")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workspaces.map((workspace) => (
+                      <SelectItem key={workspace.id} value={String(workspace.id)}>
+                        {workspace.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FieldDescription>{t("communityHint")}</FieldDescription>
               </Field>
             ) : null}
             {enabledDisciplines.length > 1 ? (
               <Field>
                 <FieldLabel htmlFor={`${ids}-game`}>{t("gameLabel")}</FieldLabel>
-                <select
-                  id={`${ids}-game`}
-                  className="border-input bg-background h-9 w-full rounded-md border px-3 text-sm"
-                  value={discipline ?? ""}
-                  onChange={(event) => setChosenDiscipline(event.target.value)}
-                >
-                  {enabledDisciplines.map((entry) => (
-                    <option key={entry.code} value={entry.code}>{entry.name}</option>
-                  ))}
-                </select>
+                <Select value={discipline ?? ""} onValueChange={setChosenDiscipline}>
+                  <SelectTrigger id={`${ids}-game`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {enabledDisciplines.map((entry) => (
+                      <SelectItem key={entry.code} value={entry.code}>
+                        {entry.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
             ) : null}
             <Field>

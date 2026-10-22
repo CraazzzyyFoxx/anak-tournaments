@@ -10,6 +10,7 @@ import { CatalogToolbarActions } from "@/components/admin/CatalogToolbarActions"
 import { FilterBar } from "@/components/kit/FilterBar";
 import { useFilters } from "@/components/kit/useFilters";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ColorSwatch } from "@/components/ui/color-swatch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -47,7 +48,6 @@ export function HeroesBrowser({ descriptor, discipline, kind, kindLabel }: Reado
   const nameFieldId = `${formId}-name`;
   const classFieldId = `${formId}-class`;
   const colorFieldId = `${formId}-color`;
-  const colorPickerId = `${formId}-color-picker`;
   const aliasesFieldId = `${formId}-aliases`;
 
   const crud = useCatalogEntityCrud<CatalogEntityRead, CharacterForm, CharacterForm>({
@@ -158,13 +158,11 @@ export function HeroesBrowser({ descriptor, discipline, kind, kindLabel }: Reado
         <div className="space-y-2">
           <Label htmlFor={colorFieldId}>{t("catalog.character.color")}</Label>
           <div className="flex items-center gap-2">
-            <Input
-              id={colorPickerId}
-              aria-label={t("catalog.character.pickColor")}
-              type="color"
-              value={formData.color || DEFAULT_COLOR}
-              onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-              className="h-10 w-14 shrink-0 cursor-pointer p-1"
+            <ColorSwatch
+              value={formData.color}
+              fallback={DEFAULT_COLOR}
+              label={t("catalog.character.pickColor")}
+              onChange={(color) => setFormData({ ...formData, color })}
             />
             <Input
               id={colorFieldId}

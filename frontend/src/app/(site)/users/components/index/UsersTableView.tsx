@@ -7,6 +7,8 @@ import { ArrowDown, ArrowUp, ChevronDown, ChevronUp } from "lucide-react";
 import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
 import PlayerName from "@/components/PlayerName";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -52,21 +54,19 @@ function SortHead({
       aria-sort={active ? (ascending ? "ascending" : "descending") : "none"}
       className={cn(headCellClass, className)}
     >
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="label"
         onClick={() => controls.toggleSort(sort)}
         className={cn(
-          // Preflight resets `text-transform` on `button`, so the uppercase
-          // label style has to be restated here or sortable heads read as
-          // sentence case beside the plain ones.
-          "inline-flex items-center gap-1 rounded uppercase tracking-label outline-none transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]",
+          "hover:bg-transparent hover:text-[color:var(--aqt-fg)]",
           align === "center" ? "justify-center" : "justify-start",
           active && "text-[color:var(--aqt-teal)]"
         )}
       >
         {children}
-        {active ? <Arrow aria-hidden className="size-3" /> : null}
-      </button>
+        {active ? <Arrow aria-hidden /> : null}
+      </Button>
     </th>
   );
 }
@@ -151,7 +151,7 @@ export function UsersTableView({
         ))}
       </div>
 
-      <div className="max-md:hidden overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]">
+      <Card variant="flat" className="max-md:hidden overflow-hidden">
         <table className="w-full border-collapse text-caption">
           <thead>
             <tr className="border-b border-[color:var(--aqt-border)] text-left">
@@ -225,9 +225,9 @@ export function UsersTableView({
             ))}
           </tbody>
         </table>
-      </div>
+      </Card>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2.5">
+      <Card variant="flat" className="flex flex-wrap items-center gap-3 p-2.5">
         <span className="text-label tabular-nums text-[color:var(--aqt-fg-faint)]">
           {range
             ? t("users.list.pagination.showingPlayers", {
@@ -260,7 +260,7 @@ export function UsersTableView({
           totalPages={maxPage}
           onPageChange={(next) => controls.setPage(Math.max(1, Math.min(maxPage, next)))}
         />
-      </div>
+      </Card>
     </section>
   );
 }
@@ -344,21 +344,17 @@ function PlayerRow({
       {/* The drawer reads one game's draft card: under "all games" there is nothing to expand. */}
       <td className="pr-3">
         {allGames ? null : (
-          <button
-            type="button"
+          <Button
+            variant="subtle"
+            size="icon-sm"
             onClick={onToggle}
             aria-expanded={expanded}
             aria-label={
               expanded ? t("users.list.a11y.collapseDetails") : t("users.list.a11y.expandDetails")
             }
-            className="inline-flex size-7 items-center justify-center rounded-lg border border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-2)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
           >
-            {expanded ? (
-              <ChevronUp aria-hidden className="size-3.5" />
-            ) : (
-              <ChevronDown aria-hidden className="size-3.5" />
-            )}
-          </button>
+            {expanded ? <ChevronUp aria-hidden /> : <ChevronDown aria-hidden />}
+          </Button>
         )}
       </td>
     </tr>

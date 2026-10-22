@@ -138,7 +138,7 @@ export function HeroFrame({
         />
       ) : null}
       {fadeRight ? (
-        // eslint-disable-next-line @next/next/no-img-element
+        // eslint-disable-next-line @next/next/no-img-element -- next/image cannot express this masked, fixed-width cover-wash sizing
         <img
           src={coverUrl ?? ""}
           alt=""
@@ -161,7 +161,7 @@ export function HeroFrame({
           }}
         />
       ) : coverUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
+        // eslint-disable-next-line @next/next/no-img-element -- next/image cannot express this negative-inset blurred cover-wash sizing
         <img
           src={coverUrl}
           alt=""

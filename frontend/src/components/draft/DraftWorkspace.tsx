@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   useDraftPlayerCardPrefetch,
@@ -464,13 +465,15 @@ export function DraftWorkspace({
         {optionsUnavailable && (
           <output className="mx-auto flex max-w-[1720px] flex-wrap items-center gap-2 px-4 pb-2 text-sm text-[color:var(--aqt-fg-muted)] sm:px-6">
             {t("safeOptionsUnavailable")}
-            <button
+            <Button
               type="button"
+              variant="link"
+              size="inline"
               onClick={onRetryOptions}
-              className="min-h-11 rounded-sm text-[color:var(--aqt-teal)] underline outline-hidden focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+              className="min-h-11 text-[color:var(--aqt-teal)] underline"
             >
               {t("retry")}
-            </button>
+            </Button>
           </output>
         )}
       </header>

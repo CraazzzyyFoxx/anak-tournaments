@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useMemo, useRef, useState } from "react";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Button } from "@/components/ui/button";
 import { useDraftLayerPad } from "@/hooks/useDraftLayerPad";
 import { usePickCountdown } from "@/hooks/usePickCountdown";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
@@ -158,15 +159,17 @@ export function DraftQueue({ board, teamViews, remaining, myTeamId, clockColor, 
         })}
       </ol>
       {history.length > HISTORY_COUNT && (
-        <div className="px-[18px] py-3">
-          <button
+        <div className="px-[18px] py-3 text-body">
+          <Button
             type="button"
+            variant="link"
+            size="inline"
             aria-expanded={showAll}
             onClick={() => setShowAll((value) => !value)}
-            className="rounded text-body font-medium text-[color:var(--aqt-teal)] outline-hidden hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] max-sm:min-h-11"
+            className="text-[color:var(--aqt-teal)] max-sm:min-h-11"
           >
             {showAll ? t("teams.history.collapse") : t("teams.history.showAll", { count: history.length })}
-          </button>
+          </Button>
         </div>
       )}
     </div>

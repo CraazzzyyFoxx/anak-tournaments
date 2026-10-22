@@ -6,6 +6,7 @@ import { AlertCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { ChartEmptyState, RankHistorySkeleton } from "@/components/RankHistoryState";
+import { Card } from "@/components/ui/card";
 import { useUserRankHistory } from "@/hooks/useRankHistory";
 import { userQueryKeys } from "@/lib/users/query-keys";
 import rankService from "@/services/rank.service";
@@ -46,7 +47,7 @@ export default function RankHistory({ userId }: Readonly<SlotProps["rankHistory"
         {LOL_QUEUES.map((queue) => {
           const rank = bestOf(ranks, queue);
           return (
-            <div key={queue} className="rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-4">
+            <Card key={queue} variant="flat" className="p-4">
               <dt className="text-caption text-[color:var(--aqt-fg-dim)]">{t(`lol.${queue}`)}</dt>
               <dd className="mt-1 text-sm tabular-nums">
                 {rank ? (
@@ -61,7 +62,7 @@ export default function RankHistory({ userId }: Readonly<SlotProps["rankHistory"
                   t("lol.unranked")
                 )}
               </dd>
-            </div>
+            </Card>
           );
         })}
       </dl>

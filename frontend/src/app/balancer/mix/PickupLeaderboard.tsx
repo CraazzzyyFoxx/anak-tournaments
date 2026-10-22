@@ -5,11 +5,11 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { HandleLabel } from "@/components/HandleLabel";
 import { formatRelative } from "@/components/kit/format-time";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { FormStreak } from "@/components/profile/atoms";
+import { Card } from "@/components/ui/card";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
@@ -243,7 +243,8 @@ export function PickupLeaderboard({
   const ready = !loading && !error;
 
   return (
-    <section aria-labelledby={`${id}-title`} className={cn(PANEL_CLASS, "w-full min-w-0")}>
+    <Card variant="flat" asChild>
+      <section aria-labelledby={`${id}-title`} className="w-full min-w-0">
       <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] px-4 py-3.5">
         <div className="min-w-0">
           <h2 id={`${id}-title`} className="font-display text-heading font-semibold text-[color:var(--aqt-fg)]">
@@ -324,7 +325,8 @@ export function PickupLeaderboard({
           </div>
         </>
       ) : null}
-    </section>
+      </section>
+    </Card>
   );
 }
 
@@ -481,7 +483,8 @@ export function PickupRatingTable({
   }
 
   return (
-    <section aria-labelledby={`${id}-title`} className={cn(PANEL_CLASS, "w-full min-w-0")}>
+    <Card variant="flat" asChild>
+      <section aria-labelledby={`${id}-title`} className="w-full min-w-0">
       <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] px-4 py-4 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
           <h2 id={`${id}-title`} className="font-display text-heading font-semibold text-[color:var(--aqt-fg)]">
@@ -528,6 +531,7 @@ export function PickupRatingTable({
           className="border-t border-[color:var(--aqt-border)] px-4 py-3"
         />
       ) : null}
-    </section>
+      </section>
+    </Card>
   );
 }

@@ -6,10 +6,9 @@ import { FolderOpen } from "lucide-react";
 import { AutoUploadStatus } from "@/components/logs/AutoUploadStatus";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
 import { directoryErrorCode } from "@/lib/logs/browser-directory";
 import { useLogDirectory } from "@/lib/logs/use-log-directory";
-import { SettingsGroup } from "./SettingsGroup";
+import { SettingsGroup, SwitchTile } from "./SettingsGroup";
 
 export function LogDirectorySection() {
   const t = useTranslations("accountSettings.logDirectory");
@@ -59,21 +58,14 @@ export function LogDirectorySection() {
       </SettingsGroup>
 
       <SettingsGroup title={t("auto.title")}>
-        <div className="flex items-start gap-3 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-3 py-2.5">
-          <div className="flex-1 space-y-1">
-            <p id="log-auto-upload-label" className="text-sm text-[color:var(--aqt-fg)]">{t("auto.toggle")}</p>
-            <p id="log-auto-upload-desc" className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">
-              {directory.handle ? t("auto.toggleHint") : t("auto.needsFolder")}
-            </p>
-          </div>
-          <Switch
-            checked={directory.autoUpload}
-            disabled={!directory.handle}
-            onCheckedChange={directory.setAutoUpload}
-            aria-labelledby="log-auto-upload-label"
-            aria-describedby="log-auto-upload-desc"
-          />
-        </div>
+        <SwitchTile
+          id="log-auto-upload"
+          label={t("auto.toggle")}
+          desc={directory.handle ? t("auto.toggleHint") : t("auto.needsFolder")}
+          checked={directory.autoUpload}
+          disabled={!directory.handle}
+          onCheckedChange={directory.setAutoUpload}
+        />
         {directory.autoUpload ? (
           <AutoUploadStatus folder={directory.handle?.name ?? ""} idle={t("auto.idle")} />
         ) : null}

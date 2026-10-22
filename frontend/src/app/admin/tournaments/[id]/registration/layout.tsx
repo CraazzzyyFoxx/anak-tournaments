@@ -2,19 +2,16 @@
 
 import type { ReactNode } from "react";
 import { useEffect } from "react";
-import { useParams, usePathname, useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 
-import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
+import type { LinkTabItem } from "@/components/kit/LinkTabs";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useHubTournamentQuery } from "../hubQueries";
+import { SubTabShell, useSubTabSegment } from "../sub-tabs";
 import { REGISTRATION_SUB_TABS, type RegistrationSubTab } from "../tab-guards";
 
 const DEFAULT_SUB_TAB: RegistrationSubTab = "entries";
-
-function isRegistrationSubTab(value: string): value is RegistrationSubTab {
-  return (REGISTRATION_SUB_TABS as readonly string[]).includes(value);
-}
 
 /**
  * Sub-tab bar of the Registration hub tab: the two views of who entered
@@ -29,15 +26,12 @@ function isRegistrationSubTab(value: string): value is RegistrationSubTab {
 export default function RegistrationLayout({ children }: Readonly<{ children: ReactNode }>) {
   const params = useParams<{ id: string }>();
   const tournamentId = Number(params.id);
-  const pathname = usePathname();
   const router = useRouter();
   const { canAccessPermission, isLoaded: permissionsLoaded } = usePermissions();
   const t = useTranslations("adminTournament.registration");
 
   const basePath = `/admin/tournaments/${params.id}/registration`;
-  const segment = pathname.startsWith(basePath)
-    ? (pathname.slice(basePath.length).split("/").find(Boolean) ?? DEFAULT_SUB_TAB)
-    : DEFAULT_SUB_TAB;
+  const { active: requested, isKnown } = useSubTabSegment(basePath, REGISTRATION_SUB_TABS, DEFAULT_SUB_TAB);
 
   const tournamentQuery = useHubTournamentQuery(tournamentId);
   const workspaceId = tournamentQuery.data?.workspace_id ?? null;
@@ -50,9 +44,8 @@ export default function RegistrationLayout({ children }: Readonly<{ children: Re
   const teamsOffered = tournamentQuery.data
     ? tournamentQuery.data.team_formation === "registration"
     : null;
-  const isKnownSegment = isRegistrationSubTab(segment);
-  const known = isKnownSegment && (segment !== "teams" || teamsOffered !== false);
-  const active: RegistrationSubTab = known && isKnownSegment ? segment : DEFAULT_SUB_TAB;
+  const known = isKnown && (requested !== "teams" || teamsOffered !== false);
+  const active: RegistrationSubTab = known ? requested : DEFAULT_SUB_TAB;
 
   // Every section of Registration reads teams and registrations, so they share
   // the tab's own grant rather than each carrying a different one.
@@ -84,9 +77,8 @@ export default function RegistrationLayout({ children }: Readonly<{ children: Re
   const allowed = permissionsLoaded && canTeamRead;
 
   return (
-    <div className="space-y-4">
-      <LinkTabs items={items} activeKey={active} level={2} ariaLabel={t("ariaLabel")} />
-      {allowed && known ? children : null}
-    </div>
+    <SubTabShell items={items} activeKey={active} ariaLabel={t("ariaLabel")} allowed={allowed && known}>
+      {children}
+    </SubTabShell>
   );
 }

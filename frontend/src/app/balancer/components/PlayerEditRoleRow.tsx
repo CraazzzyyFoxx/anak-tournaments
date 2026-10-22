@@ -5,8 +5,8 @@ import { SortableGrip, useSortableRow } from "@/components/kit/SortableRows";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { RowButton } from "@/components/ui/row-button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import {
   Select,
@@ -27,8 +27,8 @@ import type { DivisionGrid } from "@/types/workspace.types";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import type { RoleOntology } from "@/lib/roster/ontology";
 import {
+  AccentBadge,
   RoleRankControls,
-  accentChipStyle,
   accentRowStyle,
   accentTextStyle,
   roleRankAccent
@@ -126,9 +126,7 @@ export function SortableRoleEntry({
                 {roleName}
               </span>
               {subtypeLabel ? (
-                <Badge className="h-4 border px-1.5 text-label" style={accentChipStyle(accent)}>
-                  {subtypeLabel}
-                </Badge>
+                <AccentBadge accent={accent}>{subtypeLabel}</AccentBadge>
               ) : null}
             </div>
 
@@ -136,7 +134,7 @@ export function SortableRoleEntry({
               <div className="flex h-6 items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2">
                 <Switch
                   checked={declaredActive}
-                  className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 data-[state=checked]:[&>span]:translate-x-3"
+                  size="sm"
                   onCheckedChange={(checked) =>
                     onUpdate(index, { ...entry, is_declared_active: checked })
                   }
@@ -226,7 +224,7 @@ export function SortableRoleEntry({
         </div>
 
         {nativeRankName === null ? null : owRankValue != null ? (
-          <button
+          <RowButton
             type="button"
             onClick={() =>
               onUpdate(index, {
@@ -236,7 +234,7 @@ export function SortableRoleEntry({
               })
             }
             title={`Apply live ${nativeRankName} rank${owSuggestionName ? `: ${owSuggestionName}` : ""} (${owRankValue})`}
-            className="flex w-full items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 py-1.5 text-left transition hover:border-[color:var(--aqt-border-2)] hover:bg-[color:var(--aqt-overlay-3)]"
+            className="flex items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 py-1.5 hover:bg-[color:var(--aqt-overlay-3)]"
           >
             <Sparkles className="h-3 w-3 shrink-0 text-amber-300/70" />
             <Eyebrow tone="dim">{nativeRankName}</Eyebrow>
@@ -254,13 +252,10 @@ export function SortableRoleEntry({
             <span className="text-label tabular-nums text-[color:var(--aqt-fg-dim)]">
               ({owRankValue})
             </span>
-            <span
-              className="ml-auto shrink-0 rounded-md border px-1.5 py-0.5 text-label font-semibold"
-              style={accentChipStyle(accent)}
-            >
+            <AccentBadge accent={accent} className="ml-auto shrink-0 font-semibold">
               {owActionLabel}
-            </span>
-          </button>
+            </AccentBadge>
+          </RowButton>
         ) : (
           <div className="flex w-full items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-2 py-1.5 text-left">
             <Sparkles className="h-3 w-3 shrink-0 text-[color:var(--aqt-fg-faint)]" />

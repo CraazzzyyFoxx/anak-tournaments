@@ -14,8 +14,10 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
+import { Field, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { getApiErrorMessage } from "@/lib/api/error";
 import type { CustomGame } from "@/services/custom-game.service";
 import { Spinner } from "@/components/ui/spinner";
@@ -264,34 +266,33 @@ export function PickupCreateMixDialog({
               </p>
             ) : null}
           </div>
-          <fieldset className="min-w-0 space-y-2">
-            <legend className="mb-2 text-body font-medium">{t("lineup")}</legend>
-            <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-border px-3 py-2 text-body has-checked:border-primary has-checked:bg-primary/5">
-              <input
-                type="radio"
-                name="lineup"
-                checked={!copyLineup}
-                onChange={() => {
-                  setCopyLineup(false);
-                  setSourceInvalid(false);
-                }}
-                className="size-4 accent-primary"
-              />
-              {t("empty")}
-            </label>
-            {sourceGames.length > 0 ? (
-              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-border px-3 py-2 text-body has-checked:border-primary has-checked:bg-primary/5">
-                <input
-                  type="radio"
-                  name="lineup"
-                  checked={copyLineup}
-                  onChange={() => setCopyLineup(true)}
-                  className="size-4 accent-primary"
-                />
-                {t("previous")}
-              </label>
-            ) : null}
-          </fieldset>
+          <div className="min-w-0 space-y-2">
+            <p id="pickup-lineup-label" className="text-body font-medium">{t("lineup")}</p>
+            <RadioGroup
+              aria-labelledby="pickup-lineup-label"
+              value={copyLineup ? "previous" : "empty"}
+              onValueChange={(value) => {
+                setCopyLineup(value === "previous");
+                if (value === "empty") setSourceInvalid(false);
+              }}
+              className="gap-2"
+            >
+              <FieldLabel htmlFor="pickup-lineup-empty">
+                <Field orientation="horizontal">
+                  <RadioGroupItem id="pickup-lineup-empty" value="empty" />
+                  <FieldTitle>{t("empty")}</FieldTitle>
+                </Field>
+              </FieldLabel>
+              {sourceGames.length > 0 ? (
+                <FieldLabel htmlFor="pickup-lineup-previous">
+                  <Field orientation="horizontal">
+                    <RadioGroupItem id="pickup-lineup-previous" value="previous" />
+                    <FieldTitle>{t("previous")}</FieldTitle>
+                  </Field>
+                </FieldLabel>
+              ) : null}
+            </RadioGroup>
+          </div>
           {copyLineup ? (
             <div className="min-w-0 space-y-2">
               <Label htmlFor="pickup-clone-from">{t("source")}</Label>

@@ -5,6 +5,7 @@ import { EyeOff, RotateCcw, Sword } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { SearchField } from "@/components/ui/search-field";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -103,10 +104,7 @@ const HeroLeaderboardTable = ({
         : t("users.heroesCompare.table.noData");
 
   return (
-    <section
-      aria-labelledby={TITLE_ID}
-      className="overflow-hidden rounded-[var(--aqt-radius)] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)]"
-    >
+    <Card variant="flat" asChild><section aria-labelledby={TITLE_ID} className="overflow-hidden">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-[color:var(--aqt-border)] px-4 py-3">
         <h2 id={TITLE_ID} className="font-onest text-lg font-semibold text-[color:var(--aqt-fg)]">
           {t("users.heroesCompare.table.allPlayers")}
@@ -134,15 +132,16 @@ const HeroLeaderboardTable = ({
           containerClassName="w-full md:ml-auto md:w-64"
           className="max-md:h-10"
         />
-        <button
+        <Button
           type="button"
+          variant="subtle"
+          size="sm"
           onClick={onResetColumns}
           title={t("users.heroesCompare.filters.resetColumnsTitle")}
-          className="inline-flex h-8 cursor-pointer items-center justify-center gap-2 rounded-[8px] px-3 text-xs font-semibold text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
         >
-          <RotateCcw aria-hidden className="h-3.5 w-3.5" />
+          <RotateCcw aria-hidden />
           {t("users.heroesCompare.filters.resetColumns")}
-        </button>
+        </Button>
       </div>
 
       {/* One table, one row order: column k and column k+1 describe the same player. */}
@@ -235,13 +234,15 @@ const HeroLeaderboardTable = ({
             <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <EyeOff aria-hidden className="size-3.5 shrink-0 text-[color:var(--aqt-fg-faint)]" />
               {t("users.heroesCompare.table.belowFloor", { count: hiddenCount, min: minGames })}
-              <button
+              <Button
                 type="button"
+                variant="link"
+                size="inline"
                 onClick={onShowHidden}
-                className="rounded font-semibold text-[color:var(--aqt-teal)] underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+                className="text-[color:var(--aqt-teal)]"
               >
                 {t("users.heroesCompare.table.showBelowFloor")}
-              </button>
+              </Button>
             </p>
           ) : null}
           {rows.length > 0 ? (
@@ -256,7 +257,7 @@ const HeroLeaderboardTable = ({
           ) : null}
         </div>
       ) : null}
-    </section>
+    </section></Card>
   );
 };
 

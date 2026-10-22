@@ -3,7 +3,7 @@ import { getTranslations } from "next-intl/server";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
-import { Column, ColumnHead, LoadError, Section, SectionHead } from "@/components/site/open-layout";
+import { Column, ColumnHead, OpenLoadError, Section, SectionHead } from "@/components/site/open-layout";
 import Image from "@/components/ui/image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getFormatter } from "@/lib/datetime/server";
@@ -115,7 +115,7 @@ export async function CommunityStats({
   if (history === null && division === null && characters === null) {
     return (
       <Shell workspace={workspace} tabs={tabs}>
-        <LoadError what={t("stats.what")} dashed />
+        <OpenLoadError what={t("stats.what")} dashed />
       </Shell>
     );
   }
@@ -142,7 +142,7 @@ async function ActivityColumn({ history }: Readonly<{ history: TournamentStatist
     return (
       <Column>
         <ColumnHead title={t("stats.perTournament")} />
-        {history === null ? <LoadError /> : null}
+        {history === null ? <OpenLoadError /> : null}
       </Column>
     );
   }
@@ -232,7 +232,7 @@ async function DivisionColumn({
     return (
       <Column>
         <ColumnHead title={t("stats.divisions")} />
-        <LoadError />
+        <OpenLoadError />
       </Column>
     );
   }
@@ -302,7 +302,7 @@ async function CharactersColumn({ characters }: Readonly<{ characters: Character
     return (
       <Column>
         <ColumnHead title={t("stats.topHeroes")} sub={t("stats.topHeroesSub")} />
-        {characters === null ? <LoadError /> : null}
+        {characters === null ? <OpenLoadError /> : null}
       </Column>
     );
   }

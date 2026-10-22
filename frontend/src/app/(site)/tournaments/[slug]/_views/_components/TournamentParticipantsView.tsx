@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Search, EyeOff, LayoutGrid, Table2 } from "lucide-react";
+import { EyeOff, LayoutGrid, Table2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import {
@@ -17,8 +17,11 @@ import {
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { FilterChip } from "@/components/ui/filter-chip";
+import { SearchField } from "@/components/ui/search-field";
 import {
   Select,
   SelectContent,
@@ -638,13 +641,14 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
       {/* One toolbar for both views, two clusters: what you are looking at on
           the left (view switch, status chips), how you are narrowing it on the
           right (search, division, columns). The switch stays put when the view
-          changes — `.filter-search` owns the single `auto` margin between the
+          changes — the search owns the single `auto` margin between the
           clusters, and a second one would scatter the controls across the bar.
           Below `sm` the chips take their own line and scroll sideways instead
           of wrapping into a third and fourth row; from `sm` up their wrapper is
           `display: contents`, so the desktop bar stays one flex row. */}
       {!listHidden && !trueEmpty && (
-        <div
+        <Card
+          variant="flat"
           className="filters"
           role="group"
           aria-label={t("common.filters")}
@@ -704,25 +708,23 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
               })}
             </div>
           )}
-          <div className="filter-search">
-            <Search size={13} aria-hidden />
-            <input
-              aria-label={
-                view === "pool"
-                  ? t("tournamentDetail.participantsPool.searchLabel")
-                  : t("common.searchParticipants")
-              }
-              defaultValue={searchQuery}
-              maxLength={PARTICIPANT_SEARCH_MAX_LENGTH}
-              onChange={handleParticipantSearchChange}
-              placeholder={
-                view === "pool"
-                  ? t("tournamentDetail.participantsPool.searchLabel")
-                  : t("common.searchParticipants")
-              }
-              ref={participantSearchInputRef}
-            />
-          </div>
+          <SearchField
+            label={
+              view === "pool"
+                ? t("tournamentDetail.participantsPool.searchLabel")
+                : t("common.searchParticipants")
+            }
+            defaultValue={searchQuery}
+            maxLength={PARTICIPANT_SEARCH_MAX_LENGTH}
+            onChange={handleParticipantSearchChange}
+            placeholder={
+              view === "pool"
+                ? t("tournamentDetail.participantsPool.searchLabel")
+                : t("common.searchParticipants")
+            }
+            ref={participantSearchInputRef}
+            containerClassName="min-w-0 flex-1 sm:ml-auto sm:min-w-[200px] sm:max-w-[300px]"
+          />
           {view === "pool" && divisionOptions.length > 0 && (
             <Select
               value={divisionFilter === null ? "all" : String(divisionFilter)}
@@ -760,7 +762,7 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
               onReset={resetToDefaults}
             />
           )}
-        </div>
+        </Card>
       )}
 
       {/* Participants list — or, when the organizer hid it, the only thing the
@@ -828,13 +830,9 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
             {" — "}
             {t("tournamentDetail.pageState.refreshError.description")}
           </span>
-          <button
-            className={styles.stateAction}
-            onClick={() => void listQuery.refetch()}
-            type="button"
-          >
+          <Button type="button" variant="subtle" size="sm" onClick={() => void listQuery.refetch()}>
             {t("tournamentDetail.pageState.retry")}
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>

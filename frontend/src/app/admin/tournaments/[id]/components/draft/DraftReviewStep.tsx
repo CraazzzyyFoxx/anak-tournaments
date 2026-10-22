@@ -3,11 +3,11 @@
 import { CheckCircle2, XCircle } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { FactList } from "@/components/kit/FactList";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import type { AdminRegistration } from "@/types/balancer-admin.types";
 import type { DraftFormatSettings, DraftSeedResponse } from "@/types/draft.types";
 
-import { DraftFacts } from "./DraftFacts";
 import { DraftReseedDiff } from "./DraftReseedDiff";
 import type { DraftPoolReadiness } from "./setup-model";
 import { DraftSetupPreview } from "./DraftSetupPreview";
@@ -93,7 +93,8 @@ export function DraftReviewStep({
         ))}
       </ul>
 
-      <DraftFacts
+      <FactList
+        size="sm"
         facts={[
           { label: t("teamCount"), value: teamCount },
           { label: t("poolPlayers"), value: readiness.actualPlayers },

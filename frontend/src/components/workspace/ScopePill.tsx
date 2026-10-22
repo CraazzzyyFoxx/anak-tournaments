@@ -6,8 +6,10 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowUpRight, Check, ChevronsUpDown, Gamepad2, Globe, Lock, Plus, type LucideIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { RowButton } from "@/components/ui/row-button";
 import { GameMark } from "@/components/workspace/GameMark";
 import { useScopePillOpen } from "@/components/workspace/scope-pill-store";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
@@ -36,12 +38,15 @@ const ownerKindOf = (pathname: string): OwnerKind =>
 
 type MarkSource = Pick<DisciplineDescriptor, "code" | "name" | "short_name" | "icon">;
 
-const MENU_ITEM_CLASS =
-  "flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-body " +
-  "text-[color:var(--aqt-fg)] outline-none transition-colors hover:bg-[color:var(--aqt-overlay-3)] " +
-  "focus-visible:bg-[color:var(--aqt-overlay-3)] focus-visible:shadow-[inset_0_0_0_2px_var(--aqt-teal)] " +
-  "aria-[pressed=true]:bg-[color:var(--aqt-overlay-2)] disabled:cursor-not-allowed disabled:opacity-50 " +
-  "disabled:hover:bg-transparent";
+/** A popover row; `RowButton` rows already bring the reset, full width, focus ring and disabled fade. */
+const MENU_ROW_CLASS =
+  "flex min-h-10 items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-body text-[color:var(--aqt-fg)] " +
+  "hover:bg-[color:var(--aqt-overlay-3)] aria-[pressed=true]:bg-[color:var(--aqt-overlay-2)] " +
+  "disabled:cursor-not-allowed disabled:hover:bg-transparent";
+const MENU_LINK_CLASS = cn(
+  MENU_ROW_CLASS,
+  "w-full outline-none transition-colors focus-visible:bg-[color:var(--aqt-overlay-3)] focus-visible:shadow-[inset_0_0_0_2px_var(--aqt-teal)]"
+);
 const NOTE_CLASS = "px-2.5 py-1.5 text-caption text-[color:var(--aqt-fg-dim)]";
 
 function SymbolMark({ icon: Icon }: Readonly<{ icon: LucideIcon }>) {
@@ -157,16 +162,15 @@ export function ScopePill() {
     <div className="relative min-w-0">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="subtle"
+            size="sm"
             // The visible text leads the accessible name (label-in-name).
             aria-label={`${visible} ${t("common.discipline.scopeSuffix")}`}
             className={cn(
-              "flex h-9 min-w-0 max-w-[340px] items-center gap-2 rounded-[9px] py-0 pl-1.5 pr-2",
-              "border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)]",
-              "text-caption font-semibold text-[color:var(--aqt-fg)] transition-colors",
-              "hover:bg-[color:var(--aqt-overlay-3)] data-[state=open]:bg-[color:var(--aqt-overlay-3)]",
-              "outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              "min-w-0 max-w-[340px] justify-start gap-2 rounded-[9px] pl-1.5 pr-2 [&_svg]:size-3.5",
+              "bg-[color:var(--aqt-overlay-1)] data-[state=open]:bg-[color:var(--aqt-overlay-3)]"
             )}
           >
             {tenant ? null : (
@@ -191,7 +195,7 @@ export function ScopePill() {
               </span>
             ) : null}
             <ChevronsUpDown className="size-3.5 shrink-0 text-[color:var(--aqt-fg-dim)]" aria-hidden />
-          </button>
+          </Button>
         </PopoverTrigger>
         <PopoverContent
           align="start"
@@ -209,27 +213,25 @@ export function ScopePill() {
                 <Eyebrow as="p" id={communitiesId} className="px-2.5 pb-1.5 pt-2">
                   {t("nav.workspaces")}
                 </Eyebrow>
-                <button
-                  type="button"
+                <RowButton
                   onClick={() => commit("all", () => setStatsScope("all"))}
                   aria-pressed={allChecked}
-                  className={MENU_ITEM_CLASS}
+                  className={MENU_ROW_CLASS}
                 >
                   <SymbolMark icon={Globe} />
                   <span className="min-w-0 flex-1 truncate">{t("nav.allWorkspaces")}</span>
                   {allChecked ? <Check className="size-4 shrink-0" aria-hidden /> : null}
-                </button>
+                </RowButton>
                 {workspaces.map((item) => {
                   const isCurrent = picked === null ? item.id === workspace?.id : item.id === picked;
                   // The address shown to people: a verified custom domain only.
                   const host = item.custom_domain && item.custom_domain_verified_at ? item.custom_domain : null;
                   return (
-                    <button
+                    <RowButton
                       key={item.id}
-                      type="button"
                       onClick={() => pickWorkspace(item)}
                       aria-pressed={isCurrent}
-                      className={MENU_ITEM_CLASS}
+                      className={MENU_ROW_CLASS}
                     >
                       <WorkspaceAvatar workspace={item} size={24} />
                       <span className="min-w-0 flex-1">
@@ -239,7 +241,7 @@ export function ScopePill() {
                         ) : null}
                       </span>
                       {isCurrent ? <Check className="size-4 shrink-0" aria-hidden /> : null}
-                    </button>
+                    </RowButton>
                   );
                 })}
                 {entityWorkspace ? (
@@ -252,30 +254,28 @@ export function ScopePill() {
                 <Eyebrow as="p" id={gamesId} className="px-2.5 pb-1.5 pt-2">
                   {t("common.discipline.select")}
                 </Eyebrow>
-                <button
-                  type="button"
+                <RowButton
                   disabled={gamesDisabled}
                   onClick={() => pickGame(ALL_DISCIPLINES)}
                   aria-pressed={checked === null}
-                  className={MENU_ITEM_CLASS}
+                  className={MENU_ROW_CLASS}
                 >
                   <SymbolMark icon={Gamepad2} />
                   <span className="min-w-0 flex-1 truncate">{t("common.discipline.all")}</span>
                   {checked === null ? <Check className="size-4 shrink-0" aria-hidden /> : null}
-                </button>
+                </RowButton>
                 {enabledGames.map((item) => (
-                  <button
+                  <RowButton
                     key={item.code}
-                    type="button"
                     disabled={gamesDisabled}
                     onClick={() => pickGame(item.code)}
                     aria-pressed={checked === item.code}
-                    className={MENU_ITEM_CLASS}
+                    className={MENU_ROW_CLASS}
                   >
                     <GameMark discipline={item} size={24} decorative />
                     <span className="min-w-0 flex-1 truncate">{item.name}</span>
                     {checked === item.code ? <Check className="size-4 shrink-0" aria-hidden /> : null}
-                  </button>
+                  </RowButton>
                 ))}
                 {locked && checked ? (
                   <p className={NOTE_CLASS}>
@@ -297,7 +297,7 @@ export function ScopePill() {
                   href={`/workspace/${workspace.slug}`}
                   prefetch={false}
                   onClick={() => setOpen(false)}
-                  className={MENU_ITEM_CLASS}
+                  className={MENU_LINK_CLASS}
                 >
                   <ArrowUpRight className="size-4 shrink-0" aria-hidden />
                   <span className="min-w-0 flex-1">{t("nav.openWorkspace")}</span>
@@ -306,7 +306,7 @@ export function ScopePill() {
               <Link
                 href="/get-workspace"
                 onClick={() => setOpen(false)}
-                className={cn(MENU_ITEM_CLASS, "text-[color:var(--aqt-fg-muted)]")}
+                className={cn(MENU_LINK_CLASS, "text-[color:var(--aqt-fg-muted)]")}
               >
                 <Plus className="size-4 shrink-0" aria-hidden />
                 <span className="min-w-0 flex-1 truncate">{t("nav.createWorkspace")}</span>

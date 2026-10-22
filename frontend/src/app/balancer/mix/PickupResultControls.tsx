@@ -1,13 +1,10 @@
 "use client";
 
 import { teamAccent } from "@/app/balancer/mix/pickup-chrome";
+import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
 import type { CustomGameOutcome } from "@/services/custom-game.service";
-
-/** Draw: neutral but as solid as the two win buttons, so the row reads as one control. */
-const DRAW_TONE =
-  "border-[color:var(--aqt-border-3)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:border-[color:var(--aqt-fg-faint)]";
 
 type PickupResultControlsProps = {
   /** How many teams the open balance produced — one win button each. */
@@ -59,24 +56,21 @@ export function PickupResultControls({
   const teamButton = (team: (typeof teams)[number]) => {
     const accent = teamAccent(team.index);
     return (
-      <button
+      <Button
         key={team.index}
         type="button"
+        variant="subtle"
+        size="lg"
         disabled={saving}
         onClick={() => onRecord({ winner: team.winner })}
-        className={cn(
-          "flex h-10 w-full items-center justify-center gap-2 rounded-lg border text-sm font-semibold transition-colors",
-          accent.win,
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--aqt-teal)_35%,transparent)]",
-          "disabled:cursor-default disabled:opacity-60"
-        )}
+        className={cn("w-full px-3", accent.win)}
       >
         <StatusDot className={cn("inline-block size-2", accent.bar)} />
         <span className="truncate">{team.label}</span>
         {/* A draw never adjusts ranks, so it never earns the hint. The leading
             space is collapsed by flex but keeps the accessible name readable. */}
         {points}
-      </button>
+      </Button>
     );
   };
 
@@ -86,19 +80,17 @@ export function PickupResultControls({
     // line -- three buttons fit where two rosters do not.
     <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
       {teams[0] ? teamButton(teams[0]) : <span />}
-      <button
+      {/* Draw: the neutral `subtle` fill, as solid as the two win buttons, so the row reads as one control. */}
+      <Button
         type="button"
+        variant="subtle"
+        size="lg"
         disabled={saving}
         onClick={() => onRecord({ winner: null })}
-        className={cn(
-          "flex h-10 min-w-16 items-center justify-center rounded-lg border px-3 text-sm font-semibold transition-colors",
-          DRAW_TONE,
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--aqt-teal)_35%,transparent)]",
-          "disabled:cursor-default disabled:opacity-60"
-        )}
+        className="min-w-16 px-3"
       >
         Draw
-      </button>
+      </Button>
       {teams[1] ? teamButton(teams[1]) : <span />}
     </div>
   );

@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "r
 import { useTranslations } from "next-intl";
 
 import { isSlotRearrangeable, type BracketMatch } from "@/lib/bracket/view";
+import { tint } from "@/lib/colors";
 import { cn } from "@/lib/utils";
 import type { StreamEntry } from "@/types/stream.types";
 
@@ -186,7 +187,7 @@ export function BracketCanvas({
                     onPath
                       ? "var(--aqt-teal)"
                       : edge.isCompleted
-                        ? "color-mix(in srgb, var(--aqt-teal) 55%, transparent)"
+                        ? tint("var(--aqt-teal)", 55)
                         : "hsl(0 0% 100% / 0.12)"
                   }
                   strokeWidth={onPath ? 3 : 2}

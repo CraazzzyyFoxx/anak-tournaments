@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 
 import { SettingRow } from "@/components/kit/SettingRow";
 import { Button } from "@/components/ui/button";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -20,7 +21,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
-import { cn } from "@/lib/utils";
 import type { RolesParams } from "@/types/forms.types";
 
 /** One workspace `PlayerSubRole` row, with the id its chip is keyed by. */
@@ -176,10 +176,9 @@ export function RolesParamsEditor({
                 {options.map((option) => {
                   const offered = selection === undefined || selection.includes(option.slug);
                   return (
-                    <button
+                    <FilterChip
                       key={option.id}
-                      type="button"
-                      aria-pressed={offered}
+                      active={offered}
                       title={offered ? tSub("chipOffered") : tSub("chipHidden")}
                       onClick={() => {
                         const effective = selection ?? allSlugs;
@@ -191,16 +190,10 @@ export function RolesParamsEditor({
                           subroles: { ...params.subroles, [role.code]: next }
                         });
                       }}
-                      className={cn(
-                        "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                        offered
-                          ? "border-primary/30 bg-primary/10 text-primary"
-                          : "border-border/60 text-muted-foreground hover:text-foreground"
-                      )}
                     >
                       {offered && <Check className="size-3" aria-hidden />}
                       {option.label}
-                    </button>
+                    </FilterChip>
                   );
                 })}
                 {options.length === 0 &&
@@ -208,7 +201,7 @@ export function RolesParamsEditor({
                     <div role="status" className="flex gap-1.5">
                       <span className="sr-only">{tSub("loading")}</span>
                       {[0, 1, 2].map((chip) => (
-                        <Skeleton key={chip} aria-hidden className="h-[26px] w-16" />
+                        <Skeleton key={chip} aria-hidden className="h-8 w-16 rounded-lg" />
                       ))}
                     </div>
                   ) : (

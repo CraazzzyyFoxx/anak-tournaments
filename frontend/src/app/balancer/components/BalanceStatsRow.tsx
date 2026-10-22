@@ -3,6 +3,7 @@
 import { AlertCircle, BarChart2, CheckCircle2, ChevronDown, Shuffle, Sparkles, UserX } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -89,20 +90,21 @@ export function BalanceStatsRow({ stats }: Readonly<{ stats: VariantStats }>) {
       {feasibility ? (
         <Popover>
           <PopoverTrigger asChild>
-            <button
+            <Button
               type="button"
+              variant="subtle"
+              size="xs"
               aria-label="Pool diagnostics: role supply, off-role floor, flex headroom"
               className={cn(
-                "inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold tabular-nums transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "rounded-full tabular-nums",
                 shortfall > 0
                   ? "border-rose-400/25 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15"
-                  : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]",
+                  : "text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]",
               )}
             >
               Pool{shortfall > 0 ? ` −${shortfall}` : ""}
-              <ChevronDown className="ml-1 h-3.5 w-3.5" aria-hidden="true" />
-            </button>
+              <ChevronDown aria-hidden="true" />
+            </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-72 p-0">
             <PoolDiagnostics stats={stats} feasibility={feasibility} />

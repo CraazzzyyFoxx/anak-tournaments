@@ -6,6 +6,7 @@ import { getTranslations } from "next-intl/server";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Eyebrow } from "@/components/ui/eyebrow";
 
 const QUICK_LINKS: { href: string; key: "tournaments" | "players" | "encounters"; icon: LucideIcon }[] =
   [
@@ -35,9 +36,7 @@ export async function NotFoundView() {
 
         <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1fr),24rem] lg:items-start lg:gap-10 xl:grid-cols-[minmax(0,1fr),27rem]">
           <div className="max-w-2xl pt-2">
-            <p className="aqt-tnum text-label font-semibold uppercase tracking-[0.32em] text-[color:var(--aqt-fg-faint)]">
-              {t("notFound.eyebrow")}
-            </p>
+            <Eyebrow as="p">{t("notFound.eyebrow")}</Eyebrow>
 
             <h1 className="mt-4 max-w-xl font-onest text-4xl font-semibold tracking-[-0.04em] text-[color:var(--aqt-fg)] sm:text-5xl lg:text-6xl">
               {t("notFound.title")}
@@ -80,9 +79,9 @@ export async function NotFoundView() {
             </Card>
 
             <Card className="liquid-glass-panel p-4 sm:p-5">
-              <p className="px-1 aqt-tnum text-label uppercase tracking-[0.32em] text-[color:var(--aqt-fg-dim)]">
+              <Eyebrow as="p" tone="dim" className="px-1">
                 {t("notFound.quickRecovery")}
-              </p>
+              </Eyebrow>
 
               <div className="mt-4 grid gap-3">
                 {QUICK_LINKS.map(({ href, key, icon: Icon }) => (

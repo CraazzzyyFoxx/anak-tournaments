@@ -15,6 +15,8 @@ import { seatName, type PickBanSeat } from "@/components/pick-ban/pick-ban-model
 import type { PregameRoomHistoryEntry } from "@/types/admin.types";
 import type { PickBanKind } from "@/types/tournament.types";
 
+import { PregameAdminBox } from "./PregameAdminBox";
+
 /**
  * Every action this panel has a sentence for, and whether it is one an
  * organizer is scanning FOR (overrides, disputes, clock trouble, cancellations
@@ -208,7 +210,7 @@ export function PregameRoomHistory({
   };
 
   return (
-    <section className="rounded-xl border border-dashed border-[color:var(--aqt-amber)]/45 bg-[color:var(--aqt-card-2)]/40 p-3">
+    <PregameAdminBox className="p-3">
       <Button
         type="button"
         size="sm"
@@ -299,6 +301,6 @@ export function PregameRoomHistory({
           )}
         </div>
       ) : null}
-    </section>
+    </PregameAdminBox>
   );
 }

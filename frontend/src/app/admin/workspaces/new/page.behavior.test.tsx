@@ -162,7 +162,7 @@ describe("NewWorkspacePage", () => {
     mayCreate = false;
     await render();
 
-    expect(container.textContent).toContain("Unauthorized");
+    expect(container.textContent).toContain("No access");
     expect(container.querySelector('ol[aria-label="Steps"]')).toBeNull();
   });
 

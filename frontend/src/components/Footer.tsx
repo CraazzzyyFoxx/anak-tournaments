@@ -17,8 +17,9 @@ import type { Workspace } from "@/types/workspace.types";
 
 const LINK_CLASS =
   "inline-flex min-h-8 items-center gap-1.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+// Colour spelled out (not inherited) so the cookie-settings `Button` matches the links beside it.
 const META_CLASS =
-  "transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+  "text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 const VERSION_CLASS =
   "rounded-[5px] border border-[color:var(--aqt-border-2)] px-1.5 py-[3px] text-label font-semibold tabular-nums text-[color:var(--aqt-fg-dim)]";
 

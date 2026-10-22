@@ -1,12 +1,13 @@
 "use client";
 
 import { useId } from "react";
-import { AlertTriangle, CheckCircle2, Link2Off, ShieldAlert, XCircle } from "lucide-react";
+import { CheckCircle2, ShieldAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { StatTile, StatTileGrid } from "@/components/admin/StatTile";
+import { FactList } from "@/components/kit/FactList";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -70,7 +71,7 @@ export function DraftPoolStep({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-border bg-card p-5">
+      <Card variant="flat" className="p-5">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-sm text-muted-foreground">{t("poolPlayers")}</p>
@@ -115,23 +116,23 @@ export function DraftPoolStep({
           </div>
         </div>
         <Progress value={percent} className="mt-4 h-2" aria-label={t("poolPlayers")} />
-      </div>
-
-      <StatTileGrid className="sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-3">
-        <StatTile
-          icon={AlertTriangle}
-          label={t("missingRanks")}
-          value={readiness.missingRanks}
-          tone={readiness.missingRanks > 0 ? "warning" : "neutral"}
+        <FactList
+          className="mt-4"
+          facts={[
+            {
+              label: t("missingRanks"),
+              value: readiness.missingRanks,
+              tone: readiness.missingRanks > 0 ? "warning" : undefined
+            },
+            {
+              label: t("missingAccounts"),
+              value: readiness.missingAccounts,
+              tone: readiness.missingAccounts > 0 ? "warning" : undefined
+            },
+            { label: t("excludedPlayers"), value: readiness.excludedPlayers }
+          ]}
         />
-        <StatTile
-          icon={Link2Off}
-          label={t("missingAccounts")}
-          value={readiness.missingAccounts}
-          tone={readiness.missingAccounts > 0 ? "warning" : "neutral"}
-        />
-        <StatTile icon={XCircle} label={t("excludedPlayers")} value={readiness.excludedPlayers} />
-      </StatTileGrid>
+      </Card>
 
       {named && (
         <div className="space-y-3">

@@ -53,9 +53,9 @@ function teamNamesNode(names: unknown, separator: string): ReactNode {
 }
 
 const TOOL_CLASS =
-  "size-9 text-[color:var(--aqt-fg-dim)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] aria-disabled:pointer-events-none aria-disabled:opacity-50";
+  "text-[color:var(--aqt-fg-dim)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] aria-disabled:pointer-events-none aria-disabled:opacity-50";
 const FOOT_LINK_CLASS =
-  "min-h-9 rounded-lg px-2 text-caption font-medium text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50";
+  "px-2 text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]";
 
 export default function NotificationPanel({
   inbox,
@@ -219,7 +219,10 @@ export default function NotificationPanel({
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {isError && (
           <div className="flex items-start gap-3 p-[18px] text-body text-[color:var(--aqt-fg-muted)]">
-            <CircleAlert className="mt-0.5 size-4 shrink-0 text-[color:var(--aqt-rose)]" aria-hidden />
+            <CircleAlert
+              className="mt-0.5 size-4 shrink-0 text-[color:var(--aqt-rose)]"
+              aria-hidden
+            />
             <div>
               <b className="mb-0.5 block font-semibold text-[color:var(--aqt-fg)]">
                 {t(hasData ? "notifications.refreshError" : "notifications.loadErrorTitle")}
@@ -279,7 +282,9 @@ export default function NotificationPanel({
                   setActionMessage(t(`notifications.actions.${action}`));
                   if (!item.is_read) markOneRead(item.id);
                 }}
-                workspace={workspaces.find((workspace) => workspace.id === item.workspace_id) ?? null}
+                workspace={
+                  workspaces.find((workspace) => workspace.id === item.workspace_id) ?? null
+                }
                 tenantWorkspaceId={tenantWorkspaceId}
                 locale={locale}
                 format={format}
@@ -326,21 +331,25 @@ export default function NotificationPanel({
         {items.length > 0 && (
           <div className="flex justify-between gap-3 border-t border-[color:var(--aqt-border)] px-2 py-1.5">
             {items.some((item) => item.is_read) ? (
-              <button
-                type="button"
+              <Button
+                static={false}
+                variant="ghost"
+                size="sm"
                 className={FOOT_LINK_CLASS}
                 onClick={clearRead}
                 disabled={busy}
                 aria-busy={isDeleting && deletingId == null}
               >
                 {t("notifications.clearRead")}
-              </button>
+              </Button>
             ) : (
               <span />
             )}
             {hasMore && (
-              <button
-                type="button"
+              <Button
+                static={false}
+                variant="ghost"
+                size="sm"
                 className={FOOT_LINK_CLASS}
                 onClick={loadMore}
                 disabled={isFetching || busy}
@@ -353,7 +362,7 @@ export default function NotificationPanel({
                       ? "notifications.retryLoadMore"
                       : "notifications.loadMore"
                 )}
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -423,7 +432,10 @@ function Row({
       for (const field of DATE_FIELDS) {
         const raw = values[field];
         if (typeof raw === "string") {
-          values[field] = format.dateTime(new Date(raw), { dateStyle: "medium", timeStyle: "short" });
+          values[field] = format.dateTime(new Date(raw), {
+            dateStyle: "medium",
+            timeStyle: "short"
+          });
         }
       }
       // A phase with no end carries no `closes_at`, and a match whose time is not
@@ -517,7 +529,13 @@ function Row({
               </>
             ) : item.workspace_id == null ? (
               <>
-                <Image src="/brand-mark.svg" alt="" width={16} height={16} className="rounded-[4px]" />
+                <Image
+                  src="/brand-mark.svg"
+                  alt=""
+                  width={16}
+                  height={16}
+                  className="rounded-[4px]"
+                />
                 <span>{SITE_NAME}</span>
                 <span aria-hidden>·</span>
               </>
@@ -539,8 +557,8 @@ function Row({
           <Button
             static={false}
             variant="ghost"
-            size="icon"
-            className="size-8 text-[color:var(--aqt-fg-dim)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] aria-disabled:pointer-events-none aria-disabled:opacity-50"
+            size="icon-sm"
+            className={TOOL_CLASS}
             title={t("notifications.markRead")}
             aria-label={t("notifications.markRead")}
             aria-disabled={busy}
@@ -549,14 +567,14 @@ function Row({
               if (!busy) markOneRead(item.id);
             }}
           >
-            <Check className="size-3.5" aria-hidden />
+            <Check aria-hidden />
           </Button>
         )}
         <Button
           static={false}
           variant="ghost"
-          size="icon"
-          className="size-8 text-[color:var(--aqt-fg-dim)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)] aria-disabled:pointer-events-none aria-disabled:opacity-50"
+          size="icon-sm"
+          className={TOOL_CLASS}
           title={t("notifications.delete")}
           aria-label={t("notifications.delete")}
           aria-disabled={busy}
@@ -565,7 +583,7 @@ function Row({
             if (!busy) deleteOne(item.id);
           }}
         >
-          <Trash2 className="size-3.5" aria-hidden />
+          <Trash2 aria-hidden />
         </Button>
       </div>
     </li>

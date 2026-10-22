@@ -18,7 +18,7 @@ import { registrationFormTemplatesKey } from "@/components/balancer/form/_compon
 import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialog";
 import { FilterBar } from "@/components/kit/FilterBar";
 import { InlineEditText } from "@/components/kit/InlineEditText";
-import { MasterDetail, MasterListSkeleton } from "@/components/kit/MasterDetail";
+import { MasterDetail, MasterList, MasterListSkeleton } from "@/components/kit/MasterDetail";
 import { SaveBar } from "@/components/kit/SaveBar";
 import { useFilters } from "@/components/kit/useFilters";
 import { Button } from "@/components/ui/button";
@@ -44,7 +44,6 @@ import { defaultFormSchema } from "@/lib/forms/default-schema";
 import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { notify } from "@/lib/notify";
 import { defaultCreationGame, showsGameMarks } from "@/lib/site/discipline-scope";
-import { cn } from "@/lib/utils";
 import registrationFormTemplatesService from "@/services/registration-form-templates.service";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { FormSchema } from "@/types/forms.types";
@@ -264,32 +263,16 @@ export default function WorkspaceRegistrationFormsSettingsPage() {
             {listQuery.isLoading ? (
               <MasterListSkeleton />
             ) : templates.length > 0 ? (
-              <nav aria-label={t("listLabel")} className="rounded-xl border border-border bg-card p-2">
-                <ul className="flex flex-col gap-0.5">
-                  {templates.map((template) => {
-                    const isSelected = template.id === selectedId;
-                    return (
-                      <li key={template.id} className="flex items-center gap-1.5">
-                        {marks ? <GameIcon slug={template.discipline} /> : null}
-                        <button
-                          type="button"
-                          aria-current={isSelected ? "true" : undefined}
-                          onClick={() => openTemplate(template.id)}
-                          className={cn(
-                            "min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-left text-sm",
-                            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            isSelected
-                              ? "bg-accent/40 font-medium text-foreground"
-                              : "text-muted-foreground hover:text-foreground"
-                          )}
-                        >
-                          {template.name}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </nav>
+              <MasterList
+                label={t("listLabel")}
+                items={templates.map((template) => ({
+                  key: template.id,
+                  label: template.name,
+                  icon: marks ? <GameIcon slug={template.discipline} /> : undefined
+                }))}
+                selectedKey={selectedId}
+                onSelect={openTemplate}
+              />
             ) : null}
 
             {canEdit && (

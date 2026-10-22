@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 import { LEADER_STATS, STAT_META, findLeader, formatStat, type MatchStatsTeam } from "./stats";
 import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
+import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { getPlayerSlug, splitHandle } from "@/lib/player";
 import { cn } from "@/lib/utils";
@@ -38,14 +39,13 @@ const Leaders = ({ home, away, round, gridClassName }: LeadersProps) => {
           const displayName = splitHandle(leader.player.name).name;
           const heroes = leader.player.heroes[round] ?? [];
           return (
-            <div
+            <Card
               key={name}
-              className="flex flex-col gap-2 rounded-[10px] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-3"
+              variant="flat"
+              className="flex flex-col gap-2 p-3"
               style={{ borderLeft: `3px solid ${accent}` }}
             >
-              <span className="text-label font-semibold uppercase tracking-[0.06em] text-[color:var(--aqt-fg-dim)]">
-                {t((STAT_META[name]?.labelKey ?? name) as Parameters<typeof t>[0])}
-              </span>
+              <Eyebrow tone="dim">{t((STAT_META[name]?.labelKey ?? name) as Parameters<typeof t>[0])}</Eyebrow>
               <span className="aqt-tnum text-title font-bold leading-none text-[color:var(--aqt-fg)]">
                 {formatStat(name, leader.value, format)}
               </span>
@@ -70,7 +70,7 @@ const Leaders = ({ home, away, round, gridClassName }: LeadersProps) => {
                   </span>
                 )}
               </div>
-            </div>
+            </Card>
           );
         })}
       </div>

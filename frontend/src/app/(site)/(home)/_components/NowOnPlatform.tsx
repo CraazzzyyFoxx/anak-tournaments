@@ -6,15 +6,15 @@ import { Calendar, Clock, Network, Trophy } from "lucide-react";
 import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { WorkspaceAvatar } from "@/components/workspace/WorkspaceAvatar";
 import {
-  EmptyNote,
   Fact,
   Facts,
   Feat,
   FEAT_META_CLASS,
   FEAT_NAME_CLASS,
   LiveDot,
-  LoadError,
   MoreLink,
+  OpenEmptyRow,
+  OpenLoadError,
   Roster,
   Section,
   SectionHead
@@ -122,9 +122,9 @@ export async function NowOnPlatform() {
         aside={<MoreLink href="/tournaments" className="min-h-11">{t("more")}</MoreLink>}
       />
       {data === null ? (
-        <LoadError what={t("error")} dashed />
+        <OpenLoadError what={t("error")} dashed />
       ) : !data.lead && !data.last && data.small.length === 0 ? (
-        <EmptyNote>{t("emptyBody")}</EmptyNote>
+        <OpenEmptyRow>{t("emptyBody")}</OpenEmptyRow>
       ) : (
         <div className={BENTO_CLASS}>
           {data.lead ? (

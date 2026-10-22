@@ -8,6 +8,7 @@ import React, { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { Row } from "@tanstack/react-table";
 
+import { Card } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { InfiniteScrollFooter } from "@/components/ui/infinite-scroll";
@@ -391,7 +392,7 @@ export function DataTable<TData>({
   const offPageSelected = selectedData.length - selectedOnPage;
 
   return (
-    <div ref={cardRef} className="rounded-xl border border-border/50 bg-card/50 overflow-hidden">
+    <Card ref={cardRef} variant="flat" className="overflow-hidden border-border/50 bg-card/50">
       <AdminTableToolbar
         showSearch={showSearch}
         searchInputId={searchInputId}
@@ -548,6 +549,6 @@ export function DataTable<TData>({
           }
         />
       )}
-    </div>
+    </Card>
   );
 }

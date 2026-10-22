@@ -3,12 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { Switch } from "@/components/ui/switch";
 import { usePermissions } from "@/hooks/usePermissions";
 import meService from "@/services/me.service";
 import { revalidateUser } from "@/app/actions/users";
 
-import { SettingsGroup } from "./SettingsGroup";
+import { SettingsGroup, SwitchTile } from "./SettingsGroup";
 import { userQueryKeys } from "@/lib/users/query-keys";
 
 export default function PrivacySection() {
@@ -41,26 +40,17 @@ export default function PrivacySection() {
 
   return (
     <SettingsGroup title={t("stream.title")}>
-      <div className="flex items-start gap-3 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-3 py-2.5">
-        <div className="flex-1 space-y-1">
-          <p id="stream-visibility-label" className="text-sm text-[color:var(--aqt-fg)]">
-            {t("stream.toggleLabel")}
-          </p>
-          <p id="stream-visibility-desc" className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">
-            {t("stream.toggleDesc")}
-          </p>
-        </div>
-        <Switch
-          checked={streamVisible}
-          // Never let the switch act on a guess: without a loaded response
-          // there is no current value to invert, and a wrong payload here
-          // silently re-publishes a stream the user meant to hide.
-          disabled={!socialQuery.data || setStreamVisibility.isPending}
-          onCheckedChange={(next) => setStreamVisibility.mutate(next)}
-          aria-labelledby="stream-visibility-label"
-          aria-describedby="stream-visibility-desc"
-        />
-      </div>
+      <SwitchTile
+        id="stream-visibility"
+        label={t("stream.toggleLabel")}
+        desc={t("stream.toggleDesc")}
+        checked={streamVisible}
+        // Never let the switch act on a guess: without a loaded response
+        // there is no current value to invert, and a wrong payload here
+        // silently re-publishes a stream the user meant to hide.
+        disabled={!socialQuery.data || setStreamVisibility.isPending}
+        onCheckedChange={(next) => setStreamVisibility.mutate(next)}
+      />
       <p className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">{t("stream.footnote")}</p>
     </SettingsGroup>
   );

@@ -237,18 +237,17 @@ function AuditEntry({ entry }: Readonly<{ entry: AuditLogRead }>) {
         </div>
 
         {hasDetail ? (
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="sm"
             aria-expanded={open}
             onClick={() => setOpen((current) => !current)}
-            className="flex shrink-0 items-center gap-1 rounded text-xs text-muted-foreground transition-colors hover:text-foreground"
+            className="shrink-0 gap-1 text-muted-foreground"
           >
             {open ? t("hideDetails") : t("details")}
-            <ChevronDown
-              aria-hidden
-              className={cn("size-3.5 transition-transform", open && "rotate-180")}
-            />
-          </button>
+            <ChevronDown aria-hidden className={cn("transition-transform", open && "rotate-180")} />
+          </Button>
         ) : null}
       </div>
 

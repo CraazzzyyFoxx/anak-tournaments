@@ -316,7 +316,8 @@ describe("/admin/announcements", () => {
     const container = await mount();
 
     expect(container.querySelector('[data-field="audience"]')).toBeNull();
-    expect(container.textContent ?? "").toContain(LABEL.unauthorized.title);
+    expect(container.textContent ?? "").toContain(en.common.noAccess);
+    expect(container.textContent ?? "").toContain(LABEL.unauthorized.description);
     expect(listAnnouncements).not.toHaveBeenCalled();
   });
 });

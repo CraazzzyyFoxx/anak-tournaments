@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, type ReactNode } from "react";
+import { memo, type HTMLAttributes, type ReactNode } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { ListChecks, Search } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -10,6 +10,8 @@ import { duelSeats, seatAt, type Duel, type DuelSlot } from "@/lib/encounter/sea
 import { EncounterRostersModal } from "@/components/EncounterRostersModal";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import TeamName from "@/components/TeamName";
+import { Button } from "@/components/ui/button";
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { StatusDot } from "@/components/ui/status-dot";
 import { withReturnTo } from "@/lib/auth/return-to";
 import { cn } from "@/lib/utils";
@@ -17,9 +19,36 @@ import type { StreamEntry } from "@/types/stream.types";
 
 import { CARD_HEIGHT, CARD_ROW_HEIGHT, GUTTER_WIDTH, type LayoutNode } from "./layout";
 
-/** One footer control: the three viewer links and the admin's edit share it. */
-export const FOOTER_BUTTON =
-  "flex items-center justify-center rounded p-0.5 text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]";
+/** A card's frame; the editor's wiring boxes are drawn in it too. Callers add the border colour. */
+export const CARD_FRAME =
+  "relative flex h-full overflow-hidden rounded-[10px] border bg-[color:var(--aqt-card)] shadow-[0_10px_24px_rgba(0,0,0,0.28)]";
+
+/** The strip of icon controls under a card's two rows. */
+export const CARD_FOOTER =
+  "flex items-center justify-between gap-1.5 border-t border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-1.5";
+
+/** The strip down a card's left edge: "M" over the match number. `className` swaps the tone. */
+export function MatchGutter({
+  number,
+  className,
+  children,
+  ...props
+}: Readonly<HTMLAttributes<HTMLDivElement> & { number: number }>) {
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 flex-col items-center justify-center gap-0.5 border-r border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] leading-none text-[color:var(--aqt-fg-muted)]",
+        className
+      )}
+      style={{ width: GUTTER_WIDTH }}
+      {...props}
+    >
+      <span className="text-[11px] font-semibold tracking-label opacity-70">M</span>
+      <span className="text-caption font-bold tabular-nums">{number}</span>
+      {children}
+    </div>
+  );
+}
 
 /** dnd-kit id of one team slot; the same string names its draggable and its droppable. */
 function slotDragId(encounterId: number, slot: DuelSlot) {
@@ -235,7 +264,7 @@ export const MatchCard = memo(function MatchCard({
   return (
     <div
       className={cn(
-        "relative flex h-full overflow-hidden rounded-[10px] border bg-[color:var(--aqt-card)] shadow-[0_10px_24px_rgba(0,0,0,0.28)]",
+        CARD_FRAME,
         isLive
           ? "border-[color:color-mix(in_srgb,var(--aqt-rose)_45%,transparent)]"
           : data.winner
@@ -243,45 +272,40 @@ export const MatchCard = memo(function MatchCard({
             : "border-[color:var(--aqt-border)]"
       )}
     >
-      <div
-        className={cn(
-          "flex shrink-0 flex-col items-center justify-center gap-0.5 border-r leading-none",
+      <MatchGutter
+        number={data.matchNumber}
+        className={
           encounter.result_status === "pending_confirmation"
             ? "border-[color:color-mix(in_srgb,var(--aqt-amber)_35%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_18%,var(--aqt-bg-2))] text-[color:var(--aqt-amber)]"
             : encounter.result_status === "disputed"
               ? "border-[color:color-mix(in_srgb,var(--aqt-rose)_35%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-rose)_18%,var(--aqt-bg-2))] text-[color:var(--aqt-rose)]"
-              : "border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-muted)]"
-        )}
-        style={{ width: GUTTER_WIDTH }}
+              : undefined
+        }
         title={attention ?? undefined}
         data-result-status={attention === null ? undefined : encounter.result_status}
       >
-        <span className="text-[11px] font-semibold tracking-label opacity-70">M</span>
-        <span className="text-caption font-bold tabular-nums">{data.matchNumber}</span>
         {attention !== null && <span className="sr-only">{attention}</span>}
-      </div>
+      </MatchGutter>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <SlotRow {...rowProps} slot={1} highlighted={highlighted.one} />
         <SlotRow {...rowProps} slot={2} highlighted={highlighted.two} />
 
-        <div
-          className="flex items-center justify-between gap-1.5 border-t border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.015)] px-1.5"
-          style={{ height: footerHeight }}
-        >
+        <div className={CARD_FOOTER} style={{ height: footerHeight }}>
           {/* Look (view, rosters, pre-game) then act (edit, report), one hairline
               between; the series format keeps the right edge. */}
           <div className="flex min-w-0 items-center gap-0.5">
             {interactive && (
               <>
-                <HoverPrefetchLink
-                  href={`/encounters/${encounter.id}`}
-                  className={FOOTER_BUTTON}
-                  aria-label={t("bracket.viewMatch")}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <Search className="size-3.5" aria-hidden />
-                </HoverPrefetchLink>
+                <Button asChild variant="ghost" size="icon-xs" className="text-[color:var(--aqt-fg-muted)]">
+                  <HoverPrefetchLink
+                    href={`/encounters/${encounter.id}`}
+                    aria-label={t("bracket.viewMatch")}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Search aria-hidden />
+                  </HoverPrefetchLink>
+                </Button>
                 {/* The roster peek stays on the bracket: a scroll position built up
                     over a 32-team tree survives looking at who is playing. The
                     pre-game link leaves, because the room is where a captain acts. */}
@@ -292,14 +316,15 @@ export const MatchCard = memo(function MatchCard({
                     duelSeats(encounter.teams)[1]?.name ?? t("common.tbd")
                   ]}
                 />
-                <HoverPrefetchLink
-                  href={withReturnTo(`/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`, returnTo)}
-                  className={FOOTER_BUTTON}
-                  aria-label={t("bracket.pregameRoom")}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <ListChecks className="size-3.5" aria-hidden />
-                </HoverPrefetchLink>
+                <Button asChild variant="ghost" size="icon-xs" className="text-[color:var(--aqt-fg-muted)]">
+                  <HoverPrefetchLink
+                    href={withReturnTo(`/tournaments/${encounter.tournament_id}/pregame/${encounter.id}`, returnTo)}
+                    aria-label={t("bracket.pregameRoom")}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <ListChecks aria-hidden />
+                  </HoverPrefetchLink>
+                </Button>
               </>
             )}
             {interactive && actions && (
@@ -308,9 +333,9 @@ export const MatchCard = memo(function MatchCard({
             {actions}
           </div>
           {bestOfLabel && (
-            <span className="shrink-0 text-label font-semibold uppercase tracking-wide text-[color:var(--aqt-fg-muted)]">
+            <Eyebrow tone="muted" className="shrink-0">
               {bestOfLabel}
-            </span>
+            </Eyebrow>
           )}
         </div>
       </div>

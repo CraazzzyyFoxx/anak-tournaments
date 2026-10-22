@@ -16,6 +16,7 @@ import { useTranslations } from "next-intl";
 import { TeamLogo, type TeamNameInput } from "@/components/TeamName";
 import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
+import { Button } from "@/components/ui/button";
 import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import { StatusDot } from "@/components/ui/status-dot";
 import { cn } from "@/lib/utils";
@@ -143,13 +144,11 @@ export function PregameHeader({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Link
-          href={returnTo}
-          aria-label={t("back")}
-          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:bg-[color:var(--aqt-card-2)] hover:text-[color:var(--aqt-fg)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-        >
-          <ArrowLeft className="h-4 w-4" />
-        </Link>
+        <Button variant="ghost" size="icon" asChild className="shrink-0">
+          <Link href={returnTo} aria-label={t("back")}>
+            <ArrowLeft aria-hidden />
+          </Link>
+        </Button>
         <h1 className="font-onest text-xl font-semibold tracking-[-0.01em]">{t("title")}</h1>
         {session != null ? <StatusMark status={session.status} /> : null}
         {round != null ? (

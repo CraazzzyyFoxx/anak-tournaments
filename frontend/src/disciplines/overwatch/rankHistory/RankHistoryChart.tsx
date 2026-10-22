@@ -13,6 +13,7 @@ import {
 import { RankSeries } from "@/types/rank.types";
 import { getTierForRank } from "@/lib/divisions/grid";
 import { ChartEmptyState } from "@/components/RankHistoryState";
+import { Card } from "@/components/ui/card";
 import { OW_REFERENCE_GRID } from "../ladder/ow-reference-grid";
 import {
   Select,
@@ -61,9 +62,6 @@ const PALETTE = [
 
 const TRIGGER_CLASS =
   "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)]";
-
-const CARD_CLASS =
-  "relative overflow-hidden rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-4 shadow-inner";
 
 // Shared by the x-axis tick and tooltip label: both need the same
 // granularity-aware date formatting, falling back to the raw value when it
@@ -320,7 +318,7 @@ export default function RankHistoryChart({
           body={t("rankHistory.noDataBody")}
         />
       ) : (
-        <div className={cn(CARD_CLASS, "backdrop-blur-xs")}>
+        <Card variant="flat" className="relative overflow-hidden p-4 shadow-inner backdrop-blur-xs">
           {/* Glow effect */}
           <div className="absolute -left-12 -top-12 -z-10 size-24 rounded-full bg-primary/5 blur-2xl pointer-events-none" />
           <div className="absolute -right-12 -bottom-12 -z-10 size-24 rounded-full bg-primary/5 blur-2xl pointer-events-none" />
@@ -393,7 +391,7 @@ export default function RankHistoryChart({
               <ChartLegend content={<ChartLegendContent className="pt-2" />} />
             </LineChart>
           </ChartContainer>
-        </div>
+        </Card>
       )}
     </div>
   );

@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
+import { RowButton } from "@/components/ui/row-button";
 import { cn } from "@/lib/utils";
 import { RARITY_ORDER, rarityRanges, rarityVarClass, type Rarity } from "@/lib/achievements/rarity";
 
@@ -36,16 +37,14 @@ export function RarityStrip({ values, active, onToggle, className }: RarityStrip
       {RARITY_ORDER.map((r) => {
         const pressed = active === r;
         return (
-          <button
+          <RowButton
             key={r}
-            type="button"
             aria-pressed={pressed}
             onClick={() => onToggle(pressed ? null : r)}
             className={cn(
               rarityVarClass(r),
-              "relative flex flex-col gap-1.5 bg-[color:var(--aqt-card)] py-3 pr-3 pl-5 text-left transition-[background-color,opacity] duration-150",
+              "relative flex flex-col gap-1.5 bg-[color:var(--aqt-card)] py-3 pr-3 pl-5 transition-[background-color,opacity] duration-150 focus-visible:z-[1]",
               "before:absolute before:top-3 before:bottom-3 before:left-0 before:w-[3px] before:rounded-r-sm before:bg-[hsl(var(--rar))]",
-              "hover:bg-[color:var(--aqt-overlay-2)] focus-visible:z-[1] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[color:var(--aqt-teal)]",
               pressed && "bg-[hsl(var(--rar)/0.08)] hover:bg-[hsl(var(--rar)/0.12)]",
               active && !pressed && "opacity-50 hover:opacity-80"
             )}
@@ -57,7 +56,7 @@ export function RarityStrip({ values, active, onToggle, className }: RarityStrip
               {values[r]}
             </span>
             <span className="aqt-tnum text-label text-[color:var(--aqt-fg-dim)]">{ranges[r]}</span>
-          </button>
+          </RowButton>
         );
       })}
     </div>

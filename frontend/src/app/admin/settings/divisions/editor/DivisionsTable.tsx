@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 
 import { DataTable, createKebabColumn } from "@/components/data-table";
 import { InlineEditText } from "@/components/kit/InlineEditText";
+import { Card } from "@/components/ui/card";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -240,7 +241,7 @@ export function DivisionsTable({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 rounded-xl border border-border bg-card px-3 py-2">
+      <Card variant="flat" className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 px-3 py-2">
         <div className="flex min-w-0 max-w-prose flex-col gap-0.5">
           <span className={eyebrowClass("muted")}>{t("table.rankScale")}</span>
           <p className="text-xs text-muted-foreground">
@@ -265,7 +266,7 @@ export function DivisionsTable({
             <ToggleGroupItem value="custom">{t("table.custom")}</ToggleGroupItem>
           </ToggleGroup>
         ) : null}
-      </div>
+      </Card>
 
       <DataTable<Band>
         rows={bands}

@@ -13,10 +13,12 @@ import {
   useSortableRow
 } from "@/components/kit/SortableRows";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import { Progress } from "@/components/ui/progress";
+import { RowButton } from "@/components/ui/row-button";
 import {
   Select,
   SelectContent,
@@ -26,7 +28,6 @@ import {
 } from "@/components/ui/select";
 import { notify } from "@/lib/notify";
 import { nextStageOrder, phaseOrderForArrangement } from "@/lib/tournament/stages";
-import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type { Stage, StageType } from "@/types/tournament.types";
 
@@ -144,7 +145,7 @@ export function StageList({
     grandFinalType !== "no_reset";
 
   return (
-    <div className="rounded-xl border border-border bg-card">
+    <Card variant="flat">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
         <p className="text-sm font-semibold text-foreground">{t("flow")}</p>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -269,7 +270,7 @@ export function StageList({
           ) : null}
         </div>
       </EntityFormDialog>
-    </div>
+    </Card>
   );
 }
 
@@ -296,33 +297,29 @@ function StageCard({
   // a stage captains are playing (or about to) earns a pill.
   const showStatus = status === "Active" || status === "Preview";
 
-  // The name button is stretched over the row (`after:inset-0`), so the whole
-  // row selects while the grip, a sibling above it, stays the drag handle.
+  // The select button covers the row (it owns the hover, the selected fill and
+  // the focus ring), the grip sits above it, and the content beneath is
+  // decoration: the button carries the stage name for assistive tech.
   return (
-    <div
-      ref={ref}
-      style={style}
-      className={cn(
-        "relative flex items-start gap-2 rounded-lg border border-transparent p-2 transition-colors hover:border-border",
-        selected && "border-border bg-accent/30"
-      )}
-    >
+    <div ref={ref} style={style} className="relative flex items-start gap-2 p-2">
       <SortableGrip
         className="relative z-10"
         handleProps={handleProps}
         label={t("reorder", { name: stage.name })}
       />
+      <RowButton
+        onClick={onSelect}
+        aria-current={selected ? "true" : undefined}
+        className="absolute inset-0 rounded-lg"
+      >
+        <span className="sr-only">{stage.name}</span>
+      </RowButton>
 
-      <div className="min-w-0 flex-1">
+      <div className="pointer-events-none min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
-          <button
-            type="button"
-            onClick={onSelect}
-            aria-current={selected ? "true" : undefined}
-            className="min-w-0 truncate text-left text-sm font-semibold text-foreground after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-ring"
-          >
+          <p aria-hidden className="min-w-0 truncate text-sm font-semibold text-foreground">
             {stage.name}
-          </button>
+          </p>
           {showStatus ? (
             <StatusPill tone={getStageStatusTone(stage, hasEncounters)} className="shrink-0">
               {tr(`extra.statuses.${status.toLowerCase()}`)}

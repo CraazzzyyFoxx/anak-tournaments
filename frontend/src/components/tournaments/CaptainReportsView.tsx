@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 
+import { Eyebrow } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
 import { reportOf, scoreline } from "@/lib/encounter/reports";
 import { seatsBySlot } from "@/lib/encounter/seats";
@@ -59,7 +60,7 @@ function ReportCard({
   return (
     <div className="rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-3">
       <div className="flex items-baseline justify-between gap-2">
-        <p className="text-label font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">{title}</p>
+        <Eyebrow as="p" tone="dim">{title}</Eyebrow>
         <p className="truncate text-xs font-semibold text-[color:var(--aqt-fg-muted)]">{teamName}</p>
       </div>
       {report ? (
@@ -83,9 +84,9 @@ function ReportCard({
           )}
           {comment ? (
             <div className="mt-1">
-              <p className="text-label font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
+              <Eyebrow as="p" tone="dim">
                 {t("matchReport.comment")}
-              </p>
+              </Eyebrow>
               <p className="mt-0.5 whitespace-pre-wrap break-words text-xs text-[color:var(--aqt-fg-muted)]">
                 {comment}
               </p>
@@ -95,9 +96,9 @@ function ReportCard({
             <dl className="mt-1 space-y-1">
               {customAnswers.map(([key, value]) => (
                 <div key={key}>
-                  <dt className="text-label font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
+                  <Eyebrow as="dt" tone="dim">
                     {customFields.find((field) => field.key === key)?.label ?? key}
-                  </dt>
+                  </Eyebrow>
                   <dd className="mt-0.5 whitespace-pre-wrap break-words text-xs text-[color:var(--aqt-fg-muted)]">
                     {value}
                   </dd>
@@ -134,9 +135,9 @@ export function CaptainReportsView({
 
   return (
     <div className={cn("space-y-2", className)}>
-      <p className="text-label font-bold uppercase tracking-[0.15em] text-[color:var(--aqt-fg-dim)]">
+      <Eyebrow as="p" tone="dim">
         {t("matchReport.bothReportsTitle")}
-      </p>
+      </Eyebrow>
       <div className="grid gap-3 sm:grid-cols-2">
         {seats.map((seat, index) => {
           const report = seatReports[index];

@@ -15,6 +15,7 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import DivisionIcon from "@/components/DivisionIcon";
 import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import TeamName from "@/components/TeamName";
+import { Badge } from "@/components/ui/badge";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
@@ -184,16 +185,9 @@ export function RosterPlayer({
       ) : null}
       {highlightUserId != null && player.user_id === highlightUserId ? (
         <span className={ICON_SLOT}>
-          <span
-            className="aqt-tnum rounded-[4px] px-1.5 py-0.5 text-label font-bold uppercase tracking-label"
-            style={{
-              background: "color-mix(in srgb, var(--aqt-teal) 12%, transparent)",
-              border: "1px solid color-mix(in srgb, var(--aqt-teal) 30%, transparent)",
-              color: "var(--aqt-teal)"
-            }}
-          >
+          <Badge palette="aqt" tone="accent" voice="label">
             {t("users.tournaments.you")}
-          </span>
+          </Badge>
         </span>
       ) : null}
     </div>

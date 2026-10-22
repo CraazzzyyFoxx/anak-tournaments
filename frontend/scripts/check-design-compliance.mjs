@@ -122,6 +122,43 @@ const RULES = [
     // position by rejecting a preceding `[`.
     re: /(?<!\[)role=["']button["']|<(?:div|span)\b[^>]*\sonClick=/g,
   },
+  {
+    id: "R8-raw-control",
+    what: "native <button>/<input>/<select>/<textarea> outside components/ui (use the primitive; missing one? add a variant to ui/)",
+    files: "**/*.tsx",
+    re: /<(?:button|input|select|textarea)\b/g,
+    // The primitives are where the native elements live: every other file
+    // composes them, so a control's size, focus ring and states exist once.
+    exempt: [
+      [/^src[\\/]components[\\/]ui[\\/]/, "the primitives themselves"],
+      // Replaces the whole document when the root layout fails: inline styles
+      // only, so it stays usable even if the stylesheet never loaded.
+      [/^src[\\/]app[\\/]global-error\.tsx$/, "last-resort screen, no stylesheet guarantee"],
+      // Shared test doubles (stand-ins for primitives), not product UI.
+      [/^src[\\/]test[\\/]/, "test helper"],
+    ],
+  },
+  {
+    id: "R9-raw-img",
+    what: "native <img> (use @/components/ui/image)",
+    files: "**/*.tsx",
+    re: /<img\b/g,
+    exempt: [
+      // Satori renders these in its own pass; next/image does not exist there.
+      [/^src[\\/]lib[\\/]og[\\/]/, "satori open-graph renderer"],
+      // Author-supplied markdown: any host, any size.
+      [/components[\\/]Markdown\.tsx$/, "user content"],
+      // A 1x1 analytics beacon, not an image anyone sees.
+      [/components[\\/]CookieConsent\.tsx$/, "beacon pixel"],
+      // Off-screen preloader that warms the role glyph set.
+      [/components[\\/]PlayerRoleIcon\.tsx$/, "hidden preloader"],
+      // html-to-image rasterises the DOM it is given; it needs plain <img> nodes.
+      [/BalanceImageExportDialog\.tsx$/, "image capture"],
+      // The cover wash is sized by its insets and the file's own dimensions,
+      // which next/image (fixed box or `fill`) cannot express.
+      [/components[\\/]site[\\/]PageHero\.tsx$/, "cover wash sizing"],
+    ],
+  },
 ];
 
 /** Global exemptions, plus the rule's own scoped ones. */

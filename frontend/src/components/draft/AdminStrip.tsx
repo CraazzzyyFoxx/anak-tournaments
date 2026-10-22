@@ -5,15 +5,8 @@ import Link from "next/link";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from "@/components/ui/dialog";
 import { useDraftFeasibilityQuery, useDraftJournalQuery, type DraftMutations } from "@/hooks/useDraftData";
 import { notify } from "@/lib/notify";
 import { captainsOnline, lastResolvedPick } from "@/lib/draft/room-model";
@@ -208,36 +201,26 @@ export function AdminStrip({ board, mutations, onlineCaptainIds, ontology }: Rea
         />
       )}
 
-      <Dialog open={confirming != null} onOpenChange={(open) => !open && setConfirming(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {confirming === "rollback" ? t("admin.rollbackTitle") : t("admin.autopickTitle")}
-            </DialogTitle>
-            <DialogDescription>
-              {confirming === "rollback" ? t("admin.rollbackDescription") : t("admin.autopickDescription")}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirming(null)}>
-              {t("admin.cancel")}
-            </Button>
-            <Button
-              onClick={() => {
-                if (confirming === "rollback") runLifecycle("rollback");
-                else autopick();
-                setConfirming(null);
-              }}
-            >
-              {confirming === "rollback"
-                ? lastPick
-                  ? t("shell.admin.rollbackPick", { pick: lastPick.overall_no })
-                  : t("admin.rollback")
-                : t("shell.admin.autopickNow")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ConfirmDialog
+        open={confirming != null}
+        onOpenChange={(open) => !open && setConfirming(null)}
+        intent={{
+          tone: "neutral",
+          title: confirming === "rollback" ? t("admin.rollbackTitle") : t("admin.autopickTitle"),
+          description: confirming === "rollback" ? t("admin.rollbackDescription") : t("admin.autopickDescription"),
+          confirmLabel:
+            confirming === "rollback"
+              ? lastPick
+                ? t("shell.admin.rollbackPick", { pick: lastPick.overall_no })
+                : t("admin.rollback")
+              : t("shell.admin.autopickNow")
+        }}
+        onConfirm={() => {
+          if (confirming === "rollback") runLifecycle("rollback");
+          else autopick();
+          setConfirming(null);
+        }}
+      />
     </div>
   );
 }

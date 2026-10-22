@@ -2,12 +2,12 @@
 
 import React from "react";
 import Image from "@/components/ui/image";
+import { Button } from "@/components/ui/button";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 
 import { TournamentBroadcastDock } from "./TournamentBroadcastDock";
-import { TOURNAMENT_ACTION_CLASS } from "./tournamentActionClass";
 import TournamentRegisterButton from "./TournamentRegisterButton";
 import { NextPhaseChip } from "./NextPhaseChip";
 import {
@@ -187,10 +187,12 @@ export default function TournamentClientLayout({
   // trade is gone, and the formation itself reads in the Format card, beside the
   // roster shape a pill could not show.
   const draftButton = showDraftLink ? (
-    <HoverPrefetchLink href={`/draft/${tournament.slug}`} className={TOURNAMENT_ACTION_CLASS}>
-      {t("common.draft")}
-      <ExternalLink className="size-3.5 opacity-80" aria-hidden />
-    </HoverPrefetchLink>
+    <Button asChild variant="subtle">
+      <HoverPrefetchLink href={`/draft/${tournament.slug}`}>
+        {t("common.draft")}
+        <ExternalLink className="opacity-80" aria-hidden />
+      </HoverPrefetchLink>
+    </Button>
   ) : null;
 
   const registerButton = !isEnded ? <TournamentRegisterButton tournament={tournament} /> : null;

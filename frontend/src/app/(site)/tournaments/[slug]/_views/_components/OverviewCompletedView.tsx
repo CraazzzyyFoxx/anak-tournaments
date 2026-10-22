@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import { ProfileStat } from "@/components/profile/atoms";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 import type { BracketRoundShape } from "@/lib/bracket/round-name";
 import { useFormatter } from "@/lib/datetime/client";
@@ -22,7 +23,6 @@ import {
   tournamentDaySpan
 } from "../tournamentOverview.model";
 import { CardLink, OverviewCard } from "./OverviewCards";
-import { StatTile } from "./RegistrationSummary";
 
 /** The five characters the tournament was actually played on, by share of playtime. */
 function TopHeroesCard({
@@ -234,15 +234,12 @@ export function OverviewCompletedView({
             the header cannot: how much was played, and over how long. */}
         <OverviewCard title={t("tournamentDetail.overview.numbers.title")}>
           <div className="grid gap-2 sm:grid-cols-2">
-            <StatTile
+            <ProfileStat
               label={t("tournamentDetail.overview.numbers.matches")}
-              value={String(encounters.length)}
+              value={encounters.length}
             />
             {days !== null ? (
-              <StatTile
-                label={t("tournamentDetail.overview.numbers.days")}
-                value={String(days)}
-              />
+              <ProfileStat label={t("tournamentDetail.overview.numbers.days")} value={days} />
             ) : null}
           </div>
         </OverviewCard>

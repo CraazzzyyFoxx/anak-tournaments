@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ChevronDown, ChevronUp, ExternalLink, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { cn } from "@/lib/utils";
@@ -134,24 +135,18 @@ export function Inspector({
       </div>
       <div className="flex shrink-0 items-center gap-0.5">
         {onPrev ? (
-          <Button variant="ghost" size="icon" className="size-7" aria-label={t("previousRow")} onClick={onPrev}>
-            <ChevronUp aria-hidden className="size-4" />
+          <Button variant="ghost" size="icon-sm" aria-label={t("previousRow")} onClick={onPrev}>
+            <ChevronUp aria-hidden />
           </Button>
         ) : null}
         {onNext ? (
-          <Button variant="ghost" size="icon" className="size-7" aria-label={t("nextRow")} onClick={onNext}>
-            <ChevronDown aria-hidden className="size-4" />
+          <Button variant="ghost" size="icon-sm" aria-label={t("nextRow")} onClick={onNext}>
+            <ChevronDown aria-hidden />
           </Button>
         ) : null}
         {showClose ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7"
-            aria-label={t("closeInspector")}
-            onClick={onClose}
-          >
-            <X aria-hidden className="size-4" />
+          <Button variant="ghost" size="icon-sm" aria-label={t("closeInspector")} onClick={onClose}>
+            <X aria-hidden />
           </Button>
         ) : null}
       </div>
@@ -196,16 +191,11 @@ export function Inspector({
   }
 
   return (
-    <aside
-      aria-label={t("rowInspector")}
-      data-inspector-mode="panel"
-      className={cn(
-        "flex max-h-[calc(100dvh-6rem)] flex-col overflow-hidden rounded-xl border border-border bg-card",
-        "sticky top-16"
-      )}
-    >
-      {renderHeader(true)}
-      {body}
-    </aside>
+    <Card asChild variant="flat" className="sticky top-16 flex max-h-[calc(100dvh-6rem)] flex-col overflow-hidden">
+      <aside aria-label={t("rowInspector")} data-inspector-mode="panel">
+        {renderHeader(true)}
+        {body}
+      </aside>
+    </Card>
   );
 }

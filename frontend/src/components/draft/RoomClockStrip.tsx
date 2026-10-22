@@ -5,6 +5,7 @@ import { ArrowRight, Check, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Button } from "@/components/ui/button";
 import type { DraftGating } from "@/lib/draft/logic";
 import {
   currentRound,
@@ -227,7 +228,7 @@ export function RoomClockStrip({
         <span aria-hidden className="hidden w-px self-stretch bg-[color:var(--aqt-border)] sm:block" />
 
         <div className="flex min-w-[230px] flex-[1_1_300px] flex-col gap-2">
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-caption">
             <span className="whitespace-nowrap text-ui font-semibold tabular-nums">
               {t("shell.strip.pick", {
                 pick: done ? totalPicks : (headPick?.overall_no ?? totalPicks),
@@ -241,13 +242,15 @@ export function RoomClockStrip({
                 direction: t(`shell.strip.direction.${roundDirection(board, round)}`)
               })}
             </span>
-            <button
+            <Button
               type="button"
+              variant="link"
+              size="inline"
               onClick={() => onViewParamsChange({ teams: "order", view: "teams" })}
-              className="min-h-11 whitespace-nowrap rounded-sm text-caption font-medium text-[color:var(--aqt-teal)] outline-hidden hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)] sm:min-h-0"
+              className="min-h-11 text-[color:var(--aqt-teal)] sm:min-h-0"
             >
               {t("shell.strip.allRounds")}
-            </button>
+            </Button>
             {nextParts.length > 0 && (
               <span className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-body text-[color:var(--aqt-fg-muted)] sm:ml-auto">
                 {nextParts}

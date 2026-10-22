@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { useQuery } from "@tanstack/react-query";
 import { useRoleName } from "@/hooks/useRoleName";
@@ -10,15 +9,16 @@ import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import type { PlayerIdentity } from "@/components/PlayerAvatar";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { PlaceBadge } from "@/components/ui/place-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { winrateColor } from "@/lib/colors";
 import { getPlayerSlug } from "@/lib/player";
 import { formatOptional } from "@/app/(site)/users/components/shared/list-utils";
+import { SummaryStrip } from "@/app/(site)/users/components/tournaments/tournaments-history.atoms";
 import userService from "@/services/user.service";
 import { userQueryKeys } from "@/lib/users/query-keys";
-import type { UserDraftCard } from "@/types/user.types";
 
 const sharePct = (won: number, total: number): number | null =>
   total > 0 ? (won / total) * 100 : null;
@@ -75,21 +75,36 @@ export function UserExpandedRow({
   if (isPending || !data) {
     return (
       <div className="space-y-3 px-4 py-5">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {Array.from({ length: 6 }).map((_, index) => (
-            <Skeleton key={`kpi-${index}`} className="h-12" />
-          ))}
-        </div>
+        <Skeleton className="h-14" />
         <Skeleton className="h-28" />
       </div>
     );
   }
 
   const slug = getPlayerSlug(user.name);
+  const winratePct = sharePct(data.maps_won, data.maps_won + data.maps_lost);
 
   return (
     <div className="space-y-5 px-4 py-5">
-      <KpiGrid card={data} />
+      <SummaryStrip
+        cells={[
+          { key: "tournaments", label: t("common.tournaments"), value: data.tournaments },
+          { key: "tournamentsWon", label: t("users.list.expanded.tournamentsWon"), value: data.tournaments_won },
+          { key: "maps", label: t("users.list.expanded.mapsLabel"), value: data.maps },
+          {
+            key: "winrate",
+            label: t("users.list.table.winrate"),
+            value: winratePct === null ? "-" : `${winratePct.toFixed(0)}%`,
+            color: winratePct === null ? undefined : winrateColor(winratePct)
+          },
+          { key: "avgPlacement", label: t("users.list.table.avgPlacement"), value: formatOptional(data.avg_placement) },
+          {
+            key: "bestPlacement",
+            label: t("users.list.table.bestPlacement"),
+            value: data.best_placement ? <PlaceBadge place={data.best_placement} /> : "-"
+          }
+        ]}
+      />
 
       <div className="grid gap-5 lg:grid-cols-3">
         <section className="space-y-2">
@@ -176,68 +191,30 @@ export function UserExpandedRow({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <HoverPrefetchLink href={`/users/${slug}`} className="aqt-filter-chip no-underline">
-          {t("users.list.expanded.openProfile")}
-        </HoverPrefetchLink>
-        <HoverPrefetchLink href={`/users/${slug}?tab=matches`} className="aqt-filter-chip no-underline">
-          {t("common.matches")}
-        </HoverPrefetchLink>
-        <HoverPrefetchLink href={`/users/${slug}?tab=heroes`} className="aqt-filter-chip no-underline">
-          {t("common.characters")}
-        </HoverPrefetchLink>
-        <button
-          type="button"
-          onClick={onToggleCompare}
-          disabled={compareDisabled && !compareSelected}
-          title={compareDisabled && !compareSelected ? t("users.list.compare.limit") : undefined}
-          className="aqt-filter-chip disabled:cursor-not-allowed disabled:opacity-40"
-          aria-pressed={compareSelected}
-        >
-          {compareSelected
-            ? t("users.list.compare.removeShort")
-            : t("users.list.compare.addShort")}
-        </button>
+        <Button asChild variant="subtle" size="sm">
+          <HoverPrefetchLink href={`/users/${slug}`}>{t("users.list.expanded.openProfile")}</HoverPrefetchLink>
+        </Button>
+        <Button asChild variant="subtle" size="sm">
+          <HoverPrefetchLink href={`/users/${slug}?tab=matches`}>{t("common.matches")}</HoverPrefetchLink>
+        </Button>
+        <Button asChild variant="subtle" size="sm">
+          <HoverPrefetchLink href={`/users/${slug}?tab=heroes`}>{t("common.characters")}</HoverPrefetchLink>
+        </Button>
+        {/* A disabled `Button` takes no pointer events, so the limit hint sits on a wrapper. */}
+        <span title={compareDisabled && !compareSelected ? t("users.list.compare.limit") : undefined}>
+          <Button
+            variant="subtle"
+            size="sm"
+            onClick={onToggleCompare}
+            disabled={compareDisabled && !compareSelected}
+            aria-pressed={compareSelected}
+          >
+            {compareSelected
+              ? t("users.list.compare.removeShort")
+              : t("users.list.compare.addShort")}
+          </Button>
+        </span>
       </div>
-    </div>
-  );
-}
-
-function KpiGrid({ card }: Readonly<{ card: UserDraftCard }>) {
-  const t = useTranslations();
-  const decided = card.maps_won + card.maps_lost;
-  const winratePct = sharePct(card.maps_won, decided);
-
-  const cells: Array<{ label: string; value: ReactNode }> = [
-    { label: t("common.tournaments"), value: card.tournaments },
-    { label: t("users.list.expanded.tournamentsWon"), value: card.tournaments_won },
-    { label: t("users.list.expanded.mapsLabel"), value: card.maps },
-    {
-      label: t("users.list.table.winrate"),
-      value:
-        winratePct === null ? (
-          "-"
-        ) : (
-          <span style={{ color: winrateColor(winratePct) }}>{winratePct.toFixed(0)}%</span>
-        )
-    },
-    { label: t("users.list.table.avgPlacement"), value: formatOptional(card.avg_placement) },
-    {
-      label: t("users.list.table.bestPlacement"),
-      value: card.best_placement ? <PlaceBadge place={card.best_placement} /> : "-"
-    }
-  ];
-
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-      {cells.map((cell) => (
-        <div
-          key={cell.label}
-          className="flex flex-col gap-1 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-3 py-2"
-        >
-          <Eyebrow>{cell.label}</Eyebrow>
-          <span className="font-semibold tabular-nums text-[color:var(--aqt-fg)]">{cell.value}</span>
-        </div>
-      ))}
     </div>
   );
 }

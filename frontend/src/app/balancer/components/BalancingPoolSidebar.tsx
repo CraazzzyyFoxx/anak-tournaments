@@ -4,6 +4,7 @@ import { forwardRef, useCallback, useImperativeHandle, useMemo, useState } from 
 import { Check, Columns3, Kanban, PanelLeftClose, PanelLeftOpen, PlusCircle, Settings2, ShieldX, Tag, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,7 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import type { AdminRegistration, BalancerApplication, WorkspaceBalancerConfig } from "@/types/balancer-admin.types";
 import type { StatusMeta } from "@/types/registration.types";
 import type { PlayerValidationState, PoolView, PoolSortValue } from "@/components/balancer/balancer-page-helpers";
-import { ICON_BUTTON_CLASS, PANEL_CLASS, hasBlockingIssues, sortPlayerStates } from "@/components/balancer/balancer-page-helpers";
+import { ICON_BUTTON_CLASS, hasBlockingIssues, sortPlayerStates } from "@/components/balancer/balancer-page-helpers";
 import { buildPlayerSearchIndex } from "@/components/balancer/workspace-helpers";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import type { RoleOntology } from "@/lib/roster/ontology";
@@ -286,7 +287,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
 
     if (collapsed) {
       return (
-        <div className={cn(PANEL_CLASS, "flex min-h-0 min-w-0 flex-col items-center gap-3 p-2")}>
+        <Card variant="flat" className="flex min-h-0 min-w-0 flex-col items-center gap-3 p-2">
           <Button
             type="button"
             variant="ghost"
@@ -319,12 +320,12 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
               </div>
             ) : null}
           </div>
-        </div>
+        </Card>
       );
     }
 
     return (
-      <div className={cn(PANEL_CLASS, "flex min-h-0 min-w-0 flex-col p-4")}>
+      <Card variant="flat" className="flex min-h-0 min-w-0 flex-col p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
             <Eyebrow as="div" tone="dim">
@@ -539,7 +540,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
             onOpenChange={setConfigDialogOpen}
           />
         ) : null}
-      </div>
+      </Card>
     );
   },
 );

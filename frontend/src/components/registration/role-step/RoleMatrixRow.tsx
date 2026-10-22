@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { roleAccent } from "@/lib/registration/role-accent";
 import {
   findRole,
@@ -25,7 +26,6 @@ import type { SubroleOption } from "@/types/registration.types";
 
 import type { RoleCode, RolePriority, RoleSelection } from "../types";
 import { HeroPickerCell } from "./HeroPickerCell";
-import { SegmentedRadio, type SegmentedOption } from "./SegmentedRadio";
 
 /** Radix `Select` cannot carry an empty item value; `""` means "no preference". */
 const ANY_SUBROLE = "__any__";
@@ -70,15 +70,14 @@ export function RoleMatrixRow({
   const rated = ontology ? ratedDimension(ontology) : null;
   const roleRef = rated ? { dimension: rated.code, role: roleCode } : null;
   const node = ontology && roleRef ? findRole(ontology, roleRef) : null;
-  const accent = roleAccent(
-    ontology && node ? rolePresentation(ontology.roles, node.id).color : null,
-  );
+  const color = ontology && node ? rolePresentation(ontology.roles, node.id).color : null;
+  const accent = roleAccent(color);
   const active = showPriority ? selection.priority !== "off" : true;
 
-  const priorityOptions: readonly SegmentedOption<RolePriority>[] = [
+  const priorityOptions: readonly { value: RolePriority; label: string; accent?: string }[] = [
     { value: "off", label: t("registration.roles.matrix.off") },
     { value: "fallback", label: t("registration.roles.matrix.fallback") },
-    { value: "main", label: t("registration.roles.matrix.main"), selectedStyle: accent.tile },
+    { value: "main", label: t("registration.roles.matrix.main"), accent: color ?? undefined },
   ];
 
   return (
@@ -115,12 +114,26 @@ export function RoleMatrixRow({
       )}
 
       {showPriority && (
-        <SegmentedRadio
-          label={t("registration.roles.matrix.priorityLabel", { role: roleLabel })}
+        <ToggleGroup
+          type="single"
+          variant="pill"
+          size="sm"
+          aria-label={t("registration.roles.matrix.priorityLabel", { role: roleLabel })}
           value={selection.priority}
-          options={priorityOptions}
-          onChange={onPriorityChange}
-        />
+          onValueChange={(priority) => onPriorityChange(priority as RolePriority)}
+          className="w-full"
+        >
+          {priorityOptions.map((option) => (
+            <ToggleGroupItem
+              key={option.value}
+              value={option.value}
+              accent={option.accent}
+              className="flex-1 whitespace-nowrap px-2"
+            >
+              {option.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
       )}
 
       {/* The column headers only exist from `sm` up, so the stacked layout
@@ -142,7 +155,7 @@ export function RoleMatrixRow({
                   ? t("registration.roles.roleSpecialization", { role: roleLabel })
                   : t("registration.roles.specialization")
               }
-              className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg)] disabled:cursor-not-allowed disabled:opacity-50"
+              variant="surface"
             >
               <SelectValue />
             </SelectTrigger>

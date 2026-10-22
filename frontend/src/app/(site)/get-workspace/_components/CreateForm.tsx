@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Check, CircleAlert, Lock, LogIn } from "lucide-react";
 
+import { EmptyNote } from "@/components/kit/EmptyNote";
 import { owtButton } from "@/components/site/owt-button";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { usePermissions } from "@/hooks/usePermissions";
 import { ApiError, getApiErrorMessage } from "@/lib/api/error";
@@ -18,17 +21,6 @@ import { useAuthModalStore } from "@/stores/auth-modal.store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
 type HelpKind = "neutral" | "ok" | "err";
-
-const INPUT_SHELL =
-  "flex h-12 min-w-0 items-center rounded-[var(--aqt-radius-sm)] border " +
-  "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-3.5 " +
-  "transition-[border-color,background-color] duration-150 " +
-  "focus-within:border-[color:var(--aqt-teal)] focus-within:bg-[color:var(--aqt-overlay-3)] " +
-  "focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[color:var(--aqt-teal)]";
-
-const INPUT_FIELD =
-  "h-full min-w-0 w-full flex-1 border-0 bg-transparent text-base leading-none text-[color:var(--aqt-fg)] " +
-  "outline-none placeholder:text-[color:var(--aqt-fg-dim)]";
 
 /**
  * The create form of the organizer page (mock `.create`), and step 1 of the
@@ -110,15 +102,9 @@ export function CreateForm() {
 
   if (revoked) {
     return (
-      <div className="mt-7 flex max-w-[620px] items-start gap-3 rounded-xl border border-dashed border-[color:var(--aqt-border-2)] p-[18px] text-body text-[color:var(--aqt-fg-muted)]">
-        <Lock className="mt-0.5 size-4 shrink-0 text-[color:var(--aqt-rose)]" aria-hidden />
-        <div>
-          <b className="mb-0.5 block font-semibold text-[color:var(--aqt-fg)]">
-            {t("revoked.title")}
-          </b>
-          {t("revoked.hint")}
-        </div>
-      </div>
+      <EmptyNote icon={Lock} title={t("revoked.title")} tone="danger" className="mt-7 max-w-[620px]">
+        {t("revoked.hint")}
+      </EmptyNote>
     );
   }
 
@@ -137,21 +123,19 @@ export function CreateForm() {
           >
             {t("name")}
           </label>
-          <div className={INPUT_SHELL}>
-            <input
-              id="ws-name"
-              name="name"
-              value={name}
-              onChange={(event) => {
-                setName(event.target.value);
-                if (!slugTouched) setSlug(suggestSlug(event.target.value));
-              }}
-              placeholder={t("namePlaceholder")}
-              autoComplete="off"
-              required
-              className={INPUT_FIELD}
-            />
-          </div>
+          <Input
+            id="ws-name"
+            name="name"
+            variant="surface"
+            value={name}
+            onChange={(event) => {
+              setName(event.target.value);
+              if (!slugTouched) setSlug(suggestSlug(event.target.value));
+            }}
+            placeholder={t("namePlaceholder")}
+            autoComplete="off"
+            required
+          />
         </div>
         <div className="min-w-0">
           <label
@@ -160,34 +144,26 @@ export function CreateForm() {
           >
             {t("address")}
           </label>
-          <div
-            className={cn(
-              INPUT_SHELL,
-              help.kind === "err" &&
-                "border-[color:var(--aqt-rose)] focus-within:border-[color:var(--aqt-rose)] focus-within:outline-[color:var(--aqt-rose)]"
-            )}
-          >
-            <input
-              id="ws-slug"
-              name="slug"
-              value={slug}
-              // Typing a name with spaces is the common first move; the mock
-              // turns it into an address as you type instead of refusing it.
-              // Clearing the field hands it back to the name.
-              onChange={(event) => {
-                const next = event.target.value.toLowerCase().replace(/\s+/g, "-");
-                setSlug(next);
-                setSlugTouched(next !== "");
-              }}
-              placeholder="funny-cup"
-              spellCheck={false}
-              autoComplete="off"
-              required
-              aria-describedby="slug-preview slug-help"
-              aria-invalid={help.kind === "err"}
-              className={cn(INPUT_FIELD, "font-mono")}
-            />
-          </div>
+          <Input
+            id="ws-slug"
+            name="slug"
+            variant="surface"
+            value={slug}
+            // Typing a name with spaces is the common first move; the mock
+            // turns it into an address as you type instead of refusing it.
+            // Clearing the field hands it back to the name.
+            onChange={(event) => {
+              const next = event.target.value.toLowerCase().replace(/\s+/g, "-");
+              setSlug(next);
+              setSlugTouched(next !== "");
+            }}
+            placeholder="funny-cup"
+            spellCheck={false}
+            autoComplete="off"
+            required
+            aria-describedby="slug-preview slug-help"
+            aria-invalid={help.kind === "err"}
+          />
           <p
             id="slug-preview"
             className="mt-2 font-mono text-caption leading-relaxed text-[color:var(--aqt-fg-dim)] [overflow-wrap:anywhere]"
@@ -216,8 +192,11 @@ export function CreateForm() {
         </div>
       </div>
       <div className="flex flex-col items-start gap-3">
-        <button
+        {/* owtButton carries the whole marketing look; Button only supplies the element. */}
+        <Button
           type="submit"
+          variant={null}
+          size={null}
           disabled={pending}
           aria-busy={pending}
           className={owtButton({ variant: "primary", size: "lg" })}
@@ -230,7 +209,7 @@ export function CreateForm() {
               {t("submitSignedOut")}
             </>
           )}
-        </button>
+        </Button>
         <small className="max-w-[38rem] text-pretty text-caption leading-relaxed text-[color:var(--aqt-fg-dim)]">
           {t("note")}
         </small>

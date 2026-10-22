@@ -11,6 +11,8 @@ import {
   AuthUserSearchCombobox,
   type AuthUserOption
 } from "@/components/kit/ServerSearchCombobox";
+import { Button } from "@/components/ui/button";
+import { RowButton } from "@/components/ui/row-button";
 import {
   Select,
   SelectContent,
@@ -280,13 +282,15 @@ export default function RegistrationSchemaForm(props: Readonly<RegistrationSchem
     return (
       <div role="alert" className="grid gap-2 text-sm text-destructive">
         <p>{t("loadError")}</p>
-        <button
+        <Button
           type="button"
-          className="w-fit text-xs underline"
+          variant="link"
+          size="inline"
+          className="w-fit"
           onClick={() => void metadata.refetch()}
         >
           {tCommon("retry")}
-        </button>
+        </Button>
       </div>
     );
   }
@@ -763,8 +767,9 @@ function RegistrationSchemaFormBody({
       )}
 
       <div className="flex items-center justify-between border-t border-[color:var(--aqt-border)] pt-4">
-        <button
+        <Button
           type="button"
+          variant="subtle"
           onClick={() => {
             if (!state.canGoBack) {
               onCancel();
@@ -773,7 +778,7 @@ function RegistrationSchemaFormBody({
             setShowErrors(false);
             setStep((current) => current - 1);
           }}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] px-3 py-2 text-sm font-medium text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="text-[color:var(--aqt-fg-muted)]"
         >
           {state.canGoBack && <ArrowLeft className="size-3.5" aria-hidden />}
           {state.canGoBack
@@ -783,25 +788,24 @@ function RegistrationSchemaFormBody({
               : isAdmin
                 ? t("registrationOrganizer.form.cancel")
               : t("common.cancel")}
-        </button>
+        </Button>
 
         <div className="flex items-center gap-2">
           {isAdmin && !state.isLast && (
-            <button
+            <Button
               type="button"
+              variant="subtle"
               onClick={() => void advance(state, true)}
               disabled={submitPending}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] px-3 py-2 text-sm font-medium text-[color:var(--aqt-fg)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
             >
               {initial ? t("registrationOrganizer.form.save") : t("registrationOrganizer.form.create")}
-            </button>
+            </Button>
           )}
 
-          <button
+          <Button
             type="button"
             onClick={() => void advance(state)}
             disabled={submitPending || (state.isLast && subscriptionBlocked)}
-            className="inline-flex items-center gap-2 rounded-lg bg-[color:var(--aqt-teal)] px-4 py-2 text-sm font-medium text-[color:var(--aqt-bg)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-50"
           >
             {submitPending && <Spinner />}
             {state.isLast ? (
@@ -820,7 +824,7 @@ function RegistrationSchemaFormBody({
                 <ArrowRight className="size-3.5" aria-hidden />
               </>
             )}
-          </button>
+          </Button>
         </div>
       </div>
     </>
@@ -850,10 +854,9 @@ function RegistrationSchemaFormBody({
             </p>
           )}
           {accounts.length === 0 && onLinkAccounts && (
-            <button
-              type="button"
+            <RowButton
               onClick={onLinkAccounts}
-              className="flex w-full items-start gap-3 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-3 text-left transition-colors hover:bg-[color:var(--aqt-overlay-3)]"
+              className="flex items-start gap-3 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-3 hover:bg-[color:var(--aqt-overlay-3)]"
             >
               <div className="space-y-0.5">
                 <div className="text-sm font-medium text-[color:var(--aqt-fg)]">
@@ -867,7 +870,7 @@ function RegistrationSchemaFormBody({
                   <ArrowRight className="size-3" aria-hidden />
                 </div>
               </div>
-            </button>
+            </RowButton>
           )}
         </>
       )}

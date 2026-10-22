@@ -23,7 +23,7 @@ import { useSlotLabel } from "@/hooks/useSlotLabel";
 import type { RoleOntology } from "@/lib/roster/ontology";
 
 import { buildHistoryChangeText } from "./playerEditSheet.model";
-import { accentChipStyle, accentRowStyle, accentTextStyle, roleRankAccent } from "./RoleRankControls";
+import { AccentBadge, accentRowStyle, accentTextStyle, roleRankAccent } from "./RoleRankControls";
 import type { PlayerRankHistoryState } from "./usePlayerEditForm";
 
 type HistoryPreviewCardProps = {
@@ -74,9 +74,7 @@ function HistoryPreviewCard({
               {slotLabel(entry.role)}
             </span>
           </div>
-          <Badge className="h-5 border px-2 text-label" style={accentChipStyle(accent)}>
-            {entry.rank_value} SR
-          </Badge>
+          <AccentBadge accent={accent}>{entry.rank_value} SR</AccentBadge>
           {/* Original division (source tournament grid) */}
           {originalDivisionName ? (
             <div className="flex items-center gap-1.5 rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 py-1 text-[color:var(--aqt-fg)]">

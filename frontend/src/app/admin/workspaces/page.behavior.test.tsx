@@ -248,7 +248,7 @@ describe("/admin/workspaces", () => {
     managesAny = false;
     const container = await mount();
 
-    expect(container.textContent).toContain("Unauthorized");
+    expect(container.textContent).toContain("No access");
     expect(getAll).not.toHaveBeenCalled();
   });
 

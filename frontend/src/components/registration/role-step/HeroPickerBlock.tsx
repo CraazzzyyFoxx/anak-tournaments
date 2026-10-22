@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 import type { RoleAccent } from "@/lib/registration/role-accent";
@@ -71,9 +72,11 @@ export function HeroPickerBlock({ heroes, selected, max, accent, onChange }: Rea
           const blocked = !isSelected && atMax;
 
           return (
-            <button
+            <Button
               key={hero.slug}
               type="button"
+              variant="ghost"
+              size="icon"
               aria-disabled={blocked}
               aria-pressed={isSelected}
               title={hero.name}
@@ -83,8 +86,7 @@ export function HeroPickerBlock({ heroes, selected, max, accent, onChange }: Rea
               }}
               style={isSelected ? accent.selectedCard : undefined}
               className={cn(
-                "relative size-9 shrink-0 rounded-lg border transition-[opacity,border-color]",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                "relative rounded-lg border transition-[opacity,border-color]",
                 isSelected
                   ? "border-transparent"
                   : blocked
@@ -100,7 +102,7 @@ export function HeroPickerBlock({ heroes, selected, max, accent, onChange }: Rea
                   {index + 1}
                 </span>
               )}
-            </button>
+            </Button>
           );
         })}
       </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useParams, usePathname } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import type messages from "@/i18n/messages/en.json";
 import type { ComponentType, ReactNode } from "react";
@@ -9,14 +9,9 @@ import type { ComponentType, ReactNode } from "react";
 import { SectionNav, type SectionNavGroup } from "@/components/kit/SectionNav";
 import { SettingsContinuation } from "@/components/kit/SettingsContinuation";
 import { SettingsOutlineProvider } from "@/components/kit/SettingsOutline";
-import { usePermissions } from "@/hooks/usePermissions";
 import { useHubTournamentQuery } from "../hubQueries";
-import {
-  allowedSettingsSection,
-  SETTINGS_SECTIONS,
-  type SettingsSection,
-  type TabAccess
-} from "../tab-guards";
+import { useSubTabSegment, useTabAccess } from "../sub-tabs";
+import { allowedSettingsSection, SETTINGS_SECTIONS, type SettingsSection } from "../tab-guards";
 import { SETTINGS_SECTION_GROUPS, SETTINGS_SECTION_LABEL_KEYS } from "./settings-sections";
 
 /**
@@ -59,24 +54,14 @@ export default function TournamentSettingsLayout({
   const tournamentId = Number(params.id);
   // `/admin/tournaments/14/settings/pre-game` → section `pre-game`; the bare
   // `/settings` renders General in place (`page.tsx`), so it is General too.
-  const sectionSegment = usePathname().split("/").filter(Boolean).at(-1) ?? "";
-  const activeKey: SettingsSection = (SETTINGS_SECTIONS as readonly string[]).includes(sectionSegment)
-    ? (sectionSegment as SettingsSection)
-    : "general";
+  const { active: activeKey } = useSubTabSegment(
+    `/admin/tournaments/${tournamentId}/settings`,
+    SETTINGS_SECTIONS,
+    "general"
+  );
 
-  const { canAccessPermission } = usePermissions();
   const tournamentQuery = useHubTournamentQuery(tournamentId);
-  const workspaceId = tournamentQuery.data?.workspace_id ?? null;
-
-  const access: TabAccess = {
-    canUpdateTournament: canAccessPermission("tournament.update", workspaceId),
-    canUpdateEncounter: canAccessPermission("match.update", workspaceId),
-    canTeamRead: canAccessPermission("team.read", workspaceId),
-    canTeamCreate: canAccessPermission("team.create", workspaceId),
-    canReadTournamentLink: canAccessPermission("tournament_link.read", workspaceId),
-    canDeleteTournament: canAccessPermission("tournament.delete", workspaceId),
-    teamFormation: tournamentQuery.data?.team_formation === "draft" ? "draft" : "balancer"
-  };
+  const access = useTabAccess(tournamentQuery.data);
 
   type SectionKey = keyof typeof messages.adminTournament.settings.sections;
   type GroupKey = keyof typeof messages.adminTournament.settings.groups;

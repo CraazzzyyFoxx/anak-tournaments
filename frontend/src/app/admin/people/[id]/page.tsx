@@ -14,8 +14,8 @@ import { PersonParticipationsTab } from "@/components/admin/people/PersonPartici
 import { PersonProfileTab } from "@/components/admin/people/PersonProfileTab";
 import { PersonRanksTab } from "@/components/admin/people/PersonRanksTab";
 import { SubscriptionPlayerPanel } from "@/components/admin/people/PersonSubscriptionPanel";
+import { PermissionGate } from "@/components/admin/PermissionGate";
 import { Button } from "@/components/ui/button";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -75,21 +75,8 @@ export default function PersonHubPage() {
     enabled: canRead && Number.isFinite(personId)
   });
 
-  if (!isLoaded) return <Skeleton className="h-64 w-full rounded-xl" />;
-
-  if (!canRead) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("unauthorized")}</CardTitle>
-          <CardDescription>
-            {t("noPermission")}
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
-
+  // Only asked once the gate passes (`enabled: canRead`), so an error here is
+  // always the person's, never the grant's.
   if (personQuery.isError) {
     return (
       <PageStateCard
@@ -114,66 +101,68 @@ export default function PersonHubPage() {
   const name = person?.name ?? t("fallbackName", { id: personId });
 
   return (
-    <div className="space-y-6">
-      <PersonHubHeader
-        person={person}
-        personId={personId}
-        canEdit={canUpdate}
-        actions={
-          canMerge && person ? (
-            <Button variant="outline" size="sm" onClick={() => setMergeOpen(true)}>
-              {t("merge")}
-            </Button>
-          ) : null
-        }
-      />
-
-      <LinkTabs items={items} activeKey={tab} ariaLabel={t("sectionsLabel")} />
-
-      {tab === "profile" ? (
-        person ? (
-          <PersonProfileTab
-            key={person.id}
-            person={person}
-            workspaceId={workspaceId}
-            canManageIdentity={canManageIdentity}
-            canSetVisibility={canRead}
-            canReadAuth={canReadAuth}
-          />
-        ) : (
-          <Skeleton className="h-64 w-full rounded-xl" />
-        )
-      ) : null}
-
-      {tab === "participations" ? (
-        <PersonParticipationsTab
+    <PermissionGate loaded={isLoaded} allowed={canRead} description={t("noPermission")}>
+      <div className="space-y-6">
+        <PersonHubHeader
+          person={person}
           personId={personId}
-          personName={person?.name ?? ""}
-          workspaceId={workspaceId}
+          canEdit={canUpdate}
+          actions={
+            canMerge && person ? (
+              <Button variant="outline" size="sm" onClick={() => setMergeOpen(true)}>
+                {t("merge")}
+              </Button>
+            ) : null
+          }
         />
-      ) : null}
 
-      {tab === "achievements" ? <PersonAchievementsTab personId={personId} /> : null}
+        <LinkTabs items={items} activeKey={tab} ariaLabel={t("sectionsLabel")} />
 
-      {/* `team.update` is the roster owner's grant, the one the ranks endpoint
-          checks; without it the tab keeps only collection and history. */}
-      {tab === "ranks" ? <PersonRanksTab personId={personId} canReadRanks={canReadRanks} /> : null}
+        {tab === "profile" ? (
+          person ? (
+            <PersonProfileTab
+              key={person.id}
+              person={person}
+              workspaceId={workspaceId}
+              canManageIdentity={canManageIdentity}
+              canSetVisibility={canRead}
+              canReadAuth={canReadAuth}
+            />
+          ) : (
+            <Skeleton className="h-64 w-full rounded-xl" />
+          )
+        ) : null}
 
-      {tab === "subscriptions" ? <SubscriptionPlayerPanel userId={personId} label={name} /> : null}
+        {tab === "participations" ? (
+          <PersonParticipationsTab
+            personId={personId}
+            personName={person?.name ?? ""}
+            workspaceId={workspaceId}
+          />
+        ) : null}
 
-      {tab === "account" ? (
-        <PersonAccountTab personId={personId} canReadAuth={canReadAuth} />
-      ) : null}
+        {tab === "achievements" ? <PersonAchievementsTab personId={personId} /> : null}
 
-      {mergeOpen && person ? (
-        <UserMergeDialog
-          key={person.id}
-          sourceUser={person}
-          open
-          onOpenChange={setMergeOpen}
-          onMerged={() => setMergeOpen(false)}
-        />
-      ) : null}
-    </div>
+        {/* `team.update` is the roster owner's grant, the one the ranks endpoint
+            checks; without it the tab keeps only collection and history. */}
+        {tab === "ranks" ? <PersonRanksTab personId={personId} canReadRanks={canReadRanks} /> : null}
+
+        {tab === "subscriptions" ? <SubscriptionPlayerPanel userId={personId} label={name} /> : null}
+
+        {tab === "account" ? (
+          <PersonAccountTab personId={personId} canReadAuth={canReadAuth} />
+        ) : null}
+
+        {mergeOpen && person ? (
+          <UserMergeDialog
+            key={person.id}
+            sourceUser={person}
+            open
+            onOpenChange={setMergeOpen}
+            onMerged={() => setMergeOpen(false)}
+          />
+        ) : null}
+      </div>
+    </PermissionGate>
   );
 }

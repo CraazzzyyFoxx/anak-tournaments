@@ -15,6 +15,7 @@ import HeroRail, { RAIL_MAX_CHARACTERS } from "./HeroRail";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useCatalogEntities, useCatalogSelection } from "@/hooks/useCatalogEntities";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
+import { Card } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -171,12 +172,12 @@ const HeroLeaderboardContent = ({ scope, initial }: Readonly<{ scope: StatsScope
           <Spinner />
         </div>
       ) : heroId === undefined ? (
-        <div className="flex flex-col items-center justify-center gap-3.5 rounded-[var(--aqt-radius)] border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] py-[90px] text-center">
+        <Card variant="flat" className="flex flex-col items-center justify-center gap-3.5 rounded-[var(--aqt-radius)] py-[90px] text-center">
           <Sword aria-hidden className="h-10 w-10 text-[color:var(--aqt-fg-faint)] opacity-50" />
           <p className="max-w-sm text-sm leading-relaxed text-[color:var(--aqt-fg-dim)]">
             {t("users.heroesCompare.selectHeroPrompt")}
           </p>
-        </div>
+        </Card>
       ) : discipline ? (
         <ProfileWidget
           axis={axis}

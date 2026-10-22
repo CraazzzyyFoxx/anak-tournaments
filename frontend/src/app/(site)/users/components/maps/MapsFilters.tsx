@@ -4,8 +4,10 @@ import { useTranslations } from "next-intl";
 import { ArrowDown, ArrowUp } from "lucide-react";
 
 import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { SearchField } from "@/components/ui/search-field";
-import { AqtSelect } from "@/app/(site)/users/components/maps/atoms";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type SortKey = "winrate" | "count" | "name";
 type OrderKey = "asc" | "desc";
@@ -56,7 +58,7 @@ const MapsFilters = ({
     name: t("users.maps.sortName")
   };
   return (
-    <div className="aqt-filters rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2.5">
+    <Card variant="flat" className="aqt-filters p-2.5">
       <div className="w-48">
         <TournamentCombobox
           tournaments={tournaments}
@@ -67,44 +69,53 @@ const MapsFilters = ({
         />
       </div>
 
-      <AqtSelect
-        title={t("users.maps.minGamesTitle")}
-        value={String(minCount)}
-        onChange={(v) => onMinCountChange(Number(v))}
-        options={MIN_COUNT_OPTIONS.map((n) => ({
-          value: String(n),
-          label: t("users.maps.minGames", { count: String(n) })
-        }))}
-      />
-      <AqtSelect
-        title={t("users.maps.rowsTitle")}
-        value={String(perPage)}
-        onChange={(v) => onPerPageChange(Number(v))}
-        options={PER_PAGE_OPTIONS.map((n) => ({
-          value: String(n),
-          label: n === -1 ? t("users.maps.rowsAll") : t("users.maps.rows", { count: String(n) })
-        }))}
-      />
-      <AqtSelect
-        title={t("common.sortBy")}
-        value={sort}
-        onChange={(v) => onSortChange(v as SortKey)}
-        options={SORT_KEYS.map((value) => ({
-          value,
-          label: t("users.maps.sort", { label: sortLabels[value] })
-        }))}
-      />
-      <button
-        type="button"
+      <Select value={String(minCount)} onValueChange={(v) => onMinCountChange(Number(v))}>
+        <SelectTrigger size="sm" variant="surface" title={t("users.maps.minGamesTitle")} className="w-[150px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {MIN_COUNT_OPTIONS.map((n) => (
+            <SelectItem key={n} value={String(n)}>
+              {t("users.maps.minGames", { count: String(n) })}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={String(perPage)} onValueChange={(v) => onPerPageChange(Number(v))}>
+        <SelectTrigger size="sm" variant="surface" title={t("users.maps.rowsTitle")} className="w-[150px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {PER_PAGE_OPTIONS.map((n) => (
+            <SelectItem key={n} value={String(n)}>
+              {n === -1 ? t("users.maps.rowsAll") : t("users.maps.rows", { count: String(n) })}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Select value={sort} onValueChange={(v) => onSortChange(v as SortKey)}>
+        <SelectTrigger size="sm" variant="surface" title={t("common.sortBy")} className="w-[150px]">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {SORT_KEYS.map((value) => (
+            <SelectItem key={value} value={value}>
+              {t("users.maps.sort", { label: sortLabels[value] })}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button
+        variant="subtle"
+        size="icon-sm"
         onClick={onOrderToggle}
         aria-label={t("common.sortDirection", {
           current: order === "asc" ? t("common.ascending") : t("common.descending"),
           next: order === "asc" ? t("common.descending") : t("common.ascending")
         })}
-        className="aqt-tnum inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg-muted)] outline-none transition-colors hover:text-[color:var(--aqt-fg)] focus-visible:border-[color:var(--aqt-teal)] focus-visible:ring-2 focus-visible:ring-[color:color-mix(in_srgb,var(--aqt-teal)_25%,transparent)]"
       >
-        {order === "asc" ? <ArrowUp aria-hidden className="size-3.5" /> : <ArrowDown aria-hidden className="size-3.5" />}
-      </button>
+        {order === "asc" ? <ArrowUp aria-hidden /> : <ArrowDown aria-hidden />}
+      </Button>
 
       <SearchField
         label={t("users.maps.searchLabel")}
@@ -113,7 +124,7 @@ const MapsFilters = ({
         onValueChange={onSearchChange}
         containerClassName="ml-auto min-w-[180px] max-w-[300px] flex-1"
       />
-    </div>
+    </Card>
   );
 };
 

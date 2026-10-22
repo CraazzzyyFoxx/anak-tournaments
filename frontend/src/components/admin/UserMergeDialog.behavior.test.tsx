@@ -312,10 +312,10 @@ describe("profile/auth merge review boundaries", () => {
     previewMerge.mockResolvedValue(preview(2, null));
     await prepare();
     await acknowledge("I understand that Source");
-    const nameGroup = Array.from(document.body.querySelectorAll('[role="group"]')).find((group) =>
+    const nameGroup = Array.from(document.body.querySelectorAll('[role="radiogroup"]')).find((group) =>
       group.getAttribute("aria-labelledby") === Array.from(document.body.querySelectorAll("p")).find((item) => item.textContent === "Keep name from")?.id
     );
-    await click(nameGroup!.querySelector<HTMLButtonElement>("button")!);
+    await click(nameGroup!.querySelector<HTMLButtonElement>('[role="radio"]')!);
     expect(labelledControl<HTMLButtonElement>("I understand that Source").getAttribute("aria-checked")).toBe("false");
     await click(button("Merge and delete source"));
     expect(executeMerge).not.toHaveBeenCalled();

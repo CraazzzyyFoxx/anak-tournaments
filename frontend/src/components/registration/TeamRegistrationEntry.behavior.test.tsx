@@ -169,11 +169,12 @@ async function openWizard() {
   await settle();
 }
 
-/** The slot codes the wizard offers, read off the radio group it renders. */
+/** The slot codes the wizard offers, read off the radio group its slot label names (Radix radios carry `value`). */
 function offeredSlots(): string[] {
-  return [...document.querySelectorAll<HTMLInputElement>('input[name="regteam-slot"]')].map(
-    (input) => input.value
+  const group = [...document.querySelectorAll('[role="radiogroup"]')].find(
+    (el) => document.getElementById(el.getAttribute("aria-labelledby") ?? "")?.textContent === en.registrationTeams.create.slotLabel
   );
+  return [...(group?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [])].map((radio) => radio.value);
 }
 
 /**

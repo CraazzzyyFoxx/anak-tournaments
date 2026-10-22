@@ -1,9 +1,10 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
+import { EmptyNote } from "@/components/kit/EmptyNote";
+import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/ui/spinner";
 import { notificationQueryKeys } from "@/lib/notifications/query-keys";
@@ -15,6 +16,8 @@ import type {
   NotificationPreferences,
   NotificationPreferencesUpdate
 } from "@/types/notification.types";
+
+import { SwitchTile } from "./SettingsGroup";
 
 /** Rail order of the participant groups; the labels live in `accountSettings`. */
 const GROUPS: readonly NotificationGroup[] = ["tournament", "matches", "team"];
@@ -80,23 +83,21 @@ export default function NotificationsSection() {
             have nowhere to go until a Discord account is linked — and that is
             one tab away rather than on this one. */}
         {preferences && !preferences.discord_linked ? (
-          <div className="rounded-lg border border-dashed border-[color:var(--aqt-border-2)] px-3 py-2.5">
-            <p className="text-xs text-[color:var(--aqt-fg-muted)]">
-              {t("notifications.linkDiscordHint")}
-            </p>
-            <button
-              type="button"
-              onClick={() => setActiveTab("profile")}
-              className="mt-2 text-xs font-medium text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              {t("notifications.linkDiscordAction")}
-            </button>
-          </div>
+          <EmptyNote
+            size="sm"
+            action={
+              <Button variant="link" size="inline" onClick={() => setActiveTab("profile")}>
+                {t("notifications.linkDiscordAction")}
+              </Button>
+            }
+          >
+            {t("notifications.linkDiscordHint")}
+          </EmptyNote>
         ) : null}
 
         <div className="space-y-2">
           {GROUPS.map((group) => (
-            <GroupSwitch
+            <SwitchTile
               key={group}
               id={`dm-${group}`}
               label={t(`notifications.groups.${group}.label`)}
@@ -111,7 +112,7 @@ export default function NotificationsSection() {
           ))}
 
           {preferences && preferences.staff_workspaces.length > 0 ? (
-            <GroupSwitch
+            <SwitchTile
               id="dm-staff"
               label={t("notifications.groups.staff.label")}
               desc={t("notifications.groups.staff.desc")}
@@ -142,53 +143,12 @@ export default function NotificationsSection() {
                   ))}
                 </ul>
               ) : null}
-            </GroupSwitch>
+            </SwitchTile>
           ) : null}
         </div>
 
         <p className="text-label text-[color:var(--aqt-fg-dim)]">{t("notifications.footnote")}</p>
       </section>
-    </div>
-  );
-}
-
-function GroupSwitch({
-  id,
-  label,
-  desc,
-  checked,
-  disabled,
-  onCheckedChange,
-  children
-}: Readonly<{
-  id: string;
-  label: string;
-  desc: string;
-  checked: boolean;
-  disabled: boolean;
-  onCheckedChange: (next: boolean) => void;
-  children?: ReactNode;
-}>) {
-  return (
-    <div className="rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-3 py-2.5">
-      <div className="flex items-start gap-3">
-        <div className="flex-1 space-y-1">
-          <p id={`${id}-label`} className="text-sm text-[color:var(--aqt-fg)]">
-            {label}
-          </p>
-          <p id={`${id}-desc`} className="text-xs text-[color:var(--aqt-fg-dim)]">
-            {desc}
-          </p>
-        </div>
-        <Switch
-          checked={checked}
-          disabled={disabled}
-          onCheckedChange={onCheckedChange}
-          aria-labelledby={`${id}-label`}
-          aria-describedby={`${id}-desc`}
-        />
-      </div>
-      {children}
     </div>
   );
 }

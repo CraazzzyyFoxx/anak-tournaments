@@ -6,6 +6,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import { WizardShell, type WizardStep } from "@/components/kit/WizardShell";
+import { Card } from "@/components/ui/card";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -325,7 +326,7 @@ export default function DivisionGridImportPage() {
                 onAction={() => void preflightQuery.refetch()}
               />
             ) : preflightQuery.data ? (
-              <div className="rounded-xl border border-border bg-card p-3 text-sm">
+              <Card variant="flat" className="p-3 text-sm">
                 <p className={eyebrowClass("muted")}>{t("preview")}</p>
                 <p className="mt-1">
                   {t("previewSummary", { divisions: preflightQuery.data.tiers_count, mappings: preflightQuery.data.mappings_count, crests: preflightQuery.data.assets_to_copy })}
@@ -344,7 +345,7 @@ export default function DivisionGridImportPage() {
                     ))}
                   </ul>
                 ) : null}
-              </div>
+              </Card>
             ) : null}
           </div>
         ) : null}
@@ -362,12 +363,12 @@ export default function DivisionGridImportPage() {
                 }
               />
             ) : job.status === "completed" ? (
-              <div className="rounded-xl border border-border bg-card p-3 text-sm">
+              <Card variant="flat" className="p-3 text-sm">
                 <p className="font-medium">{t("draftCreated")}</p>
                 <p className="mt-1 text-muted-foreground">
                   {t("createdSummary", { versions: job.result?.created_versions ?? 0, divisions: job.result?.created_tiers ?? 0, mappings: job.result?.copied_mappings ?? 0 })}
                 </p>
-              </div>
+              </Card>
             ) : (
               <div className="flex flex-col gap-2">
                 <p className="text-sm">{t("copying")}</p>

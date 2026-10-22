@@ -1,7 +1,6 @@
-import { cn } from "@/lib/utils";
+import { Card } from "@/components/ui/card";
 
 import { BalanceActionsBar } from "./BalanceActionsBar";
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { downloadPayload, type BalanceVariant } from "@/components/balancer/workspace-helpers";
 
 type BalancerActionsPanelProps = {
@@ -45,7 +44,7 @@ export function BalancerActionsPanel({
   }
 
   return (
-    <div className={cn(PANEL_CLASS)}>
+    <Card variant="flat">
       <BalanceActionsBar
         activeVariantStats={
           activeVariant.payload.statistics != null
@@ -74,6 +73,6 @@ export function BalancerActionsPanel({
         onCopyNames={onCopyNames}
         onScreenshot={onScreenshot}
       />
-    </div>
+    </Card>
   );
 }

@@ -16,11 +16,11 @@ import {
   UserPlus
 } from "lucide-react";
 
-import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { MAX_LOBBIES, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { InlineEditText } from "@/components/kit/InlineEditText";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import {
   DropdownMenu,
@@ -33,7 +33,7 @@ import {
 import { Eyebrow, eyebrowClass } from "@/components/ui/eyebrow";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
-import { segmentedFrame, toggleVariants } from "@/components/ui/toggle";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
@@ -161,7 +161,7 @@ export function PickupMixHeader({
   const offerDelete = canDelete && onDeleteMix != null;
 
   return (
-    <div className={cn(PANEL_CLASS, "flex flex-wrap items-center gap-3 px-4 py-3")}>
+    <Card variant="flat" className="flex flex-wrap items-center gap-3 px-4 py-3">
       <Link
         href="/balancer/mix"
         className="flex shrink-0 items-center gap-1.5 text-caption text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg-muted)]"
@@ -343,7 +343,7 @@ export function PickupMixHeader({
           }}
         />
       ) : null}
-    </div>
+    </Card>
   );
 }
 
@@ -391,30 +391,42 @@ function SignupSettings({
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[22rem] space-y-3 p-3">
-        <Segmented
-          label={t("signupLabel")}
-          options={[
-            { value: "closed", label: t("signupState.closed") },
-            { value: "open", label: t("signupOpen") }
-          ]}
+        <ToggleGroup
+          type="single"
+          variant="pill"
+          aria-label={t("signupLabel")}
           value={open ? "open" : "closed"}
-          disabled={saving}
-          onChange={(value) => {
+          onValueChange={(value) => {
             if ((value === "open") === open) return;
             onSetSelfService({ self_signup: value === "open" ? "pool" : "closed" });
           }}
-        />
+          className="flex w-full"
+        >
+          <ToggleGroupItem value="closed" disabled={saving} className="flex-1 whitespace-nowrap px-2">
+            {t("signupState.closed")}
+          </ToggleGroupItem>
+          <ToggleGroupItem value="open" disabled={saving} className="flex-1 whitespace-nowrap px-2">
+            {t("signupOpen")}
+          </ToggleGroupItem>
+        </ToggleGroup>
 
         {open ? (
           <div className="space-y-2">
             <Eyebrow>{t("signupWhere")}</Eyebrow>
-            <Segmented
-              label={t("signupWhere")}
-              options={SIGNUP_DESTINATIONS.map((value) => ({ value, label: t(`signup.${value}`) }))}
+            <ToggleGroup
+              type="single"
+              variant="pill"
+              aria-label={t("signupWhere")}
               value={mode}
-              disabled={saving}
-              onChange={(value) => onSetSelfService({ self_signup: value as MixSelfSignup })}
-            />
+              onValueChange={(value) => onSetSelfService({ self_signup: value as MixSelfSignup })}
+              className="flex w-full"
+            >
+              {SIGNUP_DESTINATIONS.map((value) => (
+                <ToggleGroupItem key={value} value={value} disabled={saving} className="flex-1 whitespace-nowrap px-2">
+                  {t(`signup.${value}`)}
+                </ToggleGroupItem>
+              ))}
+            </ToggleGroup>
           </div>
         ) : null}
         <p className="text-label text-[color:var(--aqt-fg-dim)]">{t(`signupHint.${mode}`)}</p>
@@ -432,42 +444,6 @@ function SignupSettings({
         ) : null}
       </PopoverContent>
     </Popover>
-  );
-}
-
-function Segmented({
-  label,
-  options,
-  value,
-  disabled,
-  onChange
-}: Readonly<{
-  label: string;
-  options: readonly { value: string; label: string }[];
-  value: string;
-  disabled: boolean;
-  onChange: (value: string) => void;
-}>) {
-  return (
-    <div role="radiogroup" aria-label={label} className={cn(segmentedFrame, "flex w-full")}>
-      {options.map((option) => {
-        const selected = value === option.value;
-        return (
-          <button
-            key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            data-state={selected ? "on" : "off"}
-            disabled={disabled}
-            onClick={() => onChange(option.value)}
-            className={cn(toggleVariants({ variant: "pill" }), "flex-1 whitespace-nowrap px-2")}
-          >
-            {option.label}
-          </button>
-        );
-      })}
-    </div>
   );
 }
 

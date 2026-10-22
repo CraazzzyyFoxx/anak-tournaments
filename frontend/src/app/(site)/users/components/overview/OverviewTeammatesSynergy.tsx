@@ -11,6 +11,7 @@ import { CardSurface } from "@/components/profile/atoms";
 import { winrateColor } from "@/lib/colors";
 import { cn } from "@/lib/utils";
 import { getPlayerSlug } from "@/lib/player";
+import { Button } from "@/components/ui/button";
 import { DataPagination } from "@/components/ui/data-pagination";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { SearchField } from "@/components/ui/search-field";
@@ -46,10 +47,10 @@ const OverviewTeammatesSynergy = ({ teammates, totalCount, totalMaps }: Props) =
       action={
         <Dialog>
           <DialogTrigger asChild>
-            <button type="button" className="aqt-pf-link">
+            <Button variant="link" size="inline" className="[&_svg]:size-3">
               {t("common.all")}
-              <ArrowRight aria-hidden className="size-3" />
-            </button>
+              <ArrowRight aria-hidden />
+            </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg)] p-0">
             <div className="aqt-player flex max-h-[80vh] flex-col">

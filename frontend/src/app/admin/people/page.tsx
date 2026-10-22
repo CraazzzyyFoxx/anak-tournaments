@@ -3,9 +3,8 @@
 import { useTranslations } from "next-intl";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
+import { PermissionGate } from "@/components/admin/PermissionGate";
 import { PeopleBrowser } from "@/components/admin/people/list/PeopleBrowser";
-import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 
@@ -20,28 +19,16 @@ export default function PeoplePage() {
   const { canAccessPermission, isLoaded } = usePermissions();
   const workspaceId = useWorkspaceStore((state) => state.currentWorkspaceId);
 
-  if (!isLoaded) return <Skeleton className="h-64 w-full rounded-xl" />;
-
-  if (!canAccessPermission("user.read", workspaceId)) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("unauthorized")}</CardTitle>
-          <CardDescription>
-            {t("noPermission")}
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <AdminPageHeader
-        title={t("title")}
-        description={t("description")}
-      />
-      <PeopleBrowser workspaceId={workspaceId} />
-    </div>
+    <PermissionGate
+      loaded={isLoaded}
+      allowed={canAccessPermission("user.read", workspaceId)}
+      description={t("noPermission")}
+    >
+      <div className="space-y-4">
+        <AdminPageHeader title={t("title")} description={t("description")} />
+        <PeopleBrowser workspaceId={workspaceId} />
+      </div>
+    </PermissionGate>
   );
 }

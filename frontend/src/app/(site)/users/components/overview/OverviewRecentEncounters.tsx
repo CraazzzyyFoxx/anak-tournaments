@@ -2,13 +2,15 @@ import { getTranslations } from "next-intl/server";
 import { ArrowRight } from "lucide-react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { CardSurface } from "@/components/profile/atoms";
+import { ScoreCell } from "@/components/match/cells";
 import MatchLogIndicator from "@/components/match/MatchLogIndicator";
 import { CatalogEntityStrip } from "@/components/catalog/CatalogEntityImage";
 import { EncounterWithUserStats, UserTournament } from "@/types/user.types";
-import type { CatalogEntityRead } from "@/types/catalog.types";
-import { cn } from "@/lib/utils";
 import { getPlayerSlug } from "@/lib/player";
-import { encounterPerspective } from "@/app/(site)/users/components/shared/encounter-perspective";
+import {
+  encounterPerspective,
+  uniqueViewerCharacters
+} from "@/app/(site)/users/components/shared/encounter-perspective";
 
 interface Props {
   encounters: EncounterWithUserStats[];
@@ -48,17 +50,9 @@ const OverviewRecentEncounters = async ({ encounters, userId, userName, tourname
           .filter(Boolean)
           .join(" · ");
 
-        // The viewer's unique heroes across this encounter's matches
-        // (`viewer.characters` are already the viewer's). Deduped by entity;
-        // no popover — match-history heroes have no per-hero user stats
-        // (design-book §11).
-        const heroMap = new Map<number, CatalogEntityRead>();
-        for (const m of enc.matches ?? []) {
-          for (const character of m.viewer?.characters ?? []) {
-            if (!heroMap.has(character.id)) heroMap.set(character.id, character);
-          }
-        }
-        const encHeroes = Array.from(heroMap.values());
+        // The viewer's unique heroes across this encounter's matches. No popover —
+        // match-history heroes have no per-hero user stats (design-book §11).
+        const encHeroes = uniqueViewerCharacters(enc);
 
         return (
           <HoverPrefetchLink
@@ -77,16 +71,11 @@ const OverviewRecentEncounters = async ({ encounters, userId, userName, tourname
             <span className="hidden items-center sm:inline-flex">
               {encHeroes.length > 0 ? <CatalogEntityStrip entities={encHeroes} size="sm" limit={4} /> : null}
             </span>
-            <span
-              className={cn(
-                "aqt-tnum min-w-[42px] text-right text-base font-bold",
-                scoreKind === "win" && "text-[color:var(--aqt-emerald)]",
-                scoreKind === "loss" && "text-[color:var(--aqt-rose)]",
-                scoreKind === "draw" && "text-[color:var(--aqt-amber)]"
-              )}
-            >
-              {perspective.userScore} - {perspective.oppScore}
-            </span>
+            <ScoreCell
+              kind={scoreKind}
+              value={`${perspective.userScore} - ${perspective.oppScore}`}
+              className="min-w-[42px] text-right"
+            />
             <MatchLogIndicator hasLogs={enc.has_logs} size={13} className="h-6 w-6" />
           </HoverPrefetchLink>
         );

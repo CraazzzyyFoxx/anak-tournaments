@@ -8,8 +8,8 @@ import { useQuery } from "@tanstack/react-query";
 import { collectsRanks, rankHealthDot } from "@/components/admin/collectors/rank-shared";
 import { diagnoseStreamHealth } from "@/components/admin/collectors/stream-shared";
 import { subscriptionHealthDot } from "@/components/admin/collectors/subscription-shared";
-import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
-import { LinkTabs, type LinkTabItem } from "@/components/kit/LinkTabs";
+import { AdminTabbedPage } from "@/components/admin/AdminTabbedPage";
+import type { LinkTabItem } from "@/components/kit/LinkTabs";
 import { useGameScope } from "@/hooks/useGameScope";
 import { usePermissions } from "@/hooks/usePermissions";
 import adminService from "@/services/admin.service";
@@ -103,10 +103,8 @@ export default function CollectorsLayout({ children }: Readonly<{ children: Reac
   ];
 
   return (
-    <div className="space-y-4">
-      <AdminPageHeader title={t("title")} />
-      <LinkTabs items={items} activeKey={active ?? "rank"} ariaLabel={t("title")} />
+    <AdminTabbedPage title={t("title")} tabs={items} activeKey={active ?? "rank"} ariaLabel={t("title")}>
       {children}
-    </div>
+    </AdminTabbedPage>
   );
 }

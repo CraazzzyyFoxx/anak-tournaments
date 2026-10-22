@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { RowButton } from "@/components/ui/row-button";
 import {
   Select,
   SelectContent,
@@ -117,9 +118,8 @@ export function PhaseBoard({
         <div>
           <Button
             type="button"
-            variant="outline"
+            variant="dashed"
             size="sm"
-            className="border-dashed"
             onClick={() =>
               onChange({ ...ruleset, phases: [...ruleset.phases, newPhase(ruleset)] })
             }
@@ -451,11 +451,10 @@ function StepRow({
         {canManage && total > 1 ? (
           <SortableGrip handleProps={handleProps} label={t("step.reorder", { n: index + 1 })} />
         ) : null}
-        <button
-          type="button"
+        <RowButton
           onClick={onSelect}
           aria-pressed={selected}
-          className="flex min-w-0 flex-1 items-center gap-2 text-start"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-sm"
         >
           <span className="text-xs tabular-nums text-muted-foreground">{index + 1}</span>
           <span className={cn("truncate text-sm font-medium", hasError && "text-danger")}>
@@ -469,7 +468,7 @@ function StepRow({
               · {t(`summary.${lifetime.key}`, lifetime.values)}
             </span>
           )}
-        </button>
+        </RowButton>
         {canManage ? (
           <RowActions
             scope="step"
@@ -496,13 +495,12 @@ function StepPalette({ onAdd }: Readonly<{ onAdd: (template: PickBanStepTemplate
         <Button
           key={template}
           type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 border-dashed"
+          variant="dashed"
+          size="xs"
           title={t(`template.${template}.hint`)}
           onClick={() => onAdd(template)}
         >
-          <Plus aria-hidden className="size-3.5" />
+          <Plus aria-hidden />
           {t(`template.${template}.label`)}
         </Button>
       ))}

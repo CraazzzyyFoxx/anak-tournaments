@@ -3,6 +3,7 @@
 import React from "react";
 
 import { AvatarStack } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import Image from "@/components/ui/image";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useHoverIntent } from "@/hooks/useHoverIntent";
@@ -120,11 +121,12 @@ function HoverPopover({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="inline"
           aria-label={label}
           // Hover brightens a ring rather than scaling: a size change on hover shifts neighbours in an avatar stack.
-          className="inline-flex appearance-none rounded-full border-0 bg-transparent p-0 leading-none transition-shadow hover:ring-2 hover:ring-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
+          className="rounded-full leading-none hover:bg-transparent hover:ring-2 hover:ring-[color:color-mix(in_srgb,var(--aqt-teal)_45%,transparent)] focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
           onPointerEnter={(e) => {
             if (e.pointerType === "mouse") scheduleOpen();
           }}
@@ -135,7 +137,7 @@ function HoverPopover({
           onBlur={() => scheduleClose(0)}
         >
           {trigger}
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent
         className="w-80 rounded-xl"

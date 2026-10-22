@@ -35,8 +35,12 @@ export type ComboboxVariant = "default" | "toolbar" | "surface";
 
 const VARIANT_CLASS: Record<ComboboxVariant, string> = {
   default: "border-border/60 bg-background/80 hover:bg-background/90",
-  toolbar: "border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]",
-  surface: cn(controlSurfaceClass, "hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]")
+  toolbar:
+    "border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]",
+  surface: cn(
+    controlSurfaceClass,
+    "hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
+  )
 };
 
 interface ComboboxDefaultTrigger {

@@ -2,12 +2,12 @@
 
 import { useTranslations } from "next-intl";
 
+import { PermissionGate } from "@/components/admin/PermissionGate";
 import { StreamHealthDashboard } from "@/components/admin/collectors/stream-health";
 import { StreamTaskHistory } from "@/components/admin/collectors/stream-history";
 import { StreamSettingsPanel } from "@/components/admin/collectors/stream-settings";
 import { useCollectorTab } from "@/components/admin/collectors/useCollectorTab";
 import { LinkTabs } from "@/components/kit/LinkTabs";
-import { PageStateCard } from "@/components/ui/page-state-card";
 import { usePermissions } from "@/hooks/usePermissions";
 
 /**
@@ -27,7 +27,7 @@ import { usePermissions } from "@/hooks/usePermissions";
  */
 export default function StreamCollectorPage() {
   const t = useTranslations("collectors");
-  const { canAccessPermission, isSuperuser } = usePermissions();
+  const { canAccessPermission, isSuperuser, isLoaded } = usePermissions();
   const canReadHealth = canAccessPermission("stream.read", null);
 
   const { activeKey, items } = useCollectorTab("streams", [
@@ -40,32 +40,24 @@ export default function StreamCollectorPage() {
   // the only holder who gets here is one whose global grant was revoked mid
   // session. Saying why beats an empty page or a bare 403 toast, and without
   // health there is no other slot to offer (Settings is superuser-only).
-  if (!canReadHealth) {
-    return (
-      <PageStateCard
-        state="not-found"
-        title={t("access.title")}
-        description={t("access.streams")}
-      />
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <LinkTabs
-        items={items}
-        activeKey={activeKey}
-        level={2}
-        ariaLabel={t("views.streamsAria")}
-      />
-      {activeKey === "settings" ? (
-        <StreamSettingsPanel />
-      ) : (
-        <>
-          <StreamHealthDashboard />
-          <StreamTaskHistory />
-        </>
-      )}
-    </div>
+    <PermissionGate loaded={isLoaded} allowed={canReadHealth} description={t("access.streams")}>
+      <div className="space-y-4">
+        <LinkTabs
+          items={items}
+          activeKey={activeKey}
+          level={2}
+          ariaLabel={t("views.streamsAria")}
+        />
+        {activeKey === "settings" ? (
+          <StreamSettingsPanel />
+        ) : (
+          <>
+            <StreamHealthDashboard />
+            <StreamTaskHistory />
+          </>
+        )}
+      </div>
+    </PermissionGate>
   );
 }

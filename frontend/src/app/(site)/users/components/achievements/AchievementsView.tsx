@@ -20,6 +20,7 @@ import { RarityStrip } from "@/components/achievements/RarityStrip";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
 import { SearchField } from "@/components/ui/search-field";
 import { PageStateCard } from "@/components/ui/page-state-card";
+import { RowButton } from "@/components/ui/row-button";
 import { CardSurface } from "@/components/profile/atoms";
 import { TournamentCombobox } from "@/components/tournaments/TournamentCombobox";
 import { GameIcon } from "@/components/workspace/GameIcon";
@@ -201,7 +202,8 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament, 
           <SelectTrigger
             title={tr("users.achievements.sort.title")}
             size="sm"
-            className="aqt-tnum w-auto min-w-[150px] gap-2 shadow-none border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg-muted)] hover:border-[color:var(--aqt-border-2)] hover:bg-[hsl(0_0%_100%/0.04)] focus:ring-1 focus:ring-[color:var(--aqt-teal)] focus:ring-offset-0"
+            variant="surface"
+            className="aqt-tnum w-auto min-w-[150px] gap-2"
           >
             <SelectValue />
           </SelectTrigger>
@@ -245,11 +247,10 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament, 
               {list.map((ach) => {
                 const locked = ach.count === 0;
                 return (
-                  <button
+                  <RowButton
                     key={ach.id}
-                    type="button"
                     onClick={() => setSelected(ach)}
-                    className="-m-2 flex items-start gap-3 rounded-lg p-2 text-left transition-colors hover:bg-[hsl(0_0%_100%/0.03)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--aqt-teal)]"
+                    className="-m-2 flex w-auto items-start gap-3 rounded-lg p-2"
                   >
                     <AchievementArt
                       achievement={ach}
@@ -287,7 +288,7 @@ const AchievementsView = ({ achievements, tournaments = [], selectedTournament, 
                         {ach.count > 0 ? <span className="aqt-tnum">×{ach.count}</span> : null}
                       </div>
                     </div>
-                  </button>
+                  </RowButton>
                 );
               })}
             </div>

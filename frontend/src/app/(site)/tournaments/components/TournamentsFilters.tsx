@@ -3,6 +3,7 @@
 import { LayoutGrid, List } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Card } from "@/components/ui/card";
 import { FilterChip } from "@/components/ui/filter-chip";
 import { SearchField } from "@/components/ui/search-field";
 import { TOURNAMENT_STATUS_ORDER, getTournamentStatusMeta } from "@/lib/tournament/status";
@@ -76,7 +77,7 @@ const TournamentsFilters = ({
        strand the group divider on its own line), the search on its own full
        width line, and sort beside the view toggle. From `md` it is the single
        toolbar row again. */
-    <div className="flex flex-col gap-2.5 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2.5 md:flex-row md:flex-wrap md:items-center md:gap-2">
+    <Card variant="flat" className="flex flex-col gap-2.5 p-2.5 md:flex-row md:flex-wrap md:items-center md:gap-2">
       <div className="tn-filter-chips -mx-2.5 flex items-center gap-x-5 gap-y-2 overflow-x-auto px-2.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:mx-0 md:flex-wrap md:overflow-visible md:px-0 md:pb-0">
         {/* Two groups, not one run of chips split by a hairline: status and
             format answer different questions, and a divider between them
@@ -188,7 +189,7 @@ const TournamentsFilters = ({
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
-    </div>
+    </Card>
   );
 };
 

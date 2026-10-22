@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Trash2 } from "lucide-react";
 
 import { ffaErrorEntries, useFfaErrorMessage } from "@/components/admin/ffa/FfaGameResultsDialog";
+import { EmptyNote } from "@/components/kit/EmptyNote";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -135,9 +136,7 @@ export function FfaScoringSection({
         </div>
 
         {columns.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-            {t("noColumns")}
-          </p>
+          <EmptyNote size="sm">{t("noColumns")}</EmptyNote>
         ) : (
           columns.map((column, index) => (
             // The index IS the position in the table, and columns are renumbered
@@ -264,9 +263,7 @@ export function FfaScoringSection({
         </div>
 
         {places.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
-            {t("noPlacement")}
-          </p>
+          <EmptyNote size="sm">{t("noPlacement")}</EmptyNote>
         ) : (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {places.map((points, index) => (

@@ -78,19 +78,17 @@ export function AddPlayerIdentityPopover({
       }}
     >
       <PopoverTrigger asChild>
-        <button
+        <Button
           type="button"
+          variant="dashed"
+          size="sm"
           disabled={!provider || !metadata.data?.discipline.enabled}
-          className={cn(
-            "ml-auto inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-dashed px-3",
-            "border-[color:var(--aqt-border-2)] text-label text-[color:var(--aqt-fg-dim)]",
-            "transition-colors hover:border-[color:var(--aqt-border-3)] hover:text-[color:var(--aqt-fg)]"
-          )}
+          className="ml-auto shrink-0 gap-1.5 rounded-full"
         >
-          <UserPlus className="size-3.5" aria-hidden="true" />
+          <UserPlus aria-hidden="true" />
           {provider ? <SocialIcon provider={provider} size={14} decorative className="size-3.5" /> : null}
           New {config?.label ?? "game"} identity
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-3">
         <form

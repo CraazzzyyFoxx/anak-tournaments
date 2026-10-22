@@ -5,16 +5,11 @@ import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 
 import { PageHero } from "@/components/site/PageHero";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 import styles from "../TournamentDetail.module.css";
 import { isTournamentOverviewPath } from "./tournament-section-nav";
-
-type SkeletonBlockProps = React.HTMLAttributes<HTMLSpanElement>;
-
-function SkeletonBlock({ className, ...props }: SkeletonBlockProps) {
-  return <span aria-hidden="true" className={cn(styles.skeletonBlock, className)} {...props} />;
-}
 
 function SkeletonRegion({
   variant,
@@ -43,11 +38,11 @@ function SkeletonRegion({
 function ControlRowSkeleton({ search = false }: Readonly<{ search?: boolean }>) {
   return (
     <div className={styles.skeletonControls}>
-      <SkeletonBlock style={{ width: "5.75rem", height: "2.15rem", flex: "0 0 auto" }} />
-      <SkeletonBlock style={{ width: "6.5rem", height: "2.15rem", flex: "0 0 auto" }} />
-      <SkeletonBlock style={{ width: "5.25rem", height: "2.15rem", flex: "0 0 auto" }} />
+      <Skeleton style={{ width: "5.75rem", height: "2.15rem", flex: "0 0 auto" }} />
+      <Skeleton style={{ width: "6.5rem", height: "2.15rem", flex: "0 0 auto" }} />
+      <Skeleton style={{ width: "5.25rem", height: "2.15rem", flex: "0 0 auto" }} />
       {search ? (
-        <SkeletonBlock
+        <Skeleton
           style={{
             width: "min(18rem, 52vw)",
             height: "2.15rem",
@@ -65,9 +60,9 @@ function TableRowsSkeleton({ count = 6 }: Readonly<{ count?: number }>) {
     <div className={styles.skeletonRows}>
       {Array.from({ length: count }, (_, index) => (
         <div className={styles.skeletonRow} key={index}>
-          <SkeletonBlock style={{ width: index % 2 ? "72%" : "86%", height: "0.85rem" }} />
-          <SkeletonBlock style={{ width: "68%", height: "0.7rem" }} />
-          <SkeletonBlock style={{ width: "2.5rem", height: "1.15rem", justifySelf: "end" }} />
+          <Skeleton style={{ width: index % 2 ? "72%" : "86%", height: "0.85rem" }} />
+          <Skeleton style={{ width: "68%", height: "0.7rem" }} />
+          <Skeleton style={{ width: "2.5rem", height: "1.15rem", justifySelf: "end" }} />
         </div>
       ))}
     </div>
@@ -93,14 +88,14 @@ export function TournamentShellSkeleton() {
         {isOverview ? (
           <PageHero
             align="start"
-            eyebrow={<SkeletonBlock style={{ width: "14rem", height: "0.65rem" }} />}
-            title={<SkeletonBlock style={{ width: "min(28rem, 70vw)", height: "2.4rem" }} />}
+            eyebrow={<Skeleton style={{ width: "14rem", height: "0.65rem" }} />}
+            title={<Skeleton style={{ width: "min(28rem, 70vw)", height: "2.4rem" }} />}
             meta={
               <>
-                <SkeletonBlock style={{ width: "5rem", height: "1.75rem" }} />
-                <SkeletonBlock style={{ width: "9rem", height: "1.75rem" }} />
-                <SkeletonBlock style={{ width: "7rem", height: "1.75rem" }} />
-                <SkeletonBlock style={{ width: "6rem", height: "1.75rem" }} />
+                <Skeleton style={{ width: "5rem", height: "1.75rem" }} />
+                <Skeleton style={{ width: "9rem", height: "1.75rem" }} />
+                <Skeleton style={{ width: "7rem", height: "1.75rem" }} />
+                <Skeleton style={{ width: "6rem", height: "1.75rem" }} />
               </>
             }
           />
@@ -111,18 +106,18 @@ export function TournamentShellSkeleton() {
             className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-3 py-2.5 sm:px-4"
             data-shell-region="compact-header"
           >
-            <SkeletonBlock style={{ width: "2.5rem", height: "2.5rem", flex: "0 0 auto" }} />
-            <SkeletonBlock style={{ width: "min(18rem, 50vw)", height: "1.25rem" }} />
-            <SkeletonBlock style={{ width: "5rem", height: "1.25rem", flex: "0 0 auto" }} />
+            <Skeleton style={{ width: "2.5rem", height: "2.5rem", flex: "0 0 auto" }} />
+            <Skeleton style={{ width: "min(18rem, 50vw)", height: "1.25rem" }} />
+            <Skeleton style={{ width: "5rem", height: "1.25rem", flex: "0 0 auto" }} />
           </div>
         )}
 
         <div className={styles.navRegion} data-shell-region="tabs">
           <div className={cn(styles.railFrame, styles.railFrameWithControls)}>
-            <SkeletonBlock style={{ width: "2rem", height: "2.75rem" }} />
+            <Skeleton style={{ width: "2rem", height: "2.75rem" }} />
             <div className={styles.skeletonControls}>
               {Array.from({ length: 6 }, (_, index) => (
-                <SkeletonBlock
+                <Skeleton
                   key={index}
                   style={{
                     width: index % 2 ? "5.5rem" : "6.5rem",
@@ -132,7 +127,7 @@ export function TournamentShellSkeleton() {
                 />
               ))}
             </div>
-            <SkeletonBlock style={{ width: "2rem", height: "2.75rem" }} />
+            <Skeleton style={{ width: "2rem", height: "2.75rem" }} />
           </div>
         </div>
 
@@ -156,13 +151,13 @@ export function TournamentOverviewSkeleton() {
       <TournamentPageSkeletonLayout>
         <div className={styles.skeletonSurface}>
           <div className={styles.skeletonHeader} style={{ padding: "1rem" }}>
-            <SkeletonBlock style={{ width: "9rem", height: "1.25rem" }} />
+            <Skeleton style={{ width: "9rem", height: "1.25rem" }} />
           </div>
           <div className="grid gap-2 p-4 sm:grid-cols-4">
             {Array.from({ length: 4 }, (_, cell) => (
               <div className="grid gap-1.5" key={cell}>
-                <SkeletonBlock style={{ width: "70%", height: "0.85rem" }} />
-                <SkeletonBlock style={{ width: "90%", height: "0.7rem" }} />
+                <Skeleton style={{ width: "70%", height: "0.85rem" }} />
+                <Skeleton style={{ width: "90%", height: "0.7rem" }} />
               </div>
             ))}
           </div>
@@ -172,11 +167,11 @@ export function TournamentOverviewSkeleton() {
             {[0, 1].map((card) => (
               <div className={styles.skeletonSurface} key={card}>
                 <div className={styles.skeletonHeader} style={{ padding: "1rem" }}>
-                  <SkeletonBlock style={{ width: "8rem", height: "1rem" }} />
+                  <Skeleton style={{ width: "8rem", height: "1rem" }} />
                 </div>
                 <div className="grid gap-2 p-4 sm:grid-cols-2">
                   {Array.from({ length: 2 }, (_, tile) => (
-                    <SkeletonBlock key={tile} style={{ width: "100%", height: "5rem" }} />
+                    <Skeleton key={tile} style={{ width: "100%", height: "5rem" }} />
                   ))}
                 </div>
               </div>
@@ -186,11 +181,11 @@ export function TournamentOverviewSkeleton() {
             {[0, 1, 2].map((card) => (
               <div className={styles.skeletonSurface} key={card}>
                 <div className={styles.skeletonHeader} style={{ padding: "1rem" }}>
-                  <SkeletonBlock style={{ width: "6.5rem", height: "1rem" }} />
+                  <Skeleton style={{ width: "6.5rem", height: "1rem" }} />
                 </div>
                 <div className="grid gap-2 p-4">
-                  <SkeletonBlock style={{ width: "100%", height: "0.7rem" }} />
-                  <SkeletonBlock style={{ width: "80%", height: "0.7rem" }} />
+                  <Skeleton style={{ width: "100%", height: "0.7rem" }} />
+                  <Skeleton style={{ width: "80%", height: "0.7rem" }} />
                 </div>
               </div>
             ))}
@@ -215,20 +210,20 @@ export function TournamentBracketSkeleton() {
             style={{ padding: "1rem" }}
           >
             <div className={styles.skeletonControls}>
-              <SkeletonBlock style={{ width: "6.5rem", height: "2.15rem" }} />
-              <SkeletonBlock style={{ width: "5.5rem", height: "2.15rem" }} />
+              <Skeleton style={{ width: "6.5rem", height: "2.15rem" }} />
+              <Skeleton style={{ width: "5.5rem", height: "2.15rem" }} />
             </div>
             <div className={styles.skeletonControls}>
-              <SkeletonBlock style={{ width: "5.5rem", height: "2.15rem" }} />
-              <SkeletonBlock style={{ width: "4.75rem", height: "2.15rem" }} />
+              <Skeleton style={{ width: "5.5rem", height: "2.15rem" }} />
+              <Skeleton style={{ width: "4.75rem", height: "2.15rem" }} />
             </div>
           </div>
           <div className={styles.bracketFrame}>
             {Array.from({ length: 3 }, (_, column) => (
               <div className={styles.bracketColumn} key={column}>
-                <SkeletonBlock style={{ width: "6rem", height: "0.65rem" }} />
-                <SkeletonBlock style={{ height: "5rem" }} />
-                <SkeletonBlock style={{ height: "5rem" }} />
+                <Skeleton style={{ width: "6rem", height: "0.65rem" }} />
+                <Skeleton style={{ height: "5rem" }} />
+                <Skeleton style={{ height: "5rem" }} />
               </div>
             ))}
           </div>
@@ -252,15 +247,15 @@ export function TournamentTeamsSkeleton() {
               key={row}
               className="grid grid-cols-[2.75rem_minmax(0,1fr)_auto_1rem] items-center gap-2.5 rounded-xl border border-[color:var(--aqt-overlay-border)] bg-[color:var(--aqt-overlay-1)] px-3.5 pb-3 pt-2.5 sm:grid-cols-[2.75rem_minmax(0,1fr)_auto_auto_1rem] sm:gap-5"
             >
-              <SkeletonBlock style={{ width: "1.75rem", height: "1.25rem" }} />
+              <Skeleton style={{ width: "1.75rem", height: "1.25rem" }} />
               <span className="grid gap-2">
-                <SkeletonBlock style={{ width: row % 2 ? "38%" : "52%", height: "1rem" }} />
-                <SkeletonBlock style={{ width: "78%", height: "0.8rem" }} />
+                <Skeleton style={{ width: row % 2 ? "38%" : "52%", height: "1rem" }} />
+                <Skeleton style={{ width: "78%", height: "0.8rem" }} />
               </span>
               <span className="hidden sm:block">
-                <SkeletonBlock style={{ width: "3rem", height: "2rem" }} />
+                <Skeleton style={{ width: "3rem", height: "2rem" }} />
               </span>
-              <SkeletonBlock style={{ width: "2.5rem", height: "2rem" }} />
+              <Skeleton style={{ width: "2.5rem", height: "2rem" }} />
               <span />
             </div>
           ))}
@@ -289,9 +284,9 @@ export function TournamentParticipantsSkeleton() {
         <ControlRowSkeleton search />
         <div className={styles.skeletonSurface}>
           <div className={styles.skeletonRow}>
-            <SkeletonBlock style={{ width: "8rem", height: "0.55rem" }} />
-            <SkeletonBlock style={{ width: "6rem", height: "0.55rem" }} />
-            <SkeletonBlock style={{ width: "3rem", height: "0.55rem", justifySelf: "end" }} />
+            <Skeleton style={{ width: "8rem", height: "0.55rem" }} />
+            <Skeleton style={{ width: "6rem", height: "0.55rem" }} />
+            <Skeleton style={{ width: "3rem", height: "0.55rem", justifySelf: "end" }} />
           </div>
           <TableRowsSkeleton count={8} />
         </div>
@@ -308,18 +303,18 @@ export function TournamentMatchesSkeleton() {
       <TournamentPageSkeletonLayout>
 
         <div className={styles.skeletonControls}>
-          <SkeletonBlock style={{ width: "min(18rem, 76vw)", height: "2.25rem" }} />
+          <Skeleton style={{ width: "min(18rem, 76vw)", height: "2.25rem" }} />
         </div>
         <div className={styles.skeletonSurface}>
           <div className={styles.skeletonRow}>
-            <SkeletonBlock style={{ width: "7rem", height: "0.55rem" }} />
-            <SkeletonBlock style={{ width: "5rem", height: "0.55rem" }} />
-            <SkeletonBlock style={{ width: "3rem", height: "0.55rem", justifySelf: "end" }} />
+            <Skeleton style={{ width: "7rem", height: "0.55rem" }} />
+            <Skeleton style={{ width: "5rem", height: "0.55rem" }} />
+            <Skeleton style={{ width: "3rem", height: "0.55rem", justifySelf: "end" }} />
           </div>
           <TableRowsSkeleton count={7} />
         </div>
         <div className={styles.skeletonControls} style={{ justifyContent: "flex-end" }}>
-          <SkeletonBlock style={{ width: "13rem", height: "2.25rem" }} />
+          <Skeleton style={{ width: "13rem", height: "2.25rem" }} />
         </div>
       </TournamentPageSkeletonLayout>
     </SkeletonRegion>
@@ -337,9 +332,9 @@ export function TournamentHeroesSkeleton() {
         <div className={styles.skeletonSurface}>
           {Array.from({ length: 8 }, (_, index) => (
             <div className={styles.heroSkeletonRow} key={index}>
-              <SkeletonBlock style={{ width: "78%", height: "1.6rem" }} />
-              <SkeletonBlock style={{ width: `${92 - index * 6}%`, height: "0.45rem" }} />
-              <SkeletonBlock style={{ width: "2.4rem", height: "0.75rem" }} />
+              <Skeleton style={{ width: "78%", height: "1.6rem" }} />
+              <Skeleton style={{ width: `${92 - index * 6}%`, height: "0.45rem" }} />
+              <Skeleton style={{ width: "2.4rem", height: "0.75rem" }} />
             </div>
           ))}
         </div>
@@ -362,8 +357,8 @@ export function TournamentMapsSkeleton() {
           <div className={styles.skeletonRows}>
             {Array.from({ length: 3 }, (_, row) => (
               <div className={styles.skeletonRow} key={row}>
-                <SkeletonBlock style={{ width: "7rem", height: "0.55rem" }} />
-                <SkeletonBlock style={{ width: "100%", height: "3.5rem" }} />
+                <Skeleton style={{ width: "7rem", height: "0.55rem" }} />
+                <Skeleton style={{ width: "100%", height: "3.5rem" }} />
               </div>
             ))}
           </div>
@@ -388,27 +383,27 @@ export function TournamentStreamSkeleton() {
             live at once is the rare case, not the one to reserve space for. */}
         <div className={styles.skeletonSurface}>
           <div className="flex items-center justify-between gap-4 border-b border-[color:var(--aqt-border)] px-5 py-3">
-            <SkeletonBlock style={{ width: "7rem", height: "1rem" }} />
-            <SkeletonBlock style={{ width: "8rem", height: "1.4rem" }} />
+            <Skeleton style={{ width: "7rem", height: "1rem" }} />
+            <Skeleton style={{ width: "8rem", height: "1.4rem" }} />
           </div>
           <div className="grid xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="flex min-w-0 flex-col">
-              <SkeletonBlock className="aspect-video min-h-[300px] w-full rounded-none border-0" />
+              <Skeleton className="aspect-video min-h-[300px] w-full rounded-none" />
               <div className="flex flex-col gap-2.5 p-4">
-                <SkeletonBlock style={{ width: "12rem", height: "1.4rem" }} />
-                <SkeletonBlock style={{ width: "16rem", height: "1.15rem" }} />
-                <SkeletonBlock style={{ width: "70%", height: "0.85rem" }} />
-                <SkeletonBlock style={{ width: "9rem", height: "2.2rem" }} />
+                <Skeleton style={{ width: "12rem", height: "1.4rem" }} />
+                <Skeleton style={{ width: "16rem", height: "1.15rem" }} />
+                <Skeleton style={{ width: "70%", height: "0.85rem" }} />
+                <Skeleton style={{ width: "9rem", height: "2.2rem" }} />
               </div>
             </div>
             <div className="grid content-start gap-2 border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] p-3 md:grid-cols-2 xl:grid-cols-1 xl:border-t-0 xl:border-s">
               {Array.from({ length: 4 }, (_, row) => (
                 <div className="flex items-center gap-3 p-2" key={row}>
-                  <SkeletonBlock className="aspect-video w-[104px] shrink-0" />
+                  <Skeleton className="aspect-video w-[104px] shrink-0" />
                   <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                    <SkeletonBlock style={{ width: row % 2 ? "58%" : "72%", height: "0.85rem" }} />
-                    <SkeletonBlock style={{ width: "40%", height: "0.7rem" }} />
-                    <SkeletonBlock style={{ width: row % 2 ? "80%" : "64%", height: "0.7rem" }} />
+                    <Skeleton style={{ width: row % 2 ? "58%" : "72%", height: "0.85rem" }} />
+                    <Skeleton style={{ width: "40%", height: "0.7rem" }} />
+                    <Skeleton style={{ width: row % 2 ? "80%" : "64%", height: "0.7rem" }} />
                   </div>
                 </div>
               ))}

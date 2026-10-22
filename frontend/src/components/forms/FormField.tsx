@@ -55,7 +55,7 @@ export default function FormField({
   beforeControl,
   endAdornment,
   className,
-  containerClassName,
+  containerClassName
 }: Readonly<FormFieldProps>) {
   const generatedId = useId();
   const id = providedId ?? generatedId;
@@ -78,7 +78,14 @@ export default function FormField({
       className={containerClassName}
     >
       {(aria) => {
-        const shared = { ...aria, placeholder, onKeyDown, disabled, className, variant: "surface" as const };
+        const shared = {
+          ...aria,
+          placeholder,
+          onKeyDown,
+          disabled,
+          className,
+          variant: "surface" as const
+        };
         const control = multiline ? (
           <Textarea {...shared} value={value} onChange={(event) => onChange(event.target.value)} />
         ) : type === "number" ? (
@@ -91,7 +98,12 @@ export default function FormField({
             onValueChange={(next) => onChange(next === null ? "" : String(next))}
           />
         ) : (
-          <Input {...shared} type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+          <Input
+            {...shared}
+            type={type}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+          />
         );
         return (
           <>

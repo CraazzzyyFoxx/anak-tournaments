@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Gamepad2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { Button } from "@/components/ui/button";
 import { useScopePillOpen } from "@/components/workspace/scope-pill-store";
 import { cn } from "@/lib/utils";
 
@@ -16,18 +17,18 @@ export function GameFilterHint({ className, children }: Readonly<{ className?: s
   const setOpen = useScopePillOpen((state) => state.setOpen);
 
   return (
-    <button
+    <Button
       type="button"
+      variant="subtle"
+      size="sm"
       onClick={() => setOpen(true)}
       className={cn(
-        "inline-flex h-8 items-center gap-1.5 rounded-full border border-dashed border-[color:var(--aqt-border-2)] px-3",
-        "text-caption text-[color:var(--aqt-fg-muted)] transition-colors hover:bg-[color:var(--aqt-overlay-2)]",
-        "outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "gap-1.5 rounded-full border-dashed bg-transparent text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-2)] [&_svg]:size-3.5",
         className
       )}
     >
-      <Gamepad2 className="size-3.5 shrink-0" aria-hidden />
+      <Gamepad2 aria-hidden />
       {children ?? t("filterHint")}
-    </button>
+    </Button>
   );
 }

@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RowButton } from "@/components/ui/row-button";
 import { fieldErrorsFrom } from "@/lib/forms/form-errors";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
@@ -138,13 +139,12 @@ export function TemplateMenu({
           ) : (
             <div className="grid max-h-72 gap-1.5 overflow-y-auto">
               {templates.map((template) => (
-                <button
+                <RowButton
                   key={template.id}
-                  type="button"
                   aria-pressed={template.id === selectedId}
                   onClick={() => setSelectedId(template.id)}
                   className={cn(
-                    "rounded-lg border px-3 py-2 text-left text-sm",
+                    "rounded-lg border px-3 py-2 text-sm",
                     template.id === selectedId
                       ? "border-primary/40 bg-primary/10"
                       : "border-border/60 hover:border-border"
@@ -154,7 +154,7 @@ export function TemplateMenu({
                   <span className="block text-xs text-muted-foreground">
                     {t("sectionCount", { count: template.form_schema.sections.length })}
                   </span>
-                </button>
+                </RowButton>
               ))}
             </div>
           )}

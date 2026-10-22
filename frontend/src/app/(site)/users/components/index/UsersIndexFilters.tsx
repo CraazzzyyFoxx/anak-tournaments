@@ -3,13 +3,12 @@
 import { useMemo } from "react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
-import { LayoutGrid, SlidersHorizontal, Table2 } from "lucide-react";
+import { LayoutGrid, Table2 } from "lucide-react";
 
 import { DivisionCombobox } from "@/components/DivisionCombobox";
 import { Button } from "@/components/ui/button";
-import { Eyebrow } from "@/components/ui/eyebrow";
+import { Card } from "@/components/ui/card";
 import { FilterChip, FilterChipGroup } from "@/components/ui/filter-chip";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { SearchField } from "@/components/ui/search-field";
 import { GameFilterHint } from "@/components/workspace/GameFilterHint";
 import { Switch } from "@/components/ui/switch";
@@ -18,6 +17,8 @@ import { useRoleName } from "@/hooks/useRoleName";
 import { registrationRoles, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 import type { UserOverviewStats } from "@/types/user.types";
+
+import { ThresholdPopover } from "@/app/(site)/users/components/shared/ThresholdPopover";
 
 import { DEFAULT_MIN_ENCOUNTERS, MIN_ENCOUNTERS_OPTIONS, type ViewMode } from "./users-index.model";
 import type { UsersIndexParamControls } from "./useUsersIndexParams";
@@ -81,7 +82,7 @@ export function UsersIndexFilters({
 
   return (
     <div className="z-30 -mx-4 bg-[color:var(--aqt-bg)]/95 px-4 py-2 backdrop-blur md:sticky md:top-[var(--aqt-header-h)] md:-mx-6 md:px-6 xl:-mx-10 xl:px-10">
-      <div className="flex flex-col gap-2.5 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-card)] p-2.5 md:flex-row md:flex-wrap md:items-center md:gap-2">
+      <Card variant="flat" className="flex flex-col gap-2.5 p-2.5 md:flex-row md:flex-wrap md:items-center md:gap-2">
         {allGames ? (
           <GameFilterHint className="shrink-0" />
         ) : showsRoles(ontology) ? (
@@ -119,51 +120,26 @@ export function UsersIndexFilters({
             />
           )}
 
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="justify-start gap-2 border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] text-[color:var(--aqt-fg)] hover:bg-[hsl(0_0%_100%/0.04)]"
-              >
-                <SlidersHorizontal aria-hidden className="size-3.5 shrink-0 opacity-70" />
-                {t("users.list.filters.minEncountersValue", { value: String(minEncounters) })}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-60 space-y-2">
-              <Eyebrow as="p">{t("users.list.filters.minEncounters")}</Eyebrow>
-              <ToggleGroup
-                type="single"
-                variant="pill"
-                size="sm"
-                value={String(minEncounters)}
-                onValueChange={(next) => next && controls.setMinEncounters(Number(next))}
-                aria-label={t("users.list.filters.minEncounters")}
-                className="w-full"
-              >
-                {MIN_ENCOUNTERS_OPTIONS.map((option) => (
-                  <ToggleGroupItem key={option} value={String(option)} className="flex-1">
-                    {option}
-                  </ToggleGroupItem>
-                ))}
-              </ToggleGroup>
-              <p className="text-caption text-[color:var(--aqt-fg-dim)]">
-                {t("users.list.filters.minEncountersHint")}
-              </p>
-            </PopoverContent>
-          </Popover>
+          <ThresholdPopover
+            label={t("users.list.filters.minEncounters")}
+            hint={t("users.list.filters.minEncountersHint")}
+            triggerLabel={t("users.list.filters.minEncountersValue", { value: String(minEncounters) })}
+            value={minEncounters}
+            options={MIN_ENCOUNTERS_OPTIONS}
+            onChange={controls.setMinEncounters}
+          />
 
           {/* A `<label>` cannot name a `<button role="switch">`, so the name is on
               the control and the visible copy is decorative. */}
           <span className="flex h-8 shrink-0 items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[hsl(0_0%_100%/0.02)] px-3 text-label text-[color:var(--aqt-fg-muted)]">
             <Switch
+              size="sm"
               checked={hasLogs}
               onCheckedChange={controls.setHasLogs}
               aria-label={t("users.list.filters.withLogs")}
               // The shared unchecked track is `bg-muted`, which disappears on
               // this surface; give it a border and a lighter fill.
-              className="h-4 w-7 border-[color:var(--aqt-border-2)] data-[state=unchecked]:bg-[color:var(--aqt-overlay-3)] [&>span]:size-3 [&>span]:data-[state=checked]:translate-x-3"
+              className="border-[color:var(--aqt-border-2)] data-[state=unchecked]:bg-[color:var(--aqt-overlay-3)]"
             />
             <span aria-hidden>{t("users.list.filters.withLogs")}</span>
           </span>
@@ -176,13 +152,9 @@ export function UsersIndexFilters({
                 {t("users.list.filters.found", { count: format.number(foundCount) })}
               </span>
             )}
-            <button
-              type="button"
-              onClick={controls.resetFilters}
-              className="rounded text-[color:var(--aqt-teal)] underline-offset-2 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[color:var(--aqt-teal)]"
-            >
+            <Button variant="link" size="inline" onClick={controls.resetFilters}>
               {t("users.list.filters.resetAll")}
-            </button>
+            </Button>
           </span>
         ) : null}
 
@@ -214,7 +186,7 @@ export function UsersIndexFilters({
             <span className="sr-only">{t("users.list.view.catalog")}</span>
           </ToggleGroupItem>
         </ToggleGroup>
-      </div>
+      </Card>
     </div>
   );
 }

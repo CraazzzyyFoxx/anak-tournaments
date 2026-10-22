@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import type { FormField as FormFieldSchema } from "@/types/forms.types";
 import { useTranslations } from "next-intl";
 import { SocialIcon } from "@/components/social/SocialIcon";
+import { Button } from "@/components/ui/button";
 import { normalizeAnswerText, validateAnswer } from "@/lib/forms/validate";
 import FormField from "@/components/forms/FormField";
 
@@ -99,17 +100,18 @@ export default function ExtraHandlesInput({
               {handles.map((handle, i) => (
                 <span
                   key={handle}
-                  className="inline-flex items-center gap-1 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-2 py-0.5 text-xs text-[color:var(--aqt-fg-muted)]"
+                  className="inline-flex items-center gap-1 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] pl-2 pr-0.5 text-xs text-[color:var(--aqt-fg-muted)]"
                 >
                   {handle}
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost-destructive"
+                    size="icon-xs"
                     onClick={() => removeHandle(i)}
                     aria-label={t("registration.accounts.removeSmurf", { tag: handle })}
-                    className="ml-0.5 rounded text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    <X className="size-3" aria-hidden />
-                  </button>
+                    <X aria-hidden />
+                  </Button>
                 </span>
               ))}
             </div>
@@ -123,8 +125,10 @@ export default function ExtraHandlesInput({
         error={inputValidationError}
         className="pr-16"
         endAdornment={
-          <button
+          <Button
             type="button"
+            variant="subtle"
+            size="xs"
             onClick={() => addHandle(inputValue, { clearInput: true })}
             disabled={
               full ||
@@ -132,23 +136,24 @@ export default function ExtraHandlesInput({
               Boolean(inputValidationError) ||
               handles.includes(normalizedInputValue)
             }
-            className="absolute right-1 top-1/2 h-7 -translate-y-1/2 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] px-2.5 text-xs font-medium text-[color:var(--aqt-fg)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40"
+            className="absolute right-1 top-1/2 -translate-y-1/2"
           >
             {t("registration.accounts.addSmurfButton")}
-          </button>
+          </Button>
         }
       />
       {unusedSuggestions.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {unusedSuggestions.map((s) => (
-            <button
+            <Button
               key={s}
               type="button"
+              variant="dashed"
+              size="xs"
               onClick={() => addHandle(s, { clearInput: false })}
-              className="rounded border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-2 py-0.5 text-label text-[color:var(--aqt-fg-dim)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               + {s}
-            </button>
+            </Button>
           ))}
         </div>
       )}
