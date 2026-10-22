@@ -22,6 +22,7 @@ from shared.repository import (
 )
 from shared.services.balancer_realtime import BALANCER_BALANCE_SAVED, BALANCER_CONFIG_CHANGED, BALANCER_TEAMS_CHANGED
 from shared.services.discord_errors import DiscordError
+from shared.services.roster import roster_engine
 from src import schemas
 from src.domain.balancer.config.public_contract import (
     normalize_balance_response_payload,
@@ -32,7 +33,7 @@ from src.services.admin.balancer_variant import BalancerVariantService, balancer
 from src.services.balancer.config.provider import normalize_tournament_config_payload
 from src.services.balancer.realtime import emit_balancer_data, stage_export_invalidation
 from src.services.team import to_materialization_teams
-from src.services.team_export import ExportPlan, sync_player_ranks, team_materialization
+from src.services.team_export import ExportPlan, refuse_missing_handles, sync_player_ranks, team_materialization
 
 __all__ = ("BalancerAdminService", "balancer_admin_service", "materialize_balance_teams")
 
@@ -303,6 +304,21 @@ class BalancerAdminService:
         tournament = await self.tournaments.get(session, balance.tournament_id)
         dimension = DISCIPLINES[tournament.discipline].rated_dimension.code
         linked_team_ids = [team.exported_team_id for team in balance.teams if team.exported_team_id is not None]
+        # A tournament balance seats registrations by id (an uploaded one may carry other uuids: resolved by name only).
+        registration_ids = sorted(
+            {
+                int(player.uuid)
+                for team in payload.teams
+                for players in team.roster.values()
+                for player in players
+                if str(player.uuid).isdigit()
+            }
+        )
+        refuse_missing_handles(
+            (
+                await roster_engine.for_tournament(session, balance.tournament_id, registration_ids=registration_ids)
+            ).values()
+        )
 
         def _unlink() -> None:
             for team in balance.teams:

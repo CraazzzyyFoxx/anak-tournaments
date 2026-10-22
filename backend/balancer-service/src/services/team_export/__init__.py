@@ -4,6 +4,7 @@
 (cleanup -> insert -> backfill -> stamp -> one commit).
 """
 
+from src.services.team_export.identity import refuse_missing_handles
 from src.services.team_export.materialization import (
     MaterializationMember,
     MaterializationResult,
@@ -18,6 +19,7 @@ __all__ = (
     "MaterializationMember",
     "MaterializationResult",
     "MaterializationTeam",
+    "refuse_missing_handles",
     "sync_player_ranks",
     "team_materialization",
 )

@@ -37,7 +37,7 @@ from src.services.draft import realtime as draft_rt
 from src.services.draft.feasibility import DraftFeasibilityService, feasibility_service
 from src.services.draft.rosters import DraftRosterService, draft_rosters
 from src.services.team import to_materialization_teams
-from src.services.team_export import ExportPlan, sync_player_ranks, team_materialization
+from src.services.team_export import ExportPlan, refuse_missing_handles, sync_player_ranks, team_materialization
 
 
 def _draft_to_balancer_payload(
@@ -123,7 +123,7 @@ class DraftExportService:
 
     async def _load_payload(
         self, session: AsyncSession, draft_session: DraftSession
-    ) -> tuple[list[DraftTeam], list[BalancerTeam]]:
+    ) -> tuple[list[DraftTeam], list[BalancerTeam], Mapping[int, PlayerRoster]]:
         """Draft rosters -> export payload. Ranks resolve live except where a pick froze one."""
         teams = list(await self.teams_repo.list_by_session(session, draft_session.id))
         roster_rows = [
@@ -144,15 +144,16 @@ class DraftExportService:
         pick_rows = await self.picks_repo.list_resolved(session, draft_session.id)
         pick_by_player_id = {pk.picked_player_id: pk for pk in pick_rows if pk.picked_player_id is not None}
 
+        rosters = await self.rosters.load(session, draft_session, roster_rows)
         payload = _draft_to_balancer_payload(
             teams,
             roster_by_team,
             await self.feasibility.resolve_shape(session, draft_session),
-            await self.rosters.load(session, draft_session, roster_rows),
+            rosters,
             pick_by_player_id,
             await loaders.rated_dimension(session, draft_session),
         )
-        return teams, payload
+        return teams, payload, rosters
 
     async def export(
         self, session: AsyncSession, draft_session: DraftSession, *, actor_user_id: int | None = None
@@ -164,7 +165,8 @@ class DraftExportService:
         if draft_session.status != DraftStatus.COMPLETED.value:
             raise _err("draft_not_completed", "Only a completed draft can be exported")
 
-        teams, payload = await self._load_payload(session, draft_session)
+        teams, payload, rosters = await self._load_payload(session, draft_session)
+        refuse_missing_handles(rosters.values())
         # Idempotent cleanup + insert + backfill + stamp, all in the shared
         # orchestrator's single transaction.
         linked_ids = [t.exported_team_id for t in teams if t.exported_team_id is not None]
@@ -224,7 +226,7 @@ class DraftExportService:
         if draft_session.status != DraftStatus.COMPLETED.value:
             raise _err("draft_not_completed", "Only a completed draft can be exported")
 
-        _teams, payload = await self._load_payload(session, draft_session)
+        _teams, payload, _rosters = await self._load_payload(session, draft_session)
         updated = await sync_player_ranks(session, draft_session.tournament_id, to_materialization_teams(payload))
         # Ranks only: no team is removed or created, so no draft lifecycle event.
         await stage_export_invalidation(session, draft_session.tournament_id)

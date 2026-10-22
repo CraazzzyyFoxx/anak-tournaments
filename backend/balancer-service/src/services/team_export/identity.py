@@ -2,15 +2,42 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.core.social import get_provider, normalize_social_handle
+from shared.domain.roster import PlayerRoster
 from shared.models.identity.social import SocialAccount
 from shared.models.identity.user import User
 
-__all__ = ("find_users_by_handles",)
+__all__ = ("find_users_by_handles", "refuse_missing_handles")
+
+
+def refuse_missing_handles(rosters: Iterable[PlayerRoster]) -> None:
+    """422 naming every registration without a game handle, before an export writes anything.
+
+    Materialization finds players by handle: one without it would be skipped while the
+    team named after them was still created, captainless and short.
+    """
+    names = list(
+        dict.fromkeys(
+            roster.display_name or f"registration #{roster.registration_id}" for roster in rosters if not roster.handle
+        )
+    )
+    if names:
+        raise ApiHTTPException(
+            status_code=422,
+            detail=[
+                ApiExc(
+                    code="missing_handle",
+                    msg=f"These players have no game handle, so they cannot be exported: {', '.join(names)}. "
+                    "Add the handle to their registration and export again.",
+                )
+            ],
+        )
 
 
 def _name_part() -> sa.ColumnElement[str]:
