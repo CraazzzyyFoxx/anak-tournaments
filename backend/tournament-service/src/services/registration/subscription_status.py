@@ -1,9 +1,10 @@
 """The caller's own subscription standing, plus redemption rate limiting.
 
-Feeds the registration form: one call returns the composed outcome, a
-human-readable rule, and a per-provider verdict so the form can render a chip on
-each account row and a summary line above them. Without the summary line an
-``any`` requirement reads as two independent failures.
+Feeds the registration form: one call returns the composed outcome and a
+per-provider verdict so the form can render a chip on each account row. The
+summary line above them (without which an ``any`` requirement reads as two
+independent failures) is worded by the client from the form's
+``subscription_requirement_json``, so it follows the reader's locale.
 
 It also answers whether the registration gate would refuse this patron right now,
 computed by the same composition the gate itself runs — the form must be able to
@@ -22,7 +23,7 @@ import redis.asyncio as aioredis
 from loguru import logger
 from redis.exceptions import RedisError
 
-from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.errors import ApiExc, ApiHTTPException
 from shared.services.subscriptions import (
     Outcome,
     SubscriptionRequirement,
@@ -34,7 +35,6 @@ from src.schemas.registration import (
     SubscriptionStatusRead,
 )
 from src.services.admission import AdmissionConfig, AdmissionStage
-from src.services.admission.gates import describe_requirement
 
 __all__ = (
     "REDEEM_ATTEMPT_LIMIT",
@@ -97,7 +97,6 @@ async def subscription_status_for_user(
         required=True,
         mode=requirement.mode,
         outcome=outcome.value,
-        rule=describe_requirement(requirement),
         # Same composition and opt-in as the registration gate: a check-in-staged
         # tournament never refuses sign-up, so promising a block here would disable a
         # submit the server accepts. Non-forcing, so a patron who just subscribed may
@@ -148,9 +147,9 @@ async def assert_redeem_attempt_allowed(
         return
 
     if attempts > REDEEM_ATTEMPT_LIMIT:
-        raise HTTPException(
+        raise ApiHTTPException(
             status_code=429,
-            detail="Слишком много попыток. Попробуйте позже.",
+            detail=[ApiExc(code="subscription_redeem_rate_limited", msg="Too many attempts. Try again later.")],
         )
 
 

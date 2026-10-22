@@ -281,4 +281,4 @@ class TestOutageRefusal:
             assert_admitted(evaluation, stage=STAGE, config=CONFIG)
         [detail] = caught.value.detail
         assert detail["code"] == "provider_unavailable"
-        assert "Boosty" in detail["msg"] and "нужна активная подписка" not in detail["msg"]
+        assert "Boosty" in detail["msg"] and "subscription is required" not in detail["msg"]

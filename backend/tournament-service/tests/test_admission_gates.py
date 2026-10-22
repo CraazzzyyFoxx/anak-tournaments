@@ -10,7 +10,8 @@ Nothing here re-tests whether a requirement blocks -- ``evaluate`` owns that and
   reasons who is told one of them fixes it, retries, and is refused again;
 - the ``code`` is the reason's machine code. That code is the entire i18n
   contract with the client (D13): the client never ran the composition, so a
-  wrong or empty code leaves it printing Russian at an English user;
+  wrong or empty code leaves it unable to translate; ``msg`` is only the English
+  default, never a locale-specific sentence;
 - ``describe_requirement`` still names the ACTUAL rule, including the mode and
   the tier threshold. It moved here from ``tournament-service`` in Ф2 and a move
   that quietly changed the sentence would be indistinguishable from a rewrite.
@@ -120,10 +121,12 @@ class TestOneBlocker(TestCase):
             )
         assert [item["code"] for item in _detail(ctx.exception)] == ["not_subscribed"]
 
-    def test_message_is_russian_and_non_empty(self):
+    def test_message_is_the_english_default(self):
+        """``msg`` reaches whoever cannot translate the code, so it must not be
+        Russian: an English user read "Для чек-ина нужна активная подписка"."""
         with self.assertRaises(BaseAPIException) as ctx:
             assert_admitted(_evaluation(_blocked("open_profile", "profile_private")), stage=AdmissionStage.check_in)
-        assert _detail(ctx.exception)[0]["msg"] == "Профиль Overwatch должен быть открыт."
+        assert _detail(ctx.exception)[0]["msg"] == "The Overwatch profile must be public."
 
 
 class TestBlockerWithoutReasons(TestCase):
@@ -178,7 +181,7 @@ class TestStageWording(TestCase):
 
     Keyed on the gate being refused at, never on ``verdict.stage``: a
     registration-staged subscription also blocks check-in, and a patron refused
-    at check-in reading "нужна активная подписка для регистрации" would be told
+    at check-in reading "an active subscription is required for registration" would be told
     to fix a gate they are already past.
     """
 
@@ -201,13 +204,11 @@ class TestStageWording(TestCase):
 
     def test_check_in_names_check_in(self):
         message = self._msg(AdmissionStage.check_in)
-        assert "чек-ина" in message
-        assert "регистрации" not in message
+        assert message == "An active subscription is required for check-in."
 
     def test_registration_names_sign_up(self):
         message = self._msg(AdmissionStage.registration)
-        assert "регистрации" in message
-        assert "чек-ина" not in message
+        assert message == "An active subscription is required for registration."
 
     def test_config_spells_out_the_rule(self):
         config = AdmissionConfig(
@@ -216,38 +217,33 @@ class TestStageWording(TestCase):
             subscription_rule=parse_requirement(BOOSTY_TIER_2),
         )
         message = self._msg(AdmissionStage.check_in, config=config)
-        assert "Boosty" in message
-        assert "2" in message
+        assert message == "An active subscription is required for check-in: Boosty tier 2."
 
     def test_no_config_still_refuses(self):
         """Wording degrades; the refusal does not. A gate that needed the config
         to raise would fail OPEN on a config it could not read."""
-        assert "подписка" in self._msg(AdmissionStage.check_in)
+        assert "subscription" in self._msg(AdmissionStage.check_in)
 
 
 class TestDescribeRequirement(TestCase):
     def test_single_provider_has_no_conjunction(self):
         text = describe_requirement(parse_requirement(BOOSTY_TIER_2))
-        assert " и " not in text
-        assert "или" not in text
+        assert " and " not in text
+        assert " or " not in text
 
     def test_all_mode_says_and(self):
         text = describe_requirement(parse_requirement(BOTH))
-        assert " и " in text
-        assert "или" not in text
-        assert "Boosty" in text
-        assert "Twitch" in text
+        assert text == "Boosty and Twitch"
 
     def test_any_mode_says_or(self):
         text = describe_requirement(parse_requirement(EITHER))
-        assert " или " in text
-        assert " и " not in text
+        assert text == "Boosty or Twitch"
 
     def test_threshold_above_one_is_named(self):
-        assert "уровень 2" in describe_requirement(parse_requirement(BOOSTY_TIER_2))
+        assert describe_requirement(parse_requirement(BOOSTY_TIER_2)) == "Boosty tier 2"
 
     def test_threshold_of_one_is_not_spelled_out(self):
-        """ "Boosty уровень 1" reads like a restriction that is not there."""
+        """ "Boosty tier 1" reads like a restriction that is not there."""
         text = describe_requirement(parse_requirement({"requirements": [{"provider": "boosty"}]}))
         assert "1" not in text
         assert text == "Boosty"
@@ -261,7 +257,7 @@ class TestDescribeRequirement(TestCase):
 
     def test_provider_outside_the_catalog_keeps_its_threshold(self):
         text = describe_requirement(parse_requirement({"requirements": [{"provider": "patreon", "min_tier_rank": 3}]}))
-        assert text == "patreon уровень 3"
+        assert text == "patreon tier 3"
 
 
 class TestReasonActorsSurviveTheProjection(TestCase):

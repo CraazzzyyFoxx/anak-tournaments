@@ -207,7 +207,7 @@ class TestVerificationMethodEndToEnd(IsolatedAsyncioTestCase):
             await self._redeem()
 
         assert caught.exception.status_code == 400
-        assert "не кодом" in str(caught.exception.detail)
+        assert [item["code"] for item in caught.exception.detail] == ["subscription_code_not_accepted"]
 
     async def test_code_only_with_no_codes_fails_open(self):
         from shared.services.subscriptions import SubscriptionState

@@ -49,6 +49,7 @@ import type { DisciplineMetadata } from "@/types/discipline.types";
 import FieldLabel from "@/components/forms/FieldLabel";
 import TextField from "@/components/forms/FormField";
 import SubscriptionRuleNotice from "./SubscriptionRuleNotice";
+import { useRequirementDescription } from "./useRequirementDescription";
 import { defaultRoleAnswer, rolesParams } from "./fields/RolesField";
 import { registrationRenderers } from "./registrationRenderers";
 import { fromRoleSelections, toRoleSelections, type RoleCode } from "./types";
@@ -450,6 +451,8 @@ function RegistrationSchemaFormBody({
   // The server refuses this submit and no field on this form can change that:
   // anything a challenge code could still fix is asked for at check-in.
   const subscriptionBlocked = subscriptionQuery.data?.blocks_registration === true;
+  // Worded here, from the rule the form read carries, so it follows the reader's locale.
+  const subscriptionRule = useRequirementDescription(form.subscription_requirement_json);
 
   const accounts = isAdmin ? [] : (userProfile?.social_accounts ?? []);
   const onLinkAccounts = isAdmin
@@ -761,7 +764,7 @@ function RegistrationSchemaFormBody({
           className="rounded-lg border border-[color:color-mix(in_srgb,var(--aqt-rose)_30%,transparent)] bg-[color:color-mix(in_srgb,var(--aqt-rose)_12%,transparent)] p-2.5 text-xs leading-5 text-[color:var(--aqt-fg)]"
         >
           {t("common.subscription.registrationBlocked", {
-            rule: subscriptionQuery.data?.rule ?? ""
+            rule: subscriptionRule
           })}
         </p>
       )}
@@ -842,7 +845,10 @@ function RegistrationSchemaFormBody({
 
       {!isAdmin && (
         <>
-          <SubscriptionRuleNotice subscription={subscriptionQuery.data} />
+          <SubscriptionRuleNotice
+            subscription={subscriptionQuery.data}
+            requirement={form.subscription_requirement_json}
+          />
           {/* Before the submit, on every step: the entry will carry a "late
               sign-up" mark, and nothing else about it changes. */}
           {lateSignUp && (

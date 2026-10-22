@@ -825,7 +825,10 @@
       "discord_guild_not_configured": "Нужно членство в Discord-сервере, но сервер не привязан.",
       "discord_not_linked": "У игрока не привязан Discord.",
       "discord_guild_not_member": "Игрок не состоит в нужном Discord-сервере.",
-      "discord_guild_unreachable": "Не удалось проверить членство в Discord."
+      "discord_guild_unreachable": "Не удалось проверить членство в Discord.",
+      "subscription_code_rejected": "Код не подошёл. Проверьте, что он скопирован из поста целиком.",
+      "subscription_code_not_accepted": "Этот турнир проверяет подписку не кодом. Привяжите аккаунт вместо ввода кода.",
+      "subscription_redeem_rate_limited": "Слишком много попыток. Попробуйте позже."
     },
     "landing": {
       "title": "Приглашение в команду",

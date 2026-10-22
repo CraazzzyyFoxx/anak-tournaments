@@ -4,7 +4,7 @@ import { useId } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { useRequirementDescription } from "@/components/admin/subscriptions/useRequirementDescription";
+import { useRequirementDescription } from "@/components/registration/useRequirementDescription";
 import { SocialIcon } from "@/components/social/SocialIcon";
 import { Button } from "@/components/ui/button";
 import {

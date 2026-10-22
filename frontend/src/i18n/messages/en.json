@@ -825,7 +825,10 @@
       "discord_guild_not_configured": "Discord membership is required but no server is bound.",
       "discord_not_linked": "A player has no linked Discord account.",
       "discord_guild_not_member": "A player is not in the required Discord server.",
-      "discord_guild_unreachable": "Discord membership could not be verified."
+      "discord_guild_unreachable": "Discord membership could not be verified.",
+      "subscription_code_rejected": "The code did not match. Check that you copied the whole code from the post.",
+      "subscription_code_not_accepted": "This tournament does not verify subscriptions by code. Link your account instead.",
+      "subscription_redeem_rate_limited": "Too many attempts. Try again later."
     },
     "landing": {
       "title": "Team invite",

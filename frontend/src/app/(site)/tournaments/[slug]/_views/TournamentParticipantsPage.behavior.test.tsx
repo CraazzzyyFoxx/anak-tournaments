@@ -19,6 +19,7 @@ import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
+import ru from "@/i18n/messages/ru.json";
 import { ApiError } from "@/lib/api/error";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
@@ -321,12 +322,12 @@ async function settle(ticks = 3) {
   }
 }
 
-async function mount() {
+async function mount(locale: "en" | "ru" = "en") {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <NextIntlClientProvider locale="en" messages={en}>
+        <NextIntlClientProvider locale={locale} messages={locale === "ru" ? ru : en}>
           <TournamentParticipantsPage slug={String(TOURNAMENT_ID)} />
         </NextIntlClientProvider>
       </QueryClientProvider>
@@ -396,6 +397,28 @@ describe("tournament participants check-in", () => {
     await mount();
     expect(dialog()).toBeNull();
     expect(checkInButton()).toBeNull();
+  });
+
+  it.each([
+    ["en", en],
+    ["ru", ru]
+  ] as const)("words the gate's refusal from its reason code (%s)", async (locale, messages) => {
+    // The gate's `msg` is only an English default. It used to be a Russian
+    // sentence, shown verbatim to every reader whatever their locale.
+    checkInMyRegistration.mockRejectedValue(
+      new ApiError(400, [{ code: "not_subscribed", msg: "An active subscription is required for check-in: Boosty." }])
+    );
+    await mount(locale);
+
+    const confirm = Array.from(dialog()?.querySelectorAll("button") ?? []).find(
+      (button) => button.textContent?.trim() === messages.common.checkIn
+    );
+    await act(async () => {
+      confirm?.click();
+    });
+    await settle();
+
+    expect(dialog()?.querySelector('[role="alert"]')?.textContent).toBe(messages.admission.reason.not_subscribed);
   });
 });
 

@@ -6,9 +6,9 @@ refusal come from the same
 :class:`~src.services.admission.types.RequirementVerdict` list.
 
 One ``ApiExc`` per blocker, carrying the reason's machine ``code`` (the
-convention ``teams.py`` uses and ``lib/registration/team-errors.ts`` consumes),
+convention ``teams.py`` uses and ``lib/registration/admission.ts`` consumes),
 so the client translates a refusal without re-deriving the rule; ``msg`` is the
-Russian fallback for a code it cannot translate yet.
+English default for a code it cannot translate yet.
 
 Every blocker is emitted, not just the first, so a player refused for two
 reasons is not refused again after fixing one.
@@ -30,16 +30,16 @@ if TYPE_CHECKING:
 
 __all__ = ("assert_admitted", "describe_requirement")
 
-#: The gate being refused at, in the genitive the sentences below need. Indexed,
-#: not ``.get``-ed: a new stage without wording should fail loudly in tests.
+#: The gate being refused at, as the sentences below name it. Indexed, not
+#: ``.get``-ed: a new stage without wording should fail loudly in tests.
 _STAGE_NOUNS: Final[dict[AdmissionStage, str]] = {
-    AdmissionStage.registration: "регистрации",
-    AdmissionStage.check_in: "чек-ина",
+    AdmissionStage.registration: "registration",
+    AdmissionStage.check_in: "check-in",
 }
 
 
 def describe_requirement(requirement: SubscriptionRequirement) -> str:
-    """Human-readable rule, e.g. ``Boosty уровень 2 или Twitch``.
+    """Human-readable rule, e.g. ``Boosty tier 2 or Twitch``.
 
     The message must name the ACTUAL rule: under ``any`` a patron who satisfies
     one of two providers is admitted, so a generic "subscription required" would
@@ -51,8 +51,8 @@ def describe_requirement(requirement: SubscriptionRequirement) -> str:
         label = spec.label if spec is not None else req.provider
         # A threshold of 1 is "any paid tier" — spelling it out reads like a
         # restriction that is not there.
-        parts.append(f"{label} уровень {req.min_tier_rank}" if req.min_tier_rank > 1 else label)
-    conjunction = " или " if requirement.mode == "any" else " и "
+        parts.append(f"{label} tier {req.min_tier_rank}" if req.min_tier_rank > 1 else label)
+    conjunction = " or " if requirement.mode == "any" else " and "
     return conjunction.join(parts)
 
 
@@ -68,29 +68,29 @@ def _code(verdict: RequirementVerdict) -> str:
 
 
 def _message(verdict: RequirementVerdict, stage: AdmissionStage, config: AdmissionConfig | None) -> str:
-    """The Russian fallback sentence for one refusal.
+    """The English default sentence for one refusal; the client translates ``code``.
 
     Keyed on the GATE stage, not ``verdict.stage``: a requirement armed at
     ``registration`` also blocks check-in, and a patron refused at check-in must
     not read a sign-up message.
 
     An outage refusal names the outage: the patron may well be subscribed, so
-    "подписка нужна" would send them to buy what they already hold.
+    "subscription required" would send them to buy what they already hold.
     """
     if verdict.key == subscription.KEY:
         if verdict.reasons and verdict.reasons[0].code in OUTAGE_REASONS:
             provider = verdict.reasons[0].subject or ""
             spec = PROVIDERS.get(provider)
             label = spec.label if spec is not None else provider
-            return f"Не удалось проверить подписку {label}: проверка временно недоступна, попробуйте позже."
-        head = f"Для {_STAGE_NOUNS[stage]} нужна активная подписка"
+            return f"Could not check the {label} subscription: the check is temporarily unavailable, try again later."
+        head = f"An active subscription is required for {_STAGE_NOUNS[stage]}"
         rule = config.subscription_rule if config is not None else None
         return f"{head}: {describe_requirement(rule)}." if rule is not None else f"{head}."
     if verdict.key == open_profile.KEY:
-        return "Профиль Overwatch должен быть открыт."
+        return "The Overwatch profile must be public."
     # A registry entry added without wording. Refusing with the raw key beats
     # either a KeyError (a 500 where the player earned a 400) or admitting them.
-    return f"Требование не выполнено: {verdict.key}."
+    return f"Requirement not met: {verdict.key}."
 
 
 def assert_admitted(

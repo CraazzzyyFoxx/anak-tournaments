@@ -21,7 +21,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Protocol
 
-from shared.core.errors import BaseAPIException as HTTPException
+from shared.core.errors import ApiExc, ApiHTTPException
 from shared.services.subscriptions import (
     SubscriptionSource,
     SubscriptionState,
@@ -36,11 +36,18 @@ __all__ = ("redeem_challenge_code",)
 
 # Uniform rejection. The endpoint is a guessing oracle, so the response must not
 # reveal whether any codes are configured, whether one expired, or how close a
-# guess was.
-_REJECTED = "Код не подошёл. Проверьте, что он скопирован из поста целиком."
+# guess was. Each refusal carries a stable ``code`` the client translates; ``msg``
+# is only the English default for a client that does not know the code.
+_REJECTED = ApiExc(
+    code="subscription_code_rejected",
+    msg="The code did not match. Check that you copied the whole code from the post.",
+)
 
 # Distinct on purpose: this is not a failed guess, it is the wrong mechanism.
-_CODES_NOT_ACCEPTED = "Этот турнир проверяет подписку не кодом. Привяжите аккаунт вместо ввода кода."
+_CODES_NOT_ACCEPTED = ApiExc(
+    code="subscription_code_not_accepted",
+    msg="This tournament does not verify subscriptions by code. Link your account instead.",
+)
 
 
 class _Store(Protocol):
@@ -74,19 +81,19 @@ async def redeem_challenge_code(
     configs = await store.load_configs(workspace_id, [provider])
     config = configs.get(provider)
     if config is None or not config.enabled:
-        raise HTTPException(status_code=400, detail=_REJECTED)
+        raise ApiHTTPException(status_code=400, detail=[_REJECTED])
 
     # Not the guessing-oracle message: whether codes are accepted at all is a
     # public property of the tournament (the UI does not even render the input),
     # identical for every submitted code, so saying so plainly leaks nothing — and
     # it beats blaming the patron's copy-paste for the organizer's choice.
     if not accepts_code(parse_verification_method(config.config)):
-        raise HTTPException(status_code=400, detail=_CODES_NOT_ACCEPTED)
+        raise ApiHTTPException(status_code=400, detail=[_CODES_NOT_ACCEPTED])
 
     tiers = parse_code_tiers(config.config)
     matched = match_code(submitted_code, tiers, now=moment) if tiers else None
     if matched is None:
-        raise HTTPException(status_code=400, detail=_REJECTED)
+        raise ApiHTTPException(status_code=400, detail=[_REJECTED])
 
     granted = SubscriptionVerdict(
         state=SubscriptionState.ACTIVE,

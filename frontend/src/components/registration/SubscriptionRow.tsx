@@ -8,6 +8,8 @@ import { SubscriptionProviderBadge } from "@/components/status/RegistrationBadge
 import { Button } from "@/components/ui/button";
 import { FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { getApiErrorMessage } from "@/lib/api/error";
+import { translateRegistrationTeamError } from "@/lib/registration/team-errors";
 import type { SubscriptionStatus } from "@/types/registration.types";
 import { Spinner } from "@/components/ui/spinner";
 
@@ -45,6 +47,7 @@ export default function SubscriptionRow({
   onRedeemCode
 }: Readonly<SubscriptionRowProps>) {
   const t = useTranslations();
+  const tErrors = useTranslations("registrationTeams.errors");
   const [code, setCode] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,7 +73,9 @@ export default function SubscriptionRow({
       await onRedeemCode(code.trim(), provider);
       setCode("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      // The refusal's `code` is what gets translated; the server's `msg` is only
+      // the English default for a code this build does not know yet.
+      setError(translateRegistrationTeamError(tErrors, err, getApiErrorMessage(err)));
     } finally {
       setPending(false);
     }

@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 
 import { SaveBar } from "@/components/kit/SaveBar";
 import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
-import { useRequirementDescription } from "@/components/admin/subscriptions/useRequirementDescription";
+import { useRequirementDescription } from "@/components/registration/useRequirementDescription";
 import { NumberInput } from "@/components/ui/number-input";
 import {
   Select,

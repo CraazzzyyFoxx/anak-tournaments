@@ -783,7 +783,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.grid_save": {
         "summary": "Save the workspace division grid",
-        "description": "Permission: workspace `division_grid.update`. Server-authoritative save: applies cosmetic edits in place, or spawns a new version, auto-generates mappings from every used source version, and auto-activates when complete, but only if the grid already holds the workspace's active version for its game (another grid is activated explicitly).",
+        "description": "Permission: workspace `division_grid.update`. Server-authoritative save: applies cosmetic edits in place, or spawns a new version, auto-generates mappings from every used source version, and auto-activates when complete.",
     },
     "rpc.tournament.grid_version_clone": {
         "summary": "Clone grid version",

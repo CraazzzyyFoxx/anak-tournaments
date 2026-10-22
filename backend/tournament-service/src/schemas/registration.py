@@ -209,7 +209,6 @@ class SubscriptionStatusRead(BaseModel):
     required: bool = False
     mode: str | None = None
     outcome: str | None = None
-    rule: str | None = None
     # Whether signing up is refused right now. Narrower than ``outcome == refused``:
     # a provider the patron can still satisfy with a challenge code is deferred,
     # because that field only exists at check-in. The form uses it to explain the

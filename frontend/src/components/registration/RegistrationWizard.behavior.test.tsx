@@ -160,6 +160,15 @@ describe("RegistrationWizard", () => {
 
     expect(container.querySelector('div[role="alert"]')?.textContent).toBe("Upstream exploded");
   });
+
+  it("words the sign-up gate's refusal from its reason code, not the English default", async () => {
+    await submitWith(
+      new ApiError(400, [{ msg: "An active subscription is required for registration.", code: "not_subscribed" }]),
+    );
+
+    // `next-intl` is the identity mock here: the banner is the reason's message key.
+    expect(container.querySelector('div[role="alert"]')?.textContent).toBe("admission.reason.not_subscribed");
+  });
 });
 
 afterAll(() => {

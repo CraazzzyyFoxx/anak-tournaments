@@ -30,6 +30,7 @@ import {
   SelectValue
 } from "@/components/ui/select";
 import { getApiErrorMessage } from "@/lib/api/error";
+import { formatAdmissionRefusal } from "@/lib/registration/admission";
 import { isPhaseWindowActive } from "@/lib/tournament/status";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useAuthProfile } from "@/hooks/useAuthProfile";
@@ -596,7 +597,8 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
           />
           {checkInMutation.isError && (
             <p role="alert" className="text-sm text-[color:var(--aqt-rose)]">
-              {getApiErrorMessage(checkInMutation.error, t("common.checkInFailed"))}
+              {formatAdmissionRefusal(t, checkInMutation.error) ??
+                getApiErrorMessage(checkInMutation.error, t("common.checkInFailed"))}
             </p>
           )}
           <AlertDialogFooter>

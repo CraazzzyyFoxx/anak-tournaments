@@ -124,8 +124,6 @@ export interface SubscriptionStatus {
   required: boolean;
   mode?: "any" | "all" | null;
   outcome?: SubscriptionOutcome | null;
-  /** Human-readable rule, e.g. `Boosty уровень 2 или Twitch`. */
-  rule?: string | null;
   /** Whether signing up is refused right now. Narrower than `outcome === "refused"`:
    *  a provider the patron can still satisfy with a challenge code is deferred,
    *  because that field only exists at check-in. */

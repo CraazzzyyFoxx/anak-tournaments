@@ -1,10 +1,12 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { ApiError, getApiErrorMessage } from "@/lib/api/error";
+import { formatAdmissionRefusal } from "@/lib/registration/admission";
 import registrationService from "@/services/registration.service";
 import meService from "@/services/me.service";
 import type { RegistrationForm, RegistrationSubmitInput } from "@/types/registration.types";
@@ -28,6 +30,7 @@ export default function RegistrationWizard({
   form,
   onClose,
 }: Readonly<RegistrationWizardProps>) {
+  const t = useTranslations();
   const { user: authUser } = useAuthProfile();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +64,8 @@ export default function RegistrationWizard({
     // that names no field at all.
     onError: (err: unknown) => {
       if (err instanceof ApiError && err.details.some((detail) => detail.field)) return;
-      setError(getApiErrorMessage(err));
+      // The sign-up gate refuses with reason codes; its `msg` is an English default.
+      setError(formatAdmissionRefusal(t, err) ?? getApiErrorMessage(err));
     },
   });
 
