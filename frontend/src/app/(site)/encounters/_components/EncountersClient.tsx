@@ -91,7 +91,7 @@ export default function EncountersClient({
   const showingEnd = Math.min(page * ENCOUNTERS_PAGE_SIZE, total);
 
   if (unavailable) {
-    return <GameScopeControl scope={gameScope} variant="multi" dropParams={GAME_SCOPED_PARAMS} />;
+    return <GameScopeControl scope={gameScope} variant="multi" dropParams={GAME_SCOPED_PARAMS} headingLevel={1} />;
   }
   if (!ready) {
     return gameScope.isError ? (

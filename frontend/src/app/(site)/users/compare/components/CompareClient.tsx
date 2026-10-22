@@ -108,7 +108,7 @@ const PageContent = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: 
   if (gameScope.resolution?.game.kind === "invalid" || gameScope.resolution?.game.kind === "empty") {
     return (
       <div className="aqt-player space-y-3.5">
-        <GameScopeControl scope={gameScope} variant="single" dropParams={COMPARE_GAME_PARAMS} />
+        <GameScopeControl scope={gameScope} variant="single" dropParams={COMPARE_GAME_PARAMS} headingLevel={1} />
       </div>
     );
   }

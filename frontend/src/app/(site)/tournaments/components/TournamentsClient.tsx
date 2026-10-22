@@ -232,7 +232,7 @@ const TournamentsClient = ({
   if (resolution.game.kind === "invalid" || resolution.game.kind === "empty") {
     return (
       <div className="aqt-tn">
-        <GameScopeControl scope={gameScope} variant="multi" />
+        <GameScopeControl scope={gameScope} variant="multi" headingLevel={1} />
       </div>
     );
   }

@@ -8,6 +8,7 @@ import en from "@/i18n/messages/en.json";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
 
 import { DisciplineUnavailable } from "./DisciplineUnavailable";
+import { GameScopeControl } from "./GameScopeControl";
 import { GameField } from "./GameField";
 import { GameMark } from "./GameMark";
 import { GameTabs } from "./GameTabs";
@@ -183,6 +184,29 @@ describe("DisciplineUnavailable", () => {
 
     await render(<DisciplineUnavailable game={{ kind: "empty" }} />);
     expect(container.textContent).toContain("No games available");
+  });
+});
+
+describe("GameScopeControl", () => {
+  it("titles the unavailable state as the page's h1 when the page returns it instead of its hero", async () => {
+    const scope = {
+      axis: null,
+      games: [OW],
+      resolution: { game: { kind: "invalid", requested: "starcraft", reason: "unknown" }, tabs: false },
+      game: null,
+      isError: false,
+      refetch: () => {},
+      selectScope: () => {},
+      selectTab: () => {}
+    } as unknown as ComponentProps<typeof GameScopeControl>["scope"];
+
+    await render(<GameScopeControl scope={scope} variant="multi" headingLevel={1} />);
+    expect(container.querySelector("h1")?.textContent).toBe("Unknown game selection");
+    await act(async () => root.unmount());
+
+    await render(<GameScopeControl scope={scope} variant="multi" />);
+    expect(container.querySelector("h1")).toBeNull();
+    expect(container.querySelector("h2")?.textContent).toBe("Unknown game selection");
   });
 });
 

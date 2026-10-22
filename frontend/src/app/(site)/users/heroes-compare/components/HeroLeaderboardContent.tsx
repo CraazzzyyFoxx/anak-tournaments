@@ -117,7 +117,7 @@ const HeroLeaderboardContent = ({ scope, initial }: Readonly<{ scope: StatsScope
   };
 
   if (gameScope.resolution?.game.kind === "invalid" || gameScope.resolution?.game.kind === "empty") {
-    return <GameScopeControl scope={gameScope} variant="single" dropParams={HERO_GAME_PARAMS} />;
+    return <GameScopeControl scope={gameScope} variant="single" dropParams={HERO_GAME_PARAMS} headingLevel={1} />;
   }
 
   return (

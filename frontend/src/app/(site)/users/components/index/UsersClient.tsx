@@ -47,7 +47,7 @@ const UsersClient = ({ scope, initial }: Readonly<{ scope: StatsScope; initial: 
   const gridMissing = isDivisionGridRequired((view === "catalog" ? data.catalogQuery : data.overviewQuery).error);
 
   if (kind === "invalid" || kind === "empty") {
-    return <GameScopeControl scope={gameScope} variant="multi" dropParams={GAME_BOUND_PARAMS} />;
+    return <GameScopeControl scope={gameScope} variant="multi" dropParams={GAME_BOUND_PARAMS} headingLevel={1} />;
   }
 
   return (

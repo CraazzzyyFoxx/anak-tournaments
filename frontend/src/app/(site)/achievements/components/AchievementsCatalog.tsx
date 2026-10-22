@@ -208,7 +208,7 @@ const AchievementsCatalog = ({ initial }: Readonly<{ initial?: GameScopeInit }>)
   if (resolution.game.kind === "invalid" || resolution.game.kind === "empty") {
     return (
       <div className="aqt-player">
-        <GameScopeControl scope={gameScope} variant="multi" />
+        <GameScopeControl scope={gameScope} variant="multi" headingLevel={1} />
       </div>
     );
   }
