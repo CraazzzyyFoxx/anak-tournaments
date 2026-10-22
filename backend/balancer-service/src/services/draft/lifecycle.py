@@ -243,6 +243,14 @@ class DraftLifecycleService:
         actor_user_id: int,
     ) -> DraftSession:
         """Create a session for the tournament and publish ``draft.session_updated``."""
+        # A draft forms the teams only of a tournament that says it does: the
+        # balancer and team registration write `tournament.team` their own way.
+        formation = await self.tournaments_repo.get_team_formation(session, tournament_id)
+        if formation != "draft":
+            raise _err(
+                "tournament_not_draft_formation",
+                f"Tournament {tournament_id} forms its teams by {formation!r}, not by draft",
+            )
         # The roster shape is the tournament's, not the request's: a draft
         # cannot be created at a size the tournament does not run. The format
         # is the tournament's for the same reason -- it is a rule organizers

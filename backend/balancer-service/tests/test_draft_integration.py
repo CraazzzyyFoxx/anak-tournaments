@@ -53,6 +53,7 @@ from shared.repository import CatalogRoleRepository  # noqa: E402
 from shared.schemas.role import RoleRef  # noqa: E402
 from shared.services.team_format import save_tournament_format  # noqa: E402
 from shared.testing import create_test_async_engine  # noqa: E402
+from src import schemas  # noqa: E402
 from src.domain.draft.entities import PoolSeat  # noqa: E402
 from src.rpc import draft as draft_rpc  # noqa: E402
 from src.services.draft import board as draft_board  # noqa: E402
@@ -393,6 +394,30 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             await lifecycle.lifecycle_service.start(s, draft, force=True)
             await s.commit()
             self.assertEqual(draft.status, DraftStatus.LIVE.value)
+
+    async def test_session_create_needs_a_draft_formed_tournament(self) -> None:
+        async def _create(s):
+            return await lifecycle.lifecycle_service.create_for_tournament(
+                s,
+                schemas.DraftSessionCreateRequest(),
+                tournament_id=self.tournament_id,
+                workspace_id=self.workspace_id,
+                actor_user_id=self.captain_auth_user_ids[0],
+            )
+
+        async with self.Session() as s:
+            # The fixture tournament keeps the column default: balancer-formed.
+            with self.assertRaises(ApiHTTPException) as ctx:
+                await _create(s)
+            self.assertEqual(ctx.exception.status_code, 409)
+            self.assertEqual(ctx.exception.detail[0]["code"], "tournament_not_draft_formation")
+
+            await s.execute(
+                sa.update(Tournament).values(team_formation="draft").where(Tournament.id == self.tournament_id)
+            )
+            draft = await _create(s)
+            await s.commit()
+            self.assertEqual(draft.status, DraftStatus.SETUP.value)
 
     async def test_select_advances_board(self) -> None:
         async with self.Session() as s:

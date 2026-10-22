@@ -218,6 +218,8 @@ Captains: top N by `(-max_rating, uuid)`.
 
 Session: `setup → ready → live ⇄ paused → completed | cancelled`.
 
+A session is created only for a `team_formation="draft"` tournament (409 `tournament_not_draft_formation`).
+
 Formats: `snake | linear | custom`. Custom round rules: linear / reverse / weakest / strongest / `team_avg_asc` / `team_avg_desc`. Captain order: manual / weakest / strongest / random (Mulberry32, seed in settings).
 
 Clock is **server-authoritative** (Redis lock, 10s TTL). Manual pick vs autopick is one conditional `UPDATE (on_clock AND version)`; the loser gets 409.
