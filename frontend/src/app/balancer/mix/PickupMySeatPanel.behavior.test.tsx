@@ -19,11 +19,11 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { MixSelfSeat, MixSelfState } from "@/services/custom-game.service";
+import type { MixLobbyState, MixSelfSeat, MixSelfState } from "@/services/custom-game.service";
 
 import { PickupMySeatPanel } from "./PickupMySeatPanel";
 import { DEADLOCK_OWNER, OW_OWNER } from "./mix-owner.fixture";
-import type { MixOwner } from "./pickup-lineup";
+import type { MixOwner, MySeatTeam } from "./pickup-lineup";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -67,6 +67,7 @@ vi.mock("@/stores/account-settings-modal.store", () => ({
 const onJoin = vi.fn();
 const onLeave = vi.fn();
 const onSave = vi.fn();
+const onSetAway = vi.fn();
 
 function seat(overrides: Partial<MixSelfSeat> = {}): MixSelfSeat {
   return {
@@ -75,6 +76,9 @@ function seat(overrides: Partial<MixSelfSeat> = {}): MixSelfSeat {
     is_flex: false,
     ranks: { tank: 3300, damage: 2700, support: null },
     current_lobby: null,
+    workspace_member_id: 7,
+    away: false,
+    voice_url: null,
     ...overrides,
   };
 }
@@ -93,8 +97,10 @@ function state(overrides: Partial<MixSelfState> = {}): MixSelfState {
       can_join: false,
       can_leave: true,
       can_edit_roles: true,
+      can_set_away: true,
       join_blocker: "already_joined",
       edit_blocker: null,
+      away_blocker: null,
     },
     ...overrides,
   };
@@ -109,7 +115,14 @@ function tick() {
 const roots: { unmount: () => void }[] = [];
 let rerender: (saving: boolean) => Promise<void> = async () => {};
 
-async function mount(value: MixSelfState, owner: MixOwner = OW_OWNER) {
+type PhoneProps = {
+  myTeam: MySeatTeam | null;
+  nextMapName: string | null;
+  queuePosition: number | null;
+  lobbies: { lobbyIndex: number; state: MixLobbyState }[];
+};
+
+async function mount(value: MixSelfState, owner: MixOwner = OW_OWNER, phone: Partial<PhoneProps> = {}) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -123,6 +136,11 @@ async function mount(value: MixSelfState, owner: MixOwner = OW_OWNER) {
         onJoin={onJoin}
         onLeave={onLeave}
         onSave={onSave}
+        myTeam={phone.myTeam ?? null}
+        nextMapName={phone.nextMapName ?? null}
+        queuePosition={phone.queuePosition ?? null}
+        lobbies={phone.lobbies ?? []}
+        onSetAway={onSetAway}
       />,
     );
   rerender = async (saving) => {
@@ -165,6 +183,7 @@ beforeEach(() => {
   onJoin.mockReset();
   onLeave.mockReset();
   onSave.mockReset();
+  onSetAway.mockReset();
 });
 
 describe("PickupMySeatPanel blockers", () => {
@@ -178,6 +197,8 @@ describe("PickupMySeatPanel blockers", () => {
           can_edit_roles: false,
           join_blocker: "battlenet_not_linked",
           edit_blocker: "battlenet_not_linked",
+          can_set_away: false,
+          away_blocker: null,
         },
       }),
     );
@@ -198,6 +219,8 @@ describe("PickupMySeatPanel blockers", () => {
           can_edit_roles: false,
           join_blocker: "signup_closed",
           edit_blocker: "not_on_roster",
+          can_set_away: false,
+          away_blocker: null,
         },
       }),
     );
@@ -215,6 +238,8 @@ describe("PickupMySeatPanel blockers", () => {
           can_edit_roles: false,
           join_blocker: "battlenet_not_linked",
           edit_blocker: "battlenet_not_linked",
+          can_set_away: false,
+          away_blocker: null,
         },
       }),
     );
@@ -234,6 +259,8 @@ describe("PickupMySeatPanel blockers", () => {
           can_edit_roles: false,
           join_blocker: null,
           edit_blocker: "not_on_roster",
+          can_set_away: false,
+          away_blocker: null,
         },
       }),
     );
@@ -255,6 +282,8 @@ describe("PickupMySeatPanel roles", () => {
           can_edit_roles: false,
           join_blocker: "already_joined",
           edit_blocker: "role_edit_off",
+          can_set_away: false,
+          away_blocker: null,
         },
       }),
     );
@@ -346,5 +375,69 @@ describe("PickupMySeatPanel roles", () => {
       roles: ["tank", "damage", "support"].map((role) => ({ dimension: "player_role", role })),
       is_flex: false,
     });
+  });
+});
+
+describe("PickupMySeatPanel on a phone", () => {
+  it("shows a seated player their own team, its captain, the next map and their voice, and lets them step away", async () => {
+    const scope = await mount(
+      state({ seat: seat({ current_lobby: 1, voice_url: "https://discord.com/channels/1/2" }) }),
+      OW_OWNER,
+      {
+        myTeam: {
+          lobbyIndex: 1,
+          teamName: "Owls",
+          nextMapId: 42,
+          members: [
+            { uuid: "9", name: "Egor", isCaptain: true, isMe: false },
+            { uuid: "7", name: "karin", isCaptain: false, isMe: true },
+          ],
+        },
+        nextMapName: "Busan",
+      },
+    );
+
+    expect(scope.textContent).toContain("yourTeam:B,Owls");
+    expect(scope.textContent).toContain("nextMap:Busan");
+    expect(scope.querySelectorAll('[aria-label="captain"]')).toHaveLength(1);
+    expect([...scope.querySelectorAll("li")].find((node) => node.textContent?.startsWith("karin"))?.textContent).toBe(
+      "karinyou",
+    );
+    expect(scope.querySelector('a[href="https://discord.com/channels/1/2"]')).not.toBeNull();
+
+    await click(byName(scope, "goAway"));
+    expect(onSetAway).toHaveBeenCalledWith(true);
+  });
+
+  it("tells a waiting player their place in line and how the lobbies are doing", async () => {
+    const scope = await mount(state({ lobby_count: 2 }), OW_OWNER, {
+      queuePosition: 3,
+      lobbies: [
+        { lobbyIndex: 0, state: "live" },
+        { lobbyIndex: 1, state: "ready" },
+      ],
+    });
+
+    expect(scope.textContent).toContain("queue:3");
+    expect(scope.textContent).toContain("A · state.live");
+    expect(scope.textContent).toContain("B · state.ready");
+  });
+
+  it("brings an away player back with one press", async () => {
+    const scope = await mount(state({ seat: seat({ away: true }) }));
+
+    expect(scope.textContent).toContain("awayStatus");
+    expect(byName(scope, "goAway")).toBeNull();
+    await click(byName(scope, "back"));
+
+    expect(onSetAway).toHaveBeenCalledWith(false);
+  });
+
+  it("offers no away switch when the policy refuses it", async () => {
+    const scope = await mount(
+      state({ policy: { ...state().policy, can_set_away: false, away_blocker: "battlenet_not_linked" } }),
+    );
+
+    expect(byName(scope, "goAway")).toBeNull();
   });
 });

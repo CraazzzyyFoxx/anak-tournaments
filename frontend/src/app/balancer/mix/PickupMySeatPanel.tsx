@@ -2,23 +2,24 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { LogIn, LogOut } from "lucide-react";
+import { Crown, LogIn, LogOut } from "lucide-react";
 
 import { PickupRoleOrderEditor } from "@/app/balancer/mix/PickupRoleOrderEditor";
-import { CAPTION_CLASS, EYEBROW_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
+import { AWAY_CHIP_CLASS, CAPTION_CLASS, EYEBROW_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
 import { PANEL_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { Button } from "@/components/ui/button";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { roleOf, type RoleRef } from "@/lib/roster/role-ref";
 import { cn } from "@/lib/utils";
 import {
+  type MixLobbyState,
   type MixSelfBlocker,
   type MixSelfSeat,
   type MixSelfState,
 } from "@/services/custom-game.service";
 import { useAccountSettingsModalStore } from "@/stores/account-settings-modal.store";
 
-import { resolveRoleOrder, roleRefsOf, toggleRole, type MixOwner } from "./pickup-lineup";
+import { resolveRoleOrder, roleRefsOf, toggleRole, type MixOwner, type MySeatTeam } from "./pickup-lineup";
 
 /**
  * Blockers an account link fixes, and only those. Linking happens in account
@@ -42,6 +43,15 @@ type PickupMySeatPanelProps = {
   onJoin: () => void;
   onLeave: () => void;
   onSave: (patch: { roles: RoleRef[] | null; is_flex: boolean }) => void;
+  /** The player's own team when a lobby seats them (G1); `null` while waiting or away. */
+  myTeam: MySeatTeam | null;
+  /** That lobby's next map, once rolled. */
+  nextMapName: string | null;
+  /** Their place in the waiting line (G2), 1-based; `null` when not waiting. */
+  queuePosition: number | null;
+  /** Every lobby's stage, for the waiting view. */
+  lobbies: readonly { lobbyIndex: number; state: MixLobbyState }[];
+  onSetAway: (away: boolean) => void;
 };
 
 /** Everything the panel edits before Save, kept apart from the server seat. */
@@ -89,6 +99,10 @@ function signatureOf(seat: MixSelfSeat | null): string {
  * book (`author_user_id = game.host_user_id`), so a field here would write a
  * number the balance never reads -- the spec's "игрок правит только `roles` и
  * `is_flex`".
+ *
+ * On a phone this is the player's whole view (spec §7.5): their team, its captain, the next map and their voice while
+ * a lobby seats them (G1), their place in line and the lobbies' stages while they wait (G2), and Back while they are
+ * away (G3).
  */
 export function PickupMySeatPanel({
   state,
@@ -97,8 +111,14 @@ export function PickupMySeatPanel({
   onJoin,
   onLeave,
   onSave,
+  myTeam,
+  nextMapName,
+  queuePosition,
+  lobbies,
+  onSetAway,
 }: Readonly<PickupMySeatPanelProps>) {
   const t = useTranslations("mixes.self");
+  const tRoom = useTranslations("mixes.room");
   const openAccountSettings = useAccountSettingsModalStore((store) => store.open);
   const slotLabel = useSlotLabel(owner.ontology);
 
@@ -205,6 +225,90 @@ export function PickupMySeatPanel({
             : t("unrankedOne")}
         </p>
       ) : null}
+
+      {seat == null ? null : seat.away ? (
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className={AWAY_CHIP_CLASS}>{tRoom("away")}</span>
+          <p className="text-caption text-[color:var(--aqt-fg-muted)]">{tRoom("awayStatus")}</p>
+          {policy.can_set_away ? (
+            <Button type="button" className="ml-auto shrink-0" disabled={saving} onClick={() => onSetAway(false)}>
+              {tRoom("back")}
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {myTeam != null ? (
+            <>
+              <p className="text-caption font-semibold text-[color:var(--aqt-fg)]">
+                {tRoom("yourTeam", { letter: lobbyLetter(myTeam.lobbyIndex), team: myTeam.teamName })}
+              </p>
+              <ul className="flex flex-col gap-1">
+                {myTeam.members.map((member) => (
+                  <li
+                    key={member.uuid}
+                    className={cn(
+                      "flex items-center gap-2 rounded-md px-2 py-1 text-caption text-[color:var(--aqt-fg)]",
+                      member.isMe && "bg-[color:color-mix(in_srgb,var(--aqt-teal)_12%,transparent)]",
+                    )}
+                  >
+                    <span className="min-w-0 flex-1 truncate">{member.name}</span>
+                    {member.isCaptain ? (
+                      <span role="img" aria-label={tRoom("captain")} className="flex shrink-0 items-center">
+                        <Crown aria-hidden className="size-3.5 text-[color:var(--aqt-amber)]" />
+                      </span>
+                    ) : null}
+                    {member.isMe ? (
+                      <span className="text-label font-bold uppercase tracking-label text-[color:var(--aqt-teal)]">
+                        {tRoom("you")}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+              {nextMapName ? <p className={CAPTION_CLASS}>{tRoom("nextMap", { map: nextMapName })}</p> : null}
+              {seat.voice_url ? (
+                <a
+                  href={seat.voice_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="self-start text-caption font-semibold text-[color:var(--aqt-teal)] underline-offset-2 hover:underline"
+                >
+                  {tRoom("voice")}
+                </a>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <p className="text-caption font-semibold text-[color:var(--aqt-fg)]">{tRoom("waiting")}</p>
+              {queuePosition != null ? (
+                <p className={CAPTION_CLASS}>{tRoom("queue", { position: queuePosition })}</p>
+              ) : null}
+              {state.lobby_count > 1 ? (
+                <ul className="flex flex-wrap gap-x-3 gap-y-1">
+                  {lobbies.map((row) => (
+                    <li key={row.lobbyIndex} className={CAPTION_CLASS}>
+                      {`${lobbyLetter(row.lobbyIndex)} · ${tRoom(`state.${row.state}`)}`}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </>
+          )}
+          {policy.can_set_away ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="self-start"
+              disabled={saving}
+              onClick={() => onSetAway(true)}
+            >
+              {tRoom("goAway")}
+            </Button>
+          ) : null}
+        </div>
+      )}
 
       {seat == null ? null : (
         <div className="space-y-2">

@@ -20,6 +20,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import {
   type CustomGamePlayer,
@@ -72,6 +73,8 @@ type RoleDraft = {
   isFlex: boolean;
   /** Which lobby the host tied this player to, or `null` for "wherever the balance puts them". */
   lobbyPin: number | null;
+  /** Stepped away (spec §7.4): in no lineup until back; the must-play mark waits. */
+  away: boolean;
 };
 
 function buildDraft(row: CustomGamePlayer | null, roles: readonly string[]): RoleDraft {
@@ -81,6 +84,7 @@ function buildDraft(row: CustomGamePlayer | null, roles: readonly string[]): Rol
     rankEdits: {},
     isFlex: row?.is_flex ?? false,
     lobbyPin: row?.lobby_pin ?? null,
+    away: row?.away ?? false,
   };
 }
 
@@ -137,6 +141,7 @@ export function PickupPlayerSheet({
 }: Readonly<PickupPlayerSheetProps>) {
   const label = row ? playerLabel(row) : "";
   const t = useTranslations("mixes.lobbies");
+  const tRoom = useTranslations("mixes.room");
   const { name, suffix } = splitHandle(label);
   // The record across every mix, not this one: a caption, because it is
   // context for the settings below it and nothing here edits it.
@@ -192,6 +197,7 @@ export function PickupPlayerSheet({
         roles: owner.showsRoles ? roleRefsOf(draft.order, owner.dimension) : null,
         // A game without Full flex never sends one, which also clears a flag stored before it lost it.
         is_flex: owner.flex && draft.isFlex,
+        away: draft.away,
         // A one-lobby mix 422s this field, and there is no control to set it.
         ...(lobbyCount > 1 ? { lobby_pin: draft.lobbyPin } : {}),
       },
@@ -278,6 +284,15 @@ export function PickupPlayerSheet({
                     </button>
                   );
                 })}
+              </div>
+              <div className="flex items-center gap-2 pt-1">
+                <Switch
+                  checked={draft.away}
+                  disabled={disabled}
+                  aria-label={tRoom("away")}
+                  onCheckedChange={(away) => setDraft((current) => ({ ...current, away }))}
+                />
+                <span className="text-caption text-[color:var(--aqt-fg-muted)]">{tRoom("awayHint")}</span>
               </div>
             </section>
 

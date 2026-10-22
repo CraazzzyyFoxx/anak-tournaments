@@ -23,8 +23,10 @@ import { CAPTION_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
 import {
   PICKUP_TERMINAL_STATUSES,
   buildMixOwner,
+  myLobbyTeam,
   playerLabel,
   summarizeLineup,
+  waitingQueuePosition,
 } from "@/app/balancer/mix/pickup-lineup";
 import {
   LEADERBOARD_MIN_GAMES,
@@ -43,7 +45,7 @@ import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
-import type { RoleOntology } from "@/lib/roster/ontology";
+import { slotCodeOrder, type RoleOntology } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import { customGameKeys, customGameService, type CustomGame } from "@/services/custom-game.service";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
@@ -250,6 +252,14 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
       (setAuthorRanks.isPending && setAuthorRanks.variables?.workspaceMemberId === openRow.workspace_member_id));
   const matches = matchesQuery.data ?? [];
   const mySeat = mySeatQuery.data;
+  const myMemberId = mySeat?.seat?.workspace_member_id ?? null;
+  // The phone view of the player's own lobby: their team, its captain and the map (spec §7.5, G1).
+  const myTeam = myLobbyTeam(game, myMemberId, slotCodeOrder(owner.ontology));
+  const nextMapName =
+    myTeam?.nextMapId == null
+      ? null
+      : ((mapsQuery.data ?? []).find((map) => map.id === myTeam.nextMapId)?.name ?? null);
+  const queuePosition = myMemberId == null ? null : waitingQueuePosition(rows, rotationQuery.data ?? [], myMemberId);
   const waitingCount = rows.filter(
     (row) => row.participation !== "benched" && !row.away && row.current_lobby == null,
   ).length;
@@ -371,6 +381,11 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
         onJoin={() => joinMix.mutate()}
         onLeave={() => leaveMix.mutate()}
         onSave={(patch) => updateMySeat.mutate(patch)}
+        myTeam={myTeam}
+        nextMapName={nextMapName}
+        queuePosition={queuePosition}
+        lobbies={lobbies.map((row) => ({ lobbyIndex: row.lobby_index, state: row.state ?? "idle" }))}
+        onSetAway={(away) => setMyAway.mutate(away)}
       />
     ) : null;
 
