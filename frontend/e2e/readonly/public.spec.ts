@@ -48,7 +48,7 @@ async function expectPublicPage(page: Page, url: string, opts: { landmark?: bool
   await expect(page.getByText(NOT_FOUND_TITLE), `${url}: not-found page`).toHaveCount(0);
   const scope = opts.landmark === false ? page.locator("body") : page.getByRole("main").first();
   await expect(scope, `${url}: main landmark`).toBeVisible();
-  // An empty/locked section shows a page-state card (role=status, a <p> title) instead of a heading.
+  // An empty/locked section shows a page-state card (role=status, its title a heading) instead of the section's own.
   const stateCard = scope.getByRole("status").filter({ visible: true, hasText: /\S/, hasNotText: /Loading/i });
   await expect(scope.getByRole("heading").or(stateCard).first(), `${url}: page heading`).toBeVisible();
   // PageStateCard `error` (<section role=alert>); the route announcer also uses role=alert.
@@ -116,9 +116,9 @@ test.describe("public pages", () => {
     });
   }
 
-  // The balancer tool without `?tournament=` is a pointer screen outside the site shell.
+  // The balancer tool without `?tournament=` is a pointer screen outside the site shell, in its own <main>.
   test("/balancer", async ({ page }) => {
-    await expectPublicPage(page, "/balancer", { landmark: false });
+    await expectPublicPage(page, "/balancer");
   });
 
   test("first listed tournament and its tabs", async ({ page, request }) => {

@@ -224,10 +224,6 @@ async function visit(page: Page, route: PageRoute, smoke: SmokeData, viewer: Vie
     errors.splice(0, errors.length, ...errors.filter((error) => !REFUSED.test(error)));
     return;
   }
-  // The admin shell's content column is a plain div, and the balancer tool is
-  // only a top bar over a heading-less board (neither has a <main>; reported).
-  if (route.file.startsWith("admin/")) return expectContent(page, url, page.locator("#admin-content"));
-  if (route.file === "balancer/page.tsx") return expectContent(page, url, page.getByRole("banner"), false);
   await expectContent(page, url);
 }
 

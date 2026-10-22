@@ -16,7 +16,7 @@ async function pickFromPool(page: Page, board: DraftBoard) {
   const player = board.players.find((p) => p.status === "available")!;
   const tag = player.identity!.handle;
   const role = player.primary_role!.role;
-  await page.getByRole("button", { name: `Pick ${tag} as ${role[0].toUpperCase()}${role.slice(1)}`, exact: true }).first().click();
+  await page.getByRole("button", { name: `Select ${tag} as ${role[0].toUpperCase()}${role.slice(1)}`, exact: true }).first().click();
   await page.getByRole("dialog", { name: tag }).getByRole("button", { name: `Pick ${tag} as ${role}`, exact: true }).click();
   return tag;
 }
@@ -64,7 +64,7 @@ test("@mobile a spectator follows a live draft on a phone", async ({ adminApi, m
   const board = await draftBoard(adminApi, d.session.id);
   const safe = await pickFirstSafe(d.captains[0].api, board.current_pick!.id);
   const tag = board.players.find((p) => p.id === safe.player_id)!.identity!.handle;
-  await expect(page.getByRole("button", { name: new RegExp(`^Pick ${escapeRe(tag)} as`) }), "the drafted player leaves the pool live").toHaveCount(0);
+  await expect(page.getByRole("button", { name: new RegExp(`^Select ${escapeRe(tag)} as`) }), "the drafted player leaves the pool live").toHaveCount(0);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow, "no horizontal scroll on a phone").toBeLessThanOrEqual(1);
 });
