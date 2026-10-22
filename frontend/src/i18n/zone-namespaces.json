@@ -140,6 +140,7 @@
     "admin",
     "analytics",
     "auth",
+    "balancerTool",
     "bracket",
     "chat",
     "common",

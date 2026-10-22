@@ -7,12 +7,26 @@
 // `Footer` below it. (The separate admin palette it borrowed no longer
 // exists; the whole app is on one token set, so there is nothing left to
 // assert about it here.)
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+import { NextIntlClientProvider } from "next-intl";
 import { describe, it, expect, vi } from "vitest";
 
+import en from "@/i18n/messages/en.json";
+import type { BalancerTournamentSummary } from "@/types/balancer-admin.types";
+
+let pathname = "/balancer/mix";
 vi.mock("next/navigation", () => ({
-  usePathname: () => "/balancer/mix",
+  usePathname: () => pathname,
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
 }));
 
 vi.mock("@/hooks/usePermissions", () => ({
@@ -28,8 +42,9 @@ vi.mock("@/stores/workspace.store", () => ({
     selector({ currentWorkspaceId: 1 }),
 }));
 
+let summary: BalancerTournamentSummary | null = null;
 vi.mock("@/app/balancer/useToolContext", () => ({
-  useToolContext: () => ({ status: "ready", summary: null }),
+  useToolContext: () => ({ status: "ready", summary }),
 }));
 
 vi.mock("@/components/Header", () => ({
@@ -55,9 +70,11 @@ describe("BalancerLayoutClient on /balancer/mix", () => {
 
     await act(async () => {
       root.render(
-        <BalancerLayoutClient>
-          <div data-testid="tool-content">mix tool</div>
-        </BalancerLayoutClient>,
+        <NextIntlClientProvider locale="en" messages={en}>
+          <BalancerLayoutClient>
+            <div data-testid="tool-content">mix tool</div>
+          </BalancerLayoutClient>
+        </NextIntlClientProvider>,
       );
     });
 
@@ -80,5 +97,37 @@ describe("BalancerLayoutClient on /balancer/mix", () => {
 
     act(() => root.unmount());
     container.remove();
+  });
+});
+
+describe("BalancerLayoutClient on /balancer?tournament=", () => {
+  it("puts the board in a main landmark named by an h1, and words the tournament's status", async () => {
+    pathname = "/balancer";
+    summary = { id: 5, name: "Spring Cup", status: "announcement", workspace_id: 1 };
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <NextIntlClientProvider locale="en" messages={en}>
+          <BalancerLayoutClient>
+            <div data-testid="tool-content">board</div>
+          </BalancerLayoutClient>
+        </NextIntlClientProvider>,
+      );
+    });
+
+    const main = container.querySelector("main");
+    expect(main?.querySelector('[data-testid="tool-content"]')).not.toBeNull();
+    expect(main?.querySelector("h1")?.textContent).toBe("Balancer: Spring Cup");
+    const banner = container.querySelector("header");
+    expect(banner?.textContent).toContain(en.common.statusBadge.announcement);
+    expect(banner?.textContent).not.toContain("announcement");
+
+    act(() => root.unmount());
+    container.remove();
+    pathname = "/balancer/mix";
+    summary = null;
   });
 });

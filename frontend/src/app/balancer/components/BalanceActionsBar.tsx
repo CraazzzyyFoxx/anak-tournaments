@@ -8,6 +8,7 @@ import {
   Sparkles,
   Upload
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -60,6 +61,7 @@ export function BalanceActionsBar({
   onCopyNames,
   onScreenshot
 }: Readonly<BalanceActionsBarProps>) {
+  const t = useTranslations("balancerTool.actions");
   return (
     <div className="flex flex-col gap-3 p-3 lg:flex-row lg:items-center lg:justify-between">
       <BalanceStatsRow stats={activeVariantStats} />
@@ -73,17 +75,13 @@ export function BalanceActionsBar({
           disabled={!canRunBalance || isExportPending}
         >
           <Sparkles className="mr-2 h-4 w-4" />
-          Regenerate
+          {t("regenerate")}
         </Button>
         <Button
           type="button"
           className="rounded-lg bg-primary text-primary-foreground hover:bg-primary/90"
           onClick={onSaveBalance}
-          title={
-            isBalanceSaved
-              ? "This balance is already saved — edit the rosters or generate a new variant to save again."
-              : undefined
-          }
+          title={isBalanceSaved ? t("savedHint") : undefined}
           disabled={!activeVariant || isBalanceSaved || isSavePending || isExportPending}
         >
           {isSavePending ? (
@@ -91,18 +89,14 @@ export function BalanceActionsBar({
           ) : (
             <Check className="mr-2 h-4 w-4" />
           )}
-          {isBalanceSaved ? "Saved" : "Save"}
+          {isBalanceSaved ? t("saved") : t("save")}
         </Button>
         <Button
           type="button"
           variant="outline"
           className={MUTED_BUTTON_CLASS}
           onClick={onExportBalance}
-          title={
-            isBalanceExported
-              ? "This balance is already exported — edit the rosters or generate a new variant to export again."
-              : undefined
-          }
+          title={isBalanceExported ? t("exportedHint") : undefined}
           disabled={!activeVariant || isBalanceExported || isExportPending || isSavePending}
         >
           {isExportPending ? (
@@ -110,14 +104,14 @@ export function BalanceActionsBar({
           ) : (
             <Upload className="mr-2 h-4 w-4" />
           )}
-          {isBalanceExported ? "Exported" : "Export to tournament"}
+          {isBalanceExported ? t("exported") : t("export")}
         </Button>
         <Button
           type="button"
           variant="outline"
           className={MUTED_BUTTON_CLASS}
           onClick={onExportRanks}
-          title="Push the saved balance's ranks onto the already-exported players. Teams and the bracket stay untouched."
+          title={t("exportRanksHint")}
           disabled={!canExportRanks || isExportRanksPending || isExportPending || isSavePending}
         >
           {isExportRanksPending ? (
@@ -125,7 +119,7 @@ export function BalanceActionsBar({
           ) : (
             <Gauge className="mr-2 h-4 w-4" />
           )}
-          Re-export ranks
+          {t("exportRanks")}
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -136,21 +130,21 @@ export function BalanceActionsBar({
               disabled={!activeVariant}
             >
               <MoreHorizontal className="mr-2 h-4 w-4" aria-hidden="true" />
-              Advanced
+              {t("advanced")}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
             <DropdownMenuItem onClick={onDownloadJson}>
               <Download className="h-4 w-4" aria-hidden="true" />
-              Download JSON
+              {t("downloadJson")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onCopyNames}>
               <Copy className="h-4 w-4" aria-hidden="true" />
-              Copy names
+              {t("copyNames")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onScreenshot}>
               <Camera className="h-4 w-4" aria-hidden="true" />
-              Save as image
+              {t("saveImage")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

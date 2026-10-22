@@ -13180,5 +13180,27 @@
       "character": "Champion",
       "map": "Map"
     }
+  },
+  "balancerTool": {
+    "title": "Balancer: {tournament}",
+    "topBar": {
+      "back": "Tournament hub",
+      "autofill": "Rank autofill"
+    },
+    "actions": {
+      "regenerate": "Regenerate",
+      "save": "Save",
+      "saved": "Saved",
+      "savedHint": "This balance is already saved — edit the rosters or generate a new variant to save again.",
+      "export": "Export to tournament",
+      "exported": "Exported",
+      "exportedHint": "This balance is already exported — edit the rosters or generate a new variant to export again.",
+      "exportRanks": "Re-export ranks",
+      "exportRanksHint": "Push the saved balance's ranks onto the already-exported players. Teams and the bracket stay untouched.",
+      "advanced": "Advanced",
+      "downloadJson": "Download JSON",
+      "copyNames": "Copy names",
+      "saveImage": "Save as image"
+    }
   }
 }

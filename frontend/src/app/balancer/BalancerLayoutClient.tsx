@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 
 import { BalancerToolTopBar } from "@/app/balancer/BalancerToolTopBar";
 import { BalancerShell } from "@/app/balancer/components/BalancerShell";
@@ -34,7 +35,7 @@ function LoadingState() {
 
 function UnauthorizedState() {
   return (
-    <div className="flex h-screen w-full items-center justify-center">
+    <main className="flex h-screen w-full items-center justify-center">
       <div className="text-center">
         <h1 className="text-4xl font-bold">Unauthorized</h1>
         <p className="mt-4 text-muted-foreground">
@@ -50,13 +51,13 @@ function UnauthorizedState() {
           Go Home
         </Link>
       </div>
-    </div>
+    </main>
   );
 }
 
 function NoTournamentState() {
   return (
-    <div className="flex h-screen w-full items-center justify-center">
+    <main className="flex h-screen w-full items-center justify-center">
       <div className="text-center">
         <h1 className="text-4xl font-bold">No tournament selected</h1>
         <p className="mt-4 text-muted-foreground">
@@ -77,7 +78,7 @@ function NoTournamentState() {
           </Link>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -87,6 +88,7 @@ type BalancerLayoutClientProps = {
 };
 
 export function BalancerLayoutClient({ children, tenantWorkspace }: Readonly<BalancerLayoutClientProps>) {
+  const t = useTranslations("balancerTool");
   const pathname = usePathname();
   const { isLoaded, canAccessAdminRoute } = usePermissions();
   const { status: contextStatus, summary } = useToolContext();
@@ -165,9 +167,10 @@ export function BalancerLayoutClient({ children, tenantWorkspace }: Readonly<Bal
     // scrollbar on top of the app shell. Below `xl` the tool stacks and scrolls normally.
     <div className="flex min-h-svh flex-col bg-background/95 xl:fixed xl:inset-0 xl:h-svh xl:min-h-0 xl:overflow-hidden">
       <BalancerToolTopBar summary={summary} />
-      <div className="flex flex-1 flex-col gap-4 overflow-x-hidden p-3 xl:min-h-0 xl:overflow-hidden md:p-4">
+      <main className="flex flex-1 flex-col gap-4 overflow-x-hidden p-3 xl:min-h-0 xl:overflow-hidden md:p-4">
+        <h1 className="sr-only">{t("title", { tournament: summary.name })}</h1>
         <BalancerShell>{children}</BalancerShell>
-      </div>
+      </main>
     </div>
   );
 }

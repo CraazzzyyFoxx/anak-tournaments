@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Sparkles } from "lucide-react";
+import { useTranslations } from "next-intl";
 
-import { Badge } from "@/components/ui/badge";
+import { TournamentStatusPill } from "@/components/tournaments/StatusPill";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { TOOLBAR_BUTTON_CLASS } from "@/components/balancer/balancer-page-helpers";
+import { getTournamentStatusMeta } from "@/lib/tournament/status";
 import { cn } from "@/lib/utils";
 import type { BalancerTournamentSummary } from "@/types/balancer-admin.types";
 
@@ -22,6 +24,8 @@ type BalancerToolTopBarProps = {
  * `#balancer-presence-slot` (live viewer stack from BalancerPresenceStack).
  */
 export function BalancerToolTopBar({ summary }: Readonly<BalancerToolTopBarProps>) {
+  const t = useTranslations("balancerTool.topBar");
+  const tStatus = useTranslations("common.statusBadge");
   const searchParams = useSearchParams();
   const returnTo = searchParams.get("return");
   // Only trust internal paths from `?return=` (e.g. the creation wizard);
@@ -37,15 +41,15 @@ export function BalancerToolTopBar({ summary }: Readonly<BalancerToolTopBarProps
         href={backHref}
         className="flex shrink-0 items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
-        <ArrowLeft className="size-4" />
-        <span className="hidden sm:inline">Tournament hub</span>
+        <ArrowLeft className="size-4" aria-hidden />
+        <span className="hidden sm:inline">{t("back")}</span>
       </Link>
       <Separator orientation="vertical" className="h-5" />
       <div className="flex min-w-0 shrink items-center gap-2">
         <span className="truncate text-sm font-medium">{summary.name}</span>
-        <Badge variant="outline" className="shrink-0 capitalize">
-          {summary.status.replace(/_/g, " ")}
-        </Badge>
+        <TournamentStatusPill status={getTournamentStatusMeta(summary.status).variant} className="shrink-0">
+          {tStatus(summary.status)}
+        </TournamentStatusPill>
       </div>
       {/* Host for the live "viewing now" stack (filled by BalancerPresenceStack via portal). */}
       <div id="balancer-presence-slot" className="flex shrink-0 items-center empty:hidden" />
@@ -59,7 +63,7 @@ export function BalancerToolTopBar({ summary }: Readonly<BalancerToolTopBarProps
       >
         <Link href={`/admin/tournaments/${summary.id}/registration/rank-autofill`}>
           <Sparkles className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-          Rank autofill
+          {t("autofill")}
         </Link>
       </Button>
     </header>

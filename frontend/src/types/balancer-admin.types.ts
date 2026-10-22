@@ -12,6 +12,7 @@ import type {
   SubscriptionOutcome,
   SubscriptionRequirement,
 } from "@/types/registration.types";
+import type { TournamentStatus } from "@/types/tournament.types";
 
 /** A role code of the owner game's rated dimension (`tank`, `top`, …): the game's own vocabulary, never a fixed list. */
 export type BalancerRoleCode = string;
@@ -171,7 +172,7 @@ export interface BalancerTournamentConfigUpsertInput {
 export interface BalancerTournamentSummary {
   id: number;
   name: string;
-  status: string;
+  status: TournamentStatus;
   workspace_id: number;
 }
 
