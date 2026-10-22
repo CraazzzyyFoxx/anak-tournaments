@@ -7,11 +7,11 @@
 
 /**
  * Who a participant is IN THIS ROOM. `home`/`away` name a pre-game side,
- * `captain` a drafting team's captain, `staff` an organizer, `spectator`
- * anybody who may watch but never write. Stored per message, never derived:
- * swapping a captain must not relabel a whole history.
+ * `captain` a drafting team's captain, `player` a mix match's player, `staff`
+ * an organizer, `spectator` anybody who may watch but never write. Stored per
+ * message, never derived: swapping a captain must not relabel a whole history.
  */
-type ChatRole = "home" | "away" | "captain" | "staff" | "spectator";
+type ChatRole = "home" | "away" | "captain" | "player" | "staff" | "spectator";
 
 export interface ChatMessage {
   /** The message's identity AND its total order. */

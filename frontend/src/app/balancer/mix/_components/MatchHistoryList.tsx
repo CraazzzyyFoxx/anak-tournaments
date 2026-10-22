@@ -15,9 +15,11 @@ import { Eyebrow } from "@/components/ui/eyebrow";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { Spinner } from "@/components/ui/spinner";
 import { StatusDot } from "@/components/ui/status-dot";
+import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 import { useFormatter } from "@/lib/datetime/client";
 import { cn } from "@/lib/utils";
 import type { CustomGameMatch } from "@/services/custom-game.service";
+import type { CatalogEntityRead } from "@/types/catalog.types";
 
 /** Every match this mix has recorded, every lobby, newest first — the permanent record `Record result` writes into. */
 export function MatchHistoryList({
@@ -25,14 +27,20 @@ export function MatchHistoryList({
   lobbyCount,
   canWrite,
   undoingMatchId,
-  onUndoMatch
+  onUndoMatch,
+  discipline
 }: Readonly<{
   matches: CustomGameMatch[];
   lobbyCount: number;
   canWrite: boolean;
   undoingMatchId: number | null;
   onUndoMatch?: (matchId: number) => void;
+  /** The mix's game, whose heroes name the bans. */
+  discipline: string | null;
 }>) {
+  // The heroes are read only once a round has bans to show (spec §8.4).
+  const heroes = useCatalogEntities(matches.some((match) => match.bans.length > 0) ? discipline : null, "character");
+  const heroById = new Map((heroes.data ?? []).map((hero) => [hero.id, hero]));
   // Newest first, so the first row of each lobby IS that lobby's newest -- the
   // only one the server will undo (`newest_id_for_lobby`).
   const newestPerLobby = new Set<number>();
@@ -62,6 +70,7 @@ export function MatchHistoryList({
             canUndo={newestPerLobby.has(match.id) && canWrite && onUndoMatch != null}
             undoing={undoingMatchId === match.id}
             onUndoMatch={onUndoMatch}
+            heroById={heroById}
           />
         ))}
       </ul>
@@ -74,7 +83,8 @@ function MatchHistoryRow({
   showLobby,
   canUndo,
   undoing,
-  onUndoMatch
+  onUndoMatch,
+  heroById
 }: Readonly<{
   match: CustomGameMatch;
   /** More than one lobby now, or one past the first somewhere in the log: say which one played it. */
@@ -82,6 +92,7 @@ function MatchHistoryRow({
   canUndo: boolean;
   undoing: boolean;
   onUndoMatch?: (matchId: number) => void;
+  heroById: Map<number, CatalogEntityRead>;
 }>) {
   const t = useTranslations("mixes.lobbies");
   const format = useFormatter();
@@ -144,6 +155,22 @@ function MatchHistoryRow({
           <span aria-hidden="true">&middot;</span>
           <span className="shrink-0">{formatRelative(format, match.recorded_at)}</span>
         </div>
+        {match.bans.length > 0 ? (
+          <div className="mt-1 flex flex-wrap items-center gap-1" aria-label={t("bans")}>
+            {match.bans.map((ban, index) => {
+              const hero = heroById.get(ban.item_id);
+              return (
+                <span key={`${ban.item_id}-${index}`} className="flex items-center gap-0.5">
+                  <StatusDot className={cn("inline-block", teamAccent(ban.slot - 1).bar)} />
+                  <CatalogEntityImage
+                    entity={{ name: hero?.name ?? `#${ban.item_id}`, image_path: hero?.image_path ?? null }}
+                    size={20}
+                  />
+                </span>
+              );
+            })}
+          </div>
+        ) : null}
       </div>
       {canUndo ? (
         <>

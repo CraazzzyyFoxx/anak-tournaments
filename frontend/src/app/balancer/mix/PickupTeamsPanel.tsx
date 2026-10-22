@@ -28,6 +28,7 @@ import type { CustomGame, CustomGameLobby, CustomGameMatch } from "@/services/cu
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import { Spinner } from "@/components/ui/spinner";
 
+import { MixBanBoard } from "./_components/MixBanBoard";
 import { MatchHistoryList } from "./_components/MatchHistoryList";
 import { NextMapStrip } from "./_components/NextMapStrip";
 import { RoomStepper } from "./_components/RoomStepper";
@@ -73,8 +74,13 @@ type PickupTeamsPanelProps = {
   recordingOutcome: boolean;
   onRecordOutcome: (input: PickupRecordOutcomeInput) => void;
   startingMatch: boolean;
-  /** Opens the lobby's match on the lineup on screen (the voices follow server-side). */
-  onStartMatch: () => void;
+  /**
+   * Opens the lobby's match on the lineup on screen (the voices follow server-side); `flipOpener` swaps who bans
+   * first.
+   */
+  onStartMatch: (flipOpener: boolean) => void;
+  /** The ban room is done: the lobby is re-read, and reads Live. */
+  onBansComplete: () => void;
   cancellingMatch: boolean;
   /** Throws the live match away; nothing is recorded. */
   onCancelMatch: () => void;
@@ -113,8 +119,9 @@ type PickupTeamsPanelProps = {
 
 /**
  * The lobby's room (spec §7.5): its stage, the teams it is showing, and the
- * writes that act on them -- re-balance and Start match while Ready, the result
- * or Cancel match while Live (the lineup is frozen meanwhile), and close the mix.
+ * writes that act on them -- re-balance and Start match while Ready, the hero
+ * bans in Pre-game, the result or Cancel match while Live (the lineup is frozen
+ * from Start to the result), and close the mix.
  *
  * One lobby at a time: the page hands down which one, and every write this
  * panel makes addresses it. Teams are read from that lobby's stored
@@ -143,6 +150,7 @@ export function PickupTeamsPanel({
   onRecordOutcome,
   startingMatch,
   onStartMatch,
+  onBansComplete,
   cancellingMatch,
   onCancelMatch,
   onMakeCaptain,
@@ -183,8 +191,11 @@ export function PickupTeamsPanel({
   const tRoom = useTranslations("mixes.room");
   const state = lobby?.state ?? "idle";
   const live = state === "live";
-  // Every write that re-forms, re-seats or re-maps the lineup waits for the live match (409 `match_live`).
-  const reshape = canWrite && !live;
+  const pregame = state === "pregame";
+  // The lineup is frozen from Start to the result, bans included (spec §5.1).
+  const onFloor = live || pregame;
+  // Every write that re-forms, re-seats or re-maps the lineup waits for the match (409 `match_live`).
+  const reshape = canWrite && !onFloor;
   const [cancelOpen, setCancelOpen] = useState(false);
   const awayUuids = new Set(
     (game?.players ?? []).filter((row) => row.away).map((row) => String(row.workspace_member_id)),
@@ -202,7 +213,13 @@ export function PickupTeamsPanel({
     // rosters across an arm's length of desk, so reading "who is on my team"
     // became a head turn.
     <div className="flex w-full min-w-0 flex-col gap-3.5">
-      {game && lobby ? <RoomStepper state={state} startedAt={lobby.live_started_at ?? null} /> : null}
+      {game && lobby ? (
+        <RoomStepper
+          state={state}
+          startedAt={lobby.live_started_at ?? null}
+          bans={game.hero_ban_preset != null || pregame}
+        />
+      ) : null}
       <div className="flex flex-col gap-3.5">
         {gamesError ? (
           <Card variant="flat" asChild>
@@ -285,6 +302,16 @@ export function PickupTeamsPanel({
           </div>
         )}
       </div>
+      {pregame && game && lobby?.live_encounter_id != null ? (
+        <MixBanBoard
+          encounterId={lobby.live_encounter_id}
+          workspaceId={game.workspace_id}
+          discipline={game.discipline}
+          seats={lobby.live_seats ?? []}
+          canHost={canWrite}
+          onComplete={onBansComplete}
+        />
+      ) : null}
 
       {/* One card under the matchup, in the order a host uses it: the result
           row first, aligned under the two team columns like their footer (it
@@ -293,9 +320,9 @@ export function PickupTeamsPanel({
           rare share/close actions demoted to icons on the right -- and the
           history the results write into. */}
       <Card variant="flat" className="flex flex-col gap-3 px-4 py-3">
-        {live ? (
+        {onFloor ? (
           <>
-            {variant && canWrite ? (
+            {live && variant && canWrite ? (
               <PickupResultControls
                 teamCount={variant.teams.length}
                 teamNames={variant.teams.map((team) => team.name)}
@@ -344,13 +371,25 @@ export function PickupTeamsPanel({
             </div>
           </>
         ) : variant && canWrite && state === "ready" ? (
-          <StartMatchButton awayNames={awayNames} starting={startingMatch} onStart={onStartMatch} />
+          <StartMatchButton
+            awayNames={awayNames}
+            opener={
+              lobby?.opener_index != null
+                ? {
+                    names: [variant.teams[0]?.name ?? "Team 1", variant.teams[1]?.name ?? "Team 2"],
+                    index: lobby.opener_index
+                  }
+                : null
+            }
+            starting={startingMatch}
+            onStart={onStartMatch}
+          />
         ) : null}
 
         <div
           className={cn(
             "flex flex-wrap items-center gap-2",
-            ((variant && canWrite) || live) && "border-t border-[color:var(--aqt-border)] pt-3"
+            ((variant && canWrite) || onFloor) && "border-t border-[color:var(--aqt-border)] pt-3"
           )}
         >
           {reshape ? (
@@ -558,6 +597,7 @@ export function PickupTeamsPanel({
             canWrite={canWrite}
             undoingMatchId={undoingMatchId}
             onUndoMatch={onUndoMatch}
+            discipline={game?.discipline ?? null}
           />
         ) : null}
       </Card>

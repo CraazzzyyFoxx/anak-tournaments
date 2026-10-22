@@ -7,37 +7,68 @@ import { Play } from "lucide-react";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { Switch } from "@/components/ui/switch";
 
 /**
- * Start match (spec §5.1), on a lobby's card and in its room alike. An away player still seated in the lineup does
- * not block the start -- they may well be back by the time the lobby loads -- but the host hears about it first.
+ * Start match (spec §5.1), on a lobby's card and in its room alike. With bans the host sees who bans first (spec §8.3)
+ * and may swap it; an away player still seated is named but does not block. Otherwise it starts at once.
  */
 export function StartMatchButton({
   awayNames,
+  opener,
   starting,
   onStart,
-}: Readonly<{ awayNames: readonly string[]; starting: boolean; onStart: () => void }>) {
+}: Readonly<{
+  awayNames: readonly string[];
+  /** The two lineup team names and the index of the one that bans first; null without bans. */
+  opener: { names: readonly [string, string]; index: number } | null;
+  starting: boolean;
+  onStart: (flipOpener: boolean) => void;
+}>) {
   const t = useTranslations("mixes.room");
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [flip, setFlip] = useState(false);
+  const first = opener == null ? null : opener.names[flip ? 1 - opener.index : opener.index];
   return (
     <>
-      <Button type="button" disabled={starting} onClick={() => (awayNames.length > 0 ? setConfirmOpen(true) : onStart())}>
+      <Button
+        type="button"
+        disabled={starting}
+        onClick={() => (opener != null || awayNames.length > 0 ? setOpen(true) : onStart(false))}
+      >
         {starting ? <Spinner className="mr-1.5 size-3.5" /> : <Play className="mr-1.5 size-3.5" aria-hidden="true" />}
         {t("startMatch")}
       </Button>
       <ConfirmDialog
-        open={confirmOpen}
-        onOpenChange={setConfirmOpen}
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) setFlip(false);
+        }}
         intent={{
-          title: t("awayTitle"),
-          description: t("awayDescription", { names: awayNames.join(", ") }),
-          confirmLabel: t("awayConfirm"),
-          tone: "warning",
+          title: t(opener != null ? "startTitle" : "awayTitle"),
+          description: (
+            <div className="flex flex-col gap-3">
+              {awayNames.length > 0 ? <p>{t("awayDescription", { names: awayNames.join(", ") })}</p> : null}
+              {first != null ? (
+                <>
+                  <p>{t("opener", { team: first })}</p>
+                  <div className="flex items-center gap-2">
+                    <Switch checked={flip} onCheckedChange={setFlip} aria-label={t("swapOpener")} />
+                    <span className="text-caption text-[color:var(--aqt-fg-muted)]">{t("swapOpener")}</span>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ),
+          confirmLabel: t(opener != null ? "startConfirm" : "awayConfirm"),
+          tone: awayNames.length > 0 ? "warning" : "neutral",
         }}
         pending={starting}
         onConfirm={() => {
-          setConfirmOpen(false);
-          onStart();
+          setOpen(false);
+          setFlip(false);
+          onStart(flip);
         }}
       />
     </>

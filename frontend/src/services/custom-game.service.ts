@@ -109,8 +109,11 @@ export type CustomGameSettings = {
   workspace_discord_channel_id: string | null;
 };
 
-/** A lobby's stage, derived server-side and never stored (spec §5). Draft and pre-game stages arrive later. */
-export type MixLobbyState = "idle" | "ready" | "live";
+/**
+ * A lobby's stage, derived server-side and never stored (spec §5): `pregame` while a started match's ban room runs.
+ * The draft stage arrives later.
+ */
+export type MixLobbyState = "idle" | "ready" | "pregame" | "live";
 
 /**
  * One lobby of a mix — the four columns that used to sit on the mix itself
@@ -149,10 +152,17 @@ export type CustomGameLobby = {
   matches_count?: number;
   /** The match this lobby has on the floor -- started, not yet recorded or cancelled; `null` when none. */
   live_encounter_id: number | null;
-  /** `live` while a match is on, `ready` while a lineup is shown, `idle` otherwise. Detail reads only. */
+  /**
+   * `live` while a match is on, `pregame` while its bans run, `ready` while a lineup is shown, `idle` otherwise.
+   * Detail reads only.
+   */
   state?: MixLobbyState;
-  /** When the live match started: the cards' elapsed clock. Detail reads only. */
+  /** When the match started (Pre-game included): the cards' elapsed clock. Detail reads only. */
   live_started_at?: string | null;
+  /** The live match's participations in slot order (slot 1 bans first). Detail reads only. */
+  live_seats?: { id: number; slot: number; name: string }[];
+  /** The lineup team (0/1) that bans first in the next match; null without bans. Detail reads only. */
+  opener_index?: number | null;
 };
 
 /**
@@ -312,7 +322,7 @@ export type MixVoicePatch = {
   }[];
 };
 
-/** One team of a recorded round, by slot (1 = the lineup's first team). */
+/** One team of a recorded round, by slot (1 = the team that banned first; the lineup's first team in a mix without bans). */
 type CustomGameMatchTeam = { slot: number; name: string; score: number };
 
 /**
@@ -332,6 +342,8 @@ export type CustomGameMatch = {
   lobby_index: number;
   /** The rank points this round moved each player by; null for a draw or no adjustment. Undo rolls back by this. */
   points_per_win_applied: number | null;
+  /** The hero bans, in the order they were made (spec §8.4). */
+  bans: { slot: number; item_id: number }[];
 };
 
 /** Patch semantics: an omitted key is left untouched on the server. */
@@ -668,13 +680,13 @@ export const customGameService = {
   /**
    * Starts this lobby's match on the lineup it is showing (spec §5.1): an open encounter, the lineup frozen until
    * the result or a cancel. When the lobby has both team voices the server then splits its players into them.
-   * 409 `match_live` while a match is already on.
+   * With bans, `flipOpener` swaps who bans first. 409 `match_live` while a match is already on.
    */
-  startMatch(workspaceId: number, gameId: number, lobbyIndex: number): Promise<CustomGame> {
+  startMatch(workspaceId: number, gameId: number, lobbyIndex: number, flipOpener: boolean): Promise<CustomGame> {
     return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/match/start`, {
       skipWorkspace: true,
       method: "POST",
-      body: { lobby_index: lobbyIndex },
+      body: { lobby_index: lobbyIndex, flip_opener: flipOpener },
     }).then((r) => r.json());
   },
 

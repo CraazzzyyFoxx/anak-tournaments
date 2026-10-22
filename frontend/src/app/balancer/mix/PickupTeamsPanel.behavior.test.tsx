@@ -29,7 +29,10 @@
 //     configured, and posts the option the pager is on, not always the first;
 // 11. a lobby walks Ready -> Live: Start match opens it (asking first while an
 //     away player is still seated), a live lineup is frozen to its result and
-//     Cancel match, and each team's captain wears the crown.
+//     Cancel match, and each team's captain wears the crown;
+// 12. with bans, Pre-game sits between Ready and Live: the ban board on the
+//     frozen lineup, and each recorded round lists its bans.
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -100,6 +103,23 @@ vi.mock("@/hooks/useNodeCapture", () => ({
     capturing: captureSpies.capturing,
     capture: captureSpies.capture,
   }),
+}));
+// The history's ban strip names its heroes from the game's catalog (the fields it reads).
+vi.mock("@/services/catalog.service", () => ({
+  default: {
+    list: async () => ({
+      results: [
+        { id: 101, name: "Ana", image_path: null },
+        { id: 102, name: "Genji", image_path: null },
+      ],
+    }),
+  },
+}));
+// The ban board is the shared pick-ban library's (`MixBanBoard.behavior.test.tsx`); the room only places it.
+vi.mock("./_components/MixBanBoard", () => ({
+  MixBanBoard: ({ encounterId, seats }: { encounterId: number; seats: { name: string }[] }) => (
+    <div data-testid="ban-board">{`${encounterId}: ${seats.map((seat) => seat.name).join(" vs ")}`}</div>
+  ),
 }));
 
 const onBalance = vi.fn();
@@ -212,6 +232,7 @@ function match(overrides: Partial<CustomGameMatch> = {}): CustomGameMatch {
     recorded_at: new Date().toISOString(),
     points_per_win_applied: null,
     lobby_index: 0,
+    bans: [],
     ...overrides,
   };
 }
@@ -288,6 +309,7 @@ function panel(current: CustomGame | undefined, props: PanelOptions) {
       activeCount={props.activeCount ?? 10}
       onBalance={onBalance}
       startingMatch={false}
+      onBansComplete={vi.fn()}
       onStartMatch={onStartMatch}
       cancellingMatch={false}
       onCancelMatch={onCancelMatch}
@@ -319,7 +341,11 @@ async function mount(current: CustomGame | undefined, props: PanelOptions = {}) 
   document.body.appendChild(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(panel(current, props));
+    root.render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        {panel(current, props)}
+      </QueryClientProvider>,
+    );
   });
   await act(async () => {
     await tick();
@@ -1035,6 +1061,29 @@ describe("PickupTeamsPanel", () => {
     expect(scope.querySelector('[data-testid="match-lobby"]')).toBeNull();
   });
 
+  it("shows a round's hero bans in the order they were made", async () => {
+    const scope = await mount(game({ discipline: "overwatch" }), {
+      matches: [match({ id: 12, bans: [{ slot: 2, item_id: 102 }, { slot: 1, item_id: 101 }, { slot: 2, item_id: 999 }] })],
+    });
+    await act(async () => {
+      await tick();
+    });
+
+    const strip = scope.querySelector('[aria-label="bans"]');
+    // A hero the catalog no longer has still shows, by its id.
+    expect([...(strip?.querySelectorAll("[title]") ?? [])].map((node) => node.getAttribute("title"))).toEqual([
+      "Genji",
+      "Ana",
+      "#999",
+    ]);
+  });
+
+  it("leaves a round without bans with no ban strip", async () => {
+    const scope = await mount(game({ discipline: "overwatch" }), { matches: [match({ id: 12 })] });
+
+    expect(scope.querySelector('[aria-label="bans"]')).toBeNull();
+  });
+
   it("starts the match from a Ready lobby, which offers no result yet", async () => {
     const scope = await mount(game());
 
@@ -1042,7 +1091,7 @@ describe("PickupTeamsPanel", () => {
     expect(scope.querySelector('[aria-current="step"]')?.textContent).toContain("state.ready");
     await click(byName(scope, "startMatch"));
 
-    expect(onStartMatch).toHaveBeenCalledTimes(1);
+    expect(onStartMatch).toHaveBeenCalledWith(false);
   });
 
   it("warns before starting with an away player seated, and starts once confirmed", async () => {
@@ -1053,7 +1102,7 @@ describe("PickupTeamsPanel", () => {
     expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("awayTitle");
 
     await click(byName(document, "awayConfirm"));
-    expect(onStartMatch).toHaveBeenCalledTimes(1);
+    expect(onStartMatch).toHaveBeenCalledWith(false);
   });
 
   it("freezes a live lineup: results and Cancel match, but no balance, pager, swap or captaincy", async () => {
@@ -1076,6 +1125,47 @@ describe("PickupTeamsPanel", () => {
     expect(onCancelMatch).not.toHaveBeenCalled();
     await click(byName(document, "cancelConfirm"));
     expect(onCancelMatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("bans heroes in Pre-game on the frozen lineup, with Cancel match and no result yet", async () => {
+    const pregame = lobbyRow({
+      state: "pregame",
+      live_encounter_id: 50,
+      live_started_at: "2026-01-01T20:00:00Z",
+      live_seats: [
+        { id: 71, slot: 1, name: "Team 2" },
+        { id: 72, slot: 2, name: "Team 1" },
+      ],
+    });
+    const scope = await mount(game({ hero_ban_preset: "hero_bo1_simple", lobbies: [pregame] }));
+
+    expect([...scope.querySelectorAll("ol li")].map((step) => step.textContent)).toEqual([
+      "state.idle",
+      "state.ready",
+      expect.stringContaining("state.pregame"),
+      "state.live",
+    ]);
+    expect(scope.querySelector('[aria-current="step"]')?.textContent).toContain("state.pregame");
+    // The team that bans first sits in slot 1.
+    expect(scope.querySelector('[data-testid="ban-board"]')?.textContent).toBe("50: Team 2 vs Team 1");
+    expect(scope.textContent).toContain("frozen");
+    expect(byName(scope, "Draw")).toBeNull();
+    expect(byName(scope, "Balance teams")).toBeNull();
+    expect(byName(scope, "startMatch")).toBeNull();
+
+    await click(byName(scope, "cancelMatch"));
+    await click(byName(document, "cancelConfirm"));
+    expect(onCancelMatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("lists no Pre-game step for a mix without bans", async () => {
+    const scope = await mount(game({ hero_ban_preset: null }));
+
+    expect([...scope.querySelectorAll("ol li")].map((step) => step.textContent)).toEqual([
+      "state.idle",
+      "state.ready",
+      "state.live",
+    ]);
   });
 
   it("tells a viewer a live lineup is frozen, without handing them the result or Cancel match", async () => {

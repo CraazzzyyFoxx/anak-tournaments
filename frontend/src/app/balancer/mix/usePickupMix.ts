@@ -351,7 +351,8 @@ export function usePickupMix(
 
   /** Opens the lobby's match on the lineup it shows; the server splits the team voices when it has them. */
   const startMatch = useMutation({
-    mutationFn: (lobbyIndex: number) => customGameService.startMatch(workspaceId, selectedGameId as number, lobbyIndex),
+    mutationFn: ({ lobbyIndex, flipOpener }: { lobbyIndex: number; flipOpener: boolean }) =>
+      customGameService.startMatch(workspaceId, selectedGameId as number, lobbyIndex, flipOpener),
     onSuccess: (game) => {
       applyGame(game);
       notify.success(tRoom("started"));

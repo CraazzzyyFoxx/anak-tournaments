@@ -12,10 +12,11 @@
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/lib/api/error";
 import { notify } from "@/lib/notify";
+import type * as CustomGameModule from "@/services/custom-game.service";
 
 import { usePickupMix } from "./usePickupMix";
 
@@ -44,7 +45,8 @@ const setSelfService = vi.fn();
 const postSignup = vi.fn();
 const voiceMove = vi.fn();
 
-vi.mock("@/services/custom-game.service", () => ({
+// Start goes through the real `startMatch` down to `fetch`: the request body is what reaches the server.
+vi.mock("@/services/custom-game.service", async (importOriginal) => ({
   customGameKeys: {
     all: (workspaceId: number) => ["custom-games", workspaceId],
     lists: (workspaceId: number) => ["custom-games", workspaceId, "list"],
@@ -99,6 +101,7 @@ vi.mock("@/services/custom-game.service", () => ({
     voiceOptions: vi.fn(),
     setVoiceChannels: vi.fn(),
     voiceMove: (...args: unknown[]) => voiceMove(...args),
+    startMatch: (await importOriginal<typeof CustomGameModule>()).customGameService.startMatch,
     voiceReturn: vi.fn(),
   },
 }));
@@ -184,6 +187,7 @@ type HarnessApi = {
   postToDiscord: (variantIndex: number) => void;
   setVariantIndex: (index: number) => void;
   voiceMove: (lobbyIndex: number | null) => void;
+  startMatch: (lobbyIndex: number, flipOpener: boolean) => void;
   client: QueryClient;
   activeLobby: number;
   myQueuePosition: number | null;
@@ -207,6 +211,7 @@ function Harness({
     postToDiscord: post,
     setVariantIndex: paging,
     voiceMove: move,
+    startMatch: start,
     activeLobby,
     myQueuePosition,
   } = usePickupMix(WORKSPACE_ID, GAME_ID, { initialLobby, seatEnabled });
@@ -217,6 +222,7 @@ function Harness({
     postToDiscord: (variantIndex) => post.mutate({ lobbyIndex: 0, variantIndex }),
     setVariantIndex: (index) => paging.mutate({ lobbyIndex: 0, variantIndex: index }),
     voiceMove: (lobbyIndex) => move.mutate(lobbyIndex),
+    startMatch: (lobbyIndex, flipOpener) => start.mutate({ lobbyIndex, flipOpener }),
     client,
     activeLobby,
     myQueuePosition,
@@ -281,7 +287,44 @@ beforeEach(() => {
   );
 });
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("usePickupMix", () => {
+  it("asks the server to start the lobby with the opener the host swapped, and shows the pre-game it answers", async () => {
+    const sent: { url: string; method?: string; body: unknown }[] = [];
+    const started = game({
+      players: [],
+      lobbies: [{ ...game().lobbies[0], state: "pregame", live_encounter_id: 50, opener_index: 1 }],
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        sent.push({ url, method: init.method, body: JSON.parse(String(init.body)) });
+        return new Response(JSON.stringify(started), { status: 200, headers: { "Content-Type": "application/json" } });
+      }),
+    );
+    const { startMatch, client } = await mount();
+
+    await act(async () => {
+      startMatch(0, true);
+      await tick();
+      await tick();
+    });
+
+    expect(sent).toEqual([
+      {
+        url: `/api/v1/balancer/workspaces/${WORKSPACE_ID}/custom-games/${GAME_ID}/match/start`,
+        method: "POST",
+        body: { lobby_index: 0, flip_opener: true },
+      },
+    ]);
+    expect(client.getQueryData<{ lobbies: { state?: string }[] }>(["custom-games", WORKSPACE_ID, GAME_ID])?.lobbies[0].state).toBe(
+      "pregame",
+    );
+  });
+
   it("keeps the route game pinned when the workspace list contains a different mix", async () => {
     listGames.mockResolvedValue({ items: [game({ id: 99 })], next_before_id: null });
     const { setRoster } = await mount();

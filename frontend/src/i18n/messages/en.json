@@ -4959,6 +4959,7 @@
       "away": "captain",
       "captain": "captain",
       "staff": "staff",
+      "player": "player",
       "spectator": "spectator"
     }
   },
@@ -7832,6 +7833,7 @@
     "lobbies": {
       "tabsLabel": "Lobbies",
       "tab": "Lobby {letter}",
+      "bans": "Bans",
       "game": "game {number}",
       "rebalanceTitle": "Rebalance this lobby?",
       "rebalanceDescription": "The result of the lineup on screen has not been recorded. Balancing replaces it, and there will be nothing left to record it from.",
@@ -7926,6 +7928,7 @@
       "state": {
         "idle": "Idle",
         "ready": "Ready",
+        "pregame": "Pre-game",
         "live": "Live"
       },
       "elapsed": "{minutes} min",
@@ -7934,6 +7937,12 @@
       "awayTitle": "Start with away players?",
       "awayDescription": "Still seated in this lineup but away: {names}. The match starts anyway.",
       "awayConfirm": "Start anyway",
+      "startTitle": "Start the match?",
+      "startConfirm": "Start",
+      "opener": "{team} bans first",
+      "swapOpener": "Swap who bans first",
+      "bansTitle": "Hero bans",
+      "yourTurnTitle": "● Your turn to ban",
       "cancelMatch": "Cancel match",
       "cancelTitle": "Cancel this match?",
       "cancelDescription": "Nothing is recorded and no rank moves. The lineup stays, ready to start again.",
