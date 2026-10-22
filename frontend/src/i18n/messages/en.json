@@ -1089,6 +1089,10 @@
         "label": "Points per win",
         "placeholder": "Off",
         "hint": "Recording who won bumps every winning player's rank by this many points in your own book, and every losing player's down by the same. Leave empty to record results without touching ranks."
+      },
+      "bans": {
+        "label": "Hero bans in new mixes of this game",
+        "hint": "Copied into each new mix; change it in the mix's header any time."
       }
     },
     "name": {
@@ -4024,6 +4028,10 @@
     }
   },
   "pickBan": {
+    "mixBans": {
+      "none": "No bans",
+      "label": "Hero bans"
+    },
     "room": {
       "playerHeroes": {
         "title": "Heroes from the previous map",
@@ -4864,7 +4872,8 @@
         "hero_anti_one_trick": "Anti-one-trick (tournament)",
         "map_bracket": "Standard map veto",
         "map_slot_veto": "Veto per map group",
-        "lol_side_selection": "Side selection: higher seed, then previous loser"
+        "lol_side_selection": "Side selection: higher seed, then previous loser",
+        "deadlock_hero_bans": "Two bans each, A-B-A-B"
       },
       "preview": {
         "title": "Over the series",

@@ -101,6 +101,7 @@ export type MixPrefsDraft = {
   variants: number;
   pointsPerWin: number | null;
   ratingMode: MixRatingMode;
+  banPresets: Record<string, string>;
 };
 
 /** The draft a stored row (or an empty one) opens as. */
@@ -111,6 +112,7 @@ export function draftOf(preferences: MixBalancerPreferences | null | undefined):
     variants: variantsOf(preferences),
     pointsPerWin: pointsPerWinOf(preferences),
     ratingMode: preferences?.rating_mode === "ranker" ? "ranker" : "points",
+    banPresets: { ...(preferences?.hero_ban_presets ?? {}) },
   };
 }
 
@@ -138,5 +140,9 @@ export function preferencesPayload(draft: MixPrefsDraft): MixBalancerPreferences
         : Math.min(MAX_POINTS_PER_WIN, Math.round(draft.pointsPerWin)),
     // Not a knob with a default to clear: the server stores one of two modes.
     rating_mode: draft.ratingMode,
+    // Sorted: the server's jsonb answers games in its own key order, and the panel compares serialized rows.
+    hero_ban_presets: Object.fromEntries(
+      Object.entries(draft.banPresets).sort(([left], [right]) => (left < right ? -1 : 1)),
+    ),
   };
 }

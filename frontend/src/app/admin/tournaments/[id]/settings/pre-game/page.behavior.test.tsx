@@ -330,14 +330,16 @@ const CATALOG = {
       kind: "hero" as const,
       modes: ["pool" as const],
       ruleset: ANTI_ONE_TRICK,
-      first_ban_rotation: null
+      first_ban_rotation: null,
+      mix_eligible: true
     },
     {
       id: "map_bracket",
       kind: "map" as const,
       modes: ["pool" as const],
       ruleset: TOURNAMENT_MAP_CONFIG.ruleset,
-      first_ban_rotation: null
+      first_ban_rotation: null,
+      mix_eligible: false
     }
   ]
 };
@@ -383,7 +385,8 @@ const LOL_CATALOG = {
       kind: "hero" as const,
       modes: ["pool" as const],
       ruleset: LOL_PRESET_RULESET,
-      first_ban_rotation: "result_loser_first" as const
+      first_ban_rotation: "result_loser_first" as const,
+      mix_eligible: true
     },
     CATALOG.presets[1]
   ]

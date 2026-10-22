@@ -19,6 +19,7 @@ import {
 import { MAX_LOBBIES, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { InlineEditText } from "@/components/kit/InlineEditText";
+import { BanPresetSelect, useBanPresetName } from "@/components/pick-ban/BanPresetSelect";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
@@ -91,6 +92,9 @@ type PickupMixHeaderProps = {
   /** Omitted -- the self-service row is not offered at all. */
   onSetSelfService?: (patch: { self_signup?: MixSelfSignup; self_role_edit?: boolean }) => void;
   savingSelfService?: boolean;
+  /** Omitted -- the hero ban preset is shown read-only, as it is to every viewer. */
+  onSetBanPreset?: (preset: string | null) => void;
+  savingBanPreset?: boolean;
   /** Omitted -- the Discord menu offers no signup post. */
   onPostSignup?: (selfSignup: "pool" | "benched") => void;
   postingSignup?: boolean;
@@ -129,6 +133,8 @@ export function PickupMixHeader({
   onRename,
   onSetSelfService,
   savingSelfService = false,
+  onSetBanPreset,
+  savingBanPreset = false,
   onPostSignup,
   postingSignup = false,
   onDeleteDiscordPost,
@@ -138,6 +144,8 @@ export function PickupMixHeader({
 }: Readonly<PickupMixHeaderProps>) {
   const tl = useTranslations("mixes.lobbies");
   const th = useTranslations("mixes.header");
+  const tb = useTranslations("pickBan.mixBans");
+  const banPresetName = useBanPresetName();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [dropLobbyOpen, setDropLobbyOpen] = useState(false);
   const lobbyCount = game?.lobby_count ?? 1;
@@ -197,6 +205,22 @@ export function PickupMixHeader({
       {/* One block: when the row runs out of width it wraps as a whole, under
           the name, instead of orphaning the last button on a line of its own. */}
       <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+        {game == null ? null : canWrite && onSetBanPreset ? (
+          <BanPresetSelect
+            discipline={game.discipline}
+            label={tb("label")}
+            value={game.hero_ban_preset}
+            disabled={savingBanPreset}
+            onChange={onSetBanPreset}
+          />
+        ) : (
+          // Everyone reads which hero bans the next Start opens; only a host changes them.
+          <span className="flex shrink-0 items-center gap-1.5 text-caption text-[color:var(--aqt-fg-dim)]">
+            {tb("label")}
+            <span className="font-semibold text-[color:var(--aqt-fg)]">{banPresetName(game.hero_ban_preset)}</span>
+          </span>
+        )}
+
         {canWrite && game != null && onSetSelfService ? (
           <SignupSettings
             game={game}

@@ -204,6 +204,7 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
     updateMySeat,
     setMyAway,
     setSelfService,
+    setBanPreset,
     postSignup,
     deleteDiscordPost,
     voiceOptionsQuery,
@@ -538,6 +539,8 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
               onRename={(name) => renameMix.mutateAsync(name)}
               onSetSelfService={(patch) => setSelfService.mutate(patch)}
               savingSelfService={setSelfService.isPending}
+              onSetBanPreset={(preset) => setBanPreset.mutate(preset)}
+              savingBanPreset={setBanPreset.isPending}
               onPostSignup={(selfSignup) => postSignup.mutate(selfSignup)}
               postingSignup={postSignup.isPending}
               onDeleteDiscordPost={(postId) => deleteDiscordPost.mutate(postId)}

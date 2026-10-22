@@ -23,6 +23,7 @@ import { useGameScope } from "@/hooks/useGameScope";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useRoleName } from "@/hooks/useRoleName";
 import { GameScopeControl } from "@/components/workspace/GameScopeControl";
+import { BanPresetSelect } from "@/components/pick-ban/BanPresetSelect";
 import { notify } from "@/lib/notify";
 import {
   mixPreferencesKeys,
@@ -294,6 +295,27 @@ export default function MixBalancerSection() {
             />
             <p className="text-xs text-[color:var(--aqt-fg-dim)]">{t("mixBalancer.points.hint")}</p>
           </div>
+
+          {code != null ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="mix-ban-default">{t("mixBalancer.bans.label")}</Label>
+              <BanPresetSelect
+                id="mix-ban-default"
+                discipline={code}
+                label={t("mixBalancer.bans.label")}
+                value={draft.banPresets[code] ?? null}
+                onChange={(next) =>
+                  setDraft((current) => {
+                    const banPresets = { ...current.banPresets };
+                    if (next == null) delete banPresets[code];
+                    else banPresets[code] = next;
+                    return { ...current, banPresets };
+                  })
+                }
+              />
+              <p className="text-xs text-[color:var(--aqt-fg-dim)]">{t("mixBalancer.bans.hint")}</p>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </div>

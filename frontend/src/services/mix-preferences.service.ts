@@ -34,6 +34,8 @@ export type MixBalancerPreferences = {
    * ranker formula, balancing on the effective rating instead of the open one.
    */
   rating_mode: MixRatingMode;
+  /** Per game (discipline code): the hero ban preset a new mix of that game starts with; an absent game, none. */
+  hero_ban_presets: Record<string, string>;
 };
 
 /** The two ways a host's rank book reacts to a recorded match. */

@@ -207,6 +207,8 @@ export type CustomGame = {
   self_signup: MixSelfSignup;
   /** Whether a player on the roster may reorder their own roles and flex. */
   self_role_edit: boolean;
+  /** The hero ban preset the next Start opens a room on; null = no bans (spec §4.3). */
+  hero_ban_preset: string | null;
   /**
    * The voice everyone waits in and is returned to, picked from the
    * workspace's general voices (`mix_general_voice_channel_ids`).
@@ -997,6 +999,15 @@ export const customGameService = {
       `/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/self-service`,
       { skipWorkspace: true, method: "PUT", body: patch },
     ).then((r) => r.json());
+  },
+
+  /** The mix's hero ban preset (a preset of its own game) or null; applies from the next Start. 422 for another code. */
+  setBanPreset(workspaceId: number, gameId: number, heroBanPreset: string | null): Promise<CustomGame> {
+    return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/ban-preset`, {
+      skipWorkspace: true,
+      method: "PUT",
+      body: { hero_ban_preset: heroBanPreset },
+    }).then((r) => r.json());
   },
 
   /**
