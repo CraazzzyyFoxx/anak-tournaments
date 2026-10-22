@@ -189,7 +189,11 @@ test("draft room chat: captains write, spectators read while open, moderators mu
   expect(read.viewer).toMatchObject({ can_write: false, role: "spectator" });
 
   await adminApi.patch(`${chat}/settings`, { spectators_can_read: false });
-  expect((await anonApi.raw("GET", chat)).status(), "closed to spectators").toBe(403);
+  expect(await anonApi.get(chat), "closed to spectators: empty and read-only").toMatchObject({
+    messages: [],
+    settings: { spectators_can_read: false },
+    viewer: { role: "spectator", can_write: false },
+  });
   expect((await c2.api.get<Envelope>(chat)).messages).toHaveLength(1);
 
   await adminApi.put(`${chat}/mutes/${c2.id}`, { minutes: 5, reason: "e2e" });

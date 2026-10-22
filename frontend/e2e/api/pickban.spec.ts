@@ -390,8 +390,10 @@ test("room chat: captains talk, spectators are locked out by default, staff mode
   expect(seen.viewer).toMatchObject({ role: "captain", can_write: true, can_moderate: false });
   expect(seen.settings.spectators_can_read, "a pre-game room is closed to spectators by default").toBe(false);
 
-  expect((await anonApi.raw("GET", chat)).status()).toBe(403);
-  expect((await outsider.api.raw("GET", chat)).status()).toBe(403);
+  // A closed room answers spectators with an empty, read-only envelope rather than a 403.
+  for (const read of [await anonApi.get(chat), await outsider.api.get(chat)]) {
+    expect(read).toMatchObject({ messages: [], settings: { spectators_can_read: false }, viewer: { role: "spectator", can_write: false } });
+  }
   expect((await outsider.api.raw("POST", chat, { body: { body: "hi" } })).status()).toBe(403);
   expect((await b.api.raw("DELETE", `${chat}/${sent.id}`)).status(), "a captain deletes only their own messages").toBe(403);
   expect((await a.api.raw("PUT", `${chat}/mutes/${b.id}`, { body: { minutes: 5 } })).status(), "captains do not moderate").toBe(403);
