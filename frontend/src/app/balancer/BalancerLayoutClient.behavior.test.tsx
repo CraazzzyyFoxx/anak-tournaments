@@ -13,6 +13,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { describe, it, expect, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
+import ru from "@/i18n/messages/ru.json";
 import type { BalancerTournamentSummary } from "@/types/balancer-admin.types";
 
 let pathname = "/balancer/mix";
@@ -43,8 +44,9 @@ vi.mock("@/stores/workspace.store", () => ({
 }));
 
 let summary: BalancerTournamentSummary | null = null;
+let contextStatus = "ready";
 vi.mock("@/app/balancer/useToolContext", () => ({
-  useToolContext: () => ({ status: "ready", summary }),
+  useToolContext: () => ({ status: contextStatus, summary }),
 }));
 
 vi.mock("@/components/Header", () => ({
@@ -129,5 +131,35 @@ describe("BalancerLayoutClient on /balancer?tournament=", () => {
     container.remove();
     pathname = "/balancer/mix";
     summary = null;
+  });
+});
+
+describe("BalancerLayoutClient without a tournament", () => {
+  it("words the empty state in the reader's language", async () => {
+    pathname = "/balancer";
+    contextStatus = "missing";
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    await act(async () => {
+      root.render(
+        <NextIntlClientProvider locale="ru" messages={ru}>
+          <BalancerLayoutClient>
+            <div data-testid="tool-content">board</div>
+          </BalancerLayoutClient>
+        </NextIntlClientProvider>,
+      );
+    });
+
+    expect(container.querySelector("h1")?.textContent).toBe(ru.balancerTool.page.layout.noTournamentTitle);
+    expect(container.textContent).toContain(ru.balancerTool.page.layout.openTournament);
+    expect(container.textContent).not.toContain("No tournament selected");
+    expect(container.textContent).not.toContain("Open a tournament");
+
+    act(() => root.unmount());
+    container.remove();
+    pathname = "/balancer/mix";
+    contextStatus = "ready";
   });
 });

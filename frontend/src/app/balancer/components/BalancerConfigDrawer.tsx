@@ -2,6 +2,7 @@
 
 import { Fragment } from "react";
 import { Save, RotateCcw } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Label } from "@/components/ui/label";
@@ -25,12 +26,13 @@ import type {
   BalancerRoleSettings,
 } from "@/types/balancer.types";
 
-const GROUP_ORDER: BalancerConfigField["group"][] = [
-  "Algorithm",
-  "Quality weights",
-  "Strategy",
-  "Solver output",
-];
+/** Drawer sections in order, each with its `config.groups.*` message. */
+const GROUPS = [
+  ["Algorithm", "algorithm"],
+  ["Quality weights", "qualityWeights"],
+  ["Strategy", "strategy"],
+  ["Solver output", "solverOutput"],
+] as const satisfies ReadonlyArray<readonly [BalancerConfigField["group"], string]>;
 
 type BalancerConfigDrawerProps = {
   open: boolean;
@@ -61,6 +63,16 @@ function formatValue(value: unknown): string {
   }
 
   return String(value);
+}
+
+/** A knob's or a role column's catalog copy, keyed like the server row; one the
+ * catalog does not know yet keeps the server's own English. */
+function useKnobCopy() {
+  const t = useTranslations("balancerTool.playerEdit.config");
+  return (kind: "fields" | "columns", key: string, part: "label" | "description", fallback: string) => {
+    const id = `${kind}.${key}.${part}` as "fields.population_size.label";
+    return t.has(id) ? t(id) : fallback;
+  };
 }
 
 /** Role rows in the roster vocabulary's order, anything newer appended as it
@@ -112,6 +124,7 @@ function ConfigRolesTable({
   onChange: (value: BalancerConfigValue) => void;
 }>) {
   const slotLabel = useSlotLabel(ontology);
+  const knobCopy = useKnobCopy();
   const defaults = (field.default ?? {}) as BalancerRoleSettings;
   const overrides = (value ?? {}) as BalancerRoleSettings;
   const columns = field.columns ?? [];
@@ -135,11 +148,11 @@ function ConfigRolesTable({
         <Eyebrow
           as="div"
           key={column.key}
-          title={column.description}
+          title={knobCopy("columns", column.key, "description", column.description)}
           tone="dim"
           className="text-center"
         >
-          {column.label}
+          {knobCopy("columns", column.key, "label", column.label)}
         </Eyebrow>
       ))}
       {roles.map((role) => (
@@ -151,7 +164,7 @@ function ConfigRolesTable({
             <NumberInput
               key={column.key}
               id={`config-${field.key}-${role}-${column.key}`}
-              aria-label={`${role} ${column.label}`}
+              aria-label={`${role} ${knobCopy("columns", column.key, "label", column.label)}`}
               value={overrides[role]?.[column.key] ?? defaults[role]?.[column.key] ?? null}
               onValueChange={(next) => setCell(role, column.key, next)}
               min={column.limits?.min}
@@ -178,6 +191,7 @@ function ConfigFieldControl({
   ontology?: RoleOntology | null;
   onChange: (value: BalancerConfigValue) => void;
 }>) {
+  const t = useTranslations("balancerTool.playerEdit.config");
   if (field.type === "boolean") {
     return <Switch checked={Boolean(value)} onCheckedChange={onChange} />;
   }
@@ -219,9 +233,9 @@ function ConfigFieldControl({
           onValueChange={(next) => onChange(next[0])}
         />
         <div className="flex justify-between text-label text-[color:var(--aqt-fg-dim)]">
-          <span>balance</span>
+          <span>{t("balance")}</span>
           <span className="tabular-nums text-[color:var(--aqt-fg-muted)]">{numeric.toFixed(2)}</span>
-          <span>comfort</span>
+          <span>{t("comfort")}</span>
         </div>
       </div>
     );
@@ -261,8 +275,12 @@ export function BalancerConfigDrawer({
   roleCodes,
   ontology,
 }: Readonly<BalancerConfigDrawerProps>) {
-  const fieldsByGroup = GROUP_ORDER.map((group) => ({
+  const t = useTranslations("balancerTool.playerEdit.config");
+  const tCommon = useTranslations("common");
+  const knobCopy = useKnobCopy();
+  const fieldsByGroup = GROUPS.map(([group, labelKey]) => ({
     group,
+    labelKey,
     fields: fields.filter((field) => field.group === group),
   })).filter((item) => item.fields.length > 0);
 
@@ -270,18 +288,18 @@ export function BalancerConfigDrawer({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent variant="panel" className="w-full sm:max-w-2xl">
         <SheetHeader variant="panel">
-          <SheetTitle className="text-[color:var(--aqt-fg)]">Balancer settings</SheetTitle>
+          <SheetTitle className="text-[color:var(--aqt-fg)]">{t("title")}</SheetTitle>
           <SheetDescription className="text-[color:var(--aqt-fg-muted)]">
-            Active preset: {selectedPresetLabel}. Changes are saved for this tournament.
+            {t("description", { preset: selectedPresetLabel })}
           </SheetDescription>
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           <div className="space-y-5">
-            {fieldsByGroup.map(({ group, fields: groupFields }) => (
+            {fieldsByGroup.map(({ group, labelKey, fields: groupFields }) => (
               <section key={group} className="space-y-3">
                 <Eyebrow as="div" tone="dim">
-                  {group}
+                  {t(`groups.${labelKey}`)}
                 </Eyebrow>
                 <div className="space-y-3">
                   {groupFields.map((field) => {
@@ -305,20 +323,20 @@ export function BalancerConfigDrawer({
                               htmlFor={field.type === "roles" || field.type === "open_slot" ? undefined : `config-${field.key}`}
                               className="text-sm text-[color:var(--aqt-fg)]"
                             >
-                              {field.label}
+                              {knobCopy("fields", field.key, "label", field.label)}
                             </Label>
                             <p className="mt-1 text-xs leading-5 text-[color:var(--aqt-fg-dim)]">
-                              {field.description}
+                              {knobCopy("fields", field.key, "description", field.description)}
                             </p>
                             <div className="mt-2 flex flex-wrap gap-2 text-label text-[color:var(--aqt-fg-dim)]">
                               {/* A roles table shows its own defaults in the
                                   cells; dumping the whole dict here is noise. */}
                               {field.type === "roles" || field.type === "open_slot" ? null : (
-                                <span>Default: {formatValue(field.default)}</span>
+                                <span>{t("default", { value: formatValue(field.default) })}</span>
                               )}
                               {field.limits ? (
                                 <span>
-                                  Limit: {field.limits.min} - {field.limits.max}
+                                  {t("limit", { min: String(field.limits.min), max: String(field.limits.max) })}
                                 </span>
                               ) : null}
                             </div>
@@ -345,7 +363,7 @@ export function BalancerConfigDrawer({
         <SheetFooter className="border-t border-[color:var(--aqt-border-2)] px-5 py-4">
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-xs text-[color:var(--aqt-fg-dim)]">
-              {dirty ? "Unsaved settings will be saved before the next run." : "Settings are saved."}
+              {dirty ? t("unsaved") : t("saved")}
             </div>
             <div className="flex gap-2">
               <Button
@@ -355,11 +373,11 @@ export function BalancerConfigDrawer({
                 className="rounded-lg"
               >
                 <RotateCcw className="mr-2 h-4 w-4" />
-                Reset
+                {tCommon("reset")}
               </Button>
               <Button type="button" onClick={onSave} disabled={!dirty || saving} className="rounded-lg">
                 <Save className="mr-2 h-4 w-4" />
-                Save settings
+                {t("save")}
               </Button>
             </div>
           </div>

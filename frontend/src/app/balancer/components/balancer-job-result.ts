@@ -37,9 +37,11 @@ export function appendGeneratedVariants(
     const next = [...current];
     const generatedCount = next.filter((variant) => variant.source === "generated").length;
     result.variants.forEach((variant, batchIndex) => {
+      const index = generatedCount + batchIndex + 1;
       next.push({
         id: newIds[batchIndex],
-        label: createVariantLabel(generatedCount + batchIndex + 1),
+        label: createVariantLabel(index),
+        labelSource: { kind: "generated", index },
         payload: convertBalanceResponseToInternalPayload(variant),
         source: "generated",
         config: config ?? null,

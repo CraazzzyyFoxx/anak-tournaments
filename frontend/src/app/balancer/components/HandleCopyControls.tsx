@@ -1,6 +1,7 @@
 "use client";
 
 import { Copy, Files } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -18,11 +19,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { notify } from "@/lib/notify";
 import { cn } from "@/lib/utils";
-import { formatAdditionalHandleCount, formatHandlesForClipboard } from "@/components/balancer/balancer-page-helpers";
+import { formatHandlesForClipboard } from "@/components/balancer/balancer-page-helpers";
 
 type HandleCopyButtonProps = {
   handle: string;
-  label?: string;
   className?: string;
 };
 
@@ -36,22 +36,26 @@ type HandleMenuItemsProps = {
   handles: string[];
 };
 
+/** What a copy put on the clipboard: names it in the confirmation toast. */
+type CopiedKind = "handle" | "altHandle" | "altHandles" | "allHandles";
+
 function useHandleClipboard() {
-  return async (value: string, label: string) => {
+  const t = useTranslations("balancerTool.pool.handles");
+  return async (value: string, kind: CopiedKind) => {
     try {
       await navigator.clipboard.writeText(value);
-      notify.success(`${label} copied`);
+      notify.success(t("copied", { kind }));
     } catch {
-      notify.error(`Unable to copy the ${label}. Your browser blocked clipboard access — select the text and copy it manually.`);
+      notify.error(t("copyFailed", { kind }));
     }
   };
 }
 
 export function HandleCopyButton({
   handle,
-  label = "Handle",
   className
 }: Readonly<HandleCopyButtonProps>) {
+  const t = useTranslations("balancerTool.pool.handles");
   const copyHandle = useHandleClipboard();
 
   return (
@@ -63,17 +67,18 @@ export function HandleCopyButton({
         "h-7 w-7 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-dim)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-cyan-100",
         className
       )}
-      title={`Copy ${label}`}
-      onClick={() => copyHandle(handle, label)}
+      title={t("copy")}
+      onClick={() => copyHandle(handle, "handle")}
     >
       <Copy className="h-3.5 w-3.5" />
-      <span className="sr-only">Copy {label}</span>
+      <span className="sr-only">{t("copy")}</span>
     </Button>
   );
 }
 
 /** A row's extra accounts behind one collapsed chip: copy one or all of them. */
 export function AdditionalHandleStrip({ additionalHandles, className }: Readonly<AdditionalHandleStripProps>) {
+  const t = useTranslations("balancerTool.pool.handles");
   const copyHandle = useHandleClipboard();
 
   if (additionalHandles.length === 0) {
@@ -91,26 +96,26 @@ export function AdditionalHandleStrip({ additionalHandles, className }: Readonly
             variant="subtle"
             size="xs"
             className="rounded-full border-cyan-300/15 bg-cyan-500/8 text-cyan-100/62 hover:border-cyan-300/30 hover:bg-cyan-500/14 hover:text-cyan-50"
-            title="Show alt handles"
+            title={t("showAlts")}
           >
-            {formatAdditionalHandleCount(additionalHandles.length)}
+            {t("altCount", { count: additionalHandles.length })}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56">
-          <DropdownMenuLabel>Alt handles</DropdownMenuLabel>
+          <DropdownMenuLabel>{t("alts")}</DropdownMenuLabel>
           {additionalHandles.length > 1 ? (
             <>
               <DropdownMenuItem
-                onClick={() => copyHandle(formatHandlesForClipboard(additionalHandles), "Alt handles")}
+                onClick={() => copyHandle(formatHandlesForClipboard(additionalHandles), "altHandles")}
               >
                 <Files className="h-4 w-4" />
-                Copy all alts
+                {t("copyAllAlts")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
             </>
           ) : null}
           {additionalHandles.map((handle) => (
-            <DropdownMenuItem key={handle} onClick={() => copyHandle(handle, "Alt handle")}>
+            <DropdownMenuItem key={handle} onClick={() => copyHandle(handle, "altHandle")}>
               <Copy className="h-4 w-4" />
               <span className="truncate">{handle}</span>
             </DropdownMenuItem>
@@ -122,6 +127,7 @@ export function AdditionalHandleStrip({ additionalHandles, className }: Readonly
 }
 
 export function HandleContextMenuItems({ handles }: Readonly<HandleMenuItemsProps>) {
+  const t = useTranslations("balancerTool.pool.handles");
   const copyHandle = useHandleClipboard();
   const [primaryHandle, ...additionalHandles] = handles;
 
@@ -132,22 +138,22 @@ export function HandleContextMenuItems({ handles }: Readonly<HandleMenuItemsProp
   return (
     <>
       <ContextMenuSeparator />
-      <ContextMenuLabel>Handles</ContextMenuLabel>
-      <ContextMenuItem onClick={() => copyHandle(primaryHandle, "Handle")}>
+      <ContextMenuLabel>{t("menuLabel")}</ContextMenuLabel>
+      <ContextMenuItem onClick={() => copyHandle(primaryHandle, "handle")}>
         <Copy className="h-4 w-4" />
-        Copy main handle
+        {t("copyMain")}
       </ContextMenuItem>
       {handles.length > 1 ? (
         <ContextMenuItem
-          onClick={() => copyHandle(formatHandlesForClipboard(handles), "All handles")}
+          onClick={() => copyHandle(formatHandlesForClipboard(handles), "allHandles")}
         >
           <Files className="h-4 w-4" />
-          Copy all handles
+          {t("copyAll")}
         </ContextMenuItem>
       ) : null}
       {additionalHandles.length > 0 ? <ContextMenuSeparator /> : null}
       {additionalHandles.map((handle) => (
-        <ContextMenuItem key={handle} onClick={() => copyHandle(handle, "Alt handle")}>
+        <ContextMenuItem key={handle} onClick={() => copyHandle(handle, "altHandle")}>
           <Copy className="h-4 w-4" />
           {handle}
         </ContextMenuItem>

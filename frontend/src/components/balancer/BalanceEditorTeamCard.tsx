@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { Card } from "@/components/ui/card";
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import {
@@ -52,6 +54,7 @@ export function BalanceEditorTeamCard({
   resolveActorName,
   onSelectPlayer,
 }: Readonly<BalanceEditorTeamCardProps>) {
+  const t = useTranslations("balancerTool.editor");
   const slotLabel = useSlotLabel(ontology);
 
   return (
@@ -69,11 +72,11 @@ export function BalanceEditorTeamCard({
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-300" />
               </span>
               <span className="font-medium text-cyan-50/90">
-                {resolveActorName?.(drag.userId) ?? `User #${drag.userId}`}
+                {resolveActorName?.(drag.userId) ?? t("remoteDrag.unknownUser", { id: drag.userId })}
               </span>
-              <span className="text-cyan-100/55">moving</span>
+              <span className="text-cyan-100/55">{t("remoteDrag.moving")}</span>
               <span className="truncate font-medium text-cyan-50/90" title={drag.playerName}>
-                {drag.playerName || "player"}
+                {drag.playerName || t("remoteDrag.player")}
               </span>
               {drag.overRoleKey ? (
                 <span className="text-cyan-100/55">&rarr; {slotLabel(drag.overRoleKey)}</span>
@@ -86,16 +89,16 @@ export function BalanceEditorTeamCard({
         <TableHeader>
           <TableRow className="border-[color:var(--aqt-border)] hover:bg-transparent">
             <TableHead className={cn(eyebrowClass("dim"), "h-8 w-13 px-4")}>
-              Role
+              {t("columns.role")}
             </TableHead>
             <TableHead className={cn(eyebrowClass("dim"), "h-8 min-w-45 px-0")}>
-              Player
+              {t("columns.player")}
             </TableHead>
             <TableHead className={cn(eyebrowClass("dim"), "h-8 w-18 px-2 text-center")}>
-              Rank
+              {t("columns.rank")}
             </TableHead>
             <TableHead className={cn(eyebrowClass("dim"), "h-8 w-22 px-3 text-center")}>
-              Prefs
+              {t("columns.prefs")}
             </TableHead>
           </TableRow>
         </TableHeader>

@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   derivePoolLane,
-  formatAdditionalHandleCount,
   formatHandlesForClipboard,
   getPoolDropPatch,
   type PlayerValidationState,
@@ -313,7 +312,7 @@ describe("pool lane helpers", () => {
 
   it.each([
     ["excluded", createState({ is_in_pool: false })],
-    ["needs_fix", createState({ is_in_pool: true }, [{ code: "missing_ranked_role", message: "No ranked roles configured" }])],
+    ["needs_fix", createState({ is_in_pool: true }, [{ code: "missing_ranked_role" }])],
     ["ready", createState({ is_in_pool: true })],
   ] satisfies Array<[PoolLane, PlayerValidationState]>)("derives %s from pool membership and validation issues", (expectedLane, state) => {
     expect(derivePoolLane(state)).toBe(expectedLane);
@@ -414,11 +413,6 @@ describe("game handle helpers", () => {
     expect(getRegistrationHandles(registration, "riot", "Fallback")).toEqual(["Faker#KR1"]);
     // A game with no identity provider has no handle answer to read.
     expect(getRegistrationHandles(registration, null, "Fallback")).toEqual(["Fallback"]);
-  });
-
-  it("formats the extra-account count for collapsed UI", () => {
-    expect(formatAdditionalHandleCount(1)).toBe("1 alt");
-    expect(formatAdditionalHandleCount(3)).toBe("3 alts");
   });
 });
 
@@ -1015,7 +1009,8 @@ describe("a League roster", () => {
       code: "application_role_mismatch",
       applicationRoleCodes: ["mid"],
       playerRoleCodes: ["bot"],
-      message: "Application: Mid; balancer: Bot",
+      applicationRoleLabels: ["Mid"],
+      playerRoleLabels: ["Bot"],
     });
   });
 
@@ -1024,8 +1019,15 @@ describe("a League roster", () => {
 
     const [issue] = validationIssues(player, null, { rank_delta_threshold: 100 }, NO_TIERS, lolLabel);
 
-    expect(issue).toMatchObject({ code: "rank_delta_warning", role: "jungle" });
-    expect(issue.message.startsWith("Jungle: ")).toBe(true);
+    // Off the grid, the warning quotes the raw ranks.
+    expect(issue).toMatchObject({
+      code: "rank_delta_warning",
+      role: "jungle",
+      roleLabel: "Jungle",
+      currentLabel: "2000",
+      owLabel: "2500",
+      delta: 500,
+    });
   });
 
   it("reads the owner game's roles from history, in declared order, and never a flex participation", async () => {

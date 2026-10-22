@@ -3,6 +3,7 @@
 import { memo, useRef, type MouseEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Check } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Button } from "@/components/ui/button";
@@ -33,8 +34,8 @@ type PoolPlayerCompactListProps = {
   onSetPoolMembership?: (playerId: number, isInPool: boolean) => unknown;
   onSetBalancerStatus?: (playerId: number, balancerStatus: string) => unknown;
   actionsDisabled?: boolean;
-  emptyTitle?: string;
-  emptyDescription?: string;
+  emptyTitle: string;
+  emptyDescription: string;
 };
 
 
@@ -62,6 +63,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
   onToggleBulkSelection,
   ...card
 }: PoolPlayerRowProps) {
+  const t = useTranslations("balancerTool.pool.list");
   const { player } = card;
 
   return (
@@ -76,7 +78,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
           size="icon-sm"
           data-card-action
           aria-pressed={isBulkSelected}
-          aria-label={isBulkSelected ? `Unselect ${player.identity}` : `Select ${player.identity}`}
+          aria-label={t(isBulkSelected ? "unselect" : "select", { name: player.identity })}
           onClick={() => onToggleBulkSelection?.(player.id)}
           className={cn(
             "shrink-0",
@@ -94,7 +96,7 @@ const PoolPlayerRow = memo(function PoolPlayerRow({
             <ContextMenuSeparator />
             <ContextMenuItem onClick={() => onToggleBulkSelection(player.id)}>
               <Check className="h-4 w-4" />
-              {isBulkSelected ? "Remove from selection" : "Add to selection"}
+              {isBulkSelected ? t("removeFromSelection") : t("addToSelection")}
             </ContextMenuItem>
           </>
         ) : null
@@ -116,9 +118,10 @@ export function PoolPlayerCompactList({
   onSetPoolMembership,
   onSetBalancerStatus,
   actionsDisabled = false,
-  emptyTitle = "No players match the current filters",
-  emptyDescription = "Try another search or change the pool filter.",
+  emptyTitle,
+  emptyDescription,
 }: Readonly<PoolPlayerCompactListProps>) {
+  const t = useTranslations("balancerTool.pool.list");
   const scrollRef = useRef<HTMLDivElement>(null);
   const shouldVirtualize = playerStates.length > VIRTUALIZATION_THRESHOLD;
   const virtualizer = useVirtualizer({
@@ -184,7 +187,7 @@ export function PoolPlayerCompactList({
     >
       {shouldVirtualize ? (
         <ul
-          aria-label="Pool players"
+          aria-label={t("label")}
           className="relative w-full"
           style={{ height: virtualizer.getTotalSize() }}
         >
@@ -202,7 +205,7 @@ export function PoolPlayerCompactList({
           ))}
         </ul>
       ) : (
-        <ul aria-label="Pool players" className="space-y-1.5">
+        <ul aria-label={t("label")} className="space-y-1.5">
           {playerStates.map((state, index) => (
             <li key={state.player.id} onClick={openRow(index)}>
               {row(index)}

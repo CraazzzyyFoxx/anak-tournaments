@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 
 import { PlayerAvatar } from "@/components/PlayerAvatar";
 import workspaceService from "@/services/workspace.service";
@@ -27,6 +28,7 @@ type BalancerPresenceStackProps = {
  * realtime presence frame; profiles are resolved from the workspace member list.
  */
 export function BalancerPresenceStack({ userIds, workspaceId }: BalancerPresenceStackProps) {
+  const t = useTranslations("balancerTool.page.presence");
   // The presence frame is broadcast to every viewer and includes ourselves;
   // hide the current user so the stack only shows *other* people viewing.
   const currentUserId = useAuthProfileStore((store) => store.user?.id ?? null);
@@ -71,7 +73,7 @@ export function BalancerPresenceStack({ userIds, workspaceId }: BalancerPresence
   const content = (
     <div
       className="flex items-center -space-x-2"
-      title={`${uniqueUserIds.length} viewing`}
+      title={t("viewing", { count: uniqueUserIds.length })}
     >
       {visible.map((userId) => {
         const member = membersById.get(userId);
@@ -89,7 +91,7 @@ export function BalancerPresenceStack({ userIds, workspaceId }: BalancerPresence
       {overflow > 0 ? (
         <span
           className="flex h-7 w-7 items-center justify-center rounded-full border-2 border-background bg-muted text-label font-medium text-muted-foreground"
-          title={`${overflow} more viewer${overflow === 1 ? "" : "s"}`}
+          title={t("more", { count: overflow })}
         >
           +{overflow}
         </span>

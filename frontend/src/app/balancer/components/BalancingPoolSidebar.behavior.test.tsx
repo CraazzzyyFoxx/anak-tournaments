@@ -48,7 +48,7 @@ const POOL_STATES: PlayerValidationState[] = [
   { player: player(2, "Borys#2222"), issues: [] },
   {
     player: player(3, "Cyrus#3333", { role_entries_json: [] }),
-    issues: [{ code: "missing_ranked_role", message: "No ranked roles configured" }],
+    issues: [{ code: "missing_ranked_role" }],
   },
   { player: player(4, "Dita#4444", { is_in_pool: false }), issues: [] },
 ];

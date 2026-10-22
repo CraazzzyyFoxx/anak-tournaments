@@ -1,5 +1,7 @@
+import { createTranslator } from "next-intl";
 import { describe, expect, it } from "vitest";
 
+import en from "@/i18n/messages/en.json";
 import { slotCodeOrder } from "@/lib/roster/ontology";
 import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 
@@ -7,10 +9,11 @@ import { parseImportedBalancePayload as parseImported } from "./balance-import";
 
 const OW_CODES = slotCodeOrder(OW_METADATA);
 const LOL_CODES = slotCodeOrder(LOL_METADATA);
+const t = createTranslator({ locale: "en", messages: en, namespace: "balancerTool.page.importErrors" });
 
 /** Overwatch is the game most cases pin; the League cases pass League's own codes. */
 const parseImportedBalancePayload = (text: string, slotCodes: readonly string[] = OW_CODES) =>
-  parseImported(text, slotCodes);
+  parseImported(text, slotCodes, t);
 
 const player = {
   uuid: 297,

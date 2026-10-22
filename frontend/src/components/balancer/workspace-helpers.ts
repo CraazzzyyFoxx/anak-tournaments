@@ -29,6 +29,8 @@ export type SlotLabeler = (code: string) => string;
 export type BalanceVariant = {
   id: string;
   label: string;
+  /** What the UI names the variant by (translated at render); `label` is the fallback. */
+  labelSource?: { kind: "saved"; id: number } | { kind: "generated"; index: number } | { kind: "imported"; fileName: string };
   payload: InternalBalancePayload;
   source: "saved" | "generated" | "imported";
   config?: BalancerConfig | null;
@@ -42,31 +44,36 @@ export type BalanceVariant = {
   dirty?: boolean;
 };
 
+/** A validation finding. Its copy is written at render (`useIssueMessage`); the labels here are data it quotes. */
 export type PlayerValidationIssue =
   | {
       code: "missing_ranked_role";
-      message: string;
     }
   | {
       code: "application_role_mismatch";
-      message: string;
       applicationRoleCodes: BalancerRoleCode[];
       playerRoleCodes: BalancerRoleCode[];
+      /** The owner game's names for the codes above, in the same order. */
+      applicationRoleLabels: string[];
+      playerRoleLabels: string[];
     }
   | {
       code: "rank_delta_warning";
-      message: string;
       role: BalancerRoleCode;
+      /** The owner game's name for `role`. */
+      roleLabel: string;
       /** Division number of the balancer rank, in the workspace grid (for the icon). */
       currentDivision: number | null;
       /** Division number of the OW2 rank converted into the workspace grid (for the icon). */
       owDivision: number | null;
+      /** The two ranks' division names, or the raw rank where it falls off the grid. */
+      currentLabel: string;
+      owLabel: string;
       /** Absolute rank-point delta between the two. */
       delta: number;
     }
   | {
       code: "status_blocks_ready";
-      message: string;
     };
 
 export type PlayerRankHistoryPreviewEntry = {
@@ -129,16 +136,6 @@ function uniqueRoleCodesInOrder(roleCodes: Iterable<BalancerRoleCode>): Balancer
   }
 
   return ordered;
-}
-
-function formatRoleCodes(roleCodes: Iterable<BalancerRoleCode>, slotLabel: SlotLabeler): string {
-  const orderedRoleCodes = uniqueRoleCodesInOrder(roleCodes);
-
-  if (orderedRoleCodes.length === 0) {
-    return "None";
-  }
-
-  return orderedRoleCodes.map((roleCode) => slotLabel(roleCode)).join(" / ");
 }
 
 function getPlayerRoleCodes(player: BalancerPlayerRecord): BalancerRoleCode[] {
@@ -255,24 +252,18 @@ export function getPlayerValidationIssues(
   player: BalancerPlayerRecord,
   application: BalancerApplication | null | undefined,
   workspaceConfig: { rank_delta_threshold: number | null } | null | undefined,
-  /** The owner game's grid and role names: what the issue messages quote ranks and roles in. */
+  /** The owner game's grid and role names: what the issues quote ranks and roles in. */
   grid: DivisionGrid,
   slotLabel: SlotLabeler
 ): PlayerValidationIssue[] {
   const issues: PlayerValidationIssue[] = [];
 
   if (!playerHasRankedRole(player)) {
-    issues.push({
-      code: "missing_ranked_role",
-      message: "No ranked roles configured"
-    });
+    issues.push({ code: "missing_ranked_role" });
   }
 
   if (player.ready_blocked) {
-    issues.push({
-      code: "status_blocks_ready",
-      message: "Current status blocks Ready"
-    });
+    issues.push({ code: "status_blocks_ready" });
   }
 
   if (application) {
@@ -282,9 +273,10 @@ export function getPlayerValidationIssues(
     if (!roleSequencesMatch(application, player.is_flex, playerRoleCodes, applicationRoleCodes)) {
       issues.push({
         code: "application_role_mismatch",
-        message: `Application: ${formatRoleCodes(applicationRoleCodes, slotLabel)}; balancer: ${formatRoleCodes(playerRoleCodes, slotLabel)}`,
         applicationRoleCodes,
-        playerRoleCodes
+        playerRoleCodes,
+        applicationRoleLabels: applicationRoleCodes.map(slotLabel),
+        playerRoleLabels: playerRoleCodes.map(slotLabel)
       });
     }
   }
@@ -298,15 +290,15 @@ export function getPlayerValidationIssues(
     for (const entry of violating) {
       const currentDivision = resolveDivisionFromRank(grid, entry.currentRank);
       const owDivision = resolveDivisionFromRank(grid, entry.owRank);
-      const currentLabel = getDivisionLabel(grid, currentDivision) ?? String(entry.currentRank);
-      const owLabel = getDivisionLabel(grid, owDivision) ?? String(entry.owRank);
       issues.push({
         code: "rank_delta_warning",
         role: entry.role,
+        roleLabel: slotLabel(entry.role),
         currentDivision,
         owDivision,
-        delta: entry.delta,
-        message: `${slotLabel(entry.role)}: ${currentLabel} → ${owLabel} (Δ${entry.delta} pts)`
+        currentLabel: getDivisionLabel(grid, currentDivision) ?? String(entry.currentRank),
+        owLabel: getDivisionLabel(grid, owDivision) ?? String(entry.owRank),
+        delta: entry.delta
       });
     }
   }
@@ -366,6 +358,7 @@ export function buildVariantFromSavedBalance(balance: SavedBalance): BalanceVari
   return {
     id: `saved-${balance.id}`,
     label: `Saved balance #${balance.id}`,
+    labelSource: { kind: "saved", id: balance.id },
     payload: normalizeInternalPayload(balance.result_json),
     source: "saved",
     config: balance.config_json as BalancerConfig | null

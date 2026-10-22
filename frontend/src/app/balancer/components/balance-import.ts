@@ -1,3 +1,5 @@
+import type { useTranslations } from "next-intl";
+
 import type {
   InternalBalancePayload,
   InternalBalancePlayer,
@@ -13,26 +15,31 @@ import { recalculateBalanceStatistics } from "@/components/balancer/balance-edit
 import { normalizeInternalPayload } from "@/components/balancer/workspace-helpers";
 import { solverSlotCode } from "@/lib/roster/shape";
 
-const FORMAT_HINT =
-  'Expected the internal balance format written by "Download JSON": { "teams": [{ "name": …, "roster": { "<slot code>": [{ "uuid", "name", "assigned_rating" }] } }] }.';
+/** The `balancerTool.page.importErrors` translator the import hands its error messages to. */
+export type ImportTranslator = ReturnType<typeof useTranslations<"balancerTool.page.importErrors">>;
+
+/** The file shape every format hint quotes: code, not copy, so it stays untranslated. */
+const FORMAT_SHAPE =
+  '{ "teams": [{ "name": …, "roster": { "<slot code>": [{ "uuid", "name", "assigned_rating" }] } }] }';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parsePlayer(raw: unknown, where: string): InternalBalancePlayer {
+function parsePlayer(raw: unknown, where: string, t: ImportTranslator): InternalBalancePlayer {
+  const hint = t("formatHint", { shape: FORMAT_SHAPE });
   if (!isRecord(raw)) {
-    throw new Error(`${where} is not an object. ${FORMAT_HINT}`);
+    throw new Error(t("notObject", { where, hint }));
   }
   const { uuid, name, assigned_rating: assignedRating } = raw;
   if (typeof uuid !== "string" && typeof uuid !== "number") {
-    throw new Error(`${where} is missing "uuid".`);
+    throw new Error(t("missingUuid", { where }));
   }
   if (typeof name !== "string" || name.length === 0) {
-    throw new Error(`${where} is missing "name".`);
+    throw new Error(t("missingName", { where }));
   }
   if (typeof assignedRating !== "number") {
-    throw new Error(`${where} is missing a numeric "assigned_rating". ${FORMAT_HINT}`);
+    throw new Error(t("missingRating", { where, hint }));
   }
 
   return {
@@ -53,17 +60,23 @@ function parsePlayer(raw: unknown, where: string): InternalBalancePlayer {
   };
 }
 
-function parseTeam(raw: unknown, index: number, slotCodes: readonly string[]): InternalBalanceTeam {
+function parseTeam(
+  raw: unknown,
+  index: number,
+  slotCodes: readonly string[],
+  t: ImportTranslator
+): InternalBalanceTeam {
+  const hint = t("formatHint", { shape: FORMAT_SHAPE });
   if (!isRecord(raw)) {
-    throw new Error(`Team #${index + 1} is not an object. ${FORMAT_HINT}`);
+    throw new Error(t("teamNotObject", { index: index + 1, hint }));
   }
   const name = typeof raw.name === "string" && raw.name.length > 0 ? raw.name : null;
   if (name === null) {
-    throw new Error(`Team #${index + 1} is missing "name".`);
+    throw new Error(t("teamMissingName", { index: index + 1 }));
   }
   const roster = raw.roster;
   if (!isRecord(roster)) {
-    throw new Error(`Team "${name}" is missing a "roster" object. ${FORMAT_HINT}`);
+    throw new Error(t("teamMissingRoster", { team: name, hint }));
   }
   // Reject unknown buckets instead of silently dropping their players: a bucket is a role code of the owner game
   // or the open slot, in any case (a file written by an older editor says `Tank`).
@@ -72,7 +85,7 @@ function parseTeam(raw: unknown, index: number, slotCodes: readonly string[]): I
   );
   if (unknownRole !== undefined) {
     throw new Error(
-      `Team "${name}" has an unsupported roster role "${unknownRole}". Use ${slotCodes.join(", ")}.`
+      t("unsupportedRole", { team: name, role: unknownRole, codes: slotCodes.join(", ") })
     );
   }
 
@@ -82,10 +95,14 @@ function parseTeam(raw: unknown, index: number, slotCodes: readonly string[]): I
       continue;
     }
     if (!Array.isArray(players)) {
-      throw new Error(`Team "${name}" roster.${roleKey} is not an array.`);
+      throw new Error(t("rosterNotArray", { team: name, role: roleKey }));
     }
     parsedRoster[roleKey] = players.map((player, playerIndex) =>
-      parsePlayer(player, `Team "${name}" ${roleKey} player #${playerIndex + 1}`)
+      parsePlayer(
+        player,
+        t("teamPlayer", { team: name, role: roleKey, index: playerIndex + 1 }),
+        t
+      )
     );
   }
 
@@ -120,36 +137,37 @@ function parseTeam(raw: unknown, index: number, slotCodes: readonly string[]): I
  *
  * Import only loads a variant into the editor — it never writes tournament
  * teams, so Save / Export to Tournament stay explicit follow-up actions.
- * Throws with a message naming the offending field; the import dialog shows it
- * verbatim.
+ * Throws with a translated message naming the offending field; the import
+ * dialog shows it verbatim.
  */
 export function parseImportedBalancePayload(
   text: string,
   /** The owner game's slot codes (its role codes and the open slot): the buckets a file may carry. */
-  slotCodes: readonly string[]
+  slotCodes: readonly string[],
+  t: ImportTranslator
 ): InternalBalancePayload {
   let raw: unknown;
   try {
     raw = JSON.parse(text);
   } catch {
-    throw new Error("Selected file is not valid JSON.");
+    throw new Error(t("invalidJson"));
   }
 
   if (!isRecord(raw) || !Array.isArray(raw.teams)) {
-    throw new Error(`Balance JSON must contain a "teams" array. ${FORMAT_HINT}`);
+    throw new Error(t("missingTeams", { hint: t("formatHint", { shape: FORMAT_SHAPE }) }));
   }
   if (raw.teams.length === 0) {
-    throw new Error("Balance JSON contains no teams.");
+    throw new Error(t("noTeams"));
   }
 
   const payload: InternalBalancePayload = {
-    teams: raw.teams.map((team, index) => parseTeam(team, index, slotCodes)),
+    teams: raw.teams.map((team, index) => parseTeam(team, index, slotCodes, t)),
     statistics: isRecord(raw.statistics)
       ? (raw.statistics as InternalBalancePayload["statistics"])
       : undefined,
     benched_players: Array.isArray(raw.benched_players)
       ? raw.benched_players.map((player, index) =>
-          parsePlayer(player, `Benched player #${index + 1}`)
+          parsePlayer(player, t("benchedPlayer", { index: index + 1 }), t)
         )
       : []
   };

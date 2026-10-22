@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { DndContext, useDraggable, useDroppable, type DragEndEvent } from "@dnd-kit/core";
 import { GripVertical } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { EmptyNote } from "@/components/kit/EmptyNote";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +23,6 @@ import type { RoleOntology } from "@/lib/roster/ontology";
 import type { DivisionGrid } from "@/types/workspace.types";
 import {
   POOL_LANES,
-  POOL_LANE_LABELS,
   derivePoolLane,
   getPoolDropPatch,
   type PlayerValidationState,
@@ -57,12 +57,6 @@ const LANE_ACCENTS: Record<PoolLane, string> = {
   ready: "border-emerald-300/20 bg-emerald-500/[0.07]",
 };
 
-const LANE_COPY: Record<PoolLane, string> = {
-  excluded: "Drop here to remove from the run.",
-  needs_fix: "Included, but validation still needs attention.",
-  ready: "Included and ready for balancing.",
-};
-
 function isCardActionTarget(target: EventTarget | null): boolean {
   return target instanceof Element && target.closest("[data-card-action]") !== null;
 }
@@ -90,6 +84,7 @@ function TriagePlayerCard({
   onSetPoolMembership?: (playerId: number, isInPool: boolean) => unknown;
   onSetBalancerStatus?: (playerId: number, balancerStatus: string) => unknown;
 }>) {
+  const t = useTranslations("balancerTool.pool.triage");
   const lane = derivePoolLane(state);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `pool-player:${state.player.id}`,
@@ -122,7 +117,7 @@ function TriagePlayerCard({
             variant="subtle"
             size="icon-sm"
             data-card-action
-            aria-label="Drag player"
+            aria-label={t("drag")}
             className="shrink-0 cursor-grab touch-none text-[color:var(--aqt-fg-dim)] hover:text-[color:var(--aqt-fg)] active:cursor-grabbing"
             {...attributes}
             {...listeners}
@@ -160,6 +155,7 @@ function TriageLaneColumn({
   onSetPoolMembership?: (playerId: number, isInPool: boolean) => unknown;
   onSetBalancerStatus?: (playerId: number, balancerStatus: string) => unknown;
 }>) {
+  const t = useTranslations("balancerTool.pool");
   const { setNodeRef, isOver } = useDroppable({
     id: `pool-lane:${lane}`,
     data: { lane },
@@ -177,8 +173,8 @@ function TriageLaneColumn({
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-[color:var(--aqt-fg)]">{POOL_LANE_LABELS[lane]}</div>
-          <div className="mt-0.5 text-label text-[color:var(--aqt-fg-dim)]">{LANE_COPY[lane]}</div>
+          <div className="text-sm font-semibold text-[color:var(--aqt-fg)]">{t(`view.${lane}`)}</div>
+          <div className="mt-0.5 text-label text-[color:var(--aqt-fg-dim)]">{t(`triage.laneHint.${lane}`)}</div>
         </div>
         <Badge palette="aqt" tone="neutral" shape="pill" size="sm" className="tabular-nums">
           {states.length}
@@ -191,7 +187,7 @@ function TriageLaneColumn({
           // non-interactive `div` is what the design gate rejects. Subtrees
           // marked `data-card-action` (grip, pool toggle, status menu, copy
           // controls) keep their own clicks.
-          <ul aria-label={`${POOL_LANE_LABELS[lane]} players`} className="space-y-2 pr-2">
+          <ul aria-label={t("triage.laneList", { lane: t(`view.${lane}`) })} className="space-y-2 pr-2">
             {states.map((state) => (
               <li
                 key={state.player.id}
@@ -219,7 +215,7 @@ function TriageLaneColumn({
           </ul>
         ) : (
           <EmptyNote size="sm" className="py-8 text-center">
-            Drop players here
+            {t("triage.dropHere")}
           </EmptyNote>
         )}
       </ScrollArea>
@@ -241,6 +237,7 @@ export function PoolTriageBoard({
   onSetBalancerStatus,
   actionsDisabled = false,
 }: Readonly<PoolTriageBoardProps>) {
+  const t = useTranslations("balancerTool.pool.triage");
   const sensors = useDragSensors();
   const statesByLane = useMemo(
     () =>
@@ -278,9 +275,9 @@ export function PoolTriageBoard({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent variant="panel" className="h-[min(760px,calc(100vh-3rem))] w-[min(1180px,calc(100vw-2rem))] max-w-none">
         <DialogHeader variant="panel">
-          <DialogTitle className="text-base text-[color:var(--aqt-fg)]">Balancing Pool triage</DialogTitle>
+          <DialogTitle className="text-base text-[color:var(--aqt-fg)]">{t("title")}</DialogTitle>
           <DialogDescription className="text-xs text-[color:var(--aqt-fg-dim)]">
-            Drag players into Excluded to remove them from the run; excluded players come back through a balancer status change. Need Fix and Ready are computed from validation, so included players settle into the correct lane automatically.
+            {t("description")}
           </DialogDescription>
         </DialogHeader>
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>

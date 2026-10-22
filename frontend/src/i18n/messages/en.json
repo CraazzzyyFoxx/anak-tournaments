@@ -13185,6 +13185,696 @@
   },
   "balancerTool": {
     "title": "Balancer: {tournament}",
+    "pool": {
+      "noRoles": "No roles",
+      "edit": "Edit {name}",
+      "playerActions": "Player actions",
+      "view": {
+        "all": "All",
+        "ready": "Ready",
+        "needs_fix": "Need Fix",
+        "rank_delta": "Rank Δ",
+        "excluded": "Excluded"
+      },
+      "sidebar": {
+        "title": "Balancing Pool",
+        "railLabel": "Pool",
+        "playerCount": "{count} players",
+        "needFixCount": "{count} pooled players need fixes",
+        "expand": "Expand Balancing Pool sidebar",
+        "collapse": "Collapse Balancing Pool sidebar",
+        "settings": "Pool rank-delta settings",
+        "openTriage": "Open the triage board",
+        "searchLabel": "Search the Balancing Pool",
+        "searchPlaceholder": "Search handle or role",
+        "sortLabel": "Sort players",
+        "sort": {
+          "division_asc": "Highest division",
+          "division_desc": "Lowest division",
+          "name_asc": "Name A-Z",
+          "added_asc": "Oldest in pool",
+          "added_desc": "Newest in pool"
+        },
+        "filterLabel": "Filter the Balancing Pool",
+        "rankDeltaAnnounced": "Rank delta",
+        "selectedCount": "{count} selected",
+        "selectAll": "Select all {count}",
+        "include": "Include",
+        "clearSelection": "Clear selection",
+        "status": "Status",
+        "setStatus": "Set balancer status",
+        "shown": "{count} players shown",
+        "empty": {
+          "search": {
+            "title": "No players match this search",
+            "description": "Try another handle, role, or division."
+          },
+          "all": {
+            "title": "No players in the pool",
+            "description": "Open the Excluded filter and change a player's balancer status to include them."
+          },
+          "ready": {
+            "title": "No ready players yet",
+            "description": "Fix player conflicts or add ranked roles to start balancing."
+          },
+          "needs_fix": {
+            "title": "No players need fixes right now",
+            "description": "Every player in the pool is ready for the balancer."
+          },
+          "rank_delta": {
+            "title": "No rank gaps flagged",
+            "description": "No pooled player exceeds the configured rank-delta threshold."
+          },
+          "excluded": {
+            "title": "No excluded players",
+            "description": "Every player is currently included in the Balancing Pool."
+          }
+        }
+      },
+      "list": {
+        "label": "Pool players",
+        "select": "Select {name}",
+        "unselect": "Unselect {name}",
+        "addToSelection": "Add to selection",
+        "removeFromSelection": "Remove from selection"
+      },
+      "card": {
+        "exclude": "Exclude",
+        "excludeLabel": "Exclude {name} from the balancer",
+        "excludeTitle": "Exclude from balancer",
+        "ready": "Ready",
+        "editProfile": "Edit full profile"
+      },
+      "issues": {
+        "missingRankedRole": "No ranked roles",
+        "statusBlocksReady": "Blocks Ready",
+        "roleMismatch": "Role mismatch",
+        "deltaPoints": "Δ{delta} pts",
+        "noRoles": "None",
+        "message": {
+          "missingRankedRole": "No ranked roles configured",
+          "statusBlocksReady": "Current status blocks Ready",
+          "roleMismatch": "Application: {application}; balancer: {balancer}",
+          "rankDelta": "{role}: {current} → {ow} (Δ{delta} pts)"
+        }
+      },
+      "handles": {
+        "copy": "Copy Handle",
+        "copied": "{kind, select, handle {Handle} altHandle {Alt handle} altHandles {Alt handles} other {All handles}} copied",
+        "copyFailed": "Unable to copy the {kind, select, handle {Handle} altHandle {Alt handle} altHandles {Alt handles} other {All handles}}. Your browser blocked clipboard access — select the text and copy it manually.",
+        "showAlts": "Show alt handles",
+        "altCount": "{count} {count, plural, one {alt} other {alts}}",
+        "alts": "Alt handles",
+        "copyAllAlts": "Copy all alts",
+        "menuLabel": "Handles",
+        "copyMain": "Copy main handle",
+        "copyAll": "Copy all handles"
+      },
+      "triage": {
+        "title": "Balancing Pool triage",
+        "description": "Drag players into Excluded to remove them from the run; excluded players come back through a balancer status change. Need Fix and Ready are computed from validation, so included players settle into the correct lane automatically.",
+        "laneHint": {
+          "excluded": "Drop here to remove from the run.",
+          "needs_fix": "Included, but validation still needs attention.",
+          "ready": "Included and ready for balancing."
+        },
+        "laneList": "{lane} players",
+        "drag": "Drag player",
+        "dropHere": "Drop players here"
+      },
+      "roster": {
+        "scopeCaption": "Shared fallback — used only where nobody set their own rank for a tournament or mix.",
+        "highestRank": "Highest rank: {role} {rank}",
+        "noRanks": "No ranks yet",
+        "editRanks": "Edit ranks",
+        "added": "{handle} saved to the workspace",
+        "expand": "Expand workspace players sidebar",
+        "collapse": "Collapse workspace players sidebar",
+        "railLabel": "Players",
+        "railCount": "{count} workspace players",
+        "railUnit": "workspace players",
+        "loading": "Loading…",
+        "playerCount": "{count} {count, plural, one {player} other {players}}",
+        "addTrigger": "Add a workspace player",
+        "addBy": "Add by {provider} identity",
+        "addByGame": "Add by game identity",
+        "handleRequired": "Enter a {provider} handle, for example {example}.",
+        "addPlayer": "Add player",
+        "addHint": "Joins the workspace roster, so every tournament and mix here can pick them.",
+        "searchPlaceholder": "Search name or handle",
+        "searchLabel": "Search workspace players",
+        "clearSearchLabel": "Clear the player search",
+        "listStatusEmpty": "No workspace players shown",
+        "listStatus": "{range} workspace players shown",
+        "range": "{first}–{last} of {total}",
+        "refreshFailed": "Couldn’t refresh — showing the last loaded page.",
+        "loadFailed": "Unable to load workspace players",
+        "loadFailedHint": "Check your connection and try again.",
+        "noMatch": "No players match “{query}”",
+        "noMatchHint": "Try a different name or handle.",
+        "clearSearch": "Clear search",
+        "empty": "No workspace players yet",
+        "emptyHintEditor": "Add a player handle above to start the roster this workspace balances from.",
+        "emptyHintViewer": "Players added to this workspace will appear here.",
+        "listLabel": "Workspace players"
+      },
+      "sheet": {
+        "eyebrow": "Player ranks",
+        "scopeHint": "The shared fallback. A tournament or mix uses it only where nobody set their own rank.",
+        "rolesTitle": "Roles and ranks",
+        "rolesHint": "A role with no rank is a role the balancer will not seat them in. Clear one to drop it from this layer instead of pinning a number over it.",
+        "liveRank": "Live {game} rank"
+      }
+    },
+    "page": {
+      "layout": {
+        "loading": "Loading…",
+        "unauthorizedTitle": "Unauthorized",
+        "unauthorizedDescription": "The balancer workspace is available only to admins and tournament organizers.",
+        "unauthorizedContact": "Please contact an administrator if you believe this is an error.",
+        "goHome": "Go Home",
+        "noTournamentTitle": "No tournament selected",
+        "noTournamentDescription": "Open the balancer from a tournament, or manage workspace mixes.",
+        "openTournament": "Open a tournament",
+        "mixes": "Mixes"
+      },
+      "selectTournament": {
+        "title": "Select a tournament",
+        "description": "Open a tournament from the tournament hub to work with registrations and the Balancing Pool."
+      },
+      "counters": {
+        "pool": "Pool",
+        "ready": "Ready",
+        "needFix": "Need Fix",
+        "flex": "Flex"
+      },
+      "presets": {
+        "CUSTOM": "Custom",
+        "DEFAULT": "Standard",
+        "PREFERENCE_FOCUSED": "Preference Focused",
+        "COMBINED": "Combined",
+        "HIGH_QUALITY": "High Quality"
+      },
+      "run": {
+        "skipInvalid": "Skip {count} invalid",
+        "presetPlaceholder": "Preset",
+        "settings": "Settings",
+        "runBalance": "Run balance",
+        "loadJson": "Load balance JSON",
+        "loadJsonHint": "Load a balance JSON downloaded from this tool as a preview variant — nothing is written to the tournament",
+        "exportPlayers": "Export players",
+        "fullSnapshot": "Full snapshot",
+        "fullSnapshotHint": "Every role, rank source, division and roster shape — flex included.",
+        "solverInput": "Solver input (xv-1)",
+        "solverInputHint": "Playable roles only — what a balance job accepts as an upload.",
+        "includePrivate": "Include notes, custom fields and contacts",
+        "job": "Balance job"
+      },
+      "job": {
+        "status": {
+          "queued": "queued",
+          "running": "running",
+          "succeeded": "succeeded",
+          "failed": "failed"
+        },
+        "created": "Balance job created",
+        "queued": "Job queued",
+        "running": "Balancing teams…",
+        "completed": "Balance completed",
+        "failed": "Balance failed",
+        "resultFetchFailed": "Failed to fetch balance result",
+        "realtimeUnavailable": "Realtime updates unavailable",
+        "realtimeForbidden": "You don't have access to live balancer updates for this tournament."
+      },
+      "toasts": {
+        "settingsSaved": "Balancer settings saved",
+        "playersExported": "Players exported",
+        "playersExportedDescription": "{count, plural, one {# player} other {# players}} downloaded as {format}.",
+        "namesCopied": "Team names copied",
+        "namesCopyFailed": "Unable to copy the team names. Your browser blocked clipboard access — copy them from the balance instead.",
+        "registrationUpdated": "Registration updated",
+        "registrationExcluded": "Registration excluded from balancer",
+        "registrationReady": "Registration moved to Ready",
+        "registrationIncomplete": "Registration included in balancer, but marked Incomplete -- not every active role has a rank yet",
+        "statusUpdated": "Balancer status updated",
+        "bulkIncluded": "{count, plural, one {# registration} other {# registrations}} included",
+        "bulkExcluded": "{count, plural, one {# registration} other {# registrations}} excluded",
+        "bulkStatusUpdated": "{count, plural, one {# balancer status} other {# balancer statuses}} updated",
+        "balanceSaved": "Final balance saved",
+        "teamsExported": "Teams exported to tournament",
+        "teamsCreated": "{count} teams created.",
+        "ranksExported": "Ranks re-exported",
+        "ranksUpdated": "{count} player ranks updated.",
+        "ranksExportFailed": "Rank re-export failed",
+        "balanceImported": "Balance loaded from JSON",
+        "balanceImportedDescription": "{count} teams ready to review — save or export when it looks right."
+      },
+      "errors": {
+        "noTournament": "Select a tournament first",
+        "noBalance": "No balance selected",
+        "noTeams": "Selected balance does not contain teams",
+        "unresolvedIssues": "Resolve all pool player validation issues before balancing",
+        "noPlayers": "No players available to balance",
+        "rolesLoading": "The game's roles are still loading; try the import again in a moment",
+        "exportFailed": "Failed to export teams to the tournament",
+        "importFailed": "Failed to read the balance JSON",
+        "ratedDimensionUnknown": "The game's rated role dimension is not known yet"
+      },
+      "operation": {
+        "exportTitle": "Export to tournament",
+        "exportDescription": "Save the selected balance and create tournament teams from it.",
+        "exportSummary": "{imported} teams exported to the tournament. {removed} previously exported teams removed.",
+        "retryExport": "Retry export",
+        "importTitle": "Load balance JSON",
+        "importDescription": "Load a previously downloaded balance JSON as a preview variant. Nothing is written to the tournament until you save or export it.",
+        "importSummary": "{count} teams loaded from {file}. Review the balance, then save or export it to the tournament.",
+        "retryImport": "Retry import",
+        "advisories": "Export advisories",
+        "stepStatus": {
+          "pending": "Pending",
+          "running": "Running",
+          "succeeded": "Done",
+          "failed": "Failed"
+        },
+        "steps": {
+          "validate": {
+            "label": "Validate selected balance",
+            "description": "Check that the selected result can be exported."
+          },
+          "save": {
+            "label": "Save selected balance",
+            "description": "Persist the current teams before exporting them."
+          },
+          "export": {
+            "label": "Create tournament teams",
+            "description": "Replace previously exported teams and create tournament rosters."
+          },
+          "refresh": {
+            "label": "Refresh tournament data",
+            "description": "Update cached balance, team, standings, and public tournament views."
+          },
+          "read": {
+            "label": "Read JSON file",
+            "description": "Parse the file and check that it holds a balance payload."
+          },
+          "load": {
+            "label": "Load balance preview",
+            "description": "Add it to the variant list so it can be reviewed, saved or exported."
+          }
+        }
+      },
+      "variant": {
+        "saved": "Saved balance #{id}",
+        "generated": "Balance {index}",
+        "imported": "Imported {fileName}"
+      },
+      "variantSelector": {
+        "offRoleNone": "All players on first preference",
+        "offRoleMinimum": "Off-role {count} (structural minimum)",
+        "offRoleAboveMin": "Off-role {count} (+{above} above min)",
+        "stdDev": "StdDev",
+        "quality": "Composite quality score (lower = better)",
+        "delete": "Delete variant",
+        "deleteNamed": "Delete {label}",
+        "showAll": "Show all",
+        "allTitle": "All balances",
+        "allDescription": "Compare every generated variant and select one to load it into the editor."
+      },
+      "checklist": {
+        "poolStep": "Add players to pool",
+        "poolIncluded": "{count, plural, one {# player} other {# players}} included",
+        "poolEmpty": "Change a registration's balancer status to bring it into the pool",
+        "browseExcluded": "Browse excluded",
+        "issuesStep": "Resolve issues",
+        "issuesCount": "{count, plural, one {# player need fixes} other {# players need fixes}}",
+        "issuesNone": "All players are ready",
+        "reviewConflicts": "Review conflicts",
+        "runStep": "Run the balancer",
+        "runDetail": "Pick a preset above and generate team compositions"
+      },
+      "statusMenu": {
+        "noStatus": "No status",
+        "title": "Balancer status: {status}",
+        "label": "Balancer status",
+        "set": "Set balancer status"
+      },
+      "stats": {
+        "objectives": "balance={balance} comfort={comfort} (normalized 0..1)",
+        "quality": "Quality {score}",
+        "stdDevHint": "Standard deviation of team MMR — lower means the teams are closer together.",
+        "stdDev": "StdDev {value}",
+        "benchedHint": "{count} players did not make a team.",
+        "benched": "Benched {count}",
+        "collisionsHint": "{count} teams pair players with the same sub-role.",
+        "collisions": "Collisions {count}",
+        "poolAria": "Pool diagnostics: role supply, off-role floor, flex headroom",
+        "pool": "Pool",
+        "offRolePerfect": "All players assigned to their first preference.",
+        "offRoleMinimum": "{count} off-role assignments — structural minimum for this dataset (no balancer can do better).",
+        "offRoleCount": "{count} off-role assignments.",
+        "offRoleAboveMin": "{count} off-role assignments — {above} above the structural minimum of {min}.",
+        "offRole": "Off-role {count}",
+        "optimal": "optimal",
+        "offRoleFloor": "Off-role floor",
+        "offRoleFloorHint": "Forced by the pool — no balancer can go below this.",
+        "flexPlayers": "Flex players",
+        "collisionsLabel": "Sub-role collisions",
+        "benchedLabel": "Benched",
+        "roleSupply": "Role supply",
+        "flexSupply": "+{count}f",
+        "short": "short {count}",
+        "even": "even"
+      },
+      "presence": {
+        "viewing": "{count} viewing",
+        "more": "{count, plural, one {# more viewer} other {# more viewers}}"
+      },
+      "imageExport": {
+        "title": "Balance Images",
+        "description": "Preview, copy, or download readable team images.",
+        "downloadAll": "Download all",
+        "copyFull": "Copy full image",
+        "fullCopied": "Full image copied",
+        "generating": "Generating images...",
+        "failed": "Could not generate balance images.",
+        "failedToast": "Image export failed",
+        "copyUnavailable": "Clipboard image copy unavailable",
+        "image": "Image {index}",
+        "imageCopied": "Image {index} copied",
+        "imagePreview": "Image {index} preview",
+        "copy": "Copy",
+        "role": "Role",
+        "player": "Player",
+        "rank": "Rank",
+        "prefs": "Prefs",
+        "emptyRole": "Empty {role}",
+        "division": "Division {division}"
+      },
+      "distribution": {
+        "title": "Team distribution",
+        "avg": "Avg",
+        "spread": "Spread",
+        "range": "Range",
+        "expand": "Expand team distribution chart",
+        "collapse": "Collapse team distribution chart",
+        "teamsBucket": "Teams {ids} — avg {average}",
+        "teamBucket": "Team {id} — avg {average}"
+      },
+      "importErrors": {
+        "formatHint": "Expected the internal balance format written by \"Download JSON\": {shape}.",
+        "teamPlayer": "Team \"{team}\" {role} player #{index}",
+        "benchedPlayer": "Benched player #{index}",
+        "notObject": "{where} is not an object. {hint}",
+        "missingUuid": "{where} is missing \"uuid\".",
+        "missingName": "{where} is missing \"name\".",
+        "missingRating": "{where} is missing a numeric \"assigned_rating\". {hint}",
+        "teamNotObject": "Team #{index} is not an object. {hint}",
+        "teamMissingName": "Team #{index} is missing \"name\".",
+        "teamMissingRoster": "Team \"{team}\" is missing a \"roster\" object. {hint}",
+        "unsupportedRole": "Team \"{team}\" has an unsupported roster role \"{role}\". Use {codes}.",
+        "rosterNotArray": "Team \"{team}\" roster.{role} is not an array.",
+        "invalidJson": "Selected file is not valid JSON.",
+        "missingTeams": "Balance JSON must contain a \"teams\" array. {hint}",
+        "noTeams": "Balance JSON contains no teams."
+      }
+    },
+    "playerEdit": {
+      "sheet": {
+        "flex": "Flex",
+        "description": "Roles, ratings, and balancer participation.",
+        "balancerStatus": "Balancer status",
+        "ready": "Ready",
+        "incomplete": "Incomplete",
+        "flexPlayer": "Flex player",
+        "roles": "Roles",
+        "rank": "Rank",
+        "addRole": "Add role",
+        "loadFromHistory": "Load from history",
+        "onlyThisTournament": "Only this tournament",
+        "useWorkspaceRank": "Use workspace rank",
+        "liveRank": "Live {game} rank",
+        "adminNotes": "Admin notes",
+        "notesPlaceholder": "Notes about availability, role comfort, or balancing caveats.",
+        "registrationStatus": "Registration status",
+        "selectRegistrationStatus": "Select registration status",
+        "selectBalancerStatus": "Select balancer status",
+        "systemOption": "{name} · System",
+        "customOption": "{name} · Custom",
+        "computedOption": "{status} · Computed",
+        "statusHint": "Ready/Incomplete are computed from role ranks. Pick Excluded to pull this player from the pool.",
+        "moveToReady": "Move to ready",
+        "moveToReadyHint": "Saves your pending edits, then recomputes this player's balancer status from their current role ranks",
+        "footerHint": "Manual edits always win until you explicitly load and apply new history values."
+      },
+      "role": {
+        "reorder": "Reorder {role}",
+        "enable": "Enable role",
+        "disable": "Disable role",
+        "active": "Active",
+        "off": "Off",
+        "remove": "Remove {role}",
+        "subRole": "Sub-role",
+        "noSubRole": "No sub-role",
+        "source": {
+          "registration": "registration",
+          "workspace": "workspace",
+          "native": "native"
+        },
+        "liveUse": "Use",
+        "liveMatches": "Matches",
+        "liveApply": "Apply",
+        "applyLive": "Apply live {game} rank ({value})",
+        "applyLiveDivision": "Apply live {game} rank: {division} ({value})",
+        "noLiveRank": "No live {game} rank"
+      },
+      "rank": {
+        "skillRating": "Skill rating",
+        "noRank": "No rank",
+        "clear": "Clear",
+        "clearHint": "Clear this role's rank",
+        "rank": "Rank",
+        "noRankYet": "No rank yet"
+      },
+      "history": {
+        "title": "History preview",
+        "average": "Avg {value}",
+        "apply": "Apply history values",
+        "close": "Close history preview",
+        "loadFailed": "Failed to load player history.",
+        "empty": "No ranked tournament history was found for this player.",
+        "loadFrom": "Load history from:",
+        "selectWorkspace": "Select workspace",
+        "currentWorkspace": "Current Workspace",
+        "allWorkspaces": "All Workspaces",
+        "sr": "{value} SR",
+        "sourceRole": "Source role: {role}",
+        "change": {
+          "add": "Will add this role with {next}.",
+          "set": "Will set {next} on the existing role.",
+          "matches": "Matches the current SR ({current}).",
+          "replace": "Current {current} -> new {next}."
+        }
+      },
+      "config": {
+        "title": "Balancer settings",
+        "description": "Active preset: {preset}. Changes are saved for this tournament.",
+        "groups": {
+          "algorithm": "Algorithm",
+          "qualityWeights": "Quality weights",
+          "strategy": "Strategy",
+          "solverOutput": "Solver output"
+        },
+        "balance": "balance",
+        "comfort": "comfort",
+        "default": "Default: {value}",
+        "limit": "Limit: {min} - {max}",
+        "unsaved": "Unsaved settings will be saved before the next run.",
+        "saved": "Settings are saved.",
+        "save": "Save settings",
+        "fields": {
+          "population_size": {
+            "label": "Population size",
+            "description": "Number of candidate balances kept per generation. Higher values improve search coverage and cost more time."
+          },
+          "generation_count": {
+            "label": "Generations",
+            "description": "Maximum optimization iterations. Higher values can improve quality and increase runtime."
+          },
+          "mutation_rate": {
+            "label": "Mutation rate",
+            "description": "Probability that a solution is changed while producing the next generation."
+          },
+          "mutation_strength": {
+            "label": "Mutation strength",
+            "description": "Number of swap/change operations attempted during a mutation."
+          },
+          "average_mmr_balance_weight": {
+            "label": "Average MMR balance",
+            "description": "Penalty weight for differences between team average MMR values."
+          },
+          "team_total_balance_weight": {
+            "label": "Team total consistency",
+            "description": "Penalty weight for standard deviation of total team rating sums."
+          },
+          "max_team_gap_weight": {
+            "label": "Max team gap",
+            "description": "Penalty weight for the rating gap between the strongest and weakest teams."
+          },
+          "role_discomfort_weight": {
+            "label": "Role discomfort",
+            "description": "Penalty weight for assigning players away from their preferred roles."
+          },
+          "max_role_discomfort_weight": {
+            "label": "Worst discomfort",
+            "description": "Penalty weight for the single worst role discomfort assignment in a solution."
+          },
+          "role_line_balance_weight": {
+            "label": "Role line balance",
+            "description": "Penalty weight for uneven rating strength between the same role across teams."
+          },
+          "intra_team_std_weight": {
+            "label": "Intra-team rating std",
+            "description": "Weight for the standard deviation of ratings inside each team. Higher values push the optimizer to spread top players across teams."
+          },
+          "internal_role_spread_weight": {
+            "label": "Internal role spread",
+            "description": "Penalty weight for uneven average strength between roles inside the same team."
+          },
+          "sub_role_collision_weight": {
+            "label": "Subrole collision",
+            "description": "Penalty weight per pair of players in the same team sharing the same role subclass, normalized per team count. Use 0 to disable."
+          },
+          "low_rank_threshold": {
+            "label": "Low-rank threshold",
+            "description": "Players whose best role rating is at or below this value (canonical scale, see rating_scale_ceiling) count as low-rank; teams with two or more of them get penalized. 0 disables the mechanic."
+          },
+          "low_rank_collision_weight": {
+            "label": "Low-rank pair penalty",
+            "description": "Penalty weight per pair of low-rank players in the same team, normalized per team count. Discourages stacking two low-rank players together."
+          },
+          "team_max_pain_weight": {
+            "label": "Per-team worst discomfort",
+            "description": "Penalty weight for the per-team maximum role discomfort averaged over all teams. Makes 'one suffering player in every team' visible, unlike the single global maximum."
+          },
+          "rank_comfort_tilt": {
+            "label": "Rank tilt (balance <-> comfort)",
+            "description": "Shifts how result variants are ranked: 0.5 weighs team balance (StdDev) and comfort (off-role) equally; toward 1 prioritises comfort/off-role, toward 0 prioritises balance. Ordering and primary selection only — does not change the optimizer search."
+          },
+          "role_settings": {
+            "label": "Role weights",
+            "description": "Per-role weights keyed by roster slot code: how much a role counts towards a team's effective total, and how hard uneven lines of it are penalized."
+          },
+          "open_slot_settings": {
+            "label": "Open slot weights",
+            "description": "Weights of open slots without a role constraint."
+          },
+          "effective_total_std_weight": {
+            "label": "Effective total std",
+            "description": "Penalty multiplier for weighted effective team-total standard deviation."
+          },
+          "use_captains": {
+            "label": "Use captains",
+            "description": "Marks top-rated players as captains and uses them as team anchors when supported by the solver."
+          },
+          "convergence_patience": {
+            "label": "Convergence patience",
+            "description": "Generations without meaningful Pareto improvement before early stopping can trigger."
+          },
+          "convergence_epsilon": {
+            "label": "Convergence epsilon",
+            "description": "Minimum relative improvement required to continue once convergence patience is reached."
+          },
+          "mutation_rate_min": {
+            "label": "Mutation rate min",
+            "description": "Lower bound for the adaptive mutation rate during Rust MOO search."
+          },
+          "mutation_rate_max": {
+            "label": "Mutation rate max",
+            "description": "Upper bound for the adaptive mutation rate during Rust MOO search."
+          },
+          "island_count": {
+            "label": "Island count",
+            "description": "Number of independent Rust MOO islands explored in parallel before merging the archive."
+          },
+          "polish_max_passes": {
+            "label": "Polish passes",
+            "description": "Maximum local-improvement passes applied to each archive solution after the main search."
+          },
+          "greedy_seed_count": {
+            "label": "Greedy seed count",
+            "description": "How many initial individuals are built with greedy seeding before random fill."
+          },
+          "stagnation_kick_patience": {
+            "label": "Stagnation kick",
+            "description": "Generations without archive improvement before stronger mutation and crossover are applied."
+          },
+          "crossover_rate": {
+            "label": "Crossover rate",
+            "description": "Probability of crossover when producing offspring in the Rust MOO search."
+          },
+          "time_limit_ms": {
+            "label": "Time limit (ms)",
+            "description": "Hard wall-clock budget for the optimizer in milliseconds. When exceeded, evolution and polishing stop early and the best result found so far is returned. Trades same-seed reproducibility for latency."
+          },
+          "max_result_variants": {
+            "label": "Result variants",
+            "description": "Maximum number of solution variants returned by the selected solver."
+          }
+        },
+        "columns": {
+          "impact": {
+            "label": "Impact",
+            "description": "Importance multiplier for this role's contribution when comparing effective team totals."
+          },
+          "line_gap_weight": {
+            "label": "Line gap",
+            "description": "Penalty multiplier for the largest gap between adjacent (sorted by strength) lines of this role."
+          },
+          "line_std_weight": {
+            "label": "Line spread",
+            "description": "Penalty multiplier for this role's line-strength standard deviation across teams."
+          }
+        }
+      },
+      "workspaceConfig": {
+        "title": "Workspace balancer settings",
+        "description": "How players with a large gap between their system rank and the game's own ladder rank appear in the pool, and where every mix in this workspace posts its matchup.",
+        "threshold": "Rank delta threshold",
+        "thresholdHint": "(rank points, empty = disabled)",
+        "thresholdPlaceholder": "e.g. 500",
+        "hideFromPool": "Hide from pool",
+        "hideFromPoolHint": "When on, players above the threshold are removed from the pool view. When off, they get a warning badge only.",
+        "mixChannel": "Mix Discord channel",
+        "mixChannelHint": "(where every mix posts its matchup)",
+        "noChannel": "No channel",
+        "clear": "Clear",
+        "adminHint": "Hosts post here by default. A single mix can be pointed elsewhere from its own settings, but only by a workspace admin.",
+        "viewerHint": "Set by workspace admins. Every mix here posts its matchup to this channel.",
+        "saved": "Workspace settings saved.",
+        "saveFailed": "Could not save the workspace settings"
+      }
+    },
+    "editor": {
+      "empty": "Run the balancer to edit teams.",
+      "unassigned": "Unassigned",
+      "teamHeader": {
+        "total": "Total:",
+        "average": "Avg:"
+      },
+      "columns": {
+        "role": "Role",
+        "player": "Player",
+        "rank": "Rank",
+        "prefs": "Prefs"
+      },
+      "remoteDrag": {
+        "unknownUser": "User #{id}",
+        "moving": "moving",
+        "player": "player"
+      },
+      "offRole": "Off-role: assigned {role}",
+      "dropHere": "Drop {role} here"
+    },
     "topBar": {
       "back": "Tournament hub",
       "autofill": "Rank autofill"

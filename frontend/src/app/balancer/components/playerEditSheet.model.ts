@@ -68,23 +68,24 @@ export function applyHistoryPreviewToRoleEntries(
   return normalizeRoleEntries(Array.from(byRole.values()));
 }
 
-export function buildHistoryChangeText(
+/** What applying a history entry would do to the role: the `history.change.*` message the preview card reads. */
+export function historyChangeKind(
   currentEntry: BalancerPlayerRoleEntry | undefined,
   historyEntry: PlayerRankHistoryPreviewEntry
-): string {
+): "add" | "set" | "matches" | "replace" {
   if (!currentEntry) {
-    return `Will add this role with ${historyEntry.rank_value}.`;
+    return "add";
   }
 
   if (currentEntry.rank_value == null) {
-    return `Will set ${historyEntry.rank_value} on the existing role.`;
+    return "set";
   }
 
   if (currentEntry.rank_value === historyEntry.rank_value) {
-    return `Matches the current SR (${currentEntry.rank_value}).`;
+    return "matches";
   }
 
-  return `Current ${currentEntry.rank_value} -> new ${historyEntry.rank_value}.`;
+  return "replace";
 }
 
 /**

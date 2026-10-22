@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle2, Circle, RotateCcw } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,13 +47,6 @@ function OperationStepIcon({ status }: Readonly<{ status: BalancerOperationStepS
   return <Circle className="h-4 w-4 text-muted-foreground/55" />;
 }
 
-function getStatusLabel(status: BalancerOperationStepStatus): string {
-  if (status === "running") return "Running";
-  if (status === "succeeded") return "Done";
-  if (status === "failed") return "Failed";
-  return "Pending";
-}
-
 export function BalancerOperationDialog({
   open,
   onOpenChange,
@@ -63,9 +57,11 @@ export function BalancerOperationDialog({
   summary,
   advisories,
   error,
-  retryLabel = "Retry",
+  retryLabel,
   onRetry
 }: Readonly<BalancerOperationDialogProps>) {
+  const t = useTranslations("balancerTool.page.operation");
+  const tCommon = useTranslations("common");
   const completedSteps = steps.filter((step) => step.status === "succeeded").length;
   const progress = steps.length > 0 ? (completedSteps / steps.length) * 100 : 0;
 
@@ -104,14 +100,14 @@ export function BalancerOperationDialog({
                     <OperationStepIcon status={step.status} />
                   </div>
                   <div className="min-w-0">
-                    <div className="text-sm font-medium">{step.label}</div>
-                    {step.description ? (
-                      <div className="mt-0.5 text-xs text-muted-foreground">{step.description}</div>
-                    ) : null}
+                    <div className="text-sm font-medium">{t(`steps.${step.id}.label`)}</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      {t(`steps.${step.id}.description`)}
+                    </div>
                   </div>
                 </div>
                 <Badge variant="outline" className="shrink-0">
-                  {getStatusLabel(step.status)}
+                  {t(`stepStatus.${step.status}`)}
                 </Badge>
               </div>
             ))}
@@ -128,7 +124,7 @@ export function BalancerOperationDialog({
               <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
                 <div className="flex items-center gap-2 font-medium">
                   <AlertTriangle className="h-4 w-4" aria-hidden />
-                  Export advisories
+                  {t("advisories")}
                 </div>
                 <ul className="mt-2 list-disc space-y-1 pl-5">
                   {advisories.map((advisory, index) => <li key={index}>{advisory}</li>)}
@@ -148,11 +144,11 @@ export function BalancerOperationDialog({
           {error && onRetry ? (
             <Button type="button" variant="outline" onClick={onRetry}>
               <RotateCcw className="mr-2 h-4 w-4" />
-              {retryLabel}
+              {retryLabel ?? tCommon("retry")}
             </Button>
           ) : null}
           <Button type="button" onClick={() => onOpenChange(false)} disabled={isRunning}>
-            Close
+            {tCommon("close")}
           </Button>
         </DialogFooter>
       </DialogContent>

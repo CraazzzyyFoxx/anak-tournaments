@@ -2,6 +2,7 @@
 
 import Image from "@/components/ui/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { AlertCircle, Copy, Download, Images } from "lucide-react";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -59,7 +60,6 @@ type TeamChunk = {
 
 type GeneratedImage = {
   id: string;
-  label: string;
   blob: Blob;
   url: string;
 };
@@ -93,6 +93,7 @@ export function BalanceImageExportDialog({
   ontology,
   tournamentId
 }: Readonly<BalanceImageExportDialogProps>) {
+  const t = useTranslations("balancerTool.page.imageExport");
   const chunkRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const fullImageRef = useRef<HTMLDivElement | null>(null);
   const [images, setImages] = useState<GeneratedImage[]>([]);
@@ -142,7 +143,7 @@ export function BalanceImageExportDialog({
 
         const nextImages: GeneratedImage[] = [];
 
-        for (const [index, chunk] of chunks.entries()) {
+        for (const chunk of chunks) {
           const node = chunkRefs.current[chunk.id];
           if (!node) {
             throw new Error("Image export node is unavailable");
@@ -153,12 +154,7 @@ export function BalanceImageExportDialog({
           const url = URL.createObjectURL(blob);
           objectUrls.push(url);
 
-          nextImages.push({
-            id: chunk.id,
-            label: `Image ${index + 1}`,
-            blob,
-            url
-          });
+          nextImages.push({ id: chunk.id, blob, url });
         }
 
         if (!fullImageRef.current) {
@@ -179,8 +175,8 @@ export function BalanceImageExportDialog({
         objectUrls.forEach((url) => URL.revokeObjectURL(url));
 
         if (!cancelled) {
-          setError("Could not generate balance images.");
-          notify.error("Image export failed");
+          setError(t("failed"));
+          notify.error(t("failedToast"));
         }
       } finally {
         if (!cancelled) {
@@ -194,16 +190,19 @@ export function BalanceImageExportDialog({
     return () => {
       cancelled = true;
     };
-  }, [chunks, clearGeneratedImages, open, payload]);
+  }, [chunks, clearGeneratedImages, open, payload, t]);
 
-  const handleCopyImage = useCallback(async (blob: Blob, title: string) => {
-    try {
-      await copyImageBlob(blob);
-      notify.success(title);
-    } catch {
-      notify.error("Clipboard image copy unavailable");
-    }
-  }, []);
+  const handleCopyImage = useCallback(
+    async (blob: Blob, title: string) => {
+      try {
+        await copyImageBlob(blob);
+        notify.success(title);
+      } catch {
+        notify.error(t("copyUnavailable"));
+      }
+    },
+    [t]
+  );
 
   const handleDownloadAll = useCallback(() => {
     images.forEach((image, index) => {
@@ -223,10 +222,10 @@ export function BalanceImageExportDialog({
               <div>
                 <DialogTitle className="flex items-center gap-2 text-base font-semibold text-[color:var(--aqt-fg)]">
                   <Images className="h-4 w-4 text-cyan-200" />
-                  Balance Images
+                  {t("title")}
                 </DialogTitle>
                 <DialogDescription className="mt-1 text-xs text-[color:var(--aqt-fg-dim)]">
-                  Preview, copy, or download readable team images.
+                  {t("description")}
                 </DialogDescription>
               </div>
 
@@ -240,7 +239,7 @@ export function BalanceImageExportDialog({
                   disabled={isGenerating || images.length === 0}
                 >
                   <Download className="h-4 w-4" />
-                  Download all
+                  {t("downloadAll")}
                 </Button>
                 <Button
                   type="button"
@@ -249,13 +248,13 @@ export function BalanceImageExportDialog({
                   className={MUTED_BUTTON_CLASS}
                   onClick={() => {
                     if (fullImageBlob) {
-                      void handleCopyImage(fullImageBlob, "Full image copied");
+                      void handleCopyImage(fullImageBlob, t("fullCopied"));
                     }
                   }}
                   disabled={isGenerating || !fullImageBlob}
                 >
                   <Copy className="h-4 w-4" />
-                  Copy full image
+                  {t("copyFull")}
                 </Button>
               </div>
             </div>
@@ -265,7 +264,7 @@ export function BalanceImageExportDialog({
             {isGenerating ? (
               <div className="flex min-h-64 items-center justify-center rounded-2xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] text-sm text-[color:var(--aqt-fg-muted)]">
                 <Spinner className="mr-2" />
-                Generating images...
+                {t("generating")}
               </div>
             ) : null}
 
@@ -282,7 +281,7 @@ export function BalanceImageExportDialog({
                   <Card key={image.id} variant="flat" className="overflow-hidden">
                     <div className="flex items-center justify-between gap-3 border-b border-[color:var(--aqt-border)] px-3 py-2.5">
                       <Eyebrow as="div" tone="muted">
-                        {image.label}
+                        {t("image", { index: index + 1 })}
                       </Eyebrow>
                       <Button
                         type="button"
@@ -290,17 +289,17 @@ export function BalanceImageExportDialog({
                         size="sm"
                         className={MUTED_BUTTON_CLASS}
                         onClick={() =>
-                          void handleCopyImage(image.blob, `Image ${index + 1} copied`)
+                          void handleCopyImage(image.blob, t("imageCopied", { index: index + 1 }))
                         }
                       >
                         <Copy className="h-4 w-4" />
-                        Copy
+                        {t("copy")}
                       </Button>
                     </div>
                     <div className="bg-background p-2">
                       <Image
                         src={image.url}
-                        alt={`${image.label} preview`}
+                        alt={t("imagePreview", { index: index + 1 })}
                         width={EXPORT_WIDTH}
                         height={720}
                         unoptimized
@@ -396,6 +395,7 @@ function BalanceExportTeamCard({
   bucketKeys: BalancerRosterKey[];
   ontology: RoleOntology | null;
 }>) {
+  const t = useTranslations("balancerTool.page.imageExport");
   const slotLabel = useSlotLabel(ontology);
 
   return (
@@ -406,16 +406,16 @@ function BalanceExportTeamCard({
         <thead>
           <tr className="border-b border-[color:var(--aqt-border)]">
             <th className={cn(eyebrowClass("dim"), "h-8 w-13 px-4 text-left align-middle")}>
-              Role
+              {t("role")}
             </th>
             <th className={cn(eyebrowClass("dim"), "h-8 min-w-45 px-0 text-left align-middle")}>
-              Player
+              {t("player")}
             </th>
             <th className={cn(eyebrowClass("dim"), "h-8 w-18 px-2 text-center align-middle")}>
-              Rank
+              {t("rank")}
             </th>
             <th className={cn(eyebrowClass("dim"), "h-8 w-22 px-3 text-center align-middle")}>
-              Prefs
+              {t("prefs")}
             </th>
           </tr>
         </thead>
@@ -473,7 +473,7 @@ function BalanceExportTeamCard({
                   colSpan={4}
                   className={cn(eyebrowClass(), "px-3 py-2.5 text-center")}
                 >
-                  Empty {slotLabel(roleKey).toLowerCase()}
+                  {t("emptyRole", { role: slotLabel(roleKey).toLowerCase() })}
                 </td>
               </tr>
             ) : null}
@@ -485,6 +485,7 @@ function BalanceExportTeamCard({
 }
 
 function ExportDivisionIcon({ divisionGrid, rank }: Readonly<{ divisionGrid: DivisionGrid; rank: number }>) {
+  const t = useTranslations("balancerTool.page.imageExport");
   const division = resolveDivisionFromRank(divisionGrid, rank);
   const src = getDivisionIconSrc(divisionGrid, division);
   const label = getDivisionLabel(divisionGrid, division);
@@ -498,7 +499,7 @@ function ExportDivisionIcon({ divisionGrid, rank }: Readonly<{ divisionGrid: Div
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
-        alt={label ?? `Division ${division}`}
+        alt={label ?? t("division", { division })}
         width={26}
         height={26}
         loading="eager"

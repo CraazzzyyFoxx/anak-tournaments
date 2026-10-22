@@ -2,6 +2,7 @@
 
 import { forwardRef, type CSSProperties, type ReactNode } from "react";
 import { Pencil, ShieldX } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { HandleLabel } from "@/components/HandleLabel";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -37,7 +38,7 @@ import {
   HandleContextMenuItems,
   HandleCopyButton
 } from "./HandleCopyControls";
-import { IssueChip, issueChipKey } from "./IssueChip";
+import { IssueChip, issueChipKey, useIssueMessage } from "./IssueChip";
 
 export type PoolPlayerCardProps = {
   player: BalancerPlayerRecord;
@@ -94,6 +95,9 @@ export const PoolPlayerCard = forwardRef<HTMLDivElement, PoolPlayerCardProps>(
     },
     ref
   ) {
+    const t = useTranslations("balancerTool.pool");
+    const tCommon = useTranslations("common");
+    const issueMessage = useIssueMessage();
     // The Ready lane's rule: an advisory rank-delta warning does not block it.
     const isReady = player.is_in_pool && !hasBlockingIssues(issues);
     const sortedEntries = [...player.role_entries_json].sort(
@@ -107,7 +111,7 @@ export const PoolPlayerCard = forwardRef<HTMLDivElement, PoolPlayerCardProps>(
       .filter((roleCode, index, all) => all.indexOf(roleCode) === index);
     const primaryEntry = rankedEntries[0] ?? sortedEntries[0] ?? null;
     const primaryRole = primaryEntry?.role ?? null;
-    const issueSummary = issues.map((issue) => issue.message).join(" | ");
+    const issueSummary = issues.map(issueMessage).join(" | ");
     const handles = [player.identity, ...player.additional_handles];
     const onStatusChange = registration
       ? (status: string) => onSetBalancerStatus?.(player.id, status)
@@ -133,12 +137,12 @@ export const PoolPlayerCard = forwardRef<HTMLDivElement, PoolPlayerCardProps>(
             variant="subtle"
             size={isCard ? "xs" : "icon-sm"}
             disabled={actionsDisabled || !onSetPoolMembership}
-            aria-label={`Exclude ${player.identity} from the balancer`}
-            title="Exclude from balancer"
+            aria-label={t("card.excludeLabel", { name: player.identity })}
+            title={t("card.excludeTitle")}
             onClick={() => onSetPoolMembership?.(player.id, false)}
           >
             <ShieldX aria-hidden="true" />
-            {isCard ? "Exclude" : null}
+            {isCard ? t("card.exclude") : null}
           </Button>
         ) : null}
       </>
@@ -179,7 +183,7 @@ export const PoolPlayerCard = forwardRef<HTMLDivElement, PoolPlayerCardProps>(
                       </span>
                     ) : (
                       <span className="shrink-0 text-label text-[color:var(--aqt-fg-dim)]">
-                        No roles
+                        {t("noRoles")}
                       </span>
                     )}
                     <Button
@@ -188,7 +192,7 @@ export const PoolPlayerCard = forwardRef<HTMLDivElement, PoolPlayerCardProps>(
                       size="inline"
                       data-card-action
                       onClick={() => onSelectPlayer?.(player.id)}
-                      title={`Edit ${player.identity}`}
+                      title={t("edit", { name: player.identity })}
                       className="min-w-0 justify-start"
                     >
                       <HandleLabel
@@ -241,19 +245,18 @@ export const PoolPlayerCard = forwardRef<HTMLDivElement, PoolPlayerCardProps>(
                         voice="label"
                         className="[--badge-hue:var(--aqt-violet)]"
                       >
-                        Flex
+                        {tCommon("roles.flex")}
                       </Badge>
                     ) : null}
                     {isReady ? (
                       <Badge palette="aqt" tone="success" shape="pill" size="sm" voice="label">
-                        Ready
+                        {t("card.ready")}
                       </Badge>
                     ) : null}
                     {issues.map((issue) => (
                       <IssueChip
                         key={`${player.id}-${issueChipKey(issue)}`}
                         issue={issue}
-                        ontology={ontology}
                         divisionGrid={divisionGrid}
                       />
                     ))}
@@ -272,10 +275,10 @@ export const PoolPlayerCard = forwardRef<HTMLDivElement, PoolPlayerCardProps>(
           </Card>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-56">
-          <ContextMenuLabel>Player actions</ContextMenuLabel>
+          <ContextMenuLabel>{t("playerActions")}</ContextMenuLabel>
           <ContextMenuItem onClick={() => onSelectPlayer?.(player.id)}>
             <Pencil className="h-4 w-4" />
-            Edit full profile
+            {t("card.editProfile")}
           </ContextMenuItem>
           <HandleContextMenuItems handles={handles} />
           {onSetPoolMembership && player.is_in_pool ? (
@@ -286,7 +289,7 @@ export const PoolPlayerCard = forwardRef<HTMLDivElement, PoolPlayerCardProps>(
                 onClick={() => onSetPoolMembership(player.id, false)}
               >
                 <ShieldX className="h-4 w-4" />
-                Exclude from balancer
+                {t("card.excludeTitle")}
               </ContextMenuItem>
             </>
           ) : null}

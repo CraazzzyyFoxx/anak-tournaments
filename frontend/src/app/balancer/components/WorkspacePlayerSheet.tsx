@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { HandleCopyButton } from "@/app/balancer/components/HandleCopyControls";
 import { HandleLabel } from "@/components/HandleLabel";
 import {
@@ -25,12 +27,6 @@ import { registrationRoles, type RoleOntology } from "@/lib/roster/ontology";
 import type { RosterMember } from "@/services/workspace-player.service";
 import type { DisciplineMetadata } from "@/types/discipline.types";
 import type { DivisionGrid } from "@/types/workspace.types";
-
-// The panel that mounts this sheet only ever reads/writes the workspace
-// canon (`WorkspacePlayersSidebar`'s sole caller is the tournament balancer
-// page); the per-mix "author" layer has its own sheet (`PickupPlayerSheet`).
-const SCOPE_HINT =
-  "The shared fallback. A tournament or mix uses it only where nobody set their own rank.";
 
 type WorkspacePlayerSheetProps = {
   /** `null` closes the sheet — the caller holds the row being edited. */
@@ -73,6 +69,7 @@ export function WorkspacePlayerSheet({
   onOpenChange,
   onSaveRank,
 }: Readonly<WorkspacePlayerSheetProps>) {
+  const t = useTranslations("balancerTool.pool.sheet");
   const label = member ? member.display_name || member.identity?.handle || `#${member.member_id}` : "";
   // Only a game that collects native ranks has a live rank to show.
   const nativeRankName = ontology?.discipline.capabilities.native_rank_collection ? ontology.discipline.name : null;
@@ -85,15 +82,18 @@ export function WorkspacePlayerSheet({
         className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-[560px]"
       >
         <SheetHeader className="space-y-0 border-b border-[color:var(--aqt-border)] px-5 pb-4 pt-5 text-left">
-          <Eyebrow tone="dim">Player ranks</Eyebrow>
+          <Eyebrow tone="dim">{t("eyebrow")}</Eyebrow>
           <SheetTitle className="flex items-baseline gap-1.5 pt-1.5 font-display text-xl">
             <HandleLabel handle={label} tagClassName="text-caption" />
             {member?.identity?.handle ? (
               <HandleCopyButton handle={member.identity.handle} className="ml-0.5 shrink-0" />
             ) : null}
           </SheetTitle>
+          {/* The panel that mounts this sheet only ever reads/writes the workspace
+              canon (`WorkspacePlayersSidebar`'s sole caller is the tournament balancer
+              page); the per-mix "author" layer has its own sheet (`PickupPlayerSheet`). */}
           <SheetDescription className="pt-1 text-caption text-[color:var(--aqt-fg-dim)]">
-            {SCOPE_HINT}
+            {t("scopeHint")}
           </SheetDescription>
         </SheetHeader>
 
@@ -102,11 +102,10 @@ export function WorkspacePlayerSheet({
             <section className="space-y-2 border-b border-[color:var(--aqt-border)] px-5 py-4">
               <div>
                 <h3 className="text-caption font-medium text-[color:var(--aqt-fg)]">
-                  Roles and ranks
+                  {t("rolesTitle")}
                 </h3>
                 <p className="mt-0.5 text-xs text-[color:var(--aqt-fg-dim)]">
-                  A role with no rank is a role the balancer will not seat them in. Clear one to
-                  drop it from this layer instead of pinning a number over it.
+                  {t("rolesHint")}
                 </p>
               </div>
 
@@ -137,7 +136,7 @@ export function WorkspacePlayerSheet({
             {nativeRankName !== null && member.identity?.handle ? (
               <section className="space-y-2 px-5 py-4">
                 <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
-                  Live {nativeRankName} rank
+                  {t("liveRank", { game: nativeRankName })}
                 </Label>
                 <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
                   <RankHistory battleTag={member.identity.handle} discipline={discipline} />

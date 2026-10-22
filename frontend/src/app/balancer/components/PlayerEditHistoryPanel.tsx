@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -22,7 +23,7 @@ import type { DivisionGrid } from "@/types/workspace.types";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import type { RoleOntology } from "@/lib/roster/ontology";
 
-import { buildHistoryChangeText } from "./playerEditSheet.model";
+import { historyChangeKind } from "./playerEditSheet.model";
 import { AccentBadge, accentRowStyle, accentTextStyle, roleRankAccent } from "./RoleRankControls";
 import type { PlayerRankHistoryState } from "./usePlayerEditForm";
 
@@ -46,20 +47,28 @@ function HistoryPreviewCard({
   getDivisionName,
   getOriginalDivisionName
 }: Readonly<HistoryPreviewCardProps>) {
+  const t = useTranslations("balancerTool.playerEdit.history");
+  const tCommon = useTranslations("common");
   const slotLabel = useSlotLabel(ontology);
   const accent = roleRankAccent(ontology, entry.role);
   // Normalised name (target/workspace grid)
   const divisionName =
     getDivisionName(entry.division_number) ??
-    (entry.division_number != null ? `Division ${entry.division_number}` : null);
+    (entry.division_number != null ? tCommon("divisionWithId", { id: entry.division_number }) : null);
   // Original name (source tournament grid)
   const originalDivisionName =
     getOriginalDivisionName(entry.original_division_number, entry) ??
-    (entry.original_division_number != null ? `Division ${entry.original_division_number}` : null);
+    (entry.original_division_number != null
+      ? tCommon("divisionWithId", { id: entry.original_division_number })
+      : null);
   // Show the arrow only when the two differ (cross-version normalisation changed the number)
   const showNormalisedArrow =
     entry.original_division_number !== entry.division_number && entry.division_number != null;
-  const changeText = buildHistoryChangeText(currentEntry, entry);
+  // Ranks pass as strings: a number argument would gain locale grouping ("1,500").
+  const changeText = t(`change.${historyChangeKind(currentEntry, entry)}`, {
+    current: String(currentEntry?.rank_value ?? ""),
+    next: String(entry.rank_value)
+  });
 
   return (
     <div
@@ -74,7 +83,7 @@ function HistoryPreviewCard({
               {slotLabel(entry.role)}
             </span>
           </div>
-          <AccentBadge accent={accent}>{entry.rank_value} SR</AccentBadge>
+          <AccentBadge accent={accent}>{t("sr", { value: String(entry.rank_value) })}</AccentBadge>
           {/* Original division (source tournament grid) */}
           {originalDivisionName ? (
             <div className="flex items-center gap-1.5 rounded-full border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 py-1 text-[color:var(--aqt-fg)]">
@@ -119,13 +128,13 @@ function HistoryPreviewCard({
                 : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg-muted)]"
             )}
           >
-            {entry.source === "balancer" ? "Balancer" : "Analytics"}
+            {entry.source === "balancer" ? tCommon("balancer") : tCommon("analytics")}
           </span>
         </div>
         {entry.tournament_name ? (
           <div className="font-medium text-[color:var(--aqt-fg)]">{entry.tournament_name}</div>
         ) : null}
-        {entry.source_role ? <div>Source role: {slotLabel(entry.source_role)}</div> : null}
+        {entry.source_role ? <div>{t("sourceRole", { role: slotLabel(entry.source_role) })}</div> : null}
       </div>
     </div>
   );
@@ -154,6 +163,7 @@ export function PlayerEditHistoryPanel({
   getDivisionName,
   getOriginalDivisionName
 }: Readonly<PlayerEditHistoryPanelProps>) {
+  const t = useTranslations("balancerTool.playerEdit.history");
   const { workspaces } = useWorkspaceStore();
   const entries = history.preview?.entries ?? [];
   const average = history.preview?.average_rank_value ?? null;
@@ -162,10 +172,10 @@ export function PlayerEditHistoryPanel({
     <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-[color:var(--aqt-fg)]">History preview</span>
+          <span className="text-xs font-semibold text-[color:var(--aqt-fg)]">{t("title")}</span>
           {average != null ? (
             <Badge className="h-5 border-primary/20 bg-primary/10 px-2 text-label text-[color:var(--aqt-fg)] hover:bg-primary/10">
-              Avg {average}
+              {t("average", { value: String(average) })}
             </Badge>
           ) : null}
         </div>
@@ -177,7 +187,7 @@ export function PlayerEditHistoryPanel({
               className="h-7 bg-primary px-2.5 text-primary-foreground hover:bg-primary/90"
               onClick={history.apply}
             >
-              Apply history values
+              {t("apply")}
             </Button>
           ) : null}
           <Button
@@ -186,7 +196,7 @@ export function PlayerEditHistoryPanel({
             size="icon"
             className="h-8 w-8 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
             onClick={history.dismiss}
-            aria-label="Close history preview"
+            aria-label={t("close")}
           >
             <X className="h-3.5 w-3.5" />
           </Button>
@@ -202,7 +212,7 @@ export function PlayerEditHistoryPanel({
 
         {!history.error && !history.loading && entries.length === 0 ? (
           <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2.5 py-2 text-xs text-[color:var(--aqt-fg-muted)]">
-            No ranked tournament history was found for this player.
+            {t("empty")}
           </div>
         ) : null}
 
@@ -221,18 +231,18 @@ export function PlayerEditHistoryPanel({
 
       <div className="mt-3 flex items-center justify-between gap-3 border-t border-[color:var(--aqt-border)] pt-2.5">
         <Label className="text-label text-[color:var(--aqt-fg-muted)] select-none">
-          Load history from:
+          {t("loadFrom")}
         </Label>
         <Select value={history.workspaceValue} onValueChange={history.changeWorkspace}>
           <SelectTrigger size="sm" className="h-6 w-[180px] border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg)] px-2">
-            <SelectValue placeholder="Select workspace" />
+            <SelectValue placeholder={t("selectWorkspace")} />
           </SelectTrigger>
           <SelectContent className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-card)] text-[color:var(--aqt-fg)] text-label">
             <SelectItem value="current" className="text-label">
-              Current Workspace
+              {t("currentWorkspace")}
             </SelectItem>
             <SelectItem value="all" className="text-label">
-              All Workspaces
+              {t("allWorkspaces")}
             </SelectItem>
             {workspaces.map((ws) => (
               <SelectItem key={ws.id} value={String(ws.id)} className="text-label">

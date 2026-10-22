@@ -1,4 +1,5 @@
 import { useMemo, type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ type DistributionBucket = {
 };
 
 export function TeamDistributionPanel({ variant, variantSelector }: Readonly<TeamDistributionPanelProps>) {
+  const t = useTranslations("balancerTool.page.distribution");
   const [collapsed, setCollapsed] = useLocalStorageState<boolean>(
     "balancer:distribution-collapsed",
     true
@@ -85,20 +87,20 @@ export function TeamDistributionPanel({ variant, variantSelector }: Readonly<Tea
       {variantSelector ? <div className="mb-2">{variantSelector}</div> : null}
       <div className="flex items-center gap-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-          <Eyebrow>Team distribution</Eyebrow>
+          <Eyebrow>{t("title")}</Eyebrow>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs tabular-nums text-[color:var(--aqt-fg-muted)]">
             <span>
-              <span className="text-[color:var(--aqt-fg-dim)]">Avg</span>{" "}
+              <span className="text-[color:var(--aqt-fg-dim)]">{t("avg")}</span>{" "}
               <span className="font-semibold text-cyan-300">
                 {average ?? stats?.average_mmr ?? "-"}
               </span>
             </span>
             <span>
-              <span className="text-[color:var(--aqt-fg-dim)]">Spread</span>{" "}
+              <span className="text-[color:var(--aqt-fg-dim)]">{t("spread")}</span>{" "}
               <span className="font-semibold text-amber-300">{spread ?? "-"}</span>
             </span>
             <span>
-              <span className="text-[color:var(--aqt-fg-dim)]">Range</span> {min ?? "-"}
+              <span className="text-[color:var(--aqt-fg-dim)]">{t("range")}</span> {min ?? "-"}
               {min != null && max != null ? `–${max}` : ""}
             </span>
             <span>
@@ -113,7 +115,7 @@ export function TeamDistributionPanel({ variant, variantSelector }: Readonly<Tea
           size="icon-sm"
           onClick={() => setCollapsed((value) => !value)}
           aria-expanded={!collapsed}
-          aria-label={collapsed ? "Expand team distribution chart" : "Collapse team distribution chart"}
+          aria-label={collapsed ? t("expand") : t("collapse")}
           className="shrink-0 text-[color:var(--aqt-fg-dim)]"
         >
           {collapsed ? <ChevronDown aria-hidden="true" /> : <ChevronUp aria-hidden="true" />}
@@ -127,9 +129,10 @@ export function TeamDistributionPanel({ variant, variantSelector }: Readonly<Tea
           {buckets.map((bucket) => {
             const clampedLeft = Math.max(4, Math.min(bucket.position, 96));
             const isGroup = bucket.points.length > 1;
+            const bucketAverage = String(Math.round(bucket.points[0].average));
             const bucketTitle = isGroup
-              ? `Teams ${bucket.points.map((p) => p.id).join(", ")} — avg ${Math.round(bucket.points[0].average)}`
-              : `Team ${bucket.points[0].id} — avg ${Math.round(bucket.points[0].average)}`;
+              ? t("teamsBucket", { ids: bucket.points.map((p) => p.id).join(", "), average: bucketAverage })
+              : t("teamBucket", { id: String(bucket.points[0].id), average: bucketAverage });
 
             // Adaptive anchor: pin to left/right edge when bucket is near the
             // corresponding side, so wide groups stay inside the track.

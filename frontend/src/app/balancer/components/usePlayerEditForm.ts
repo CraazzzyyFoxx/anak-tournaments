@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Cookies from "js-cookie";
+import { useTranslations } from "next-intl";
 
 import {
   fetchPlayerRankHistoryPreview,
@@ -83,6 +84,7 @@ export function usePlayerEditForm({
   open,
   onSave
 }: UsePlayerEditFormInput) {
+  const t = useTranslations("balancerTool.playerEdit.history");
   const workspaceGrid = useDivisionGrid(discipline);
   const workspaceGridVersion = useDivisionGridVersion(discipline);
   const suppliedPin =
@@ -240,9 +242,7 @@ export function usePlayerEditForm({
       setHistoryPreview(preview);
     } catch (error) {
       setHistoryPreview(null);
-      setHistoryLoadError(
-        error instanceof Error ? error.message : "Failed to load player history."
-      );
+      setHistoryLoadError(error instanceof Error ? error.message : t("loadFailed"));
     } finally {
       setLoadingHistory(false);
     }

@@ -2,6 +2,7 @@
 
 import { memo, useDeferredValue, useId, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import {
   PanelRightClose,
   PanelRightOpen,
@@ -53,14 +54,6 @@ import { Spinner } from "@/components/ui/spinner";
 
 const PER_PAGE = 30;
 
-/**
- * The panel is mounted once, by the tournament balancer page, always reading
- * and writing the shared workspace canon -- a mix reads/writes its host's own
- * book through its own dialog (`PickupAddPlayersDialog`) instead.
- */
-const SCOPE_CAPTION =
-  "Shared fallback \u2014 used only where nobody set their own rank for a tournament or mix.";
-
 type WorkspacePlayersSidebarProps = {
   workspaceId: number;
   discipline: string;
@@ -71,12 +64,6 @@ type WorkspacePlayersSidebarProps = {
 
 function memberLabel(member: RosterMember): string {
   return member.display_name || member.identity?.handle || `#${member.member_id}`;
-}
-
-/** `1–30 of 224`, using the real page length so the last page is not overstated. */
-function rangeSummary(page: number, perPage: number, shown: number, total: number): string {
-  const first = (page - 1) * perPage + 1;
-  return `${first}\u2013${first + shown - 1} of ${total}`;
 }
 
 type RosterMemberRowProps = {
@@ -113,6 +100,7 @@ type RosterMemberRowProps = {
  * every row on every keystroke.
  */
 const RosterMemberRow = memo(function RosterMemberRow({ member, ontology, grid, onOpen }: RosterMemberRowProps) {
+  const t = useTranslations("balancerTool.pool");
   const slotLabel = useSlotLabel(ontology);
   const label = memberLabel(member);
   const effective = member.ranks;
@@ -158,7 +146,7 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, ontology, grid, 
                     ))}
                   </div>
                 ) : (
-                  <span className="shrink-0 text-label text-[color:var(--aqt-fg-dim)]">No roles</span>
+                  <span className="shrink-0 text-label text-[color:var(--aqt-fg-dim)]">{t("noRoles")}</span>
                 )}
                 <Button
                   type="button"
@@ -166,7 +154,7 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, ontology, grid, 
                   size="inline"
                   data-card-action
                   onClick={() => onOpen(member)}
-                  title={`Edit ${label}`}
+                  title={t("edit", { name: label })}
                   className="min-w-0 justify-start"
                 >
                   <HandleLabel handle={label} className="text-caption font-medium text-[color:var(--aqt-fg)]" />
@@ -177,14 +165,14 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, ontology, grid, 
                 {topRank ? <RankCrest rank={topRank.rank} grid={grid} size={20} /> : null}
                 {topRank ? (
                   <span
-                    title={`Highest rank: ${slotLabel(topRank.role)} ${topRank.rank}`}
+                    title={t("roster.highestRank", { role: slotLabel(topRank.role), rank: topRank.rank })}
                     className="min-w-10 text-right text-caption font-semibold tabular-nums"
                     style={{ color: roleTint(ontology, topRank.role) }}
                   >
                     {topRank.rank}
                   </span>
                 ) : (
-                  <span className="text-label text-[color:var(--aqt-fg-dim)]">No ranks yet</span>
+                  <span className="text-label text-[color:var(--aqt-fg-dim)]">{t("roster.noRanks")}</span>
                 )}
                 {member.identity?.handle ? <HandleCopyButton handle={member.identity.handle} /> : null}
               </div>
@@ -193,10 +181,10 @@ const RosterMemberRow = memo(function RosterMemberRow({ member, ontology, grid, 
         </li>
       </ContextMenuTrigger>
       <ContextMenuContent className="w-56">
-        <ContextMenuLabel>Player actions</ContextMenuLabel>
+        <ContextMenuLabel>{t("playerActions")}</ContextMenuLabel>
         <ContextMenuItem onClick={() => onOpen(member)}>
           <Pencil className="h-4 w-4" />
-          Edit ranks
+          {t("roster.editRanks")}
         </ContextMenuItem>
         {member.identity?.handle ? <HandleContextMenuItems handles={[member.identity.handle]} /> : null}
       </ContextMenuContent>
@@ -211,6 +199,8 @@ export function WorkspacePlayersSidebar({
   collapsed = false,
   onToggleCollapsed,
 }: Readonly<WorkspacePlayersSidebarProps>) {
+  const t = useTranslations("balancerTool.pool.roster");
+  const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
   const metadata = useDisciplineMetadata(workspaceId, discipline);
   const ontology = metadata.data ?? null;
@@ -241,7 +231,7 @@ export function WorkspacePlayersSidebar({
     onSuccess: async (_member, input) => {
       setHandleText("");
       setIsAddOpen(false);
-      notify.success(`${input.identity.handle} saved to the workspace`);
+      notify.success(t("added", { handle: input.identity.handle }));
       await queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(input.workspaceId) });
     },
     onError: (error) => notify.apiError(error),
@@ -273,6 +263,11 @@ export function WorkspacePlayersSidebar({
   // Read back out of the list rather than held as state, so a saved rank lands
   // in the open sheet the way the server normalised it.
   const editingMember = members.find((row) => row.member_id === editingMemberId) ?? null;
+  /** `1–30 of 224`, using the real page length so the last page is not overstated. */
+  const rangeSummary = (perPage: number, shown: number, count: number) => {
+    const first = (page - 1) * perPage + 1;
+    return t("range", { first, last: first + shown - 1, total: count });
+  };
 
   if (collapsed) {
     return (
@@ -286,7 +281,7 @@ export function WorkspacePlayersSidebar({
           onClick={onToggleCollapsed}
         >
           <PanelRightOpen className="h-4 w-4" aria-hidden="true" />
-          <span className="sr-only">Expand workspace players sidebar</span>
+          <span className="sr-only">{t("expand")}</span>
         </Button>
         <div className="flex flex-1 flex-col items-center gap-2 pt-1">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-muted)]">
@@ -298,7 +293,7 @@ export function WorkspacePlayersSidebar({
             tone="dim"
             className="text-center [writing-mode:vertical-rl]"
           >
-            Players
+            {t("railLabel")}
           </Eyebrow>
         </div>
         {/* `?? 0` used to claim an empty workspace for as long as the first page
@@ -307,11 +302,11 @@ export function WorkspacePlayersSidebar({
           <Skeleton className="h-6 w-8 rounded-lg" />
         ) : (
           <div
-            title={`${total} workspace players`}
+            title={t("railCount", { count: total })}
             className="rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-2 py-1 text-label tabular-nums text-[color:var(--aqt-fg-muted)]"
           >
             {total}
-            <span className="sr-only"> workspace players</span>
+            <span className="sr-only"> {t("railUnit", { count: total })}</span>
           </div>
         )}
       </Card>
@@ -322,7 +317,8 @@ export function WorkspacePlayersSidebar({
     if (!provider) return;
     const tag = displaySocialHandle(provider, handleText);
     if (!tag) {
-      setAddError(`Enter a ${identityConfig?.label ?? "game"} handle, for example ${identityConfig?.placeholder ?? "Name#TAG"}.`);
+      const { label, placeholder } = getSocialProviderConfig(provider);
+      setAddError(t("handleRequired", { provider: label, example: placeholder }));
       handleRef.current?.focus();
       return;
     }
@@ -340,8 +336,8 @@ export function WorkspacePlayersSidebar({
     membersQuery.isLoading || total == null
       ? ""
       : total === 0
-        ? "No workspace players shown"
-        : `${rangeSummary(page, PER_PAGE, members.length, total)} workspace players shown`;
+        ? t("listStatusEmpty")
+        : t("listStatus", { range: rangeSummary(PER_PAGE, members.length, total) });
 
   return (
     // `min-w-0`: as a grid item this panel inherits `min-width: auto`, so below
@@ -352,16 +348,16 @@ export function WorkspacePlayersSidebar({
           {/* Short enough to hold one line at the narrowest sidebar width; the
               workspace is already the tool's context, and the rail says the same. */}
           <Eyebrow as="div" tone="dim">
-            Players
+            {t("railLabel")}
           </Eyebrow>
           <div className="mt-1 text-sm tabular-nums text-[color:var(--aqt-fg-muted)]">
             {total == null ? (
               <div role="status">
-                <span className="sr-only">{"Loading\u2026"}</span>
+                <span className="sr-only">{t("loading")}</span>
                 <Skeleton aria-hidden className="my-0.5 h-4 w-16" />
               </div>
             ) : (
-              `${total} ${total === 1 ? "player" : "players"}`
+              t("playerCount", { count: total })
             )}
           </div>
         </div>
@@ -379,7 +375,7 @@ export function WorkspacePlayersSidebar({
               <PopoverTrigger asChild>
                 <Button type="button" variant="ghost" size="icon" className={ICON_BUTTON_CLASS}>
                   <UserPlus className="h-4 w-4" aria-hidden="true" />
-                  <span className="sr-only">Add a workspace player</span>
+                  <span className="sr-only">{t("addTrigger")}</span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-64 p-3">
@@ -391,7 +387,7 @@ export function WorkspacePlayersSidebar({
                   }}
                 >
                   <Eyebrow as="label" htmlFor={handleId} tone="dim" className="block">
-                    Add by {identityConfig?.label ?? "game"} identity
+                    {identityConfig ? t("addBy", { provider: identityConfig.label }) : t("addByGame")}
                   </Eyebrow>
                   <div className="flex gap-1.5">
                     <Input
@@ -419,7 +415,7 @@ export function WorkspacePlayersSidebar({
                       {addPlayer.isPending ? (
                         <Spinner className="size-3.5" />
                       ) : null}
-                      Add player
+                      {t("addPlayer")}
                     </Button>
                   </div>
                   <p
@@ -429,8 +425,7 @@ export function WorkspacePlayersSidebar({
                       addError ? "text-rose-200" : "text-[color:var(--aqt-fg-dim)]",
                     )}
                   >
-                    {addError ??
-                      "Joins the workspace roster, so every tournament and mix here can pick them."}
+                    {addError ?? t("addHint")}
                   </p>
                 </form>
               </PopoverContent>
@@ -446,7 +441,7 @@ export function WorkspacePlayersSidebar({
               onClick={onToggleCollapsed}
             >
               <PanelRightClose className="h-4 w-4" aria-hidden="true" />
-              <span className="sr-only">Collapse workspace players sidebar</span>
+              <span className="sr-only">{t("collapse")}</span>
             </Button>
           ) : null}
         </div>
@@ -464,8 +459,8 @@ export function WorkspacePlayersSidebar({
             setSearch(event.target.value);
             setPage(1);
           }}
-          placeholder="Search name or handle"
-          aria-label="Search workspace players"
+          placeholder={t("searchPlaceholder")}
+          aria-label={t("searchLabel")}
           autoComplete="off"
           className={cn(
             "rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] pl-9",
@@ -481,13 +476,16 @@ export function WorkspacePlayersSidebar({
             onClick={clearSearch}
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
-            <span className="sr-only">Clear the player search</span>
+            <span className="sr-only">{t("clearSearchLabel")}</span>
           </Button>
         ) : null}
       </div>
 
+      {/* The panel is mounted once, by the tournament balancer page, always reading
+          and writing the shared workspace canon -- a mix reads/writes its host's own
+          book through its own dialog (`PickupAddPlayersDialog`) instead. */}
       <p className="mt-2 text-label leading-tight text-[color:var(--aqt-fg-dim)]">
-        {SCOPE_CAPTION}
+        {t("scopeCaption")}
       </p>
 
       <p role="status" aria-live="polite" className="sr-only">
@@ -502,7 +500,7 @@ export function WorkspacePlayersSidebar({
           role="alert"
           className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-rose-400/25 bg-rose-500/10 px-2.5 py-1.5 text-label text-rose-100"
         >
-          <span className="min-w-0">Couldn&rsquo;t refresh &mdash; showing the last loaded page.</span>
+          <span className="min-w-0">{t("refreshFailed")}</span>
           <Button
             type="button"
             variant="ghost"
@@ -510,7 +508,7 @@ export function WorkspacePlayersSidebar({
             className="h-6 shrink-0 rounded border border-rose-300/30 px-1.5 text-rose-100 hover:bg-rose-500/15 hover:text-rose-50"
             onClick={() => void membersQuery.refetch()}
           >
-            Retry
+            {tCommon("retry")}
           </Button>
         </div>
       ) : null}
@@ -527,9 +525,9 @@ export function WorkspacePlayersSidebar({
         ) : membersQuery.isError && !pageData ? (
           <PageStateCard
             state="error"
-            title="Unable to load workspace players"
-            description="Check your connection and try again."
-            actionLabel="Retry"
+            title={t("loadFailed")}
+            description={t("loadFailedHint")}
+            actionLabel={tCommon("retry")}
             onAction={() => void membersQuery.refetch()}
             className="px-4 py-8"
           />
@@ -537,26 +535,22 @@ export function WorkspacePlayersSidebar({
           deferredSearch ? (
             <PageStateCard
               state="filtered-empty"
-              title={`No players match \u201C${deferredSearch}\u201D`}
-              description="Try a different name or handle."
-              actionLabel="Clear search"
+              title={t("noMatch", { query: deferredSearch })}
+              description={t("noMatchHint")}
+              actionLabel={t("clearSearch")}
               onAction={clearSearch}
               className="px-4 py-8"
             />
           ) : (
             <PageStateCard
               state="empty"
-              title="No workspace players yet"
-              description={
-                canEdit
-                  ? "Add a player handle above to start the roster this workspace balances from."
-                  : "Players added to this workspace will appear here."
-              }
+              title={t("empty")}
+              description={canEdit ? t("emptyHintEditor") : t("emptyHintViewer")}
               className="px-4 py-8"
             />
           )
         ) : (
-          <ul className="space-y-1.5" aria-label="Workspace players">
+          <ul className="space-y-1.5" aria-label={t("listLabel")}>
             {members.map((member) => (
               <RosterMemberRow
                 key={member.member_id}
@@ -578,8 +572,8 @@ export function WorkspacePlayersSidebar({
           leading={
             pageData
               ? pageData.total === 0
-                ? "0 players"
-                : rangeSummary(page, pageData.per_page, members.length, pageData.total)
+                ? t("playerCount", { count: 0 })
+                : rangeSummary(pageData.per_page, members.length, pageData.total)
               : undefined
           }
         />

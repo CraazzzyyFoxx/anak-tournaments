@@ -2,9 +2,11 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NextIntlClientProvider } from "next-intl";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { BalanceEditor } from "@/components/balancer/BalanceEditor";
+import ru from "@/i18n/messages/ru.json";
 import type { RoleOntology } from "@/lib/roster/ontology";
 import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
 import type { InternalBalancePayload, InternalBalancePlayer } from "@/types/balancer-admin.types";
@@ -96,5 +98,32 @@ describe("BalanceEditor", () => {
 
     for (const name of names) expect(scope.textContent).toContain(name);
     expect(rowRoles(scope)).toEqual(["Top", "Jungle", "Mid", "Bot", "Support"]);
+  });
+
+  it("reads Russian in the ru locale", async () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const payload: InternalBalancePayload = {
+      ...payloadOf({ tank: [seat("Tank One", "tank")], damage: [], support: [] }),
+      benched_players: [seat("Bench One", "support")],
+    };
+    await act(async () => {
+      createRoot(container).render(
+        <NextIntlClientProvider locale="ru" messages={ru}>
+          <QueryClientProvider client={new QueryClient()}>
+            <BalanceEditor value={payload} onChange={() => {}} divisionGrid={{ tiers: [] }} ontology={OW_METADATA} />
+            <BalanceEditor value={null} onChange={() => {}} divisionGrid={{ tiers: [] }} ontology={OW_METADATA} />
+          </QueryClientProvider>
+        </NextIntlClientProvider>,
+      );
+    });
+
+    const text = container.textContent ?? "";
+    for (const copy of ["Без команды", "Сумма:", "Сред.:", "Игрок", "Ранг", "Запустите балансировщик"]) {
+      expect(text).toContain(copy);
+    }
+    for (const copy of ["Unassigned", "Total:", "Avg:", "Player", "Prefs", "Run the balancer"]) {
+      expect(text).not.toContain(copy);
+    }
   });
 });

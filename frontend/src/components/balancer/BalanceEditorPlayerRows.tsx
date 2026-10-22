@@ -4,6 +4,7 @@ import { Fragment, type CSSProperties, type HTMLAttributes, type Ref } from "rea
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { Crown } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { RankCrest } from "@/components/RankCrest";
@@ -116,6 +117,7 @@ function BalanceEditorPlayerTableRow({
   style,
   onSelectPlayer,
 }: Readonly<BalanceEditorPlayerTableRowProps>) {
+  const t = useTranslations("balancerTool.editor");
   const slotLabel = useSlotLabel(ontology);
   const playerId = parseInternalBalancePlayerId(player);
   const division = resolveDivisionFromRank(divisionGrid, player.assigned_rating);
@@ -185,7 +187,7 @@ function BalanceEditorPlayerTableRow({
                   key={`${player.uuid}-${preference}-${index}`}
                   className="flex items-center justify-center opacity-85"
                   title={
-                    highlightPreferredRole ? `Off-role: assigned ${slotLabel(roleKey)}` : undefined
+                    highlightPreferredRole ? t("offRole", { role: slotLabel(roleKey) }) : undefined
                   }
                 >
                   <PlayerRoleIcon
@@ -297,6 +299,7 @@ export function DroppableRoleSection({
   dropDisabled = false,
   onSelectPlayer,
 }: Readonly<DroppableRoleSectionProps>) {
+  const t = useTranslations("balancerTool.editor");
   const slotLabel = useSlotLabel(ontology);
   const { setNodeRef, isOver } = useDroppable({
     id: containerId,
@@ -347,7 +350,7 @@ export function DroppableRoleSection({
             colSpan={4}
             className={cn(eyebrowClass(), "px-3 py-2.5 text-center")}
           >
-            Drop {slotLabel(roleKey).toLowerCase()} here
+            {t("dropHere", { role: slotLabel(roleKey).toLowerCase() })}
           </TableCell>
         </TableRow>
       ) : null}

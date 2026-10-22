@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, Circle } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -41,9 +42,10 @@ function flattenStatusOptions(statusOptions?: StatusOptionGroups): StatusMeta[] 
   return statusOptions ? [...statusOptions.system, ...statusOptions.custom] : [];
 }
 
-function getStatusName(statusOptions: StatusOptionGroups | undefined, value: string | null | undefined): string {
+/** The status's name in the catalog, or `null` when the registration has none. */
+function getStatusName(statusOptions: StatusOptionGroups | undefined, value: string | null | undefined): string | null {
   if (!value) {
-    return "No status";
+    return null;
   }
 
   return flattenStatusOptions(statusOptions).find((option) => option.value === value)?.name ?? value;
@@ -65,7 +67,9 @@ export function BalancerStatusMenu({
   onChange,
   size = "default",
 }: StatusPickerProps & { size?: "default" | "compact" }) {
+  const t = useTranslations("balancerTool.page.statusMenu");
   const options = pickableBalancerStatusOptions(statusOptions);
+  const statusName = getStatusName(statusOptions, value) ?? t("noStatus");
   if (!statusOptions || !onChange) {
     return null;
   }
@@ -82,13 +86,13 @@ export function BalancerStatusMenu({
             "h-7 justify-start rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-2 text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]",
             size === "compact" ? "max-w-[128px]" : "max-w-[110px]"
           )}
-          title={`Balancer status: ${getStatusName(statusOptions, value)}`}
+          title={t("title", { status: statusName })}
         >
-          <span className="truncate">{getStatusName(statusOptions, value)}</span>
+          <span className="truncate">{statusName}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel>Balancer status</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("label")}</DropdownMenuLabel>
         {options.system.map((option) => (
           <DropdownMenuItem key={option.value} onClick={() => onChange(option.value)}>
             {option.value === value ? <Check className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
@@ -109,6 +113,7 @@ export function BalancerStatusMenu({
 
 /** Context-menu submenu variant of the same picker, for right-click actions. */
 export function BalancerStatusContextMenuItems({ value, statusOptions, disabled, onChange }: Readonly<StatusPickerProps>) {
+  const t = useTranslations("balancerTool.page.statusMenu");
   const options = pickableBalancerStatusOptions(statusOptions);
   if (!statusOptions || !onChange) {
     return null;
@@ -116,7 +121,7 @@ export function BalancerStatusContextMenuItems({ value, statusOptions, disabled,
 
   return (
     <ContextMenuSub>
-      <ContextMenuSubTrigger disabled={disabled}>Set balancer status</ContextMenuSubTrigger>
+      <ContextMenuSubTrigger disabled={disabled}>{t("set")}</ContextMenuSubTrigger>
       <ContextMenuSubContent className="w-52">
         {options.system.map((option) => (
           <ContextMenuItem key={option.value} onClick={() => onChange(option.value)}>

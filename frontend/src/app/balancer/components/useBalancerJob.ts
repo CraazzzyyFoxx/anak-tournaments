@@ -1,13 +1,18 @@
 import { useReducer } from "react";
 
+import type { BalanceJobCreateResponse } from "@/types/balancer.types";
+
+/** The balance job lifecycle; the run panel names each one from `balancerTool.page.job.status`. */
+export type JobStatus = BalanceJobCreateResponse["status"];
+
 export type JobState = {
-  status: string | null;
+  status: JobStatus | null;
   message: string | null;
   progress: number | null;
 };
 
 export type JobAction =
-  | { type: "update"; status: string; message: string | null; progress: number | null }
+  | { type: "update"; status: JobStatus; message: string | null; progress: number | null }
   | { type: "clear" };
 
 const initialJobState: JobState = { status: null, message: null, progress: null };

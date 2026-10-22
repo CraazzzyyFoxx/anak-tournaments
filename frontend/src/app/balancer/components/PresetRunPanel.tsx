@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useTranslations } from "next-intl";
 import {
   Download,
   FolderInput,
@@ -33,9 +34,10 @@ import {
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import type { BalancerPlayerExportFormat } from "@/types/balancer-admin.types";
-import { PRESET_LABELS, TOOLBAR_BUTTON_CLASS } from "@/components/balancer/balancer-page-helpers";
+import { TOOLBAR_BUTTON_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { Spinner } from "@/components/ui/spinner";
 import { WorkspaceCounter } from "./WorkspaceCounter";
+import type { JobStatus } from "./useBalancerJob";
 
 type CounterItem = {
   label: string;
@@ -60,7 +62,7 @@ type PresetRunPanelProps = {
   isImportPending: boolean;
   onExportPlayers: (format: BalancerPlayerExportFormat, includePrivate: boolean) => void;
   isExportPlayersPending: boolean;
-  jobStatus: string | null;
+  jobStatus: JobStatus | null;
   jobMessage: string | null;
   jobProgress: number | null;
 };
@@ -86,6 +88,7 @@ export function PresetRunPanel({
   jobMessage,
   jobProgress
 }: Readonly<PresetRunPanelProps>) {
+  const t = useTranslations("balancerTool.page");
   const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
   const [includePrivate, setIncludePrivate] = useState(false);
 
@@ -119,21 +122,25 @@ export function PresetRunPanel({
             htmlFor="exclude-invalid"
             className="cursor-pointer whitespace-nowrap text-xs text-amber-100/82"
           >
-            Skip {invalidPlayerCount} invalid
+            {t("run.skipInvalid", { count: invalidPlayerCount })}
           </label>
         </div>
       ) : null}
       <div className="min-w-[140px] sm:w-[170px]">
         <Select value={selectedPreset} onValueChange={onSelectPreset}>
           <SelectTrigger size="sm" className="rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg)]">
-            <SelectValue placeholder="Preset" />
+            <SelectValue placeholder={t("run.presetPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
-            {presetOptions.map((preset) => (
-              <SelectItem key={preset} value={preset}>
-                {PRESET_LABELS[preset] ?? preset}
-              </SelectItem>
-            ))}
+            {presetOptions.map((preset) => {
+              // A server preset the catalog does not name reads as its key.
+              const presetKey = `presets.${preset}` as "presets.DEFAULT";
+              return (
+                <SelectItem key={preset} value={preset}>
+                  {t.has(presetKey) ? t(presetKey) : preset}
+                </SelectItem>
+              );
+            })}
           </SelectContent>
         </Select>
       </div>
@@ -145,7 +152,8 @@ export function PresetRunPanel({
         className={TOOLBAR_BUTTON_CLASS}
       >
         <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
-        Settings{settingsDirty ? "*" : ""}
+        {t("run.settings")}
+        {settingsDirty ? "*" : ""}
       </Button>
       <Button
         onClick={onRunBalance}
@@ -158,7 +166,7 @@ export function PresetRunPanel({
         ) : (
           <Sparkles className="mr-1.5 h-3.5 w-3.5" />
         )}
-        Run balance
+        {t("run.runBalance")}
       </Button>
       <FileButton
         accept="application/json"
@@ -166,7 +174,7 @@ export function PresetRunPanel({
         size="sm"
         onFiles={([file]) => onImportBalance(file)}
         disabled={isImportPending}
-        title="Load a balance JSON downloaded from this tool as a preview variant — nothing is written to the tournament"
+        title={t("run.loadJsonHint")}
         className={TOOLBAR_BUTTON_CLASS}
       >
         {isImportPending ? (
@@ -174,7 +182,7 @@ export function PresetRunPanel({
         ) : (
           <FolderInput className="mr-1.5 h-3.5 w-3.5" />
         )}
-        Load balance JSON
+        {t("run.loadJson")}
       </FileButton>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -184,33 +192,29 @@ export function PresetRunPanel({
             size="sm"
             disabled={isExportPlayersPending}
             className={cn(TOOLBAR_BUTTON_CLASS, "shrink-0 px-2 sm:px-3")}
-            aria-label="Export players"
-            title="Export players"
+            aria-label={t("run.exportPlayers")}
+            title={t("run.exportPlayers")}
           >
             {isExportPlayersPending ? (
               <Spinner className="size-3.5 sm:mr-1.5" />
             ) : (
               <Download className="h-3.5 w-3.5 sm:mr-1.5" />
             )}
-            <span className="hidden sm:inline">Export players</span>
+            <span className="hidden sm:inline">{t("run.exportPlayers")}</span>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-72">
-          <DropdownMenuLabel>Export players</DropdownMenuLabel>
+          <DropdownMenuLabel>{t("run.exportPlayers")}</DropdownMenuLabel>
           <DropdownMenuItem onSelect={() => onExportPlayers("owt-1", includePrivate)}>
             <div>
-              <div>Full snapshot</div>
-              <div className="text-xs text-[color:var(--aqt-fg-dim)]">
-                Every role, rank source, division and roster shape — flex included.
-              </div>
+              <div>{t("run.fullSnapshot")}</div>
+              <div className="text-xs text-[color:var(--aqt-fg-dim)]">{t("run.fullSnapshotHint")}</div>
             </div>
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => onExportPlayers("xv-1", false)}>
             <div>
-              <div>Solver input (xv-1)</div>
-              <div className="text-xs text-[color:var(--aqt-fg-dim)]">
-                Playable roles only — what a balance job accepts as an upload.
-              </div>
+              <div>{t("run.solverInput")}</div>
+              <div className="text-xs text-[color:var(--aqt-fg-dim)]">{t("run.solverInputHint")}</div>
             </div>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
@@ -220,7 +224,7 @@ export function PresetRunPanel({
             // Kept open so the choice and the export are one interaction.
             onSelect={(event) => event.preventDefault()}
           >
-            <span className="text-xs">Include notes, custom fields and contacts</span>
+            <span className="text-xs">{t("run.includePrivate")}</span>
           </DropdownMenuCheckboxItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -236,7 +240,7 @@ export function PresetRunPanel({
           <div className="rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] p-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <div className="text-sm font-medium text-[color:var(--aqt-fg)]">Balance job</div>
+                <div className="text-sm font-medium text-[color:var(--aqt-fg)]">{t("run.job")}</div>
                 {jobMessage ? <div className="text-xs text-[color:var(--aqt-fg-dim)]">{jobMessage}</div> : null}
               </div>
               <Badge
@@ -249,7 +253,7 @@ export function PresetRunPanel({
                       : "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-3)] text-[color:var(--aqt-fg-muted)]"
                 )}
               >
-                {jobStatus}
+                {t(`job.status.${jobStatus}`)}
               </Badge>
             </div>
             {jobProgress !== null ? (

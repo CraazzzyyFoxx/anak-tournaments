@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import { Badge } from "@/components/ui/badge";
@@ -168,6 +169,8 @@ export function RoleRankControls({
   onChange,
   grid
 }: Readonly<RoleRankControlsProps>) {
+  const t = useTranslations("balancerTool.playerEdit.rank");
+  const tCommon = useTranslations("common");
   const sliderColor = accent.color ?? "var(--aqt-teal)";
   const bounds = useMemo(() => gridBounds(grid), [grid]);
   const tiers = useMemo(() => sortTiersAscending(grid), [grid]);
@@ -183,9 +186,9 @@ export function RoleRankControls({
     <>
       <div className="space-y-1">
         <div className="flex items-center justify-between gap-2">
-          <Eyebrow tone="dim">Skill rating</Eyebrow>
+          <Eyebrow tone="dim">{t("skillRating")}</Eyebrow>
           {rankValue == null ? (
-            <span className="text-label text-[color:var(--aqt-fg-dim)]">No rank</span>
+            <span className="text-label text-[color:var(--aqt-fg-dim)]">{t("noRank")}</span>
           ) : (
             <span className="flex items-center gap-1 text-label">
               <span
@@ -209,10 +212,10 @@ export function RoleRankControls({
                   size="inline"
                   disabled={disabled}
                   onClick={onClear}
-                  title="Clear this role's rank"
+                  title={t("clearHint")}
                   className="px-1 uppercase tracking-label"
                 >
-                  Clear
+                  {t("clear")}
                 </Button>
               ) : null}
             </span>
@@ -246,7 +249,7 @@ export function RoleRankControls({
       </div>
 
       <div className="space-y-1">
-        <Eyebrow tone="dim">Rank</Eyebrow>
+        <Eyebrow tone="dim">{t("rank")}</Eyebrow>
         <div
           className={cn(
             "flex min-h-[36px] items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 py-1",
@@ -264,12 +267,12 @@ export function RoleRankControls({
               />
               <div className="min-w-0">
                 <div className="truncate text-label font-medium text-[color:var(--aqt-fg-muted)]">
-                  {divisionName ?? `Division ${divisionNumber}`}
+                  {divisionName ?? tCommon("divisionWithId", { id: divisionNumber })}
                 </div>
               </div>
             </>
           ) : (
-            <span className="text-label text-[color:var(--aqt-fg-dim)]">No rank yet</span>
+            <span className="text-label text-[color:var(--aqt-fg-dim)]">{t("noRankYet")}</span>
           )}
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import {
   AlertCircle,
   BarChart2,
@@ -39,15 +40,27 @@ type VariantCardProps = {
 };
 
 function VariantCard({ variant, isActive, onSelect, onDelete, className }: Readonly<VariantCardProps>) {
+  const t = useTranslations("balancerTool.page");
+  const source = variant.labelSource;
+  const label =
+    source?.kind === "saved"
+      ? t("variant.saved", { id: String(source.id) })
+      : source?.kind === "generated"
+        ? t("variant.generated", { index: source.index })
+        : source?.kind === "imported"
+          ? t("variant.imported", { fileName: source.fileName })
+          : variant.label;
   const stats = variant.payload.statistics;
   const offRoles = stats?.off_role_count ?? 0;
   const offRoleAboveMin = stats?.off_role_above_minimum ?? null;
   const offRoleOptimal = offRoles === 0 || offRoleAboveMin === 0;
   const offRoleTooltip = (() => {
-    if (offRoles === 0) return "All players on first preference";
-    if (offRoleAboveMin === 0) return `Off-role ${offRoles} (structural minimum)`;
-    if (offRoleAboveMin != null) return `Off-role ${offRoles} (+${offRoleAboveMin} above min)`;
-    return `Off-role ${offRoles}`;
+    if (offRoles === 0) return t("variantSelector.offRoleNone");
+    if (offRoleAboveMin === 0) return t("variantSelector.offRoleMinimum", { count: offRoles });
+    if (offRoleAboveMin != null) {
+      return t("variantSelector.offRoleAboveMin", { count: offRoles, above: offRoleAboveMin });
+    }
+    return t("stats.offRole", { count: offRoles });
   })();
   const collisions = stats?.sub_role_collision_count ?? 0;
   const benched = variant.payload.benched_players?.length ?? stats?.unbalanced_count ?? 0;
@@ -71,7 +84,7 @@ function VariantCard({ variant, isActive, onSelect, onDelete, className }: Reado
         )}
       >
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{variant.label}</span>
+          <span className="text-sm font-medium">{label}</span>
         </div>
         {stats != null ? (
           <div className="mt-1.5 flex items-center gap-2.5">
@@ -94,7 +107,7 @@ function VariantCard({ variant, isActive, onSelect, onDelete, className }: Reado
               {offRoles}
             </span>
             <span
-              title="Sub-role collisions"
+              title={t("stats.collisionsLabel")}
               className={cn(
                 "flex items-center gap-1 text-label font-semibold tabular-nums",
                 collisions > 0 ? "text-primary/90" : "text-[color:var(--aqt-fg-dim)]"
@@ -104,7 +117,7 @@ function VariantCard({ variant, isActive, onSelect, onDelete, className }: Reado
               {collisions}
             </span>
             <span
-              title="Benched"
+              title={t("stats.benchedLabel")}
               className={cn(
                 "flex items-center gap-1 text-label font-semibold tabular-nums",
                 benched > 0 ? "text-rose-300/90" : "text-[color:var(--aqt-fg-dim)]"
@@ -115,7 +128,7 @@ function VariantCard({ variant, isActive, onSelect, onDelete, className }: Reado
             </span>
             {stddev != null ? (
               <span
-                title="StdDev"
+                title={t("variantSelector.stdDev")}
                 className="flex items-center gap-1 text-label font-semibold tabular-nums text-blue-300/70"
               >
                 <BarChart2 className="h-3 w-3" />
@@ -124,7 +137,7 @@ function VariantCard({ variant, isActive, onSelect, onDelete, className }: Reado
             ) : null}
             {quality != null ? (
               <span
-                title="Composite quality score (lower = better)"
+                title={t("variantSelector.quality")}
                 className="flex items-center gap-1 text-label font-semibold tabular-nums text-emerald-300/80"
               >
                 <Sparkles className="h-3 w-3" />
@@ -140,8 +153,8 @@ function VariantCard({ variant, isActive, onSelect, onDelete, className }: Reado
           variant="ghost-destructive"
           size="icon-xs"
           onClick={onDelete}
-          title="Delete variant"
-          aria-label={`Delete ${variant.label}`}
+          title={t("variantSelector.delete")}
+          aria-label={t("variantSelector.deleteNamed", { label })}
           className="absolute right-2 top-2 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
         >
           <Trash2 aria-hidden />
@@ -157,6 +170,7 @@ export function VariantSelector({
   onSelectVariant,
   onDeleteVariant
 }: Readonly<VariantSelectorProps>) {
+  const t = useTranslations("balancerTool.page.variantSelector");
   const [showAll, setShowAll] = useState(false);
 
   if (variants.length <= 1) return null;
@@ -187,17 +201,15 @@ export function VariantSelector({
           className="shrink-0 self-center"
         >
           <LayoutGrid aria-hidden />
-          Show all
+          {t("showAll")}
         </Button>
       </div>
 
       <Dialog open={showAll} onOpenChange={setShowAll}>
         <DialogContent className="max-w-3xl">
           <DialogHeader>
-            <DialogTitle>All balances</DialogTitle>
-            <DialogDescription>
-              Compare every generated variant and select one to load it into the editor.
-            </DialogDescription>
+            <DialogTitle>{t("allTitle")}</DialogTitle>
+            <DialogDescription>{t("allDescription")}</DialogDescription>
           </DialogHeader>
           <div className="grid max-h-[60vh] grid-cols-2 gap-2 overflow-y-auto pr-1 sm:grid-cols-3">
             {variants.map((variant) => (

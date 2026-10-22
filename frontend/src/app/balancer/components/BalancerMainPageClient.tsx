@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { AlertTriangle, CheckCircle2, Shuffle, Users } from "lucide-react";
 import type { ImperativePanelHandle } from "react-resizable-panels";
 
@@ -65,7 +66,6 @@ import {
   upsertSavedVariant,
   buildBalancerPageCollections
 } from "./balancer-page-selectors";
-import { PRESET_LABELS } from "@/components/balancer/balancer-page-helpers";
 import {
   buildTeamNamesText,
   buildVariantFromSavedBalance,
@@ -105,6 +105,7 @@ const BalancerOperationDialog = dynamic(
 );
 
 export function BalancerMainPageClient() {
+  const t = useTranslations("balancerTool.page");
   const tournamentId = useBalancerTournamentId();
   const workspaceId = useWorkspaceStore(
     (state) => state.entityWorkspaceId ?? state.currentWorkspaceId
@@ -365,14 +366,16 @@ export function BalancerMainPageClient() {
     () => !areBalancerConfigsEqual(draftConfig, savedTournamentConfig),
     [draftConfig, savedTournamentConfig]
   );
-  const selectedPresetLabel =
-    selectedPreset === CUSTOM_PRESET
-      ? "Custom"
-      : (PRESET_LABELS[selectedPreset] ??
-        (balancerConfigQuery.data?.presets[selectedPreset] ? selectedPreset : "Custom"));
+  // Presets the catalog names read translated; a server preset it does not know reads as its key.
+  const presetKey = `presets.${selectedPreset}` as "presets.DEFAULT";
+  const selectedPresetLabel = t.has(presetKey)
+    ? t(presetKey)
+    : balancerConfigQuery.data?.presets[selectedPreset]
+      ? selectedPreset
+      : t("presets.CUSTOM");
   const saveConfigMutation = useMutation({
     mutationFn: async () => {
-      if (!tournamentId) throw new Error("Select a tournament first");
+      if (!tournamentId) throw new Error(t("errors.noTournament"));
       const saved = await balancerAdminService.upsertTournamentConfig(tournamentId, {
         config_json: sanitizeBalancerConfig(draftConfig) as Record<string, unknown>
       });
@@ -384,7 +387,7 @@ export function BalancerMainPageClient() {
       await queryClient.invalidateQueries({
         queryKey: balancerQueryKeys.tournamentConfig(tournamentId)
       });
-      notify.success("Balancer settings saved");
+      notify.success(t("toasts.settingsSaved"));
     }
   });
 
@@ -397,7 +400,7 @@ export function BalancerMainPageClient() {
       includePrivate: boolean;
     }) => {
       const selectedTournamentId = tournamentId;
-      if (!selectedTournamentId) throw new Error("Select a tournament first");
+      if (!selectedTournamentId) throw new Error(t("errors.noTournament"));
       const payload = await balancerAdminService.exportPlayers(
         selectedTournamentId,
         format,
@@ -408,8 +411,8 @@ export function BalancerMainPageClient() {
     onSuccess: ({ payload, tournamentId: exportedTournamentId }) => {
       const playerCount = Object.keys(payload.players).length;
       downloadPlayersExport(payload, exportedTournamentId);
-      notify.success("Players exported", {
-        description: `${playerCount} player${playerCount === 1 ? "" : "s"} downloaded as ${payload.format}.`
+      notify.success(t("toasts.playersExported"), {
+        description: t("toasts.playersExportedDescription", { count: playerCount, format: payload.format })
       });
     }
   });
@@ -589,13 +592,11 @@ export function BalancerMainPageClient() {
   const handleCopyNames = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(buildTeamNamesText(activeVariant?.payload ?? null));
-      notify.success("Team names copied");
+      notify.success(t("toasts.namesCopied"));
     } catch {
-      notify.error(
-        "Unable to copy the team names. Your browser blocked clipboard access — copy them from the balance instead."
-      );
+      notify.error(t("toasts.namesCopyFailed"));
     }
-  }, [activeVariant]);
+  }, [activeVariant, t]);
 
   const handleTournamentExportStageChange = useCallback(
     (stepId: string, status: BalancerOperationStepStatus) => {
@@ -621,17 +622,18 @@ export function BalancerMainPageClient() {
       {
         onSuccess: ({ exportResult }) => {
           setTournamentExportSummary(
-            `${exportResult.imported_teams} teams exported to the tournament. ${exportResult.removed_teams} previously exported teams removed.`
+            t("operation.exportSummary", {
+              imported: exportResult.imported_teams,
+              removed: exportResult.removed_teams
+            })
           );
         },
         onError: (error) => {
-          setTournamentExportError(
-            getErrorMessage(error, "Failed to export teams to the tournament")
-          );
+          setTournamentExportError(getErrorMessage(error, t("errors.exportFailed")));
         }
       }
     );
-  }, [exportToTournamentMutation, handleTournamentExportStageChange]);
+  }, [exportToTournamentMutation, handleTournamentExportStageChange, t]);
 
   const savedBalanceId = savedBalanceQuery.data?.id ?? null;
   const startRanksExport = useCallback(() => {
@@ -651,16 +653,16 @@ export function BalancerMainPageClient() {
         {
           onSuccess: (result) => {
             setJsonImportSummary(
-              `${result.teamCount} teams loaded from ${file.name}. Review the balance, then save or export it to the tournament.`
+              t("operation.importSummary", { count: result.teamCount, file: file.name })
             );
           },
           onError: (error) => {
-            setJsonImportError(getErrorMessage(error, "Failed to read the balance JSON"));
+            setJsonImportError(getErrorMessage(error, t("errors.importFailed")));
           }
         }
       );
     },
-    [handleJsonImportStageChange, importBalanceMutation]
+    [handleJsonImportStageChange, importBalanceMutation, t]
   );
 
   const quickPoolActionsPending =
@@ -693,11 +695,8 @@ export function BalancerMainPageClient() {
   if (!tournamentId) {
     return (
       <Alert>
-        <AlertTitle>Select a tournament</AlertTitle>
-        <AlertDescription>
-          Open a tournament from the tournament hub to work with registrations and the Balancing
-          Pool.
-        </AlertDescription>
+        <AlertTitle>{t("selectTournament.title")}</AlertTitle>
+        <AlertDescription>{t("selectTournament.description")}</AlertDescription>
       </Alert>
     );
   }
@@ -762,10 +761,10 @@ export function BalancerMainPageClient() {
     <div className="flex min-h-0 min-w-0 flex-col gap-3">
       <PresetRunPanel
         counters={[
-          { label: "Pool", value: poolPlayers.length, icon: Users },
-          { label: "Ready", value: readyPlayers.length, icon: CheckCircle2 },
-          { label: "Need Fix", value: invalidPlayerStates.length, icon: AlertTriangle },
-          { label: "Flex", value: flexPoolCount, icon: Shuffle }
+          { label: t("counters.pool"), value: poolPlayers.length, icon: Users },
+          { label: t("counters.ready"), value: readyPlayers.length, icon: CheckCircle2 },
+          { label: t("counters.needFix"), value: invalidPlayerStates.length, icon: AlertTriangle },
+          { label: t("counters.flex"), value: flexPoolCount, icon: Shuffle }
         ]}
         presetOptions={visiblePresetOptions}
         selectedPreset={selectedPreset}
@@ -885,27 +884,27 @@ export function BalancerMainPageClient() {
       <BalancerOperationDialog
         open={isTournamentExportOpen}
         onOpenChange={setIsTournamentExportOpen}
-        title="Export to tournament"
-        description="Save the selected balance and create tournament teams from it."
+        title={t("operation.exportTitle")}
+        description={t("operation.exportDescription")}
         steps={tournamentExportSteps}
         isRunning={exportToTournamentMutation.isPending}
         summary={tournamentExportSummary}
         advisories={exportToTournamentMutation.data?.exportResult.advisories}
         error={tournamentExportError}
-        retryLabel="Retry export"
+        retryLabel={t("operation.retryExport")}
         onRetry={startTournamentExport}
       />
 
       <BalancerOperationDialog
         open={isJsonImportOpen}
         onOpenChange={setIsJsonImportOpen}
-        title="Load balance JSON"
-        description="Load a previously downloaded balance JSON as a preview variant. Nothing is written to the tournament until you save or export it."
+        title={t("operation.importTitle")}
+        description={t("operation.importDescription")}
         steps={jsonImportSteps}
         isRunning={importBalanceMutation.isPending}
         summary={jsonImportSummary}
         error={jsonImportError}
-        retryLabel="Retry import"
+        retryLabel={t("operation.retryImport")}
         onRetry={lastJsonImportFile ? () => startJsonImport(lastJsonImportFile) : undefined}
       />
 

@@ -1,11 +1,23 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactNode } from "react";
+import type { createTranslator } from "next-intl";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { notify } from "@/lib/notify";
 import { BalancerOperationDialog } from "./BalancerOperationDialog";
 import { useBalancerMutations } from "./useBalancerMutations";
 
+// `useBalancerMutations` is called here as a plain function, outside any provider.
+vi.mock("next-intl", async (importOriginal) => {
+  const actual = await importOriginal<{ createTranslator: typeof createTranslator }>();
+  // `vi.mock` factories are hoisted above the file's imports, so the catalog loads here.
+  const { default: en } = await import("@/i18n/messages/en.json");
+  return {
+    ...actual,
+    useTranslations: (namespace?: string) =>
+      actual.createTranslator({ locale: "en", messages: en, namespace: namespace as never })
+  };
+});
 vi.mock("@tanstack/react-query", () => ({ useMutation: (options: unknown) => options }));
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), warning: vi.fn() } }));
 vi.mock("@/components/balancer/workspace-helpers", () => ({

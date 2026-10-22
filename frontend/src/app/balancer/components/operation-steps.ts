@@ -1,20 +1,19 @@
 // The step model the page drives; apart from `BalancerOperationDialog` so the
-// dialog itself can be a lazy chunk.
+// dialog itself can be a lazy chunk. The dialog names each step from
+// `balancerTool.page.operation.steps.<id>`.
 export type BalancerOperationStepStatus = "pending" | "running" | "succeeded" | "failed";
 
+export type BalancerOperationStepId = "validate" | "save" | "export" | "refresh" | "read" | "load";
+
 export type BalancerOperationStep = {
-  id: string;
-  label: string;
-  description?: string;
+  id: BalancerOperationStepId;
   status: BalancerOperationStepStatus;
 };
 
-export type BalancerOperationStepDefinition = Omit<BalancerOperationStep, "status">;
-
 export function createOperationSteps(
-  definitions: BalancerOperationStepDefinition[]
+  ids: readonly BalancerOperationStepId[]
 ): BalancerOperationStep[] {
-  return definitions.map((step) => ({ ...step, status: "pending" }));
+  return ids.map((id) => ({ id, status: "pending" }));
 }
 
 export function updateOperationStepStatus(

@@ -5,6 +5,14 @@ import type {
   BalancerPlayerUpdateInput
 } from "@/types/balancer-admin.types";
 
+/** A role write with no rated dimension to write in; the caller words it for the user. */
+export class RatedDimensionUnknownError extends Error {
+  constructor() {
+    super("The game's rated role dimension is not known yet");
+    this.name = "RatedDimensionUnknownError";
+  }
+}
+
 /**
  * Editor payload -> registration patch. Pure: it is the one place that decides
  * which of the player-sheet's fields become a registration write, so the
@@ -26,7 +34,7 @@ export function buildRegistrationUpdateFromPlayerPayload(
     // Registration preferences share the owner's rated role dimension.
     const roleDimension = ratedDimension ?? existingRoles?.[0]?.role.dimension;
     if (!roleDimension) {
-      throw new Error("The game's rated role dimension is not known yet");
+      throw new RatedDimensionUnknownError();
     }
     const existingRolesMap = new Map(
       existingRoles?.map((role) => [roleOf(role.role), role.top_characters ?? []]) ?? []

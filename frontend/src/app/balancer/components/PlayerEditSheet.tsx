@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircle2, History, Plus, Save } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { SortableRows } from "@/components/kit/SortableRows";
 
 import { Badge } from "@/components/ui/badge";
@@ -81,6 +82,8 @@ export function PlayerEditModal({
   onRemove,
   saving = false
 }: Readonly<PlayerEditModalProps>) {
+  const t = useTranslations("balancerTool.playerEdit.sheet");
+  const tCommon = useTranslations("common");
   const form = usePlayerEditForm({
     player,
     registration,
@@ -127,13 +130,13 @@ export function PlayerEditModal({
             <HandleCopyButton handle={primaryHandle} className="h-6 w-6" />
             {form.isFlex ? (
               <Badge className="h-5 border-emerald-400/25 bg-emerald-400/10 px-2 text-label text-emerald-200 hover:bg-emerald-400/10">
-                Flex
+                {t("flex")}
               </Badge>
             ) : null}
           </div>
           <AdditionalHandleStrip additionalHandles={player.additional_handles} className="mt-1.5" />
           <SheetDescription className="text-xs text-[color:var(--aqt-fg-dim)]">
-            Roles, ratings, and balancer participation.
+            {t("description")}
           </SheetDescription>
         </SheetHeader>
 
@@ -142,7 +145,7 @@ export function PlayerEditModal({
             <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-3 py-2">
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs font-medium text-[color:var(--aqt-fg)]">
-                  Balancer status
+                  {t("balancerStatus")}
                 </span>
                 {registration ? (
                   <StatusMetaBadge
@@ -158,7 +161,7 @@ export function PlayerEditModal({
                         : "border-orange-400/25 bg-orange-400/10 text-orange-200"
                     )}
                   >
-                    {computedReady ? "Ready" : "Incomplete"}
+                    {computedReady ? t("ready") : t("incomplete")}
                   </Badge>
                 )}
               </div>
@@ -178,13 +181,13 @@ export function PlayerEditModal({
                     htmlFor="is-flex"
                     className="cursor-pointer text-xs font-medium text-[color:var(--aqt-fg)]"
                   >
-                    Flex player
+                    {t("flexPlayer")}
                   </Label>
                   <Switch
                     id="is-flex"
                     checked={form.isFlex}
                     onCheckedChange={form.setIsFlex}
-                    aria-label="Flex player"
+                    aria-label={t("flexPlayer")}
                   />
                 </div>
               </div>
@@ -194,7 +197,7 @@ export function PlayerEditModal({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
               <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
-                {showsRoleList ? "Roles" : "Rank"}
+                {showsRoleList ? t("roles") : t("rank")}
               </Label>
               <div className="flex flex-nowrap items-center gap-1.5">
                 {showsRoleList ? (
@@ -207,7 +210,7 @@ export function PlayerEditModal({
                     disabled={form.addableRole === null}
                   >
                     <Plus className="mr-1 h-3 w-3" />
-                    Add role
+                    {t("addRole")}
                   </Button>
                 ) : null}
                 <Button
@@ -223,7 +226,7 @@ export function PlayerEditModal({
                   ) : (
                     <History className="mr-1 h-3 w-3" />
                   )}
-                  Load from history
+                  {t("loadFromHistory")}
                 </Button>
               </div>
             </div>
@@ -244,7 +247,7 @@ export function PlayerEditModal({
                 htmlFor="pin-tournament"
                 className="cursor-pointer text-xs font-medium text-[color:var(--aqt-fg)]"
               >
-                Only this tournament
+                {t("onlyThisTournament")}
               </Label>
               <div className="flex items-center gap-2">
                 {hasOverride ? (
@@ -256,14 +259,14 @@ export function PlayerEditModal({
                     disabled={saving}
                     onClick={form.handleClearPin}
                   >
-                    Use workspace rank
+                    {t("useWorkspaceRank")}
                   </Button>
                 ) : null}
                 <Switch
                   id="pin-tournament"
                   checked={form.pinToTournament}
                   onCheckedChange={form.setPinToTournament}
-                  aria-label="Only this tournament"
+                  aria-label={t("onlyThisTournament")}
                 />
               </div>
             </div>
@@ -300,7 +303,7 @@ export function PlayerEditModal({
           {nativeRankName !== null ? (
             <div className="space-y-2">
               <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
-                Live {nativeRankName} rank
+                {t("liveRank", { game: nativeRankName })}
               </Label>
               <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
                 {player.user_id != null ? (
@@ -313,33 +316,33 @@ export function PlayerEditModal({
           ) : null}
 
           <div className="space-y-1">
-            <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">Admin notes</Label>
+            <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">{t("adminNotes")}</Label>
             <Textarea
               value={form.notes}
               onChange={(event) => form.setNotes(event.target.value)}
               className="min-h-14 border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2.5 py-1.5 text-[color:var(--aqt-fg)] placeholder:text-[color:var(--aqt-fg-faint)]"
-              placeholder="Notes about availability, role comfort, or balancing caveats."
+              placeholder={t("notesPlaceholder")}
             />
           </div>
           {registration && statusOptions ? (
             <div className="grid gap-2 md:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
-                  Registration status
+                  {t("registrationStatus")}
                 </Label>
                 <Select value={form.registrationStatus} onValueChange={form.setRegistrationStatus}>
                   <SelectTrigger size="sm" className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg)]">
-                    <SelectValue placeholder="Select registration status" />
+                    <SelectValue placeholder={t("selectRegistrationStatus")} />
                   </SelectTrigger>
                   <SelectContent>
                     {statusOptions.registration.system.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
-                        {option.name} · System
+                        {t("systemOption", { name: option.name })}
                       </SelectItem>
                     ))}
                     {statusOptions.registration.custom.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
-                        {option.name} · Custom
+                        {t("customOption", { name: option.name })}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -347,41 +350,42 @@ export function PlayerEditModal({
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
-                  Balancer status
+                  {t("balancerStatus")}
                 </Label>
                 <Select
                   value={form.registrationBalancerStatus}
                   onValueChange={form.setRegistrationBalancerStatus}
                 >
                   <SelectTrigger size="sm" className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg)]">
-                    <SelectValue placeholder="Select balancer status" />
+                    <SelectValue placeholder={t("selectBalancerStatus")} />
                   </SelectTrigger>
                   <SelectContent>
                     {form.registrationBalancerStatus === "ready" ||
                     form.registrationBalancerStatus === "incomplete" ? (
                       <SelectItem value={form.registrationBalancerStatus} disabled>
-                        {form.registrationBalancerStatus === "ready" ? "Ready" : "Incomplete"} ·
-                        Computed
+                        {t("computedOption", {
+                          status:
+                            form.registrationBalancerStatus === "ready" ? t("ready") : t("incomplete")
+                        })}
                       </SelectItem>
                     ) : null}
                     {statusOptions.balancer.system
                       .filter((option) => option.value !== "ready" && option.value !== "incomplete")
                       .map((option) => (
                         <SelectItem key={option.value} value={option.value}>
-                          {option.name} · System
+                          {t("systemOption", { name: option.name })}
                         </SelectItem>
                       ))}
                     {statusOptions.balancer.custom.map((option) => (
                       <SelectItem key={option.value} value={option.value}>
-                        {option.name} · Custom
+                        {t("customOption", { name: option.name })}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-label text-[color:var(--aqt-fg-dim)]">
-                    Ready/Incomplete are computed from role ranks. Pick Excluded to pull this player
-                    from the pool.
+                    {t("statusHint")}
                   </p>
                   {form.registrationBalancerStatus !== "ready" ? (
                     <Button
@@ -391,10 +395,10 @@ export function PlayerEditModal({
                       className="h-6 shrink-0 gap-1 whitespace-nowrap border-emerald-500/30 bg-emerald-500/10 px-2 text-emerald-200 hover:bg-emerald-500/20 hover:text-emerald-100"
                       disabled={saving}
                       onClick={form.handleMoveToReady}
-                      title="Saves your pending edits, then recomputes this player's balancer status from their current role ranks"
+                      title={t("moveToReadyHint")}
                     >
                       <CheckCircle2 className="h-3 w-3" />
-                      Move to ready
+                      {t("moveToReady")}
                     </Button>
                   ) : null}
                 </div>
@@ -405,7 +409,7 @@ export function PlayerEditModal({
 
         <SheetFooter className="shrink-0 border-t border-[color:var(--aqt-border)] px-4 py-2.5 sm:justify-between sm:space-x-0 sm:px-5">
           <div className="text-label text-[color:var(--aqt-fg-dim)]">
-            Manual edits always win until you explicitly load and apply new history values.
+            {t("footerHint")}
           </div>
           <div className="flex gap-2">
             <Button
@@ -414,7 +418,7 @@ export function PlayerEditModal({
               className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-3 text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
               onClick={() => onOpenChange(false)}
             >
-              Cancel
+              {tCommon("cancel")}
             </Button>
             <Button
               onClick={form.handleSave}
@@ -423,7 +427,7 @@ export function PlayerEditModal({
               className="bg-primary px-3 text-primary-foreground hover:bg-primary/90"
             >
               <Save className="mr-1 h-3.5 w-3.5" />
-              Save
+              {tCommon("save")}
             </Button>
           </div>
         </SheetFooter>

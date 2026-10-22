@@ -14,6 +14,7 @@ import {
 } from "@dnd-kit/core";
 import { useQuery } from "@tanstack/react-query";
 import { UserX } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 import workspaceService from "@/services/workspace.service";
@@ -73,6 +74,7 @@ export const BalanceEditor = forwardRef<HTMLDivElement, BalanceEditorProps>(func
   },
   ref,
 ) {
+  const t = useTranslations("balancerTool.editor");
   const [activePlayer, setActivePlayer] = useState<{
     player: InternalBalancePlayer;
     roleKey: BalancerRosterKey;
@@ -131,7 +133,7 @@ export const BalanceEditor = forwardRef<HTMLDivElement, BalanceEditorProps>(func
   if (!value || teamCards.length === 0) {
     return (
       <div className="rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-6 text-sm text-[color:var(--aqt-fg-dim)]">
-        Run the balancer to edit teams.
+        {t("empty")}
       </div>
     );
   }
@@ -203,7 +205,7 @@ export const BalanceEditor = forwardRef<HTMLDivElement, BalanceEditorProps>(func
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-rose-400/20 bg-rose-500/5 px-4 py-3">
             <span className="inline-flex items-center gap-1.5 text-label font-medium uppercase tracking-label text-rose-200/80">
               <UserX className="h-3.5 w-3.5" />
-              Unassigned
+              {t("unassigned")}
             </span>
             {benchedPlayers.map((player) => (
               <Badge

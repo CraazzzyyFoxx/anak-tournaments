@@ -1,6 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef } from "react";
 
 import { useInvalidation } from "@/hooks/useInvalidation";
@@ -72,6 +73,7 @@ export function useBalancerRealtime({
 }: UseBalancerRealtimeOptions): {
   registerLocalJob: (jobId: string, context: JobResultContext) => void;
 } {
+  const t = useTranslations("balancerTool.page.job");
   const topic = balancerRealtimeTopic(tournamentId);
   const connectionState = useRealtimeStore((state) => state.connectionState);
   const queryClient = useQueryClient();
@@ -97,21 +99,21 @@ export function useBalancerRealtime({
         return;
       }
       appliedJobsRef.current.add(jobId);
-      dispatchJob({ type: "update", status: "succeeded", message: "Balance completed", progress: 100 });
+      dispatchJob({ type: "update", status: "succeeded", message: t("completed"), progress: 100 });
       try {
         const result = await balancerService.getBalanceJobResult(jobId);
         const context = jobContextRef.current.get(jobId) ?? {};
         appendGeneratedVariants(setVariants, setActiveVariantId, result, context);
         jobContextRef.current.delete(jobId);
         dispatchJob({ type: "clear" });
-        notify.success("Balance completed");
+        notify.success(t("completed"));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "Failed to fetch balance result";
+        const message = error instanceof Error ? error.message : t("resultFetchFailed");
         dispatchJob({ type: "update", status: "failed", message, progress: null });
-        notify.error("Balance failed", { description: message });
+        notify.error(t("failed"), { description: message });
       }
     },
-    [dispatchJob, setActiveVariantId, setVariants]
+    [dispatchJob, setActiveVariantId, setVariants, t]
   );
 
   const handleJobEvent = useCallback(
@@ -119,14 +121,14 @@ export function useBalancerRealtime({
       const percent = extractPercent(data.progress);
       switch (eventType) {
         case "balancer_job.queued":
-          dispatchJob({ type: "update", status: "queued", message: "Job queued", progress: 0 });
+          dispatchJob({ type: "update", status: "queued", message: t("queued"), progress: 0 });
           return;
         case "balancer_job.running":
         case "balancer_job.progress":
           dispatchJob({
             type: "update",
             status: "running",
-            message: "Balancing teams…",
+            message: t("running"),
             progress: percent
           });
           return;
@@ -134,16 +136,16 @@ export function useBalancerRealtime({
           void handleJobSucceeded(data.job_id);
           return;
         case "balancer_job.failed": {
-          const message = data.error ?? "Balance failed";
+          const message = data.error ?? t("failed");
           dispatchJob({ type: "update", status: "failed", message, progress: null });
-          notify.error("Balance failed", { description: message });
+          notify.error(t("failed"), { description: message });
           return;
         }
         default:
           return;
       }
     },
-    [dispatchJob, handleJobSucceeded]
+    [dispatchJob, handleJobSucceeded, t]
   );
 
   const handleEvent = useCallback(
@@ -193,13 +195,13 @@ export function useBalancerRealtime({
     }
     notifiedErrorRef.current = key;
     dispatchJob({ type: "clear" });
-    notify.error("Realtime updates unavailable", {
+    notify.error(t("realtimeUnavailable"), {
       description:
         subscriptionError.code === "forbidden"
-          ? "You don't have access to live balancer updates for this tournament."
+          ? t("realtimeForbidden")
           : subscriptionError.message
     });
-  }, [subscriptionError, topic, dispatchJob]);
+  }, [subscriptionError, topic, dispatchJob, t]);
 
   // Reset presence and the applied-job guard when switching tournaments; the new
   // topic re-emits a fresh presence frame on subscribe.

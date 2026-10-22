@@ -1,6 +1,7 @@
 "use client";
 
 import { Sparkles, Trash2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { SortableGrip, useSortableRow } from "@/components/kit/SortableRows";
 
 import DivisionIcon from "@/components/DivisionIcon";
@@ -66,6 +67,8 @@ export function SortableRoleEntry({
   nativeRankName,
   showsRole
 }: Readonly<SortableRoleEntryProps>) {
+  const t = useTranslations("balancerTool.playerEdit.role");
+  const tCommon = useTranslations("common");
   const { ref, style, handleProps } = useSortableRow(id);
 
   const slotLabel = useSlotLabel(ontology);
@@ -90,7 +93,8 @@ export function SortableRoleEntry({
   const owSuggestionName =
     owSuggestionDivision != null ? getDivisionName(owSuggestionDivision) : null;
   const owMatchesCurrent = owRankValue != null && owRankValue === entry.rank_value;
-  const owActionLabel = entry.rank_value == null ? "Use" : owMatchesCurrent ? "Matches" : "Apply";
+  const owActionLabel =
+    entry.rank_value == null ? t("liveUse") : owMatchesCurrent ? t("liveMatches") : t("liveApply");
 
   return (
     <div
@@ -106,7 +110,7 @@ export function SortableRoleEntry({
     >
       {showsRole ? (
         <div className="flex items-center justify-between md:flex-col md:items-center md:justify-center md:gap-1">
-          <SortableGrip handleProps={handleProps} label={`Reorder ${roleName}`} />
+          <SortableGrip handleProps={handleProps} label={t("reorder", { role: roleName })} />
           <span className="text-label font-semibold text-[color:var(--aqt-fg-dim)]">
             #{index + 1}
           </span>
@@ -138,13 +142,13 @@ export function SortableRoleEntry({
                   onCheckedChange={(checked) =>
                     onUpdate(index, { ...entry, is_declared_active: checked })
                   }
-                  aria-label={declaredActive ? "Disable role" : "Enable role"}
+                  aria-label={declaredActive ? t("disable") : t("enable")}
                 />
                 <span
                   className="text-label font-semibold uppercase tracking-label"
                   style={declaredActive ? accentTextStyle(accent) : { color: "var(--aqt-fg-dim)" }}
                 >
-                  {declaredActive ? "Active" : "Off"}
+                  {declaredActive ? t("active") : t("off")}
                 </span>
               </div>
 
@@ -152,7 +156,7 @@ export function SortableRoleEntry({
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 shrink-0 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-dim)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
-                aria-label={`Remove ${roleName}`}
+                aria-label={t("remove", { role: roleName })}
                 onClick={() => onRemove(index)}
               >
                 <Trash2 className="h-3 w-3" aria-hidden="true" />
@@ -172,7 +176,7 @@ export function SortableRoleEntry({
           {/* Sub-roles specialise one of several roles; a one-role game's card names neither. */}
           {showsRole ? (
             <div className="space-y-1">
-              <Eyebrow tone="dim">Sub-role</Eyebrow>
+              <Eyebrow tone="dim">{t("subRole")}</Eyebrow>
               <Select
                 value={entry.subtype ?? "none"}
                 disabled={!hasSubtypeOptions}
@@ -190,10 +194,10 @@ export function SortableRoleEntry({
                     !declaredActive && "text-[color:var(--aqt-fg-dim)]"
                   )}
                 >
-                  <SelectValue placeholder="Sub-role" />
+                  <SelectValue placeholder={t("subRole")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">No sub-role</SelectItem>
+                  <SelectItem value="none">{t("noSubRole")}</SelectItem>
                   {roleSubtypeOptions.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
@@ -208,7 +212,7 @@ export function SortableRoleEntry({
             rankValue={entry.rank_value}
             grid={grid}
             sourceLabel={
-              entry.rank_source && entry.rank_source !== "none" ? entry.rank_source : null
+              entry.rank_source && entry.rank_source !== "none" ? t(`source.${entry.rank_source}`) : null
             }
             accent={accent}
             active={declaredActive}
@@ -233,7 +237,15 @@ export function SortableRoleEntry({
                 division_number: owSuggestionDivision
               })
             }
-            title={`Apply live ${nativeRankName} rank${owSuggestionName ? `: ${owSuggestionName}` : ""} (${owRankValue})`}
+            title={
+              owSuggestionName
+                ? t("applyLiveDivision", {
+                    game: nativeRankName,
+                    division: owSuggestionName,
+                    value: String(owRankValue)
+                  })
+                : t("applyLive", { game: nativeRankName, value: String(owRankValue) })
+            }
             className="flex items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 py-1.5 hover:bg-[color:var(--aqt-overlay-3)]"
           >
             <Sparkles className="h-3 w-3 shrink-0 text-amber-300/70" />
@@ -247,7 +259,7 @@ export function SortableRoleEntry({
               />
             ) : null}
             <span className="truncate text-label font-medium text-[color:var(--aqt-fg-muted)]">
-              {owSuggestionName ?? `Division ${owSuggestionDivision}`}
+              {owSuggestionName ?? tCommon("divisionWithId", { id: String(owSuggestionDivision) })}
             </span>
             <span className="text-label tabular-nums text-[color:var(--aqt-fg-dim)]">
               ({owRankValue})
@@ -260,7 +272,9 @@ export function SortableRoleEntry({
           <div className="flex w-full items-center gap-1.5 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-2 py-1.5 text-left">
             <Sparkles className="h-3 w-3 shrink-0 text-[color:var(--aqt-fg-faint)]" />
             <Eyebrow tone="dim">{nativeRankName}</Eyebrow>
-            <span className="text-label text-[color:var(--aqt-fg-dim)]">No live {nativeRankName} rank</span>
+            <span className="text-label text-[color:var(--aqt-fg-dim)]">
+              {t("noLiveRank", { game: nativeRankName })}
+            </span>
           </div>
         )}
       </div>

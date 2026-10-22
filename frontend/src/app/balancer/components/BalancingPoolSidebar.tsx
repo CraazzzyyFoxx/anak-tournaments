@@ -2,6 +2,7 @@
 
 import { forwardRef, useCallback, useImperativeHandle, useMemo, useState } from "react";
 import { Check, Columns3, Kanban, PanelLeftClose, PanelLeftOpen, PlusCircle, Settings2, ShieldX, Tag, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -34,16 +35,10 @@ export type BalancingPoolSidebarHandle = {
   focusExcludedView: () => void;
 };
 
-type PoolFilterOption = { value: PoolView; label: string; announcedLabel?: string; count: number };
+type PoolFilterOption = { value: PoolView; count: number };
 type StatusOptionGroups = { system: StatusMeta[]; custom: StatusMeta[] };
 
-const SORT_OPTIONS: Array<{ value: PoolSortValue; label: string }> = [
-  { value: "division_asc", label: "Highest division" },
-  { value: "division_desc", label: "Lowest division" },
-  { value: "name_asc", label: "Name A-Z" },
-  { value: "added_asc", label: "Oldest in pool" },
-  { value: "added_desc", label: "Newest in pool" },
-];
+const SORT_OPTIONS: PoolSortValue[] = ["division_asc", "division_desc", "name_asc", "added_asc", "added_desc"];
 
 type BalancingPoolSidebarProps = {
   collapsed?: boolean;
@@ -76,6 +71,7 @@ function BulkStatusMenu({
   disabled?: boolean;
   onChange: (status: string) => void;
 }>) {
+  const t = useTranslations("balancerTool.pool.sidebar");
   if (!statusOptions) {
     return null;
   }
@@ -91,11 +87,11 @@ function BulkStatusMenu({
           className="h-7 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-2 text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
         >
           <Tag className="mr-1 h-3 w-3" aria-hidden="true" />
-          Status
+          {t("status")}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52">
-        <DropdownMenuLabel>Set balancer status</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("setStatus")}</DropdownMenuLabel>
         {statusOptions.system.map((option) => (
           <DropdownMenuItem key={option.value} onClick={() => onChange(option.value)}>
             {option.name}
@@ -135,6 +131,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
     },
     ref,
   ) {
+    const t = useTranslations("balancerTool.pool");
     const slotLabel = useSlotLabel(ontology);
     const [poolView, setPoolView] = useState<PoolView>("all");
     const [configDialogOpen, setConfigDialogOpen] = useState(false);
@@ -203,33 +200,17 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
     }, [allPlayerValidationStates, applicationsById, normalizedSearchQuery, poolSort, poolView, slotLabel, workspaceBalancerConfig]);
 
     const poolFilterOptions: PoolFilterOption[] = [
-      { value: "all", label: "All", count: poolPlayers.length },
-      { value: "ready", label: "Ready", count: readyPlayers.length },
-      { value: "needs_fix", label: "Need Fix", count: invalidPlayers.length },
+      { value: "all", count: poolPlayers.length },
+      { value: "ready", count: readyPlayers.length },
+      { value: "needs_fix", count: invalidPlayers.length },
       ...(workspaceBalancerConfig?.rank_delta_threshold != null
-        ? [{ value: "rank_delta" as PoolView, label: "Rank Δ", announcedLabel: "Rank delta", count: rankDeltaPlayers.length }]
+        ? [{ value: "rank_delta" as PoolView, count: rankDeltaPlayers.length }]
         : []),
-      { value: "excluded", label: "Excluded", count: excludedPlayers.length },
+      { value: "excluded", count: excludedPlayers.length },
     ];
 
-    const filteredPoolEmptyState = useMemo(() => {
-      if (normalizedSearchQuery.length > 0) {
-        return { title: "No players match this search", description: "Try another handle, role, or division." };
-      }
-      if (poolView === "needs_fix") {
-        return { title: "No players need fixes right now", description: "Every player in the pool is ready for the balancer." };
-      }
-      if (poolView === "ready") {
-        return { title: "No ready players yet", description: "Fix player conflicts or add ranked roles to start balancing." };
-      }
-      if (poolView === "excluded") {
-        return { title: "No excluded players", description: "Every player is currently included in the Balancing Pool." };
-      }
-      if (poolView === "rank_delta") {
-        return { title: "No rank gaps flagged", description: "No pooled player exceeds the configured rank-delta threshold." };
-      }
-      return { title: "No players in the pool", description: "Open the Excluded filter and change a player's balancer status to include them." };
-    }, [normalizedSearchQuery, poolView]);
+    // Search first: a query that matched nothing is about the query, whatever the view.
+    const emptyState = normalizedSearchQuery.length > 0 ? "search" : poolView;
 
     const validPlayerIds = useMemo(
       () => new Set(allPlayerValidationStates.map((state) => state.player.id)),
@@ -297,14 +278,14 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
             onClick={onToggleCollapsed}
           >
             <PanelLeftOpen className="h-4 w-4" aria-hidden="true" />
-            <span className="sr-only">Expand Balancing Pool sidebar</span>
+            <span className="sr-only">{t("sidebar.expand")}</span>
           </Button>
           <div className="flex flex-1 flex-col items-center gap-2 pt-1">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg-muted)]">
               <Columns3 className="h-4 w-4" aria-hidden="true" />
             </div>
             <Eyebrow as="div" tone="dim" className="text-center [writing-mode:vertical-rl]">
-              Pool
+              {t("sidebar.railLabel")}
             </Eyebrow>
           </div>
           <div className="flex flex-col items-center gap-1.5">
@@ -314,7 +295,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
             {invalidPlayers.length > 0 ? (
               <div
                 className="rounded-lg border border-amber-400/25 bg-amber-500/10 px-2 py-1 text-label tabular-nums text-amber-100"
-                title={`${invalidPlayers.length} pooled players need fixes`}
+                title={t("sidebar.needFixCount", { count: invalidPlayers.length })}
               >
                 {invalidPlayers.length}
               </div>
@@ -329,10 +310,10 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
         <div className="mb-3 flex items-center justify-between gap-2">
           <div>
             <Eyebrow as="div" tone="dim">
-              Balancing Pool
+              {t("sidebar.title")}
             </Eyebrow>
             <div className="mt-1 text-sm tabular-nums text-[color:var(--aqt-fg-muted)]">
-              {poolPlayers.length} players
+              {t("sidebar.playerCount", { count: poolPlayers.length })}
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -345,7 +326,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                 onClick={() => setConfigDialogOpen(true)}
               >
                 <Settings2 className="h-4 w-4" aria-hidden="true" />
-                <span className="sr-only">Pool rank-delta settings</span>
+                <span className="sr-only">{t("sidebar.settings")}</span>
               </Button>
             ) : null}
             <Button
@@ -357,7 +338,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
               onClick={() => setIsTriageBoardOpen(true)}
             >
               <Kanban className="h-4 w-4" aria-hidden="true" />
-              <span className="sr-only">Open the triage board</span>
+              <span className="sr-only">{t("sidebar.openTriage")}</span>
             </Button>
             {/* Stacked layouts pass no handler: a full-width vertical rail is not a
                 usable collapsed state, so the control is absent rather than inert. */}
@@ -371,7 +352,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                 onClick={onToggleCollapsed}
               >
                 <PanelLeftClose className="h-4 w-4" aria-hidden="true" />
-                <span className="sr-only">Collapse Balancing Pool sidebar</span>
+                <span className="sr-only">{t("sidebar.collapse")}</span>
               </Button>
             ) : null}
           </div>
@@ -386,22 +367,22 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
               containerClassName="min-w-32 flex-1"
               value={searchQuery}
               onValueChange={setSearchQuery}
-              label="Search the Balancing Pool"
-              placeholder="Search handle or role"
+              label={t("sidebar.searchLabel")}
+              placeholder={t("sidebar.searchPlaceholder")}
               autoComplete="off"
             />
             <Select value={poolSort} onValueChange={(value) => setPoolSort(value as PoolSortValue)}>
               <SelectTrigger
                 size="sm"
-                aria-label="Sort players"
+                aria-label={t("sidebar.sortLabel")}
                 className="w-[10.5rem] shrink-0 rounded-lg border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] text-[color:var(--aqt-fg)]"
               >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {SORT_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
+                  <SelectItem key={option} value={option}>
+                    {t(`sidebar.sort.${option}`)}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -411,13 +392,13 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
           {/* `FilterChip`/`FilterChipGroup` instead of a local pill: one chip
               implementation for the whole app, and the active state is the
               shared teal tint rather than a white wash a hover could match. */}
-          <FilterChipGroup label="Filter the Balancing Pool" className="gap-1.5">
+          <FilterChipGroup label={t("sidebar.filterLabel")} className="gap-1.5">
             {poolFilterOptions.map((option) => (
               <FilterChip
                 key={option.value}
                 active={option.value === poolView}
                 count={option.count}
-                aria-label={option.announcedLabel}
+                aria-label={option.value === "rank_delta" ? t("sidebar.rankDeltaAnnounced") : undefined}
                 onClick={() => setPoolView(option.value)}
                 className={cn(
                   option.value === "needs_fix" &&
@@ -426,7 +407,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                     "border-amber-400/25 bg-amber-500/10 text-amber-100",
                 )}
               >
-                {option.label}
+                {t(`view.${option.value}`)}
               </FilterChip>
             ))}
           </FilterChipGroup>
@@ -435,7 +416,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
             <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] p-1.5">
               <div className="flex items-center gap-1.5 px-1.5 text-label font-medium tabular-nums text-[color:var(--aqt-fg-muted)]">
                 <Check className="h-3.5 w-3.5 text-cyan-200" aria-hidden="true" />
-                {selectedCount} selected
+                {t("sidebar.selectedCount", { count: selectedCount })}
               </div>
               {selectedCount < filteredPoolPlayerStates.length ? (
                 <Button
@@ -445,7 +426,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                   className="h-7 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-2 text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
                   onClick={selectAllVisible}
                 >
-                  Select all {filteredPoolPlayerStates.length}
+                  {t("sidebar.selectAll", { count: filteredPoolPlayerStates.length })}
                 </Button>
               ) : null}
               <Button
@@ -457,7 +438,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                 onClick={() => runBulkPoolMembership(true)}
               >
                 <PlusCircle className="mr-1 h-3 w-3" aria-hidden="true" />
-                Include
+                {t("sidebar.include")}
               </Button>
               <Button
                 type="button"
@@ -468,7 +449,7 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                 onClick={() => runBulkPoolMembership(false)}
               >
                 <ShieldX className="mr-1 h-3 w-3" aria-hidden="true" />
-                Exclude
+                {t("card.exclude")}
               </Button>
               <BulkStatusMenu
                 statusOptions={balancerStatusOptions}
@@ -483,14 +464,14 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
                 onClick={clearSelection}
               >
                 <X className="h-3.5 w-3.5" aria-hidden="true" />
-                <span className="sr-only">Clear selection</span>
+                <span className="sr-only">{t("sidebar.clearSelection")}</span>
               </Button>
             </div>
           ) : null}
         </div>
 
         <p role="status" aria-live="polite" className="sr-only">
-          {`${visibleCount} players shown`}
+          {t("sidebar.shown", { count: visibleCount })}
         </p>
 
         <div className="mt-2.5 flex min-h-0 flex-1 flex-col">
@@ -507,8 +488,8 @@ export const BalancingPoolSidebar = forwardRef<BalancingPoolSidebarHandle, Balan
             onSetPoolMembership={onSetPoolMembership}
             onSetBalancerStatus={onSetBalancerStatus}
             actionsDisabled={actionsDisabled}
-            emptyTitle={filteredPoolEmptyState.title}
-            emptyDescription={filteredPoolEmptyState.description}
+            emptyTitle={t(`sidebar.empty.${emptyState}.title`)}
+            emptyDescription={t(`sidebar.empty.${emptyState}.description`)}
           />
         </div>
 

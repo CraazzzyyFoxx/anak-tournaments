@@ -59,9 +59,6 @@ vi.mock("@/services/workspace-player.service", () => ({
   },
 }));
 
-vi.mock("next-intl", () => ({
-  useTranslations: () => Object.assign((key: string) => key, { has: () => false }),
-}));
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));

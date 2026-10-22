@@ -4,43 +4,16 @@ import { useEffect, useState, type RefObject } from "react";
 
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 
-import type { BalancerOperationStepDefinition } from "./operation-steps";
+import type { BalancerOperationStepId } from "./operation-steps";
 
-export const EXPORT_TO_TOURNAMENT_STEPS: BalancerOperationStepDefinition[] = [
-  {
-    id: "validate",
-    label: "Validate selected balance",
-    description: "Check that the selected result can be exported."
-  },
-  {
-    id: "save",
-    label: "Save selected balance",
-    description: "Persist the current teams before exporting them."
-  },
-  {
-    id: "export",
-    label: "Create tournament teams",
-    description: "Replace previously exported teams and create tournament rosters."
-  },
-  {
-    id: "refresh",
-    label: "Refresh tournament data",
-    description: "Update cached balance, team, standings, and public tournament views."
-  }
+export const EXPORT_TO_TOURNAMENT_STEPS: readonly BalancerOperationStepId[] = [
+  "validate",
+  "save",
+  "export",
+  "refresh"
 ];
 
-export const IMPORT_JSON_STEPS: BalancerOperationStepDefinition[] = [
-  {
-    id: "read",
-    label: "Read JSON file",
-    description: "Parse the file and check that it holds a balance payload."
-  },
-  {
-    id: "load",
-    label: "Load balance preview",
-    description: "Add it to the variant list so it can be reviewed, saved or exported."
-  }
-];
+export const IMPORT_JSON_STEPS: readonly BalancerOperationStepId[] = ["read", "load"];
 
 export function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;

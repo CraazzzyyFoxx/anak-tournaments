@@ -9,6 +9,7 @@ import { RankAutofillPreviewTables } from "@/components/balancer/rank-autofill/_
 import { buildRegistrationUpdateFromPlayerPayload } from "@/components/balancer/registration-update-payload";
 import { PickBanTargetBoard } from "@/components/pick-ban/PickBanTargetBoard";
 import messages from "@/i18n/messages/en.json";
+import ru from "@/i18n/messages/ru.json";
 import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
 import adminService from "@/services/admin.service";
 import balancerAdminService from "@/services/balancer-admin.service";
@@ -118,11 +119,11 @@ const initialStore = useWorkspaceStore.getState();
 let root: Root;
 let client: QueryClient;
 
-async function render(children: ReactNode) {
+async function render(children: ReactNode, locale: "en" | "ru" = "en") {
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <NextIntlClientProvider locale="en" timeZone="UTC" messages={messages}>
+        <NextIntlClientProvider locale={locale} timeZone="UTC" messages={locale === "en" ? messages : ru}>
           {children}
         </NextIntlClientProvider>
       </QueryClientProvider>
@@ -490,6 +491,24 @@ describe("owner game role and rank capabilities", () => {
     expect(document.body.textContent).toContain("Skill rating");
     expect(document.body.textContent).toContain("Live League of Legends rank");
     expect(document.body.textContent).not.toContain("Overwatch rank");
+  });
+
+  it("reads Russian under the ru catalog", async () => {
+    await render(sheetFor("overwatch", { ow_rank_value: 1500 }), "ru");
+    const text = document.body.textContent ?? "";
+
+    expect(text).toContain("Роли, ранги и участие в балансировщике.");
+    expect(text).toContain("Текущий ранг в Overwatch");
+    expect(text).toContain("Загрузить из истории");
+    expect(text).toContain("Рейтинг");
+    expect(text).toContain("Подроль");
+    expect(text).not.toContain("Load from history");
+    expect(text).not.toContain("Skill rating");
+    expect(text).not.toContain("Live Overwatch rank");
+    expect(text).not.toContain("Manual edits always win");
+    expect([...document.querySelectorAll("button")].some((button) => button.textContent?.trim() === "Сохранить")).toBe(
+      true
+    );
   });
 
   it("adds the first position of the League dictionary the player does not have", async () => {

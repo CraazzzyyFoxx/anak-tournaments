@@ -18,9 +18,10 @@ import type { Workspace } from "@/types/workspace.types";
 
 // Shell-shaped: a top-bar strip over one content area, so the frame doesn't jump when it lands.
 function LoadingState() {
+  const t = useTranslations("balancerTool.page.layout");
   return (
     <div role="status" className="flex h-screen w-full flex-col">
-      <span className="sr-only">Loading…</span>
+      <span className="sr-only">{t("loading")}</span>
       <div aria-hidden className="flex h-12 shrink-0 items-center gap-3 border-b border-border/50 px-4 md:px-5">
         <Skeleton className="h-4 w-28" />
         <Skeleton className="h-4 w-40" />
@@ -34,21 +35,18 @@ function LoadingState() {
 }
 
 function UnauthorizedState() {
+  const t = useTranslations("balancerTool.page.layout");
   return (
     <main className="flex h-screen w-full items-center justify-center">
       <div className="text-center">
-        <h1 className="text-4xl font-bold">Unauthorized</h1>
-        <p className="mt-4 text-muted-foreground">
-          The balancer workspace is available only to admins and tournament organizers.
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Please contact an administrator if you believe this is an error.
-        </p>
+        <h1 className="text-4xl font-bold">{t("unauthorizedTitle")}</h1>
+        <p className="mt-4 text-muted-foreground">{t("unauthorizedDescription")}</p>
+        <p className="mt-2 text-sm text-muted-foreground">{t("unauthorizedContact")}</p>
         <Link
           href="/"
           className="mt-6 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
         >
-          Go Home
+          {t("goHome")}
         </Link>
       </div>
     </main>
@@ -56,25 +54,24 @@ function UnauthorizedState() {
 }
 
 function NoTournamentState() {
+  const t = useTranslations("balancerTool.page.layout");
   return (
     <main className="flex h-screen w-full items-center justify-center">
       <div className="text-center">
-        <h1 className="text-4xl font-bold">No tournament selected</h1>
-        <p className="mt-4 text-muted-foreground">
-          Open the balancer from a tournament, or manage workspace mixes.
-        </p>
+        <h1 className="text-4xl font-bold">{t("noTournamentTitle")}</h1>
+        <p className="mt-4 text-muted-foreground">{t("noTournamentDescription")}</p>
         <div className="mt-6 flex items-center justify-center gap-3">
           <Link
             href="/admin/tournaments"
             className="inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Open a tournament
+            {t("openTournament")}
           </Link>
           <Link
             href="/balancer/mix"
             className="inline-block rounded-md border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
           >
-            Mixes
+            {t("mixes")}
           </Link>
         </div>
       </div>

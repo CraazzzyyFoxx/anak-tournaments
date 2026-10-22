@@ -21,12 +21,6 @@ export type PoolSortValue =
 
 export const POOL_LANES: PoolLane[] = ["excluded", "needs_fix", "ready"];
 
-export const POOL_LANE_LABELS: Record<PoolLane, string> = {
-  excluded: "Excluded",
-  needs_fix: "Need Fix",
-  ready: "Ready"
-};
-
 /**
  * Issue codes that are purely informational — extra balancing context, not a blocking rule.
  * They still surface as chips and in the Rank Δ view, but must NOT push a player into the
@@ -61,19 +55,6 @@ export function getPoolDropPatch(targetLane: PoolLane): PoolDropPatch {
 export function formatHandlesForClipboard(handles: string[]): string {
   return handles.join("\n");
 }
-
-/** The collapsed label of a row's extra accounts: `2 alts`. */
-export function formatAdditionalHandleCount(count: number): string {
-  return `${count} alt${count === 1 ? "" : "s"}`;
-}
-
-export const PRESET_LABELS: Record<string, string> = {
-  CUSTOM: "Custom",
-  DEFAULT: "Standard",
-  PREFERENCE_FOCUSED: "Preference Focused",
-  COMBINED: "Combined",
-  HIGH_QUALITY: "High Quality"
-};
 
 export const TEAM_BADGE_ACCENTS = [
   "border-blue-400/20 bg-blue-500/10 text-blue-200",

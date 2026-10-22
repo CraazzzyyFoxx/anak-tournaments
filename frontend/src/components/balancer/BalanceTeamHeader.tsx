@@ -1,3 +1,5 @@
+import { useTranslations } from "next-intl";
+
 import {
   TEAM_BADGE_ACCENTS,
   calculateTeamAverageFromPayload,
@@ -16,6 +18,7 @@ export function BalanceTeamHeader({
   team,
   teamIndex
 }: Readonly<{ team: InternalBalancePayload["teams"][number]; teamIndex: number }>) {
+  const t = useTranslations("balancerTool.editor.teamHeader");
   const total = Math.round(calculateTeamTotalFromPayload(team));
   const average = Math.round(calculateTeamAverageFromPayload(team));
 
@@ -42,10 +45,10 @@ export function BalanceTeamHeader({
       <div className="shrink-0 text-right">
         <div className="flex flex-wrap justify-end gap-x-3 gap-y-1 text-label font-medium text-[color:var(--aqt-fg-muted)]">
           <span>
-            Total: <span className="tabular-nums text-[color:var(--aqt-fg)]">{total}</span>
+            {t("total")} <span className="tabular-nums text-[color:var(--aqt-fg)]">{total}</span>
           </span>
           <span>
-            Avg: <span className="tabular-nums text-[color:var(--aqt-fg)]">{average}</span>
+            {t("average")} <span className="tabular-nums text-[color:var(--aqt-fg)]">{average}</span>
           </span>
         </div>
       </div>
