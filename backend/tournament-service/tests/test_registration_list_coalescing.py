@@ -8,6 +8,7 @@ Two things matter here and nothing else:
    exactly one real read-model build -- not one per caller.
 2. One follower's cancellation must never take the shared build down with it
    for every other follower still waiting on it.
+3. A request arriving after a write never joins a build that started before it.
 
 Runs under stdlib unittest -- no pytest-asyncio in this repo.
 """
@@ -24,6 +25,9 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from shared.schemas.events import CacheInvalidatedEvent  # noqa: E402
+from shared.services.realtime.consumer import invalidate_from_event  # noqa: E402
+from shared.testing.cache import configure_test_cache  # noqa: E402
 from src.services.registration import public_list  # noqa: E402
 
 
@@ -45,6 +49,7 @@ def _build(fake_build: object) -> Any:
 
 class TestCoalescing(IsolatedAsyncioTestCase):
     def setUp(self) -> None:
+        configure_test_cache()
         public_list._inflight.clear()
         # The cashews layer under the coalescer is pinned by the cache-namespace
         # tests; here it would serve a sequential call from cache and mask
@@ -69,7 +74,7 @@ class TestCoalescing(IsolatedAsyncioTestCase):
 
         assert calls == 1, f"expected one real build for the whole burst, got {calls}"
         assert len(set(results)) == 1, "every concurrent caller must see the same live snapshot"
-        assert 42 not in public_list._inflight, "in-flight entry must be cleaned up after completion"
+        assert not public_list._inflight, "in-flight entry must be cleaned up after completion"
 
     async def test_distinct_tournaments_never_share_a_build(self) -> None:
         seen_ids: list[int] = []
@@ -124,3 +129,31 @@ class TestCoalescing(IsolatedAsyncioTestCase):
 
         assert result == "ok"
         assert calls == 1
+
+    async def test_a_request_after_a_write_starts_its_own_build(self) -> None:
+        # The build that started before the write read the pre-write rows; a request after it must not be handed
+        # that result, which is what joining its flight would do.
+        release = asyncio.Event()
+        builds = 0
+
+        async def fake_build(session: object, *, tournament_id: int) -> str:
+            nonlocal builds
+            builds += 1
+            build = builds
+            if build == 1:
+                await release.wait()
+            return f"build-{build}"
+
+        with _build(fake_build):
+            before = asyncio.create_task(public_list.coalesced_registration_list(_session_maker, 11))
+            await asyncio.sleep(0.01)
+            await invalidate_from_event(
+                CacheInvalidatedEvent(scope_kind="tournament", scope_id=11, resources=["tournament.registrations"])
+            )
+            try:
+                after = await asyncio.wait_for(public_list.coalesced_registration_list(_session_maker, 11), timeout=2)
+            finally:
+                release.set()
+
+            assert after == "build-2", "the request after the write joined the build from before it"
+            assert await before == "build-1"

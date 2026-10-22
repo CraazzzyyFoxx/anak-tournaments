@@ -5,9 +5,10 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
+from cashews.exceptions import CacheBackendInteractionError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from shared.services.cache_generations import versioned
+from shared.services.cache_generations import current, versioned
 from src.core.config import settings
 from src.services.registration.service import registration_service
 from src.services.tournament.cache_resources import REGISTRATION_LIST, tournament_generations
@@ -17,9 +18,11 @@ __all__ = ("build_registration_list", "coalesced_registration_list")
 # Single-flight per tournament_id: one registration mutation makes every
 # connected viewer refetch at once, and N identical builds would queue behind
 # the rpc channel's ``prefetch_count``. Followers await the leader's task.
-# Keyed by tournament_id alone: callers run the viewer-dependent visibility gate
-# on their own session before reaching this, so no follower skips it.
-_inflight: dict[int, asyncio.Task[Any]] = {}
+# Keyed by tournament_id, not by viewer: callers run the viewer-dependent
+# visibility gate on their own session before reaching this, so no follower
+# skips it. And keyed by the list's generations: a request arriving after a
+# write starts its own build instead of joining one that read before it.
+_inflight: dict[tuple[int, str | None], asyncio.Task[Any]] = {}
 
 
 # Values outlive a deploy in Redis and come back unvalidated, so a shape change
@@ -41,14 +44,19 @@ async def build_registration_list(session_maker: async_sessionmaker[AsyncSession
 
 
 async def coalesced_registration_list(session_maker: async_sessionmaker[AsyncSession], tournament_id: int) -> Any:
-    task = _inflight.get(tournament_id)
+    try:
+        generation = await current(*tournament_generations(str(tournament_id), REGISTRATION_LIST))
+    except CacheBackendInteractionError:
+        generation = None  # the build bypasses the cache too; coalescing is all that is left
+    flight = (tournament_id, generation)
+    task = _inflight.get(flight)
     if task is None:
         task = asyncio.create_task(build_registration_list(session_maker, tournament_id))
-        _inflight[tournament_id] = task
+        _inflight[flight] = task
 
         def _cleanup(done: asyncio.Task[Any]) -> None:
-            if _inflight.get(tournament_id) is done:
-                del _inflight[tournament_id]
+            if _inflight.get(flight) is done:
+                del _inflight[flight]
 
         task.add_done_callback(_cleanup)
     # Shielded: a follower's own cancellation (its caller disconnected/timed
