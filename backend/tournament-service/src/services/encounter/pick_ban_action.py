@@ -49,7 +49,6 @@ from shared.models.encounter.pick_ban import PickBanEntry, PickBanSession, PickB
 from shared.models.encounter.team import EncounterTeam
 from shared.models.tournament.team import Player
 from shared.repository import (
-    EncounterRepository,
     PickBanEntryRepository,
     PickBanSubmissionRepository,
 )
@@ -221,13 +220,11 @@ class PickBanActionService:
         *,
         entry_repo: PickBanEntryRepository = PickBanEntryRepository(),
         submission_repo: PickBanSubmissionRepository = PickBanSubmissionRepository(),
-        encounter_repo: EncounterRepository = EncounterRepository(),
         games: EncounterGameService = encounter_game_service,
         sessions: PickBanSessionService = pick_ban_session_service,
     ) -> None:
         self.entry_repo = entry_repo
         self.submission_repo = submission_repo
-        self.encounter_repo = encounter_repo
         self.games = games
         self.sessions = sessions
 
@@ -1128,7 +1125,7 @@ class PickBanActionService:
 
         Lock order is the room's everywhere: encounter, then session.
         """
-        encounter = await self.encounter_repo.get(session, encounter_id)
+        encounter = await session.get(Encounter, encounter_id)
         # A finished match's room is history: a session abandoned mid-veto must
         # not be random-filled to completion (and grow games) months later.
         if encounter is None or encounter.status == EncounterStatus.COMPLETED:
@@ -1245,7 +1242,7 @@ class PickBanActionService:
         every room write and on a one-second sweep, and which signals the room
         when it lands.
         """
-        encounter = await self.encounter_repo.get(session, encounter_id)
+        encounter = await session.get(Encounter, encounter_id)
         if encounter is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
 

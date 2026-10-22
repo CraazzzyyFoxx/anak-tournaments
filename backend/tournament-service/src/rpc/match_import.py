@@ -76,7 +76,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter, game = await _target(session, data)
-            await captain_service.resolve_participation(session, user, encounter)
+            await captain_service.captain_seat(session, user, encounter)
             return _submission(encounter, game, data)
 
         return await _forward(broker, logger, data, "rpc.stats.ingest.fetch", await _run(logger, op))
@@ -86,7 +86,7 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = _identity(data)
             encounter, game = await _target(session, data)
-            await captain_service.resolve_participation(session, user, encounter)
+            await captain_service.captain_seat(session, user, encounter)
             return {"encounter_game_id": game.id, "warnings": False}
 
         return await _forward(broker, logger, data, "rpc.stats.ingest.fetch_list", await _run(logger, op))

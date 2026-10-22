@@ -144,14 +144,6 @@ class CaptainService:
         self.games = games
 
     # -- loading -----------------------------------------------------------
-    async def load_encounter_any_format(self, session: AsyncSession, encounter_id: int) -> Encounter:
-        """The locked encounter row. 404 when there is none.
-
-        A lobby has a pre-game room like any other encounter, so chat membership
-        (``chat_access.EncounterChatAccess.resolve``) resolves through this one.
-        """
-        return await lock_encounter(session, encounter_id)
-
     async def _load_encounter(self, session: AsyncSession, encounter_id: int, *, for_update: bool = True) -> Encounter:
         """The encounter, locked or not. State polling opts out of the lock --
         the room's state read is pure."""
@@ -162,14 +154,14 @@ class CaptainService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Encounter not found")
         return encounter
 
-    async def resolve_participation(
+    async def resolve_participant(
         self, session: AsyncSession, auth_user: models.AuthUser, encounter: Encounter
-    ) -> tuple[EncounterTeam, int]:
-        """The participation this account captains, and the captain's player id.
+    ) -> tuple[EncounterTeam, int, bool]:
+        """``(seat, player id, is_captain)`` of this account in the encounter (spec §7.3).
 
-        403 when the account captains none of the encounter's live seats. There
-        is no "which side are you" here: a duel is two seats and a lobby is N,
-        and both answer the same question with a participation row.
+        A tournament seat is found through its team's live ``Team.captain_id`` only, so it is always the captain's. A
+        mix seat is found through the roster snapshot (``encounter.team_member`` -> workspace member -> player) and
+        carries the snapshot's ``is_captain``. 403 without a linked player or a seat.
         """
         player = await self.user_repo.get_by_auth_user_id(session, auth_user.id)
         if player is None:
@@ -178,19 +170,50 @@ class CaptainService:
                 detail="No player profile linked to your account",
             )
         seats = await active_teams(session, encounter.id)
-        team_ids = [seat.team_id for seat in seats if seat.team_id is not None]
-        if team_ids:
-            rows = await session.execute(
-                sa.select(models.Team.id).where(models.Team.id.in_(team_ids), models.Team.captain_id == player.id)
-            )
-            captained = set(rows.scalars())
+        if encounter.custom_game_id is not None:
+            row = (
+                await session.execute(
+                    sa.select(models.EncounterTeamMember.encounter_team_id, models.EncounterTeamMember.is_captain)
+                    .join(
+                        models.WorkspaceMember,
+                        models.WorkspaceMember.id == models.EncounterTeamMember.workspace_member_id,
+                    )
+                    .where(
+                        models.EncounterTeamMember.encounter_id == encounter.id,
+                        models.EncounterTeamMember.active.is_(True),
+                        models.WorkspaceMember.player_id == player.id,
+                    )
+                )
+            ).first()
             for seat in seats:
-                if seat.team_id in captained:
-                    return seat, player.id
+                if row is not None and seat.id == row.encounter_team_id:
+                    return seat, player.id, bool(row.is_captain)
+        else:
+            team_ids = [seat.team_id for seat in seats if seat.team_id is not None]
+            if team_ids:
+                rows = await session.execute(
+                    sa.select(models.Team.id).where(models.Team.id.in_(team_ids), models.Team.captain_id == player.id)
+                )
+                captained = set(rows.scalars())
+                for seat in seats:
+                    if seat.team_id in captained:
+                        return seat, player.id, True
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not captain any team in this encounter",
         )
+
+    async def captain_seat(
+        self, session: AsyncSession, auth_user: models.AuthUser, encounter: Encounter
+    ) -> tuple[EncounterTeam, int]:
+        """The seat this account captains and its player id; 403 otherwise. Every captain-only write goes here."""
+        seat, player_id, is_captain = await self.resolve_participant(session, auth_user, encounter)
+        if not is_captain:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You do not captain any team in this encounter",
+            )
+        return seat, player_id
 
     # -- reads -------------------------------------------------------------
     async def _position_map_ids(self, session: AsyncSession, encounter_id: int) -> dict[int, int]:

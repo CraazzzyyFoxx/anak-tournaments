@@ -9,9 +9,13 @@ The payload carries no state at all: subscribers refetch the pool on receipt
 (``viewer_side`` and friends are per-viewer, so there is nothing broadcastable
 to fold in). What changed is already said by the topic and the event type.
 
-Nothing here invalidates a cache: a pick-ban write touches only pick-ban tables.
-The one encounter write that does move a tournament-scoped read is a map report
-resolving a map (``map_report.py``), and it names that resource itself.
+Nothing here invalidates a tournament cache: a pick-ban write touches only
+pick-ban tables. The one encounter write that does move a tournament-scoped
+read is a map report resolving a map (``map_report.py``), and it names that
+resource itself. A MIX match's hero room is the exception: its mix's overview
+shows the match in Pre-game until the room completes or is cancelled (spec §5),
+so that transition also stales the workspace's ``workspace.pickup_mix`` -- the
+same signal balancer-service's ``emit_pickup_mix_changed`` sends web clients.
 
 Staging/persistence/publishing all live in ``shared.services.realtime.emit``:
 call this immediately before the commit that owns the pool mutation.
@@ -28,7 +32,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from shared.services.realtime import DomainEvent, Scope, emit
+from sqlalchemy import select
+
+from shared.core.enums import MapVetoSessionStatus, PickBanKind
+from shared.models.encounter.encounter import Encounter
+from shared.models.encounter.pick_ban import PickBanSession
+from shared.services.realtime import DomainEvent, Resource, Scope, emit
 from src.services.encounter.room_reconcile import request_room_reconcile
 
 __all__ = ("emit_pick_ban_update",)
@@ -52,3 +61,30 @@ async def emit_pick_ban_update(session: Any, encounter_id: int, *, kind: str = "
         ),
     )
     request_room_reconcile(session, encounter_id)
+    if kind == PickBanKind.HERO.value:
+        await _announce_settled_mix_room(session, encounter_id)
+
+
+async def _announce_settled_mix_room(session: Any, encounter_id: int) -> None:
+    """Tell a mix's overview its match left Pre-game: the hero room completed or was cancelled."""
+    encounter = await session.get(Encounter, encounter_id)
+    if encounter is None or encounter.custom_game_id is None:
+        return
+    status = await session.scalar(
+        select(PickBanSession.status).where(
+            PickBanSession.encounter_id == encounter_id, PickBanSession.kind == PickBanKind.HERO
+        )
+    )
+    if status not in (MapVetoSessionStatus.COMPLETED, MapVetoSessionStatus.CANCELLED):
+        return
+    await emit(
+        session,
+        scope=Scope.workspace(int(encounter.workspace_id)),
+        invalidates=[Resource.WORKSPACE_PICKUP_MIX],
+        data=DomainEvent(
+            domain="pickup_mix",
+            event_type="pickup_mix.updated",
+            payload={"workspace_id": int(encounter.workspace_id), "change": "pick_ban"},
+            durable=False,
+        ),
+    )

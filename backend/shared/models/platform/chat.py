@@ -54,7 +54,7 @@ class ChatMessage(db.Base):
     room_ref_id: Mapped[int] = mapped_column(BigInteger(), nullable=False)
     auth_user_id: Mapped[int] = mapped_column(BigInteger(), nullable=False)
     author_name: Mapped[str] = mapped_column(Text(), nullable=False)
-    #: home | away | captain | staff -- never ``spectator``: they cannot write.
+    #: home | away | captain | player | staff -- never ``spectator``: they cannot write.
     author_role: Mapped[str] = mapped_column(String(16), nullable=False)
     body: Mapped[str] = mapped_column(Text(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(

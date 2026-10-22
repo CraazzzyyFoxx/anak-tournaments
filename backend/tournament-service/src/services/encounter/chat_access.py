@@ -3,21 +3,24 @@
 The encounter half of ``shared.services.chat.ChatAccess``: a domain question
 only ("captain of a side, organizer of the owning workspace, or just
 watching?"). Whether a spectator may actually READ, and whether this account is
-muted, are room policy and belong to ``ChatService``.
+muted, are room policy and belong to ``ChatService``. A mix match's chat is its
+own rule (``_mix_member``): its players and hosts, nobody else.
 """
 
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
+from shared.core.errors import BaseAPIException as HTTPException
 from shared.services.chat import SPECTATOR_ROLE, ChatMembership, ChatRoom, ChatService
 from shared.services.tournament.display_name import tournament_display_name
 from shared.services.tournament.visibility import ensure_tournament_viewable
 from src.core import auth
-from src.services import visibility_resolvers
 from src.services.encounter.captain import captain_service
 from src.services.encounter.ffa import ffa_encounter_service
+from src.services.encounter.room_owner import is_mix_host, load_room_encounter
 
 __all__ = ("EncounterChatAccess", "encounter_chat_service")
 
@@ -33,14 +36,13 @@ class EncounterChatAccess:
         auth_user: models.AuthUser | None,
         room: ChatRoom,
     ) -> ChatMembership:
-        # Format-agnostic: a lobby has a pre-game room too, and its chat is not
-        # a series feature.
-        encounter = await captain_service.load_encounter_any_format(session, room.ref_id)
+        # Format-agnostic: a lobby has a pre-game room too, and its chat is not a series feature.
+        encounter = await load_room_encounter(session, room.ref_id, for_update=True)
+        if encounter.custom_game_id is not None:
+            return await self._mix_member(session, auth_user, encounter)
         # Before anything else: an outsider must not learn that a hidden
         # tournament's encounter exists, chat setting or not.
-        tournament_id = await visibility_resolvers.visibility_resolvers_service.tournament_id_for_encounter(
-            session, encounter.id
-        )
+        tournament_id = encounter.tournament_id
         await ensure_tournament_viewable(session, auth_user, tournament_id)
 
         if auth_user is None:
@@ -75,6 +77,38 @@ class EncounterChatAccess:
             )
 
         return _SPECTATOR
+
+    async def _mix_member(
+        self, session: AsyncSession, auth_user: models.AuthUser | None, encounter: models.Encounter
+    ) -> ChatMembership:
+        """A mix match's chat (spec §4.4): the hosts moderate, the seated players of both teams write, and nobody
+        else reads it -- signed in or not -- because the in-game lobby code is shared here."""
+        if auth_user is not None:
+            if await is_mix_host(session, auth_user, encounter.custom_game_id):
+                return ChatMembership(role="staff", display_name=auth_user.username, can_write=True, can_moderate=True)
+            try:
+                seat, player_id, is_captain = await captain_service.resolve_participant(session, auth_user, encounter)
+            except HTTPException:
+                seat = None
+            if seat is not None:
+                name = await session.scalar(
+                    select(models.EncounterTeamMember.display_name_snapshot)
+                    .join(
+                        models.WorkspaceMember,
+                        models.WorkspaceMember.id == models.EncounterTeamMember.workspace_member_id,
+                    )
+                    .where(
+                        models.EncounterTeamMember.encounter_team_id == seat.id,
+                        models.WorkspaceMember.player_id == player_id,
+                    )
+                )
+                return ChatMembership(
+                    role="captain" if is_captain else "player",
+                    display_name=name or auth_user.username,
+                    can_write=True,
+                    can_moderate=False,
+                )
+        raise HTTPException(status_code=403, detail="This match's chat is for its players and hosts")
 
 
 encounter_chat_service = ChatService(EncounterChatAccess())

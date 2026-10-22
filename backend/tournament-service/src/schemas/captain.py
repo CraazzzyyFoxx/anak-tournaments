@@ -160,7 +160,7 @@ class TeamReportIn(BaseModel):
     custom_fields: dict[str, str] = Field(default_factory=dict)
 
 
-# ``captain_service.resolve_participation`` raises a ``BaseAPIException``; its
+# ``captain_service.captain_seat`` raises a ``BaseAPIException``; its
 # ``status_code`` is inspected by attribute.
 _HTTP_403_FORBIDDEN = 403
 
@@ -181,9 +181,7 @@ async def resolve_optional_viewer_team(
     if auth_user is None:
         return None
     try:
-        participation, _player_id = await captain_mod.captain_service.resolve_participation(
-            session, auth_user, encounter
-        )
+        participation, _player_id = await captain_mod.captain_service.captain_seat(session, auth_user, encounter)
     except Exception as exc:  # noqa: BLE001 - re-raised below unless it's a 403
         if getattr(exc, "status_code", None) == _HTTP_403_FORBIDDEN:
             return None

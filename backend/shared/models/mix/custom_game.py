@@ -179,6 +179,9 @@ class CustomGameLobby(db.Base):
         ForeignKey("encounter.encounter.id", ondelete="SET NULL", name="fk_custom_game_lobby_live_encounter"),
         nullable=True,
     )
+    # The hero ban preset Start froze for ``live_encounter_id`` (the mix's ``hero_ban_preset`` then; NULL = no bans):
+    # the match's room opens -- and any reset reopens -- on it, whatever the header says meanwhile.
+    live_ban_preset: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class CustomGamePlayer(db.TimeStampIntegerMixin):

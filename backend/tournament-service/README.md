@@ -95,6 +95,7 @@ The full method list with request/response schemas is published at `/api/docs`, 
 | `tournament_standings_invalidated` | `tournament.events` | `stats-service`'s door into the standings path (a parsed log landed): requests the same coalesced standings job an in-service write requests |
 | `match.ingested.tournament` | `match.ingested` | Ingest evidence from `stats-service`: the match layer decides (`logs_official`, owner policy) and journals one `match_ingested` receipt (10 min TTL, own DLQ) |
 | `tournament_challonge_push` | `tournament.events` | A confirmed result to push to Challonge; skipped when the encounter's `result_version` moved on or the link is gone, requeued on a transport error, Challonge 429/5xx or a transient database error, dead-lettered otherwise (own channel, `prefetch_count=2`) |
+| `tournament_pick_ban_room_open` | `tournament.events` | A mix match started with hero bans (balancer-service's Start match): runs the room healer on its encounter, which opens the room from the preset Start froze on the lobby; idempotent, dead-lettered on failure (10 min TTL) |
 
 The three compute queues run on a dedicated AMQP channel with `prefetch_count=4`, so a burst of
 recomputes cannot occupy the RPC channel's QoS slots. Each has a dead-letter queue, declared on
