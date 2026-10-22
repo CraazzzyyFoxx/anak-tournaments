@@ -45,7 +45,7 @@ vi.mock("next-intl", async (importOriginal) => {
 const DRAFT = { id: 7, status: "draft", is_finished: false } as Tournament;
 const mounted: Root[] = [];
 
-async function mount(isSuperuser: boolean) {
+async function mount(isSuperuser: boolean, tournament: Tournament = DRAFT) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -54,7 +54,7 @@ async function mount(isSuperuser: boolean) {
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
-        <TournamentStatusControl tournament={DRAFT} canUpdate isSuperuser={isSuperuser} />
+        <TournamentStatusControl tournament={tournament} canUpdate isSuperuser={isSuperuser} />
       </QueryClientProvider>
     );
   });
@@ -111,6 +111,20 @@ describe("TournamentStatusControl", () => {
 
     await press(button("Set Live"));
     expect(transitionTournamentStatus).toHaveBeenCalledWith(7, { status: "live", force: false });
+  });
+
+  it("never leads into a phase the tournament does not have", async () => {
+    // check_in -> [draft, live, registration]: Draft is only a phase of a drafted tournament.
+    await mount(false, { id: 7, status: "check_in", team_formation: "balancer", is_finished: false } as Tournament);
+    expect(document.querySelector("button[aria-label='Move to Draft']")).toBeNull();
+    await press(document.querySelector("button[aria-label='Move to Live']"));
+    await press(button("Set Live"));
+    expect(transitionTournamentStatus).toHaveBeenCalledWith(7, { status: "live", force: false });
+
+    await unmountAll();
+
+    await mount(false, { id: 7, status: "check_in", team_formation: "draft", is_finished: false } as Tournament);
+    expect(document.querySelector("button[aria-label='Move to Draft']")).not.toBeNull();
   });
 
   it("groups allowed transitions apart from forced ones, forced for a superuser only", async () => {

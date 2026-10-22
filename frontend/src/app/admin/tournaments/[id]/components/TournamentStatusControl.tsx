@@ -27,6 +27,7 @@ import {
 import adminService from "@/services/admin.service";
 import type { Tournament, TournamentStatus } from "@/types/tournament.types";
 import { invalidateTournamentWorkspace } from "@/lib/tournament/workspace-query-keys";
+import { effectivePhases } from "../overview/effective-phases";
 
 type Pending = { kind: "status"; status: TournamentStatus } | { kind: "finished" };
 
@@ -34,8 +35,9 @@ type Pending = { kind: "status"; status: TournamentStatus } | { kind: "finished"
  * The hub header's status actions (DESIGN.md §14 "Header actions").
  *
  * A primary `→ Next` button for the first forward transition the state machine
- * allows — except Archived, which is bookkeeping after the end rather than a
- * next step and so stays in the menu only; a "Change status" menu that shows
+ * allows into one of this tournament's own phases (`effectivePhases`: no Draft
+ * unless it forms teams by draft, no Archived — bookkeeping after the end, so
+ * menu only); a "Change status" menu that shows
  * the current status checked, then the allowed transitions and, for a
  * superuser, every other status as a
  * labelled "Forced" group (sent with `force`); and the finished flag as its own
@@ -63,7 +65,8 @@ export function TournamentStatusControl({
 
   const current = tournament.status;
   const allowed = VALID_TRANSITIONS[current];
-  const next = allowed.find((status) => phaseRank(status) > phaseRank(current) && status !== "archived");
+  const chain = effectivePhases({ teamFormation: tournament.team_formation }).map((phase) => phase.key);
+  const next = allowed.find((status) => phaseRank(status) > phaseRank(current) && chain.includes(status));
   const allowedOptions = TOURNAMENT_PHASES.filter((status) => allowed.includes(status));
   const forcedOptions = isSuperuser
     ? TOURNAMENT_PHASES.filter((status) => status !== current && !allowed.includes(status))
