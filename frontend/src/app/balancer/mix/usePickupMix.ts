@@ -111,11 +111,12 @@ export function usePickupMix(
   // The lobby on screen. Page state, not server state: two co-hosts may well be
   // watching different lobbies of the same mix. A room opens on its own lobby.
   const [activeLobby, setActiveLobby] = useState(options.initialLobby ?? 0);
-  const lobbyCount = gameQuery.data?.lobby_count ?? 1;
+  const lobbyCount = gameQuery.data?.lobby_count;
   // Dropping lobbies while a later one is open would leave the page pointing at
   // a lobby the mix no longer has. Reset during render, React's own pattern for
-  // state derived from a prop that must follow it.
-  if (activeLobby >= lobbyCount) {
+  // state derived from a prop that must follow it -- and only against a loaded
+  // mix: until the detail arrives a room's requested lobby is kept.
+  if (lobbyCount != null && activeLobby >= lobbyCount) {
     setActiveLobby(0);
   }
 
