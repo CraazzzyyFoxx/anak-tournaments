@@ -1083,12 +1083,22 @@ class SideLessStateTests(PositionCase):
         state = await self.state()
         self.assertEqual(([], []), (state["sides"], state["starting_sides"]))
 
-    async def test_reopening_a_ban_keeps_its_draft(self) -> None:
+    async def test_reopening_an_open_ban_hands_it_back_empty(self) -> None:
+        """An open step's draft is the board: a prefilled one kept the voided ban
+        applied, and the captain's next ban was refused as a second item."""
         await self.start()
         await self.act(self.slot1, FIRST_HERO)
         await self.admin_reopen()
         drafts = [(team, items) for _id, _index, team, state, items in await self.submissions() if state == pbr.DRAFT]
-        self.assertEqual([(self.slot1, [{"item_id": FIRST_HERO, "target_player_id": None}])], drafts)
+        self.assertEqual([(self.slot1, [])], drafts)
+        state = await self.state()
+        self.assertEqual([self.slot1], state["acting_team_ids"])
+        self.assertEqual([], [entry for entry in state["pool"] if entry["status"] == "banned"])
+
+        await self.act(self.slot1, FIRST_HERO + 1)
+        banned = {entry["item_id"] for entry in (await self.state())["pool"] if entry["status"] == "banned"}
+        self.assertEqual({FIRST_HERO + 1}, banned)
+        self.assertEqual([self.slot2], (await self.state())["acting_team_ids"])
 
 
 # ── a played side is never rewound ──────────────────────────────────────────

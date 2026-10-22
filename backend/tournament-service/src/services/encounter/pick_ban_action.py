@@ -711,15 +711,18 @@ class PickBanActionService:
 
     # -- reopening ---------------------------------------------------------
     async def _reopen(self, session: AsyncSession, rt: _Runtime, step: pbr.ResolvedStep) -> None:
-        """Void the step's current attempt and open the next one, each actor's
-        draft prefilled with what they had. The clock restarts; a session that
-        had run out of sequence comes back to life.
+        """Void the step's current attempt and open the next one. The clock
+        restarts; a session that had run out of sequence comes back to life.
 
-        A ``side_pick`` is the exception: its new drafts start EMPTY -- a
-        prefilled one would simply re-apply the old side on the next action --
-        the round's side-bound steps are unbound, and the position's sides are
-        taken back, so the re-choice binds everything afresh. Callers refuse a
-        played position first."""
+        Only a BLIND step's new drafts are prefilled with what each actor had:
+        a blind draft stays private until everyone locks, so the prefill is a
+        convenience nobody else sees. An open step's draft IS the board (it is
+        projected as it is written), so a prefilled one would keep the voided
+        item applied and turn the captain's next action into a second item --
+        it starts EMPTY, the voided item available again. That covers a
+        ``side_pick`` (never blind) too; its round's side-bound steps are also
+        unbound and the position's sides taken back, so the re-choice binds
+        everything afresh. Callers refuse a played position first."""
         attempt = pbr.current_attempt(rt.submissions, step.index)
         side_pick = step.action == "side_pick"
         previous: dict[int, list[dict[str, Any]]] = {}
@@ -737,7 +740,7 @@ class PickBanActionService:
                 encounter_team_id=actor,
                 attempt=attempt + 1,
                 state=pbr.DRAFT,
-                items_json=[] if side_pick else previous.get(actor, []),
+                items_json=previous.get(actor, []) if step.blind else [],
             )
             self.submission_repo.add(session, row)
             rt.submissions.append(row)

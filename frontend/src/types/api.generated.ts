@@ -6179,7 +6179,7 @@ export interface paths {
         put?: never;
         /**
          * Reopen the last revealed step
-         * @description Permission: workspace `match.result` on the encounter's workspace. Voids the last fully revealed step's submissions and re-opens it for a fresh attempt — the organizer's version of a captain dispute, with no attempt budget and no `dispute.enabled` requirement. A reopened `side_pick` starts with an empty draft, takes back that game's sides and un-binds the round's side-bound steps, so the re-choice binds them afresh. Returns the new room state. 400 when there is no revealed step to reopen or a later step has already been acted in; 409 `side_locked` when the step is a `side_pick` whose game already has a claim or a confirmed result.
+         * @description Permission: workspace `match.result` on the encounter's workspace. Voids the last fully revealed step's submissions and re-opens it for a fresh attempt — the organizer's version of a captain dispute, with no attempt budget and no `dispute.enabled` requirement. A reopened open (non-blind) step starts with an empty draft, the voided items available again, so its captain answers it afresh; a blind step's new drafts are prefilled with each side's previous items (still private until everyone locks). A reopened `side_pick` also takes back that game's sides and un-binds the round's side-bound steps, so the re-choice binds them afresh. Returns the new room state. 400 when there is no revealed step to reopen or a later step has already been acted in; 409 `side_locked` when the step is a `side_pick` whose game already has a claim or a confirmed result.
          *
          *     RPC subject: `rpc.tournament.admin_pick_ban_reopen`
          */
