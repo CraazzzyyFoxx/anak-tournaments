@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { UserCog, X } from "lucide-react";
 
 import { ServerSearchCombobox } from "@/components/kit/ServerSearchCombobox";
@@ -52,6 +53,7 @@ function MemberSearchCombobox({
   disabled: boolean;
   onPick: (option: MemberOption) => void;
 }>) {
+  const t = useTranslations("mixes.access.search");
   return (
     <ServerSearchCombobox<LinkedMember>
       queryKey={["workspace-players-search", workspaceId]}
@@ -83,13 +85,13 @@ function MemberSearchCombobox({
       )}
       onSelect={(member) => member && onPick({ authUserId: member.auth_user_id, label: memberLabel(member) })}
       messages={{
-        loading: "Loading members…",
-        error: "Could not load members. Try again.",
-        minChars: "Type at least 2 characters to search.",
-        empty: "No workspace member matches that name."
+        loading: t("loading"),
+        error: t("error"),
+        minChars: t("minChars"),
+        empty: t("empty")
       }}
       placeholder={placeholder}
-      searchPlaceholder="Search by name or handle…"
+      searchPlaceholder={t("placeholder")}
       disabled={disabled}
     />
   );
@@ -118,6 +120,9 @@ export function PickupAccessDialog({
   onRemoveCoHost,
   onTransfer
 }: Readonly<PickupAccessDialogProps>) {
+  const t = useTranslations("mixes.access");
+  const tHeader = useTranslations("mixes.header");
+  const tCommon = useTranslations("common");
   const [transferTarget, setTransferTarget] = useState<MemberOption | null>(null);
 
   const coHosts = game?.co_hosts ?? [];
@@ -137,13 +142,13 @@ export function PickupAccessDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <UserCog className="h-4 w-4" />
-            Manage access
+            {tHeader("access")}
           </DialogTitle>
-          <DialogDescription>Who else can edit this mix, and who owns it.</DialogDescription>
+          <DialogDescription>{t("description")}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-1.5">
-          <Label>Co-hosts</Label>
+          <Label>{t("coHosts")}</Label>
           {coHosts.length > 0 ? (
             <ul className="space-y-1">
               {coHosts.map((coHost) => (
@@ -152,7 +157,7 @@ export function PickupAccessDialog({
                   className="flex items-center justify-between gap-2 rounded-md border border-[color:var(--aqt-border)] px-2.5 py-1.5 text-sm"
                 >
                   <span className="truncate">{coHost.display_name || `#${coHost.user_id}`}</span>
-                  <IconTooltip control label="Remove co-host" className="shrink-0">
+                  <IconTooltip control label={t("removeCoHost")} className="shrink-0">
                     <Button
                       type="button"
                       variant="ghost"
@@ -160,7 +165,7 @@ export function PickupAccessDialog({
                       className="h-6 w-6"
                       disabled={removingCoHostId === coHost.user_id}
                       onClick={() => onRemoveCoHost(coHost.user_id)}
-                      aria-label={`Remove ${coHost.display_name || `#${coHost.user_id}`} as co-host`}
+                      aria-label={t("removeCoHostNamed", { name: coHost.display_name || `#${coHost.user_id}` })}
                     >
                       <X className="h-3.5 w-3.5" aria-hidden="true" />
                     </Button>
@@ -169,37 +174,33 @@ export function PickupAccessDialog({
               ))}
             </ul>
           ) : (
-            <p className="text-xs text-muted-foreground">No co-hosts yet.</p>
+            <p className="text-xs text-muted-foreground">{t("noCoHosts")}</p>
           )}
           <MemberSearchCombobox
             workspaceId={workspaceId}
             excludeIds={excludeFromCoHostSearch}
-            placeholder="Add a co-host…"
+            placeholder={t("addCoHost")}
             disabled={addingCoHost}
             onPick={(option) => onAddCoHost(option.authUserId)}
           />
-          <p className="text-xs text-muted-foreground">
-            A co-host writes the roster, balance, outcomes and settings exactly like the host.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("coHostHint")}</p>
         </div>
 
         <div className="space-y-1.5 border-t border-[color:var(--aqt-border)] pt-4">
-          <Label>Transfer host</Label>
+          <Label>{t("transferHost")}</Label>
           <MemberSearchCombobox
             workspaceId={workspaceId}
             excludeIds={game?.host_user_id != null ? [game.host_user_id] : []}
-            placeholder={transferTarget?.label ?? "Select a member…"}
+            placeholder={transferTarget?.label ?? t("selectMember")}
             disabled={transferring}
             onPick={setTransferTarget}
           />
-          <p className="text-xs text-muted-foreground">
-            Hands primary ownership to the pick below. You keep write access only if you stay a co-host.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("transferHint")}</p>
         </div>
 
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-            Close
+            {tCommon("close")}
           </Button>
           <Button
             size="sm"
@@ -211,7 +212,7 @@ export function PickupAccessDialog({
               setTransferTarget(null);
             }}
           >
-            {transferring ? "Transferring…" : "Transfer"}
+            {transferring ? t("transferring") : t("transfer")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 
 import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 
@@ -176,6 +177,7 @@ function TeamColumn({
   awayUuids?: ReadonlySet<string>;
   onMakeCaptain?: (uuid: string) => void;
 }>) {
+  const t = useTranslations("mixes.teams");
   const accent = teamAccent(teamIndex);
 
   return (
@@ -184,12 +186,12 @@ function TeamColumn({
         <span aria-hidden="true" className={cn("h-4 w-[3px] shrink-0 rounded-sm", accent.bar)} />
         <InlineEditText
           value={team.name}
-          label="team name"
+          label={t("teamName")}
           canEdit={canWrite && onRenameTeam != null}
           onSave={(next) => onRenameTeam?.(teamIndex, next)}
           textClassName="truncate font-display text-xl font-bold tracking-[0.01em] text-[color:var(--aqt-fg)]"
         />
-        <Eyebrow className="ml-auto shrink-0">avg</Eyebrow>
+        <Eyebrow className="ml-auto shrink-0">{t("average")}</Eyebrow>
         <span className="shrink-0 text-xl font-bold tabular-nums text-[color:var(--aqt-fg)]">
           {team.averageRank == null ? "\u2014" : Math.round(team.averageRank)}
         </span>

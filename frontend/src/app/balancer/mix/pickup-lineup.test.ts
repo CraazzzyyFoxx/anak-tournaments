@@ -29,9 +29,12 @@ import { DEADLOCK_OWNER, LOL_OWNER, LOL_SHAPE, OW_OWNER, OW_SHAPE, flexOnlyOwner
 const OW_ORDER = slotCodeOrder(OW_METADATA);
 const LOL_ORDER = slotCodeOrder(LOL_METADATA);
 
+/** The caller's numbered default for a team the host has not renamed. */
+const teamN = (index: number) => `Team ${index + 1}`;
+
 /** The Overwatch mix's variants, seats ordered by the game's declared role order. */
 const parseVariants = (resultJson: unknown, teamNames: Record<number, string> = {}) =>
-  parseVariantsOrdered(resultJson, teamNames, OW_ORDER);
+  parseVariantsOrdered(resultJson, teamNames, OW_ORDER, teamN);
 
 function row(overrides: Partial<CustomGamePlayer> = {}): CustomGamePlayer {
   return {
@@ -212,9 +215,11 @@ describe("buildMixOwner", () => {
     expect(buildMixOwner({ ...OW_METADATA, native_ladder: [] }, OW_SHAPE, workspaceGrid).grid).toBe(workspaceGrid);
   });
 
-  it("names the native rank layer after the game", () => {
-    expect(rankSourceLabel("native", "League of Legends")).toBe("League of Legends");
-    expect(rankSourceLabel("author", "League of Legends")).toBe("Mine");
+  it("names the native rank layer after the game, and every other layer by the caller's label", () => {
+    const layerLabel = (source: string) => `layer:${source}`;
+    expect(rankSourceLabel("native", "League of Legends", layerLabel)).toBe("League of Legends");
+    expect(rankSourceLabel("native", null, layerLabel)).toBe("layer:native");
+    expect(rankSourceLabel("author", "League of Legends", layerLabel)).toBe("layer:author");
   });
 });
 
@@ -639,6 +644,7 @@ describe("parseVariants for a League mix", () => {
       },
       {},
       LOL_ORDER,
+      teamN,
     );
     expect(variant.teams[0].seats.map((seat) => [seat.role, seat.name])).toEqual([
       ["top", "Zed"],
@@ -654,6 +660,7 @@ describe("parseVariants for a League mix", () => {
       { players, variants: [{ teams: [{ roster: { mid: ["6"], support: ["5"] } }] }] },
       {},
       LOL_ORDER,
+      teamN,
     );
     const bySeat = Object.fromEntries(variant.teams[0].seats.map((seat) => [seat.name, seat.offRole]));
     expect(bySeat).toEqual({ Sub: true, Lulu: false });
@@ -667,6 +674,7 @@ describe("parseVariants for a League mix", () => {
       },
       {},
       LOL_ORDER,
+      teamN,
     );
     const seats = variant.teams[0].seats;
     expect(seats.map((seat) => [seat.role, seat.name])).toEqual([
@@ -703,6 +711,7 @@ describe("parseVariants for a League mix", () => {
       },
       {},
       LOL_ORDER,
+      teamN,
     );
     const [capitalised] = variant.teams[0].seats;
     const [plain] = variant.teams[1].seats;
@@ -811,7 +820,7 @@ describe("myLobbyTeam", () => {
       ],
     } as unknown as CustomGame;
 
-    expect(myLobbyTeam(game, 8, OW_ORDER)).toEqual({
+    expect(myLobbyTeam(game, 8, OW_ORDER, teamN)).toEqual({
       lobbyIndex: 1,
       teamName: "Owls",
       nextMapId: 42,
@@ -820,6 +829,6 @@ describe("myLobbyTeam", () => {
         { uuid: "8", name: "Tolgrn", isCaptain: false, isMe: true },
       ],
     });
-    expect(myLobbyTeam(game, 99, OW_ORDER)).toBeNull();
+    expect(myLobbyTeam(game, 99, OW_ORDER, teamN)).toBeNull();
   });
 });

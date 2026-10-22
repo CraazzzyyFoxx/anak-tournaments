@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { UserPlus } from "lucide-react";
 
@@ -35,6 +36,8 @@ export function AddPlayerIdentityPopover({
   canWrite: boolean;
   onTogglePlayer: (memberId: number) => void;
 }>) {
+  const t = useTranslations("mixes.identity");
+  const tCommon = useTranslations("common");
   const queryClient = useQueryClient();
   const [handle, setHandle] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
@@ -42,6 +45,7 @@ export function AddPlayerIdentityPopover({
   const metadata = useDisciplineMetadata(workspaceId, discipline);
   const provider = metadata.data?.discipline.identity_provider;
   const config = provider ? getSocialProviderConfig(provider) : null;
+  const providerName = config?.label ?? t("anyGame");
 
   const addIdentity = useMutation({
     mutationFn: (input: {
@@ -51,7 +55,7 @@ export function AddPlayerIdentityPopover({
     onSuccess: async (member, input) => {
       setHandle("");
       setIsAddOpen(false);
-      notify.success(`${input.identity.handle} joined the workspace roster`);
+      notify.success(t("joined", { handle: input.identity.handle }));
       await queryClient.invalidateQueries({ queryKey: workspacePlayerKeys.all(input.workspaceId) });
       input.onAdded?.(member.member_id);
     },
@@ -62,7 +66,7 @@ export function AddPlayerIdentityPopover({
     if (!provider) return;
     const shown = displaySocialHandle(provider, handle);
     if (!shown) {
-      setAddError(`Enter a ${config?.label ?? "game"} handle, for example ${config?.placeholder ?? "Name#TAG"}.`);
+      setAddError(t("handleRequired", { provider: providerName, example: config?.placeholder ?? "Name#TAG" }));
       return;
     }
     setAddError(null);
@@ -87,7 +91,7 @@ export function AddPlayerIdentityPopover({
         >
           <UserPlus aria-hidden="true" />
           {provider ? <SocialIcon provider={provider} size={14} decorative className="size-3.5" /> : null}
-          New {config?.label ?? "game"} identity
+          {t("trigger", { provider: providerName })}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-72 p-3">
@@ -98,7 +102,7 @@ export function AddPlayerIdentityPopover({
             submitIdentity();
           }}
         >
-          <Eyebrow as="p">Add someone new</Eyebrow>
+          <Eyebrow as="p">{t("title")}</Eyebrow>
           <div className="flex gap-1.5">
             <Input
               value={handle}
@@ -107,7 +111,7 @@ export function AddPlayerIdentityPopover({
                 if (addError) setAddError(null);
               }}
               placeholder={config?.placeholder ?? ""}
-              aria-label={`New ${config?.label ?? "game"} identity`}
+              aria-label={t("trigger", { provider: providerName })}
               autoComplete="off"
               aria-invalid={addError ? true : undefined}
               // `min-w-0`: an `<input>` carries an intrinsic ~170px
@@ -117,7 +121,7 @@ export function AddPlayerIdentityPopover({
             {/* Enabled while empty on purpose: submit validates and says why. */}
             <Button type="submit" className="shrink-0 px-3" disabled={addIdentity.isPending || !provider}>
               {addIdentity.isPending ? <Spinner className="size-3.5" /> : null}
-              Add
+              {tCommon("add")}
             </Button>
           </div>
           <p
@@ -126,7 +130,7 @@ export function AddPlayerIdentityPopover({
               addError ? "text-rose-200" : "text-[color:var(--aqt-fg-dim)]"
             )}
           >
-            {addError ?? (metadata.isError ? "Unable to load the identity provider." : "Self-declared identity; this does not verify ownership.")}
+            {addError ?? (metadata.isError ? t("providerError") : t("hint"))}
           </p>
         </form>
       </PopoverContent>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 
 import {
   DndContext,
@@ -65,31 +66,7 @@ type PickupLobbyPanelProps = {
 };
 
 /** One drag-and-drop column per participation state, in the order a host reads commitment. */
-const COLUMNS: readonly {
-  bucket: MixParticipation;
-  title: string;
-  hint: string;
-  emptyHint: string;
-}[] = [
-  {
-    bucket: "must_play",
-    title: "Must play",
-    hint: "Guaranteed a seat",
-    emptyHint: "Drag a player here to guarantee their seat",
-  },
-  {
-    bucket: "pool",
-    title: "In the pool",
-    hint: "In the balance",
-    emptyHint: "Drag a player here to put them in the balance",
-  },
-  {
-    bucket: "benched",
-    title: "Benched",
-    hint: "Sitting out, settings kept",
-    emptyHint: "Drag a player here to bench them",
-  },
-];
+const COLUMNS: readonly MixParticipation[] = ["must_play", "pool", "benched"];
 
 /**
  * The lineup: who is in this mix, who the next balance will use, and whether the
@@ -124,15 +101,19 @@ export function PickupLobbyPanel({
   onApplyRotationHints,
   applyingHints,
 }: Readonly<PickupLobbyPanelProps>) {
+  const t = useTranslations("mixes.lineup");
   const lineup = sortLineup(rows);
   const summary = summarizeLineup(rows, owner.roles);
   const supply = summarizeRoleSupply(rows, owner, lobbyCount);
   const slotLabel = useSlotLabel(owner.ontology);
   const rotationByMember = new Map(rotation.map((r) => [r.workspace_member_id, r]));
   const pendingHintCount = computeRotationHintPatches(rows, rotation).length;
-  const columns = COLUMNS.map((def) => ({
-    ...def,
-    rows: lineup.filter((row) => row.participation === def.bucket),
+  const columns = COLUMNS.map((bucket) => ({
+    bucket,
+    title: t(`columns.${bucket}.title`),
+    hint: t(`columns.${bucket}.hint`),
+    emptyHint: t(`columns.${bucket}.empty`),
+    rows: lineup.filter((row) => row.participation === bucket),
   }));
 
   const [draggingRow, setDraggingRow] = useState<CustomGamePlayer | null>(null);
@@ -164,20 +145,16 @@ export function PickupLobbyPanel({
   return (
     <Card variant="flat" className="flex min-w-0 flex-col">
       <div className="flex items-center gap-2.5 border-b border-[color:var(--aqt-border)] px-4 py-3.5">
-        <h2 className={CARD_TITLE_CLASS}>Lineup</h2>
+        <h2 className={CARD_TITLE_CLASS}>{t("title")}</h2>
         <span className={CAPTION_CLASS}>
-          {`${summary.active} in the balance`}
-          {summary.benched > 0 ? ` \u00B7 ${summary.benched} benched` : ""}
+          {t("inBalance", { count: summary.active })}
+          {summary.benched > 0 ? ` \u00B7 ${t("benchedCount", { count: summary.benched })}` : ""}
         </span>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           {canWrite && rotation.length > 0 ? (
             <IconTooltip
               control
-              label={
-                pendingHintCount > 0
-                  ? `Apply ${pendingHintCount} rotation hint${pendingHintCount === 1 ? "" : "s"}`
-                  : "Lineup already matches the rotation hints"
-              }
+              label={pendingHintCount > 0 ? t("applyHintsCount", { count: pendingHintCount }) : t("hintsMatch")}
             >
               <Button
                 type="button"
@@ -192,7 +169,7 @@ export function PickupLobbyPanel({
                 onClick={onApplyRotationHints}
               >
                 <Wand2 className="size-3.5" aria-hidden="true" />
-                <span className="sr-only">Apply rotation hints</span>
+                <span className="sr-only">{t("applyHints")}</span>
               </Button>
             </IconTooltip>
           ) : null}
@@ -200,7 +177,7 @@ export function PickupLobbyPanel({
             <>
               {/* Icon-only: the confirm dialog already spells the action out in
                   full. */}
-              <IconTooltip control label="Empty the lobby">
+              <IconTooltip control label={t("emptyLobby")}>
                 <Button
                   type="button"
                   variant="ghost"
@@ -210,16 +187,16 @@ export function PickupLobbyPanel({
                   onClick={() => setClearOpen(true)}
                 >
                   <Trash2 className="size-3.5" aria-hidden="true" />
-                  <span className="sr-only">Empty the lobby</span>
+                  <span className="sr-only">{t("emptyLobby")}</span>
                 </Button>
               </IconTooltip>
               <ConfirmDialog
                 open={clearOpen}
                 onOpenChange={setClearOpen}
                 intent={{
-                  title: "Empty the lobby?",
-                  description: `This removes all ${rows.length} players from this mix, along with their role order. Ranks are not affected \u2014 they live in your own book and the workspace roster.`,
-                  confirmLabel: "Remove everyone",
+                  title: t("emptyLobbyTitle"),
+                  description: t("emptyLobbyDescription", { count: rows.length }),
+                  confirmLabel: t("emptyLobbyConfirm"),
                   tone: "danger"
                 }}
                 pending={clearing}
@@ -252,8 +229,8 @@ export function PickupLobbyPanel({
                   )}
                 >
                   {entry.short > 0
-                    ? `${entry.supply} of ${entry.need} \u00B7 short ${entry.short}`
-                    : `${entry.supply} of ${entry.need}`}
+                    ? t("supplyShort", { supply: entry.supply, need: entry.need, short: entry.short })
+                    : t("supply", { supply: entry.supply, need: entry.need })}
                 </span>
               </div>
               <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-[color:var(--aqt-overlay-3)]">
@@ -277,11 +254,7 @@ export function PickupLobbyPanel({
       {summary.blocking > 0 ? (
         <p className="flex items-start gap-2 border-b border-[color:var(--aqt-border)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_6%,transparent)] px-4 py-2.5 text-caption text-[color:var(--aqt-amber)]">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-          <span>
-            {summary.blocking === 1
-              ? "1 player has no ranked role and will fail the balance."
-              : `${summary.blocking} players have no ranked role and will fail the balance.`}
-          </span>
+          <span>{t("blocking", { count: summary.blocking })}</span>
         </p>
       ) : null}
 
@@ -289,19 +262,15 @@ export function PickupLobbyPanel({
         {!hasMix ? (
           <PageStateCard
             state="empty"
-            title="No mix selected"
-            description="Open a mix from the list to start filling its lineup."
+            title={t("noMixTitle")}
+            description={t("noMixDescription")}
             className="px-4 py-8"
           />
         ) : lineup.length === 0 ? (
           <PageStateCard
             state="empty"
-            title="Lineup is empty"
-            description={
-              canWrite
-                ? "Add players from the workspace pool to put them in this mix."
-                : "No players have been added to this mix."
-            }
+            title={t("emptyLineupTitle")}
+            description={canWrite ? t("emptyLineupHost") : t("emptyLineupViewer")}
             className="px-4 py-8"
           />
         ) : (
@@ -311,7 +280,7 @@ export function PickupLobbyPanel({
             onDragEnd={handleDragEnd}
             onDragCancel={() => setDraggingRow(null)}
           >
-            <div className="flex flex-col gap-2.5" aria-label="Mix lineup">
+            <div className="flex flex-col gap-2.5" aria-label={t("listLabel")}>
               {columns.map((column) => (
                 <LineupColumn
                   key={column.bucket}

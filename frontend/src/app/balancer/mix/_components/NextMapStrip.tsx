@@ -48,6 +48,7 @@ export function NextMapStrip({
   onNextMapChange: (mapId: number | null) => void;
 }>) {
   const t = useTranslations("mixes.room");
+  const tCommon = useTranslations("common");
   const [modeId, setModeId] = useState<number | null>(null);
   const [mapPickerOpen, setMapPickerOpen] = useState(false);
   const modes = rollableModes(maps);
@@ -61,7 +62,7 @@ export function NextMapStrip({
       playedMapIds: matches.flatMap((match) => (match.map_id == null ? [] : [match.map_id]))
     });
     if (rolled == null) {
-      notify.error("No competitive maps to roll from");
+      notify.error(t("noMapsToRoll"));
       return;
     }
     onNextMapChange(rolled.id);
@@ -87,7 +88,7 @@ export function NextMapStrip({
         </span>
       )}
       <div className="min-w-0 flex-1">
-        <Eyebrow>Next map</Eyebrow>
+        <Eyebrow>{t("nextMapLabel")}</Eyebrow>
         <div className="flex flex-wrap items-baseline gap-x-2">
           <span
             className={cn(
@@ -95,7 +96,7 @@ export function NextMapStrip({
               nextMap ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]"
             )}
           >
-            {nextMap?.name ?? "Not rolled yet"}
+            {nextMap?.name ?? t("notRolled")}
           </span>
           {nextMap?.parent ? (
             <span className={CAPTION_CLASS}>{nextMap.parent.name}</span>
@@ -108,9 +109,9 @@ export function NextMapStrip({
           data-export-hide
           className={cn("flex flex-wrap items-center gap-1.5", capturing && "invisible")}
         >
-          <FilterChipGroup label="Roll within mode" className="gap-1">
+          <FilterChipGroup label={t("rollMode")} className="gap-1">
             <FilterChip active={modeId == null} onClick={() => setModeId(null)}>
-              Any
+              {tCommon("any")}
             </FilterChip>
             {modes.map((mode) => (
               <FilterChip key={mode.id} active={modeId === mode.id} onClick={() => setModeId(mode.id)}>
@@ -130,7 +131,7 @@ export function NextMapStrip({
             ) : (
               <Dices className="mr-1.5 size-3.5" aria-hidden="true" />
             )}
-            Roll
+            {t("roll")}
           </Button>
           <Combobox
             open={mapPickerOpen}

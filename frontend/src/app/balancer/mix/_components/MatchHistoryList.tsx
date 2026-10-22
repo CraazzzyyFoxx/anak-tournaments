@@ -33,6 +33,7 @@ export function MatchHistoryList({
   undoingMatchId: number | null;
   onUndoMatch?: (matchId: number) => void;
 }>) {
+  const t = useTranslations("mixes.matchHistory");
   // Newest first, so the first row of each lobby IS that lobby's newest -- the
   // only one the server will undo (`newest_id_for_lobby`).
   const newestPerLobby = new Set<number>();
@@ -51,7 +52,7 @@ export function MatchHistoryList({
     <div className="flex flex-col gap-2 border-t border-[color:var(--aqt-border)] pt-3">
       <Eyebrow className="flex items-center gap-1.5">
         <History className="size-3.5" aria-hidden="true" />
-        Match history
+        {t("title")}
       </Eyebrow>
       <ul className="flex flex-col gap-1.5">
         {matches.map((match) => (
@@ -84,6 +85,8 @@ function MatchHistoryRow({
   onUndoMatch?: (matchId: number) => void;
 }>) {
   const t = useTranslations("mixes.lobbies");
+  const tHistory = useTranslations("mixes.matchHistory");
+  const tRoom = useTranslations("mixes.room");
   const format = useFormatter();
   const [first, second] = match.teams;
   const firstAccent = teamAccent(0);
@@ -140,19 +143,19 @@ function MatchHistoryRow({
           <StatusDot className={cn("inline-block", secondAccent.bar)} />
         </div>
         <div className="mt-0.5 flex items-center gap-1.5 truncate text-label text-[color:var(--aqt-fg-dim)]">
-          <span className="truncate">{match.map_name ?? "No map"}</span>
+          <span className="truncate">{match.map_name ?? tRoom("noMap")}</span>
           <span aria-hidden="true">&middot;</span>
           <span className="shrink-0">{formatRelative(format, match.recorded_at)}</span>
         </div>
       </div>
       {canUndo ? (
         <>
-          <IconTooltip control label="Undo this match" hint="Removes it from the history">
+          <IconTooltip control label={tHistory("undo")} hint={tHistory("undoHint")}>
             <Button
               type="button"
               variant="ghost"
               size="icon"
-              aria-label="Undo this match"
+              aria-label={tHistory("undo")}
               disabled={undoing}
               onClick={() => setUndoOpen(true)}
             >
@@ -163,12 +166,12 @@ function MatchHistoryRow({
             open={undoOpen}
             onOpenChange={setUndoOpen}
             intent={{
-              title: "Undo this match?",
+              title: tHistory("undoTitle"),
               description:
                 match.points_per_win_applied != null
-                  ? `Removes it from the history and moves every player's rank back by ${match.points_per_win_applied} points. Players pinned as must-play before it were already released to the pool and stay there.`
-                  : "Removes it from the history. No rank points were applied.",
-              confirmLabel: "Undo match",
+                  ? tHistory("undoPoints", { points: match.points_per_win_applied })
+                  : tHistory("undoNoPoints"),
+              confirmLabel: tHistory("undoConfirm"),
               tone: "danger"
             }}
             pending={undoing}

@@ -201,7 +201,7 @@ describe("PickupLobbyCards", () => {
 
     await click(byName(scope, "record"));
     const items = [...document.querySelectorAll('[role="menuitem"]')];
-    expect(items.map((item) => item.textContent)).toEqual(["teamWin:Team 1", "draw", "teamWin:Team 2"]);
+    expect(items.map((item) => item.textContent)).toEqual(["teamWin:team:1", "draw", "teamWin:team:2"]);
     await click(items[1]);
     expect(onRecordOutcome).toHaveBeenCalledWith({ outcome: { winner: null }, lobbyIndex: 2 });
   });

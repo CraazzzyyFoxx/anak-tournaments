@@ -7,13 +7,6 @@ import type { PlayerIdentity } from "@/types/identity.types";
 /** Where an effective rank came from, strongest first. */
 export type RankSource = "author" | "workspace" | "native";
 
-/** The labels of the layers every game has; the native ladder is named after the game (`rankSourceLabel`). */
-export const RANK_SOURCE_LABELS: Record<RankSource, string> = {
-  author: "Mine",
-  workspace: "Workspace",
-  native: "Game",
-};
-
 /**
  * One row of a mix lineup, self-describing so the lineup never has to guess a
  * name from a separately paginated pool query.

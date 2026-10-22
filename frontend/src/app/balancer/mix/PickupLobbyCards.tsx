@@ -125,13 +125,18 @@ function LobbyCard({
 }: Readonly<PickupLobbyCardsProps & { lobby: CustomGameLobby }>) {
   const t = useTranslations("mixes.room");
   const tLobby = useTranslations("mixes.lobbies");
+  const tVoice = useTranslations("mixes.voice");
+  const defaultName = (team: number) => tVoice("team", { n: team + 1 });
   const index = lobby.lobby_index;
   const letter = lobbyLetter(index);
   const state = lobby.state ?? "idle";
   const variant =
-    parseVariants(lobby.balance_result, teamNamesByIndex(game.settings, index), slotCodeOrder(owner.ontology))[
-      lobby.selected_variant_index
-    ] ?? null;
+    parseVariants(
+      lobby.balance_result,
+      teamNamesByIndex(game.settings, index),
+      slotCodeOrder(owner.ontology),
+      defaultName,
+    )[lobby.selected_variant_index] ?? null;
   const candidates = lobbyCandidateCount(rows, index);
   const need = owner.lobbySize;
   const short = need != null && candidates < need;
@@ -140,7 +145,7 @@ function LobbyCard({
     .flatMap((team) => team.seats)
     .filter((seat) => away.has(seat.uuid))
     .map((seat) => seat.name);
-  const teamNames = [variant?.teams[0]?.name ?? "Team 1", variant?.teams[1]?.name ?? "Team 2"];
+  const teamNames = [variant?.teams[0]?.name ?? defaultName(0), variant?.teams[1]?.name ?? defaultName(1)];
   const minutes = useLiveMinutes(state, lobby.live_started_at);
   const gap = variant?.stats.ratingGap ?? null;
   const detail =

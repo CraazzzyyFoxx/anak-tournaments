@@ -21,10 +21,13 @@
 //     sheet over the lineup the host was reading;
 //  7. a read-only viewer gets no write controls, no drag source and no drop
 //     target, but can still read the setup.
+import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import en from "@/i18n/messages/en.json";
+import ru from "@/i18n/messages/ru.json";
 import type {
   CustomGamePlayer,
   CustomGamePlayerPatch,
@@ -45,9 +48,6 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
-vi.mock("next-intl", () => ({
-  useTranslations: () => Object.assign((key: string) => key, { has: () => false }),
-}));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
 // Drag itself is not what this pins, and dnd-kit resolves its own React copy
@@ -122,28 +122,31 @@ async function mount(
     applyingHints?: boolean;
     lobbyCount?: number;
     owner?: MixOwner;
+    locale?: "en" | "ru";
   } = {},
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
   await act(async () => {
     createRoot(container).render(
-      <PickupLobbyPanel
-        canWrite={props.canWrite ?? true}
-        hasMix={props.hasMix ?? true}
-        rows={rows}
-        lobbyCount={props.lobbyCount ?? 1}
-        owner={props.owner ?? OW_OWNER}
-        rotation={props.rotation}
-        savingPlayerId={null}
-        clearing={false}
-        onPatchPlayer={onPatchPlayer}
-        onClear={onClear}
-        onRemovePlayer={onRemovePlayer}
-        onOpenPlayer={onOpenPlayer}
-        onApplyRotationHints={onApplyRotationHints}
-        applyingHints={props.applyingHints ?? false}
-      />,
+      <NextIntlClientProvider locale={props.locale ?? "en"} messages={props.locale === "ru" ? ru : en}>
+        <PickupLobbyPanel
+          canWrite={props.canWrite ?? true}
+          hasMix={props.hasMix ?? true}
+          rows={rows}
+          lobbyCount={props.lobbyCount ?? 1}
+          owner={props.owner ?? OW_OWNER}
+          rotation={props.rotation}
+          savingPlayerId={null}
+          clearing={false}
+          onPatchPlayer={onPatchPlayer}
+          onClear={onClear}
+          onRemovePlayer={onRemovePlayer}
+          onOpenPlayer={onOpenPlayer}
+          onApplyRotationHints={onApplyRotationHints}
+          applyingHints={props.applyingHints ?? false}
+        />
+      </NextIntlClientProvider>,
     );
   });
   await act(async () => {
@@ -297,8 +300,7 @@ describe("PickupLobbyPanel rotation hints", () => {
       ],
     });
 
-    // `next-intl` is the identity mock here: the label is the reason's message key.
-    const badge = scope.querySelector('[aria-label="owed_seat"]');
+    const badge = scope.querySelector('[aria-label="Sat out 1 map in a row — next to play"]');
     expect(badge?.getAttribute("role")).toBe("img");
   });
 
@@ -316,7 +318,7 @@ describe("PickupLobbyPanel rotation hints", () => {
       ],
     });
 
-    expect(scope.querySelector('[aria-label="played_streak"]')).not.toBeNull();
+    expect(scope.querySelector('[aria-label="Played 3 maps in a row"]')).not.toBeNull();
   });
 
   it("renders no hint for a row already pinned must_play -- the Pin already says it", async () => {
@@ -333,7 +335,7 @@ describe("PickupLobbyPanel rotation hints", () => {
       ],
     });
 
-    expect(scope.querySelector('[aria-label="pinned"]')).toBeNull();
+    expect(scope.querySelector('[aria-label="Pinned by the host"]')).toBeNull();
   });
 
   it("renders no hint for a neutral verdict or when no rotation data has loaded", async () => {
@@ -349,10 +351,10 @@ describe("PickupLobbyPanel rotation hints", () => {
         },
       ],
     });
-    expect(neutral.querySelector('[aria-label="pool_fits"]')).toBeNull();
+    expect(neutral.querySelector('[aria-label="Seats cover the whole pool"]')).toBeNull();
 
     const noData = await mount([row()]);
-    expect(noData.querySelector('[aria-label="owed_seat"]')).toBeNull();
+    expect(noData.querySelector('[role="img"][aria-label^="Sat out"]')).toBeNull();
   });
 });
 
@@ -622,5 +624,29 @@ describe("PickupLobbyPanel", () => {
 
     // One lobby needs 2 tanks, two lobbies need 4 -- three volunteers are short one.
     expect(scope.textContent).toContain("3 of 4 \u00B7 short 1");
+  });
+});
+
+describe("PickupLobbyPanel in Russian", () => {
+  it("names its empty states in the reader's language", async () => {
+    const withoutMix = await mount([], { hasMix: false, locale: "ru" });
+    expect(withoutMix.textContent).toContain("Микс не выбран");
+    expect(withoutMix.textContent).not.toContain("No mix selected");
+
+    document.body.innerHTML = "";
+    const empty = await mount([], { locale: "ru" });
+    expect(empty.textContent).toContain("Состав пуст");
+    expect(empty.textContent).not.toContain("Lineup is empty");
+  });
+
+  it("labels the columns and the row controls in Russian", async () => {
+    const scope = await mount([row()], { locale: "ru" });
+
+    expect(byLabel(scope, "В пуле")?.textContent).toContain("Aria#1111");
+    expect(byName(scope, "Очистить лобби")).not.toBeNull();
+    expect(byName(scope, "Убрать Aria#1111 из микса")).not.toBeNull();
+    expect(scope.textContent).toContain("В балансе: 1");
+    expect(scope.textContent).not.toContain("in the balance");
+    expect(byName(scope, "Empty the lobby")).toBeNull();
   });
 });

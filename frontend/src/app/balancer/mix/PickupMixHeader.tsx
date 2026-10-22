@@ -136,6 +136,7 @@ export function PickupMixHeader({
   settingLobbyCount = false,
   onLobbyCountChange
 }: Readonly<PickupMixHeaderProps>) {
+  const tm = useTranslations("mixes");
   const tl = useTranslations("mixes.lobbies");
   const th = useTranslations("mixes.header");
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -167,7 +168,7 @@ export function PickupMixHeader({
         className="flex shrink-0 items-center gap-1.5 text-caption text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg-muted)]"
       >
         <ArrowLeft className="size-3.5" aria-hidden="true" />
-        Mixes
+        {tm("title")}
       </Link>
 
       <span aria-hidden="true" className="h-5 w-px shrink-0 bg-[color:var(--aqt-border)]" />
@@ -176,7 +177,7 @@ export function PickupMixHeader({
         {canWrite && game != null && onRename ? (
           <InlineEditText
             value={game.name}
-            label="mix name"
+            label={th("nameLabel")}
             onSave={onRename}
             className="min-w-0"
             textClassName="font-display text-xl font-bold tracking-[-0.01em] text-[color:var(--aqt-fg)]"
@@ -184,7 +185,7 @@ export function PickupMixHeader({
           />
         ) : (
           <h1 className="min-w-0 truncate font-display text-xl font-bold tracking-[-0.01em] text-[color:var(--aqt-fg)]">
-            {game?.name ?? (gameLoading ? "\u2026" : "No mix yet")}
+            {game?.name ?? (gameLoading ? "\u2026" : th("noMix"))}
           </h1>
         )}
         {game ? (
@@ -224,7 +225,7 @@ export function PickupMixHeader({
             onClick={onOpenPool}
           >
             <UserPlus className="mr-1.5 size-3.5" aria-hidden="true" />
-            Add players
+            {tm("start.addPlayers")}
           </Button>
         ) : null}
 
@@ -331,9 +332,9 @@ export function PickupMixHeader({
           open={deleteOpen}
           onOpenChange={setDeleteOpen}
           intent={{
-            title: "Delete this mix?",
-            description: `Permanently removes ${game?.name ?? "this mix"} and every match it recorded. This cannot be undone -- unlike Close, there is no way back to it afterwards.`,
-            confirmLabel: "Delete permanently",
+            title: th("deleteTitle"),
+            description: th("deleteDescription", { name: game?.name ?? th("thisMix") }),
+            confirmLabel: th("deleteConfirm"),
             tone: "danger"
           }}
           pending={deleting}

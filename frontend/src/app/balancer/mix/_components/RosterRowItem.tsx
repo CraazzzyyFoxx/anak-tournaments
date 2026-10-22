@@ -1,3 +1,4 @@
+import { useTranslations } from "next-intl";
 import { Check, CornerDownLeft, Plus } from "lucide-react";
 
 import DivisionIcon from "@/components/DivisionIcon";
@@ -36,6 +37,8 @@ export function RosterRowItem({
   canWrite: boolean;
   onToggle: () => void;
 }>) {
+  const t = useTranslations("mixes.addPlayers.row");
+  const tLineup = useTranslations("mixes.lineup");
   const slotLabel = useSlotLabel(owner.ontology);
   const label = row.displayName || row.handle || `#${row.memberId}`;
   const { grid } = owner;
@@ -45,7 +48,7 @@ export function RosterRowItem({
       <RowButton
         disabled={!canWrite}
         aria-pressed={isInMix}
-        aria-label={isInMix ? `Remove ${label} from this mix` : `Add ${label} to this mix`}
+        aria-label={isInMix ? tLineup("removeNamed", { name: label }) : t("add", { name: label })}
         onClick={onToggle}
         className={cn(
           "relative flex items-center gap-2.5 rounded-lg border px-2 py-1.5",
@@ -96,18 +99,18 @@ export function RosterRowItem({
             const division = resolveDivisionFromRank(grid, own ?? inherited);
             const rank = own ?? inherited;
             // A one-role game names no role: the crest is just the player's rank.
-            const what = owner.showsRoles ? `${slotLabel(role)} rank` : "Rank";
+            const what = owner.showsRoles ? t("roleRank", { role: slotLabel(role) }) : t("rank");
             return (
               <IconTooltip
                 key={role}
                 label={
                   inherited == null
-                    ? `${what} for ${label}`
-                    : `${what} for ${label}, inherited ${inherited} from the workspace`
+                    ? t("rankFor", { what, name: label })
+                    : t("rankForInherited", { what, name: label, rank: String(inherited) })
                 }
                 hint={
                   rank == null
-                    ? "No rank"
+                    ? t("noRank")
                     : `${getDivisionLabel(grid, division) ?? ""} \u00B7 ${rank}`
                 }
                 // Dimmed means "not yours": painting an inherited number the

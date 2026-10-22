@@ -83,6 +83,7 @@ export function usePickupMix(
   const queryClient = useQueryClient();
   const tVoiceError = useTranslations("mixes.voice.errors");
   const tRoom = useTranslations("mixes.room");
+  const tToast = useTranslations("mixes.toast");
 
   // Every open mix of the workspace, whatever its game: the voice panel names the channels this workspace's OTHER
   // open mixes already took, and voice channels are shared across games. The same page the directory's "now" block
@@ -249,11 +250,7 @@ export function usePickupMix(
       if (game != null) {
         applyGame(game);
       }
-      notify.success(
-        appliedCount > 0
-          ? `Applied ${appliedCount} hint${appliedCount === 1 ? "" : "s"}`
-          : "Lineup already matches the hints",
-      );
+      notify.success(appliedCount > 0 ? tToast("hintsApplied", { count: appliedCount }) : tToast("hintsMatch"));
     },
     onError: (error) => notify.apiError(error),
   });
@@ -281,7 +278,7 @@ export function usePickupMix(
   const postToDiscord = useMutation({
     mutationFn: ({ lobbyIndex, variantIndex }: { lobbyIndex: number; variantIndex: number }) =>
       customGameService.postToDiscord(workspaceId, selectedGameId as number, lobbyIndex, variantIndex),
-    onSuccess: () => notify.success("Sent to Discord"),
+    onSuccess: () => notify.success(tToast("sentToDiscord")),
     onError: (error) => notify.apiError(error),
   });
 
@@ -290,7 +287,7 @@ export function usePickupMix(
       customGameService.transferHost(workspaceId, selectedGameId as number, newHostUserId),
     onSuccess: (game) => {
       applyGame(game);
-      notify.success("Host transferred");
+      notify.success(tToast("hostTransferred"));
     },
     onError: (error) => notify.apiError(error),
   });
@@ -300,7 +297,7 @@ export function usePickupMix(
       customGameService.addCoHost(workspaceId, selectedGameId as number, coHostUserId),
     onSuccess: (game) => {
       applyGame(game);
-      notify.success("Co-host added");
+      notify.success(tToast("coHostAdded"));
     },
     onError: (error) => notify.apiError(error),
   });
@@ -310,7 +307,7 @@ export function usePickupMix(
       customGameService.removeCoHost(workspaceId, selectedGameId as number, coHostUserId),
     onSuccess: (game) => {
       applyGame(game);
-      notify.success("Co-host removed");
+      notify.success(tToast("coHostRemoved"));
     },
     onError: (error) => notify.apiError(error),
   });
@@ -334,7 +331,7 @@ export function usePickupMix(
       customGameService.balance(workspaceId, selectedGameId as number, input),
     onSuccess: (game) => {
       applyGame(game);
-      notify.success("Teams balanced");
+      notify.success(tToast("balanced"));
     },
     onError: (error) => notify.apiError(error),
   });
@@ -344,7 +341,7 @@ export function usePickupMix(
       customGameService.recordOutcome(workspaceId, selectedGameId as number, input.lobbyIndex, input.outcome),
     onSuccess: (game) => {
       applyGame(game);
-      notify.success("Result recorded");
+      notify.success(tToast("resultRecorded"));
     },
     onError: (error) => notify.apiError(error),
   });
@@ -387,7 +384,7 @@ export function usePickupMix(
       customGameService.undoMatch(workspaceId, selectedGameId as number, matchId),
     onSuccess: (game) => {
       applyGame(game);
-      notify.success("Match undone");
+      notify.success(tToast("matchUndone"));
     },
     onError: (error) => notify.apiError(error),
   });
@@ -450,7 +447,7 @@ export function usePickupMix(
       customGameService.setLobbyCount(workspaceId, selectedGameId as number, count),
     onSuccess: (game) => {
       applyGame(game);
-      notify.success(`Now running ${game.lobby_count} ${game.lobby_count === 1 ? "lobby" : "lobbies"}`);
+      notify.success(tToast("lobbyCount", { count: game.lobby_count }));
     },
     onError: (error) => notify.apiError(error),
   });
@@ -459,7 +456,7 @@ export function usePickupMix(
     mutationFn: () => customGameService.close(workspaceId, selectedGameId as number),
     onSuccess: (game) => {
       applyGame(game);
-      notify.success("Mix closed");
+      notify.success(tToast("mixClosed"));
     },
     onError: (error) => notify.apiError(error),
   });
@@ -470,7 +467,7 @@ export function usePickupMix(
     onSuccess: async () => {
       queryClient.removeQueries({ queryKey: customGameKeys.one(workspaceId, selectedGameId ?? 0) });
       await queryClient.invalidateQueries({ queryKey: customGameKeys.lists(workspaceId) });
-      notify.success("Mix deleted");
+      notify.success(tToast("mixDeleted"));
     },
     onError: (error) => notify.apiError(error),
   });
@@ -562,7 +559,7 @@ export function usePickupMix(
       await queryClient.invalidateQueries({
         queryKey: customGameKeys.one(workspaceId, selectedGameId ?? 0),
       });
-      notify.success("Signup opened in Discord");
+      notify.success(tToast("signupPosted"));
     },
     onError: (error) => notify.apiError(error),
   });
@@ -577,7 +574,7 @@ export function usePickupMix(
       customGameService.deleteDiscordPost(workspaceId, selectedGameId as number, postId),
     onSuccess: (game) => {
       applyGame(game);
-      notify.success("Removing the post from Discord");
+      notify.success(tToast("postRemoving"));
     },
     onError: (error) => notify.apiError(error),
   });

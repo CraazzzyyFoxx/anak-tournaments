@@ -38,7 +38,11 @@ vi.mock("next-intl", () => ({
       signupTrigger: "signupTrigger",
       "discord.trigger": "discord.trigger",
       "discord.allPosts": "discord.allPosts",
-      "posts.delete": "posts.delete"
+      "posts.delete": "posts.delete",
+      nameLabel: "mix name",
+      noMix: "No mix yet",
+      "start.addPlayers": "Add players",
+      deleteConfirm: "Delete permanently"
     };
     const value = labels[key] ?? key;
     if (key === "edit" || key === "save" || key === "cancel") return value;

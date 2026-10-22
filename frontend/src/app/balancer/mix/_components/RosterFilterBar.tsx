@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { ChevronDown } from "lucide-react";
 
 import { FilterChip } from "@/components/ui/filter-chip";
@@ -44,16 +45,17 @@ export function RosterFilterBar({
   discipline: string;
   onTogglePlayer: (memberId: number) => void;
 }>) {
+  const t = useTranslations("mixes.addPlayers.filter");
   const [isAuthorMenuOpen, setIsAuthorMenuOpen] = useState(false);
   const overflowActiveAuthor = overflowAuthors.find((author) => author.user_id === filter) ?? null;
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <FilterChip count={workspaceTotal ?? "\u2013"} active={!usingMine} onClick={() => onFilterChange("all")}>
-        Everyone
+        {t("everyone")}
       </FilterChip>
       <FilterChip count={mineTotal ?? "\u2013"} active={usingMine} onClick={() => onFilterChange("mine")}>
-        My ranks
+        {t("mine")}
       </FilterChip>
       {visibleAuthors.map((author) => (
         <FilterChip
@@ -72,7 +74,7 @@ export function RosterFilterBar({
               <span className="max-w-24 truncate">
                 {overflowActiveAuthor
                   ? (overflowActiveAuthor.display_name ?? `#${overflowActiveAuthor.user_id}`)
-                  : `+${overflowAuthors.length} more`}
+                  : t("more", { count: overflowAuthors.length })}
               </span>
               <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />
             </FilterChip>

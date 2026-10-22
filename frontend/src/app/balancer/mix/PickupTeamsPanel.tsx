@@ -163,8 +163,13 @@ export function PickupTeamsPanel({
   emptyState
 }: Readonly<PickupTeamsPanelProps>) {
   const t = useTranslations("mixes.lobbies");
+  const tTeams = useTranslations("mixes.teams");
+  const tMixes = useTranslations("mixes");
+  const tCommon = useTranslations("common");
   const teamNames = teamNamesByIndex(game?.settings, lobbyIndex);
-  const variants = parseVariants(lobby?.balance_result, teamNames, slotCodeOrder(owner.ontology));
+  const variants = parseVariants(lobby?.balance_result, teamNames, slotCodeOrder(owner.ontology), (team) =>
+    tMixes("voice.team", { n: team + 1 })
+  );
   // Clamped rather than reset in an effect: a shorter result must not leave the
   // pager pointing past the end.
   const index = Math.min(variantIndex, Math.max(0, variants.length - 1));
@@ -208,9 +213,9 @@ export function PickupTeamsPanel({
           <Card variant="flat" asChild>
             <PageStateCard
               state="error"
-              title="Unable to load mixes"
-              description="Check your connection and try again."
-              actionLabel="Retry"
+              title={tMixes("list.errorTitle")}
+              description={tMixes("list.errorDescription")}
+              actionLabel={tCommon("retry")}
               onAction={onRetryGames}
               className="px-4 py-16"
             />
@@ -221,12 +226,8 @@ export function PickupTeamsPanel({
           <Card variant="flat" asChild>
             <PageStateCard
               state="empty"
-              title="No mixes yet"
-              description={
-                canWrite
-                  ? "Create a mix from the mixes list, then add players from the workspace pool."
-                  : "A host has not created a mix in this workspace yet."
-              }
+              title={tMixes("history.emptyTitle")}
+              description={canWrite ? tTeams("noMixesHost") : tTeams("noMixesViewer")}
               className="px-4 py-16"
             />
           </Card>
@@ -251,12 +252,8 @@ export function PickupTeamsPanel({
                 <Card variant="flat" asChild>
                   <PageStateCard
                     state="empty"
-                    title="No teams yet"
-                    description={
-                      canWrite
-                        ? "Fill the lineup, then press Balance teams to see the matchup."
-                        : "This mix has not been balanced yet."
-                    }
+                    title={tTeams("noTeamsTitle")}
+                    description={canWrite ? tTeams("noTeamsHost") : tTeams("noTeamsViewer")}
                     className="px-4 py-16"
                   />
                 </Card>
@@ -361,7 +358,7 @@ export function PickupTeamsPanel({
                 onClick={() => (lineupAtRisk ? setBalanceOpen(true) : onBalance())}
                 title={
                   owner.lobbySize != null && activeCount > owner.lobbySize
-                    ? `${activeCount - owner.lobbySize} extra player${activeCount - owner.lobbySize === 1 ? "" : "s"} will be benched automatically -- rotation fairness picks who`
+                    ? tTeams("extraBenched", { count: activeCount - owner.lobbySize })
                     : undefined
                 }
               >
@@ -370,7 +367,7 @@ export function PickupTeamsPanel({
                 ) : (
                   <Shuffle className="mr-1.5 size-3.5" aria-hidden="true" />
                 )}
-                Balance teams
+                {tTeams("balance")}
               </Button>
               <ConfirmDialog
                 open={balanceOpen}
@@ -392,7 +389,7 @@ export function PickupTeamsPanel({
 
           {reshape && variants.length > 1 ? (
             <div className="flex h-9 items-center gap-0.5 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-1">
-              <IconTooltip control label="Previous balance option">
+              <IconTooltip control label={tTeams("previousOption")}>
                 <Button
                   type="button"
                   variant="ghost"
@@ -402,7 +399,7 @@ export function PickupTeamsPanel({
                   onClick={() => onVariantIndexChange(index - 1)}
                 >
                   <ChevronLeft className="size-4" aria-hidden="true" />
-                  <span className="sr-only">Previous balance option</span>
+                  <span className="sr-only">{tTeams("previousOption")}</span>
                 </Button>
               </IconTooltip>
               <span
@@ -412,7 +409,7 @@ export function PickupTeamsPanel({
               >
                 {`${index + 1} / ${variants.length}`}
               </span>
-              <IconTooltip control label="Next balance option">
+              <IconTooltip control label={tTeams("nextOption")}>
                 <Button
                   type="button"
                   variant="ghost"
@@ -422,16 +419,14 @@ export function PickupTeamsPanel({
                   onClick={() => onVariantIndexChange(index + 1)}
                 >
                   <ChevronRight className="size-4" aria-hidden="true" />
-                  <span className="sr-only">Next balance option</span>
+                  <span className="sr-only">{tTeams("nextOption")}</span>
                 </Button>
               </IconTooltip>
             </div>
           ) : null}
 
           {activeCount === 0 && canWrite ? (
-            <p className="text-xs text-[color:var(--aqt-fg-dim)]">
-              Check at least one player in the lobby.
-            </p>
+            <p className="text-xs text-[color:var(--aqt-fg-dim)]">{tTeams("needPlayer")}</p>
           ) : null}
 
           {variant ? (
@@ -440,18 +435,14 @@ export function PickupTeamsPanel({
             // on words nobody reads twice. The name lives in `aria-label` and
             // the tooltip.
             <div className="ml-auto flex items-center gap-1">
-              <IconTooltip
-                control
-                label="Copy image"
-                hint="The matchup card as a picture, ready to paste"
-              >
+              <IconTooltip control label={tTeams("copyImage")} hint={tTeams("copyImageHint")}>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
                   className={TOOL_ICON_CLASS}
                   disabled={capturing}
-                  aria-label="Copy image"
+                  aria-label={tTeams("copyImage")}
                   onClick={() => void capture()}
                 >
                   {capturing ? (
@@ -461,17 +452,13 @@ export function PickupTeamsPanel({
                   )}
                 </Button>
               </IconTooltip>
-              <IconTooltip
-                control
-                label="Copy handles"
-                hint="Everyone in the balance, one per line"
-              >
+              <IconTooltip control label={tTeams("copyHandles")} hint={tTeams("copyHandlesHint")}>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon"
                   className={TOOL_ICON_CLASS}
-                  aria-label="Copy handles"
+                  aria-label={tTeams("copyHandles")}
                   onClick={onCopyHandles}
                 >
                   <ClipboardCopy className="size-4" aria-hidden="true" />
@@ -480,18 +467,14 @@ export function PickupTeamsPanel({
               {/* The workspace's channel is the only target a mix has; without
                   one there is nowhere to post, so the button stays off. */}
               {canWrite && onPostToDiscord && game?.settings.workspace_discord_channel_id ? (
-                <IconTooltip
-                  control
-                  label="Post to Discord"
-                  hint="Sends this matchup card to the mix channel"
-                >
+                <IconTooltip control label={tTeams("post")} hint={tTeams("postHint")}>
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
                     className={TOOL_ICON_CLASS}
                     disabled={postingToDiscord}
-                    aria-label="Post to Discord"
+                    aria-label={tTeams("post")}
                     onClick={() => onPostToDiscord(index)}
                   >
                     {postingToDiscord ? (
@@ -508,18 +491,14 @@ export function PickupTeamsPanel({
                   {/* Once a night, irreversible from here: an icon that only
                       turns red on hover, behind the same confirm as before,
                       instead of the loudest pill in the row. */}
-                  <IconTooltip
-                    control
-                    label="Close mix"
-                    hint="Stops balancing and results; recorded matches stay"
-                  >
+                  <IconTooltip control label={tTeams("close")} hint={tTeams("closeHint")}>
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
                       className={cn(TOOL_ICON_CLASS, "hover:text-[color:var(--aqt-rose)]")}
                       disabled={closingMix}
-                      aria-label="Close mix"
+                      aria-label={tTeams("close")}
                       onClick={() => setCloseOpen(true)}
                     >
                       {closingMix ? (
@@ -533,10 +512,9 @@ export function PickupTeamsPanel({
                     open={closeOpen}
                     onOpenChange={setCloseOpen}
                     intent={{
-                      title: "Close this mix?",
-                      description:
-                        "Stops further balancing, roster edits, and outcome recording. Matches already recorded stay recorded -- this cannot be undone from here.",
-                      confirmLabel: "Yes, close mix",
+                      title: tTeams("closeTitle"),
+                      description: tTeams("closeDescription"),
+                      confirmLabel: tTeams("closeConfirm"),
                       tone: "danger"
                     }}
                     pending={closingMix}

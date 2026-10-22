@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
@@ -38,6 +40,7 @@ export function RolePriorityRail({
   saving: boolean;
   onPatch: (patch: CustomGamePlayerPatch) => void;
 }>) {
+  const t = useTranslations("mixes.lineup.rail");
   const slotLabel = useSlotLabel(owner.ontology);
   const order = resolveRoleOrder(row, owner.roles);
   // Off roles trail the selected ones in the game's declared order: an unselected role
@@ -48,7 +51,7 @@ export function RolePriorityRail({
   return (
     <div
       role="group"
-      aria-label={`Roles for ${label}`}
+      aria-label={t("label", { name: label })}
       className="flex shrink-0 items-center justify-end gap-1.5"
     >
       {[...order, ...off].map((role) => {
@@ -57,13 +60,15 @@ export function RolePriorityRail({
         const isPrimary = position === 0;
         const roleRank = row.ranks[role];
         const name = slotLabel(role);
+        const state = isOn ? (isPrimary ? "first" : "also") : "off";
+        const rank = roleRank == null ? "none" : String(roleRank);
         return (
           <IconTooltip
             key={role}
             control
             className="shrink-0"
-            label={roleRank == null ? `${name}: no rank` : `${name}: ${roleRank} pts`}
-            hint={isOn ? (isPrimary ? "First choice" : "Also plays") : "Off"}
+            label={roleRank == null ? t("noRank", { role: name }) : t("points", { role: name, rank })}
+            hint={t(`state.${state}`)}
           >
             <Button
               type="button"
@@ -71,9 +76,7 @@ export function RolePriorityRail({
               size="icon-sm"
               disabled={!canWrite || saving || dimension == null}
               aria-pressed={isOn}
-              aria-label={`${name} for ${label}, ${
-                isOn ? (isPrimary ? "first choice" : "also plays") : "off"
-              }${roleRank == null ? ", no rank" : `, ${roleRank} points`}`}
+              aria-label={t("button", { role: name, name: label, state, rank })}
               onClick={() => {
                 if (dimension != null) onPatch({ roles: roleRefsOf(toggleRole(order, role), dimension) });
               }}

@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import { teamAccent } from "@/app/balancer/mix/pickup-chrome";
 import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/ui/status-dot";
@@ -9,8 +11,8 @@ import type { CustomGameOutcome } from "@/services/custom-game.service";
 type PickupResultControlsProps = {
   /** How many teams the open balance produced — one win button each. */
   teamCount: number;
-  /** Host overrides by position, falling back to `Team N` per button. */
-  teamNames?: readonly string[];
+  /** The teams' names by position: the host's overrides, or the numbered defaults. */
+  teamNames: readonly string[];
   saving: boolean;
   /** The host's configured rank-adjustment-per-win, shown on the win buttons; `null`/`0` hides it. */
   pointsPerWin?: number | null;
@@ -40,12 +42,13 @@ export function PickupResultControls({
   pointsPerWin,
   onRecord
 }: Readonly<PickupResultControlsProps>) {
+  const t = useTranslations("mixes.room");
   // A recorded match is always two-sided (`record_outcome` refuses anything
   // else, and the mix solver only ever produces two teams), so the winner is
   // exactly 1, 2 or a draw -- the same shape the server stores.
   const teams = Array.from({ length: Math.min(teamCount, 2) }, (_, index) => ({
     index,
-    label: `${teamNames?.[index] ?? `Team ${index + 1}`} win`,
+    label: t("teamWin", { team: teamNames[index] }),
     winner: (index === 0 ? 1 : 2) as 1 | 2
   }));
 
@@ -89,7 +92,7 @@ export function PickupResultControls({
         onClick={() => onRecord({ winner: null })}
         className="min-w-16 px-3"
       >
-        Draw
+        {t("draw")}
       </Button>
       {teams[1] ? teamButton(teams[1]) : <span />}
     </div>

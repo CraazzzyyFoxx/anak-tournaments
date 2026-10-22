@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Search } from "lucide-react";
 
 import { CAPTION_CLASS, CARD_TITLE_CLASS } from "@/app/balancer/mix/pickup-chrome";
@@ -79,6 +80,9 @@ export function PickupAddPlayersDialog({
   rows,
   onTogglePlayer
 }: Readonly<PickupAddPlayersDialogProps>) {
+  const t = useTranslations("mixes.addPlayers");
+  const tMixes = useTranslations("mixes");
+  const tCommon = useTranslations("common");
   const slotLabel = useSlotLabel(owner.ontology);
   const picker = useRosterPicker({
     workspaceId,
@@ -107,19 +111,20 @@ export function PickupAddPlayersDialog({
           className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[color:var(--aqt-teal)]"
         />
         <header className="flex shrink-0 items-baseline gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-5 py-3.5 pr-12">
-          <DialogTitle className={cn(CARD_TITLE_CLASS, "tracking-label")}>Add players</DialogTitle>
+          <DialogTitle className={cn(CARD_TITLE_CLASS, "tracking-label")}>{tMixes("start.addPlayers")}</DialogTitle>
           {/* A div, not the default <p>: the loading skeleton is a block element. */}
           <DialogDescription asChild className={cn(CAPTION_CLASS, "min-w-0 truncate")}>
             <div>
               {picker.workspaceTotal == null ? (
                 <span role="status">
-                  <span className="sr-only">Loading the workspace roster{"\u2026"}</span>
+                  <span className="sr-only">{t("loadingRoster")}</span>
                   <Skeleton aria-hidden className="h-4 w-80 max-w-full" />
                 </span>
               ) : (
-                `${picker.workspaceTotal} in this workspace \u00B7 ${
-                  canEditRanks ? "your ranks decide" : "the host's ranks decide"
-                }, workspace ranks fill the gaps`
+                t("summary", {
+                  total: picker.workspaceTotal,
+                  decider: canEditRanks ? "you" : "host"
+                })
               )}
             </div>
           </DialogDescription>
@@ -139,8 +144,8 @@ export function PickupAddPlayersDialog({
                   value={picker.search}
                   onChange={(event) => picker.onSearchChange(event.target.value)}
                   onKeyDown={picker.onSearchKeyDown}
-                  placeholder={"Type a name or game handle \u2014 \u2191\u2193 to move, Enter to add"}
-                  aria-label="Search the workspace roster"
+                  placeholder={t("searchPlaceholder")}
+                  aria-label={t("searchLabel")}
                   autoComplete="off"
                   className="h-11 rounded-xl border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] pl-10 pr-24"
                 />
@@ -150,7 +155,7 @@ export function PickupAddPlayersDialog({
                     "pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 tabular-nums"
                   )}
                 >
-                  {picker.foundCount == null ? "" : `${picker.foundCount} found`}
+                  {picker.foundCount == null ? "" : t("found", { count: picker.foundCount })}
                 </span>
               </div>
 
@@ -174,14 +179,14 @@ export function PickupAddPlayersDialog({
                 host reads a rank column without a text label per row. */}
             <div className="flex shrink-0 items-center gap-2.5 border-y border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-4 py-1.5">
               <span aria-hidden="true" className="size-6 shrink-0" />
-              <Eyebrow className="min-w-0 flex-1">Player</Eyebrow>
+              <Eyebrow className="min-w-0 flex-1">{tMixes("leaderboard.player")}</Eyebrow>
               {owner.showsRoles ? (
                 <div aria-hidden="true" className="flex shrink-0 items-center gap-1.5">
                   {owner.roles.map((role) => (
                     <IconTooltip
                       key={role}
                       label={slotLabel(role)}
-                      hint="This host's rank for the role"
+                      hint={t("rankHint")}
                       className="size-8 items-center justify-center opacity-70"
                     >
                       <PlayerRoleIcon role={role} ontology={owner.ontology} size={14} decorative />
@@ -201,9 +206,9 @@ export function PickupAddPlayersDialog({
               ) : rosterQuery.isError && pageData == null ? (
                 <PageStateCard
                   state="error"
-                  title="Unable to load the roster"
-                  description="Check your connection and try again."
-                  actionLabel="Retry"
+                  title={t("errorTitle")}
+                  description={tMixes("list.errorDescription")}
+                  actionLabel={tCommon("retry")}
                   onAction={() => void rosterQuery.refetch()}
                   className="px-4 py-10"
                 />
@@ -212,24 +217,24 @@ export function PickupAddPlayersDialog({
                   state={deferredSearch ? "filtered-empty" : "empty"}
                   title={
                     deferredSearch
-                      ? `Nobody matches \u201C${deferredSearch}\u201D`
+                      ? t("noMatch", { q: deferredSearch })
                       : picker.activeAuthorLabel != null
                         ? picker.usingMine
-                          ? "You haven't ranked anyone yet"
-                          : `${picker.activeAuthorLabel} hasn't ranked anyone yet`
-                        : "No players in this workspace yet"
+                          ? t("noneMine")
+                          : t("noneAuthor", { name: picker.activeAuthorLabel })
+                        : t("noneWorkspace")
                   }
                   description={
                     deferredSearch
-                      ? "Try a different name, or add a game identity above."
+                      ? t("noMatchHint")
                       : picker.activeAuthorLabel != null
-                        ? "Set a rank on a player in Everyone to add them here."
-                        : "Add a game identity above to start the roster this workspace balances from."
+                        ? t("noneRankedHint")
+                        : t("noneWorkspaceHint")
                   }
                   className="px-4 py-10"
                 />
               ) : (
-                <ul ref={listRef} className="space-y-0.5" aria-label="Workspace roster">
+                <ul ref={listRef} className="space-y-0.5" aria-label={t("rosterLabel")}>
                   {visible.map((row, index) => (
                     <RosterRowItem
                       key={row.memberId}
@@ -254,10 +259,12 @@ export function PickupAddPlayersDialog({
                 leading={
                   pageData
                     ? pageData.total === 0
-                      ? "0 players"
-                      : `${(page - 1) * pageData.per_page + 1}\u2013${
-                          (page - 1) * pageData.per_page + visible.length
-                        } of ${pageData.total}`
+                      ? t("noPlayers")
+                      : t("range", {
+                          start: (page - 1) * pageData.per_page + 1,
+                          end: (page - 1) * pageData.per_page + visible.length,
+                          total: pageData.total
+                        })
                     : undefined
                 }
               />

@@ -151,6 +151,8 @@ function MixLeaderboardRail({
 function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: CustomGame; roomLobby: number | null }>) {
   const t = useTranslations("mixes.room");
   const tLobbies = useTranslations("mixes.lobbies");
+  const tTeams = useTranslations("mixes.teams");
+  const tVoice = useTranslations("mixes.voice");
   const workspaceId = initialGame.workspace_id;
   const pickedGameId = initialGame.id;
   useEntityWorkspace(workspaceId, initialGame.discipline);
@@ -267,7 +269,9 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
   const mySeat = mySeatQuery.data;
   const myMemberId = mySeat?.seat?.workspace_member_id ?? null;
   // The phone view of the player's own lobby: their team, its captain and the map (spec §7.5, G1).
-  const myTeam = myLobbyTeam(game, myMemberId, slotCodeOrder(owner.ontology));
+  const myTeam = myLobbyTeam(game, myMemberId, slotCodeOrder(owner.ontology), (team) =>
+    tVoice("team", { n: team + 1 }),
+  );
   const nextMapName =
     myTeam?.nextMapId == null
       ? null
@@ -288,13 +292,13 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
       .filter((row) => row.participation !== "benched")
       .map((row) => row.identity?.handle ?? playerLabel(row));
     if (handles.length === 0) {
-      notify.error("Nobody is in the balance yet");
+      notify.error(tTeams("copyEmpty"));
       return;
     }
     void navigator.clipboard
       .writeText(handles.join("\n"))
-      .then(() => notify.success(`Copied ${handles.length} handles`))
-      .catch(() => notify.error("Could not reach the clipboard"));
+      .then(() => notify.success(tTeams("copied", { count: handles.length })))
+      .catch(() => notify.error(tTeams("clipboardError")));
   };
 
   if (roomLobby != null && (roomLobby < 0 || roomLobby >= lobbyCount)) {

@@ -300,13 +300,13 @@ describe("PickupMySeatPanel roles", () => {
   it("writes each edit as it is made: the role order and the flex flag", async () => {
     const scope = await mount(state());
 
-    await click(scope.querySelector('[aria-label="Support for you"]'));
+    await click(scope.querySelector('[aria-label="roleFor:Support,rolesOwner"]'));
     expect(onSave).toHaveBeenLastCalledWith({
       roles: ["tank", "damage", "support"].map((role) => ({ dimension: "player_role", role })),
       is_flex: false,
     });
 
-    await click(scope.querySelector('[aria-label="Full flex for you"]'));
+    await click(scope.querySelector('[aria-label="flexFor:rolesOwner"]'));
     expect(onSave).toHaveBeenLastCalledWith({
       roles: ["tank", "damage", "support"].map((role) => ({ dimension: "player_role", role })),
       is_flex: true,
@@ -315,7 +315,7 @@ describe("PickupMySeatPanel roles", () => {
 
   it("puts the server's seat back once a write settles without it", async () => {
     const scope = await mount(state());
-    const support = () => scope.querySelector('[aria-label="Support for you"]');
+    const support = () => scope.querySelector('[aria-label="roleFor:Support,rolesOwner"]');
 
     await click(support());
     await rerender(true);
@@ -369,8 +369,8 @@ describe("PickupMySeatPanel roles", () => {
   it("offers no Full flex in a game without it and never sends one", async () => {
     const scope = await mount(state({ seat: seat({ is_flex: true }) }), { ...OW_OWNER, flex: false });
 
-    expect(scope.querySelector('[aria-label="Full flex for you"]')).toBeNull();
-    await click(scope.querySelector('[aria-label="Support for you"]'));
+    expect(scope.querySelector('[aria-label="flexFor:rolesOwner"]')).toBeNull();
+    await click(scope.querySelector('[aria-label="roleFor:Support,rolesOwner"]'));
     expect(onSave).toHaveBeenLastCalledWith({
       roles: ["tank", "damage", "support"].map((role) => ({ dimension: "player_role", role })),
       is_flex: false,

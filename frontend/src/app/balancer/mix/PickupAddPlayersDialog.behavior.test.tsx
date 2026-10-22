@@ -17,10 +17,12 @@
 //     than the host's own book -- editing them belongs to the roster sheet;
 //  6. a read-only mix still reads the roster, membership does not change.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import en from "@/i18n/messages/en.json";
 import type { CustomGamePlayer } from "@/services/custom-game.service";
 import type { RosterMember } from "@/services/workspace-player.service";
 
@@ -94,9 +96,6 @@ vi.mock("@/services/custom-game.service", () => ({
   },
 }));
 
-vi.mock("next-intl", () => ({
-  useTranslations: () => Object.assign((key: string) => key, { has: () => false }),
-}));
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), apiError: vi.fn() } }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
@@ -161,21 +160,23 @@ async function mount(
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     createRoot(container).render(
-      <QueryClientProvider client={client}>
-        <PickupAddPlayersDialog
-          open
-          onOpenChange={vi.fn()}
-          workspaceId={WORKSPACE_ID}
-          discipline={props.discipline ?? "overwatch"}
-          owner={props.owner ?? OW_OWNER}
-          canEdit={props.canEdit ?? true}
-          canEditRanks={props.canEditRanks ?? true}
-          canWrite={props.canWrite ?? true}
-          hostUserId={props.hostUserId ?? HOST_USER_ID}
-          rows={props.rows ?? []}
-          onTogglePlayer={onTogglePlayer}
-        />
-      </QueryClientProvider>,
+      <NextIntlClientProvider locale="en" messages={en}>
+        <QueryClientProvider client={client}>
+          <PickupAddPlayersDialog
+            open
+            onOpenChange={vi.fn()}
+            workspaceId={WORKSPACE_ID}
+            discipline={props.discipline ?? "overwatch"}
+            owner={props.owner ?? OW_OWNER}
+            canEdit={props.canEdit ?? true}
+            canEditRanks={props.canEditRanks ?? true}
+            canWrite={props.canWrite ?? true}
+            hostUserId={props.hostUserId ?? HOST_USER_ID}
+            rows={props.rows ?? []}
+            onTogglePlayer={onTogglePlayer}
+          />
+        </QueryClientProvider>
+      </NextIntlClientProvider>,
     );
   });
   // The roster query and the chip-count summary query resolve after the first

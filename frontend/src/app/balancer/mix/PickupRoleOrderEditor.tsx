@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranslations } from "next-intl";
+
 import {
   AccentBadge,
   RoleRankControls,
@@ -82,6 +84,7 @@ export function PickupRoleOrderEditor({
   rankFor,
   layout = "list"
 }: Readonly<PickupRoleOrderEditorProps>) {
+  const t = useTranslations("mixes.roleOrder");
   if (!owner.showsRoles) {
     const [role] = owner.roles;
     return role == null ? null : <OnlyRoleRank role={role} owner={owner} disabled={disabled} rank={rankFor(role)} />;
@@ -102,21 +105,15 @@ export function PickupRoleOrderEditor({
             )}
           >
             <div className="min-w-0">
-              <span className="text-xs font-medium text-[color:var(--aqt-fg)]">Full flex</span>
-              {isFlex ? (
-                <p className="mt-0.5 text-label text-[color:var(--aqt-fg-dim)]">
-                  Every role is equally preferred — priority order stops mattering.
-                </p>
-              ) : (
-                <p className="mt-0.5 text-label text-[color:var(--aqt-fg-dim)]">
-                  Drag below to set who the balancer seats first.
-                </p>
-              )}
+              <span className="text-xs font-medium text-[color:var(--aqt-fg)]">{t("fullFlex")}</span>
+              <p className="mt-0.5 text-label text-[color:var(--aqt-fg-dim)]">
+                {isFlex ? t("flexOn") : t("flexOff")}
+              </p>
             </div>
             <Switch
               checked={isFlex}
               disabled={disabled}
-              aria-label={`Full flex for ${label}`}
+              aria-label={t("flexFor", { name: label })}
               onCheckedChange={onFlexChange}
             />
           </div>
@@ -194,6 +191,7 @@ function SortableRoleCard({
   onToggle: () => void;
   rank: PickupRoleRank;
 }>) {
+  const t = useTranslations("mixes.roleOrder");
   const { ref, style, handleProps } = useSortableRow(id, disabled);
   const slotLabel = useSlotLabel(owner.ontology);
 
@@ -206,7 +204,7 @@ function SortableRoleCard({
       <div className="flex items-center gap-1">
         <SortableGrip
           handleProps={handleProps}
-          label={`Reorder ${slotLabel(role)} for ${label}`}
+          label={t("reorder", { role: slotLabel(role), name: label })}
           disabled={disabled}
         />
         <span className="text-label font-semibold text-[color:var(--aqt-fg-dim)]">{`#${priority}`}</span>
@@ -255,6 +253,7 @@ function RoleCardBody({
   onToggle: () => void;
   rank: PickupRoleRank;
 }>) {
+  const t = useTranslations("mixes.roleOrder");
   const slotLabel = useSlotLabel(owner.ontology);
   const accent = roleRankAccent(owner.ontology, role);
   const name = slotLabel(role);
@@ -275,7 +274,7 @@ function RoleCardBody({
           </span>
           {isPrimary ? (
             <AccentBadge accent={accent} className="shrink-0 font-bold uppercase tracking-label">
-              First
+              {t("first")}
             </AccentBadge>
           ) : null}
         </div>
@@ -286,7 +285,7 @@ function RoleCardBody({
             <Switch
               checked={isOn}
               disabled={disabled}
-              aria-label={`${name} for ${label}`}
+              aria-label={t("roleFor", { role: name, name: label })}
               onCheckedChange={onToggle}
               size="sm"
             />
@@ -294,7 +293,7 @@ function RoleCardBody({
               className="text-label font-semibold uppercase tracking-label"
               style={isOn ? accentTextStyle(accent) : { color: "var(--aqt-fg-dim)" }}
             >
-              {isOn ? "Active" : "Off"}
+              {isOn ? t("active") : t("off")}
             </span>
           </label>
         </div>
@@ -356,6 +355,7 @@ function RankChip({
   active: boolean;
   accent: RoleRankAccent;
 }>) {
+  const t = useTranslations("mixes.roleOrder");
   const division = resolveDivisionFromRank(grid, rank.rankValue);
   const divisionLabel = getDivisionLabel(grid, division);
 
@@ -364,7 +364,7 @@ function RankChip({
       {division != null ? (
         <IconTooltip
           label={divisionLabel ?? String(division)}
-          hint={rank.sourceLabel ?? "The rank the balancer uses for this role"}
+          hint={rank.sourceLabel ?? t("rankHint")}
         >
           <DivisionIcon
             division={division}

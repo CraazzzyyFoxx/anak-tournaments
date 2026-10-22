@@ -157,6 +157,7 @@ export function LineupRow({
   onOpen,
   onRemove
 }: Readonly<LineupRowProps>) {
+  const t = useTranslations("mixes.lineup");
   const tRoom = useTranslations("mixes.room");
   const { grid } = owner;
   const label = playerLabel(row);
@@ -174,7 +175,7 @@ export function LineupRow({
       ref={(node) => draggable.setNodeRef(node)}
       {...draggable.listeners}
       {...draggable.attributes}
-      title={canWrite ? `${label} \u2014 roles and ranks` : undefined}
+      title={canWrite ? t("rowTitle", { name: label }) : undefined}
       onClick={(event) => {
         // The sheet is a writer's tool: a read-only viewer opens nothing.
         if (!canWrite) return;
@@ -231,14 +232,14 @@ export function LineupRow({
             will use. The `*` that used to mark a per-mix pin is gone with the pin
             itself — which layer each role resolved from is named in the sheet. */}
         <span
-          title="Mean effective rank across this player's roles"
+          title={t("meanRank")}
           className="text-caption font-semibold tabular-nums text-[color:var(--aqt-fg)]"
         >
           {rank ?? "\u2014"}
         </span>
       </div>
 
-      <IconTooltip control label="Advanced settings" className="shrink-0">
+      <IconTooltip control label={t("advanced")} className="shrink-0">
         <Button
           type="button"
           variant="ghost"
@@ -248,16 +249,16 @@ export function LineupRow({
           className="text-[color:var(--aqt-fg-faint)]"
         >
           <SlidersHorizontal aria-hidden="true" />
-          <span className="sr-only">{`Advanced settings for ${label}`}</span>
+          <span className="sr-only">{t("advancedFor", { name: label })}</span>
         </Button>
       </IconTooltip>
 
       {canWrite ? (
         <RowAction>
-          <IconTooltip control label="Remove from this mix">
+          <IconTooltip control label={t("remove")}>
             <Button type="button" variant="ghost-destructive" size="icon-sm" onClick={onRemove} className="shrink-0">
               <X aria-hidden="true" />
-              <span className="sr-only">{`Remove ${label} from this mix`}</span>
+              <span className="sr-only">{t("removeNamed", { name: label })}</span>
             </Button>
           </IconTooltip>
         </RowAction>

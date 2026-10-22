@@ -45,6 +45,7 @@ export function SeatRow({
   onMakeCaptain?: () => void;
 }>) {
   const tRoom = useTranslations("mixes.room");
+  const tTeams = useTranslations("mixes.teams");
   const dragData: ActiveSeatDrag = { uuid: seat.uuid, role: seat.role, teamIndex, seat };
   const draggable = useDraggable({ id: seat.uuid, data: dragData, disabled: !canDrag });
   const droppable = useDroppable({ id: seat.uuid, data: dragData, disabled: !canDrag });
@@ -111,8 +112,8 @@ export function SeatRow({
       {away ? <span className={AWAY_CHIP_CLASS}>{tRoom("away")}</span> : null}
       {seat.offRole ? (
         <IconTooltip
-          label="Off-role"
-          hint="Assigned off their first-preference role"
+          label={tTeams("offRole")}
+          hint={tTeams("offRoleHint")}
           className="size-4 shrink-0 items-center justify-center text-[color:var(--aqt-amber)]"
         >
           <AlertCircle className="size-3.5" aria-hidden="true" />
@@ -157,6 +158,7 @@ export function SeatDragPreview({ seat, owner }: Readonly<{ seat: PickupSeat; ow
  * when the correction actually moved it, otherwise it is noise.
  */
 function SeatRating({ seat }: Readonly<{ seat: PickupSeat }>) {
+  const t = useTranslations("mixes.teams");
   const effective = seat.rating == null ? null : Math.round(seat.rating);
   const open = seat.openRating == null ? null : Math.round(seat.openRating);
   return (
@@ -164,9 +166,9 @@ function SeatRating({ seat }: Readonly<{ seat: PickupSeat }>) {
       {open != null && effective != null && open !== effective ? (
         <span
           className="text-xs tabular-nums text-[color:var(--aqt-fg-dim)]"
-          title={`Open rating ${open}; the ranker balanced on ${effective}`}
+          title={t("openRatingHint", { open: String(open), effective: String(effective) })}
         >
-          open {open}
+          {t("openRating", { rating: String(open) })}
         </span>
       ) : null}
       <span className="text-lg font-bold tabular-nums text-[color:var(--aqt-fg)]">

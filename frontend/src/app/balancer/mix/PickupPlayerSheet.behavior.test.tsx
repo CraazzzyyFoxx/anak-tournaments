@@ -15,10 +15,12 @@
 //
 // There is no fourth rank field: the per-mix rank pin is gone, so every rank
 // the sheet writes goes to the author's book and nowhere else.
+import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import en from "@/i18n/messages/en.json";
 import type { CustomGamePlayer, MixMemberStats } from "@/services/custom-game.service";
 
 import { PickupPlayerSheet } from "./PickupPlayerSheet";
@@ -37,9 +39,6 @@ globalThis.ResizeObserver ??= class {
 
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/RankHistory", () => ({ default: () => null }));
-vi.mock("next-intl", () => ({
-  useTranslations: () => Object.assign((key: string) => key, { has: () => false }),
-}));
 // Drag itself is not what this pins, and dnd-kit resolves its own React copy
 // under pnpm, so the sortable wrapper and its hook render inertly here.
 vi.mock("@/components/kit/SortableRows", () => ({
@@ -102,18 +101,20 @@ async function mount(
   document.body.appendChild(container);
   await act(async () => {
     createRoot(container).render(
-      <PickupPlayerSheet
-        discipline="overwatch"
-        owner={owner}
-        row={value}
-        mixStats={mixStats}
-        lobbyCount={lobbyCount}
-        canEdit
-        saving={false}
-        onOpenChange={onOpenChange}
-        onSave={onSave}
-        onRemove={onRemove}
-      />,
+      <NextIntlClientProvider locale="en" messages={en}>
+        <PickupPlayerSheet
+          discipline="overwatch"
+          owner={owner}
+          row={value}
+          mixStats={mixStats}
+          lobbyCount={lobbyCount}
+          canEdit
+          saving={false}
+          onOpenChange={onOpenChange}
+          onSave={onSave}
+          onRemove={onRemove}
+        />
+      </NextIntlClientProvider>,
     );
   });
   await act(async () => {
@@ -268,10 +269,10 @@ describe("PickupPlayerSheet ranks", () => {
     // No role or Full flex control: the one switch left is Away, which every game has.
     expect(
       [...scope.querySelectorAll('[role="switch"]')].map((node) => node.getAttribute("aria-label")),
-    ).toEqual(["away"]);
+    ).toEqual(["Away"]);
     expect(scope.textContent).not.toContain("Roles and ranks");
-    // The heading names the rank alone, through the sheet's translator (mocked to echo the key).
-    expect(scope.textContent).toContain("rankHeading");
+    // The heading names the rank alone.
+    expect([...scope.querySelectorAll("h3")].map((node) => node.textContent)).toContain("Rank");
     await type(rankFields(scope)[0], "3100");
     await click(findButton(scope, "Save"));
 
@@ -456,13 +457,13 @@ describe("PickupPlayerSheet mix record", () => {
 // a label every option would share once the letter is interpolated away.
 describe("PickupPlayerSheet lobby pin", () => {
   const pinOptions = (scope: ParentNode) => [
-    ...scope.querySelectorAll('[role="radiogroup"][aria-label="pinGroup"] [role="radio"]'),
+    ...scope.querySelectorAll('[role="radiogroup"][aria-label="Lobby for Aria#1111"] [role="radio"]'),
   ];
 
   it("offers no lobby pin while the mix runs one lobby", async () => {
     const scope = await mount(row());
 
-    expect(scope.querySelector('[role="radiogroup"][aria-label="pinGroup"]')).toBeNull();
+    expect(scope.querySelector('[role="radiogroup"][aria-label="Lobby for Aria#1111"]')).toBeNull();
   });
 
   it("offers Auto plus one option per lobby the mix actually runs", async () => {
@@ -512,7 +513,7 @@ describe("PickupPlayerSheet away", () => {
   it("marks a player away, written only on Save", async () => {
     const scope = await mount();
 
-    await click(scope.querySelector('[role="switch"][aria-label="away"]') as Element);
+    await click(scope.querySelector('[role="switch"][aria-label="Away"]') as Element);
     expect(onSave).not.toHaveBeenCalled();
     await click(findButton(scope, "Save"));
 

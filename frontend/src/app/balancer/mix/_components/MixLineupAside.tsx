@@ -1,3 +1,4 @@
+import { useTranslations } from "next-intl";
 import { X } from "lucide-react";
 
 import { HandleLabel } from "@/components/HandleLabel";
@@ -43,6 +44,8 @@ export function MixLineupAside({
   onTogglePlayer: (memberId: number) => void;
   onDone: () => void;
 }>) {
+  const t = useTranslations("mixes.aside");
+  const tVoice = useTranslations("mixes.voice");
   const slotLabel = useSlotLabel(owner.ontology);
   const summary = summarizeLineup(rows, owner.roles);
   const supply = summarizeRoleSupply(rows, owner);
@@ -52,7 +55,7 @@ export function MixLineupAside({
   return (
     <aside className="flex min-h-0 flex-col border-t border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] lg:border-l lg:border-t-0">
       <div className="flex shrink-0 items-baseline gap-2 px-4 pb-2.5 pt-3.5">
-        <Eyebrow as="h3">In this mix</Eyebrow>
+        <Eyebrow as="h3">{t("title")}</Eyebrow>
         <span className="ml-auto flex items-baseline gap-1 tabular-nums">
           <span
             className={cn(
@@ -89,8 +92,8 @@ export function MixLineupAside({
                   <IconTooltip
                     label={
                       short
-                        ? `${name}: ${entry.supply} of ${entry.need} — short ${entry.short}`
-                        : `${name}: ${entry.supply} of ${entry.need}`
+                        ? t("roleShort", { role: name, supply: entry.supply, need: entry.need, short: entry.short })
+                        : t("roleSupply", { role: name, supply: entry.supply, need: entry.need })
                     }
                   >
                     <PlayerRoleIcon role={entry.role} ontology={owner.ontology} size={13} decorative />
@@ -123,11 +126,9 @@ export function MixLineupAside({
 
       <div className="min-h-0 flex-1 overflow-y-auto border-t border-[color:var(--aqt-border)] px-2 py-1.5">
         {rows.length === 0 ? (
-          <p className="px-2 py-8 text-center text-caption text-[color:var(--aqt-fg-dim)]">
-            Nobody yet. Pick from the left, or press Enter on the highlighted row.
-          </p>
+          <p className="px-2 py-8 text-center text-caption text-[color:var(--aqt-fg-dim)]">{t("empty")}</p>
         ) : (
-          <ul className="space-y-0.5" aria-label="Players in this mix">
+          <ul className="space-y-0.5" aria-label={t("listLabel")}>
             {sortLineup(rows).map((row) => (
               <LineupChip
                 key={row.workspace_member_id}
@@ -146,13 +147,13 @@ export function MixLineupAside({
           {lobbySize == null
             ? ""
             : overflow > 0
-              ? `${overflow} over a full lobby \u2014 bench the rest in the lineup.`
+              ? t("over", { count: overflow })
               : overflow === 0
-                ? "A full lobby. Balance is ready to run."
-                : `${-overflow} more for a full lobby.`}
+                ? t("full")
+                : t("short", { count: -overflow })}
         </p>
         <Button type="button" className="shrink-0" onClick={onDone}>
-          Done
+          {tVoice("done")}
         </Button>
       </div>
     </aside>
@@ -174,6 +175,8 @@ function LineupChip({
   canWrite,
   onRemove
 }: Readonly<{ row: CustomGamePlayer; owner: MixOwner; canWrite: boolean; onRemove: () => void }>) {
+  const t = useTranslations("mixes.aside");
+  const tLineup = useTranslations("mixes.lineup");
   const slotLabel = useSlotLabel(owner.ontology);
   const label = playerLabel(row);
   const order = resolveRoleOrder(row, owner.roles);
@@ -201,9 +204,10 @@ function LineupChip({
             return (
               <IconTooltip
                 key={role}
-                label={`${slotLabel(role)}: ${
-                  isOn ? (position === 0 ? "first choice" : "also plays") : "off"
-                }`}
+                label={t("roleState", {
+                  role: slotLabel(role),
+                  state: isOn ? (position === 0 ? "first" : "also") : "off"
+                })}
                 className={cn("size-5 items-center justify-center rounded", !isOn && "opacity-20")}
               >
                 <PlayerRoleIcon role={role} ontology={owner.ontology} size={13} decorative />
@@ -218,7 +222,7 @@ function LineupChip({
       </span>
 
       {canWrite ? (
-        <IconTooltip control label="Remove from this mix" className="shrink-0">
+        <IconTooltip control label={tLineup("remove")} className="shrink-0">
           <Button
             type="button"
             variant="ghost-destructive"
@@ -227,7 +231,7 @@ function LineupChip({
             className="opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
           >
             <X aria-hidden="true" />
-            <span className="sr-only">{`Remove ${label} from this mix`}</span>
+            <span className="sr-only">{tLineup("removeNamed", { name: label })}</span>
           </Button>
         </IconTooltip>
       ) : (

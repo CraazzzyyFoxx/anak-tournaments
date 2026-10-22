@@ -7830,7 +7830,8 @@
         "signup_closed": "The host has not opened signup.",
         "roster_full": "This mix is full.",
         "role_edit_off": "The host edits roles in this mix."
-      }
+      },
+      "rolesOwner": "you"
     },
     "lobbies": {
       "tabsLabel": "Lobbies",
@@ -7861,7 +7862,13 @@
     "header": {
       "more": "More mix actions",
       "access": "Manage access",
-      "delete": "Delete mix"
+      "delete": "Delete mix",
+      "nameLabel": "mix name",
+      "noMix": "No mix yet",
+      "deleteTitle": "Delete this mix?",
+      "deleteDescription": "Permanently removes {name} and every match it recorded. This cannot be undone -- unlike Close, there is no way back to it afterwards.",
+      "thisMix": "this mix",
+      "deleteConfirm": "Delete permanently"
     },
     "start": {
       "title": "Get this mix going",
@@ -7973,7 +7980,249 @@
         "waiting": "Waiting",
         "away": "Away",
         "bench": "Bench"
+      },
+      "noMapsToRoll": "No competitive maps to roll from",
+      "nextMapLabel": "Next map",
+      "notRolled": "Not rolled yet",
+      "rollMode": "Roll within mode",
+      "roll": "Roll"
+    },
+    "access": {
+      "description": "Who else can edit this mix, and who owns it.",
+      "coHosts": "Co-hosts",
+      "removeCoHost": "Remove co-host",
+      "removeCoHostNamed": "Remove {name} as co-host",
+      "noCoHosts": "No co-hosts yet.",
+      "addCoHost": "Add a co-host…",
+      "coHostHint": "A co-host writes the roster, balance, outcomes and settings exactly like the host.",
+      "transferHost": "Transfer host",
+      "selectMember": "Select a member…",
+      "transferHint": "Hands primary ownership to the pick below. You keep write access only if you stay a co-host.",
+      "transferring": "Transferring…",
+      "transfer": "Transfer",
+      "search": {
+        "loading": "Loading members…",
+        "error": "Could not load members. Try again.",
+        "minChars": "Type at least 2 characters to search.",
+        "empty": "No workspace member matches that name.",
+        "placeholder": "Search by name or handle…"
       }
+    },
+    "addPlayers": {
+      "loadingRoster": "Loading the workspace roster…",
+      "summary": "{total} in this workspace · {decider, select, you {your ranks decide} other {the host's ranks decide}}, workspace ranks fill the gaps",
+      "searchPlaceholder": "Type a name or game handle — ↑↓ to move, Enter to add",
+      "searchLabel": "Search the workspace roster",
+      "found": "{count} found",
+      "rankHint": "This host's rank for the role",
+      "errorTitle": "Unable to load the roster",
+      "noMatch": "Nobody matches “{q}”",
+      "noneMine": "You haven't ranked anyone yet",
+      "noneAuthor": "{name} hasn't ranked anyone yet",
+      "noneWorkspace": "No players in this workspace yet",
+      "noMatchHint": "Try a different name, or add a game identity above.",
+      "noneRankedHint": "Set a rank on a player in Everyone to add them here.",
+      "noneWorkspaceHint": "Add a game identity above to start the roster this workspace balances from.",
+      "rosterLabel": "Workspace roster",
+      "noPlayers": "0 players",
+      "range": "{start}–{end} of {total}",
+      "filter": {
+        "everyone": "Everyone",
+        "mine": "My ranks",
+        "more": "+{count} more"
+      },
+      "row": {
+        "add": "Add {name} to this mix",
+        "roleRank": "{role} rank",
+        "rank": "Rank",
+        "rankFor": "{what} for {name}",
+        "rankForInherited": "{what} for {name}, inherited {rank} from the workspace",
+        "noRank": "No rank"
+      }
+    },
+    "aside": {
+      "title": "In this mix",
+      "roleShort": "{role}: {supply} of {need} — short {short}",
+      "roleSupply": "{role}: {supply} of {need}",
+      "empty": "Nobody yet. Pick from the left, or press Enter on the highlighted row.",
+      "listLabel": "Players in this mix",
+      "over": "{count} over a full lobby — bench the rest in the lineup.",
+      "full": "A full lobby. Balance is ready to run.",
+      "short": "{count} more for a full lobby.",
+      "roleState": "{role}: {state, select, first {first choice} also {also plays} other {off}}"
+    },
+    "identity": {
+      "joined": "{handle} joined the workspace roster",
+      "handleRequired": "Enter a {provider} handle, for example {example}.",
+      "trigger": "New {provider} identity",
+      "anyGame": "game",
+      "title": "Add someone new",
+      "providerError": "Unable to load the identity provider.",
+      "hint": "Self-declared identity; this does not verify ownership."
+    },
+    "lineup": {
+      "title": "Lineup",
+      "inBalance": "{count} in the balance",
+      "benchedCount": "{count} benched",
+      "applyHintsCount": "{count, plural, one {Apply # rotation hint} other {Apply # rotation hints}}",
+      "hintsMatch": "Lineup already matches the rotation hints",
+      "applyHints": "Apply rotation hints",
+      "emptyLobby": "Empty the lobby",
+      "emptyLobbyTitle": "Empty the lobby?",
+      "emptyLobbyDescription": "This removes all {count} players from this mix, along with their role order. Ranks are not affected — they live in your own book and the workspace roster.",
+      "emptyLobbyConfirm": "Remove everyone",
+      "supplyShort": "{supply} of {need} · short {short}",
+      "supply": "{supply} of {need}",
+      "blocking": "{count, plural, one {# player has no ranked role and will fail the balance.} other {# players have no ranked role and will fail the balance.}}",
+      "noMixTitle": "No mix selected",
+      "noMixDescription": "Open a mix from the list to start filling its lineup.",
+      "emptyLineupTitle": "Lineup is empty",
+      "emptyLineupHost": "Add players from the workspace pool to put them in this mix.",
+      "emptyLineupViewer": "No players have been added to this mix.",
+      "listLabel": "Mix lineup",
+      "columns": {
+        "must_play": {
+          "title": "Must play",
+          "hint": "Guaranteed a seat",
+          "empty": "Drag a player here to guarantee their seat"
+        },
+        "pool": {
+          "title": "In the pool",
+          "hint": "In the balance",
+          "empty": "Drag a player here to put them in the balance"
+        },
+        "benched": {
+          "title": "Benched",
+          "hint": "Sitting out, settings kept",
+          "empty": "Drag a player here to bench them"
+        }
+      },
+      "rowTitle": "{name} — roles and ranks",
+      "meanRank": "Mean effective rank across this player's roles",
+      "advanced": "Advanced settings",
+      "advancedFor": "Advanced settings for {name}",
+      "remove": "Remove from this mix",
+      "removeNamed": "Remove {name} from this mix",
+      "issue": {
+        "no_role": "No roles selected — balance will reject this mix",
+        "no_rank": "No rank on any selected role — balance will reject this mix"
+      },
+      "rail": {
+        "label": "Roles for {name}",
+        "noRank": "{role}: no rank",
+        "points": "{role}: {rank} pts",
+        "state": {
+          "first": "First choice",
+          "also": "Also plays",
+          "off": "Off"
+        },
+        "button": "{role} for {name}, {state, select, first {first choice} also {also plays} other {off}}, {rank, select, none {no rank} other {{rank} points}}"
+      }
+    },
+    "sheet": {
+      "record": "Mixes: {record} · {rate}%",
+      "draftHint": "Nothing here writes until you press Save.",
+      "readOnly": "Read-only — only this mix's host can edit it.",
+      "statusFor": "Lineup status for {name}",
+      "optionFor": "{option} for {name}",
+      "statusHint": {
+        "must_play": "Guaranteed a seat",
+        "pool": "In the balance",
+        "benched": "Sitting out"
+      },
+      "rolesAndRanks": "Roles and ranks",
+      "liveRank": "Live {game} rank",
+      "source": {
+        "author": "Mine",
+        "workspace": "Workspace",
+        "native": "Game"
+      }
+    },
+    "roleOrder": {
+      "fullFlex": "Full flex",
+      "flexOn": "Every role is equally preferred — priority order stops mattering.",
+      "flexOff": "Drag below to set who the balancer seats first.",
+      "flexFor": "Full flex for {name}",
+      "reorder": "Reorder {role} for {name}",
+      "first": "First",
+      "roleFor": "{role} for {name}",
+      "active": "Active",
+      "off": "Off",
+      "rankHint": "The rank the balancer uses for this role"
+    },
+    "teams": {
+      "noMixesHost": "Create a mix from the mixes list, then add players from the workspace pool.",
+      "noMixesViewer": "A host has not created a mix in this workspace yet.",
+      "noTeamsTitle": "No teams yet",
+      "noTeamsHost": "Fill the lineup, then press Balance teams to see the matchup.",
+      "noTeamsViewer": "This mix has not been balanced yet.",
+      "extraBenched": "{count, plural, one {# extra player will be benched automatically -- rotation fairness picks who} other {# extra players will be benched automatically -- rotation fairness picks who}}",
+      "balance": "Balance teams",
+      "previousOption": "Previous balance option",
+      "nextOption": "Next balance option",
+      "needPlayer": "Check at least one player in the lobby.",
+      "copyImage": "Copy image",
+      "copyImageHint": "The matchup card as a picture, ready to paste",
+      "copyHandles": "Copy handles",
+      "copyHandlesHint": "Everyone in the balance, one per line",
+      "copyEmpty": "Nobody is in the balance yet",
+      "copied": "Copied {count} handles",
+      "clipboardError": "Could not reach the clipboard",
+      "post": "Post to Discord",
+      "postHint": "Sends this matchup card to the mix channel",
+      "close": "Close mix",
+      "closeHint": "Stops balancing and results; recorded matches stay",
+      "closeTitle": "Close this mix?",
+      "closeDescription": "Stops further balancing, roster edits, and outcome recording. Matches already recorded stay recorded -- this cannot be undone from here.",
+      "closeConfirm": "Yes, close mix",
+      "teamName": "team name",
+      "average": "avg",
+      "offRole": "Off-role",
+      "offRoleHint": "Assigned off their first-preference role",
+      "openRating": "open {rating}",
+      "openRatingHint": "Open rating {open}; the ranker balanced on {effective}",
+      "metrics": {
+        "quality": "QUALITY {value}",
+        "qualityHint": "Solver score for this option across rank balance and role comfort — lower is better, and comparable only against the other options of this run.",
+        "stddev": "STDDEV {value}",
+        "stddevHint": "Standard deviation of team rank — lower means the teams are closer together.",
+        "spread": "SPREAD {value}",
+        "spreadHint": "Rank gap between the strongest and weakest team.",
+        "lines": "LINES {value}",
+        "linesHint": "Average rank gap per role line between the teams — catches a tank or support mismatch the team totals hide.",
+        "offRole": "OFF-ROLE {count}",
+        "floor": "(floor)",
+        "offRoleHint": "Players the solver had to seat outside their first-choice role.",
+        "offRoleForced": "{count} of them are forced by the pool — no split avoids those.",
+        "offRoleFloorHint": "This option is as comfortable as the pool allows.",
+        "subrole": "SUBROLE {count}",
+        "subroleHint": "Pairs of players sharing a role subclass inside the same team — two main tanks, two snipers."
+      }
+    },
+    "matchHistory": {
+      "title": "Match history",
+      "undo": "Undo this match",
+      "undoHint": "Removes it from the history",
+      "undoTitle": "Undo this match?",
+      "undoPoints": "Removes it from the history and moves every player's rank back by {points} points. Players pinned as must-play before it were already released to the pool and stay there.",
+      "undoNoPoints": "Removes it from the history. No rank points were applied.",
+      "undoConfirm": "Undo match"
+    },
+    "toast": {
+      "hintsApplied": "{count, plural, one {Applied # hint} other {Applied # hints}}",
+      "hintsMatch": "Lineup already matches the hints",
+      "sentToDiscord": "Sent to Discord",
+      "hostTransferred": "Host transferred",
+      "coHostAdded": "Co-host added",
+      "coHostRemoved": "Co-host removed",
+      "balanced": "Teams balanced",
+      "resultRecorded": "Result recorded",
+      "matchUndone": "Match undone",
+      "lobbyCount": "{count, plural, one {Now running # lobby} other {Now running # lobbies}}",
+      "mixClosed": "Mix closed",
+      "mixDeleted": "Mix deleted",
+      "signupPosted": "Signup opened in Discord",
+      "postRemoving": "Removing the post from Discord"
     }
   },
   "quota": {

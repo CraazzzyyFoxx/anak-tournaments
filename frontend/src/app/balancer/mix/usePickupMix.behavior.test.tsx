@@ -125,7 +125,7 @@ vi.mock("@/hooks/useRealtimeCoalescedRefetch", () => ({
 vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() },
 }));
-// The voice refusals are the only strings this hook renders itself.
+// Echoes the key under `voice.`, so the voice refusals read as their own message keys.
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => `voice.${key}` }));
 
 const WORKSPACE_ID = 7;

@@ -4,7 +4,6 @@ import { ratedDimension, registrationRoles, showsRoles, slotRank, type RoleOntol
 import { roleOf, toRoleRef, type RoleRef } from "@/lib/roster/role-ref";
 import { OPEN_SLOT_CODE, solverSlotCode, type RosterShape } from "@/lib/roster/shape";
 import {
-  RANK_SOURCE_LABELS,
   type CustomGame,
   type CustomGameOutcome,
   type CustomGameParticipationEntry,
@@ -80,11 +79,6 @@ export function toggleRole(order: readonly string[], role: string): string[] {
 }
 
 export type LineupIssue = "no_role" | "no_rank";
-
-export const LINEUP_ISSUE_MESSAGES: Record<LineupIssue, string> = {
-  no_role: "No roles selected — balance will reject this mix",
-  no_rank: "No rank on any selected role — balance will reject this mix",
-};
 
 /** A balance candidate, as the server filters them: in the lineup (not benched) and present (not away). */
 function inBalance(row: Pick<CustomGamePlayer, "participation" | "away">): boolean {
@@ -225,9 +219,13 @@ export function buildMixOwner(
   };
 }
 
-/** Where a rank came from, in the owner's words (`native` is the game's own ladder, named after the game). */
-export function rankSourceLabel(source: RankSource, gameName: string | null): string {
-  return source === "native" ? (gameName ?? RANK_SOURCE_LABELS.native) : RANK_SOURCE_LABELS[source];
+/** Where a rank came from, in the owner's words: `native` is the game's own ladder, named after the game. */
+export function rankSourceLabel(
+  source: RankSource,
+  gameName: string | null,
+  layerLabel: (source: RankSource) => string,
+): string {
+  return source === "native" ? (gameName ?? layerLabel("native")) : layerLabel(source);
 }
 
 export type RoleSupply = {
@@ -343,7 +341,7 @@ export type PickupSeat = {
 
 export type PickupTeam = {
   id: number;
-  /** The host's override, or the computed `Team N` default. */
+  /** The host's override, or the caller's numbered default (`parseVariants`' `defaultName`). */
   name: string;
   averageRank: number | null;
   /** The seat uuid of the team's captain; `null` while the team has none. */
@@ -488,11 +486,13 @@ function parseSeats(
  * malformed result degrades to "no teams to show" instead of blanking the screen.
  *
  * `roleOrder` is the owner game's declared slot order (`slotCodeOrder`); it only orders seats inside a team.
+ * `defaultName` names a team the host has not renamed, by its 0-based position.
  */
 export function parseVariants(
   resultJson: unknown,
-  teamNames: Record<number, string> = {},
-  roleOrder: readonly string[] = [],
+  teamNames: Record<number, string>,
+  roleOrder: readonly string[],
+  defaultName: (index: number) => string,
 ): PickupVariant[] {
   const root = asRecord(resultJson);
   if (root == null || !Array.isArray(root.variants)) {
@@ -534,7 +534,7 @@ export function parseVariants(
         .map((team, index) => ({
           ...team,
           id: team.id ?? index + 1,
-          name: teamNames[index] ?? `Team ${index + 1}`,
+          name: teamNames[index] ?? defaultName(index),
         })),
       stats: {
         // Whichever engine ran: `mix_balancer` scores a seating with its own
@@ -617,13 +617,17 @@ export function myLobbyTeam(
   game: CustomGame | undefined,
   memberId: number | null,
   roleOrder: readonly string[],
+  defaultName: (index: number) => string,
 ): MySeatTeam | null {
   if (game == null || memberId == null) return null;
   const me = String(memberId);
   for (const lobby of game.lobbies) {
-    const variant = parseVariants(lobby.balance_result, teamNamesByIndex(game.settings, lobby.lobby_index), roleOrder)[
-      lobby.selected_variant_index
-    ];
+    const variant = parseVariants(
+      lobby.balance_result,
+      teamNamesByIndex(game.settings, lobby.lobby_index),
+      roleOrder,
+      defaultName,
+    )[lobby.selected_variant_index];
     const team = variant?.teams.find((candidate) => candidate.seats.some((seat) => seat.uuid === me));
     if (team != null) {
       return {

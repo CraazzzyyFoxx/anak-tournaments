@@ -29,10 +29,10 @@ import {
   type CustomGamePlayerPatch,
   type MixParticipation,
   type MixMemberStats,
+  type RankSource,
 } from "@/services/custom-game.service";
 
 import {
-  LINEUP_ISSUE_MESSAGES,
   getLineupIssue,
   playerLabel,
   rankSourceLabel,
@@ -91,15 +91,7 @@ function buildDraft(row: CustomGamePlayer | null, roles: readonly string[]): Rol
 }
 
 /** The three-way status picker, in the same order the lineup columns read left to right. */
-const STATUS_OPTIONS: readonly {
-  participation: MixParticipation;
-  label: string;
-  description: string;
-}[] = [
-  { participation: "must_play", label: "Must play", description: "Guaranteed a seat" },
-  { participation: "pool", label: "In the pool", description: "In the balance" },
-  { participation: "benched", label: "Benched", description: "Sitting out" },
-];
+const STATUS_OPTIONS: readonly MixParticipation[] = ["must_play", "pool", "benched"];
 
 /**
  * Per-player mix settings: who plays, which roles, in what priority, at what
@@ -144,12 +136,16 @@ export function PickupPlayerSheet({
   const label = row ? playerLabel(row) : "";
   const t = useTranslations("mixes.lobbies");
   const tRoom = useTranslations("mixes.room");
+  const tSheet = useTranslations("mixes.sheet");
+  const tLineup = useTranslations("mixes.lineup");
+  const tCommon = useTranslations("common");
+  const layerLabel = (source: RankSource) => tSheet(`source.${source}`);
   // The record across every mix, not this one: a caption, because it is
   // context for the settings below it and nothing here edits it.
   const mixStreak = mixStats ? formatStreak(mixStats.streak) : null;
   const mixRecord =
     mixStats != null && mixStats.games > 0
-      ? `Mixes: ${formatRecord(mixStats)} · ${Math.round(mixStats.win_rate * 100)}%${mixStreak ? ` · ${mixStreak}` : ""}`
+      ? `${tSheet("record", { record: formatRecord(mixStats), rate: Math.round(mixStats.win_rate * 100) })}${mixStreak ? ` · ${mixStreak}` : ""}`
       : null;
   const [draft, setDraft] = useState<RoleDraft>(() => buildDraft(row, owner.roles));
   // Keyed on the member id rather than the whole row: a background refetch of
@@ -217,7 +213,7 @@ export function PickupPlayerSheet({
         className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-[640px]"
       >
         <SheetHeader className="space-y-0 border-b border-[color:var(--aqt-border)] px-5 pb-4 pt-5 text-left">
-          <Eyebrow>Advanced settings</Eyebrow>
+          <Eyebrow>{tLineup("advanced")}</Eyebrow>
           <SheetTitle className="flex items-baseline gap-1.5 pt-1.5 font-display text-xl">
             <HandleLabel handle={label} tagClassName="text-caption" />
             {row?.identity?.handle ? (
@@ -226,49 +222,52 @@ export function PickupPlayerSheet({
           </SheetTitle>
           {mixRecord ? <span className={cn(CAPTION_CLASS, "pt-1")}>{mixRecord}</span> : null}
           <SheetDescription className="pt-1 text-caption text-[color:var(--aqt-fg-dim)]">
-            {canEdit
-              ? "Nothing here writes until you press Save."
-              : "Read-only — only this mix's host can edit it."}
+            {canEdit ? tSheet("draftHint") : tSheet("readOnly")}
           </SheetDescription>
         </SheetHeader>
 
         {row == null ? null : (
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             <section className="space-y-2.5 border-b border-[color:var(--aqt-border)] px-5 py-4">
-              <h3 className="text-caption font-medium text-[color:var(--aqt-fg)]">Status</h3>
+              <h3 className="text-caption font-medium text-[color:var(--aqt-fg)]">{tCommon("status")}</h3>
               <ToggleGroup
                 type="single"
                 variant="card"
                 size="sm"
-                aria-label={`Lineup status for ${label}`}
+                aria-label={tSheet("statusFor", { name: label })}
                 value={draft.participation}
                 onValueChange={(participation) =>
                   setDraft((current) => ({ ...current, participation: participation as MixParticipation }))
                 }
                 className="grid-cols-3 gap-1.5"
               >
-                {STATUS_OPTIONS.map((option) => (
-                  <ToggleGroupItem
-                    key={option.participation}
-                    value={option.participation}
-                    aria-label={`${option.label} for ${label}`}
-                    disabled={disabled}
-                    accent={option.participation === "must_play" ? "var(--aqt-amber)" : undefined}
-                    className="items-center text-center"
-                  >
-                    <span className="flex items-center gap-1 font-semibold">
-                      {option.participation === "must_play" ? (
-                        <Pin
-                          className="size-3"
-                          aria-hidden="true"
-                          fill={draft.participation === "must_play" ? "currentColor" : "none"}
-                        />
-                      ) : null}
-                      {option.label}
-                    </span>
-                    <span className="text-label text-[color:var(--aqt-fg-dim)]">{option.description}</span>
-                  </ToggleGroupItem>
-                ))}
+                {STATUS_OPTIONS.map((participation) => {
+                  const optionLabel = tLineup(`columns.${participation}.title`);
+                  return (
+                    <ToggleGroupItem
+                      key={participation}
+                      value={participation}
+                      aria-label={tSheet("optionFor", { option: optionLabel, name: label })}
+                      disabled={disabled}
+                      accent={participation === "must_play" ? "var(--aqt-amber)" : undefined}
+                      className="items-center text-center"
+                    >
+                      <span className="flex items-center gap-1 font-semibold">
+                        {participation === "must_play" ? (
+                          <Pin
+                            className="size-3"
+                            aria-hidden="true"
+                            fill={draft.participation === "must_play" ? "currentColor" : "none"}
+                          />
+                        ) : null}
+                        {optionLabel}
+                      </span>
+                      <span className="text-label text-[color:var(--aqt-fg-dim)]">
+                        {tSheet(`statusHint.${participation}`)}
+                      </span>
+                    </ToggleGroupItem>
+                  );
+                })}
               </ToggleGroup>
               <div className="flex items-center gap-2 pt-1">
                 <Switch
@@ -321,7 +320,7 @@ export function PickupPlayerSheet({
 
             <section className="space-y-2.5 border-b border-[color:var(--aqt-border)] px-5 py-4">
               <h3 className="text-caption font-medium text-[color:var(--aqt-fg)]">
-                {owner.showsRoles ? "Roles and ranks" : t("rankHeading")}
+                {owner.showsRoles ? tSheet("rolesAndRanks") : t("rankHeading")}
               </h3>
 
               <PickupRoleOrderEditor
@@ -334,7 +333,7 @@ export function PickupPlayerSheet({
                 onToggle={toggle}
                 onFlexChange={(checked) => setDraft((current) => ({ ...current, isFlex: checked }))}
                 rankFor={(role) => {
-                  const field = stagedRankFor(row, draft, role, owner.gameName);
+                  const field = stagedRankFor(row, draft, role, owner.gameName, layerLabel);
                   return {
                     rankValue: field.rankValue,
                     sourceLabel: field.sourceLabel,
@@ -355,7 +354,7 @@ export function PickupPlayerSheet({
               />
 
               {issue ? (
-                <p className="text-xs text-rose-200">{LINEUP_ISSUE_MESSAGES[issue]}</p>
+                <p className="text-xs text-rose-200">{tLineup(`issue.${issue}`)}</p>
               ) : null}
             </section>
 
@@ -366,7 +365,7 @@ export function PickupPlayerSheet({
             {owner.nativeRankName !== null && row.identity?.handle ? (
               <section className="space-y-2 px-5 py-4">
                 <Label className="text-xs font-medium text-[color:var(--aqt-fg)]">
-                  Live {owner.nativeRankName} rank
+                  {tSheet("liveRank", { game: owner.nativeRankName })}
                 </Label>
                 <div className="rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] p-2.5">
                   <RankHistory battleTag={row.identity.handle} discipline={discipline} />
@@ -378,7 +377,7 @@ export function PickupPlayerSheet({
 
         {row != null && canEdit ? (
           <SheetFooter className="shrink-0 border-t border-[color:var(--aqt-border)] px-5 py-2.5 sm:justify-between sm:space-x-0">
-            <IconTooltip control label="Remove from this mix" className="shrink-0">
+            <IconTooltip control label={tLineup("remove")} className="shrink-0">
               <Button
                 type="button"
                 variant="ghost"
@@ -388,7 +387,7 @@ export function PickupPlayerSheet({
                 className="h-8 w-8 rounded-lg border border-[color:color-mix(in_srgb,var(--aqt-rose)_35%,transparent)] bg-rose-500/10 text-rose-200 hover:bg-rose-500/20 hover:text-rose-100"
               >
                 <UserMinus className="h-3.5 w-3.5" aria-hidden="true" />
-                <span className="sr-only">{`Remove ${label} from this mix`}</span>
+                <span className="sr-only">{tLineup("removeNamed", { name: label })}</span>
               </Button>
             </IconTooltip>
             <div className="flex gap-2">
@@ -398,7 +397,7 @@ export function PickupPlayerSheet({
                 className="border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-bg-2)] px-3 text-[color:var(--aqt-fg)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]"
                 onClick={() => handleOpenChange(false)}
               >
-                Cancel
+                {tCommon("cancel")}
               </Button>
               <Button
                 onClick={handleSave}
@@ -407,7 +406,7 @@ export function PickupPlayerSheet({
                 className="bg-primary px-3 text-primary-foreground hover:bg-primary/90"
               >
                 <Save className="mr-1 h-3.5 w-3.5" />
-                Save
+                {tCommon("save")}
               </Button>
             </div>
           </SheetFooter>
@@ -442,19 +441,20 @@ function stagedRankFor(
   draft: RoleDraft,
   role: string,
   gameName: string | null,
+  layerLabel: (source: RankSource) => string,
 ): { rankValue: number | null; sourceLabel: string | null; hasOwnEntry: boolean } {
   const staged = draft.rankEdits[role];
   if (staged !== undefined) {
     return {
       rankValue: staged,
-      sourceLabel: staged == null ? null : rankSourceLabel("author", gameName),
+      sourceLabel: staged == null ? null : rankSourceLabel("author", gameName, layerLabel),
       hasOwnEntry: staged != null,
     };
   }
   const source = row.rank_sources[role] ?? null;
   return {
     rankValue: row.ranks[role] ?? null,
-    sourceLabel: source ? rankSourceLabel(source, gameName) : null,
+    sourceLabel: source ? rankSourceLabel(source, gameName, layerLabel) : null,
     hasOwnEntry: row.author_ranks[role] != null,
   };
 }

@@ -30,10 +30,12 @@
 // 11. a lobby walks Ready -> Live: Start match opens it (asking first while an
 //     away player is still seated), a live lineup is frozen to its result and
 //     Cancel match, and each team's captain wears the crown.
+import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import en from "@/i18n/messages/en.json";
 import type { CustomGame, CustomGameLobby, CustomGameMatch, CustomGamePlayer } from "@/services/custom-game.service";
 import { catalogMap, catalogMode } from "@/test/catalog";
 import type { CatalogEntityRead } from "@/types/catalog.types";
@@ -52,20 +54,6 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 } as unknown as typeof ResizeObserver;
 
-vi.mock("next-intl", () => ({
-  useTranslations: () =>
-    Object.assign(
-      (key: string, values?: Record<string, unknown>) => {
-        const label = String(values?.label ?? "");
-        return (
-          ({ edit: `Edit ${label}`, save: `Save ${label}`, cancel: `Cancel ${label} edit` } as Record<string, string>)[key] ??
-          ({ editTeamName: "Edit team name", saveTeamName: "Save team name" } as Record<string, string>)[key] ??
-          key
-        );
-      },
-      { has: () => false },
-    ),
-}));
 vi.mock("@/lib/datetime/client", () => ({ useFormatter: () => ({ relativeTime: () => "just now" }) }));
 vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
 vi.mock("@/components/DivisionIcon", () => ({ default: () => null }));
@@ -319,7 +307,11 @@ async function mount(current: CustomGame | undefined, props: PanelOptions = {}) 
   document.body.appendChild(container);
   const root = createRoot(container);
   await act(async () => {
-    root.render(panel(current, props));
+    root.render(
+      <NextIntlClientProvider locale="en" messages={en}>
+        {panel(current, props)}
+      </NextIntlClientProvider>,
+    );
   });
   await act(async () => {
     await tick();
@@ -659,8 +651,8 @@ describe("PickupTeamsPanel", () => {
   it("lets the host pick the next map by hand through the combobox", async () => {
     const scope = await mount(game(), { maps: CATALOGUE });
 
-    // The mocked translator returns the key: the trigger reads `noMap` until a map is set.
-    await click(byName(scope, "noMap"));
+    // The trigger reads "No map" until a map is set.
+    await click(byName(scope, "No map"));
     const option = [...document.body.querySelectorAll<HTMLElement>("[cmdk-item]")].find(
       (node) => node.textContent?.trim() === "Ilios",
     );
@@ -981,10 +973,10 @@ describe("PickupTeamsPanel", () => {
     await click(byName(scope, "Balance teams"));
     expect(onBalance).not.toHaveBeenCalled();
     expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain(
-      "rebalanceDescription",
+      "has not been recorded",
     );
 
-    await click(byName(document, "rebalanceConfirm"));
+    await click(byName(document, "Balance anyway"));
     expect(onBalance).toHaveBeenCalledTimes(1);
   });
 
@@ -1039,8 +1031,8 @@ describe("PickupTeamsPanel", () => {
     const scope = await mount(game());
 
     expect(byName(scope, "Draw")).toBeNull();
-    expect(scope.querySelector('[aria-current="step"]')?.textContent).toContain("state.ready");
-    await click(byName(scope, "startMatch"));
+    expect(scope.querySelector('[aria-current="step"]')?.textContent).toContain("Ready");
+    await click(byName(scope, "Start match"));
 
     expect(onStartMatch).toHaveBeenCalledTimes(1);
   });
@@ -1048,23 +1040,23 @@ describe("PickupTeamsPanel", () => {
   it("warns before starting with an away player seated, and starts once confirmed", async () => {
     const scope = await mount(game({ players: [player({ workspace_member_id: 8, away: true })] }));
 
-    await click(byName(scope, "startMatch"));
+    await click(byName(scope, "Start match"));
     expect(onStartMatch).not.toHaveBeenCalled();
-    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("awayTitle");
+    expect(document.querySelector('[role="alertdialog"]')?.textContent).toContain("Start with away players?");
 
-    await click(byName(document, "awayConfirm"));
+    await click(byName(document, "Start anyway"));
     expect(onStartMatch).toHaveBeenCalledTimes(1);
   });
 
   it("freezes a live lineup: results and Cancel match, but no balance, pager, swap or captaincy", async () => {
     const scope = await mount(game({ lobbies: [lobbyRow(LIVE)] }));
 
-    expect(scope.querySelector('[aria-current="step"]')?.textContent).toContain("state.live");
-    expect(scope.textContent).toContain("frozen");
+    expect(scope.querySelector('[aria-current="step"]')?.textContent).toContain("Live");
+    expect(scope.textContent).toContain("Lineup frozen while the match is live");
     expect(byName(scope, "Balance teams")).toBeNull();
     expect(byName(scope, "Next balance option")).toBeNull();
-    expect(byName(scope, "startMatch")).toBeNull();
-    expect(scope.querySelectorAll('button[aria-label="makeCaptain"]')).toHaveLength(0);
+    expect(byName(scope, "Start match")).toBeNull();
+    expect(scope.querySelectorAll('button[aria-label="Make captain"]')).toHaveLength(0);
     // The three seats still render; none of them can be dragged.
     expect(scope.querySelectorAll("section li")).toHaveLength(3);
     for (const name of ["karin", "DemonDimon", "Tolgrn"]) expect(scope.textContent).toContain(name);
@@ -1072,19 +1064,19 @@ describe("PickupTeamsPanel", () => {
       expect(call[0]).toMatchObject({ disabled: true });
     }
 
-    await click(byName(scope, "cancelMatch"));
+    await click(byName(scope, "Cancel match"));
     expect(onCancelMatch).not.toHaveBeenCalled();
-    await click(byName(document, "cancelConfirm"));
+    await click(byName(document, "Yes, cancel the match"));
     expect(onCancelMatch).toHaveBeenCalledTimes(1);
   });
 
   it("tells a viewer a live lineup is frozen, without handing them the result or Cancel match", async () => {
     const scope = await mount(game({ lobbies: [lobbyRow(LIVE)] }), { canWrite: false });
 
-    expect(scope.textContent).toContain("frozen");
+    expect(scope.textContent).toContain("Lineup frozen while the match is live");
     expect(byName(scope, "Team 1 win")).toBeNull();
     expect(byName(scope, "Draw")).toBeNull();
-    expect(byName(scope, "cancelMatch")).toBeNull();
+    expect(byName(scope, "Cancel match")).toBeNull();
   });
 
   it("crowns each team's captain and lets the host hand the crown to another seat", async () => {
@@ -1097,7 +1089,7 @@ describe("PickupTeamsPanel", () => {
     const scope = await mount(game({ lobbies: [lobbyRow({ balance_result: captained })] }));
 
     // DemonDimon (8) and Tolgrn (9) wear the crown, so only karin (7) can be made captain.
-    const makers = [...scope.querySelectorAll('button[aria-label="makeCaptain"]')];
+    const makers = [...scope.querySelectorAll('button[aria-label="Make captain"]')];
     expect(makers).toHaveLength(1);
     await click(makers[0]);
 
