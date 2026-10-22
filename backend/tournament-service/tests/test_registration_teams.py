@@ -948,6 +948,44 @@ class InviteHistoryTests(TestCase):
         self.assertIn("team_not_found", source)
 
 
+class InviteHistoryStateTests(IsolatedAsyncioTestCase):
+    """Each history row says how it ended. Without its state a declined offer, a
+    revoked one and a lapsed link read the same to the captain."""
+
+    async def test_every_entry_carries_its_state_with_expiry_derived(self) -> None:
+        from unittest.mock import AsyncMock, patch
+
+        now = datetime.now(UTC)
+        rows = [
+            models.RegistrationTeamInvite(
+                id=id_, slot_code="flex", is_substitute=False, state=state, expires_at=expires
+            )
+            for id_, state, expires in (
+                (1, teams.INVITE_PENDING, now + timedelta(days=1)),
+                (2, teams.INVITE_PENDING, now - timedelta(hours=1)),
+                (3, teams.INVITE_DECLINED, None),
+                (4, teams.INVITE_REVOKED, None),
+                (5, teams.INVITE_ACCEPTED, None),
+            )
+        ]
+        service = teams.teams_service
+        with (
+            patch.object(service.team_repo, "get", AsyncMock(return_value=models.RegistrationTeam(tournament_id=3))),
+            patch.object(service.invite_repo, "list_for_team", AsyncMock(return_value=rows)),
+            patch.object(service, "_owner_provider", AsyncMock(return_value="battlenet")),
+            patch.object(service, "_handles_by_account", AsyncMock(return_value={})),
+            patch.object(service, "count_invites_against_cap", AsyncMock(return_value=5)),
+        ):
+            history = await service.list_invite_history(None, team_id=9, tournament_id=3)  # type: ignore[arg-type]
+
+        # The wire shape, not the Python object: the field was dropped from the
+        # schema while the service kept passing it, and pydantic ignored it.
+        self.assertEqual(
+            {1: "pending", 2: "expired", 3: "declined", 4: "revoked", 5: "accepted"},
+            {entry["id"]: entry.get("state") for entry in history.model_dump(mode="json")["items"]},
+        )
+
+
 class CaptainReadGateTests(TestCase):
     """Reading is not editing."""
 

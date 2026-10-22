@@ -340,6 +340,7 @@ class RegistrationTeamInviteHistoryEntry(BaseModel):
     is_substitute: bool
     #: Includes ``expired``, which is not a stored state but a pending row past its
     #: clock. A lapsed offer and a live one are not the same entry to a reader.
+    state: str
     target_handle: str | None = None
     is_link: bool = False
     invited_at: datetime | None = None
