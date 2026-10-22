@@ -29,6 +29,7 @@ import {
   pickBanSeats
 } from "@/components/pick-ban/pick-ban-model";
 import { isLobby } from "@/lib/encounter/seats";
+import { buildSeriesSlots } from "@/lib/encounter/detail";
 import { modeBeyondMap } from "@/lib/catalog/mode";
 import { PickBanUndoControl } from "@/components/pick-ban/PickBanUndoControl";
 import { PickBanSideAssignment } from "@/components/pick-ban/PickBanSideChoice";
@@ -40,7 +41,7 @@ import { PregameFinalReport } from "./PregameFinalReport";
 import { PregameMapResult } from "./PregameMapResult";
 import { PregameReadiness } from "./PregameReadiness";
 import { EmptyRoomCard, UNAVAILABLE_ICON } from "./EmptyRoomCard";
-import { PickBanPanel, type PickBanAdminSlot } from "./PickBanPanel";
+import { PickBanPanel, type PickBanAdminSlot } from "@/components/pick-ban/PickBanPanel";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { usePregameRoomData } from "./usePregameRoomData";
 import {
@@ -161,12 +162,10 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
 
   const loop = derivePregameLoop(encounter, mapState, heroState);
 
-  const workspaceId = encounter.tournament?.workspace_id ?? null;
+  // The owner's workspace: an encounter carries it whoever owns it (spec §8.2).
+  const workspaceId = encounter.workspace_id;
   const isAdmin =
-    workspaceId != null &&
-    (isSuperuser ||
-      isWorkspaceAdmin(workspaceId) ||
-      hasWorkspacePermission(workspaceId, "match.result"));
+    isSuperuser || isWorkspaceAdmin(workspaceId) || hasWorkspacePermission(workspaceId, "match.result");
   const viewerTeamId = mapState.viewer_team_id ?? room.viewerTeamId;
   // A tournament game of a discipline that declares a match fetcher can be filed by its match id (a scrim room
   // publishes no result). Filing needs no pick-ban session: the positions are the encounter's own live games.
@@ -177,7 +176,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
     : [];
   // The organizer import routes are gated on `match.result` (any other management grant is not enough); everyone
   // else files as a captain of the encounter.
-  const importsAsOrganizer = workspaceId != null && hasWorkspacePermission(workspaceId, "match.result");
+  const importsAsOrganizer = hasWorkspacePermission(workspaceId, "match.result");
 
   if (loop.unconfigured) {
     // Without a pick-ban the room only exists to file the series' matches by id; until the game's metadata says
@@ -227,7 +226,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
   // The readiness gate already shows both rosters inline; every later screen
   // has its pool or report there, so the rosters sit one click away instead.
   const showRostersButton = !loop.waitingOnReadiness;
-  const canUploadLog = workspaceId != null && hasWorkspacePermission(workspaceId, "log.create");
+  const canUploadLog = encounter.tournament_id != null && hasWorkspacePermission(workspaceId, "log.create");
   const header = (
     <>
       <PregameHeader
@@ -455,6 +454,12 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
     );
   }
 
+  // A per-player ban looks back at the previous map's parsed match; only the tournament room has one to read.
+  const previousRound = (activeState.current_round ?? activeState.current_step?.round ?? 1) - 1;
+  const previousMatchId = encounter.games?.length
+    ? (buildSeriesSlots(encounter).find((slot) => slot.index === previousRound)?.match?.id ?? null)
+    : ((encounter.matches ?? []).find((match) => match.map_index === previousRound)?.id ?? null);
+
   return (
     // Bottom padding clears the fixed command bar. On mobile its tallest shape is
     // a per-player blind draft (timer, slots, Lock, issue line): ~210px.
@@ -471,6 +476,7 @@ function PregameRoomBody({ encounterId, seriesReport = true }: Readonly<PregameR
         isAdmin={isAdmin && adminOpen}
         adminPanel={adminPanel}
         header={header}
+        previousMatchId={previousMatchId}
       />
     </div>
   );

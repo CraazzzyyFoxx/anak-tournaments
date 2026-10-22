@@ -11,11 +11,10 @@ import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { useFormatter } from "@/lib/datetime/client";
 import adminService from "@/services/admin.service";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
+import { PregameAdminBox } from "@/components/pick-ban/PregameAdminBox";
 import { seatName, type PickBanSeat } from "@/components/pick-ban/pick-ban-model";
 import type { PregameRoomHistoryEntry } from "@/types/admin.types";
 import type { PickBanKind } from "@/types/tournament.types";
-
-import { PregameAdminBox } from "./PregameAdminBox";
 
 /**
  * Every action this panel has a sentence for, and whether it is one an
