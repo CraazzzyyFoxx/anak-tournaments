@@ -739,7 +739,7 @@ def register(broker: Any, logger: Any) -> None:
                     )
                     for line in body.results
                 ],
-                actor_user_id=user.id,
+                actor_user_id=await _actor_player_id(session, user),
                 reason=body.reason,
                 audit=partial(
                     record_admin_audit,
