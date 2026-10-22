@@ -1131,7 +1131,7 @@ class SavepointSignalTests(EvidenceCase):
                 await s.commit()
             await self._settle()
         flush.assert_awaited_once()
-        (pending,) = flush.await_args.args
+        pending, _generations = flush.await_args.args
         resources = {resource for _scope, _row, resources, _ids in pending for resource in resources}
         self.assertEqual({Resource.TOURNAMENT_ENCOUNTERS}, resources)
         reconcile.assert_awaited_once()
