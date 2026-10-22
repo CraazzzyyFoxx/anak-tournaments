@@ -238,6 +238,7 @@ def test_draft_minor_edit_preserves_tier_ids_and_mapping_rules() -> None:
             delete=AsyncMock(),
             execute=AsyncMock(),
             flush=AsyncMock(),
+            expire=Mock(),
         )
         payload = schemas.DivisionGridVersionUpdate(
             tiers=[

@@ -512,6 +512,8 @@ class DivisionGridService:
                 await self.mapping_repo.mark_incomplete_for_version(session, version_id)
 
         await session.flush()
+        # New tiers went in by FK and removed ones were deleted: the loaded collection is stale.
+        session.expire(version, ["tiers"])
         updated = await self.get_version(session, version_id)
         await division_grid_cache.invalidate_grid_version(version_id)
         return updated

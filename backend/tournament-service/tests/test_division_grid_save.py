@@ -425,12 +425,13 @@ _REWRITES = {
         _write_tier(None, "rest", 0, 1499, number=2, sort_order=1),
     ],
     "swap-last": lambda kept: [*kept[:-1], _write_tier(None, "rookie", 0, 999, number=3, sort_order=2)],
+    "append": lambda kept: [*kept, _write_tier(None, "unranked", -500, -1, number=99, sort_order=3)],
 }
 
 
 @pytest.mark.parametrize("rewrite", list(_REWRITES))
-def test_draft_tier_rewrite_is_stored(db_session, rewrite) -> None:
-    """PATCH with id-less tiers reusing a removed tier's sort_order/slug saves instead of a unique violation."""
+def test_draft_tier_rewrite_is_stored_and_echoed(db_session, rewrite) -> None:
+    """PATCH with id-less tiers reusing freed sort_orders/slugs saves, and the response is what a re-read returns."""
 
     async def run() -> None:
         try:
@@ -458,7 +459,9 @@ def test_draft_tier_rewrite_is_stored(db_session, rewrite) -> None:
             )
             tiers = _REWRITES[rewrite]([schemas.DivisionGridTierWrite.model_validate(t) for t in payload["tiers"]])
 
-            await grid_service.update_version(db_session, draft.id, schemas.DivisionGridVersionUpdate(tiers=tiers))
+            updated = await grid_service.update_version(
+                db_session, draft.id, schemas.DivisionGridVersionUpdate(tiers=tiers)
+            )
 
             stored = await db_session.scalars(
                 sa.select(models.DivisionGridTier.slug)
@@ -466,6 +469,7 @@ def test_draft_tier_rewrite_is_stored(db_session, rewrite) -> None:
                 .order_by(models.DivisionGridTier.sort_order)
             )
             assert list(stored) == [t.slug for t in tiers]
+            assert [t.slug for t in updated.tiers] == [t.slug for t in tiers]
         finally:
             await db_session.rollback()
 
