@@ -9,17 +9,35 @@ import type { MixTeamFormation } from "@/services/custom-game.service";
 
 type Formation = { team_formation: MixTeamFormation; draft_pick_seconds: number };
 
-/** How a mix (or a host's new mixes of one game) forms teams: the balancer, or a captain draft on a pick clock. */
+/**
+ * How a mix (or a host's new mixes of one game) forms teams: the balancer, or a captain draft on a pick clock.
+ *
+ * The clock reports every in-range keystroke, for a caller holding a local draft it saves on its own. A caller that
+ * writes the server on every change (the mix header) sets `commitOnBlur`: one write when the field is left, not "12"
+ * on the way to "120".
+ */
 export function MixFormationControl({
   value,
   onChange,
   disabled = false,
+  commitOnBlur = false,
   idPrefix,
-}: Readonly<{ value: Formation; onChange: (next: Formation) => void; disabled?: boolean; idPrefix: string }>) {
+}: Readonly<{
+  value: Formation;
+  onChange: (next: Formation) => void;
+  disabled?: boolean;
+  commitOnBlur?: boolean;
+  idPrefix: string;
+}>) {
   const t = useTranslations("mixes.header");
-  // The header writes the mix on every change, so the clock commits once, when the field is left -- not "12" on the
-  // way to "120". NumberInput reports the clamped (10..600) value, or null when emptied, right before its onBlur.
+  // NumberInput reports the clamped value (or null when emptied) right before its onBlur, so this is never stale there.
   const typed = useRef<number | null>(null);
+  const commit = () => {
+    const next = typed.current;
+    if (next != null && next >= 10 && next <= 600 && next !== value.draft_pick_seconds) {
+      onChange({ ...value, draft_pick_seconds: next });
+    }
+  };
   return (
     <span className="flex shrink-0 items-center gap-2">
       <Select
@@ -47,12 +65,9 @@ export function MixFormationControl({
           value={value.draft_pick_seconds}
           onValueChange={(next) => {
             typed.current = next;
+            if (!commitOnBlur) commit();
           }}
-          onBlur={() => {
-            if (typed.current != null && typed.current !== value.draft_pick_seconds) {
-              onChange({ ...value, draft_pick_seconds: typed.current });
-            }
-          }}
+          onBlur={commitOnBlur ? commit : undefined}
           size="sm"
           className="w-20 bg-background/50 px-2 tabular-nums"
         />

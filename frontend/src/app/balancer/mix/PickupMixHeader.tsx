@@ -231,6 +231,7 @@ export function PickupMixHeader({
 
         {game == null ? null : canWrite && onSetDraftSettings ? (
           <MixFormationControl
+            commitOnBlur
             idPrefix="mix-header"
             value={{ team_formation: game.team_formation, draft_pick_seconds: game.draft_pick_seconds }}
             disabled={savingDraftSettings}

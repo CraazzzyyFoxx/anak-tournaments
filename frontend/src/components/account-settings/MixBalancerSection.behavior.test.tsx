@@ -298,13 +298,10 @@ describe("MixBalancerSection", () => {
 
     const overwatch = await mount();
     await choose(overwatch, "mix-formation-overwatch-formation", "formationDraft");
-    const clock = field(overwatch, "mix-formation-overwatch-pick-seconds");
-    await typeInto(clock, "45");
-    // The clock commits when the field is left (React's onBlur listens for focusout).
-    await act(async () => {
-      clock.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
-    });
+    await typeInto(field(overwatch, "mix-formation-overwatch-pick-seconds"), "45");
     await settle();
+    // Leaving for another settings tab unmounts the section without ever blurring the clock: the typed value must
+    // already be in the autosaved draft.
     unmountAll();
 
     tab.game = "deadlock";
