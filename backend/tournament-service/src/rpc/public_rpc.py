@@ -67,7 +67,7 @@ from src.schemas.captain import (
     PickBanSubmitInput,
     PickBanUndoInput,
     TeamReportIn,
-    resolve_optional_viewer_team,
+    resolve_optional_viewer,
 )
 from src.schemas.registration import (
     RegistrationStatusResponse,
@@ -268,9 +268,9 @@ def register(broker: Any, logger: Any) -> None:
             user = _optional_identity(data)
             encounter = await load_room_encounter(session, encounter_id, for_update=False)
             await ensure_room_viewable(session, user, encounter)
-            viewer = await resolve_optional_viewer_team(session, user, encounter)
+            viewer, viewer_member = await resolve_optional_viewer(session, user, encounter)
             return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(
-                session, encounter_id, kind, viewer=viewer
+                session, encounter_id, kind, viewer=viewer, viewer_member=viewer_member
             )
 
         return await _run(logger, op)
@@ -283,10 +283,10 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             body = PickBanActionInput.model_validate(_payload(data))
             encounter = await load_room_encounter(session, encounter_id, for_update=True)
-            participation, _player_id = await captain_service.captain_seat(session, user, encounter)
+            participation, is_captain = await captain_service.acting_seat(session, user, encounter, body.member_id)
             # Returns the acting captain's own new state: the room re-renders
             # from the response instead of racing its own refetch.
-            return await pick_ban_action.pick_ban_action_service.perform_pick_ban_action(
+            state = await pick_ban_action.pick_ban_action_service.perform_pick_ban_action(
                 session,
                 encounter_id,
                 kind,
@@ -294,7 +294,15 @@ def register(broker: Any, logger: Any) -> None:
                 item_id=body.item_id,
                 action=body.action,
                 target_player_id=body.target_player_id,
+                member_id=body.member_id,
                 actor_auth_user_id=user.id,
+            )
+            if is_captain:
+                return state
+            # A member who is not the captain reads the room as themselves, never as their team's captain.
+            viewer, viewer_member = await resolve_optional_viewer(session, user, encounter)
+            return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(
+                session, encounter_id, kind, viewer=viewer, viewer_member=viewer_member
             )
 
         return await _run(logger, op)

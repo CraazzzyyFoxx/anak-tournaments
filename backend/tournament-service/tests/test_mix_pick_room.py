@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import random
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import sqlalchemy as sa
@@ -15,9 +16,13 @@ from shared import models
 from shared.core import enums
 from shared.core.errors import BaseAPIException
 from shared.services.encounter.participants import MemberSnapshot, place_team
+from src.rpc import _helpers as rpc_helpers
+from src.rpc import pick_ban_admin, public_rpc
 from src.services.encounter.pick_ban_action import pick_ban_action_service
 from src.services.encounter.pick_ban_session import pick_ban_session_service
+from tests._rpc_fakes import CapturingBroker, make_identity
 from tests.test_mix_pick_ban_room import MixBanRoomCase
+from tests.test_pregame_participations import FIRST_HERO, RoomCase, hero_ruleset
 
 HERO = enums.PickBanKind.HERO
 #: Who sits where in ``MixBanRoomCase``: slot 1 (``self.seats[0]``) m0 + m1, slot 2 m2 + m3.
@@ -251,3 +256,145 @@ class MixFearlessTests(MixPickRoomCase):
             },
             await self.picked_for(),
         )
+
+
+class MixPickPermissionTests(MixPickRoomCase):
+    async def act(self, who: str, seat: int, hero: int) -> dict:
+        return await self.rpc(
+            public_rpc.register,
+            "rpc.tournament.captain_pick_ban_act",
+            {
+                "identity": make_identity(user_id=self.auth[who]),
+                "id": self.encounter_id,
+                "kind": "hero",
+                "payload": {"action": "pick", "item_id": hero, "member_id": seat},
+            },
+        )
+
+    async def read(self, who: str | None) -> dict:
+        data = {"id": self.encounter_id, "kind": "hero"}
+        if who is not None:
+            data["identity"] = make_identity(user_id=self.auth[who])
+        return (await self.rpc(public_rpc.register, "rpc.tournament.captain_pick_ban_state", data))["data"]
+
+    async def test_a_player_picks_for_themselves_and_not_for_a_teammate(self) -> None:
+        await self.ban_through()
+        seat = await self.member_seats()
+
+        refused = await self.act("p1", seat["m0"], self.picks[0])
+        done = await self.act("p1", seat["m1"], self.picks[1])
+
+        self.assertEqual("forbidden", refused["error"]["code"])
+        self.assertTrue(done["ok"], done)
+        self.assertEqual({self.picks[1]: seat["m1"]}, await self.picked_for())
+
+    async def test_a_captain_picks_for_their_own_team_and_a_host_for_anyone(self) -> None:
+        await self.ban_through()
+        seat = await self.member_seats()
+
+        across = await self.act("p0", seat["m3"], self.picks[0])
+        teammate = await self.act("p0", seat["m1"], self.picks[1])
+        host = await self.rpc(
+            pick_ban_admin.register,
+            "rpc.tournament.admin_pick_ban_act",
+            {
+                "identity": make_identity(user_id=self.auth["host"]),
+                "id": self.encounter_id,
+                "payload": {
+                    "kind": "hero",
+                    "encounter_team_id": self.seats[1],
+                    "action": "pick",
+                    "item_id": self.picks[2],
+                    "member_id": seat["m3"],
+                },
+            },
+        )
+
+        self.assertEqual("forbidden", across["error"]["code"])
+        self.assertTrue(teammate["ok"], teammate)
+        self.assertTrue(host["ok"], host)
+        self.assertEqual({self.picks[1]: seat["m1"], self.picks[2]: seat["m3"]}, await self.picked_for())
+
+    async def test_the_room_tells_a_member_and_their_captain_it_is_their_turn(self) -> None:
+        await self.ban_through()
+        seat = await self.member_seats()
+        await self.act("p1", seat["m1"], self.picks[0])
+
+        picked = await self.read("p1")
+        captain = await self.read("p0")
+        player = await self.read("p3")
+        spectator = await self.read(None)
+
+        # p1 has picked; their captain still owes their own; p3 owes theirs; a spectator owes nothing.
+        self.assertEqual((False, []), (picked["viewer_can_act"], picked["viewer_member_ids"]))
+        self.assertEqual((True, [seat["m0"]]), (captain["viewer_can_act"], captain["viewer_member_ids"]))
+        self.assertEqual((True, [seat["m3"]]), (player["viewer_can_act"], player["viewer_member_ids"]))
+        self.assertFalse(spectator["viewer_can_act"])
+        self.assertEqual(sorted((seat["m0"], seat["m2"], seat["m3"])), sorted(spectator["acting_member_ids"]))
+        self.assertEqual(["P0", "P1", "P2", "P3"], [member["name"] for member in spectator["members"]])
+        self.assertNotIn(self.picks[0], spectator["member_eligible"][str(seat["m0"])])
+
+
+class TournamentMemberIdTests(RoomCase):
+    """A tournament seat names no members (R-F5): ``member_id`` is a 422 for its captain and its organizer alike,
+    on act and submit, before any turn is read."""
+
+    async def asyncSetUp(self) -> None:
+        await super().asyncSetUp()
+        async with self.Session() as s:
+            account = models.AuthUser(email=f"{self.tag}@example.test", username=self.tag, is_active=True)
+            player = models.User(name=self.tag)
+            s.add_all([account, player])
+            await s.flush()
+            player.auth_user_id = account.id
+            seat = await s.get_one(models.EncounterTeam, self.slot1)
+            (await s.get_one(models.Team, seat.team_id)).captain_id = player.id
+            await s.commit()
+            self.account_id, self.player_id = account.id, player.id
+        await self.configure(hero_ruleset())
+        await self.ready_all()
+        await self.open_room()
+
+    async def asyncTearDown(self) -> None:
+        async with self.Session() as s:
+            await s.execute(sa.delete(models.Workspace).where(models.Workspace.id == self.workspace_id))
+            await s.execute(sa.delete(models.User).where(models.User.id == self.player_id))
+            await s.execute(sa.delete(models.AuthUser).where(models.AuthUser.id == self.account_id))
+            await s.commit()
+        await super().asyncTearDown()
+
+    async def rpc(self, register, subject: str, identity: dict, payload: dict) -> dict:
+        broker = CapturingBroker()
+        register(broker, SimpleNamespace(exception=lambda *a, **k: None))
+        data = {"identity": identity, "id": self.encounter_id, "kind": "hero", "payload": payload}
+        with patch.object(rpc_helpers.db, "async_session_maker", self.Session):
+            return await broker.handlers[subject](data, None)
+
+    async def test_a_member_id_is_a_422_for_the_captain_and_the_organizer_alike(self) -> None:
+        captain = make_identity(user_id=self.account_id)
+        organizer = make_identity(user_id=self.account_id, is_superuser=True)
+        act = {"action": "ban", "item_id": FIRST_HERO, "member_id": 1}
+        submit = {"items": [{"item_id": FIRST_HERO, "member_id": 1}], "lock": True}
+        seat = {"kind": "hero", "encounter_team_id": self.slot1}
+
+        refused = [
+            await self.rpc(public_rpc.register, "rpc.tournament.captain_pick_ban_act", captain, act),
+            await self.rpc(public_rpc.register, "rpc.tournament.captain_pick_ban_submit", captain, submit),
+            await self.rpc(pick_ban_admin.register, "rpc.tournament.admin_pick_ban_act", organizer, {**seat, **act}),
+            await self.rpc(
+                pick_ban_admin.register, "rpc.tournament.admin_pick_ban_submit", organizer, {**seat, **submit}
+            ),
+        ]
+        done = await self.rpc(
+            public_rpc.register,
+            "rpc.tournament.captain_pick_ban_act",
+            captain,
+            {"action": "ban", "item_id": FIRST_HERO},
+        )
+
+        self.assertEqual(
+            [("unprocessable", "member_id names a mix match's seat")] * 4,
+            [(reply["error"]["code"], reply["error"]["message"]) for reply in refused],
+        )
+        # The same captain, naming no member, bans: the refusals were the member_id's alone.
+        self.assertTrue(done["ok"], done)

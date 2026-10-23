@@ -85,6 +85,8 @@ class PickBanAdminAct(BaseModel):
     item_id: int
     action: Literal["pick", "ban", "protect", "side_pick"]
     target_player_id: int | None = None
+    #: A mix's member pick (spec §11.6 R4-9): the ``encounter.team_member`` seat the hero is for.
+    member_id: int | None = None
 
 
 class PickBanAdminSubmit(BaseModel):
@@ -476,6 +478,7 @@ def register(broker: Any, logger: Any) -> None:
                     "action": body.action,
                     "item_id": body.item_id,
                     "target_player_id": body.target_player_id,
+                    "member_id": body.member_id,
                 },
             )
             # Same engine as the captain act route, the acting participation
@@ -490,6 +493,7 @@ def register(broker: Any, logger: Any) -> None:
                 item_id=body.item_id,
                 action=body.action,
                 target_player_id=body.target_player_id,
+                member_id=body.member_id,
                 viewer=None,
                 actor_auth_user_id=user.id,
             )

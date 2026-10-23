@@ -2283,7 +2283,7 @@ export interface paths {
         put?: never;
         /**
          * Ban, pick or protect
-         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Applies one ban, pick or protect to the encounter's live pick/ban session of the given `kind`, under the session's row lock, and returns the caller's new room state. OPEN steps only: a blind step is a 400 that says to use the submit route. Acting when the caller's side does not owe the current step, sending the wrong action for it, naming an item the step's rules do not allow, or omitting the opponent player a per-player ban must name is a 400, as is a session that is not initialized or no longer active. On a mix match the captain is the roster snapshot's (the lineup's crown).
+         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Applies one ban, pick or protect to the encounter's live pick/ban session of the given `kind`, under the session's row lock, and returns the caller's new room state. OPEN steps only: a blind step is a 400 that says to use the submit route. Acting when the caller's side does not owe the current step, sending the wrong action for it, naming an item the step's rules do not allow, or omitting the opponent player a per-player ban must name is a 400, as is a session that is not initialized or no longer active. On a mix match the captain is the roster snapshot's (the lineup's crown). On a mix match's member pick (spec §11.6) the body names `member_id`, the `encounter.team_member` seat the hero is for: the member themselves or their team's captain may pick (403 otherwise; 422 on a tournament match). An assignment step is answered through captain_pick_ban_submit.
          *
          *     RPC subject: `rpc.tournament.captain_pick_ban_act`
          */
@@ -2347,7 +2347,7 @@ export interface paths {
         };
         /**
          * Get pick-ban room state
-         * @description Permission: public; no authentication required — gated only by the tournament's visibility rule; a mix match's room is public. Returns the live pick/ban room for an encounter and the `kind` path segment ('map' or 'hero', 422 otherwise): the resolved steps, the candidate pool, which sides still owe the current step, both sides' readiness, any open undo request, and for maps the captains' per-map result claims. A captain additionally gets their own side annotated, their eligible items, why their draft cannot be locked yet, and their own unrevealed draft — a blind step never serializes the other side's. When no session can exist yet the payload names why (teams unknown, bracket still a preview, no pick-ban configured, slot count mismatch, sides not ready, waiting on the map round) instead of erroring.
+         * @description Permission: public; no authentication required — gated only by the tournament's visibility rule; a mix match's room is public. Returns the live pick/ban room for an encounter and the `kind` path segment ('map' or 'hero', 422 otherwise): the resolved steps, the candidate pool, which sides still owe the current step, both sides' readiness, any open undo request, and for maps the captains' per-map result claims. A captain additionally gets their own side annotated, their eligible items, why their draft cannot be locked yet, and their own unrevealed draft — a blind step never serializes the other side's. When no session can exist yet the payload names why (teams unknown, bracket still a preview, no pick-ban configured, slot count mismatch, sides not ready, waiting on the map round) instead of erroring. A mix room also lists `members` (seats in pick order), the member step's `acting_member_ids`, whom the viewer may pick for (`viewer_member_ids`; a member owes their own pick, a captain also their team's) and each member's choosable heroes (`member_eligible`, Fearless applied).
          *
          *     RPC subject: `rpc.tournament.captain_pick_ban_state`
          */
@@ -2371,7 +2371,7 @@ export interface paths {
         put?: never;
         /**
          * Submit a blind draft
-         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Replaces the caller's whole draft for the current BLIND step and, with `lock: true`, locks it — a locked submission is final, and once every acting side has locked the step reveals for both. Returns the caller's new room state; while the step is unrevealed it carries the caller's own items and only the opponent's progress counts. 400 when the current step is not blind, when the caller already locked, or when the items break the step's rules (the reasons are also listed in the state's `draft_issues`). On a mix match the captain is the roster snapshot's (the lineup's crown).
+         * @description Permission: authenticated user who captains one of the encounter's two teams (403 otherwise). Replaces the caller's whole draft for the current BLIND step and, with `lock: true`, locks it — a locked submission is final, and once every acting side has locked the step reveals for both. Returns the caller's new room state; while the step is unrevealed it carries the caller's own items and only the opponent's progress counts. 400 when the current step is not blind, when the caller already locked, or when the items break the step's rules (the reasons are also listed in the state's `draft_issues`). On a mix match the captain is the roster snapshot's (the lineup's crown). It also answers a mix's assignment step (open, not blind): each item names `member_id`, one hero of the team's picks per member, none a member's Fearless excludes (422 on a tournament match).
          *
          *     RPC subject: `rpc.tournament.captain_pick_ban_submit`
          */
@@ -6133,7 +6133,7 @@ export interface paths {
         put?: never;
         /**
          * Act for a side
-         * @description Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Performs one ban, pick or protect on behalf of the given side (admin override of the captain flow) against the current OPEN step, optionally naming the opponent roster player a per-player ban is spent on, and returns the full room state with nothing hidden. 400 when the current step is blind — use admin_pick_ban_submit for those.
+         * @description Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Performs one ban, pick or protect on behalf of the given side (admin override of the captain flow) against the current OPEN step, optionally naming the opponent roster player a per-player ban is spent on, and returns the full room state with nothing hidden. 400 when the current step is blind — use admin_pick_ban_submit for those. On a mix's member pick `member_id` names the member the hero is for (422 on a tournament match).
          *
          *     RPC subject: `rpc.tournament.admin_pick_ban_act`
          */
@@ -19425,6 +19425,11 @@ export interface components {
             /** Item Id */
             item_id: number;
             /**
+             * Member Id
+             * @default null
+             */
+            member_id: number | null;
+            /**
              * Target Player Id
              * @default null
              */
@@ -19443,6 +19448,11 @@ export interface components {
         "tournament.PickBanSubmissionItemInput": {
             /** Item Id */
             item_id: number;
+            /**
+             * Member Id
+             * @default null
+             */
+            member_id: number | null;
             /**
              * Target Player Id
              * @default null
@@ -28897,6 +28907,11 @@ export interface components {
             /** Item Id */
             item_id: number;
             kind: components["schemas"]["tournament.PickBanKind"];
+            /**
+             * Member Id
+             * @default null
+             */
+            member_id: number | null;
             /**
              * Target Player Id
              * @default null

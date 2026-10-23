@@ -28,7 +28,7 @@ queue every spectator behind the captains and behind each other.
 from __future__ import annotations
 
 import secrets
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -88,7 +88,7 @@ def _source_of(viewer: int | None) -> str:
     return "captain" if viewer == ACTING_VIEWER else "admin"
 
 
-_CAPTAIN_ACTIONS = ("ban", "pick", "protect", "side_pick")
+_CAPTAIN_ACTIONS = ("ban", "pick", "protect", "side_pick", "assign")
 
 
 def _item(item: Mapping[str, Any]) -> dict[str, Any]:
@@ -186,6 +186,10 @@ def build_unavailable_state(reason: str, *, readiness: dict[str, bool]) -> dict[
         "current_step": None,
         "expected_action": None,
         "acting_team_ids": [],
+        "members": [],
+        "acting_member_ids": [],
+        "viewer_member_ids": [],
+        "member_eligible": None,
         "step_progress": None,
         "step_deadline": None,
         "current_round": None,
@@ -858,6 +862,15 @@ class PickBanActionService:
         return step
 
     @staticmethod
+    def _require_mix_members(encounter: Encounter, members: Iterable[int | None]) -> None:
+        """Only a mix match seats members (spec §11.6 R4-6): a ``member_id`` on a tournament room is a 422, for its
+        captain and its organizer alike -- act and submit both ask here, before any turn is read."""
+        if encounter.custom_game_id is None and any(member is not None for member in members):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="member_id names a mix match's seat"
+            )
+
+    @staticmethod
     def _require_turn(rt: _Runtime, step: pbr.ResolvedStep, actor: int, member: int | None = None) -> None:
         if actor not in step.acting_actors:
             names = {team.id: team.name for team in rt.teams}
@@ -902,6 +915,7 @@ class PickBanActionService:
         # ``viewer`` is the admin discriminator this module already runs on
         # (see ACTING_VIEWER): an organizer acting FOR a seat passes it as None.
         encounter, pick_ban = await self._lock(session, encounter_id, kind, captain=viewer == ACTING_VIEWER)
+        self._require_mix_members(encounter, [member_id])
         rt = await self._load(session, pick_ban, encounter, refresh=True)
         await self._settle(session, rt)
         step = self._require_step(rt)
@@ -1001,6 +1015,7 @@ class PickBanActionService:
         is final: the step reveals the moment every acting participation has one.
         A mix's assignment step (open, spec §11.6 R4-1) is answered here too, each item naming its ``member_id``."""
         encounter, pick_ban = await self._lock(session, encounter_id, kind, captain=viewer == ACTING_VIEWER)
+        self._require_mix_members(encounter, [item.get("member_id") for item in items])
         rt = await self._load(session, pick_ban, encounter, refresh=True)
         await self._settle(session, rt)
         step = self._require_step(rt)
@@ -1309,6 +1324,7 @@ class PickBanActionService:
         kind: PickBanKind,
         *,
         viewer: int | None = None,
+        viewer_member: int | None = None,
     ) -> dict[str, Any]:
         """The room as it stands RIGHT NOW. A pure read: no lock, no write, no
         commit, no signal.
@@ -1343,7 +1359,9 @@ class PickBanActionService:
             return state
 
         rt = await self._load(session, pick_ban, encounter)
-        return await self._build_state(session, rt, kind, readiness=readiness, viewer=viewer)
+        return await self._build_state(
+            session, rt, kind, readiness=readiness, viewer=viewer, viewer_member=viewer_member
+        )
 
     async def _series(self, session: AsyncSession, encounter: Encounter) -> dict[str, Any]:
         """What the confirmed games add up to, per participation."""
@@ -1364,6 +1382,7 @@ class PickBanActionService:
         *,
         readiness: dict[str, bool],
         viewer: int | None,
+        viewer_member: int | None = None,
     ) -> dict[str, Any]:
         """Render ``rt``. Pure: the room is rendered as it is, never as it ought
         to be -- drift is :meth:`reconcile_room`'s to fix."""
@@ -1374,26 +1393,57 @@ class PickBanActionService:
         )
         step = pbr.current_step(rt.steps, rt.submissions)
         acting: list[int] = []
+        acting_members: list[int] = []
         if step is not None:
             progress = pbr.step_progress(step, rt.submissions)
             acting = [actor for actor in step.acting_actors if not progress[actor]["locked"]]
+            for actor, member in step.answers:
+                row = pbr.actor_submission(rt.submissions, step.index, actor, member)
+                if member is not None and (row is None or row.state not in (pbr.LOCKED, pbr.REVEALED)):
+                    acting_members.append(member)
+        team_of = {seat.id: seat.team_id for seat in rt.seats}
+        # Whom this viewer may pick for on a member step: themselves first, then -- as captain -- every teammate
+        # still owing (spec §11.3, §11.6 R4-9, R4-11). A host picks for anyone through the organizer route.
+        viewer_members = sorted(
+            (
+                member
+                for member in acting_members
+                if member == viewer_member or (viewer is not None and team_of.get(member) == viewer)
+            ),
+            key=lambda member: member != viewer_member,
+        )
         viewer_can_act = (
             step is not None
-            and viewer in acting
             and step.action in _CAPTAIN_ACTIONS
             and str(rt.pick_ban.status) != MapVetoSessionStatus.CANCELLED
             and rt.pick_ban.paused_at is None
+            and (bool(viewer_members) if step.member is not None else viewer in acting)
         )
 
         eligible: dict[str, Any] | None = None
         draft_issues: list[str] = []
-        if viewer_can_act and step is not None and viewer is not None and step.action != "side_pick":
+        if (
+            viewer_can_act
+            and step is not None
+            and viewer is not None
+            and step.action != "side_pick"
+            and step.member is None
+        ):
             ctx = self._ctx(rt, step)
             eligible = pbr.eligible_items(step, viewer, ctx).to_json()
             row = pbr.actor_submission(rt.submissions, step.index, viewer)
             draft_issues = pbr.validate_items(
                 step, viewer, list(row.items_json or []) if row is not None else [], ctx, final=True
             )
+        member_eligible: dict[str, list[int]] | None = None
+        if step is not None and (step.member is not None or step.action == "assign"):
+            ctx = self._ctx(rt, step)
+            owing = (
+                acting_members if step.member is not None else [seat.id for seat in rt.seats if seat.team_id in acting]
+            )
+            member_eligible = {
+                str(member): list(pbr.eligible_items(step, team_of[member], ctx, member).item_ids) for member in owing
+            }
 
         targets: dict[str, list[dict[str, Any]]] | None = None
         if any(candidate.target is not None for candidate in rt.steps):
@@ -1418,6 +1468,15 @@ class PickBanActionService:
             "current_step": step.to_json() if step is not None else None,
             "expected_action": step.action if step is not None else None,
             "acting_team_ids": acting,
+            #: A mix room's seated members in pick order (spec §11.6 R4-11): who member steps and assignments name.
+            "members": [{"id": seat.id, "encounter_team_id": seat.team_id, "name": seat.name} for seat in rt.seats],
+            #: Members who still owe the current member step a hero.
+            "acting_member_ids": acting_members,
+            #: Of those, whom THIS viewer may pick for: themselves first, then -- as captain -- their teammates.
+            "viewer_member_ids": viewer_members,
+            #: ``{member: heroes they may take}`` on a member step (each member still owing) or an assignment (every
+            #: member of a team still assigning) -- Fearless included; public, like the board.
+            "member_eligible": member_eligible,
             "step_progress": (
                 {str(team_id): value for team_id, value in pbr.step_progress(step, rt.submissions).items()}
                 if step is not None

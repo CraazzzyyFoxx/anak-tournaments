@@ -28,6 +28,8 @@ class PickBanActionInput(BaseModel):
     item_id: int
     action: str  # "ban" | "pick" | "protect" | "side_pick"
     target_player_id: int | None = None
+    #: A mix's member pick (spec §11.6): the ``encounter.team_member`` seat the hero is for (``state.members[].id``).
+    member_id: int | None = None
 
 
 class PickBanSubmissionItemInput(BaseModel):
@@ -35,6 +37,8 @@ class PickBanSubmissionItemInput(BaseModel):
 
     item_id: int
     target_player_id: int | None = None
+    #: An assignment's item: the member this hero is given to (spec §11.6 R4-1).
+    member_id: int | None = None
 
 
 class PickBanSubmitInput(BaseModel):
@@ -160,30 +164,31 @@ class TeamReportIn(BaseModel):
     custom_fields: dict[str, str] = Field(default_factory=dict)
 
 
-# ``captain_service.captain_seat`` raises a ``BaseAPIException``; its
+# ``captain_service.resolve_participant`` raises a ``BaseAPIException``; its
 # ``status_code`` is inspected by attribute.
 _HTTP_403_FORBIDDEN = 403
 
 
-async def resolve_optional_viewer_team(
+async def resolve_optional_viewer(
     session: AsyncSession,
     auth_user: models.AuthUser | None,
     encounter: models.Encounter,
-) -> int | None:
-    """The PARTICIPATION a viewer captains, for read-only annotation, or ``None``.
+) -> tuple[int | None, int | None]:
+    """``(participation the viewer captains, the viewer's own mix seat)`` for read-only annotation.
 
-    An authenticated captain gets their own seat's id; anonymous and
-    non-captain viewers get ``None`` (and see the pool serialized identically —
-    ``viewer_team_id`` is presentation only, except that a blind step's draft
-    is private to its own seat). A 403 means "not a captain" and resolves to
-    ``None``.
+    The participation is ``viewer_team_id`` -- presentation, plus the one privacy rule (a blind step's draft is
+    private to its own seat). The seat is a mix member's ``encounter.team_member`` id, which a member step's turn
+    reads (spec §11.6 R4-11); a tournament viewer has none. Anonymous viewers and anyone not seated here (a 403)
+    get ``(None, None)``.
     """
     if auth_user is None:
-        return None
+        return None, None
     try:
-        participation, _player_id = await captain_mod.captain_service.captain_seat(session, auth_user, encounter)
+        seat, _player_id, is_captain, member = await captain_mod.captain_service.resolve_participant(
+            session, auth_user, encounter
+        )
     except Exception as exc:  # noqa: BLE001 - re-raised below unless it's a 403
         if getattr(exc, "status_code", None) == _HTTP_403_FORBIDDEN:
-            return None
+            return None, None
         raise
-    return participation.id
+    return (seat.id if is_captain else None), member

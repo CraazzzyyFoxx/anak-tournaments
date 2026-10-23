@@ -503,7 +503,7 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.admin_pick_ban_act": {
         "summary": "Act for a side",
-        "description": "Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Performs one ban, pick or protect on behalf of the given side (admin override of the captain flow) against the current OPEN step, optionally naming the opponent roster player a per-player ban is spent on, and returns the full room state with nothing hidden. 400 when the current step is blind — use admin_pick_ban_submit for those.",
+        "description": "Permission: workspace `match.result` on the encounter's workspace; on a mix match, its host or a co-host (or a superuser). Performs one ban, pick or protect on behalf of the given side (admin override of the captain flow) against the current OPEN step, optionally naming the opponent roster player a per-player ban is spent on, and returns the full room state with nothing hidden. 400 when the current step is blind — use admin_pick_ban_submit for those. On a mix's member pick `member_id` names the member the hero is for (422 on a tournament match).",
     },
     "rpc.tournament.admin_pick_ban_submit": {
         "summary": "Submit a blind draft for a side",
@@ -1180,6 +1180,9 @@ DOCS: dict[str, dict] = {
             "side's. When no session can exist yet the payload names why (teams unknown, bracket still a "
             "preview, no pick-ban configured, slot count mismatch, sides not ready, waiting on the map round) "
             "instead of erroring."
+            " A mix room also lists `members` (seats in pick order), the member step's `acting_member_ids`, whom the"
+            " viewer may pick for (`viewer_member_ids`; a member owes their own pick, a captain also their team's)"
+            " and each member's choosable heroes (`member_eligible`, Fearless applied)."
         ),
     },
     "rpc.tournament.captain_pick_ban_act": {
@@ -1193,6 +1196,9 @@ DOCS: dict[str, dict] = {
             "omitting the opponent player a per-player ban must name is a 400, as is a session that is not "
             "initialized or no longer active."
             " On a mix match the captain is the roster snapshot's (the lineup's crown)."
+            " On a mix match's member pick (spec §11.6) the body names `member_id`, the `encounter.team_member` seat"
+            " the hero is for: the member themselves or their team's captain may pick (403 otherwise; 422 on a"
+            " tournament match). An assignment step is answered through captain_pick_ban_submit."
         ),
     },
     "rpc.tournament.captain_pick_ban_submit": {
@@ -1206,6 +1212,8 @@ DOCS: dict[str, dict] = {
             "the caller already locked, or when the items break the step's rules (the reasons are also "
             "listed in the state's `draft_issues`)."
             " On a mix match the captain is the roster snapshot's (the lineup's crown)."
+            " It also answers a mix's assignment step (open, not blind): each item names `member_id`, one hero of"
+            " the team's picks per member, none a member's Fearless excludes (422 on a tournament match)."
         ),
     },
     "rpc.tournament.captain_pick_ban_dispute": {
