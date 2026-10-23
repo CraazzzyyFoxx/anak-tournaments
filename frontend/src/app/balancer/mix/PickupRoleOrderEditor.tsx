@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
 import {
@@ -53,9 +54,12 @@ type PickupRoleOrderEditorProps = {
   onToggle: (role: string) => void;
   onFlexChange: (next: boolean) => void;
   rankFor: (role: string) => PickupRoleRank;
-  /** `grid`: 2x2 once the container fits two cards (the player's seat panel).
-   * `list`: one column at any width (the host's sheet, where the rank fields need the room). */
-  layout?: "grid" | "list";
+  /** `list`: one column of full cards (the host's sheet, where the rank fields need the room).
+   * `row`: compact two-line cards side by side in priority order, Full flex a switch on the `heading` line (the
+   * player's seat panel). */
+  layout?: "list" | "row";
+  /** `row` only: what starts the line above the cards -- the caller's label and hint. */
+  heading?: ReactNode;
 };
 
 /**
@@ -82,20 +86,44 @@ export function PickupRoleOrderEditor({
   onToggle,
   onFlexChange,
   rankFor,
-  layout = "list"
+  layout = "list",
+  heading
 }: Readonly<PickupRoleOrderEditorProps>) {
   const t = useTranslations("mixes.roleOrder");
+  const row = layout === "row";
+  // The row layout's first line: the caller's heading, then Full flex as a plain switch -- it is one flag, not a card.
+  const headLine =
+    row && (heading != null || (owner.flex && owner.showsRoles)) ? (
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+        {heading}
+        {owner.flex && owner.showsRoles ? (
+          <label className="ml-auto flex items-center gap-2 text-caption text-[color:var(--aqt-fg-muted)]">
+            {t("fullFlex")}
+            <Switch
+              size="sm"
+              checked={isFlex}
+              disabled={disabled}
+              aria-label={t("flexFor", { name: label })}
+              onCheckedChange={onFlexChange}
+            />
+          </label>
+        ) : null}
+      </div>
+    ) : null;
   if (!owner.showsRoles) {
     const [role] = owner.roles;
-    return role == null ? null : <OnlyRoleRank role={role} owner={owner} disabled={disabled} rank={rankFor(role)} />;
+    if (role == null) return null;
+    const only = <OnlyRoleRank role={role} owner={owner} disabled={disabled} rank={rankFor(role)} />;
+    return headLine == null ? only : <div className="space-y-2">{headLine}{only}</div>;
   }
   const offRoles = owner.roles.filter((role) => !order.includes(role));
 
   return (
     // `contents` on the lists lets their cards sit in this grid directly.
-    <div className="@container">
-      <div className={cn("grid gap-2", layout === "grid" && "@xl:grid-cols-2")}>
-        {owner.flex ? (
+    <div className="@container space-y-2">
+      {headLine}
+      <div className={cn("grid gap-2", row && "@md:grid-cols-2 @2xl:grid-cols-3")}>
+        {owner.flex && !row ? (
           <div
             className={cn(
               "flex items-center justify-between gap-3 rounded-lg border px-3 py-2",
@@ -123,7 +151,7 @@ export function PickupRoleOrderEditor({
           items={order}
           getId={(role) => role}
           onReorder={onReorder}
-          strategy={layout === "grid" ? rectSortingStrategy : undefined}
+          strategy={row ? rectSortingStrategy : undefined}
           className="contents"
         >
           {(role, index) => (
@@ -138,6 +166,7 @@ export function PickupRoleOrderEditor({
               disabled={disabled}
               onToggle={() => onToggle(role)}
               rank={rankFor(role)}
+              compact={row}
             />
           )}
         </SortableRows>
@@ -158,6 +187,7 @@ export function PickupRoleOrderEditor({
                   disabled={disabled}
                   onToggle={() => onToggle(role)}
                   rank={rankFor(role)}
+                  compact={row}
                 />
               </li>
             ))}
@@ -168,7 +198,7 @@ export function PickupRoleOrderEditor({
   );
 }
 
-/** One role's card, wired to the drag list: grip, then the row's own content. */
+/** One role's card, wired to the drag list: grip and priority, then the row's own content. */
 function SortableRoleCard({
   id,
   role,
@@ -178,7 +208,8 @@ function SortableRoleCard({
   isPrimary,
   disabled,
   onToggle,
-  rank
+  rank,
+  compact
 }: Readonly<{
   id: string;
   role: string;
@@ -190,10 +221,21 @@ function SortableRoleCard({
   disabled: boolean;
   onToggle: () => void;
   rank: PickupRoleRank;
+  compact: boolean;
 }>) {
   const t = useTranslations("mixes.roleOrder");
   const { ref, style, handleProps } = useSortableRow(id, disabled);
   const slotLabel = useSlotLabel(owner.ontology);
+  const lead = (
+    <div className="flex shrink-0 items-center gap-1">
+      <SortableGrip
+        handleProps={handleProps}
+        label={t("reorder", { role: slotLabel(role), name: label })}
+        disabled={disabled}
+      />
+      <span className="text-label font-semibold text-[color:var(--aqt-fg-dim)]">{`#${priority}`}</span>
+    </div>
+  );
 
   return (
     <li
@@ -201,14 +243,7 @@ function SortableRoleCard({
       style={{ ...style, ...accentRowStyle(roleRankAccent(owner.ontology, role)) }}
       className="flex items-start gap-2.5 rounded-xl border p-2.5 transition-colors"
     >
-      <div className="flex items-center gap-1">
-        <SortableGrip
-          handleProps={handleProps}
-          label={t("reorder", { role: slotLabel(role), name: label })}
-          disabled={disabled}
-        />
-        <span className="text-label font-semibold text-[color:var(--aqt-fg-dim)]">{`#${priority}`}</span>
-      </div>
+      {compact ? null : lead}
       <RoleCardBody
         role={role}
         owner={owner}
@@ -218,6 +253,8 @@ function SortableRoleCard({
         disabled={disabled}
         onToggle={onToggle}
         rank={rank}
+        compact={compact}
+        lead={compact ? lead : null}
       />
     </li>
   );
@@ -232,6 +269,10 @@ function SortableRoleCard({
  * correct it. Where it is not, the same number is printed as a crest beside
  * the role name: a player must see why the balancer seats them where it does,
  * and a boxed number under it read as a field they were expected to fill in.
+ *
+ * `compact` (the seat panel's row of cards) stacks it in two lines -- grip, priority and name over rank and switch --
+ * and drops the Active/Off word, which a card a third of the panel wide has no room for: the switch says it, and its
+ * accessible name stays.
  */
 function RoleCardBody({
   role,
@@ -241,7 +282,9 @@ function RoleCardBody({
   isPrimary,
   disabled,
   onToggle,
-  rank
+  rank,
+  compact,
+  lead = null
 }: Readonly<{
   role: string;
   owner: MixOwner;
@@ -252,6 +295,9 @@ function RoleCardBody({
   disabled: boolean;
   onToggle: () => void;
   rank: PickupRoleRank;
+  compact: boolean;
+  /** `compact` only: the grip and priority, at the start of the name line. */
+  lead?: ReactNode;
 }>) {
   const t = useTranslations("mixes.roleOrder");
   const slotLabel = useSlotLabel(owner.ontology);
@@ -260,35 +306,69 @@ function RoleCardBody({
   const offText = { color: "var(--aqt-fg-muted)" };
 
   const readOnly = rank.onChange == null;
+  const title = (
+    <div className="flex min-w-0 items-center gap-1.5">
+      {lead}
+      <PlayerRoleIcon role={role} ontology={owner.ontology} size={15} decorative />
+      <span className="truncate text-label font-semibold" style={isOn ? accentTextStyle(accent) : offText}>
+        {name}
+      </span>
+      {isPrimary ? (
+        <AccentBadge accent={accent} className="shrink-0 font-bold uppercase tracking-label">
+          {t("first")}
+        </AccentBadge>
+      ) : null}
+    </div>
+  );
+  const rankChip = readOnly ? <RankChip rank={rank} grid={owner.grid} active={isOn} accent={accent} /> : null;
+  const toggle = (
+    <Switch
+      checked={isOn}
+      disabled={disabled}
+      aria-label={t("roleFor", { role: name, name: label })}
+      onCheckedChange={onToggle}
+      size="sm"
+    />
+  );
+  const rankControls = rank.onChange == null ? null : (
+    <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_130px]">
+      <RoleRankControls
+        rankValue={rank.rankValue}
+        sourceLabel={rank.sourceLabel}
+        accent={accent}
+        active={isOn}
+        disabled={disabled}
+        onClear={rank.onClear}
+        onChange={rank.onChange}
+        // The owner game's global ladder: the scale the value is on, so the
+        // crest and the slider name the same tiers.
+        grid={owner.grid}
+      />
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <div className="min-w-0 flex-1 space-y-2">
+        {title}
+        <div className="flex min-h-5 items-center justify-between gap-2">
+          {rankChip ?? <span />}
+          {toggle}
+        </div>
+        {rankControls}
+      </div>
+    );
+  }
 
   return (
     <div className={cn("min-w-0 flex-1", !readOnly && "space-y-2")}>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <PlayerRoleIcon role={role} ontology={owner.ontology} size={15} decorative />
-          <span
-            className="text-xs font-semibold"
-            style={isOn ? accentTextStyle(accent) : offText}
-          >
-            {name}
-          </span>
-          {isPrimary ? (
-            <AccentBadge accent={accent} className="shrink-0 font-bold uppercase tracking-label">
-              {t("first")}
-            </AccentBadge>
-          ) : null}
-        </div>
+        {title}
 
         <div className="flex items-center gap-2">
-          {readOnly ? <RankChip rank={rank} grid={owner.grid} active={isOn} accent={accent} /> : null}
+          {rankChip}
           <label className="flex items-center gap-1.5">
-            <Switch
-              checked={isOn}
-              disabled={disabled}
-              aria-label={t("roleFor", { role: name, name: label })}
-              onCheckedChange={onToggle}
-              size="sm"
-            />
+            {toggle}
             <span
               className="text-label font-semibold uppercase tracking-label"
               style={isOn ? accentTextStyle(accent) : { color: "var(--aqt-fg-dim)" }}
@@ -299,22 +379,7 @@ function RoleCardBody({
         </div>
       </div>
 
-      {rank.onChange == null ? null : (
-        <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_130px]">
-          <RoleRankControls
-            rankValue={rank.rankValue}
-            sourceLabel={rank.sourceLabel}
-            accent={accent}
-            active={isOn}
-            disabled={disabled}
-            onClear={rank.onClear}
-            onChange={rank.onChange}
-            // The owner game's global ladder: the scale the value is on, so the
-            // crest and the slider name the same tiers.
-            grid={owner.grid}
-          />
-        </div>
-      )}
+      {rankControls}
     </div>
   );
 }

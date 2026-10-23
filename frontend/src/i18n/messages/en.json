@@ -7850,6 +7850,7 @@
       "inLobby": "You are in lobby {letter}",
       "waitingSeat": "Waiting for a seat",
       "rolesAllRanked": "Every role you have a rank for",
+      "rolesHeading": "Your roles",
       "unranked": "No rank yet: {roles}. The host will fill it in.",
       "unrankedOne": "No rank yet. The host will fill it in.",
       "fixLinks": "Open account settings",
@@ -8040,7 +8041,6 @@
       "goAway": "Step away",
       "back": "I'm back",
       "awayStatus": "You are away: no lobby seats you until you are back.",
-      "waiting": "Waiting for a seat",
       "queue": "Number {position} in line",
       "groups": {
         "waiting": "Waiting",

@@ -825,8 +825,8 @@ describe("myLobbyTeam", () => {
       teamName: "Owls",
       nextMapId: 42,
       members: [
-        { uuid: "9", name: "Egor", isCaptain: true, isMe: false },
-        { uuid: "8", name: "Tolgrn", isCaptain: false, isMe: true },
+        { uuid: "9", name: "Egor", role: "tank", isCaptain: true, isMe: false },
+        { uuid: "8", name: "Tolgrn", role: "damage", isCaptain: false, isMe: true },
       ],
     });
     expect(myLobbyTeam(game, 99, OW_ORDER, teamN)).toBeNull();

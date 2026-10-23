@@ -2,15 +2,17 @@
 
 import { Fragment, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Crown, LogIn, LogOut } from "lucide-react";
+import { Coffee, Crown, Headphones, LogIn, LogOut } from "lucide-react";
 
 import { PickupRoleOrderEditor } from "@/app/balancer/mix/PickupRoleOrderEditor";
-import { AWAY_CHIP_CLASS, CAPTION_CLASS, CARD_TITLE_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
+import { CAPTION_CLASS, CARD_TITLE_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
+import { HandleLabel } from "@/components/HandleLabel";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
+import { cn } from "@/lib/utils";
 import { roleOf, type RoleRef } from "@/lib/roster/role-ref";
 import {
   type MixLobbyState,
@@ -169,40 +171,73 @@ export function PickupMySeatPanel({
       is_flex: owner.flex && next.isFlex,
     });
   };
+  // Beside the title, the most specific thing that is true of this player: seated beats signed up, away beats both.
+  const status =
+    seat == null
+      ? t("seat.none")
+      : seat.away
+        ? tRoom("away")
+        : myTeam != null
+          ? tRoom("yourTeam", { letter: lobbyLetter(myTeam.lobbyIndex), team: myTeam.teamName })
+          : seat.current_lobby != null
+            ? t("inLobby", { letter: lobbyLetter(seat.current_lobby) })
+            : seat.participation === "pool"
+              ? [t("waitingSeat"), queuePosition == null ? null : tRoom("queue", { position: queuePosition })]
+                  .filter(Boolean)
+                  .join(" · ")
+              : t(`seat.${seat.participation}`);
+  const rolesHint =
+    owner.flex && draft.isFlex ? tRoles("flexOn") : seat?.roles == null ? t("rolesAllRanked") : tRoles("flexOff");
+  const rolesHeading = (
+    <>
+      <Eyebrow>{t("rolesHeading")}</Eyebrow>
+      {editable && owner.showsRoles ? <span className={CAPTION_CLASS}>{rolesHint}</span> : null}
+    </>
+  );
 
   return (
     <Card variant="flat" className="flex flex-col gap-3 px-4 py-3.5">
-      <div className="flex flex-wrap items-center gap-2.5">
+      {/* Who they are here, then every action they own in one row: the body below only reads. */}
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
         <h2 className={CARD_TITLE_CLASS}>{t("title")}</h2>
-        <span className="text-caption text-[color:var(--aqt-fg-muted)]">
-          {seat == null ? t("seat.none") : t(`seat.${seat.participation}`)}
+        <span
+          className={cn(
+            "text-caption",
+            seat?.away ? "text-[color:var(--aqt-amber)]" : "text-[color:var(--aqt-fg-muted)]",
+          )}
+        >
+          {status}
         </span>
-        {state.lobby_count > 1 && seat != null ? (
-          // Several lobbies mean several games at once: "signed up" no longer
-          // says which one is theirs, or whether a balance has seated them.
-          <span className={CAPTION_CLASS}>
-            {seat.current_lobby == null
-              ? t("waitingSeat")
-              : t("inLobby", { letter: lobbyLetter(seat.current_lobby) })}
-          </span>
-        ) : null}
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           {policy.can_join ? (
-            <Button type="button" variant="accent" size="sm" className="shrink-0" disabled={saving} onClick={onJoin}>
+            <Button type="button" variant="accent" size="sm" disabled={saving} onClick={onJoin}>
               <LogIn aria-hidden="true" />
               {t("join")}
             </Button>
           ) : null}
-          {policy.can_leave ? (
+          {myTeam != null && seat?.voice_url && !seat.away ? (
+            <Button asChild variant="subtle" size="sm">
+              <a href={seat.voice_url} target="_blank" rel="noreferrer">
+                <Headphones aria-hidden="true" />
+                {tRoom("voice")}
+              </a>
+            </Button>
+          ) : null}
+          {seat != null && policy.can_set_away ? (
             <Button
               type="button"
-              variant="subtle"
+              variant={seat.away ? "accent" : "subtle"}
               size="sm"
-              className="shrink-0"
               disabled={saving}
-              onClick={onLeave}
+              onClick={() => onSetAway(!seat.away)}
             >
+              <Coffee aria-hidden="true" />
+              {seat.away ? tRoom("back") : tRoom("goAway")}
+            </Button>
+          ) : null}
+          {policy.can_leave ? (
+            <Button type="button" variant="subtle" size="sm" disabled={saving} onClick={onLeave}>
               <LogOut aria-hidden="true" />
               {t("leave")}
             </Button>
@@ -238,96 +273,53 @@ export function PickupMySeatPanel({
       ) : null}
 
       {seat == null ? null : seat.away ? (
-        <div className="flex flex-wrap items-center gap-2.5">
-          <span className={AWAY_CHIP_CLASS}>{tRoom("away")}</span>
-          <p className="text-caption text-[color:var(--aqt-fg-muted)]">{tRoom("awayStatus")}</p>
-          {policy.can_set_away ? (
-            <Button
-              type="button"
-              variant="accent"
-              size="sm"
-              className="ml-auto shrink-0"
-              disabled={saving}
-              onClick={() => onSetAway(false)}
-            >
-              {tRoom("back")}
-            </Button>
-          ) : null}
+        <p className="text-caption text-[color:var(--aqt-fg-muted)]">{tRoom("awayStatus")}</p>
+      ) : myTeam != null ? (
+        // The team as one inline roster (DESIGN §8): role glyph and nick, the captain's crown, the player in teal.
+        <div className="space-y-1">
+          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-caption text-[color:var(--aqt-fg)]">
+            {myTeam.members.map((member, index) => (
+              <Fragment key={member.uuid}>
+                {index > 0 ? dot : null}
+                <span className="flex min-w-0 items-center gap-1">
+                  <PlayerRoleIcon role={member.role} ontology={owner.ontology} size={14} />
+                  <HandleLabel
+                    handle={member.name}
+                    className={member.isMe ? "font-semibold text-[color:var(--aqt-teal)]" : undefined}
+                  />
+                  {member.isCaptain ? (
+                    <span role="img" aria-label={tRoom("captain")} className="flex shrink-0 items-center">
+                      <Crown aria-hidden className="size-3.5 text-[color:var(--aqt-amber)]" />
+                    </span>
+                  ) : null}
+                  {member.isMe ? <Eyebrow className="text-[color:var(--aqt-teal)]">{tRoom("you")}</Eyebrow> : null}
+                </span>
+              </Fragment>
+            ))}
+          </p>
+          {nextMapName ? <p className={CAPTION_CLASS}>{tRoom("nextMap", { map: nextMapName })}</p> : null}
         </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {myTeam != null ? (
-            <>
-              <p className="text-caption font-semibold text-[color:var(--aqt-fg)]">
-                {tRoom("yourTeam", { letter: lobbyLetter(myTeam.lobbyIndex), team: myTeam.teamName })}
-              </p>
-              <ul className="flex flex-col gap-1">
-                {myTeam.members.map((member) => (
-                  <li key={member.uuid} className="flex items-center gap-2 py-0.5 text-caption text-[color:var(--aqt-fg)]">
-                    <span className="min-w-0 flex-1 truncate">{member.name}</span>
-                    {member.isCaptain ? (
-                      <span role="img" aria-label={tRoom("captain")} className="flex shrink-0 items-center">
-                        <Crown aria-hidden className="size-3.5 text-[color:var(--aqt-amber)]" />
-                      </span>
-                    ) : null}
-                    {member.isMe ? <Eyebrow className="text-[color:var(--aqt-teal)]">{tRoom("you")}</Eyebrow> : null}
-                  </li>
-                ))}
-              </ul>
-              {nextMapName ? <p className={CAPTION_CLASS}>{tRoom("nextMap", { map: nextMapName })}</p> : null}
-              {seat.voice_url ? (
-                <a
-                  href={seat.voice_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="self-start text-caption font-semibold text-[color:var(--aqt-teal)] underline-offset-2 hover:underline"
-                >
-                  {tRoom("voice")}
-                </a>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <p className="text-caption font-semibold text-[color:var(--aqt-fg)]">{tRoom("waiting")}</p>
-              {queuePosition != null ? (
-                <p className={CAPTION_CLASS}>{tRoom("queue", { position: queuePosition })}</p>
-              ) : null}
-              {state.lobby_count > 1 ? (
-                <ul className="flex flex-wrap gap-x-3 gap-y-1">
-                  {lobbies.map((row) => (
-                    <li key={row.lobbyIndex} className={CAPTION_CLASS}>
-                      {`${lobbyLetter(row.lobbyIndex)} · ${tRoom(`state.${row.state}`)}`}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </>
-          )}
-          {policy.can_set_away ? (
-            <Button
-              type="button"
-              variant="subtle"
-              size="sm"
-              className="self-start"
-              disabled={saving}
-              onClick={() => onSetAway(true)}
-            >
-              {tRoom("goAway")}
-            </Button>
-          ) : null}
-        </div>
-      )}
+      ) : state.lobby_count > 1 ? (
+        // Waiting with several lobbies running: where each one is, so they can tell how soon a seat frees up.
+        <p className="flex flex-wrap gap-x-3 gap-y-1">
+          {lobbies.map((row) => (
+            <span key={row.lobbyIndex} className={CAPTION_CLASS}>
+              {`${lobbyLetter(row.lobbyIndex)} · ${tRoom(`state.${row.state}`)}`}
+            </span>
+          ))}
+        </p>
+      ) : null}
 
       {seat == null || !showRoles ? null : editable ? (
-        <div className="space-y-2 border-t border-[color:var(--aqt-border)] pt-3">
-          {owner.showsRoles && seat.roles == null ? <p className={CAPTION_CLASS}>{t("rolesAllRanked")}</p> : null}
+        <div className="border-t border-[color:var(--aqt-border)] pt-3">
           <PickupRoleOrderEditor
             owner={owner}
             order={draft.order}
             isFlex={draft.isFlex}
             disabled={saving}
             label={t("rolesOwner")}
-            layout="grid"
+            layout="row"
+            heading={rolesHeading}
             onReorder={(order) => commit({ ...draft, order })}
             onToggle={(role) => commit({ ...draft, order: toggleRole(draft.order, role) })}
             onFlexChange={(isFlex) => commit({ ...draft, isFlex })}
@@ -342,6 +334,7 @@ export function PickupMySeatPanel({
       ) : (
         // Read-only: no disabled editor, only what the balancer reads -- the on roles in priority order.
         <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 border-t border-[color:var(--aqt-border)] pt-3 text-caption text-[color:var(--aqt-fg-muted)]">
+          {rolesHeading}
           {draft.order.map((role, index) => (
             <Fragment key={role}>
               {index > 0 ? dot : null}

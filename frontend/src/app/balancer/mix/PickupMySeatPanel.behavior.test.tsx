@@ -399,8 +399,8 @@ describe("PickupMySeatPanel on a phone", () => {
           teamName: "Owls",
           nextMapId: 42,
           members: [
-            { uuid: "9", name: "Egor", isCaptain: true, isMe: false },
-            { uuid: "7", name: "karin", isCaptain: false, isMe: true },
+            { uuid: "9", name: "Egor", role: "tank", isCaptain: true, isMe: false },
+            { uuid: "7", name: "karin", role: "damage", isCaptain: false, isMe: true },
           ],
         },
         nextMapName: "Busan",
@@ -410,9 +410,9 @@ describe("PickupMySeatPanel on a phone", () => {
     expect(scope.textContent).toContain("yourTeam:B,Owls");
     expect(scope.textContent).toContain("nextMap:Busan");
     expect(scope.querySelectorAll('[aria-label="captain"]')).toHaveLength(1);
-    expect([...scope.querySelectorAll("li")].find((node) => node.textContent?.startsWith("karin"))?.textContent).toBe(
-      "karinyou",
-    );
+    // One inline roster: each member is a role glyph and a nick, and only the player's own carries "you".
+    const members = [...scope.querySelectorAll("p > span")].map((node) => node.textContent);
+    expect(members.filter((text) => text !== "·")).toEqual(["Egor", "karinyou"]);
     expect(scope.querySelector('a[href="https://discord.com/channels/1/2"]')).not.toBeNull();
 
     await click(byName(scope, "goAway"));

@@ -609,7 +609,8 @@ export type MySeatTeam = {
   lobbyIndex: number;
   teamName: string;
   nextMapId: number | null;
-  members: { uuid: string; name: string; isCaptain: boolean; isMe: boolean }[];
+  /** In seat order; `role` is the slot the option seats them on (the roster line's glyph). */
+  members: { uuid: string; name: string; role: string; isCaptain: boolean; isMe: boolean }[];
 };
 
 /** The team the lobby's shown option seats this member in, or `null` while no lobby seats them. */
@@ -637,6 +638,7 @@ export function myLobbyTeam(
         members: team.seats.map((seat) => ({
           uuid: seat.uuid,
           name: seat.name,
+          role: seat.role,
           isCaptain: seat.isCaptain,
           isMe: seat.uuid === me,
         })),
