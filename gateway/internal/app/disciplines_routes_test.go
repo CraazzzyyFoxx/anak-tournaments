@@ -54,7 +54,7 @@ func workspaceQuery(t *testing.T, c *captureCaller) []any {
 
 func TestDisciplineRoutesReachTheirQueuesAndAreNeverCached(t *testing.T) {
 	for target, queue := range map[string]string{
-		"/api/v1/disciplines?workspace_id=all":             "rpc.app.disciplines.list",
+		"/api/v1/disciplines?workspace_id=all":              "rpc.app.disciplines.list",
 		"/api/v1/disciplines/lol/metadata?workspace_id=all": "rpc.app.disciplines.metadata",
 	} {
 		c := getDiscipline(t, nil, target)
