@@ -2021,8 +2021,12 @@ class CustomGameService:
                 bucket = role or FLEX_SLOT_CODE
                 uuid = str(seat.workspace_member_id)
                 ratings = dict(roster.role_ranks) if roster is not None else {}
-                ratings[bucket] = draft_ranks.drafted_rank(
-                    roster, role, shape, frozen=pick.target_rank_value if pick is not None else None
+                # The rank the pick froze, all-flex too: the host's book can change hands before the last pick, and a
+                # pick made stands on what it was worth (``drafted_rank`` re-derives a flex pick's live maximum, as a
+                # tournament's export does). A captain, who has no pick, sits on their live rank.
+                frozen = pick.target_rank_value if pick is not None else None
+                ratings[bucket] = (
+                    frozen if frozen is not None else draft_ranks.drafted_rank(roster, role, shape, frozen=None)
                 )
                 players[uuid] = {
                     "name": (roster.display_name or roster.handle if roster is not None else None) or f"player-{uuid}",

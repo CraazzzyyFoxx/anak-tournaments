@@ -18,6 +18,7 @@ from sqlalchemy.exc import IntegrityError  # noqa: E402
 from shared import models  # noqa: E402
 from shared.core.enums import DraftPlayerStatus, DraftStatus, MixParticipation, MixStatus  # noqa: E402
 from shared.core.errors import ApiHTTPException  # noqa: E402
+from shared.domain.roster_shape import FLEX_SLOT_CODE  # noqa: E402
 from shared.domain.team_format import FormatDimension, FormatRule, TeamFormat  # noqa: E402
 from shared.models.identity.oauth import OAuthConnection  # noqa: E402
 from shared.models.platform.realtime import WorkspaceEvent  # noqa: E402
@@ -178,9 +179,9 @@ class MixDraftTests(EncounterWriterCase):
             (read.discipline, read.tournament_id, read.custom_game_id, read.lobby_index),
         )
 
-    async def _ranker_host(self) -> tuple[int, int]:
-        """The mix's host balances on the ranker, and m0's hidden rating corrects their open 3000 tank: the host and
-        m0's effective tank rank."""
+    async def _ranker_host(self, member: str = "m0", open_rank: int = 3000) -> tuple[int, int]:
+        """The mix's host balances on the ranker, and ``member``'s hidden rating corrects their open ``open_rank``
+        tank: the host and that member's effective tank rank."""
         hidden = HiddenRating(Ranker().initial(3500).mu, 3.0)
         async with self.Session() as s:
             host = models.AuthUser(
@@ -198,7 +199,7 @@ class MixDraftTests(EncounterWriterCase):
             s.add(
                 models.MemberHiddenRating(
                     workspace_id=self.ids["ws"],
-                    workspace_member_id=self.ids["m0"],
+                    workspace_member_id=self.ids[member],
                     catalog_role=tank,
                     dimension_id=tank.dimension_id,
                     mu=hidden.mu,
@@ -206,7 +207,7 @@ class MixDraftTests(EncounterWriterCase):
                 )
             )
             await s.commit()
-            return host.id, round(Ranker().effective(3000, hidden))
+            return host.id, round(Ranker().effective(open_rank, hidden))
 
     async def test_a_ranker_host_drafts_on_the_effective_rating_the_balance_uses(self) -> None:
         """U3: a ranker-mode host's draft shows the open rank corrected by the hidden one, like the mix balance."""
@@ -231,6 +232,54 @@ class MixDraftTests(EncounterWriterCase):
         m0 = lobby.balance_result_json["players"][str(self.ids["m0"])]
 
         self.assertEqual((corrected, 3000), (m0["ratings"]["tank"], m0["open_ratings"]["tank"]))
+
+    async def test_an_all_flex_lineup_keeps_the_ranks_its_picks_froze(self) -> None:
+        """A host transfer before the last pick re-ranks the pool, never a pick made: an all-flex seat plays on the
+        rank its pick froze, as a role seat does (spec §9.4)."""
+        async with self.Session() as s:
+            await team_format._save(
+                s,
+                TeamFormat("overwatch", "Open two", 2, 2, dimensions=(FormatDimension("player_role", "off"),)),
+                workspace_id=self.ids["ws"],
+                custom_game_id=self.cg_id,
+            )
+            await s.commit()
+        host, _ = await self._host()
+        draft_id = await self._seed_lobby(host)
+        await self._start(draft_id, host)
+        async with self.Session() as s:
+            draft = await s.get_one(models.DraftSession, draft_id)
+            pick = await s.get_one(models.DraftPick, draft.current_pick_id)
+            await selection.selection_service.select(
+                s,
+                draft,
+                pick,
+                player_id=await self._seat(s, draft_id, "m2"),
+                expected_version=pick.version,
+                target_role=None,
+                actor_user_id=None,
+                is_admin=True,
+            )
+            await s.commit()
+        _new_host, corrected = await self._ranker_host("m2", 2500)  # the mix changes hands mid-draft
+        await self._autopick(draft_id)
+        async with self.Session() as s:
+            lobby = await s.get_one(models.CustomGameLobby, (self.cg_id, 0))
+            frozen = dict(
+                (
+                    await s.execute(
+                        sa.select(models.DraftPlayer.workspace_member_id, models.DraftPick.target_rank_value)
+                        .join(models.DraftPick, models.DraftPick.picked_player_id == models.DraftPlayer.id)
+                        .where(models.DraftPick.session_id == draft_id)
+                    )
+                ).all()
+            )
+        players = lobby.balance_result_json["players"]
+
+        self.assertEqual("completed", await self._status(draft_id))
+        self.assertNotEqual(2500, corrected)
+        self.assertEqual(2500, frozen[self.ids["m2"]])
+        self.assertEqual(frozen, {member: players[str(member)]["ratings"][FLEX_SLOT_CODE] for member in frozen})
 
     async def test_a_lobby_runs_one_active_draft_at_a_time(self) -> None:
         await self._seeded()
