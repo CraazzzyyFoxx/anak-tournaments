@@ -6,6 +6,7 @@ import { FloatStack } from "@/components/notifications/FloatStack";
 import disciplineService from "@/services/discipline.service";
 import notificationService from "@/services/notification.service";
 import workspaceService from "@/services/workspace.service";
+import { RELEASE_SEEN_COOKIE, releaseForCard } from "@/lib/changelog/releases";
 import {
   DISMISSED_ANNOUNCEMENTS_COOKIE,
   withoutDismissedAnnouncements
@@ -99,6 +100,8 @@ export default async function SiteLayout({
                 cookieStore.get(DISMISSED_ANNOUNCEMENTS_COOKIE)?.value
               )}
               tenantWorkspaceId={tenantMode && workspace ? workspace.id : null}
+              // A community's own host speaks for the community, not for the platform's releases.
+              release={tenantMode ? null : releaseForCard(cookieStore.get(RELEASE_SEEN_COOKIE)?.value)}
             />
             <main id="main-content" tabIndex={-1} className="flex flex-col gap-4 pt-5 md:gap-8">
               {children}

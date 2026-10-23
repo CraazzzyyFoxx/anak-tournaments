@@ -7503,24 +7503,28 @@
       "failed": "Could not complete the action. Try again."
     },
     "floatStack": {
-      "label": "Important"
+      "label": "Important",
+      "more": "{count} more in notifications"
     },
     "urgent": {
-      "label": "Needs action",
       "checkIn": "Check-in for {tournament} is open",
       "invite": "{team} invited you to their roster for {tournament}",
-      "until": "until {time}",
+      "closesIn": "Closes {relative}",
+      "at": "at {time}",
       "slot": "slot: {slot}",
       "hide": "Hide until the next visit",
       "hideTitle": "Hide — it stays in your notifications",
-      "hidden": "Hidden until the next visit. It is still in your notifications.",
-      "more": "{count} more"
+      "hidden": "Hidden until the next visit. It is still in your notifications."
     },
     "banner": {
-      "label": "Announcement",
-      "eyebrow": "Announcement",
       "dismiss": "Dismiss announcement",
       "more": "Learn more"
+    },
+    "release": {
+      "label": "New version",
+      "kicker": "Version {version} is out",
+      "cta": "What's new",
+      "hide": "Hide"
     },
     "kinds": {
       "team_invite": {
@@ -7579,6 +7583,7 @@
         "globalHint": "Shown to every visitor of the platform, signed in or not, so it needs both languages.",
         "titleField": "Title",
         "bodyField": "Body (optional)",
+        "bodyHint": "The announcement card shows the first two lines.",
         "localeEmpty": "empty",
         "defaultLocale": "Fallback language",
         "defaultLocaleHint": "Used for readers whose language you did not write in.",

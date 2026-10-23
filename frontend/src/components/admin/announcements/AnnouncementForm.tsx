@@ -153,6 +153,9 @@ export function AnnouncementForm({
                 value={form.locales[locale].body}
                 onChange={(event) => setLocaleText(locale, "body", event.target.value)}
               />
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("notifications.admin.form.bodyHint")}
+              </p>
             </div>
           </TabsContent>
         ))}

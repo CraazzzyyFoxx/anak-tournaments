@@ -32,7 +32,6 @@ vi.mock("@/components/HoverPrefetchLink", () => ({
   HoverPrefetchLink: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a>
 }));
 vi.mock("@/components/admin/AdminSidebar", () => ({ AdminSidebar: () => <nav aria-label="Admin" /> }));
-vi.mock("@/components/notifications/FloatStack", () => ({ FloatStack: () => null }));
 
 describe("AdminLayoutClient", () => {
   it("makes the content column the one main landmark, the header outside it", async () => {
@@ -43,7 +42,7 @@ describe("AdminLayoutClient", () => {
       root.render(
         <NextIntlClientProvider locale="en" messages={en}>
           <QueryClientProvider client={new QueryClient()}>
-            <AdminLayoutClient defaultSidebarOpen announcements={[]}>
+            <AdminLayoutClient defaultSidebarOpen>
               <p data-testid="page">page</p>
             </AdminLayoutClient>
           </QueryClientProvider>
