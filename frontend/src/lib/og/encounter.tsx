@@ -207,7 +207,7 @@ function RosterRow({
         </div>
       ) : null}
       <div style={{ display: "flex", flexGrow: 1 }} />
-      <div style={{ display: "flex", fontSize: 20, color: FAINT }}>{player.rank}</div>
+      <div style={{ display: "flex", fontSize: 20, color: FAINT }}>{player.rank ?? "—"}</div>
     </div>
   );
 }

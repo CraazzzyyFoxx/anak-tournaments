@@ -72,8 +72,6 @@ class AnalyticsFlowsService:
                     "log_residual": 0.0,
                     "map_diff": 0.0,
                     "placement_score": 0.0,
-                    "previous_cost": row["previous_cost"],
-                    "pre_previous_cost": row["pre_previous_cost"],
                     "is_newcomer": bool(row["is_newcomer"]),
                     "is_newcomer_role": bool(row["is_newcomer_role"]),
                     "is_changed": False,
@@ -103,7 +101,13 @@ class AnalyticsFlowsService:
             for version_id, cost in zip(df["version_id"], df["cost"], strict=False)
         ]
         df = df.sort_values(["id_role", "tournament_id"]).reset_index(drop=True)
-        df["prev_version_id"] = df.groupby("id_role")["version_id"].shift(1)
+        # The rank chronology runs over ranked rows only: an unranked tournament has no division and does not break
+        # the previous-division link of the next ranked one.
+        ranked = df["cost"].notna()
+        by_role = df[ranked].groupby("id_role")
+        df["previous_cost"] = by_role["cost"].shift(1)
+        df["pre_previous_cost"] = by_role["cost"].shift(2)
+        df["prev_version_id"] = by_role["version_id"].shift(1)
 
         def resolve_previous_div(row) -> int | None:
             prev_cost = row["previous_cost"]
@@ -112,12 +116,12 @@ class AnalyticsFlowsService:
             return canonical_div_for(grids, row["prev_version_id"], int(prev_cost))
 
         df["previous_div"] = df.apply(resolve_previous_div, axis=1)
-        df["is_changed"] = df["previous_div"] != df["div"]
+        df["is_changed"] = ranked & (df["previous_div"] != df["div"])
         df["normalized_shift_one"] = df.apply(
             lambda row: division_delta_points(row["previous_div"], row["div"]),
             axis=1,
         )
-        df["normalized_shift_two"] = df.groupby("id_role")["normalized_shift_one"].shift(1)
+        df["normalized_shift_two"] = df[ranked].groupby("id_role")["normalized_shift_one"].shift(1)
         df["map_diff"] = df.apply(
             lambda row: (row["wins"] - row["losses"]) / max(row["wins"] + row["losses"], 1),
             axis=1,
@@ -209,7 +213,8 @@ class AnalyticsFlowsService:
         shift_map: dict[int, float] = {}
         for _, row in final_df.iterrows():
             rating = players_rating.get(row["id_role"])
-            if rating is None:
+            # An unranked row has no division to shift from.
+            if rating is None or row["div"] is None:
                 continue
             predicted_div = canonical_div_for(grids, row["version_id"], int(round(rating.mu)))
             shift_map[int(row["player_id"])] = round(float(row["div"] - predicted_div), 2)

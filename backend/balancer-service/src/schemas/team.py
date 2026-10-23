@@ -20,7 +20,8 @@ class BalancerTeamMember(BaseModel):
     name: str
     sub_role: str | None = None
     role: RoleRef | None
-    rank: int
+    #: Omitted/``null`` = rank not specified (e.g. a 1v1 duel).
+    rank: int | None = None
 
 
 class BalancerTeam(BaseModel):

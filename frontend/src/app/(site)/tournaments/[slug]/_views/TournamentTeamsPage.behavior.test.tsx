@@ -468,6 +468,20 @@ describe("the W-L column", () => {
   });
 });
 
+describe("an unranked player", () => {
+  it("reads an em dash and draws no crest in the rank column", async () => {
+    const duelist: Player = { ...player(901, "Duelist#1", "Damage", 0), rank: null, division: null };
+    getTeams.mockResolvedValue({ results: [{ ...FREAKS, players: [duelist] }] });
+    await render("view=cards");
+
+    const row = Array.from(container.querySelectorAll("table.roster tr")).find((tr) =>
+      tr.textContent?.includes("Duelist")
+    );
+    expect(row?.querySelector("[data-division]")).toBeNull();
+    expect(row?.lastElementChild?.textContent).toBe("—");
+  });
+});
+
 describe("nothing to show", () => {
   it("renders the empty state, not an empty toolbar", async () => {
     getTeams.mockResolvedValue({ results: [] });

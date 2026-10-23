@@ -249,12 +249,13 @@ def test_role_pick_keeps_its_game_role() -> None:
 
 def test_a_seat_whose_registration_vanished_exports_without_inventing_a_rank() -> None:
     # A registration soft-deleted mid-draft resolves to no roster at all. The
-    # player is on a finished roster and must still export -- at 0, never at a
+    # player is on a finished roster and must still export -- unranked, never at a
     # borrowed number -- so the export cannot silently drop a drafted body.
     teams = [_team(1, 1, "T")]
     orphan = _player(11, bt="Gone#1", uid=11)
     payload = _draft_to_balancer_payload(teams, {1: [orphan]}, ROLE_SHAPE, {}, {}, "player_role")
     member = payload[0].members[0]
     assert member.name == ""
-    assert member.rank == 0
+    assert member.rank is None
     assert payload[0].total_sr == 0
+    assert payload[0].avg_sr == 0.0

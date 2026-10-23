@@ -35,7 +35,8 @@ class PlayerCreate(BaseModel):
     team_id: int
     tournament_id: int
     role: RoleRef | None = None
-    rank: int = 0
+    #: ``None`` = rank not specified (e.g. a 1v1 duel).
+    rank: int | None = Field(default=None, ge=1)
     is_newcomer: bool = False
     is_newcomer_role: bool = False
     is_substitution: bool = False
@@ -45,7 +46,8 @@ class PlayerCreate(BaseModel):
 class PlayerUpdate(BaseModel):
     name: str | None = None
     role: RoleRef | None = None
-    rank: int | None = None
+    #: Omitted = unchanged; an explicit ``null`` clears the rank.
+    rank: int | None = Field(default=None, ge=1)
     is_newcomer: bool | None = None
     is_newcomer_role: bool | None = None
     is_substitution: bool | None = None

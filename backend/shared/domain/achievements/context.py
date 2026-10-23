@@ -46,9 +46,6 @@ class EvalContext:
         *,
         source_version_id: int | None = None,
     ) -> DivisionTier | None:
-        if rank is None:
-            return None
-
         if self.grid is None:
             return None
 

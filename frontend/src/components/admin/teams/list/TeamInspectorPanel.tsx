@@ -15,7 +15,7 @@ function RosterList({ players }: Readonly<{ players: Player[] }>) {
           <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
             {roleOf(player.role)}
             {" · "}
-            {player.rank}
+            {player.rank ?? "—"}
           </span>
         </li>
       ))}

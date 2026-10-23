@@ -12497,8 +12497,15 @@
           "title": "Predicted Division"
         },
         "rank": {
-          "title": "Rank",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rank"
         },
         "related_player_id": {
           "anyOf": [
@@ -37729,8 +37736,15 @@
       "description": "A profile role with the grid its division is a tier of (the crest is drawn on it).",
       "properties": {
         "division": {
-          "title": "Division",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Division"
         },
         "division_grid_version": {
           "anyOf": [
@@ -37779,8 +37793,15 @@
     "stats.UserRoleSummary": {
       "properties": {
         "division": {
-          "title": "Division",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Division"
         },
         "maps": {
           "title": "Maps",
@@ -38014,8 +38035,15 @@
           "type": "array"
         },
         "division": {
-          "title": "Division",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Division"
         },
         "id": {
           "title": "Id",
@@ -38038,8 +38066,15 @@
           "type": "string"
         },
         "rank": {
-          "title": "Rank",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rank"
         },
         "related_player_id": {
           "anyOf": [
@@ -38173,8 +38208,15 @@
           "type": "string"
         },
         "division": {
-          "title": "Division",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Division"
         },
         "division_grid_version": {
           "anyOf": [
@@ -50409,9 +50451,17 @@
           "type": "string"
         },
         "rank": {
-          "default": 0,
-          "title": "Rank",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rank"
         },
         "related_player_id": {
           "anyOf": [
@@ -50480,8 +50530,15 @@
     "tournament.PlayerRead": {
       "properties": {
         "division": {
-          "title": "Division",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Division"
         },
         "id": {
           "title": "Id",
@@ -50504,8 +50561,15 @@
           "type": "string"
         },
         "rank": {
-          "title": "Rank",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rank"
         },
         "related_player_id": {
           "anyOf": [
@@ -50903,6 +50967,7 @@
         "rank": {
           "anyOf": [
             {
+              "minimum": 1,
               "type": "integer"
             },
             {

@@ -7,8 +7,9 @@ export interface Player {
   created_at: Date;
   updated_at: Date | null;
   name: string;
-  rank: number;
-  division: number;
+  /** `null` when the tournament recorded no rank for this player. */
+  rank: number | null;
+  division: number | null;
   role: RoleRef | null;
   tournament_id: number;
   user_id: number;

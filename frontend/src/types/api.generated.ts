@@ -12549,7 +12549,7 @@ export interface components {
              */
             predicted_division: number | null;
             /** Rank */
-            rank: number;
+            rank: number | null;
             /**
              * Related Player Id
              * @default null
@@ -17901,7 +17901,7 @@ export interface components {
          */
         "stats.UserRole": {
             /** Division */
-            division: number;
+            division: number | null;
             /** @default null */
             division_grid_version: components["schemas"]["stats.DivisionGridVersionRead"] | null;
             /** Maps */
@@ -17916,7 +17916,7 @@ export interface components {
         /** UserRoleSummary */
         "stats.UserRoleSummary": {
             /** Division */
-            division: number;
+            division: number | null;
             /** Maps */
             maps: number;
             /** Maps Won */
@@ -18006,7 +18006,7 @@ export interface components {
             /** Characters */
             characters?: components["schemas"]["stats.CatalogEntityRef"][];
             /** Division */
-            division: number;
+            division: number | null;
             /** Id */
             id: number;
             /** Is Newcomer */
@@ -18018,7 +18018,7 @@ export interface components {
             /** Name */
             name: string;
             /** Rank */
-            rank: number;
+            rank: number | null;
             /**
              * Related Player Id
              * @default null
@@ -18074,7 +18074,7 @@ export interface components {
             /** Discipline */
             discipline: string;
             /** Division */
-            division: number;
+            division: number | null;
             /** @default null */
             division_grid_version: components["schemas"]["stats.DivisionGridVersionRead"] | null;
             /** Group Placement */
@@ -19536,7 +19536,7 @@ export interface components {
         /** PlayerRead */
         "tournament.PlayerRead": {
             /** Division */
-            division: number;
+            division: number | null;
             /** Id */
             id: number;
             /** Is Newcomer */
@@ -19548,7 +19548,7 @@ export interface components {
             /** Name */
             name: string;
             /** Rank */
-            rank: number;
+            rank: number | null;
             /** Related Player Id */
             related_player_id: number | null;
             /** @default null */
@@ -29125,9 +29125,9 @@ export interface components {
             name: string;
             /**
              * Rank
-             * @default 0
+             * @default null
              */
-            rank: number;
+            rank: number | null;
             /**
              * Related Player Id
              * @default null

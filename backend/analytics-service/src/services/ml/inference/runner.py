@@ -165,11 +165,13 @@ async def run_performance_for_tournament(
         return 0
     per_player["impact_score"] = exports.impact_score_within_role(per_player)
     # Canonical OW division per player so the local-performance cohort bands are
-    # comparable across workspaces.
+    # comparable across workspaces; an unranked player has none (role-wide cohort).
     source_grid = await get_division_grid(session, workspace_id, tournament_id=tournament_id)
     player_ranks = feature_frame.groupby("player_id", dropna=False)["rank"].first().to_dict()
     per_player["division"] = per_player["player_id"].map(
-        lambda player_id: canonical_division_number(source_grid, int(player_ranks.get(player_id, 0) or 0), DEFAULT_GRID)
+        lambda player_id: None
+        if pd.isna(rank := player_ranks.get(player_id))
+        else canonical_division_number(source_grid, int(rank), DEFAULT_GRID)
     )
     per_player = exports.attach_local_performance(per_player)
     # Small (tournament, role) cohorts get a smooth normal-CDF impact score

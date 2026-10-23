@@ -58,7 +58,7 @@ class _AsyncSessionShim:
         self._session.flush()
 
 
-def _team(name: str, *members: tuple[str, int]) -> MaterializationTeam:
+def _team(name: str, *members: tuple[str, int | None]) -> MaterializationTeam:
     return MaterializationTeam(
         balancer_name=name,
         members=tuple(MaterializationMember(name=tag, rank=rank, slot_code="tank") for tag, rank in members),
@@ -118,7 +118,7 @@ class SyncPlayerRanksTests(IsolatedAsyncioTestCase):
         self.session.close()
         self.engine.dispose()
 
-    def _rank(self, player_id: int) -> int:
+    def _rank(self, player_id: int) -> int | None:
         return self.session.scalar(sa.select(Player.rank).where(Player.id == player_id))
 
     async def test_updates_only_changed_rows_of_this_tournament(self) -> None:
@@ -139,3 +139,9 @@ class SyncPlayerRanksTests(IsolatedAsyncioTestCase):
     async def test_empty_payload_touches_nothing(self) -> None:
         self.assertEqual(0, await sync_player_ranks(self.shim, 1, [_team("A#1")]))
         self.assertEqual(1000, self._rank(1))
+
+    async def test_a_zero_rank_is_no_rank(self) -> None:
+        """0 has no meaning: the materialization boundary stores it as NULL, never as a 0."""
+        self.assertEqual(2, await sync_player_ranks(self.shim, 1, [_team("A#1", ("A#1", 0), ("B#2", None))]))
+        self.session.expire_all()
+        self.assertEqual((None, None), (self._rank(1), self._rank(2)))

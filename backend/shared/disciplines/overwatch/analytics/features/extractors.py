@@ -220,6 +220,8 @@ async def extract_match_features(
         return df
 
     # ---- derived columns ----
+    # An all-unranked frame comes back as ``object`` ``None``s; numeric NaN keeps ``rank`` a LightGBM-legal feature.
+    df["rank"] = pd.to_numeric(df["rank"])
     df["is_home"] = df["team_id"] == df["home_team_id"]
     df["score_delta"] = df.apply(
         lambda r: (r["home_score"] - r["away_score"]) if r["is_home"] else (r["away_score"] - r["home_score"]),

@@ -40,7 +40,8 @@ export interface PlayerFormState {
   /** A role code of the owner game's rated dimension, or `OPEN_SLOT_CODE` for none assigned. */
   role: string;
   sub_role: string;
-  rank: number;
+  /** `null` = no rank (cleared field); otherwise >= 1. */
+  rank: number | null;
   is_newcomer: boolean;
   is_substitution: boolean;
 }
@@ -49,7 +50,7 @@ export interface PlayerFormState {
 export interface PlayerFormSubject {
   name: string;
   role: RoleRef | null;
-  rank: number;
+  rank: number | null;
   is_newcomer: boolean;
   is_substitution: boolean;
 }
@@ -62,7 +63,7 @@ export function emptyPlayerForm(userId: number, tournamentId: number | null): Pl
     tournament_id: tournamentId ?? 0,
     role: OPEN_SLOT_CODE,
     sub_role: "",
-    rank: 0,
+    rank: null,
     is_newcomer: false,
     is_substitution: false
   };
@@ -205,7 +206,7 @@ function SearchableSelect({
 function DivisionField({
   rank,
   grid
-}: Readonly<{ rank: number; grid: DivisionGridVersion | null }>) {
+}: Readonly<{ rank: number | null; grid: DivisionGridVersion | null }>) {
   const t = useTranslations("adminPeople.form");
   const workspaceGrid = useDivisionGrid();
   const division = resolveDivisionFromRank(grid ?? workspaceGrid, rank);
@@ -375,9 +376,9 @@ export function PlayerForm({
           <NumberInput
             id={`${prefix}-rank`}
             integer
-            min={0}
+            min={1}
             value={value.rank}
-            onValueChange={(rank) => onChange({ ...value, rank: rank ?? 0 })}
+            onValueChange={(rank) => onChange({ ...value, rank })}
           />
         </div>
 

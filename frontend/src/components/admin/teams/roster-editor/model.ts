@@ -10,12 +10,13 @@ export interface RosterDraft {
   userName: string;
   name: string;
   role: string;
-  rank: number;
+  /** `null` = no rank. */
+  rank: number | null;
   subRole: string;
 }
 
 export function emptyDraft(parentId: number | null, role: string = OPEN_SLOT_CODE): RosterDraft {
-  return { parentId, userId: 0, userName: "", name: "", role, rank: 0, subRole: "" };
+  return { parentId, userId: 0, userName: "", name: "", role, rank: null, subRole: "" };
 }
 
 /**

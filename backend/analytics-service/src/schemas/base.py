@@ -62,7 +62,7 @@ class TournamentMin(BaseRead):
 
 class PlayerRead(BaseRead):
     name: str | None = None
-    rank: int
+    rank: int | None
     division: int | None = None
     role: RoleRef | None = None
     tournament_id: int

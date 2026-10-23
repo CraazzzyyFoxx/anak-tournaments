@@ -119,3 +119,14 @@ def test_single_row_bucket_std_is_zero_not_nan():
     assert bucket0["mean"] == pytest.approx(8.0)
     assert bucket0["std"] == 0.0
     assert not pd.isna(bucket0["std"])
+
+
+def test_unranked_rows_feed_role_wide_only():
+    """An unranked (NaN) row joins the role-wide baseline but neither a cut point nor a rank bucket."""
+    df = _frame_with_elimination_rates(ranks=[100, 500, 1500, None], elimination_rates=[8.0, 10.0, 12.0, 30.0])
+    rows = build_baseline_rows(df)
+    eliminations = {r["rank_bucket"]: r for r in rows if r["stat"] == "Eliminations"}
+
+    assert rows[0]["meta"]["bucket_bounds"] == pytest.approx(np.quantile([100.0, 500.0, 1500.0], [1 / 3, 2 / 3]))
+    assert eliminations[-1]["mean"] == pytest.approx(15.0)
+    assert [eliminations[bucket]["mean"] for bucket in range(3)] == pytest.approx([8.0, 10.0, 12.0])

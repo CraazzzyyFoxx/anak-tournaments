@@ -11,7 +11,7 @@
       "c7bcb203"
     ],
     "driver": "psycopg.AsyncClientCursor",
-    "golden_sha256": "e6988152ebe7822a7f5ddbafd5af5b8d17fc330a107b56a8e9792d98efd7f0e6",
+    "golden_sha256": "8b0aea89bda582a1e366f05f071ed3a0959398a6ed592115e35f221eb5663133",
     "order": [
       "impact_baseline_totals.match_id ASC",
       "impact_baseline_totals.user_id ASC"

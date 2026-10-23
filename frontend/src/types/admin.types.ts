@@ -626,7 +626,8 @@ export interface PlayerCreateInput {
   team_id: number;
   tournament_id: number;
   role: RoleRef | null;
-  rank?: number;
+  /** Omit or `null` for no rank; otherwise >= 1. */
+  rank?: number | null;
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;
   is_substitution?: boolean;
@@ -636,7 +637,8 @@ export interface PlayerCreateInput {
 export interface PlayerUpdateInput {
   name?: string;
   role?: RoleRef | null;
-  rank?: number;
+  /** Omitted = unchanged; `null` clears the rank. */
+  rank?: number | null;
   is_newcomer?: boolean;
   is_newcomer_role?: boolean;
   is_substitution?: boolean;

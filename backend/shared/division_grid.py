@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, overload
 
 import sqlalchemy as sa
 
@@ -32,10 +32,18 @@ class DivisionGrid:
     version_id: int | None
     tiers: tuple[DivisionTier, ...]
 
-    def resolve_division(self, rank: int) -> DivisionTier:
+    @overload
+    def resolve_division(self, rank: int) -> DivisionTier: ...
+    @overload
+    def resolve_division(self, rank: int | None) -> DivisionTier | None: ...
+    def resolve_division(self, rank: int | None) -> DivisionTier | None:
         return division_rank.resolve_tier_for_rank(self, rank)  # type: ignore[return-value]
 
-    def resolve_division_number(self, rank: int) -> int:
+    @overload
+    def resolve_division_number(self, rank: int) -> int: ...
+    @overload
+    def resolve_division_number(self, rank: int | None) -> int | None: ...
+    def resolve_division_number(self, rank: int | None) -> int | None:
         return division_rank.resolve_division_for_rank(self, rank)
 
     def resolve_rank_from_division(self, division_number: int) -> int | None:
@@ -177,8 +185,10 @@ def canonical_tier_number(tier: DivisionTier, source_grid: DivisionGrid, ladder:
     return int(round(m_min + frac * (m_max - m_min)))
 
 
-def canonical_division_number(source_grid: DivisionGrid, rank: int, ladder: DivisionGrid) -> int:
-    """``rank`` on ``source_grid`` as a division number on ``ladder``."""
+def canonical_division_number(source_grid: DivisionGrid, rank: int | None, ladder: DivisionGrid) -> int | None:
+    """``rank`` on ``source_grid`` as a division number on ``ladder``; no rank (NULL) has no division."""
+    if rank is None:
+        return None
     return canonical_tier_number(source_grid.resolve_division(int(rank)), source_grid, ladder)
 
 
@@ -224,7 +234,8 @@ def division_case_expr(
     rank_column: sa.ColumnElement[int],
     grid: DivisionGrid,
 ) -> sa.Case:
-    whens: list[tuple[sa.ColumnElement[bool], int]] = []
+    """``rank``'s division number on ``grid``; ranks below every band land on the floor tier, NULL stays NULL."""
+    whens: list[tuple[sa.ColumnElement[bool], Any]] = [(rank_column.is_(None), sa.null())]
     for tier in grid.tiers:
         if tier.rank_max is None:
             condition = rank_column >= tier.rank_min
@@ -320,9 +331,8 @@ def division_filter_predicates(
         return preds
 
     rank_min, rank_max = bounds
-    preds = []
-    if rank_min is not None:
-        preds.append(rank_column >= rank_min)
+    # A NULL rank has no division: the floor tier's open lower bound must not let it in.
+    preds = [rank_column >= rank_min if rank_min is not None else rank_column.is_not(None)]
     if rank_max is not None:
         preds.append(rank_column <= rank_max)
     return preds

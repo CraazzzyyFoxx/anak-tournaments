@@ -40,7 +40,7 @@ describe("splitHandle", () => {
 });
 
 describe("sortTeamPlayers", () => {
-  const starter = (id: number, dimension: string, role: string | null, rank: number, extra: Partial<SortableRosterPlayer> = {}): SortableRosterPlayer => ({
+  const starter = (id: number, dimension: string, role: string | null, rank: number | null, extra: Partial<SortableRosterPlayer> = {}): SortableRosterPlayer => ({
     id,
     role: role === null ? null : { dimension, role },
     rank,
@@ -97,5 +97,11 @@ describe("sortTeamPlayers", () => {
     expect(order(roster, null)).toEqual([2, 3, 1]);
     // Overwatch roles under a League dictionary are all foreign: equal, so rating decides.
     expect(order(roster, LOL_METADATA)).toEqual([2, 3, 1]);
+  });
+
+  it("puts an unranked player after every ranked one", () => {
+    const roster = [starter(1, "player_role", null, null), starter(2, "player_role", null, 1500), starter(3, "player_role", null, null), starter(4, "player_role", null, 2500)];
+
+    expect(order(roster, null)).toEqual([4, 2, 1, 3]);
   });
 });

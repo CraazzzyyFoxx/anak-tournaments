@@ -78,7 +78,9 @@ class MaterializationMember:
     """
 
     name: str
-    rank: int
+    #: ``None`` = rank not specified; written as a NULL ``tournament.player.rank``. Every writer (imports, balance,
+    #: draft and registered exports, rank re-export) builds this, so a rank <= 0 -- no rank -- is NULL here, once.
+    rank: int | None
     slot_code: str | None
     sub_role: str | None = None
     handle: str | None = None
@@ -86,6 +88,10 @@ class MaterializationMember:
     is_substitute: bool = False
     role_ref: RoleRef | None = None
     non_rated_roles: tuple[CatalogRole, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.rank is not None and self.rank <= 0:
+            object.__setattr__(self, "rank", None)
 
     @property
     def identity_handle(self) -> str | None:

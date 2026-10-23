@@ -90,3 +90,16 @@ class EmptyRosterOpenskillTests(TestCase):
         _, _, matches = ratings.prepare_openskill_data(pd.DataFrame(), pl, [], [open_], _rosters(a, b))
 
         self.assertEqual([], matches)
+
+
+class UnrankedSeedTests(TestCase):
+    def test_unranked_player_seeds_at_the_model_default(self) -> None:
+        pl = ratings.get_plackett_luce()
+        player = _player(1)
+        player.rank = None
+        seed = ratings.get_player_rating(pl, player)
+        self.assertEqual((pl.mu, pl.sigma), (seed.mu, seed.sigma))
+        player.is_newcomer = True
+        newcomer = ratings.get_player_rating(pl, player)
+        self.assertEqual(pl.mu, newcomer.mu)
+        self.assertGreater(newcomer.sigma, pl.sigma)

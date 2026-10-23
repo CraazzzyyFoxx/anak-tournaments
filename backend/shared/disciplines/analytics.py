@@ -232,7 +232,9 @@ class AnalyticsExports(typing.Protocol):
     ) -> pd.DataFrame: ...
 
     # --- Scale -------------------------------------------------------------------------------------------------
-    def canonical_div_for(self, grids: dict[int, DivisionGrid], version_id: int | float | None, rank: int) -> int: ...
+    def canonical_div_for(
+        self, grids: dict[int, DivisionGrid], version_id: int | float | None, rank: int | float | None
+    ) -> int | None: ...
 
     def assign_canonical_division(
         self,

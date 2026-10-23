@@ -526,8 +526,8 @@ class UserOverviewQueries(DisciplineQueries):
         session: AsyncSession,
         user_ids: list[int],
         workspace_id: int | None = None,
-    ) -> dict[int, list[tuple[RoleRef, int, int | None]]]:
-        """Return (role, rank, division source) for each user's most recent entry per role.
+    ) -> dict[int, list[tuple[RoleRef, int | None, int | None]]]:
+        """Return (role, rank, division source) for each user's most recent ranked entry per role.
 
         Scoped (``workspace_id`` given): only that workspace's tournaments are
         considered (so the "latest" rank per role is the latest *within the
@@ -539,6 +539,8 @@ class UserOverviewQueries(DisciplineQueries):
         All-workspaces: the third value already is the canonical division on the
         game's native ladder (``None`` without one) — the same SQL the division
         filter matches, so a badge and the filter never disagree.
+
+        A role never ranked keeps its newest entry with a NULL rank: no division.
         """
         # A role and its division are facts of one game: the cross-game read has none.
         if not user_ids or self._discipline is None:
@@ -555,9 +557,10 @@ class UserOverviewQueries(DisciplineQueries):
                 sa.func.row_number()
                 .over(
                     partition_by=[models.WorkspaceMember.player_id, models.Tournament.discipline, models.Player.role],
-                    # Newest event first by start date (undated last), not id: ids follow creation, not play, so
-                    # across workspaces an older event can carry the higher id.
+                    # The newest ranked event first, by start date (undated last), not id: ids follow creation, not
+                    # play, so across workspaces an older event can carry the higher id.
                     order_by=[
+                        models.Player.rank.is_(None),
                         models.Tournament.start_date.desc().nulls_last(),
                         models.Player.tournament_id.desc(),
                         models.Player.id.desc(),
@@ -598,7 +601,7 @@ class UserOverviewQueries(DisciplineQueries):
 
         result = await session.execute(query)
 
-        payload: dict[int, list[tuple[RoleRef, int, int | None]]] = defaultdict(list)
+        payload: dict[int, list[tuple[RoleRef, int | None, int | None]]] = defaultdict(list)
         for user_id, role, sub_role, discipline_code, rank, division_source in result.all():
             if role is None:
                 continue

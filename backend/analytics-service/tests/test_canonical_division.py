@@ -125,6 +125,13 @@ class CanonicalDivForTests(TestCase):
             df["div"].tolist(),
         )
 
+    def test_unranked_rank_has_no_division(self) -> None:
+        self.assertIsNone(canonical.canonical_div_for({}, None, None))
+        df = pd.DataFrame({"rank": [2500, None], "version_id": [None, None]})
+        canonical.assign_canonical_division(df, {}, rank_col="rank")
+        self.assertEqual(DEFAULT_GRID.resolve_division(2500).number, df["div"].iloc[0])
+        self.assertTrue(pd.isna(df["div"].iloc[1]))
+
     def test_div_stays_within_canonical_range(self) -> None:
         grids = {200: _grid20(), 300: _grid_ow()}
         valid = range(DEFAULT_GRID.min_division, DEFAULT_GRID.max_division + 1)

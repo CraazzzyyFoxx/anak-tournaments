@@ -1030,8 +1030,8 @@ describe("a League roster", () => {
     });
   });
 
-  it("reads the owner game's roles from history, in declared order, and never a flex participation", async () => {
-    const tournament = (id: number, discipline: string, role: { dimension: string; role: string } | null, rank: number) => ({
+  it("reads the owner game's roles from history, in declared order, and never a flex or unranked participation", async () => {
+    const tournament = (id: number, discipline: string, role: { dimension: string; role: string } | null, rank: number | null) => ({
       id,
       name: `T${id}`,
       discipline,
@@ -1042,6 +1042,8 @@ describe("a League roster", () => {
     const byName = vi.spyOn(userService, "getUserByName").mockResolvedValue({ id: 7 } as never);
     const tournaments = vi.spyOn(userService, "getUserTournaments").mockResolvedValue({
       results: [
+        // The newest jungle event recorded no rank: the role's rank comes from the one before it.
+        tournament(5, "lol", { dimension: "position", role: "jungle" }, null),
         tournament(3, "lol", { dimension: "position", role: "jungle" }, 2400),
         tournament(2, "lol", { dimension: "position", role: "top" }, 1800),
         tournament(1, "lol", null, 3000),

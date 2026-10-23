@@ -147,18 +147,6 @@ class AnalyticsService:
                 standings.c.overall_position.label("overall_position"),
                 team_counts.c.team_count.label("team_count"),
                 performance_points.c.performance_points.label("performance_points"),
-                sa.func.lag(models.Player.rank, 1)
-                .over(
-                    partition_by=(models.WorkspaceMember.player_id, models.Player.role),
-                    order_by=models.Tournament.id,
-                )
-                .label("previous_cost"),
-                sa.func.lag(models.Player.rank, 2)
-                .over(
-                    partition_by=(models.WorkspaceMember.player_id, models.Player.role),
-                    order_by=models.Tournament.id,
-                )
-                .label("pre_previous_cost"),
             )
             .select_from(models.Team)
             .join(models.Player, models.Team.id == models.Player.team_id)

@@ -25,7 +25,7 @@ class BalancerTeamMember(BaseModel):
     name: str
     sub_role: str | None = None
     role: RoleRef | None
-    rank: int
+    rank: int | None = None
 
 
 class BalancerTeam(BaseModel):
@@ -38,8 +38,9 @@ class BalancerTeam(BaseModel):
 
 class PlayerRead(BaseRead):
     name: str
-    rank: int
-    division: int
+    #: ``None`` = rank not specified (e.g. a 1v1 duel); then there is no division either.
+    rank: int | None
+    division: int | None
     role: RoleRef | None = None
     tournament_id: int
     user_id: int

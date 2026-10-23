@@ -107,7 +107,7 @@ async def _tournament_grid_versions(
 
 async def _overview_role_divisions(
     session: AsyncSession,
-    raw_roles_map: dict[int, list[tuple[RoleRef, int, int | None]]],
+    raw_roles_map: dict[int, list[tuple[RoleRef, int | None, int | None]]],
     *,
     grid: DivisionGrid | None,
     normalizer: DivisionGridNormalizer | None,
@@ -1030,9 +1030,11 @@ class UserService(DisciplineQueries):
         grid is unknown has no division to report and is left out.
         """
         roles = await self.profile.get_roles(session, user_id, workspace_id=workspace_id)
-        # Entries arrive newest event first (by start date, not id: see ``get_roles``).
+        # Entries arrive newest event first (by start date, not id: see ``get_roles``). The current division is the
+        # newest ranked one; a role never ranked keeps its newest entry and resolves to no division.
         latest_by_role = [
-            (role, maps_won, maps_lost, division, division[0]) for role, maps_won, maps_lost, division in roles
+            (role, maps_won, maps_lost, division, next((e for e in division if e["rank"] is not None), division[0]))
+            for role, maps_won, maps_lost, division in roles
         ]
 
         all_workspaces = workspace_id is None

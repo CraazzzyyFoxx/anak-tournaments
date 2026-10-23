@@ -96,7 +96,7 @@ def _needs_grid_check(condition: dict[str, Any]) -> bool:
 
 def _player_matches_div_condition(
     context: EvalContext,
-    rank: int,
+    rank: int | None,
     source_version_id: int | None,
     condition: dict[str, Any],
 ) -> bool:
@@ -112,8 +112,6 @@ def _player_matches_div_condition(
         return True  # non-div conditions already filtered in SQL
 
     params = condition.get("params", {})
-    if rank is None:
-        return False
     div = context.resolve_division(rank, source_version_id=source_version_id)
     if not div:
         return False

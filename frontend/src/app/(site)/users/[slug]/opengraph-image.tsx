@@ -36,7 +36,9 @@ export default async function Image({ params }: { params: Promise<{ slug: string
     const primaryRole = profile.roles.length
       ? profile.roles.reduce((best, current) => (current.tournaments > best.tournaments ? current : best))
       : null;
-    descriptor = primaryRole ? `${roleOf(primaryRole.role) ?? ""} · Division ${primaryRole.division}` : "";
+    descriptor = primaryRole
+      ? `${roleOf(primaryRole.role) ?? ""}${primaryRole.division != null ? ` · Division ${primaryRole.division}` : ""}`
+      : "";
     tournaments = profile.tournaments_count ?? 0;
     if (profile.maps_total > 0) {
       winrate = `${((profile.maps_won / profile.maps_total) * 100).toFixed(0)}% WR`;

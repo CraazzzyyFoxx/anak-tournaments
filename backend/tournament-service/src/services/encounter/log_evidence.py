@@ -458,8 +458,10 @@ async def _snapshot(
     except UnknownRole:
         return _Refusal(OWNER_POLICY_REFUSED, "extra_role_invalid")
 
+    # A roster row's rank stands even when it is NULL (rank not specified, e.g. a duel); only a member with no
+    # roster row is ranked by the member-rank resolution, and refused when that finds nothing.
     rank = own_rank
-    if rank is None:
+    if not rostered:
         top = leaf.code
         if leaf.parent_role_id is not None:
             top = (await _roles.get(session, leaf.parent_role_id)).code
@@ -476,8 +478,8 @@ async def _snapshot(
             grid=grid,
         )
         rank = resolved[(member.id, top)].value
-    if rank is None:
-        return _Refusal(OWNER_POLICY_REFUSED, "extra_rank_unknown")
+        if rank is None:
+            return _Refusal(OWNER_POLICY_REFUSED, "extra_rank_unknown")
     return MemberSnapshot(
         workspace_member_id=member.id,
         display_name=extra.handle_snapshot,

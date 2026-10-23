@@ -202,7 +202,7 @@ async def snapshot_pre_tournament_team_mu(
     nothing that happens inside the tournament being forecast leaks into its own
     strength estimate. Rosters with no rated history still get a rating:
     :func:`prepare_openskill_data` seeds every team player from their
-    registration rank.
+    registration rank (the model's default mu when unranked).
 
     Output columns: ``team_id``, ``avg_mu``, ``max_mu``, ``min_mu``, ``std_mu``
     plus per-role means ``tank_mu`` / ``damage_mu`` / ``support_mu`` (NaN when

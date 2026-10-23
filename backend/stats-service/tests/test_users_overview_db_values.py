@@ -166,7 +166,7 @@ async def _seed(session: Any) -> _Seed:
         teams[label] = team
     await session.flush()
 
-    roster: list[tuple[str, str, str | None, int, Tournament]] = [
+    roster: list[tuple[str, str, str | None, int | None, Tournament]] = [
         ("A", "alpha", "tank", 3, t1),
         ("A", "bravo", "damage", 5, t1),
         ("B", "charlie", "support", 7, t1),
@@ -175,7 +175,8 @@ async def _seed(session: Any) -> _Seed:
         ("C", "charlie", "support", 7, t2),
         ("D", "bravo", "damage", 5, t2),
         ("F", "delta", None, 5, t4),
-        ("G", "bravo", "damage", 5, t4),
+        # bravo's newest event is unranked: the current division stays the ranked t2 one.
+        ("G", "bravo", "damage", None, t4),
         ("H", "alpha", "tank", 3, t5),
         ("I", "foxtrot", "damage", 5, t5),
     ]
@@ -186,7 +187,7 @@ async def _seed(session: Any) -> _Seed:
         session.add(
             Player(
                 name=seed.name(user_key),
-                rank=DIV_RANK[division],
+                rank=DIV_RANK.get(division),
                 assignments=[] if leaf is None else [assignment_of(leaf)],
                 is_substitution=False,
                 tournament_id=tournament.id,
@@ -375,6 +376,7 @@ async def _assertions(session: Any, seed: _Seed) -> None:
 
     assert [role.role for role in alpha.roles] == [RoleRef(dimension="player_role", role="tank")]
     assert [role.division for role in alpha.roles] == [3]
+    assert [role.division for role in rows["bravo"].roles] == [5]
 
     # ---- sorts ----------------------------------------------------------
     # winrates: delta 1.00 (1 encounter), charlie .571, alpha .500, bravo .300,
@@ -492,6 +494,7 @@ async def _assertions(session: Any, seed: _Seed) -> None:
     assert all_rows["alpha"].encounters_played == 4
     assert all_rows["alpha"].last_active_at == "2026-07-07"
     assert all_rows["alpha"].tournaments_count == 3
+    assert [role.division for role in all_rows["bravo"].roles] == [5]
     # The divisions chip in all-workspaces mode matches each row's canonical
     # number (its rank on its tournament's effective grid, the seeded ladder here).
     all_division_three = await _rows(

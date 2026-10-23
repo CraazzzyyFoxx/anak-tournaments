@@ -296,6 +296,8 @@ async def execute_stable_streak(
     user_rows: dict[int, list] = defaultdict(list)
     for user_id, _tournament_id, source_version_id, role, rank in rows:
         division = context.resolve_division(rank, source_version_id=source_version_id)
+        if division is None and "division" in fields:
+            continue  # unranked: no division, so it neither extends nor breaks a division streak
         div_num = division.number if division else None
         user_rows[user_id].append(
             {

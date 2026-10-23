@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Protocol, overload
 
 
 class DivisionTierLike(Protocol):
@@ -14,7 +14,14 @@ class DivisionGridLike(Protocol):
     tiers: Sequence[DivisionTierLike]
 
 
-def resolve_tier_for_rank(grid: DivisionGridLike, rank: int) -> DivisionTierLike:
+@overload
+def resolve_tier_for_rank(grid: DivisionGridLike, rank: int) -> DivisionTierLike: ...
+@overload
+def resolve_tier_for_rank(grid: DivisionGridLike, rank: int | None) -> DivisionTierLike | None: ...
+def resolve_tier_for_rank(grid: DivisionGridLike, rank: int | None) -> DivisionTierLike | None:
+    """The tier holding ``rank``; ranks below every band land on the floor tier. No rank (NULL) has no tier."""
+    if rank is None:
+        return None
     if not grid.tiers:
         raise ValueError("Division grid must contain at least one tier")
 
@@ -27,8 +34,13 @@ def resolve_tier_for_rank(grid: DivisionGridLike, rank: int) -> DivisionTierLike
     return grid.tiers[-1]
 
 
-def resolve_division_for_rank(grid: DivisionGridLike, rank: int) -> int:
-    return resolve_tier_for_rank(grid, rank).number
+@overload
+def resolve_division_for_rank(grid: DivisionGridLike, rank: int) -> int: ...
+@overload
+def resolve_division_for_rank(grid: DivisionGridLike, rank: int | None) -> int | None: ...
+def resolve_division_for_rank(grid: DivisionGridLike, rank: int | None) -> int | None:
+    tier = resolve_tier_for_rank(grid, rank)
+    return None if tier is None else tier.number
 
 
 def resolve_rank_for_division(grid: DivisionGridLike, division_number: int) -> int | None:

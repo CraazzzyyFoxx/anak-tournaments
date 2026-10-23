@@ -131,28 +131,28 @@ class RoleShapeRankTests(IsolatedAsyncioTestCase):
         )
         self.assertEqual(3000, member.rank)
 
-    async def test_a_role_without_its_own_rank_is_zero_not_another_roles_rank(self) -> None:
+    async def test_a_role_without_its_own_rank_is_unranked_not_another_roles_rank(self) -> None:
         """The deliberate behaviour change. The old local helper fell back to the
         primary role's number, so a player placed on ``support`` with only a damage
         rank exported at their damage rank -- a rating for a role nobody verified.
         The engine's rule is that such a role is not playable at all, so the export
-        says ``0`` and the organizer sees the gap instead of a plausible number."""
+        writes no rank and the organizer sees the gap instead of a plausible number."""
         member = await _export(
             ROLE_SHAPE,
             _roster(roles=(_role(HeroClass.damage, 2500, primary=True),)),
             slot_code="support",
         )
-        self.assertEqual(0, member.rank)
+        self.assertIsNone(member.rank)
 
     async def test_an_inactive_role_is_not_a_rank_source(self) -> None:
         """A role the engine resolved no rank for (inactive row, or a number no
-        layer supplied) is unplayable, so standing on it exports ``0``."""
+        layer supplied) is unplayable, so standing on it exports no rank."""
         member = await _export(
             ROLE_SHAPE,
             _roster(roles=(_role(HeroClass.tank, None), _role(HeroClass.damage, 3900, priority=1))),
             slot_code="tank",
         )
-        self.assertEqual(0, member.rank)
+        self.assertIsNone(member.rank)
 
     async def test_a_flex_slot_on_a_role_shape_takes_the_best_rank(self) -> None:
         """A flex slot names no role, which is ``rank_on(None)`` -- the best rank
@@ -164,11 +164,11 @@ class RoleShapeRankTests(IsolatedAsyncioTestCase):
         )
         self.assertEqual(4000, member.rank)
 
-    async def test_no_ranks_at_all_is_zero_not_an_error(self) -> None:
+    async def test_no_ranks_at_all_is_unranked_not_an_error(self) -> None:
         """Tournaments that never collect ranks must still be able to export;
         raising here would make the whole feature unusable for them."""
         member = await _export(ROLE_SHAPE, _roster(roles=()), slot_code="tank")
-        self.assertEqual(0, member.rank)
+        self.assertIsNone(member.rank)
 
     async def test_a_member_with_no_slot_takes_the_best_rank(self) -> None:
         member = await _export(
@@ -196,9 +196,9 @@ class RoleLessShapeRankTests(IsolatedAsyncioTestCase):
         )
         self.assertEqual(3800, member.rank)
 
-    async def test_an_empty_flex_roster_member_is_zero(self) -> None:
+    async def test_an_empty_flex_roster_member_is_unranked(self) -> None:
         member = await _export(FLEX_SHAPE, _roster(roles=()), slot_code="flex")
-        self.assertEqual(0, member.rank)
+        self.assertIsNone(member.rank)
 
     async def test_the_slot_code_is_irrelevant_on_a_role_less_roster(self) -> None:
         """Guards against a future refactor reintroducing a role lookup here: on an

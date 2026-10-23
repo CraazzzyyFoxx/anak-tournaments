@@ -71,7 +71,6 @@ def _draft_to_balancer_payload(
         team_name = (captain_roster.handle if captain_roster is not None else None) or team.name
 
         members: list[BalancerTeamMember] = []
-        total_sr = 0
         for p in roster:
             player_roster = rosters.get(p.id)
             pk = pick_by_player_id.get(p.id)
@@ -83,7 +82,6 @@ def _draft_to_balancer_payload(
             rank = ranks.drafted_rank(
                 player_roster, role, shape, frozen=pk.target_rank_value if pk is not None else None
             )
-            total_sr += rank
             role_entry = (
                 next((entry for entry in player_roster.roles if entry.role == role), None) if player_roster else None
             )
@@ -98,7 +96,10 @@ def _draft_to_balancer_payload(
                     rank=rank,
                 )
             )
-        avg_sr = (total_sr / len(members)) if members else 0.0
+        # Like ``Team.avg_sr``/``total_sr``: an unranked member (``rank=None``) is left out, not counted as 0.
+        ranked = [member.rank for member in members if member.rank is not None]
+        total_sr = sum(ranked)
+        avg_sr = (total_sr / len(ranked)) if ranked else 0.0
         payload.append(BalancerTeam(uuid=uuid4(), name=team_name, avgSr=avg_sr, totalSr=total_sr, members=members))
     return payload
 

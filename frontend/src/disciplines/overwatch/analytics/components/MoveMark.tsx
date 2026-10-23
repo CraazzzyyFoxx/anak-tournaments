@@ -12,8 +12,8 @@ import { moveTone } from "./DeltaText";
 
 interface MoveMarkProps {
   direction: PlayerAnalytics["predicted_direction"];
-  /** The division the model moves the player to. */
-  target: number;
+  /** The division the model moves the player to; `null` for an unranked player (no crest). */
+  target: number | null;
   tournamentGrid?: DivisionGridVersion | null;
   /** The word ("Climb") beside the arrow; off where the column already says it. */
   withWord?: boolean;

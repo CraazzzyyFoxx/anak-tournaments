@@ -60,8 +60,10 @@ def captain_rank(roster: PlayerRoster | None, pinned: str | None, shape: RosterS
     return slot_rank(roster, seat_role(roster, pinned), shape) or -1
 
 
-def drafted_rank(roster: PlayerRoster | None, role: str | None, shape: RosterShape, *, frozen: int | None) -> int:
-    """What a rostered player adds to their team's total; ``0`` when unranked.
+def drafted_rank(
+    roster: PlayerRoster | None, role: str | None, shape: RosterShape, *, frozen: int | None
+) -> int | None:
+    """What a rostered player is worth on their drafted slot; ``None`` when unranked.
 
     ``frozen`` is the pick's ``target_rank_value`` -- the one derivation the draft
     stores, because it is a fact about a pick that happened. A captain has no
@@ -71,4 +73,4 @@ def drafted_rank(roster: PlayerRoster | None, role: str | None, shape: RosterSha
     """
     if frozen is not None and shape.has_role_slots:
         return frozen
-    return slot_rank(roster, role, shape) or 0
+    return slot_rank(roster, role, shape)

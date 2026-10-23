@@ -85,12 +85,16 @@ def detect_smurfs(
 
     out: list[dict[str, typing.Any]] = []
     for role, group in df.groupby("role", dropna=False):
-        feats = group[list(_SMURF_FEATURES)].fillna(0.0)
+        # An unranked player (NaN rank) takes no part in the rank logic: the role's median rank keeps it neutral in the
+        # IsolationForest, the cutoff is over ranked players only, and it is never rank-suspicious.
+        ranks = pd.to_numeric(group["rank"])
+        feats = group[list(_SMURF_FEATURES)].assign(rank=ranks.fillna(ranks.median())).fillna(0.0)
         if len(feats) < min_role_size:
             continue
 
         impact_cutoff = float(np.nanpercentile(group["impact_score"], impact_threshold))
-        rank_cutoff = float(np.nanpercentile(group["rank"], rank_threshold))
+        ranked = ranks.dropna()
+        rank_cutoff = float(np.percentile(ranked, rank_threshold)) if not ranked.empty else None
 
         if len(feats) >= 5:
             clf = IsolationForest(
@@ -110,8 +114,8 @@ def detect_smurfs(
             local_z = float(row.get("local_zscore") or 0.0)
             local_pct = float(row.get("local_percentile") or 0.0)
             impact = float(row["impact_score"] or 0.0)
-            rank = float(row["rank"] or 0.0)
-            rank_suspicious = rank > 0 and rank <= rank_cutoff
+            rank = None if pd.isna(ranks[idx]) else float(ranks[idx])
+            rank_suspicious = rank is not None and rank <= rank_cutoff
             impact_suspicious = impact >= impact_cutoff
             local_suspicious = local_z >= local_z_threshold or local_pct >= local_percentile_threshold
             strong_local = local_z >= strong_local_z_threshold

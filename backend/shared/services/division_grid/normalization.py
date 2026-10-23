@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import overload
 
 from shared.division_grid import DivisionGrid, DivisionTier
 
@@ -16,11 +17,14 @@ class DivisionGridNormalizer:
     source_grids_by_version_id: dict[int, DivisionGrid]
     primary_target_by_source_tier_id: dict[int, DivisionTier]
 
-    def normalize_division(
-        self,
-        source_version_id: int,
-        rank: int,
-    ) -> DivisionTier:
+    @overload
+    def normalize_division(self, source_version_id: int, rank: int) -> DivisionTier: ...
+    @overload
+    def normalize_division(self, source_version_id: int, rank: int | None) -> DivisionTier | None: ...
+    def normalize_division(self, source_version_id: int, rank: int | None) -> DivisionTier | None:
+        """``rank`` on its source version mapped onto the target grid; no rank (NULL) has no division."""
+        if rank is None:
+            return None
         if source_version_id == self.target_version_id:
             return self.target_grid.resolve_division(rank)
 
@@ -37,9 +41,5 @@ class DivisionGridNormalizer:
             raise DivisionGridNormalizationError(f"Primary mapping is missing for source tier {source_tier.id}")
         return target_tier
 
-    def normalize_division_number(
-        self,
-        source_version_id: int,
-        rank: int,
-    ) -> int:
+    def normalize_division_number(self, source_version_id: int, rank: int) -> int:
         return self.normalize_division(source_version_id, rank).number

@@ -41,9 +41,9 @@ GRID = DivisionGrid(
         DivisionTier(id=None, slug=None, number=3, name="3", rank_min=0, rank_max=999, icon_url=""),
     ),
 )
-#: (role code or None for an open slot, rank) per seeded player, by game.
+#: (role code or None for an open slot, rank or None for unranked) per seeded player, by game.
 ROSTERS = {
-    "overwatch": [("tank", 2500), ("tank", 1500), ("support", 500), (None, 2500)],
+    "overwatch": [("tank", 2500), ("tank", 1500), ("tank", None), ("support", 500), (None, 2500)],
     "lol": [("jungle", 1500), ("support", 2500)],
 }
 
@@ -113,7 +113,8 @@ def test_each_game_averages_its_own_tournaments_by_its_own_rated_roles(db_sessio
 
     overwatch = reads["overwatch"]
     assert [row.id for row in overwatch] == [seeded["tournaments"]["overwatch"]]
-    # Two tanks in divisions 1 and 2, one support in 3; the open slot and the unplayed `damage` are absent.
+    # Two tanks in divisions 1 and 2, one support in 3; the unranked tank, the open slot and the unplayed `damage`
+    # are absent.
     assert overwatch[0].role_avg_divs == {"tank": 1.5, "support": 3.0}
 
     lol = reads["lol"]

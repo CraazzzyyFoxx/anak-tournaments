@@ -254,7 +254,9 @@ def _fitted_performance(models: dict, frame: pd.DataFrame) -> dict:
     per_player["impact_score"] = _ow.impact_score_within_role(per_player)
     ranks = frame.groupby("player_id", dropna=False)["rank"].first().to_dict()
     per_player["division"] = per_player["player_id"].map(
-        lambda player_id: canonical_division_number(DEFAULT_GRID, int(ranks.get(player_id, 0) or 0), DEFAULT_GRID)
+        lambda player_id: None
+        if pd.isna(rank := ranks.get(player_id))
+        else canonical_division_number(DEFAULT_GRID, int(rank), DEFAULT_GRID)
     )
     per_player = _ow.attach_local_performance(per_player)
     out["local"] = _frame(per_player)

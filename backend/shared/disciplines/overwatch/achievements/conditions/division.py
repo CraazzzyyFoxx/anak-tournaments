@@ -128,6 +128,8 @@ async def execute_div_change(
                 models.Tournament.discipline == context.discipline,
             ),
             models.Player.is_substitution.is_(False),
+            # Unranked rows have no division: the shift is between consecutive ranked tournaments.
+            models.Player.rank.is_not(None),
         )
     ).subquery("player_lag")
 

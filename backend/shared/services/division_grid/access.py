@@ -110,7 +110,7 @@ def canonical_division_expr(
     The rank resolves on that version the way :func:`shared.domain.division_rank.resolve_tier_for_rank` does
     (the containing ``[rank_min, rank_max]`` band, highest floor first on overlap; the floor tier for a rank
     below every band), and that tier's stored ``canonical_number`` is the division. No version at all: the raw
-    rank resolved on ``ladder``.
+    rank resolved on ``ladder``. A NULL rank has no division.
     """
     tier = aliased(DivisionGridTier)
     matched = sa.and_(
@@ -128,7 +128,11 @@ def canonical_division_expr(
         .correlate_except(tier)
         .scalar_subquery()
     )
-    return sa.case((version_id_column.is_(None), division_case_expr(rank_column, ladder)), else_=stored)
+    return sa.case(
+        (rank_column.is_(None), sa.null()),
+        (version_id_column.is_(None), division_case_expr(rank_column, ladder)),
+        else_=stored,
+    )
 
 
 def require_grid_version_read_access(user: AuthUser, workspace_id: int | None) -> None:

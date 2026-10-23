@@ -10,12 +10,12 @@ the one engine that answers "which roles does this registration play, and at wha
 rank" for every surface. Two consequences worth stating:
 
 * **Rank.** ``PlayerRoster.rank_on`` returns ``None`` for a role the player has
-  no resolved rank on, and ``Player.rank`` is ``NOT NULL``, so that becomes ``0``.
-  Raising instead would make the feature unusable for tournaments that never
-  collect ranks.
+  no resolved rank on, and that is written as a NULL ``Player.rank`` (rank not
+  specified). Raising instead would make the feature unusable for tournaments
+  that never collect ranks.
 * **Which rank.** On a role shape the rank is the rank *of that slot's role*,
   with no fallback to another role's number: a player placed on ``tank`` with no
-  tank rank exports at ``0``, not at their damage rank. A role-less slot (an
+  tank rank exports unranked, not at their damage rank. A role-less slot (an
   all-``flex`` shape, a ``flex`` slot, or no slot at all) names no role, so it
   takes the player's best playable rank.
 
@@ -193,9 +193,8 @@ async def build_registered_export(
             members.append(
                 MaterializationMember(
                     name=_member_name(roster),
-                    # ``rank_on`` is ``None`` for a role this player has no
-                    # resolved rank on; ``Player.rank`` is NOT NULL, so 0.
-                    rank=roster.rank_on(role) or 0,
+                    # ``None`` for a role this player has no resolved rank on: an unranked roster row.
+                    rank=roster.rank_on(role),
                     slot_code=registration.team_slot_code,
                     sub_role=_sub_role_for(roster, role),
                     handle=roster.handle,

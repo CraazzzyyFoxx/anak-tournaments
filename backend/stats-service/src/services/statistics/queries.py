@@ -107,7 +107,7 @@ class StatisticsQueries(DisciplineQueries):
     def _rated_teams(self, workspace_id: int | None) -> sa.CTE:
         """Public tournaments' teams with a roster average SR (non-substitutes), ranked strongest first WITHIN their
         own tournament: communities rate on different scales, so SR never compares across tournaments. A roster
-        with an unrated (``rank`` 0) player has no meaningful average and is left out."""
+        with an unranked (``rank`` NULL) player has no meaningful average and is left out."""
         avg_sr = sa.func.avg(models.Player.rank)
         return (
             sa.select(
@@ -126,7 +126,7 @@ class StatisticsQueries(DisciplineQueries):
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
             .where(*self._public_tournaments(workspace_id))
             .group_by(models.Team.id)
-            .having(sa.func.min(models.Player.rank) > 0)
+            .having(sa.func.count(models.Player.rank) == sa.func.count(), sa.func.min(models.Player.rank) > 0)
             .cte("rated_teams")
         )
 

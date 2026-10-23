@@ -281,7 +281,7 @@ class BaselineService:
         df["minutes"] = df.pop("seconds").astype(float) / 60.0
         df["role"] = df.pop("hero_type").map(lambda t: str(getattr(t, "value", t)).lower())
         df["has_killfeed"] = df["has_killfeed"].fillna(False).astype(bool)
-        df["rank"] = df["rank"].astype(int)
+        df["rank"] = pd.to_numeric(df["rank"])  # int64 when every row is ranked; NaN (float) marks an unranked row
         df = df[df["minutes"] > 0].copy()
         ten_minute_units = df["minutes"] / 10.0
         for name in _STAT_NAMES:

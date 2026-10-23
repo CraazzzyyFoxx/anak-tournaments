@@ -84,7 +84,7 @@ class PlayerRef:
     user_id: int  # players.user.id (stat rows / kill_feed key)
     team_id: int
     role: enums.HeroClass | None
-    rank: int
+    rank: int | None
 
 
 @dataclass(frozen=True)
@@ -95,7 +95,10 @@ class BaselineSet:
     #: (role value, bucket | -1, stat NAME) -> (mean, std)
     values: Mapping[tuple[str, int, str], tuple[float, float]]
 
-    def bucket_for(self, rank: int) -> int:
+    def bucket_for(self, rank: int | None) -> int | None:
+        """The rank bucket, ``None`` for an unranked player (no rank-relative baseline applies)."""
+        if rank is None:
+            return None
         for i, bound in enumerate(self.bucket_bounds):
             if rank <= bound:
                 return i
@@ -232,7 +235,7 @@ def add_impact_scores(
     impact_out = np.zeros(n, dtype=np.float64)
     over_out = np.zeros(n, dtype=np.float64)
 
-    groups: dict[tuple[str, int], list[int]] = {}
+    groups: dict[tuple[str, int | None], list[int]] = {}
     for i, pid in enumerate(df["player_id"].to_numpy()):
         ref = players.get(int(pid))
         secs = float(secs_arr[i])
@@ -282,7 +285,8 @@ def add_impact_scores(
                 if std > 0.0:
                     z = np.clip((rate - mean) / std, -WINSOR_LIMIT, WINSOR_LIMIT)
                     base_acc[idx] += weight * z
-            rank_entry = baselines.values.get((role, bucket, stat_name))
+            # An unranked player has no rank bucket: impact still scores role-wide, overperformance stays 0.
+            rank_entry = baselines.values.get((role, bucket, stat_name)) if bucket is not None else None
             if rank_entry is not None:
                 mean, std = rank_entry
                 if std > 0.0:

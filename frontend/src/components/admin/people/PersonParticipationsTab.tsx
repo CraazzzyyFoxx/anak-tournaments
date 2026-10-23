@@ -51,8 +51,8 @@ interface ParticipationRow {
   id: number;
   name: string;
   role: RoleRef | null;
-  rank: number;
-  division: number;
+  rank: number | null;
+  division: number | null;
   is_newcomer: boolean;
   is_substitution: boolean;
   tournament_id: number;
@@ -335,8 +335,10 @@ export function PersonParticipationsTab({
       },
       {
         // Division is derived from rank, so the two ride in one column and sort
-        // by the finer of the pair.
-        accessorKey: "rank",
+        // by the finer of the pair; an unranked row sorts last either way.
+        id: "rank",
+        accessorFn: (row) => row.rank ?? undefined,
+        sortUndefined: "last",
         header: t("divRank"),
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
@@ -346,7 +348,7 @@ export function PersonParticipationsTab({
               width={28}
               height={28}
             />
-            <span className="tabular-nums">{row.original.rank}</span>
+            <span className="tabular-nums">{row.original.rank ?? "—"}</span>
           </div>
         )
       },
@@ -423,7 +425,7 @@ export function PersonParticipationsTab({
                 <div className="flex items-center gap-2 text-caption text-muted-foreground">
                   <span>
                     <ParticipationRole row={row.original} named />
-                    {subRole ? ` · ${subRole}` : ""} · <span className="tabular-nums">{row.original.rank}</span>
+                    {subRole ? ` · ${subRole}` : ""} · <span className="tabular-nums">{row.original.rank ?? "—"}</span>
                   </span>
                   <ParticipationFlags row={row.original} />
                 </div>

@@ -622,8 +622,9 @@ export async function fetchPlayerRankHistoryPreview(
           if (!roleCode) continue;
           if (latestPerRole.has(roleCode)) continue;
           const playerRecord = tournament.players.find((p) => p.user_id === user.id);
+          // An unranked participation says nothing about the role: an older event's rank stands.
           const rankValue = playerRecord?.rank ?? null;
-          if (rankValue !== null && rankValue > 0) {
+          if (rankValue !== null) {
             const sourceVersion =
               division_grid_versions.find((version) => version.id === tournament.division_grid_version_id) ?? null;
             const originalDivisionNumber = resolveDivisionFromRank(sourceVersion ?? grid, rankValue);

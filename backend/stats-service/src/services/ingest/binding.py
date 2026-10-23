@@ -381,9 +381,9 @@ async def bound_participants(
     A player (substitutes registered on the team included) on the tournament roster of the seat's source team keeps
     the current tournament-player registration rank and rated role (the baselines bucket on that boundary). Only a
     participant the tournament roster does not have (substitute, virtual player) falls back to the encounter roster
-    snapshot, and without any row carries rank 0 and no role.
+    snapshot, and without any row carries no rank and no role.
     """
-    tournament_roster: dict[tuple[int, int], tuple[int, str | None]] = {}
+    tournament_roster: dict[tuple[int, int], tuple[int | None, str | None]] = {}
     if game.seats:
         player, seat_row = models.Player, models.EncounterTeam
         for seat_id, member_id, rank, role in await session.execute(
@@ -441,7 +441,7 @@ async def bound_participants(
             member_id=anchor.id,
             user_id=anchor.player_id,
             encounter_team_id=seat,
-            rank=rank or 0,
+            rank=rank,
             role=role_code,
         )
     return out

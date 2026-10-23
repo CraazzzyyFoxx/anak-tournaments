@@ -9,7 +9,8 @@ import { cn } from "@/lib/utils";
 import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 
 interface DivisionIconProps {
-  division: number;
+  /** `null` (an unranked player) draws nothing. */
+  division: number | null;
   tournamentGrid?: DivisionGridVersion | DivisionGrid | null;
   discipline?: string;
   width?: number;
@@ -25,8 +26,9 @@ interface DivisionIconProps {
 
 /**
  * Rank crest for a division number. Nothing is drawn when the grid has no
- * icon for it — a broken image glyph is worse than no crest. With `tooltip`
- * the named wrapper stays, so a grid row keeps the crest's cell.
+ * icon for it, or for no division (an unranked player) — a broken image glyph
+ * is worse than no crest. With `tooltip` the wrapper stays, so a grid row
+ * keeps the crest's cell.
  */
 const DivisionIcon = ({
   division,
@@ -38,6 +40,7 @@ const DivisionIcon = ({
   className
 }: DivisionIconProps) => {
   const workspaceGrid = useDivisionGrid(discipline);
+  if (division == null) return tooltip ? <span aria-hidden className={cn("shrink-0", className)} /> : null;
   const preferredGrid = tournamentGrid ?? workspaceGrid;
   const src = getDivisionIconSrc(preferredGrid, division);
   const name = getDivisionLabel(preferredGrid, division) ?? `Division ${division}`;

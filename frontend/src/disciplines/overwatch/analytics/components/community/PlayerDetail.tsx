@@ -79,6 +79,8 @@ export default function PlayerDetail({
   const roleLower = roleLabel.toLowerCase();
   const confPct = Math.round(player.confidence * 100);
   const predictedDivision = player.predicted_division ?? player.division;
+  // An unranked player has no division: the copy says "Div —" rather than inventing one.
+  const division = player.division ?? "—";
 
   const impactDesc =
     player.impact >= 80
@@ -103,13 +105,13 @@ export default function PlayerDetail({
     why.push(t("analytics.community.why.flag", { kind: flagLabel }));
     why.push(t("analytics.community.why.flagSignal", { pct: Math.round(flag.score * 100) }));
   } else if (up) {
-    why.push(t("analytics.community.why.climbImpact", { division: player.division, role: roleLower }));
+    why.push(t("analytics.community.why.climbImpact", { division, role: roleLower }));
     why.push(t("analytics.community.why.climbConfidence", { pct: confPct }));
   } else if (down) {
-    why.push(t("analytics.community.why.dropImpact", { division: player.division, role: roleLower }));
+    why.push(t("analytics.community.why.dropImpact", { division, role: roleLower }));
     why.push(t("analytics.community.why.dropConsistent", { maps: player.sample_matches }));
   } else {
-    why.push(t("analytics.community.why.holdInBand", { division: player.division }));
+    why.push(t("analytics.community.why.holdInBand", { division }));
     why.push(
       player.confidence < 0.6
         ? t("analytics.community.why.holdThin", { pct: confPct })
@@ -130,7 +132,7 @@ export default function PlayerDetail({
             <span className="truncate">
               {t("analytics.community.player.roleLine", {
                 role: roleLabel,
-                division: player.division,
+                division,
                 team: teamName
               })}
             </span>
@@ -150,7 +152,7 @@ export default function PlayerDetail({
             </p>
             {direction !== "flat" ? (
               <p className="text-caption text-[color:var(--aqt-fg-muted)]">
-                {t("analytics.community.player.divMove", { from: player.division, to: predictedDivision })}
+                {t("analytics.community.player.divMove", { from: division, to: predictedDivision ?? "—" })}
               </p>
             ) : null}
           </div>
@@ -198,7 +200,7 @@ export default function PlayerDetail({
         <div className="flex items-baseline justify-between gap-3">
           <Eyebrow as="h3">{t("analytics.community.player.percentileTitle")}</Eyebrow>
           <span className="text-caption text-[color:var(--aqt-fg-muted)]">
-            {t("analytics.community.player.percentileVs", { division: player.division, role: roleLower })}
+            {t("analytics.community.player.percentileVs", { division, role: roleLower })}
           </span>
         </div>
         {/* The figure is printed above; the bar places it on the 0–100 scale. */}

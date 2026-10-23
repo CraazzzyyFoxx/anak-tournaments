@@ -88,7 +88,7 @@ async def decoded_document(session, service: BackfillService, match_id: int) -> 
                 member_id=row.workspace_member_id,
                 user_id=row.user_id,
                 encounter_team_id=row.encounter_team_id,
-                rank=refs[row.user_id].rank if row.user_id in refs else 0,
+                rank=refs[row.user_id].rank if row.user_id in refs else None,
                 role=None,
             )
             for row in players

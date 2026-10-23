@@ -229,7 +229,7 @@ class BackfillService:
         refs = {}
         for owner in owners:
             entry = roster_by_key.get((owner.team_id, owner.workspace_member_id))
-            declared_role, rank = entry if entry is not None else (None, 0)
+            declared_role, rank = entry if entry is not None else (None, None)
             role = (dominant_roles.get(owner.user_id) or declared_role) if entry is not None else None
             refs[owner.user_id] = impact.PlayerRef(
                 player_id=owner.user_id,

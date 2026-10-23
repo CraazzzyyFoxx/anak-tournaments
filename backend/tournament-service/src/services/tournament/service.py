@@ -202,6 +202,8 @@ class TournamentService:
             )
             .where(
                 models.Player.tournament_id == models.Tournament.id,
+                # An unranked player has no division to average.
+                models.Player.rank.is_not(None),
                 models.Tournament.is_league.is_(False),
                 models.Tournament.is_hidden.is_(False),
                 models.Tournament.discipline == discipline,

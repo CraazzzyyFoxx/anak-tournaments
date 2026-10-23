@@ -215,7 +215,8 @@ class DraftSelectionService:
                 roster, role, shape, frozen=pk.target_rank_value if pk is not None else None
             )
             tid = p.drafted_by_team_id
-            sums[tid] = sums.get(tid, 0.0) + rank
+            # Pick order weighs an unranked player as 0 (the weakest), as it always has.
+            sums[tid] = sums.get(tid, 0.0) + (rank or 0)
             counts[tid] = counts.get(tid, 0) + 1
         return {tid: sums[tid] / counts[tid] for tid in sums}
 

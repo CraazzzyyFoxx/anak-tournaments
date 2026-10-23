@@ -528,8 +528,8 @@ export interface PickBanTarget {
   name: string;
   role: RoleRef | null;
   is_substitution: boolean;
-  /** Resolved against the tournament's grid, like `Player.division`. */
-  division: number;
+  /** Resolved against the tournament's grid, like `Player.division`; `null` when unranked. */
+  division: number | null;
 }
 
 export interface PickBanStepProgress {

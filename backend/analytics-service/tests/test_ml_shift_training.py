@@ -78,6 +78,36 @@ class ShiftRankHistoryTests(IsolatedAsyncioTestCase):
         params = query.compile().params
         self.assertIn(20, params.values())
 
+    async def test_unranked_tournament_has_no_division_and_does_not_break_the_chronology(self) -> None:
+        rows = [
+            {
+                "player_id": pid,
+                "user_id": 10,
+                "role": "tank",
+                "tournament_id": tid,
+                "rank": rank,
+                "is_newcomer": False,
+                "version_id": None,
+            }
+            for pid, tid, rank in ((1, 10, 2500), (2, 20, None), (3, 30, 2510))
+        ]
+        result = SimpleNamespace(mappings=lambda: SimpleNamespace(all=lambda: rows))
+        session = SimpleNamespace(execute=AsyncMock(return_value=result))
+
+        with patch.object(shift_features, "load_division_grids", AsyncMock(return_value={})):
+            history = await shift_features.load_player_rank_history(session, [10, 20, 30])
+
+        div = DEFAULT_GRID.resolve_division(2500).number
+        self.assertEqual(div, DEFAULT_GRID.resolve_division(2510).number)
+        first, unranked, last = (history.loc[history["tournament_id"] == tid].iloc[0] for tid in (10, 20, 30))
+        self.assertEqual(div, first["next_tournament_div"])
+        self.assertEqual(div, last["prior_div"])
+        self.assertEqual(2, last["tournaments_at_current_div"])
+        for column in ("div", "prior_div", "next_tournament_div", "tournaments_at_current_div"):
+            self.assertTrue(pd.isna(unranked[column]), column)
+        # Participation is not rank-based: the unranked tournament still counts.
+        self.assertEqual([1, 2, 3], history["tournaments_played"].tolist())
+
 
 class ShiftBlendTests(TestCase):
     def test_blend_columns_cover_team_os_and_impact(self) -> None:

@@ -92,7 +92,8 @@ class UserRoleSummary(BaseModel):
     tournaments: int
     maps_won: int
     maps: int
-    division: int
+    #: From the newest tournament of the role that has a rank; ``None`` when no tournament of it is ranked.
+    division: int | None
 
 
 class UserRole(UserRoleSummary):
@@ -136,8 +137,8 @@ class UserTournamentPlayer(BaseModel):
     id: int
     name: str
     role: RoleRef | None = None
-    rank: int
-    division: int
+    rank: int | None
+    division: int | None
     user_id: int
     is_substitution: bool
     is_newcomer: bool
@@ -304,7 +305,7 @@ class UserTournamentWithStats(BaseModel):
     #: The tournament's owner workspace and game: the role and division are drawn in that scope.
     workspace_id: int
     discipline: str
-    division: int
+    division: int | None
     # `division` is resolved against the tournament's own grid (see
     # get_tournament_with_stats). Ship the grid version too so the frontend
     # renders the division icon on that same grid instead of falling back to

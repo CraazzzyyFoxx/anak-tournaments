@@ -72,13 +72,13 @@ export interface User {
   stream_visible?: boolean;
 }
 
-/** A role's record in one game: maps, tournaments and the division it was last rated at. */
+/** A role's record in one game: maps, tournaments and the division it was last rated at (`null`: never rated). */
 export interface UserRoleSummary {
   role: RoleRef | null;
   tournaments: number;
   maps_won: number;
   maps: number;
-  division: number;
+  division: number | null;
 }
 
 /** A profile role, with the grid its `division` is drawn on. */
@@ -100,7 +100,7 @@ export interface UserTournamentWithStats {
   /** The tournament's owner workspace and game: its role and division are drawn in that scope. */
   workspace_id: number;
   discipline: string;
-  division: number;
+  division: number | null;
   /** Grid the `division` was resolved against — render its icon on this grid,
    * not the workspace default. */
   division_grid_version: DivisionGridVersion | null;
@@ -135,8 +135,8 @@ interface UserTournamentPlayer {
   id: number;
   name: string;
   role: RoleRef | null;
-  rank: number;
-  division: number;
+  rank: number | null;
+  division: number | null;
   user_id: number;
   is_substitution: boolean;
   is_newcomer: boolean;
@@ -254,7 +254,7 @@ export interface UserTournament {
   draw: number;
   maps_won: number;
   maps_lost: number;
-  division: number;
+  division: number | null;
   /** The grid `division` was resolved against: one of the list's `division_grid_versions`. */
   division_grid_version_id: number | null;
   role: RoleRef | null;

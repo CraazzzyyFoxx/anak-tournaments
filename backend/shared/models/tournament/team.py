@@ -86,7 +86,8 @@ class Player(db.TimeStampIntegerMixin):
     )
 
     name: Mapped[str] = mapped_column(String())
-    rank: Mapped[int] = mapped_column(Integer())
+    # NULL = rank not specified (e.g. 1v1 duels); a specified rank is >= 1.
+    rank: Mapped[int | None] = mapped_column(Integer(), nullable=True)
     is_substitution: Mapped[bool] = mapped_column(Boolean(), server_default="false")
     related_player_id: Mapped[int | None] = mapped_column(
         ForeignKey("tournament.player.id", ondelete="SET NULL"), nullable=True

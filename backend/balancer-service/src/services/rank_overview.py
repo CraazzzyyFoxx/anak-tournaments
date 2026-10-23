@@ -506,7 +506,11 @@ def _branches(
             .join_from(members, player, player.workspace_member_id == members.c.member_id)
             .join(team, team.id == player.team_id)
             .join(tournament, tournament.id == player.tournament_id)
-            .where(tournament.workspace_id == workspace_id, tournament.discipline == discipline)
+            .where(
+                player.rank.is_not(None),
+                tournament.workspace_id == workspace_id,
+                tournament.discipline == discipline,
+            )
         )
 
     if "casual" in wanted:

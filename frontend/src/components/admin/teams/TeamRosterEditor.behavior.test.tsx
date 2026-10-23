@@ -254,6 +254,16 @@ describe("TeamRosterEditor", () => {
     expect(updatePlayer).toHaveBeenCalledWith(2, { rank: 3450 });
   });
 
+  it("clears a rank when the field is emptied, and shows an unranked player's field empty", async () => {
+    const scope = await mount({ players: [TANK, player({ id: 5, name: "Duelist", rank: null, division: null })] });
+    const field = (name: string) => rankFields(scope).find((input) => input.getAttribute("aria-label") === `Rank of ${name}`)!;
+
+    expect(field("Duelist").value).toBe("");
+    await typeAndBlur(field("Rein"), "");
+
+    expect(updatePlayer).toHaveBeenCalledWith(2, { rank: null });
+  });
+
   it("persists a newcomer flag toggle", async () => {
     const scope = await mount();
     const toggle = scope.querySelector<HTMLButtonElement>('button[aria-label="Newcomer: Rein"]')!;

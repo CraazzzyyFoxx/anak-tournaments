@@ -10,8 +10,10 @@ import importlib
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from unittest import IsolatedAsyncioTestCase
+from unittest import IsolatedAsyncioTestCase, TestCase
 from unittest.mock import AsyncMock, Mock, patch
+
+from pydantic import ValidationError
 
 backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
@@ -98,3 +100,20 @@ class AdminTeamWorkspaceMemberTests(IsolatedAsyncioTestCase):
         created_player = session.add.call_args.args[0]
         self.assertFalse(hasattr(created_player, "user_id"))
         self.assertEqual(9001, created_player.workspace_member_id)
+
+
+class AdminPlayerRankTests(TestCase):
+    """A rank is optional: none on create, an explicit ``null`` clears it on update, and ``0`` is not a rank."""
+
+    def test_rank_is_optional_and_at_least_one(self) -> None:
+        base = {"name": "P", "user_id": 1, "team_id": 2, "tournament_id": 3}
+        self.assertIsNone(admin_team_service._prepare_player_create_data(schemas.PlayerCreate(**base))["rank"])
+        with self.assertRaises(ValidationError):
+            schemas.PlayerCreate(**base, rank=0)
+        with self.assertRaises(ValidationError):
+            schemas.PlayerUpdate(rank=0)
+
+    def test_explicit_null_clears_and_omitted_keeps(self) -> None:
+        prepare = admin_team_service._prepare_player_update_data
+        self.assertEqual({"rank": None}, prepare(None, schemas.PlayerUpdate.model_validate({"rank": None})))
+        self.assertNotIn("rank", prepare(None, schemas.PlayerUpdate.model_validate({"name": "P"})))

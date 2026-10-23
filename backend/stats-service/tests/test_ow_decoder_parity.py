@@ -142,7 +142,7 @@ def bind(doc: MatchDoc, item: dict) -> BoundMatch:
         if handle == "IngestSub":  # seated as a substitute for IngestH3: the replaced starter's role and rank
             rostered, rank = True, ranks["IngestH3"]
         else:
-            rank = ranks.get(handle, 0)
+            rank = ranks.get(handle)
         seats[handle] = BoundParticipant(
             member_id=users.index(handle) + 1000,
             user_id=users.index(handle) + 1,

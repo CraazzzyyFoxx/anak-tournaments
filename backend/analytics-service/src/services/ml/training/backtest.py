@@ -115,6 +115,8 @@ async def _realised_shift_map(
         .where(
             models.Player.tournament_id <= history_through_tournament_id,
             models.Player.is_substitution.is_(False),
+            # Unranked rows have no division: the realised move is between consecutive ranked tournaments.
+            models.Player.rank.is_not(None),
             models.Tournament.discipline == discipline,
             *workspace_scope_filter(workspace_id, workspace_ids),
         )

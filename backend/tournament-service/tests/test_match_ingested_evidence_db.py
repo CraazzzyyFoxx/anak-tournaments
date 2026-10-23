@@ -670,6 +670,24 @@ class RosterTests(EvidenceCase):
         (member,) = [row for row in await self.roster() if row.workspace_member_id == self.ids["m2"]]
         self.assertEqual(1234, member.rank)
 
+    async def test_an_unranked_roster_row_stays_unranked(self) -> None:
+        """A NULL roster rank is "not specified", not missing: no member-rank fallback, no refusal."""
+        async with self.Session() as s:
+            await s.execute(sa.delete(MemberRank).where(MemberRank.workspace_member_id == self.ids["m2"]))
+            s.add(
+                Player(
+                    tournament_id=self.ids["t"],
+                    team_id=self.ids["team0"],
+                    workspace_member_id=self.ids["m2"],
+                    name="m2",
+                    rank=None,
+                )
+            )
+            await s.commit()
+        self.assertEqual("accepted", await self.deliver(self.event(extras=(self.extra("m2"),))))
+        (member,) = [row for row in await self.roster() if row.workspace_member_id == self.ids["m2"]]
+        self.assertIsNone(member.rank)
+
     async def test_a_member_rostered_on_another_team_is_refused(self) -> None:
         async with self.Session() as s:
             s.add(

@@ -21,13 +21,16 @@ def _grid_for(grids: dict[int, DivisionGrid], version_id: int | float | None) ->
 def canonical_div_for(
     grids: dict[int, DivisionGrid],
     version_id: int | float | None,
-    rank: int,
-) -> int:
+    rank: int | float | None,
+) -> int | None:
     """Canonical division for ``rank`` recorded under ``version_id``.
 
     ``None``/unknown ``version_id`` falls back to the canonical grid (the rank is
-    then treated as already on the OW SR scale).
+    then treated as already on the OW SR scale). An unranked row (``None``/NaN
+    ``rank``) has no division: ``None``.
     """
+    if pd.isna(rank):
+        return None
     return canonical_division_number(_grid_for(grids, version_id), int(rank), DEFAULT_GRID)
 
 

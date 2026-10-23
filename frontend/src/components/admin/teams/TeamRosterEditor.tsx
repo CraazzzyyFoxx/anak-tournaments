@@ -202,14 +202,15 @@ export function TeamRosterEditor({
       <TableCell className={tableStyles.numericCell}>
         <Input
           aria-label={t("rankOf")}
-          value={String(draft.rank)}
+          value={draft.rank == null ? "" : String(draft.rank)}
           inputMode="numeric"
           size="sm"
           className="w-20 tabular-nums"
           onChange={(event) => {
             const next = Number.parseInt(event.target.value, 10);
+            // Empty (or not a positive number) = no rank.
             setDraft((current) =>
-              current ? { ...current, rank: Number.isFinite(next) && next > 0 ? next : 0 } : current
+              current ? { ...current, rank: Number.isFinite(next) && next > 0 ? next : null } : current
             );
           }}
         />
@@ -344,14 +345,19 @@ export function TeamRosterEditor({
                         height={24}
                       />
                       <CommitField
-                        value={String(player.rank)}
+                        value={player.rank == null ? "" : String(player.rank)}
                         label={t("rankOfPlayer", { name: player.name })}
                         disabled={!canUpdatePlayer}
                         inputMode="numeric"
                         className="w-20 tabular-nums"
                         onCommit={(next) => {
+                          // Clearing the field removes the rank; anything else must be a rank >= 1.
+                          if (next === "") {
+                            patch(player, { rank: null });
+                            return;
+                          }
                           const rank = Number.parseInt(next, 10);
-                          if (Number.isFinite(rank) && rank >= 0) {
+                          if (Number.isFinite(rank) && rank >= 1) {
                             patch(player, { rank });
                           }
                         }}

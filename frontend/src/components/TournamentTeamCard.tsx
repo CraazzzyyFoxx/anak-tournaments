@@ -194,7 +194,7 @@ export function RosterPlayer({
   );
 }
 
-/** Rank crest (tier name in its tooltip) and the player's SR. */
+/** Rank crest (tier name in its tooltip) and the player's SR; "—" when the tournament recorded no rank. */
 export function RosterRank({
   division,
   rank,
@@ -203,8 +203,8 @@ export function RosterRank({
   dimmed,
   className
 }: Readonly<{
-  division: number;
-  rank: number;
+  division: number | null;
+  rank: number | null;
   tournamentGrid?: DivisionGridVersion | null;
   discipline?: string;
   dimmed?: boolean;
@@ -212,19 +212,27 @@ export function RosterRank({
 }>) {
   const workspaceGrid = useDivisionGrid(discipline);
   const format = useFormatter();
-  const label =
-    getDivisionLabel(tournamentGrid ?? workspaceGrid, division) ?? `Division ${division}`;
+  if (rank == null) {
+    return (
+      <span className={cn("text-[color:var(--aqt-fg-dim)]", dimmed && "opacity-50", className)}>—</span>
+    );
+  }
   return (
     <div className={cn("flex items-center gap-2", dimmed && "opacity-50", className)}>
-      <IconTooltip label={label} className="shrink-0">
-        <DivisionIcon
-          division={division}
-          width={26}
-          height={26}
-          tournamentGrid={tournamentGrid}
-          discipline={discipline}
-        />
-      </IconTooltip>
+      {division != null ? (
+        <IconTooltip
+          label={getDivisionLabel(tournamentGrid ?? workspaceGrid, division) ?? `Division ${division}`}
+          className="shrink-0"
+        >
+          <DivisionIcon
+            division={division}
+            width={26}
+            height={26}
+            tournamentGrid={tournamentGrid}
+            discipline={discipline}
+          />
+        </IconTooltip>
+      ) : null}
       <span className="aqt-tnum text-caption font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]">
         {format.number(rank, { maximumFractionDigits: 0 })}
       </span>

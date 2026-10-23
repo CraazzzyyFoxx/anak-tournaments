@@ -114,7 +114,7 @@ const UserHeader = async ({ profile, user, scope, discipline, axis }: UserHeader
           <div className="relative h-full w-full overflow-hidden rounded-[14px] border border-[color:var(--aqt-border-2)] md:rounded-[18px]">
             <Image src={avatarSrc} alt={t("users.profile.header.avatarAlt", { name })} fill sizes="104px" className="object-cover" priority />
           </div>
-          {primaryRole && discipline !== null ? (
+          {primaryRole && primaryRole.division != null && discipline !== null ? (
             <div
               className="absolute -bottom-2 -right-2"
               title={t("users.profile.header.divisionTitle", {

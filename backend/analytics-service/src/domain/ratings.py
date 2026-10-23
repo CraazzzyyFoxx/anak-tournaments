@@ -138,6 +138,7 @@ def get_id_role(player: typing.Any) -> str:
 
 
 def get_player_rating(pl: PlackettLuce, player: typing.Any) -> PlackettLuceRating:
+    """Seed rating from the roster rank; an unranked player (``rank`` None) starts at the model's default mu."""
     if player.is_newcomer or player.is_newcomer_role:
         return pl.rating(mu=player.rank, sigma=_MU / 4.25)
     return pl.rating(mu=player.rank)

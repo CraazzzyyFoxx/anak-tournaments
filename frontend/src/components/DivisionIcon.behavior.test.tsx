@@ -92,4 +92,14 @@ describe("DivisionIcon", () => {
       "https://rustfs.craazzzyyfoxx.me/aqt/assets/divisions/champion-1.png"
     );
   });
+
+  it("draws nothing for no division, keeping a tooltip crest's cell", () => {
+    const unmount = render(<DivisionIcon division={null} />);
+    expect(container.innerHTML).toBe("");
+    unmount();
+
+    render(<DivisionIcon division={null} tooltip />);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("span[aria-hidden]")).not.toBeNull();
+  });
 });

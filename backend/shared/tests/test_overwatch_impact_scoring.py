@@ -135,6 +135,7 @@ class TestBaselineSet:
         assert bs.bucket_for(100) == 0
         assert bs.bucket_for(700) == 1
         assert bs.bucket_for(5000) == 2
+        assert bs.bucket_for(None) is None
 
 
 class TestAddImpactScores:
@@ -204,6 +205,17 @@ class TestAddImpactScores:
         # bucket 1: elims z=(20-12)/5=1.6, fp z=(3-1.5)/1=1.5
         expected = IMPACT_WEIGHTS["Eliminations"] * 1.6 + IMPACT_WEIGHTS["FirstPicks"] * 1.5
         assert out[enums.LogStatsName.OverperformanceScore].iloc[0] == pytest.approx(expected)
+
+    def test_unranked_scores_impact_but_no_overperformance(self):
+        out = impact.add_impact_scores(
+            self._frame(),
+            players=self._players(rank=None),
+            baselines=self._baselines(),
+            has_killfeed=True,
+        )
+        expected = IMPACT_WEIGHTS["Eliminations"] * 2.0 + IMPACT_WEIGHTS["FirstPicks"] * 2.0
+        assert out[enums.LogStatsName.ImpactPoints].iloc[0] == pytest.approx(expected)
+        assert out[enums.LogStatsName.OverperformanceScore].iloc[0] == 0.0
 
     def test_unknown_role_scores_zero(self):
         out = impact.add_impact_scores(

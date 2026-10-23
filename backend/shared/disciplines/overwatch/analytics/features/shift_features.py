@@ -112,14 +112,18 @@ async def load_player_rank_history(
     df["grid_n_div"] = [_grid_div_count(v) for v in df["version_id"]]
 
     grouped = df.groupby(["user_id", "role"], sort=False)
-    df["prior_div"] = grouped["div"].shift(1)
-    df["next_tournament_div"] = grouped["div"].shift(-1)
     df["tournaments_played"] = grouped.cumcount() + 1
 
-    # tournaments_at_current_div: streak of consecutive tournaments with same div.
-    same_as_prior = df["div"] == df["prior_div"]
-    streak_id = (~same_as_prior.fillna(False)).cumsum()
-    df["tournaments_at_current_div"] = df.groupby(["user_id", "role", streak_id]).cumcount() + 1
+    # The division chronology runs over ranked rows only: an unranked tournament has no division (NaN div, prior/next
+    # and streak) and does not break the link between the ranked tournaments around it.
+    ranked = df[df["div"].notna()]
+    by_role = ranked.groupby(["user_id", "role"], sort=False)
+    df["prior_div"] = by_role["div"].shift(1)
+    df["next_tournament_div"] = by_role["div"].shift(-1)
+
+    # tournaments_at_current_div: streak of consecutive ranked tournaments with same div.
+    streak_id = (ranked["div"] != df.loc[ranked.index, "prior_div"]).cumsum()
+    df["tournaments_at_current_div"] = ranked.groupby(["user_id", "role", streak_id]).cumcount() + 1
 
     return df
 

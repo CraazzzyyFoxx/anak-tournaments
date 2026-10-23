@@ -1,3 +1,6 @@
+"""A stored rank's division as a reader sees it. No rank (NULL, e.g. a 1v1 duel) has no division: every resolver
+returns ``None`` for it."""
+
 from __future__ import annotations
 
 from shared.division_grid import DEFAULT_GRID, DivisionGrid, DivisionTier
@@ -8,36 +11,37 @@ from shared.services.division_grid.normalization import (
 
 
 def resolve_tournament_tier(
-    rank: int,
+    rank: int | None,
     *,
     tournament_grid: DivisionGrid | None = None,
     fallback_grid: DivisionGrid | None = None,
-) -> DivisionTier:
+) -> DivisionTier | None:
     grid = tournament_grid or fallback_grid or DEFAULT_GRID
     return grid.resolve_division(rank)
 
 
 def resolve_tournament_division(
-    rank: int,
+    rank: int | None,
     *,
     tournament_grid: DivisionGrid | None = None,
     fallback_grid: DivisionGrid | None = None,
-) -> int:
-    return resolve_tournament_tier(
+) -> int | None:
+    tier = resolve_tournament_tier(
         rank,
         tournament_grid=tournament_grid,
         fallback_grid=fallback_grid,
-    ).number
+    )
+    return None if tier is None else tier.number
 
 
 def resolve_workspace_tier(
-    rank: int,
+    rank: int | None,
     *,
     source_version_id: int | None,
     fallback_grid: DivisionGrid,
     normalizer: DivisionGridNormalizer | None = None,
     source_grid: DivisionGrid | None = None,
-) -> DivisionTier:
+) -> DivisionTier | None:
     """Tier for ``rank`` as the reader should see it.
 
     With a ``normalizer`` (workspace-scoped read) every rank is mapped onto the
@@ -60,17 +64,18 @@ def resolve_workspace_tier(
 
 
 def resolve_workspace_division(
-    rank: int,
+    rank: int | None,
     *,
     source_version_id: int | None,
     fallback_grid: DivisionGrid,
     normalizer: DivisionGridNormalizer | None = None,
     source_grid: DivisionGrid | None = None,
-) -> int:
-    return resolve_workspace_tier(
+) -> int | None:
+    tier = resolve_workspace_tier(
         rank,
         source_version_id=source_version_id,
         fallback_grid=fallback_grid,
         normalizer=normalizer,
         source_grid=source_grid,
-    ).number
+    )
+    return None if tier is None else tier.number

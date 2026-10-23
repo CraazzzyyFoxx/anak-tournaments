@@ -77328,7 +77328,7 @@
       },
       {
         "player_id": 910004,
-        "rank": 0,
+        "rank": null,
         "role": null,
         "team_id": 910000,
         "user_id": 910004

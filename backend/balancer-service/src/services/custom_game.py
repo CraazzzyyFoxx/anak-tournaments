@@ -2087,7 +2087,7 @@ class CustomGameService:
                 # tournament's export does). A captain, who has no pick, sits on their live rank.
                 frozen = pick.target_rank_value if pick is not None else None
                 ratings[bucket] = (
-                    frozen if frozen is not None else draft_ranks.drafted_rank(roster, role, shape, frozen=None)
+                    frozen if frozen is not None else (draft_ranks.drafted_rank(roster, role, shape, frozen=None) or 0)
                 )
                 players[uuid] = {
                     "name": (roster.display_name or roster.handle if roster is not None else None) or f"player-{uuid}",

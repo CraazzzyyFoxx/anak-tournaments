@@ -77,7 +77,7 @@ class StatisticsAlmanacTest(IsolatedAsyncioTestCase):
         await self.session.flush()
         return tournament
 
-    async def _team(self, tournament: models.Tournament, name: str, *roster: tuple[str, int]) -> models.Team:
+    async def _team(self, tournament: models.Tournament, name: str, *roster: tuple[str, int | None]) -> models.Team:
         team = models.Team(tournament_id=tournament.id, name=f"{name} {self.tag}", balancer_name=name)
         self.session.add(team)
         await self.session.flush()
@@ -189,12 +189,12 @@ class StatisticsAlmanacTest(IsolatedAsyncioTestCase):
         upset = await self._series(low, a, b, (2, 1))
         await self._title(low, b)
         # High scale: C (2000) beats D (3000) -- a bigger gap, a smaller share -- and wins the title as the weakest
-        # of three rated rosters. F has an unrated player: no average, so its "upset" of D never counts.
+        # of three rated rosters. F has an unranked player: no average, so its "upset" of D never counts.
         high = await self._tournament("high", DAY + timedelta(days=30))
         c = await self._team(high, "C", ("u5", 2000), ("u6", 2000))
         d = await self._team(high, "D", ("u7", 3000), ("u8", 3000))
         await self._team(high, "E", ("u9", 2500), ("u10", 2500))
-        f = await self._team(high, "F", ("u11", 0), ("u12", 100))
+        f = await self._team(high, "F", ("u11", None), ("u12", 100))
         await self._series(high, c, d, (2, 0))
         await self._series(high, f, d, (2, 0))
         await self._title(high, c)

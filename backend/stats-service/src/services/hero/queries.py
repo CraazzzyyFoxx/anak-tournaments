@@ -524,8 +524,13 @@ class HeroQueries(DisciplineQueries):
                 sa.func.row_number()
                 .over(
                     partition_by=models.WorkspaceMember.player_id,
-                    # Newest event first by start date (undated last), not id: ids follow creation, not play.
-                    order_by=[models.Tournament.start_date.desc().nulls_last(), models.Player.tournament_id.desc()],
+                    # The newest ranked event first, by start date (undated last), not id: ids follow creation, not
+                    # play. A player never ranked keeps the newest row and no division.
+                    order_by=[
+                        models.Player.rank.is_(None),
+                        models.Tournament.start_date.desc().nulls_last(),
+                        models.Player.tournament_id.desc(),
+                    ],
                 )
                 .label("rn"),
             )

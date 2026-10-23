@@ -16,7 +16,9 @@ export const ProfileJsonLd = ({ user, profile, url }: { user: User; profile: Use
     : null;
 
   const image = toAbsolute(getPlayerImage(profile, user));
-  const descriptor = primaryRole ? `${primaryRole.role} · Division ${primaryRole.division}` : "Player";
+  const descriptor = primaryRole
+    ? `${primaryRole.role}${primaryRole.division != null ? ` · Division ${primaryRole.division}` : ""}`
+    : "Player";
   const description = `${user.name} — ${descriptor} · ${profile.tournaments_count ?? 0} tournaments on ${SITE_NAME}.`;
   const personId = `${url}#person`;
 

@@ -86,6 +86,28 @@ class PlayerAnomalyTests(TestCase):
 
         self.assertEqual([], flags)
 
+    def test_unranked_player_is_never_low_rank(self) -> None:
+        frame = pd.DataFrame(
+            {
+                "player_id": [1, 2, 3, 4],
+                "role": ["Damage"] * 4,
+                "rank": [1100, 1200, 1000, None],
+                "impact_score": [55.0, 50.0, 60.0, 95.0],
+                "local_zscore": [0.0, -0.1, 0.2, 1.8],
+                "local_percentile": [50.0, 45.0, 55.0, 90.0],
+                "kd": [1.0, 1.1, 1.0, 2.1],
+                "weapon_accuracy": [30.0, 31.0, 28.0, 45.0],
+                "final_blows_p10": [4.0, 4.5, 4.2, 8.0],
+            }
+        )
+
+        (smurf,) = anomalies.detect_smurfs(frame)
+
+        self.assertEqual(4, smurf["player_id"])
+        self.assertNotIn("low_rank", smurf["reasons"])
+        self.assertIsNone(smurf["evidence"]["rank"])
+        self.assertIsNotNone(smurf["evidence"]["rank_cutoff"])
+
     def test_smurf_flags_strong_cohort_outlier_regardless_of_rank(self) -> None:
         # Player 4 has the HIGHEST rank (fails the low-rank gate) but is far above
         # their role+division cohort (local_zscore 1.8) — must still be surfaced.

@@ -10,7 +10,7 @@ import { subRoleOf, type RoleRef } from "@/lib/roster/role-ref";
 export interface SortableRosterPlayer {
   id: number;
   role: RoleRef | null;
-  rank: number;
+  rank: number | null;
   is_substitution: boolean;
   related_player_id: number | null;
   relative_player?: number | null;
@@ -19,7 +19,7 @@ export interface SortableRosterPlayer {
 /** Minimal shape required for `sortTeamPlayers` / TournamentTeamTable rendering. */
 export interface TeamRosterPlayer extends SortableRosterPlayer {
   name: string;
-  division: number;
+  division: number | null;
   is_newcomer: boolean;
   is_newcomer_role: boolean;
   /** Owning user id — set on user-scoped rosters so a table can flag "you". */
@@ -54,6 +54,12 @@ export const getPlayerType = (player: PlayerRoleInfo) => {
   return "ㅤ";
 };
 
+/** Highest rank first; an unranked player sorts last. */
+const byRankDesc = (a: SortableRosterPlayer, b: SortableRosterPlayer): number => {
+  if (a.rank == null || b.rank == null) return a.rank == null ? (b.rank == null ? 0 : 1) : -1;
+  return b.rank - a.rank;
+};
+
 /**
  * The roster in reading order: each starter, then everyone who replaced them; starters ordered by the OWNER game's
  * declared role order (`ontology`), then by rank. Without a dictionary every role ranks equally, so the order is by
@@ -79,7 +85,7 @@ export const sortTeamPlayers = <P extends SortableRosterPlayer>(players: P[], on
 
   // Sort children at each node by rank descending
   for (const list of children.values()) {
-    list.sort((a, b) => b.rank - a.rank);
+    list.sort(byRankDesc);
   }
 
   // DFS: flatten each substitution chain (player, then their replacements)
@@ -99,7 +105,7 @@ export const sortTeamPlayers = <P extends SortableRosterPlayer>(players: P[], on
   roots.sort((a, b) => {
     const rp = roleRank(a.role) - roleRank(b.role);
     if (rp !== 0) return rp;
-    return b.rank - a.rank;
+    return byRankDesc(a, b);
   });
 
   // Flatten: each root followed by its substitution chain
