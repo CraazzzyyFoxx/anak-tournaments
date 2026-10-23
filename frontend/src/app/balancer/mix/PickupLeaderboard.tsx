@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 
+import { CARD_TITLE_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import { HandleLabel } from "@/components/HandleLabel";
 import { formatRelative } from "@/components/kit/format-time";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -247,7 +248,7 @@ export function PickupLeaderboard({
       <section aria-labelledby={`${id}-title`} className="w-full min-w-0">
       <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] px-4 py-3.5">
         <div className="min-w-0">
-          <h2 id={`${id}-title`} className="font-display text-heading font-semibold text-[color:var(--aqt-fg)]">
+          <h2 id={`${id}-title`} className={CARD_TITLE_CLASS}>
             {t("title")}
           </h2>
           <p className="text-caption text-[color:var(--aqt-fg-muted)]">
@@ -485,9 +486,9 @@ export function PickupRatingTable({
   return (
     <Card variant="flat" asChild>
       <section aria-labelledby={`${id}-title`} className="w-full min-w-0">
-      <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] px-4 py-4 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-3 border-b border-[color:var(--aqt-border)] px-4 py-3.5 md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
-          <h2 id={`${id}-title`} className="font-display text-heading font-semibold text-[color:var(--aqt-fg)]">
+          <h2 id={`${id}-title`} className={CARD_TITLE_CLASS}>
             {t("title")}
           </h2>
           <p className="text-caption text-[color:var(--aqt-fg-muted)]">

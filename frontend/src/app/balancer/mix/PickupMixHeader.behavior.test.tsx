@@ -315,6 +315,16 @@ describe("PickupMixHeader", () => {
     expect(onRename).toHaveBeenCalledWith("Friday scrim");
   });
 
+  it("names a one-lobby mix's stage beside its name, and leaves several lobbies to their cards", async () => {
+    const one = await mount(game({ lobbies: [lobbyRow(0, { state: "live", live_started_at: "2026-01-01T20:00:00Z" })] }));
+    expect(one.textContent).toContain("state.live");
+
+    const several = await mount(
+      game({ lobby_count: 2, lobbies: [lobbyRow(0, { state: "live" }), lobbyRow(1, { state: "ready" })] })
+    );
+    expect(several.textContent).not.toContain("state.");
+  });
+
   it("disables Add players until a mix has loaded", async () => {
     const scope = await mount(undefined);
 
@@ -388,13 +398,19 @@ describe("PickupMixHeader", () => {
   });
 });
 
-// R-HDR: everyone reads which hero bans the next Start opens; only a host changes them.
+// R-HDR: everyone reads which hero bans the next Start opens; only a host changes them, behind the Rules trigger.
+async function openRules(scope: ParentNode) {
+  await click(scope.querySelector('[aria-label^="rulesTrigger"]'));
+  return document;
+}
+
 describe("PickupMixHeader hero bans", () => {
   it("names the mix's ban preset to a viewer, with no control to change it", async () => {
     const scope = await mount(game({ hero_ban_preset: "hero_classic" }), { canWrite: false });
 
     expect(scope.textContent).toContain("hero_classic");
     expect(scope.querySelector('[role="combobox"]')).toBeNull();
+    expect(scope.querySelector('[aria-label^="rulesTrigger"]')).toBeNull();
   });
 
   it("tells a viewer a mix without a preset plays no bans", async () => {
@@ -403,9 +419,17 @@ describe("PickupMixHeader hero bans", () => {
     expect(scope.textContent).toContain("none");
   });
 
+  it("reads the rules on the host's trigger, the same words a viewer reads", async () => {
+    const host = await mount(game({ hero_ban_preset: "hero_classic", hero_fearless: true }));
+
+    expect(host.querySelector('[aria-label^="rulesTrigger"]')?.textContent).toContain(
+      "hero_classic · formationBalance · fearless"
+    );
+  });
+
   it("gives a host the select, on the mix's preset, offering only what a mix of its game may play", async () => {
-    const scope = await mount(game({ hero_ban_preset: "hero_anti_one_trick" }));
-    const select = scope.querySelector('[role="combobox"][aria-label="label"]');
+    const popover = await openRules(await mount(game({ hero_ban_preset: "hero_anti_one_trick" })));
+    const select = popover.querySelector('[role="combobox"][aria-label="label"]');
 
     expect(select?.textContent?.trim()).toBe("hero_anti_one_trick");
     await click(select);
@@ -416,7 +440,7 @@ describe("PickupMixHeader hero bans", () => {
     ]);
   });
 
-  it("gives a host the Fearless switch next to the preset, on what the mix saved", async () => {
+  it("gives a host the Fearless switch beside the preset, on what the mix saved", async () => {
     // The write answers with the saved mix (`usePickupMix`'s `applyGame`), which the screen hands back down.
     let saved = game({ hero_fearless: false });
     const scope = await mount(saved, {
@@ -424,7 +448,8 @@ describe("PickupMixHeader hero bans", () => {
         saved = game({ hero_fearless: fearless });
       }
     });
-    const fearless = () => scope.querySelector('[role="switch"][aria-label="fearless"]');
+    const popover = await openRules(scope);
+    const fearless = () => popover.querySelector('[role="switch"][aria-label="fearless"]');
     expect(fearless()?.getAttribute("aria-checked")).toBe("false");
 
     await click(fearless());

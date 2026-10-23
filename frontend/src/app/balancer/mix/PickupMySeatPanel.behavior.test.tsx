@@ -4,8 +4,8 @@
 //
 //  1. a blocker that only an account link can fix offers the link, because the
 //     player cannot discover "go link Battle.net" from a refusal alone;
-//  2. `can_edit_roles=false` shows the roles and edits nothing -- the host's
-//     mix is the host's, and a disabled editor must not be a lie;
+//  2. `can_edit_roles=false` prints the roles as one line and renders no
+//     editor -- the host's mix is the host's, and a disabled editor is a lie;
 //  3. each role edit writes at once -- the drag order and the flex flag, and
 //     nothing else: ranks are the host's book (`MIX_ORDER`), participation is
 //     the host's decision -- and a settled write puts the server's seat back;
@@ -43,7 +43,11 @@ vi.mock("next-intl", () => ({
       { has: () => false },
     ),
 }));
-vi.mock("@/components/PlayerRoleIcon", () => ({ default: () => null }));
+// A decorative icon sits beside the role's name; a bare one stands in for it, so it names the role code here.
+vi.mock("@/components/PlayerRoleIcon", () => ({
+  default: ({ role, decorative }: { role: string; decorative?: boolean }) =>
+    decorative ? null : <span role="img" aria-label={role} />,
+}));
 // Drag itself is not what this pins, and dnd-kit resolves its own React copy
 // under bun/node, so the sortable wrapper and its hook render inertly here.
 vi.mock("@/components/kit/SortableRows", () => ({
@@ -272,10 +276,11 @@ describe("PickupMySeatPanel blockers", () => {
 });
 
 describe("PickupMySeatPanel roles", () => {
-  it("edits nothing while the host keeps role editing to themselves", async () => {
+  it("prints the roles as one line, and edits nothing, while the host keeps role editing to themselves", async () => {
     const scope = await mount(
       state({
         self_role_edit: false,
+        seat: seat({ roles: ["damage", "tank"].map((role) => ({ dimension: "player_role", role })), is_flex: true }),
         policy: {
           can_join: false,
           can_leave: true,
@@ -288,13 +293,18 @@ describe("PickupMySeatPanel roles", () => {
       }),
     );
 
-    // The roles are still readable -- the mix is theirs to read either way.
-    expect(scope.textContent).toContain("Tank");
+    // The roles are still readable -- the mix is theirs to read either way: the on ones in priority order, each
+    // with its rank, then Full flex. Support is off, so it is not there at all.
+    expect([...scope.querySelectorAll('[role="img"]')].map((node) => node.getAttribute("aria-label"))).toEqual([
+      "damage",
+      "tank",
+    ]);
+    expect(scope.textContent).toMatch(/2700.*3300.*fullFlex/);
     expect(scope.textContent).toContain("blocker.role_edit_off");
+    // Nothing on them is a control, not even a disabled one.
+    expect(scope.querySelectorAll('[role="switch"]')).toHaveLength(0);
+    expect([...scope.querySelectorAll("button")].map((node) => node.textContent?.trim())).toEqual(["leave"]);
     expect(onSave).not.toHaveBeenCalled();
-    expect([...scope.querySelectorAll('[role="switch"]')].every((node) => node.hasAttribute("disabled"))).toBe(
-      true,
-    );
   });
 
   it("writes each edit as it is made: the role order and the flex flag", async () => {

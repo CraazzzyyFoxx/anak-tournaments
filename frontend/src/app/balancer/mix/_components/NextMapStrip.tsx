@@ -76,7 +76,7 @@ export function NextMapStrip({
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-3 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-3 py-2.5",
+        "flex flex-wrap items-center gap-3 border-b border-[color:var(--aqt-border)] px-4 py-3",
         capturing && nextMap == null && "hidden"
       )}
     >
@@ -92,7 +92,7 @@ export function NextMapStrip({
         <div className="flex flex-wrap items-baseline gap-x-2">
           <span
             className={cn(
-              "truncate font-display text-base font-bold tracking-[-0.01em]",
+              "truncate font-display text-ui font-bold",
               nextMap ? "text-[color:var(--aqt-fg)]" : "text-[color:var(--aqt-fg-dim)]"
             )}
           >
@@ -121,7 +121,7 @@ export function NextMapStrip({
           </FilterChipGroup>
           <Button
             type="button"
-            variant="outline"
+            variant="subtle"
             size="sm"
             disabled={saving || maps.length === 0}
             onClick={roll}
@@ -137,8 +137,9 @@ export function NextMapStrip({
             open={mapPickerOpen}
             onOpenChange={setMapPickerOpen}
             label={nextMap?.name ?? t("noMap")}
+            variant="surface"
             size="sm"
-            triggerClassName="w-[160px] rounded-lg border-[color:var(--aqt-border-2)] bg-black/15"
+            triggerClassName="w-40"
             searchPlaceholder={t("searchMaps")}
             emptyMessage={t("noMapsMatch")}
           >

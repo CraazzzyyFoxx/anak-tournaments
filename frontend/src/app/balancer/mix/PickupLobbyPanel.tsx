@@ -11,7 +11,6 @@ import {
 } from "@dnd-kit/core";
 import { AlertTriangle, Trash2, Wand2 } from "lucide-react";
 
-import { ICON_BUTTON_CLASS } from "@/components/balancer/balancer-page-helpers";
 import { CAPTION_CLASS, CARD_TITLE_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
@@ -159,16 +158,14 @@ export function PickupLobbyPanel({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
+                size="icon-sm"
                 className={cn(
-                  ICON_BUTTON_CLASS,
-                  "size-7 shrink-0",
                   pendingHintCount > 0 && "text-[color:var(--aqt-amber)] hover:text-[color:var(--aqt-amber)]",
                 )}
                 disabled={applyingHints || pendingHintCount === 0}
                 onClick={onApplyRotationHints}
               >
-                <Wand2 className="size-3.5" aria-hidden="true" />
+                <Wand2 aria-hidden="true" />
                 <span className="sr-only">{t("applyHints")}</span>
               </Button>
             </IconTooltip>
@@ -180,13 +177,12 @@ export function PickupLobbyPanel({
               <IconTooltip control label={t("emptyLobby")}>
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="icon"
-                  className={cn(ICON_BUTTON_CLASS, "size-7 shrink-0 hover:text-rose-200")}
+                  variant="ghost-destructive"
+                  size="icon-sm"
                   disabled={clearing}
                   onClick={() => setClearOpen(true)}
                 >
-                  <Trash2 className="size-3.5" aria-hidden="true" />
+                  <Trash2 aria-hidden="true" />
                   <span className="sr-only">{t("emptyLobby")}</span>
                 </Button>
               </IconTooltip>
@@ -225,26 +221,13 @@ export function PickupLobbyPanel({
                     "ml-auto text-caption font-semibold tabular-nums",
                     entry.short > 0
                       ? "text-[color:var(--aqt-amber)]"
-                      : "text-[color:var(--aqt-emerald)]",
+                      : "text-[color:var(--aqt-fg-muted)]",
                   )}
                 >
                   {entry.short > 0
-                    ? t("supplyShort", { supply: entry.supply, need: entry.need, short: entry.short })
+                    ? t("supplyShort", { supply: entry.supply, short: entry.short })
                     : t("supply", { supply: entry.supply, need: entry.need })}
                 </span>
-              </div>
-              <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-[color:var(--aqt-overlay-3)]">
-                <div
-                  className={cn(
-                    "h-full rounded-full",
-                    entry.short > 0
-                      ? "bg-[color:var(--aqt-amber)]"
-                      : "bg-[color:var(--aqt-emerald)]",
-                  )}
-                  style={{
-                    width: `${Math.min(100, Math.round((entry.supply / entry.need) * 100))}%`,
-                  }}
-                />
               </div>
             </div>
           ))}
@@ -252,61 +235,59 @@ export function PickupLobbyPanel({
       ) : null}
 
       {summary.blocking > 0 ? (
-        <p className="flex items-start gap-2 border-b border-[color:var(--aqt-border)] bg-[color:color-mix(in_srgb,var(--aqt-amber)_6%,transparent)] px-4 py-2.5 text-caption text-[color:var(--aqt-amber)]">
+        <p className="flex items-start gap-2 border-b border-[color:var(--aqt-border)] px-4 py-2.5 text-caption text-[color:var(--aqt-amber)]">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
           <span>{t("blocking", { count: summary.blocking })}</span>
         </p>
       ) : null}
 
-      <div className="p-2.5">
-        {!hasMix ? (
-          <PageStateCard
-            state="empty"
-            title={t("noMixTitle")}
-            description={t("noMixDescription")}
-            className="px-4 py-8"
-          />
-        ) : lineup.length === 0 ? (
-          <PageStateCard
-            state="empty"
-            title={t("emptyLineupTitle")}
-            description={canWrite ? t("emptyLineupHost") : t("emptyLineupViewer")}
-            className="px-4 py-8"
-          />
-        ) : (
-          <DndContext
-            sensors={sensors}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-            onDragCancel={() => setDraggingRow(null)}
-          >
-            <div className="flex flex-col gap-2.5" aria-label={t("listLabel")}>
-              {columns.map((column) => (
-                <LineupColumn
-                  key={column.bucket}
-                  bucket={column.bucket}
-                  title={column.title}
-                  hint={column.hint}
-                  emptyHint={column.emptyHint}
-                  rows={column.rows}
-                  lobbyCount={lobbyCount}
-                  rotationByMember={rotationByMember}
-                  owner={owner}
-                  canWrite={canWrite}
-                  savingPlayerId={savingPlayerId}
-                  onPatchPlayer={onPatchPlayer}
-                  onOpenPlayer={onOpenPlayer}
-                  onRemovePlayer={onRemovePlayer}
-                />
-              ))}
-            </div>
-            {/* Follows the pointer instead of the row teleporting under it --
-                without this dnd-kit still moves it correctly, it just looks
-                broken mid-drag (the dragged row snaps back until drop). */}
-            <DragOverlay>{draggingRow ? <LineupDragPreview row={draggingRow} owner={owner} /> : null}</DragOverlay>
-          </DndContext>
-        )}
-      </div>
+      {!hasMix ? (
+        <PageStateCard
+          state="empty"
+          title={t("noMixTitle")}
+          description={t("noMixDescription")}
+          className="border-0 bg-transparent px-4 py-10"
+        />
+      ) : lineup.length === 0 ? (
+        <PageStateCard
+          state="empty"
+          title={t("emptyLineupTitle")}
+          description={canWrite ? t("emptyLineupHost") : t("emptyLineupViewer")}
+          className="border-0 bg-transparent px-4 py-10"
+        />
+      ) : (
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => setDraggingRow(null)}
+        >
+          <div className="flex flex-col" aria-label={t("listLabel")}>
+            {columns.map((column) => (
+              <LineupColumn
+                key={column.bucket}
+                bucket={column.bucket}
+                title={column.title}
+                hint={column.hint}
+                emptyHint={column.emptyHint}
+                rows={column.rows}
+                lobbyCount={lobbyCount}
+                rotationByMember={rotationByMember}
+                owner={owner}
+                canWrite={canWrite}
+                savingPlayerId={savingPlayerId}
+                onPatchPlayer={onPatchPlayer}
+                onOpenPlayer={onOpenPlayer}
+                onRemovePlayer={onRemovePlayer}
+              />
+            ))}
+          </div>
+          {/* Follows the pointer instead of the row teleporting under it --
+              without this dnd-kit still moves it correctly, it just looks
+              broken mid-drag (the dragged row snaps back until drop). */}
+          <DragOverlay>{draggingRow ? <LineupDragPreview row={draggingRow} owner={owner} /> : null}</DragOverlay>
+        </DndContext>
+      )}
     </Card>
   );
 }

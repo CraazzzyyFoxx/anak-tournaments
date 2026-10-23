@@ -99,7 +99,6 @@ describe.each(["tools", "web"] as const)("the mix header's hero bans under the %
   it("names the mix's preset to a viewer", async () => {
     const scope = await mount(messages, false, "hero_classic");
 
-    expect(scope.textContent).toContain(en.pickBan.mixBans.label);
     expect(scope.textContent).toContain(en.pickBan.rules.preset.hero_classic);
   });
 
@@ -107,10 +106,17 @@ describe.each(["tools", "web"] as const)("the mix header's hero bans under the %
     expect((await mount(messages, false, null)).textContent).toContain(en.pickBan.mixBans.none);
   });
 
-  it("gives a host the select, labelled and on the preset's name", async () => {
+  it("gives a host the select behind Rules, labelled and on the preset's name", async () => {
     const scope = await mount(messages, true, "hero_classic");
-    const select = scope.querySelector(`[role="combobox"][aria-label="${en.pickBan.mixBans.label}"]`);
+    const trigger = scope.querySelector(`[aria-label^="${en.mixes.header.rulesTrigger.split("{")[0]}"]`);
+    await act(async () => {
+      trigger?.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      trigger?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await tick();
+    });
+    const select = document.querySelector(`[role="combobox"][aria-label="${en.pickBan.mixBans.label}"]`);
 
+    expect(document.querySelector(`label[for="mix-header-bans"]`)?.textContent).toBe(en.pickBan.mixBans.label);
     expect(select?.textContent?.trim()).toBe(en.pickBan.rules.preset.hero_classic);
   });
 });

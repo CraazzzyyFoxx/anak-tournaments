@@ -81,10 +81,10 @@ export function RolePriorityRail({
                 if (dimension != null) onPatch({ roles: roleRefsOf(toggleRole(order, role), dimension) });
               }}
               className={cn(
-                "rounded-lg transition-opacity",
+                "transition-opacity",
                 // A viewer still reads which roles are on: the dim marks "off", not "disabled".
                 isOn ? "opacity-100 disabled:opacity-100" : "opacity-30 disabled:opacity-30",
-                isOn && roleRank == null && "ring-1 ring-amber-400/70"
+                isOn && roleRank == null && "ring-1 ring-[color:color-mix(in_srgb,var(--aqt-amber)_70%,transparent)]"
               )}
             >
               <PlayerRoleIcon role={role} ontology={owner.ontology} size={19} decorative />

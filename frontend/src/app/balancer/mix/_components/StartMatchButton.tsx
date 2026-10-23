@@ -18,12 +18,15 @@ export function StartMatchButton({
   opener,
   starting,
   onStart,
+  variant = "default",
 }: Readonly<{
   awayNames: readonly string[];
   /** The two lineup team names and the index of the one that bans first; null without bans. */
   opener: { names: readonly [string, string]; index: number } | null;
   starting: boolean;
   onStart: (flipOpener: boolean) => void;
+  /** `accent` where it is one card's next step among several (the multi-lobby overview); `default` in the room. */
+  variant?: "default" | "accent";
 }>) {
   const t = useTranslations("mixes.room");
   const [open, setOpen] = useState(false);
@@ -33,6 +36,8 @@ export function StartMatchButton({
     <>
       <Button
         type="button"
+        variant={variant}
+        size="sm"
         disabled={starting}
         onClick={() => (opener != null || awayNames.length > 0 ? setOpen(true) : onStart(false))}
       >

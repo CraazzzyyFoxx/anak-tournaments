@@ -68,7 +68,6 @@ vi.mock("@/app/balancer/mix/PickupMySeatPanel", () => ({ PickupMySeatPanel: () =
 vi.mock("@/app/balancer/mix/PickupVoicePanel", () => ({ PickupVoicePanel: () => null }));
 vi.mock("@/app/balancer/mix/PickupMixHeader", () => ({ PickupMixHeader: () => null }));
 vi.mock("@/app/balancer/mix/PickupLobbyCards", () => ({ PickupLobbyCards: () => null }));
-vi.mock("@/app/balancer/mix/PickupLeaderboard", () => ({ PickupLeaderboard: () => null }));
 vi.mock("@/hooks/useCatalogEntities", () => ({ useCatalogEntities: () => ({ data: [] }) }));
 vi.mock("@/hooks/useDisciplineMetadata", () => ({ useDisciplineMetadata: () => ({ data: undefined }) }));
 vi.mock("@/hooks/useCurrentWorkspace", () => ({ useDivisionGrid: () => ({ tiers: [] }) }));

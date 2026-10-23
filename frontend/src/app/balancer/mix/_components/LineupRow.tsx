@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 
 import { useTranslations } from "next-intl";
 import { useDraggable } from "@dnd-kit/core";
-import { Armchair, GripVertical, RotateCw, SlidersHorizontal, X } from "lucide-react";
+import { Armchair, GripVertical, RotateCw, X } from "lucide-react";
 
 import { AWAY_CHIP_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
 import { HandleLabel } from "@/components/HandleLabel";
@@ -124,7 +124,7 @@ function LineupLobbyBadge({ currentLobby }: Readonly<{ currentLobby: number | nu
         data-testid="lineup-lobby"
         aria-hidden="true"
         className={cn(
-          "flex h-[18px] items-center justify-center rounded px-1 text-label font-extrabold uppercase tracking-label",
+          "flex items-center justify-center rounded px-1 text-label font-bold uppercase tracking-label",
           seated
             ? cn(teamAccent(currentLobby).bar, "text-[color:var(--aqt-bg)]")
             : "text-[color:var(--aqt-fg-faint)]"
@@ -142,8 +142,10 @@ function LineupLobbyBadge({ currentLobby }: Readonly<{ currentLobby: number | nu
  * The whole row is both the click target that opens the drawer and the drag
  * source that moves it between columns — a `PointerSensor` activation
  * distance (see `useDragSensors`) tells the two apart, the same pattern the
- * matchup board's seat rows already use. A click that started inside a
- * `RowAction` still belongs to that control, never the row's own onOpen.
+ * matchup board's seat rows already use. For a writer the name is also a real
+ * button onto the same drawer, the keyboard's way in. A click that started
+ * inside a `data-card-action` control still belongs to that control, never the
+ * row's own onOpen.
  */
 export function LineupRow({
   row,
@@ -191,7 +193,7 @@ export function LineupRow({
         "flex items-center gap-2 rounded-lg border border-transparent px-2 py-2 transition-colors",
         "hover:border-[color:var(--aqt-border-2)] hover:bg-[color:var(--aqt-overlay-2)]",
         canDrag && "touch-none active:cursor-grabbing",
-        issue && "border-amber-400/35",
+        issue && "border-[color:color-mix(in_srgb,var(--aqt-amber)_35%,transparent)]",
         draggable.isDragging ? "opacity-30" : dimmed && "opacity-60"
       )}
     >
@@ -203,11 +205,29 @@ export function LineupRow({
         aria-hidden="true"
       />
 
-      <HandleLabel
-        handle={label}
-        className="flex-1 text-caption font-semibold text-[color:var(--aqt-fg)]"
-        tagClassName="text-xs"
-      />
+      {canWrite ? (
+        <Button
+          type="button"
+          variant="link"
+          size="inline"
+          data-card-action
+          aria-label={t("advancedFor", { name: label })}
+          onClick={onOpen}
+          className="mr-auto min-w-0 justify-start"
+        >
+          <HandleLabel
+            handle={label}
+            className="text-caption font-semibold text-[color:var(--aqt-fg)]"
+            tagClassName="text-label"
+          />
+        </Button>
+      ) : (
+        <HandleLabel
+          handle={label}
+          className="flex-1 text-caption font-semibold text-[color:var(--aqt-fg)]"
+          tagClassName="text-label"
+        />
+      )}
 
       {row.away ? <span className={AWAY_CHIP_CLASS}>{tRoom("away")}</span> : null}
       {lobbyCount > 1 ? <LineupLobbyBadge currentLobby={row.current_lobby} /> : null}
@@ -239,20 +259,6 @@ export function LineupRow({
         </span>
       </div>
 
-      <IconTooltip control label={t("advanced")} className="shrink-0">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          disabled={!canWrite}
-          onClick={onOpen}
-          className="text-[color:var(--aqt-fg-faint)]"
-        >
-          <SlidersHorizontal aria-hidden="true" />
-          <span className="sr-only">{t("advancedFor", { name: label })}</span>
-        </Button>
-      </IconTooltip>
-
       {canWrite ? (
         <RowAction>
           <IconTooltip control label={t("remove")}>
@@ -275,7 +281,7 @@ export function LineupDragPreview({ row, owner }: Readonly<{ row: CustomGamePlay
   return (
     <Card
       variant="flat"
-      className="flex w-[280px] cursor-grabbing items-center gap-2 rounded-lg border-[color:var(--aqt-teal)] px-2.5 py-2 shadow-lg"
+      className="flex cursor-grabbing items-center gap-2 rounded-lg border-[color:var(--aqt-teal)] px-2.5 py-2"
     >
       <GripVertical
         className="size-3.5 shrink-0 text-[color:var(--aqt-fg-faint)]"
@@ -284,7 +290,7 @@ export function LineupDragPreview({ row, owner }: Readonly<{ row: CustomGamePlay
       <HandleLabel
         handle={label}
         className="flex-1 text-caption font-semibold text-[color:var(--aqt-fg)]"
-        tagClassName="text-xs"
+        tagClassName="text-label"
       />
       <span className="shrink-0 text-caption font-semibold tabular-nums text-[color:var(--aqt-fg)]">
         {rank ?? "\u2014"}

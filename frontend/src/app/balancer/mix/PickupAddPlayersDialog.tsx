@@ -111,7 +111,7 @@ export function PickupAddPlayersDialog({
           className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-[color:var(--aqt-teal)]"
         />
         <header className="flex shrink-0 items-baseline gap-3 border-b border-[color:var(--aqt-border)] bg-[color:var(--aqt-bg-2)] px-5 py-3.5 pr-12">
-          <DialogTitle className={cn(CARD_TITLE_CLASS, "tracking-label")}>{tMixes("start.addPlayers")}</DialogTitle>
+          <DialogTitle className={CARD_TITLE_CLASS}>{tMixes("start.addPlayers")}</DialogTitle>
           {/* A div, not the default <p>: the loading skeleton is a block element. */}
           <DialogDescription asChild className={cn(CAPTION_CLASS, "min-w-0 truncate")}>
             <div>

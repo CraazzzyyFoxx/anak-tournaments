@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 
 import { History, Undo2 } from "lucide-react";
 
-import { lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
+import { CARD_TITLE_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
 import CatalogEntityImage from "@/components/catalog/CatalogEntityImage";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { formatRelative } from "@/components/kit/format-time";
@@ -28,7 +28,9 @@ export function MatchHistoryList({
   canWrite,
   undoingMatchId,
   onUndoMatch,
-  discipline
+  discipline,
+  standalone = false,
+  className
 }: Readonly<{
   matches: CustomGameMatch[];
   lobbyCount: number;
@@ -37,6 +39,10 @@ export function MatchHistoryList({
   onUndoMatch?: (matchId: number) => void;
   /** The mix's game, whose heroes name the bans. */
   discipline: string | null;
+  /** Its own card (the several-lobby overview): a card title. Default: an eyebrow, a section under the matchup. */
+  standalone?: boolean;
+  /** The caller separates it from what comes before (a hairline), since only the caller knows whether anything does. */
+  className?: string;
 }>) {
   const t = useTranslations("mixes.matchHistory");
   // The heroes are read only once a round has bans or picks to show (spec §8.4, §11.6).
@@ -60,12 +66,16 @@ export function MatchHistoryList({
   const showLobby = lobbyCount > 1 || [...seenLobbies].some((index) => index > 0);
 
   return (
-    <div className="flex flex-col gap-2 border-t border-[color:var(--aqt-border)] pt-3">
-      <Eyebrow className="flex items-center gap-1.5">
-        <History className="size-3.5" aria-hidden="true" />
-        {t("title")}
-      </Eyebrow>
-      <ul className="flex flex-col gap-1.5">
+    <div className={cn("flex flex-col gap-2", className)}>
+      {standalone ? (
+        <h2 className={CARD_TITLE_CLASS}>{t("title")}</h2>
+      ) : (
+        <Eyebrow className="flex items-center gap-1.5">
+          <History className="size-3.5" aria-hidden="true" />
+          {t("title")}
+        </Eyebrow>
+      )}
+      <ul className="flex flex-col divide-y divide-[color:var(--aqt-border)]">
         {matches.map((match) => (
           <MatchHistoryRow
             key={match.id}
@@ -110,7 +120,7 @@ function MatchHistoryRow({
   const [undoOpen, setUndoOpen] = useState(false);
 
   return (
-    <li className="flex items-center gap-3 rounded-lg border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-2.5 py-2">
+    <li className="flex items-center gap-3 py-2">
       {showLobby ? (
         <IconTooltip label={t("tab", { letter })} className="shrink-0">
           <span
@@ -170,12 +180,12 @@ function MatchHistoryRow({
             <Button
               type="button"
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label={tHistory("undo")}
               disabled={undoing}
               onClick={() => setUndoOpen(true)}
             >
-              {undoing ? <Spinner /> : <Undo2 className="size-4" aria-hidden="true" />}
+              {undoing ? <Spinner /> : <Undo2 aria-hidden="true" />}
             </Button>
           </IconTooltip>
           <ConfirmDialog
@@ -247,7 +257,7 @@ export function HeroPickList({
       {picks.map((pick) => {
         const hero = heroById.get(pick.item_id);
         return (
-          <li key={`${pick.item_id}-${pick.name}`} className="flex items-center gap-1 text-xs">
+          <li key={`${pick.item_id}-${pick.name}`} className="flex items-center gap-1 text-label">
             <StatusDot className={cn("inline-block", teamAccent(pick.slot - 1).bar)} />
             <CatalogEntityImage
               entity={{ name: hero?.name ?? `#${pick.item_id}`, image_path: hero?.image_path ?? null }}

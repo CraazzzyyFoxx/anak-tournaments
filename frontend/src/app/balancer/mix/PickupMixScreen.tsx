@@ -1,21 +1,19 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
-import { ChevronLeft } from "lucide-react";
 
 import { PickupGettingStarted } from "@/app/balancer/mix/PickupGettingStarted";
-import { PickupLeaderboard } from "@/app/balancer/mix/PickupLeaderboard";
 import { PickupLobbyCards } from "@/app/balancer/mix/PickupLobbyCards";
 import { PickupLobbyPanel } from "@/app/balancer/mix/PickupLobbyPanel";
 import { PickupMixHeader } from "@/app/balancer/mix/PickupMixHeader";
 import { PickupMySeatPanel } from "@/app/balancer/mix/PickupMySeatPanel";
 import { PickupTeamsPanel } from "@/app/balancer/mix/PickupTeamsPanel";
 import { PickupVoicePanel } from "@/app/balancer/mix/PickupVoicePanel";
+import { LobbyStage } from "@/app/balancer/mix/_components/LobbyStage";
 import { MatchHistoryList } from "@/app/balancer/mix/_components/MatchHistoryList";
 import { CAPTION_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
 import {
@@ -25,25 +23,19 @@ import {
   playerLabel,
   summarizeLineup,
 } from "@/app/balancer/mix/pickup-lineup";
-import {
-  LEADERBOARD_MIN_GAMES,
-  mergeMixStats,
-  sinceFor,
-  type StatsPeriodKey,
-} from "@/app/balancer/mix/pickup-stats";
 import { usePickupMix } from "@/app/balancer/mix/usePickupMix";
 import { RoomChat } from "@/components/chat/RoomChat";
+import { BackLink } from "@/components/site/BackLink";
 import { Card } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
-import { slotCodeOrder, type RoleOntology } from "@/lib/roster/ontology";
+import { slotCodeOrder } from "@/lib/roster/ontology";
 import { encounterChatRoom } from "@/lib/realtime/chat-rooms";
 import { cn } from "@/lib/utils";
 import { customGameKeys, customGameService, type CustomGame } from "@/services/custom-game.service";
@@ -116,38 +108,6 @@ export function PickupMixScreen({ roomLobby }: Readonly<{ roomLobby: number | nu
     );
   }
   return <PickupMixDetail key={entityQuery.data.id} initialGame={entityQuery.data} roomLobby={roomLobby} />;
-}
-
-/** The scoreboard beside a mix: this community's players in this game, with the period switch of the mix list. */
-function MixLeaderboardRail({
-  workspaceId,
-  discipline,
-  ontology,
-}: Readonly<{ workspaceId: number; discipline: string; ontology: RoleOntology | null }>) {
-  const [period, setPeriod] = useState<StatsPeriodKey>("all");
-  // Pinned to the period: a `since` that drifted with the clock would be a new query key every render.
-  const since = useMemo(() => sinceFor(period, new Date()), [period]);
-  const viewerIds = useAuthProfile().user?.linkedPlayers.map((player) => player.playerId) ?? [];
-  const query = useQuery({
-    queryKey: customGameKeys.stats(workspaceId, since, discipline),
-    queryFn: ({ signal }) => customGameService.stats(workspaceId, since, discipline, { signal }),
-    staleTime: 60_000,
-  });
-  const rated = query.data ? mergeMixStats([{ workspaceId, stats: query.data }]) : [];
-  return (
-    <PickupLeaderboard
-      ranked={rated.filter((player) => player.games >= LEADERBOARD_MIN_GAMES)}
-      viewer={rated.find((player) => player.playerId !== null && viewerIds.includes(player.playerId)) ?? null}
-      loading={query.isLoading}
-      error={query.isError}
-      onRetry={() => void query.refetch()}
-      period={period}
-      onPeriodChange={setPeriod}
-      allCommunities={false}
-      ontology={ontology}
-      fullHref="/balancer/mix?view=rating"
-    />
-  );
 }
 
 function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: CustomGame; roomLobby: number | null }>) {
@@ -367,14 +327,17 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
         postingToDiscord={postToDiscord.isPending}
         onPostToDiscord={(idx) => postToDiscord.mutate({ lobbyIndex: shownLobby, variantIndex: idx })}
         emptyState={
-          canWrite && game != null && game.matches_count === 0 ? (
-            <PickupGettingStarted
-              game={game}
-              onOpenPool={() => setIsPoolOpen(true)}
-              onPostSignup={(selfSignup) => postSignup.mutate(selfSignup)}
-              posting={postSignup.isPending}
-            />
-          ) : undefined
+          canWrite && game != null && game.matches_count === 0
+            ? (balanceAction) => (
+                <PickupGettingStarted
+                  game={game}
+                  onOpenPool={() => setIsPoolOpen(true)}
+                  onPostSignup={(selfSignup) => postSignup.mutate(selfSignup)}
+                  posting={postSignup.isPending}
+                  balanceAction={balanceAction}
+                />
+              )
+            : undefined
         }
       />
     );
@@ -520,16 +483,11 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
       <>
         <div className="mx-auto flex w-full min-w-0 max-w-[1180px] flex-col gap-5">
           <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href={`/balancer/mix/${pickedGameId}`}
-              className="inline-flex items-center gap-1 text-caption text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
-            >
-              <ChevronLeft className="size-3.5" aria-hidden="true" />
-              {t("overview")}
-            </Link>
-            <h1 className="font-display text-lg font-bold text-[color:var(--aqt-fg)]">
+            <BackLink href={`/balancer/mix/${pickedGameId}`}>{t("overview")}</BackLink>
+            <h1 className="font-display text-heading font-bold text-[color:var(--aqt-fg)]">
               {`${game?.name ?? initialGame.name} · ${tLobbies("tab", { letter: lobbyLetter(roomLobby) })}`}
             </h1>
+            {lobby?.state != null ? <LobbyStage state={lobby.state} startedAt={lobby.live_started_at} /> : null}
             <span className={cn(CAPTION_CLASS, "ml-auto")}>{t("waitingCount", { count: waitingCount })}</span>
           </div>
           {teamsPanel}
@@ -605,7 +563,7 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
                   onSplitPool={() => splitPool.mutate()}
                 />
                 {matches.length > 0 ? (
-                  <Card variant="flat" className="px-4 py-3">
+                  <Card variant="flat" className="px-4 py-3.5">
                     <MatchHistoryList
                       matches={matches}
                       lobbyCount={lobbyCount}
@@ -613,6 +571,7 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
                       undoingMatchId={undoMatch.isPending ? (undoMatch.variables ?? null) : null}
                       onUndoMatch={(matchId) => undoMatch.mutate(matchId)}
                       discipline={discipline}
+                      standalone
                     />
                   </Card>
                 ) : null}
@@ -620,9 +579,6 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
             ) : null}
             {voicePanel}
             {mySeatPanel}
-            {game != null ? (
-              <MixLeaderboardRail workspaceId={workspaceId} discipline={game.discipline} ontology={owner.ontology} />
-            ) : null}
           </div>
         </div>
       </div>

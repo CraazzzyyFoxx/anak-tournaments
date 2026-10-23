@@ -41,7 +41,6 @@ import { MixBanSummary } from "./_components/MixBanSummary";
 import { MatchHistoryList } from "./_components/MatchHistoryList";
 import { MixDraftPanel } from "./_components/MixDraftPanel";
 import { NextMapStrip } from "./_components/NextMapStrip";
-import { RoomStepper } from "./_components/RoomStepper";
 import { StartMatchButton } from "./_components/StartMatchButton";
 import { VariantView } from "./_components/VariantView";
 import { slotCodeOrder } from "@/lib/roster/ontology";
@@ -53,7 +52,7 @@ import {
 } from "./pickup-lineup";
 
 /** The demoted share/close tools: quiet glyphs that only light up on hover. */
-const TOOL_ICON_CLASS = "size-9 text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]";
+const TOOL_ICON_CLASS = "text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]";
 
 type PickupTeamsPanelProps = {
   canWrite: boolean;
@@ -132,8 +131,12 @@ type PickupTeamsPanelProps = {
   postingToDiscord?: boolean;
   /** Omitted -- no Post to Discord button, matching a page that offers no post. */
   onPostToDiscord?: (variantIndex: number) => void;
-  /** Replaces the "No teams yet" card while this lobby has no balance. */
-  emptyState?: ReactNode;
+  /**
+   * The host's checklist in place of the "No teams yet" state while this lobby has no balance. It is handed this
+   * lobby's Balance (or Draft) control, with its confirms -- `null` while the lineup cannot be re-formed -- and places
+   * it in its own step; the footer then leaves it out, so the control exists once.
+   */
+  emptyState?: (balanceAction: ReactNode) => ReactNode;
 };
 
 /**
@@ -239,6 +242,105 @@ export function PickupTeamsPanel({
     .filter((seat) => awayUuids.has(seat.uuid))
     .map((seat) => seat.name);
 
+  // A lobby with no teams yet: Balance (or Draft) is the host's next step, so it is the solid button. Once teams
+  // exist it is a re-balance and Start match takes the solid slot.
+  const balanceVariant = variant == null ? "default" : "subtle";
+  // The one Balance (or Draft) control, with its confirms: the footer's, or the checklist's last step while that shows.
+  const balanceControl = reshape ? (
+    <>
+      {game?.team_formation === "draft" ? (
+        <>
+          <Button
+            type="button"
+            variant={balanceVariant}
+            size="sm"
+            disabled={drafting || activeCount === 0}
+            onClick={() => (lineupAtRisk ? setDraftOpen(true) : onDraft())}
+          >
+            {drafting ? (
+              <Spinner className="mr-1.5 size-3.5" />
+            ) : (
+              <Users className="mr-1.5 size-3.5" aria-hidden="true" />
+            )}
+            {tRoom("draft")}
+          </Button>
+          <ConfirmDialog
+            open={draftOpen}
+            onOpenChange={setDraftOpen}
+            intent={{
+              title: tRoom("draftReformTitle"),
+              description: tRoom("draftReformDescription"),
+              confirmLabel: tRoom("draftReformConfirm"),
+              tone: "danger"
+            }}
+            pending={drafting}
+            onConfirm={() => {
+              setDraftOpen(false);
+              onDraft();
+            }}
+          />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="ghost" size="icon" aria-label={tRoom("moreActions")}>
+                <MoreHorizontal className="size-4" aria-hidden="true" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem
+                disabled={balancing || activeCount === 0}
+                onSelect={() => (lineupAtRisk ? setBalanceOpen(true) : onBalance())}
+              >
+                {tRoom("buildWithBalancer")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      ) : (
+        <Button
+          type="button"
+          variant={balanceVariant}
+          size="sm"
+          disabled={balancing || activeCount === 0}
+          onClick={() => (lineupAtRisk ? setBalanceOpen(true) : onBalance())}
+          title={
+            owner.lobbySize != null && activeCount > owner.lobbySize
+              ? tTeams("extraBenched", { count: activeCount - owner.lobbySize })
+              : undefined
+          }
+        >
+          {balancing ? (
+            <Spinner className="mr-1.5 size-3.5" />
+          ) : (
+            <Shuffle className="mr-1.5 size-3.5" aria-hidden="true" />
+          )}
+          {tTeams("balance")}
+        </Button>
+      )}
+      <ConfirmDialog
+        open={balanceOpen}
+        onOpenChange={setBalanceOpen}
+        intent={{
+          title: t("rebalanceTitle"),
+          description: t("rebalanceDescription"),
+          confirmLabel: t("rebalanceConfirm"),
+          tone: "danger"
+        }}
+        pending={balancing}
+        onConfirm={() => {
+          setBalanceOpen(false);
+          onBalance();
+        }}
+      />
+      {activeCount === 0 ? <p className={CAPTION_CLASS}>{tTeams("needPlayer")}</p> : null}
+    </>
+  ) : null;
+  const checklist = variant == null ? (emptyState?.(balanceControl) ?? null) : null;
+  const showStart = !onFloor && variant != null && canWrite && state === "ready";
+  const balanceInFooter = balanceControl != null && checklist == null;
+  const showPager = reshape && variants.length > 1;
+  const toolsRow = balanceInFooter || showPager || variant != null;
+  const hasFooter = onFloor || showStart || toolsRow || matches.length > 0;
+
   return (
     // Width-capped by the caller now, alongside the mix header that sits
     // above this block: the matchup stops gaining anything past ~1180px -- a
@@ -247,14 +349,6 @@ export function PickupTeamsPanel({
     // rosters across an arm's length of desk, so reading "who is on my team"
     // became a head turn.
     <div className="flex w-full min-w-0 flex-col gap-3.5">
-      {game && lobby ? (
-        <RoomStepper
-          state={state}
-          startedAt={lobby.live_started_at ?? null}
-          bans={game.hero_ban_preset != null || pregame}
-          draft={game.team_formation === "draft" || drafts}
-        />
-      ) : null}
       {drafts && game && lobby?.draft_session_id != null ? (
         <MixDraftPanel
           sessionId={lobby.draft_session_id}
@@ -276,81 +370,318 @@ export function PickupTeamsPanel({
           onAddPlayer={onAddDraftPlayer}
         />
       ) : null}
-      {drafts ? null : (
-        <div className="flex flex-col gap-3.5">
-          {gamesError ? (
-            <Card variant="flat" asChild>
-              <PageStateCard
-                state="error"
-                title={tMixes("list.errorTitle")}
-                description={tMixes("list.errorDescription")}
-                actionLabel={tCommon("retry")}
-                onAction={onRetryGames}
-                className="px-4 py-16"
+      {drafts ? null : gamesError ? (
+        <Card variant="flat" asChild>
+          <PageStateCard
+            state="error"
+            title={tMixes("list.errorTitle")}
+            description={tMixes("list.errorDescription")}
+            actionLabel={tCommon("retry")}
+            onAction={onRetryGames}
+            className="px-4 py-16"
+          />
+        </Card>
+      ) : gamesLoading || gameLoading ? (
+        <Skeleton className="h-64 w-full rounded-xl" />
+      ) : !hasMix ? (
+        <Card variant="flat" asChild>
+          <PageStateCard
+            state="empty"
+            title={tMixes("history.emptyTitle")}
+            description={canWrite ? tTeams("noMixesHost") : tTeams("noMixesViewer")}
+            className="px-4 py-16"
+          />
+        </Card>
+      ) : (
+        // The lobby card: the next map and the teams on top, the writes that act
+        // on them in a footer under one hairline, in the order a host uses them --
+        // the result row first, aligned under the two team columns, then the
+        // tools (balance and paging on the left, the rare share/close actions
+        // demoted to icons on the right) and the history the results write into.
+        <Card variant="flat" className="overflow-hidden">
+          {/* The next map sits inside the captured block on purpose: the shared
+              screenshot answers "who is on my team" and "what are we playing"
+              together, which is exactly what a lobby asks in one breath. The
+              footer stays outside it -- a screenshot of its own share button is
+              noise -- and the fill keeps the copied image opaque. */}
+          <div ref={captureRef} data-testid="teams-capture" className="bg-[color:var(--aqt-card)]">
+            {game ? (
+              <NextMapStrip
+                nextMapId={lobby?.next_map_id ?? null}
+                maps={maps}
+                matches={mixMatches}
+                canWrite={reshape}
+                saving={settingNextMap}
+                capturing={capturing}
+                onNextMapChange={onNextMapChange}
               />
-            </Card>
-          ) : gamesLoading || gameLoading ? (
-            <Skeleton className="h-64 w-full rounded-xl" />
-          ) : !hasMix ? (
-            <Card variant="flat" asChild>
-              <PageStateCard
-                state="empty"
-                title={tMixes("history.emptyTitle")}
-                description={canWrite ? tTeams("noMixesHost") : tTeams("noMixesViewer")}
-                className="px-4 py-16"
+            ) : null}
+            {variant == null ? (
+              (checklist ?? (
+                <PageStateCard
+                  state="empty"
+                  title={tTeams("noTeamsTitle")}
+                  description={canWrite ? tTeams("noTeamsHost") : tTeams("noTeamsViewer")}
+                  className="rounded-none border-0 px-4 py-16"
+                />
+              ))
+            ) : (
+              <VariantView
+                variant={variant}
+                owner={owner}
+                canWrite={canWrite}
+                capturing={capturing}
+                onRenameTeam={
+                  onRenameTeam &&
+                  ((teamIndex, name) => onRenameTeam(lobbyIndex * 2 + teamIndex, name))
+                }
+                onSwapSeats={
+                  reshape && onSwapSeats
+                    ? (firstUuid, secondUuid) => onSwapSeats(index, firstUuid, secondUuid)
+                    : undefined
+                }
+                onMakeCaptain={
+                  reshape && onMakeCaptain ? (uuid) => onMakeCaptain(Number(uuid)) : undefined
+                }
+                awayUuids={awayUuids}
               />
-            </Card>
-          ) : (
-            // The next map sits inside the captured block on purpose: the shared
-            // screenshot answers "who is on my team" and "what are we playing"
-            // together, which is exactly what a lobby asks in one breath.
-            <div ref={captureRef} data-testid="teams-capture" className="flex flex-col gap-3.5">
-              {game ? (
-                <NextMapStrip
-                  nextMapId={lobby?.next_map_id ?? null}
-                  maps={maps}
-                  matches={mixMatches}
-                  canWrite={reshape}
-                  saving={settingNextMap}
-                  capturing={capturing}
-                  onNextMapChange={onNextMapChange}
+            )}
+          </div>
+
+          {hasFooter ? (
+            <div className="flex flex-col gap-3 border-t border-[color:var(--aqt-border)] px-4 py-3">
+              {onFloor ? (
+                <>
+                  {live && variant && canWrite ? (
+                    <PickupResultControls
+                      teamCount={variant.teams.length}
+                      teamNames={variant.teams.map((team) => team.name)}
+                      saving={recordingOutcome}
+                      pointsPerWin={pointsPerWin}
+                      onRecord={(recordedOutcome) =>
+                        onRecordOutcome({ outcome: recordedOutcome, lobbyIndex })
+                      }
+                    />
+                  ) : null}
+                  {/* Every viewer hears why the teams stopped moving; only a host can end the match. */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className={CAPTION_CLASS}>{tRoom("frozen")}</p>
+                    {canWrite ? (
+                      <>
+                        <Button
+                          type="button"
+                          variant="subtle"
+                          size="sm"
+                          className="ml-auto"
+                          disabled={cancellingMatch}
+                          onClick={() => setCancelOpen(true)}
+                        >
+                          {cancellingMatch ? (
+                            <Spinner className="mr-1.5 size-3.5" />
+                          ) : (
+                            <CircleX className="mr-1.5 size-3.5" aria-hidden="true" />
+                          )}
+                          {tRoom("cancelMatch")}
+                        </Button>
+                        <ConfirmDialog
+                          open={cancelOpen}
+                          onOpenChange={setCancelOpen}
+                          intent={{
+                            title: tRoom("cancelTitle"),
+                            description: tRoom("cancelDescription"),
+                            confirmLabel: tRoom("cancelConfirm"),
+                            tone: "danger"
+                          }}
+                          pending={cancellingMatch}
+                          onConfirm={() => {
+                            setCancelOpen(false);
+                            onCancelMatch();
+                          }}
+                        />
+                      </>
+                    ) : null}
+                  </div>
+                </>
+              ) : showStart ? (
+                <StartMatchButton
+                  awayNames={awayNames}
+                  opener={
+                    lobby?.opener_index != null
+                      ? {
+                          names: [
+                            variant?.teams[0]?.name ?? "Team 1",
+                            variant?.teams[1]?.name ?? "Team 2"
+                          ],
+                          index: lobby.opener_index
+                        }
+                      : null
+                  }
+                  starting={startingMatch}
+                  onStart={onStartMatch}
                 />
               ) : null}
-              {variant == null ? (
-                (emptyState ?? (
-                  <Card variant="flat" asChild>
-                    <PageStateCard
-                      state="empty"
-                      title={tTeams("noTeamsTitle")}
-                      description={canWrite ? tTeams("noTeamsHost") : tTeams("noTeamsViewer")}
-                      className="px-4 py-16"
-                    />
-                  </Card>
-                ))
-              ) : (
-                <VariantView
-                  variant={variant}
-                  owner={owner}
+
+              {toolsRow ? (
+                <div
+                  className={cn(
+                    "flex flex-wrap items-center gap-2",
+                    (onFloor || showStart) && "border-t border-[color:var(--aqt-border)] pt-3"
+                  )}
+                >
+                  {balanceInFooter ? balanceControl : null}
+
+                  {showPager ? (
+                    <div className="flex items-center gap-0.5">
+                      <IconTooltip control label={tTeams("previousOption")}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          disabled={index === 0}
+                          onClick={() => onVariantIndexChange(index - 1)}
+                        >
+                          <ChevronLeft aria-hidden="true" />
+                          <span className="sr-only">{tTeams("previousOption")}</span>
+                        </Button>
+                      </IconTooltip>
+                      <span
+                        role="status"
+                        aria-live="polite"
+                        className="min-w-14 px-1 text-center text-caption font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]"
+                      >
+                        {`${index + 1} / ${variants.length}`}
+                      </span>
+                      <IconTooltip control label={tTeams("nextOption")}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          disabled={index >= variants.length - 1}
+                          onClick={() => onVariantIndexChange(index + 1)}
+                        >
+                          <ChevronRight aria-hidden="true" />
+                          <span className="sr-only">{tTeams("nextOption")}</span>
+                        </Button>
+                      </IconTooltip>
+                    </div>
+                  ) : null}
+
+                  {variant ? (
+                    // Icon-only: these are recognisable glyphs and each is used once a
+                    // night at most, so their labels were spending a third of the row
+                    // on words nobody reads twice. The name lives in `aria-label` and
+                    // the tooltip.
+                    <div className="ml-auto flex items-center gap-1">
+                      <IconTooltip control label={tTeams("copyImage")} hint={tTeams("copyImageHint")}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className={TOOL_ICON_CLASS}
+                          disabled={capturing}
+                          aria-label={tTeams("copyImage")}
+                          onClick={() => void capture()}
+                        >
+                          {capturing ? <Spinner /> : <Copy className="size-4" aria-hidden="true" />}
+                        </Button>
+                      </IconTooltip>
+                      <IconTooltip control label={tTeams("copyHandles")} hint={tTeams("copyHandlesHint")}>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className={TOOL_ICON_CLASS}
+                          aria-label={tTeams("copyHandles")}
+                          onClick={onCopyHandles}
+                        >
+                          <ClipboardCopy className="size-4" aria-hidden="true" />
+                        </Button>
+                      </IconTooltip>
+                      {/* The workspace's channel is the only target a mix has; without
+                        one there is nowhere to post, so the button stays off. */}
+                      {canWrite && onPostToDiscord && game?.settings.workspace_discord_channel_id ? (
+                        <IconTooltip control label={tTeams("post")} hint={tTeams("postHint")}>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className={TOOL_ICON_CLASS}
+                            disabled={postingToDiscord}
+                            aria-label={tTeams("post")}
+                            onClick={() => onPostToDiscord(index)}
+                          >
+                            {postingToDiscord ? (
+                              <Spinner />
+                            ) : (
+                              <Send className="size-4" aria-hidden="true" />
+                            )}
+                          </Button>
+                        </IconTooltip>
+                      ) : null}
+                      {canWrite ? (
+                        <>
+                          <span
+                            aria-hidden="true"
+                            className="mx-1 h-5 w-px bg-[color:var(--aqt-border)]"
+                          />
+                          {/* Once a night, irreversible from here: an icon that only
+                            turns red on hover, behind the same confirm as before,
+                            instead of the loudest pill in the row. */}
+                          <IconTooltip control label={tTeams("close")} hint={tTeams("closeHint")}>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className={cn(TOOL_ICON_CLASS, "hover:text-[color:var(--aqt-rose-text)]")}
+                              disabled={closingMix}
+                              aria-label={tTeams("close")}
+                              onClick={() => setCloseOpen(true)}
+                            >
+                              {closingMix ? (
+                                <Spinner />
+                              ) : (
+                                <Archive className="size-4" aria-hidden="true" />
+                              )}
+                            </Button>
+                          </IconTooltip>
+                          <ConfirmDialog
+                            open={closeOpen}
+                            onOpenChange={setCloseOpen}
+                            intent={{
+                              title: tTeams("closeTitle"),
+                              description: tTeams("closeDescription"),
+                              confirmLabel: tTeams("closeConfirm"),
+                              tone: "danger"
+                            }}
+                            pending={closingMix}
+                            onConfirm={() => {
+                              setCloseOpen(false);
+                              onCloseMix();
+                            }}
+                          />
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {matches.length > 0 ? (
+                <MatchHistoryList
+                  matches={matches}
+                  lobbyCount={lobbyCount}
                   canWrite={canWrite}
-                  capturing={capturing}
-                  onRenameTeam={
-                    onRenameTeam &&
-                    ((teamIndex, name) => onRenameTeam(lobbyIndex * 2 + teamIndex, name))
-                  }
-                  onSwapSeats={
-                    reshape && onSwapSeats
-                      ? (firstUuid, secondUuid) => onSwapSeats(index, firstUuid, secondUuid)
-                      : undefined
-                  }
-                  onMakeCaptain={
-                    reshape && onMakeCaptain ? (uuid) => onMakeCaptain(Number(uuid)) : undefined
-                  }
-                  awayUuids={awayUuids}
+                  undoingMatchId={undoingMatchId}
+                  onUndoMatch={onUndoMatch}
+                  discipline={game?.discipline ?? null}
+                  className={cn(
+                    (onFloor || showStart || toolsRow) && "border-t border-[color:var(--aqt-border)] pt-3"
+                  )}
                 />
-              )}
+              ) : null}
             </div>
-          )}
-        </div>
+          ) : null}
+        </Card>
       )}
       {pregame && game && lobby?.live_encounter_id != null ? (
         <MixBanBoard
@@ -370,332 +701,6 @@ export function PickupTeamsPanel({
           seats={lobby.live_seats ?? []}
         />
       ) : null}
-
-      {/* One card under the matchup, in the order a host uses it: the result
-          row first, aligned under the two team columns like their footer (it
-          cannot live inside the captured card without leaving a hole in the
-          screenshot), then the tools -- balance and paging on the left, the
-          rare share/close actions demoted to icons on the right -- and the
-          history the results write into. */}
-      {drafts ? null : (
-        <Card variant="flat" className="flex flex-col gap-3 px-4 py-3">
-          {onFloor ? (
-            <>
-              {live && variant && canWrite ? (
-                <PickupResultControls
-                  teamCount={variant.teams.length}
-                  teamNames={variant.teams.map((team) => team.name)}
-                  saving={recordingOutcome}
-                  pointsPerWin={pointsPerWin}
-                  onRecord={(recordedOutcome) =>
-                    onRecordOutcome({ outcome: recordedOutcome, lobbyIndex })
-                  }
-                />
-              ) : null}
-              {/* Every viewer hears why the teams stopped moving; only a host can end the match. */}
-              <div className="flex flex-wrap items-center gap-2">
-                <p className={CAPTION_CLASS}>{tRoom("frozen")}</p>
-                {canWrite ? (
-                  <>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="ml-auto"
-                      disabled={cancellingMatch}
-                      onClick={() => setCancelOpen(true)}
-                    >
-                      {cancellingMatch ? (
-                        <Spinner className="mr-1.5 size-3.5" />
-                      ) : (
-                        <CircleX className="mr-1.5 size-3.5" aria-hidden="true" />
-                      )}
-                      {tRoom("cancelMatch")}
-                    </Button>
-                    <ConfirmDialog
-                      open={cancelOpen}
-                      onOpenChange={setCancelOpen}
-                      intent={{
-                        title: tRoom("cancelTitle"),
-                        description: tRoom("cancelDescription"),
-                        confirmLabel: tRoom("cancelConfirm"),
-                        tone: "danger"
-                      }}
-                      pending={cancellingMatch}
-                      onConfirm={() => {
-                        setCancelOpen(false);
-                        onCancelMatch();
-                      }}
-                    />
-                  </>
-                ) : null}
-              </div>
-            </>
-          ) : variant && canWrite && state === "ready" ? (
-            <StartMatchButton
-              awayNames={awayNames}
-              opener={
-                lobby?.opener_index != null
-                  ? {
-                      names: [
-                        variant.teams[0]?.name ?? "Team 1",
-                        variant.teams[1]?.name ?? "Team 2"
-                      ],
-                      index: lobby.opener_index
-                    }
-                  : null
-              }
-              starting={startingMatch}
-              onStart={onStartMatch}
-            />
-          ) : null}
-
-          <div
-            className={cn(
-              "flex flex-wrap items-center gap-2",
-              ((variant && canWrite) || onFloor) && "border-t border-[color:var(--aqt-border)] pt-3"
-            )}
-          >
-            {reshape && game?.team_formation === "draft" ? (
-              <>
-                <Button
-                  type="button"
-                  disabled={drafting || activeCount === 0}
-                  onClick={() => (lineupAtRisk ? setDraftOpen(true) : onDraft())}
-                >
-                  {drafting ? (
-                    <Spinner className="mr-1.5 size-3.5" />
-                  ) : (
-                    <Users className="mr-1.5 size-3.5" aria-hidden="true" />
-                  )}
-                  {tRoom("draft")}
-                </Button>
-                <ConfirmDialog
-                  open={draftOpen}
-                  onOpenChange={setDraftOpen}
-                  intent={{
-                    title: tRoom("draftReformTitle"),
-                    description: tRoom("draftReformDescription"),
-                    confirmLabel: tRoom("draftReformConfirm"),
-                    tone: "danger"
-                  }}
-                  pending={drafting}
-                  onConfirm={() => {
-                    setDraftOpen(false);
-                    onDraft();
-                  }}
-                />
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label={tRoom("moreActions")}
-                    >
-                      <MoreHorizontal className="size-4" aria-hidden="true" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
-                    <DropdownMenuItem
-                      disabled={balancing || activeCount === 0}
-                      onSelect={() => (lineupAtRisk ? setBalanceOpen(true) : onBalance())}
-                    >
-                      {tRoom("buildWithBalancer")}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </>
-            ) : reshape ? (
-              <Button
-                type="button"
-                disabled={balancing || activeCount === 0}
-                onClick={() => (lineupAtRisk ? setBalanceOpen(true) : onBalance())}
-                title={
-                  owner.lobbySize != null && activeCount > owner.lobbySize
-                    ? tTeams("extraBenched", { count: activeCount - owner.lobbySize })
-                    : undefined
-                }
-              >
-                {balancing ? (
-                  <Spinner className="mr-1.5 size-3.5" />
-                ) : (
-                  <Shuffle className="mr-1.5 size-3.5" aria-hidden="true" />
-                )}
-                {tTeams("balance")}
-              </Button>
-            ) : null}
-            {reshape ? (
-              <ConfirmDialog
-                open={balanceOpen}
-                onOpenChange={setBalanceOpen}
-                intent={{
-                  title: t("rebalanceTitle"),
-                  description: t("rebalanceDescription"),
-                  confirmLabel: t("rebalanceConfirm"),
-                  tone: "danger"
-                }}
-                pending={balancing}
-                onConfirm={() => {
-                  setBalanceOpen(false);
-                  onBalance();
-                }}
-              />
-            ) : null}
-
-            {reshape && variants.length > 1 ? (
-              <div className="flex h-9 items-center gap-0.5 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-1)] px-1">
-                <IconTooltip control label={tTeams("previousOption")}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-7"
-                    disabled={index === 0}
-                    onClick={() => onVariantIndexChange(index - 1)}
-                  >
-                    <ChevronLeft className="size-4" aria-hidden="true" />
-                    <span className="sr-only">{tTeams("previousOption")}</span>
-                  </Button>
-                </IconTooltip>
-                <span
-                  role="status"
-                  aria-live="polite"
-                  className="min-w-14 px-1 text-center text-caption font-semibold tabular-nums text-[color:var(--aqt-fg-muted)]"
-                >
-                  {`${index + 1} / ${variants.length}`}
-                </span>
-                <IconTooltip control label={tTeams("nextOption")}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-7"
-                    disabled={index >= variants.length - 1}
-                    onClick={() => onVariantIndexChange(index + 1)}
-                  >
-                    <ChevronRight className="size-4" aria-hidden="true" />
-                    <span className="sr-only">{tTeams("nextOption")}</span>
-                  </Button>
-                </IconTooltip>
-              </div>
-            ) : null}
-
-            {activeCount === 0 && canWrite ? (
-              <p className="text-xs text-[color:var(--aqt-fg-dim)]">{tTeams("needPlayer")}</p>
-            ) : null}
-
-            {variant ? (
-              // Icon-only: these are recognisable glyphs and each is used once a
-              // night at most, so their labels were spending a third of the row
-              // on words nobody reads twice. The name lives in `aria-label` and
-              // the tooltip.
-              <div className="ml-auto flex items-center gap-1">
-                <IconTooltip control label={tTeams("copyImage")} hint={tTeams("copyImageHint")}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className={TOOL_ICON_CLASS}
-                    disabled={capturing}
-                    aria-label={tTeams("copyImage")}
-                    onClick={() => void capture()}
-                  >
-                    {capturing ? <Spinner /> : <Copy className="size-4" aria-hidden="true" />}
-                  </Button>
-                </IconTooltip>
-                <IconTooltip control label={tTeams("copyHandles")} hint={tTeams("copyHandlesHint")}>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className={TOOL_ICON_CLASS}
-                    aria-label={tTeams("copyHandles")}
-                    onClick={onCopyHandles}
-                  >
-                    <ClipboardCopy className="size-4" aria-hidden="true" />
-                  </Button>
-                </IconTooltip>
-                {/* The workspace's channel is the only target a mix has; without
-                  one there is nowhere to post, so the button stays off. */}
-                {canWrite && onPostToDiscord && game?.settings.workspace_discord_channel_id ? (
-                  <IconTooltip control label={tTeams("post")} hint={tTeams("postHint")}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className={TOOL_ICON_CLASS}
-                      disabled={postingToDiscord}
-                      aria-label={tTeams("post")}
-                      onClick={() => onPostToDiscord(index)}
-                    >
-                      {postingToDiscord ? (
-                        <Spinner />
-                      ) : (
-                        <Send className="size-4" aria-hidden="true" />
-                      )}
-                    </Button>
-                  </IconTooltip>
-                ) : null}
-                {canWrite ? (
-                  <>
-                    <span
-                      aria-hidden="true"
-                      className="mx-1 h-5 w-px bg-[color:var(--aqt-border)]"
-                    />
-                    {/* Once a night, irreversible from here: an icon that only
-                      turns red on hover, behind the same confirm as before,
-                      instead of the loudest pill in the row. */}
-                    <IconTooltip control label={tTeams("close")} hint={tTeams("closeHint")}>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className={cn(TOOL_ICON_CLASS, "hover:text-[color:var(--aqt-rose)]")}
-                        disabled={closingMix}
-                        aria-label={tTeams("close")}
-                        onClick={() => setCloseOpen(true)}
-                      >
-                        {closingMix ? (
-                          <Spinner />
-                        ) : (
-                          <Archive className="size-4" aria-hidden="true" />
-                        )}
-                      </Button>
-                    </IconTooltip>
-                    <ConfirmDialog
-                      open={closeOpen}
-                      onOpenChange={setCloseOpen}
-                      intent={{
-                        title: tTeams("closeTitle"),
-                        description: tTeams("closeDescription"),
-                        confirmLabel: tTeams("closeConfirm"),
-                        tone: "danger"
-                      }}
-                      pending={closingMix}
-                      onConfirm={() => {
-                        setCloseOpen(false);
-                        onCloseMix();
-                      }}
-                    />
-                  </>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-
-          {matches.length > 0 ? (
-            <MatchHistoryList
-              matches={matches}
-              lobbyCount={lobbyCount}
-              canWrite={canWrite}
-              undoingMatchId={undoingMatchId}
-              onUndoMatch={onUndoMatch}
-              discipline={game?.discipline ?? null}
-            />
-          ) : null}
-        </Card>
-      )}
     </div>
   );
 }

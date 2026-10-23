@@ -34,11 +34,10 @@ export const AWAY_CHIP_CLASS =
  */
 
 /** Same voice one step tighter, for a caption that sits beside a label. */
-export const CAPTION_CLASS = "text-xs tabular-nums text-[color:var(--aqt-fg-dim)]";
+export const CAPTION_CLASS = "text-label tabular-nums text-[color:var(--aqt-fg-dim)]";
 
-/** Section title inside a card head — display face, uppercase, short tracking. */
-export const CARD_TITLE_CLASS =
-  "font-display text-sm font-bold uppercase tracking-[0.04em] text-[color:var(--aqt-fg)]";
+/** The one card title of the mix surface: display face, mixed case (DESIGN §3 `text-heading`). */
+export const CARD_TITLE_CLASS = "font-display text-heading font-semibold text-[color:var(--aqt-fg)]";
 
 /** A read-only stat: pill, hairline border, tabular mono. Tone comes from the caller. */
 export const METRIC_PILL_CLASS =
@@ -46,7 +45,7 @@ export const METRIC_PILL_CLASS =
 
 /** Neutral metric tone — the default for a number that carries no verdict. */
 export const METRIC_NEUTRAL_CLASS =
-  "border-[color:var(--aqt-border-2)] bg-white/[0.025] text-[color:var(--aqt-fg-muted)]";
+  "border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] text-[color:var(--aqt-fg-muted)]";
 
 /**
  * Team accents. Index is the 0-based team position, matching the design's

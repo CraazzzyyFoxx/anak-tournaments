@@ -7914,7 +7914,9 @@
       "formation": "Teams",
       "formationBalance": "Balancer",
       "formationDraft": "Captain draft",
-      "pickSeconds": "Draft pick clock, seconds"
+      "pickSeconds": "Draft pick clock, seconds",
+      "rules": "Rules",
+      "rulesTrigger": "Match rules: {rules}"
     },
     "start": {
       "title": "Get this mix going",
@@ -7926,7 +7928,9 @@
       "discordHint": "Optional. Posts a signup card players join from, and opens signup if it is closed.",
       "discordDone": "Signup card posted",
       "balance": "Balance teams",
-      "balanceHint": "When the lineup is ready, press Balance teams below."
+      "balanceHint": "The solver splits the active lineup into two even teams.",
+      "draft": "Draft teams",
+      "draftHint": "Captains pick their teams from the lineup in turns."
     },
     "voice": {
       "title": "Voice channels",
@@ -7978,7 +7982,6 @@
       }
     },
     "room": {
-      "steps": "Lobby stage",
       "state": {
         "idle": "Idle",
         "ready": "Ready",
@@ -8147,8 +8150,8 @@
       "emptyLobbyTitle": "Empty the lobby?",
       "emptyLobbyDescription": "This removes all {count} players from this mix, along with their role order. Ranks are not affected — they live in your own book and the workspace roster.",
       "emptyLobbyConfirm": "Remove everyone",
-      "supplyShort": "{supply} of {need} · short {short}",
-      "supply": "{supply} of {need}",
+      "supplyShort": "{supply} · short {short}",
+      "supply": "{supply} · need {need}",
       "blocking": "{count, plural, one {# player has no ranked role and will fail the balance.} other {# players have no ranked role and will fail the balance.}}",
       "noMixTitle": "No mix selected",
       "noMixDescription": "Open a mix from the list to start filling its lineup.",
@@ -8220,10 +8223,7 @@
       "flexOff": "Drag below to set who the balancer seats first.",
       "flexFor": "Full flex for {name}",
       "reorder": "Reorder {role} for {name}",
-      "first": "First",
       "roleFor": "{role} for {name}",
-      "active": "Active",
-      "off": "Off",
       "rankHint": "The rank the balancer uses for this role"
     },
     "teams": {

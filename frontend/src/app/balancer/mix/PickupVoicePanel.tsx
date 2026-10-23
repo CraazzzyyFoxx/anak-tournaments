@@ -13,9 +13,9 @@ import {
 import { teamNamesByIndex } from "@/app/balancer/mix/pickup-lineup";
 import { busyVoices, voiceBlocker, voicePatch, type BusyVoice } from "@/app/balancer/mix/pickup-voice";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { controlSurfaceClass } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -36,10 +36,6 @@ import type { DiscordVoicePermission } from "@/types/discord.types";
 
 /** Radix refuses an empty item value, and a channel id is always digits. */
 const NONE = "none";
-
-/** A lobby row's own move/return: quiet chrome, so the voices stay the row's subject. */
-const ROW_ACTION_CLASS =
-  "border border-[color:var(--aqt-border)] text-[color:var(--aqt-fg-muted)] hover:bg-[color:var(--aqt-overlay-3)] hover:text-[color:var(--aqt-fg)]";
 
 type PickupVoicePanelProps = {
   game: CustomGame;
@@ -107,7 +103,7 @@ function VoiceSelect({
       disabled={disabled}
       onValueChange={(next) => onChange(next === NONE ? null : next)}
     >
-      <SelectTrigger aria-label={ariaLabel} className="min-w-0">
+      <SelectTrigger variant="surface" size="sm" aria-label={ariaLabel} className="min-w-0">
         <span className="flex min-w-0 flex-1 items-center gap-2">
           {prefix}
           <span className="min-w-0 truncate">
@@ -143,7 +139,7 @@ function VoiceSelect({
   );
 }
 
-/** A settled pick, read-only: the same cell as the select, minus the chrome. */
+/** A settled pick, read-only: the same 32px surface cell as the select, minus the menu. */
 function VoiceValue({
   prefix,
   value,
@@ -154,7 +150,7 @@ function VoiceValue({
   const channel = channels.find((candidate) => candidate.id === value);
   const taken = value == null ? undefined : busy.get(value);
   return (
-    <div className="flex h-9 min-w-0 items-center gap-2 rounded-md bg-white/[0.025] px-3 text-sm">
+    <div className={cn(controlSurfaceClass, "flex h-8 min-w-0 items-center gap-2 text-caption")}>
       {prefix}
       <span className="min-w-0 truncate text-[color:var(--aqt-fg)]">
         {channel?.name ?? t(value == null ? "none" : "outsideCategory")}
@@ -168,14 +164,13 @@ function VoiceValue({
   );
 }
 
+/** A permission the bot lacks: the refusal said in the danger text, not a boxed callout. */
 function MissingAlert({ permissions }: Readonly<{ permissions: DiscordVoicePermission[] }>) {
   const t = useTranslations("mixes.voice");
   return (
-    <Alert variant="destructive" className="py-2">
-      <AlertDescription>
-        {t("missing", { permissions: permissions.map((name) => t(`permission.${name}`)).join(", ") })}
-      </AlertDescription>
-    </Alert>
+    <p role="alert" className="text-caption text-[color:var(--aqt-rose-text)]">
+      {t("missing", { permissions: permissions.map((name) => t(`permission.${name}`)).join(", ") })}
+    </p>
   );
 }
 
@@ -290,11 +285,11 @@ export function PickupVoicePanel({
         <p className="text-caption text-[color:var(--aqt-fg-muted)]">{t("notConfigured")}</p>
       ) : (
         <>
-          {options.error ? <p className="text-caption text-amber-200">{t("unreachable")}</p> : null}
+          {options.error ? <p className="text-caption text-[color:var(--aqt-amber)]">{t("unreachable")}</p> : null}
           {shared.length > 0 ? <MissingAlert permissions={shared} /> : null}
 
           <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-            <span className="shrink-0 text-sm text-[color:var(--aqt-fg-muted)]">{t("general")}</span>
+            <span className="shrink-0 text-caption text-[color:var(--aqt-fg-muted)]">{t("general")}</span>
             <div className="min-w-0 sm:w-72">
               {open ? (
                 <VoiceSelect
@@ -328,7 +323,7 @@ export function PickupVoicePanel({
                   )}
                 >
                   {multi ? (
-                    <span aria-hidden className="font-display text-sm font-bold text-[color:var(--aqt-fg-muted)]">
+                    <span aria-hidden className="font-display text-body font-bold text-[color:var(--aqt-fg-muted)]">
                       {letter}
                     </span>
                   ) : null}
@@ -359,8 +354,8 @@ export function PickupVoicePanel({
                       type="button"
                       size="sm"
                       // With several lobbies the footer's "every lobby" is the main action.
-                      variant={multi ? "ghost" : "default"}
-                      className={cn("shrink-0 gap-1.5 px-2.5", multi && ROW_ACTION_CLASS)}
+                      variant={multi ? "subtle" : "accent"}
+                      className="shrink-0"
                       disabled={running || !canMove}
                       onClick={() => confirm({ kind: "move", lobbyIndex: lobby.lobby_index })}
                     >
@@ -370,8 +365,8 @@ export function PickupVoicePanel({
                     <Button
                       type="button"
                       size="sm"
-                      variant="ghost"
-                      className={cn("shrink-0 gap-1.5 px-2.5", ROW_ACTION_CLASS)}
+                      variant="subtle"
+                      className="shrink-0"
                       disabled={running || !canReturn}
                       onClick={() => confirm({ kind: "return", lobbyIndex: lobby.lobby_index })}
                     >
@@ -388,11 +383,12 @@ export function PickupVoicePanel({
           </div>
 
           {multi ? (
-            <div className="flex flex-col gap-2 border-t border-[color:var(--aqt-border-2)] pt-3">
+            <div className="flex flex-col gap-2 border-t border-[color:var(--aqt-border)] pt-3">
               <div className="flex flex-wrap justify-end gap-2">
                 <Button
                   type="button"
-                  variant="outline"
+                  variant="subtle"
+                  size="sm"
                   disabled={running || !rows.every((row) => row.canReturn)}
                   onClick={() => confirm({ kind: "return", lobbyIndex: null })}
                 >
@@ -400,6 +396,8 @@ export function PickupVoicePanel({
                 </Button>
                 <Button
                   type="button"
+                  variant="accent"
+                  size="sm"
                   disabled={running || !rows.every((row) => row.canMove)}
                   onClick={() => confirm({ kind: "move", lobbyIndex: null })}
                 >

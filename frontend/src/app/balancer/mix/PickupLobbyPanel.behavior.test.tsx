@@ -471,8 +471,8 @@ describe("PickupLobbyPanel", () => {
       }),
     ]);
 
-    expect(scope.textContent).toContain("0 of 2 · short 2");
-    expect(scope.textContent).toContain("2 of 4");
+    expect(scope.textContent).toContain("0 · short 2");
+    expect(scope.textContent).toContain("2 · short 2");
   });
 
   it("reads League's five positions and their two-seat demand from the mix's own roster shape", async () => {
@@ -487,8 +487,8 @@ describe("PickupLobbyPanel", () => {
     );
 
     // One entry per position of the game, in its declared order, each wanting two seats.
-    expect(scope.textContent).toContain("1 of 2 · short 1");
-    expect(scope.textContent?.match(/ of 2/g)).toHaveLength(5);
+    expect(scope.textContent).toContain("1 · short 1");
+    expect(scope.textContent?.match(/\d · (short|need) \d/g)).toHaveLength(5);
     expect(scope.textContent).toContain("Jungle");
     expect(scope.textContent).not.toContain("Tank");
     // The rail toggles League's positions, written in League's own dimension.
@@ -503,7 +503,7 @@ describe("PickupLobbyPanel", () => {
     );
 
     expect(scope.querySelector('[aria-label^="Roles for"]')).toBeNull();
-    expect(scope.textContent).not.toContain(" of 12");
+    expect(scope.textContent).not.toMatch(/· (short|need) \d/);
     expect(scope.textContent).toContain("2900");
   });
 
@@ -525,12 +525,23 @@ describe("PickupLobbyPanel", () => {
     expect(onPatchPlayer).toHaveBeenCalled();
   });
 
+  it("opens the player sheet once from the name, the row's keyboard route", async () => {
+    const scope = await mount([row()]);
+
+    const name = byLabel(scope, "Advanced settings for Aria#1111");
+    expect(name?.tagName).toBe("BUTTON");
+    await click(name);
+
+    expect(onOpenPlayer).toHaveBeenCalledTimes(1);
+    expect(onOpenPlayer).toHaveBeenCalledWith(7);
+  });
+
   it("keeps the player sheet shut for a read-only viewer", async () => {
-    // The sheet only writes, so a viewer gets a visibly inert control instead
-    // of a drawer full of disabled fields.
+    // The sheet only writes, so a viewer reads the name as plain text instead
+    // of a control into a drawer full of disabled fields.
     const scope = await mount([row()], { canWrite: false });
 
-    expect(byName(scope, "Advanced settings for Aria#1111")?.hasAttribute("disabled")).toBe(true);
+    expect(byLabel(scope, "Advanced settings for Aria#1111")).toBeNull();
     await click(byLabel(scope, "In the pool")?.querySelector("li"));
     expect(onOpenPlayer).not.toHaveBeenCalled();
   });
@@ -623,7 +634,7 @@ describe("PickupLobbyPanel", () => {
     const scope = await mount(rows, { lobbyCount: 2 });
 
     // One lobby needs 2 tanks, two lobbies need 4 -- three volunteers are short one.
-    expect(scope.textContent).toContain("3 of 4 \u00B7 short 1");
+    expect(scope.textContent).toContain("3 \u00B7 short 1");
   });
 });
 

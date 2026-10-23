@@ -5,9 +5,10 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { ChevronDown, DoorOpen, MoreHorizontal, Shuffle, Users } from "lucide-react";
 
-import { CAPTION_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
+import { CAPTION_CLASS, CARD_TITLE_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
 import { useLiveMinutes } from "@/app/balancer/mix/_hooks/useLiveMinutes";
 import { LineupRow } from "@/app/balancer/mix/_components/LineupRow";
+import { LobbyStage } from "@/app/balancer/mix/_components/LobbyStage";
 import { StartMatchButton } from "@/app/balancer/mix/_components/StartMatchButton";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Spinner } from "@/components/ui/spinner";
-import { StatusDot } from "@/components/ui/status-dot";
 import { slotCodeOrder } from "@/lib/roster/ontology";
 import { cn } from "@/lib/utils";
 import type { CustomGame, CustomGameLobby, CustomGamePlayer } from "@/services/custom-game.service";
@@ -56,15 +56,6 @@ type PickupLobbyCardsProps = {
   onSplitPool: () => void;
 };
 
-const STATE_TONE = {
-  idle: "neutral",
-  ready: "accent",
-  pregame: "accent",
-  live: "danger",
-  draft_setup: "accent",
-  draft_live: "danger",
-} as const;
-
 /**
  * The overview of a mix running several lobbies (spec §7.5, A1): one card per lobby with its stage, one line about
  * it and the one action that stage calls for -- Balance (Draft in draft mode, the balancer one menu away), Start match
@@ -89,16 +80,17 @@ export function PickupLobbyCards(props: Readonly<PickupLobbyCardsProps>) {
         <div className="flex justify-end">
           <Button
             type="button"
-            variant="outline"
+            variant="subtle"
+            size="sm"
             disabled={pending || anyLive}
             onClick={() => (anyUnrecorded ? setShuffleOpen(true) : reform())}
           >
             {pending ? (
-              <Spinner className="mr-1.5 size-3.5" />
+              <Spinner className="size-3.5" />
             ) : drafts ? (
-              <Users className="mr-1.5 size-3.5" aria-hidden="true" />
+              <Users className="size-3.5" aria-hidden="true" />
             ) : (
-              <Shuffle className="mr-1.5 size-3.5" aria-hidden="true" />
+              <Shuffle className="size-3.5" aria-hidden="true" />
             )}
             {t(drafts ? "splitPool" : "shuffleAll")}
           </Button>
@@ -194,30 +186,32 @@ function LobbyCard({
             aria-hidden="true"
             className={cn("h-4 w-[3px] shrink-0 rounded-sm", teamAccent(index).bar)}
           />
-          <span className="font-display text-base font-bold text-[color:var(--aqt-fg)]">
-            {tLobby("tab", { letter })}
-          </span>
-          <span className="ml-auto flex items-center gap-1.5 text-caption text-[color:var(--aqt-fg-muted)]">
-            <StatusDot tone={STATE_TONE[state]} pulse={state === "live" || state === "draft_live"} className="size-2" />
-            {t(`state.${state}`)}
-          </span>
+          <h2 className={CARD_TITLE_CLASS}>{tLobby("tab", { letter })}</h2>
+          <LobbyStage state={state} className="ml-auto" />
         </div>
         {detail ? <p className={CAPTION_CLASS}>{detail}</p> : null}
         <div className="flex flex-wrap items-center gap-2">
           {canWrite && state === "idle" && game.team_formation === "draft" ? (
             <>
-              <Button type="button" disabled={short || drafting === index} title={shortTitle} onClick={() => onDraft(index)}>
+              <Button
+                type="button"
+                variant="accent"
+                size="sm"
+                disabled={short || drafting === index}
+                title={shortTitle}
+                onClick={() => onDraft(index)}
+              >
                 {drafting === index ? (
-                  <Spinner className="mr-1.5 size-3.5" />
+                  <Spinner className="size-3.5" />
                 ) : (
-                  <Users className="mr-1.5 size-3.5" aria-hidden="true" />
+                  <Users className="size-3.5" aria-hidden="true" />
                 )}
                 {t("draft")}
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button type="button" variant="ghost" size="icon" aria-label={t("moreActions")}>
-                    <MoreHorizontal className="size-4" aria-hidden="true" />
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label={t("moreActions")}>
+                    <MoreHorizontal aria-hidden="true" />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
@@ -231,14 +225,16 @@ function LobbyCard({
           {canWrite && state === "idle" && game.team_formation !== "draft" ? (
             <Button
               type="button"
+              variant="accent"
+              size="sm"
               disabled={short || balancingLobby === index}
               title={shortTitle}
               onClick={() => onBalance(index)}
             >
               {balancingLobby === index ? (
-                <Spinner className="mr-1.5 size-3.5" />
+                <Spinner className="size-3.5" />
               ) : (
-                <Shuffle className="mr-1.5 size-3.5" aria-hidden="true" />
+                <Shuffle className="size-3.5" aria-hidden="true" />
               )}
               {t("balance")}
             </Button>
@@ -249,15 +245,16 @@ function LobbyCard({
               opener={lobby.opener_index != null ? { names: teamNames, index: lobby.opener_index } : null}
               starting={startingLobby === index}
               onStart={(flip) => onStartMatch(index, flip)}
+              variant="accent"
             />
           ) : null}
           {canWrite && state === "live" ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button type="button" disabled={recordingLobby === index}>
-                  {recordingLobby === index ? <Spinner className="mr-1.5 size-3.5" /> : null}
+                <Button type="button" variant="accent" size="sm" disabled={recordingLobby === index}>
+                  {recordingLobby === index ? <Spinner className="size-3.5" /> : null}
                   {t("record")}
-                  <ChevronDown className="ml-1.5 size-3.5" aria-hidden="true" />
+                  <ChevronDown className="size-3.5" aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
@@ -279,9 +276,9 @@ function LobbyCard({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
-          <Button asChild variant="ghost" className="ml-auto">
+          <Button asChild variant="subtle" size="sm" className="ml-auto">
             <Link href={`/balancer/mix/${game.id}/lobby/${letter}`}>
-              <DoorOpen className="mr-1.5 size-3.5" aria-hidden="true" />
+              <DoorOpen className="size-3.5" aria-hidden="true" />
               {t("openRoom")}
             </Link>
           </Button>
@@ -312,14 +309,14 @@ function UnseatedGroups({
     { key: "bench", rows: lineup.filter((row) => !row.away && row.participation === "benched") },
   ] as const;
   return (
-    <div className="grid gap-3 2xl:grid-cols-3">
+    <div className="grid gap-x-6 gap-y-4 2xl:grid-cols-3">
       {groups.map((group) => (
         <section
           key={group.key}
           aria-label={t(`groups.${group.key}`)}
-          className="flex flex-col gap-1.5 rounded-xl border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-1)] px-2.5 py-2.5"
+          className="flex flex-col gap-1.5 border-t border-[color:var(--aqt-border)] pt-3"
         >
-          <div className="flex items-baseline gap-1.5 px-0.5">
+          <div className="flex items-baseline gap-1.5">
             <Eyebrow>{t(`groups.${group.key}`)}</Eyebrow>
             <span className="text-label text-[color:var(--aqt-fg-dim)]">{group.rows.length}</span>
           </div>

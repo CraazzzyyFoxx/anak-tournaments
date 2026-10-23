@@ -1,11 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { useState } from "react";
+import { forwardRef, useState, type ComponentPropsWithoutRef } from "react";
 import { useTranslations } from "next-intl";
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   ExternalLink,
@@ -17,11 +15,13 @@ import {
 } from "lucide-react";
 
 import { MAX_LOBBIES, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
+import { LobbyStage } from "@/app/balancer/mix/_components/LobbyStage";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { InlineEditText } from "@/components/kit/InlineEditText";
 import { BanPresetSelect, useBanPresetName } from "@/components/pick-ban/BanPresetSelect";
 import { MixFormationControl } from "@/components/mix/MixFormationControl";
 import { Button } from "@/components/ui/button";
+import { BackLink } from "@/components/site/BackLink";
 import { Card } from "@/components/ui/card";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import {
@@ -114,14 +114,17 @@ type PickupMixHeaderProps = {
 };
 
 /**
- * The mix this screen is open on: the way back to the list, its name and id,
- * and what a host does with it, by how often they do it.
+ * The mix this screen is open on, in two fixed rows so it never wraps at
+ * random: the way back, its name and id, and `⋯`; then what a host changes,
+ * by how often they do it.
  *
- * Visible: who may sign up, what Discord shows, and Add players -- the one
- * solid action. Behind `⋯`: what is set once per mix (how many lobbies, up to
- * `MAX_LOBBIES`, and co-hosts) and the irreversible delete. The shared
- * reshuffle across every lobby is a lineup action, so it sits with Balance
- * teams under the matchup, not up here.
+ * Second row, one 32px subtle trigger each: the rules the next Start plays by
+ * (bans, Fearless, formation -- set once an evening, so one popover), who may
+ * sign up, what Discord shows, and Add players. None of them is solid: the
+ * page's one solid button is the host's next step, under the matchup. A
+ * viewer reads the rules as one line instead. Behind `⋯`: what is set once
+ * per mix (how many lobbies, up to `MAX_LOBBIES`, and co-hosts) and the
+ * irreversible delete.
  *
  * Which mix this is comes from the route, not from state this header owns --
  * switching to another one, or starting a new one, happens on the list at
@@ -178,134 +181,59 @@ export function PickupMixHeader({
     (_, i) => tl("tab", { letter: lobbyLetter(draftLobbyCount + i) })
   ).join(", ");
   const offerDelete = canDelete && onDeleteMix != null;
+  // One lobby: its stage is the mix's, said beside the name. Several: each lobby card says its own, so nothing here.
+  const onlyLobby = lobbyCount === 1 ? game?.lobbies.find((row) => row.lobby_index === 0) : undefined;
+  const offerRules = canWrite && (onSetBanPreset != null || onSetFearless != null || onSetDraftSettings != null);
+  // What the next Start plays by, said once: the host's Rules trigger and the viewers' line read the same words.
+  const rulesSummary =
+    game == null
+      ? ""
+      : [
+          banPresetName(game.hero_ban_preset),
+          game.team_formation === "draft" ? th("formationDraft") : th("formationBalance"),
+          game.hero_fearless ? tb("fearless") : null
+        ]
+          .filter(Boolean)
+          .join(" · ");
 
   return (
-    <Card variant="flat" className="flex flex-wrap items-center gap-3 px-4 py-3">
-      <Link
-        href="/balancer/mix"
-        className="flex shrink-0 items-center gap-1.5 text-caption text-[color:var(--aqt-fg-dim)] transition-colors hover:text-[color:var(--aqt-fg-muted)]"
-      >
-        <ArrowLeft className="size-3.5" aria-hidden="true" />
-        {tm("title")}
-      </Link>
+    <Card variant="flat" className="flex flex-col gap-3 px-4 py-3.5">
+      <div className="flex min-w-0 items-center gap-3">
+        <BackLink href="/balancer/mix" className="shrink-0">
+          {tm("title")}
+        </BackLink>
 
-      <span aria-hidden="true" className="h-5 w-px shrink-0 bg-[color:var(--aqt-border)]" />
+        <span aria-hidden="true" className="h-5 w-px shrink-0 bg-[color:var(--aqt-border)]" />
 
-      <div className="flex min-w-[12rem] flex-1 items-center gap-2.5">
-        {canWrite && game != null && onRename ? (
-          <InlineEditText
-            value={game.name}
-            label={th("nameLabel")}
-            onSave={onRename}
-            className="min-w-0"
-            textClassName="font-display text-xl font-bold tracking-[-0.01em] text-[color:var(--aqt-fg)]"
-            inputClassName="h-8 max-w-sm"
-          />
-        ) : (
-          <h1 className="min-w-0 truncate font-display text-xl font-bold tracking-[-0.01em] text-[color:var(--aqt-fg)]">
-            {game?.name ?? (gameLoading ? "\u2026" : th("noMix"))}
-          </h1>
-        )}
-        {game ? (
-          <span className="shrink-0 text-caption font-semibold text-[color:var(--aqt-fg-dim)]">
-            {`#${game.id}`}
-          </span>
-        ) : null}
-      </div>
-
-      {/* One block: when the row runs out of width it wraps as a whole, under
-          the name, instead of orphaning the last button on a line of its own. */}
-      <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-        {game == null ? null : canWrite && onSetBanPreset ? (
-          <BanPresetSelect
-            discipline={game.discipline}
-            label={tb("label")}
-            value={game.hero_ban_preset}
-            disabled={savingBanPreset}
-            onChange={onSetBanPreset}
-          />
-        ) : (
-          // Everyone reads which hero bans the next Start opens; only a host changes them.
-          <span className="flex shrink-0 items-center gap-1.5 text-caption text-[color:var(--aqt-fg-dim)]">
-            {tb("label")}
-            <span className="font-semibold text-[color:var(--aqt-fg)]">{banPresetName(game.hero_ban_preset)}</span>
-          </span>
-        )}
-        {game == null ? null : canWrite && onSetFearless ? (
-          <label className="flex shrink-0 items-center gap-1.5 text-caption text-[color:var(--aqt-fg-dim)]">
-            <Switch
-              checked={game.hero_fearless}
-              disabled={savingBanPreset}
-              aria-label={tb("fearless")}
-              onCheckedChange={onSetFearless}
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          {canWrite && game != null && onRename ? (
+            <InlineEditText
+              value={game.name}
+              label={th("nameLabel")}
+              onSave={onRename}
+              className="min-w-0"
+              textClassName="font-display text-title font-bold text-[color:var(--aqt-fg)]"
+              inputClassName="h-8 max-w-sm"
             />
-            {tb("fearless")}
-          </label>
-        ) : game.hero_fearless ? (
-          <span className="shrink-0 text-caption font-semibold text-[color:var(--aqt-fg)]">{tb("fearless")}</span>
-        ) : null}
-
-        {game == null ? null : canWrite && onSetDraftSettings ? (
-          <MixFormationControl
-            commitOnBlur
-            idPrefix="mix-header"
-            value={{ team_formation: game.team_formation, draft_pick_seconds: game.draft_pick_seconds }}
-            disabled={savingDraftSettings}
-            onChange={onSetDraftSettings}
-          />
-        ) : (
-          <span className="flex shrink-0 items-center gap-1.5 text-caption text-[color:var(--aqt-fg-dim)]">
-            {th("formation")}
-            <span className="font-semibold text-[color:var(--aqt-fg)]">
-              {game.team_formation === "draft" ? th("formationDraft") : th("formationBalance")}
-            </span>
-          </span>
-        )}
-
-        {canWrite && game != null && onSetSelfService ? (
-          <SignupSettings
-            game={game}
-            showsRoles={showsRoles}
-            saving={savingSelfService}
-            onSetSelfService={onSetSelfService}
-          />
-        ) : null}
-
-        {canWrite && game != null && (onPostSignup || onDeleteDiscordPost) ? (
-          <DiscordMenu
-            game={game}
-            posting={postingSignup}
-            onPostSignup={onPostSignup}
-            deleting={deletingDiscordPost}
-            onDelete={onDeleteDiscordPost}
-          />
-        ) : null}
-
-        {canWrite ? (
-          <Button
-            type="button"
-            className="shrink-0"
-            disabled={game == null}
-            onClick={onOpenPool}
-          >
-            <UserPlus className="mr-1.5 size-3.5" aria-hidden="true" />
-            {tm("start.addPlayers")}
-          </Button>
-        ) : null}
+          ) : (
+            <h1 className="min-w-0 truncate font-display text-title font-bold text-[color:var(--aqt-fg)]">
+              {game?.name ?? (gameLoading ? "\u2026" : th("noMix"))}
+            </h1>
+          )}
+          {game ? (
+            <span className="aqt-tnum shrink-0 text-caption text-[color:var(--aqt-fg-faint)]">{`#${game.id}`}</span>
+          ) : null}
+          {onlyLobby?.state != null ? (
+            <LobbyStage state={onlyLobby.state} startedAt={onlyLobby.live_started_at} />
+          ) : null}
+        </div>
 
         {canWrite || offerDelete ? (
           <DropdownMenu>
             <IconTooltip control label={th("more")} className="shrink-0">
               <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="h-9 w-9"
-                  disabled={game == null}
-                  aria-label={th("more")}
-                >
-                  <MoreHorizontal className="size-4" aria-hidden="true" />
+                <Button type="button" variant="ghost" size="icon" disabled={game == null} aria-label={th("more")}>
+                  <MoreHorizontal aria-hidden="true" />
                 </Button>
               </DropdownMenuTrigger>
             </IconTooltip>
@@ -369,6 +297,60 @@ export function PickupMixHeader({
         ) : null}
       </div>
 
+      {canWrite ? (
+        // One row of identical triggers -- label, value, chevron -- then the host's way to fill the lineup. Mounted
+        // while the mix loads, Add players inert, so nothing shifts when it lands.
+        <div className="flex flex-wrap items-center gap-2">
+          {game == null ? null : offerRules ? (
+            <RulesSettings
+              game={game}
+              summary={rulesSummary}
+              savingBanPreset={savingBanPreset}
+              onSetBanPreset={onSetBanPreset}
+              onSetFearless={onSetFearless}
+              savingDraftSettings={savingDraftSettings}
+              onSetDraftSettings={onSetDraftSettings}
+            />
+          ) : (
+            <p className="text-caption text-[color:var(--aqt-fg-muted)]">{rulesSummary}</p>
+          )}
+
+          {game != null && onSetSelfService ? (
+            <SignupSettings
+              game={game}
+              showsRoles={showsRoles}
+              saving={savingSelfService}
+              onSetSelfService={onSetSelfService}
+            />
+          ) : null}
+
+          {game != null && (onPostSignup || onDeleteDiscordPost) ? (
+            <DiscordMenu
+              game={game}
+              posting={postingSignup}
+              onPostSignup={onPostSignup}
+              deleting={deletingDiscordPost}
+              onDelete={onDeleteDiscordPost}
+            />
+          ) : null}
+
+          <Button
+            type="button"
+            variant="subtle"
+            size="sm"
+            className="ml-auto shrink-0"
+            disabled={game == null}
+            onClick={onOpenPool}
+          >
+            <UserPlus aria-hidden="true" />
+            {tm("start.addPlayers")}
+          </Button>
+        </div>
+      ) : game == null ? null : (
+        // Everyone reads what the next Start plays by; only a host changes it.
+        <p className="text-caption text-[color:var(--aqt-fg-muted)]">{rulesSummary}</p>
+      )}
+
       {canWrite && onLobbyCountChange ? (
         <ConfirmDialog
           open={dropLobbyOpen}
@@ -413,6 +395,112 @@ export function PickupMixHeader({
 }
 
 /**
+ * One header trigger: a dim label, the value, a chevron -- the same 32px
+ * subtle box for every setting, so the row reads as one control strip.
+ */
+const SettingTrigger = forwardRef<HTMLButtonElement, ComponentPropsWithoutRef<typeof Button> & { label: string }>(
+  function SettingTrigger({ label, children, className, ...props }, ref) {
+    return (
+      <Button ref={ref} type="button" variant="subtle" size="sm" className={cn("max-w-full shrink-0", className)} {...props}>
+        <span className="shrink-0 text-[color:var(--aqt-fg-dim)]">{label}</span>
+        {children}
+        <ChevronDown className="text-[color:var(--aqt-fg-dim)]" aria-hidden="true" />
+      </Button>
+    );
+  }
+);
+
+/**
+ * What the next Start plays by -- hero bans, Fearless, how teams form -- set
+ * once an evening, so one trigger that reads the whole rule set instead of
+ * three controls in the row. Every field writes on change.
+ */
+function RulesSettings({
+  game,
+  summary,
+  savingBanPreset,
+  onSetBanPreset,
+  onSetFearless,
+  savingDraftSettings,
+  onSetDraftSettings
+}: Readonly<{
+  game: CustomGame;
+  summary: string;
+  savingBanPreset: boolean;
+  onSetBanPreset?: (preset: string | null) => void;
+  onSetFearless?: (fearless: boolean) => void;
+  savingDraftSettings: boolean;
+  onSetDraftSettings?: (settings: { team_formation: MixTeamFormation; draft_pick_seconds: number }) => void;
+}>) {
+  const th = useTranslations("mixes.header");
+  const tb = useTranslations("pickBan.mixBans");
+  const banPresetName = useBanPresetName();
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <SettingTrigger label={th("rules")} aria-label={th("rulesTrigger", { rules: summary })} title={summary}>
+          {/* A long preset name ("Three blind bans, one per role") truncates rather than pushing Add players
+              onto a line of its own; the full rules are in the title and the accessible name. */}
+          <span className="min-w-0 max-w-56 truncate">{summary}</span>
+        </SettingTrigger>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[22rem] space-y-3 p-3">
+        <div className="space-y-1.5">
+          <Eyebrow as="label" htmlFor="mix-header-bans">
+            {tb("label")}
+          </Eyebrow>
+          {onSetBanPreset ? (
+            <BanPresetSelect
+              id="mix-header-bans"
+              discipline={game.discipline}
+              label={tb("label")}
+              value={game.hero_ban_preset}
+              disabled={savingBanPreset}
+              onChange={onSetBanPreset}
+            />
+          ) : (
+            <p id="mix-header-bans" className="text-caption text-[color:var(--aqt-fg)]">
+              {banPresetName(game.hero_ban_preset)}
+            </p>
+          )}
+        </div>
+        {onSetFearless ? (
+          <label className="flex items-center gap-2 text-caption text-[color:var(--aqt-fg-muted)]">
+            <Switch
+              size="sm"
+              checked={game.hero_fearless}
+              disabled={savingBanPreset}
+              aria-label={tb("fearless")}
+              onCheckedChange={onSetFearless}
+            />
+            {tb("fearless")}
+          </label>
+        ) : null}
+        <div className="space-y-1.5 border-t border-[color:var(--aqt-border)] pt-3">
+          <Eyebrow as="label" htmlFor="mix-header-formation">
+            {th("formation")}
+          </Eyebrow>
+          {onSetDraftSettings ? (
+            <MixFormationControl
+              commitOnBlur
+              idPrefix="mix-header"
+              value={{ team_formation: game.team_formation, draft_pick_seconds: game.draft_pick_seconds }}
+              disabled={savingDraftSettings}
+              onChange={onSetDraftSettings}
+            />
+          ) : (
+            <p id="mix-header-formation" className="text-caption text-[color:var(--aqt-fg)]">
+              {game.team_formation === "draft" ? th("formationDraft") : th("formationBalance")}
+            </p>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
  * Who may sign up, and nothing else: Discord lives in its own menu.
  *
  * The column has three values but the host thinks in two steps -- is signup
@@ -436,26 +524,19 @@ function SignupSettings({
   const mode = game.self_signup;
   const open = mode !== "closed";
   const stateLabel = t(`signupState.${mode}`);
+  // The pool is where an open signup lands by default, so the trigger says only "Open"; the bench, the exception,
+  // stays spelled out. The accessible name keeps the full state either way.
+  const shortLabel = mode === "pool" ? t("signupOpen") : stateLabel;
 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          aria-label={t("signupTrigger", { mode: stateLabel })}
-          className="shrink-0 gap-2"
-        >
-          <Eyebrow>{t("signupLabel")}</Eyebrow>
-          <span
-            aria-hidden="true"
-            className={cn("size-1.5 shrink-0 rounded-full", SIGNUP_DOT[mode])}
-          />
-          {stateLabel}
-          <ChevronDown className="size-3.5 text-[color:var(--aqt-fg-dim)]" aria-hidden="true" />
-        </Button>
+        <SettingTrigger label={t("signupLabel")} aria-label={t("signupTrigger", { mode: stateLabel })}>
+          <span aria-hidden="true" className={cn("size-1.5 shrink-0 rounded-full", SIGNUP_DOT[mode])} />
+          {shortLabel}
+        </SettingTrigger>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[22rem] space-y-3 p-3">
+      <PopoverContent align="start" className="w-[22rem] space-y-3 p-3">
         <ToggleGroup
           type="single"
           variant="pill"
@@ -499,6 +580,7 @@ function SignupSettings({
         {showsRoles ? (
           <div className="flex items-center gap-2 border-t border-[color:var(--aqt-border)] pt-3">
             <Switch
+              size="sm"
               checked={game.self_role_edit}
               disabled={saving}
               aria-label={t("roleEdit")}
@@ -584,32 +666,22 @@ function DiscordMenu({
     <>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
+          <SettingTrigger
+            label={t("discord.label")}
             aria-label={t("discord.trigger", { status: statusLabel })}
-            className={cn(
-              "shrink-0 gap-2",
-              failed && "border-[color:color-mix(in_srgb,var(--aqt-rose)_40%,transparent)]"
-            )}
+            className={cn(failed && "border-[color:color-mix(in_srgb,var(--aqt-rose)_40%,transparent)]")}
           >
-            <Eyebrow>{t("discord.label")}</Eyebrow>
-            {status === "pending" || status === "deleting" ? (
-              <Spinner className="size-3.5" />
-            ) : null}
+            {status === "pending" || status === "deleting" ? <Spinner /> : null}
             {status === "posted" ? (
-              <CheckCircle2 className="size-3.5 text-[color:var(--aqt-teal)]" aria-hidden="true" />
+              <CheckCircle2 className="text-[color:var(--aqt-teal)]" aria-hidden="true" />
             ) : null}
-            {failed ? (
-              <AlertTriangle className="size-3.5 text-[color:var(--aqt-rose)]" aria-hidden="true" />
-            ) : null}
+            {failed ? <AlertTriangle className="text-[color:var(--aqt-rose)]" aria-hidden="true" /> : null}
             <span className={status ? POST_STATUS_TONE[status] : "text-[color:var(--aqt-fg-dim)]"}>
               {statusLabel}
             </span>
-            <ChevronDown className="size-3.5 text-[color:var(--aqt-fg-dim)]" aria-hidden="true" />
-          </Button>
+          </SettingTrigger>
         </PopoverTrigger>
-        <PopoverContent align="end" className="w-[22rem] space-y-3 p-3">
+        <PopoverContent align="start" className="w-[22rem] space-y-3 p-3">
           {onPostSignup ? (
             <div className="space-y-2">
               <Eyebrow>{t("posts.signup")}</Eyebrow>
@@ -620,16 +692,12 @@ function DiscordMenu({
                   <Button
                     type="button"
                     // Re-posting a card that is up is a repair, not the next step.
-                    variant={!closed && isLive(signupPost) ? "outline" : "default"}
+                    variant={!closed && isLive(signupPost) ? "subtle" : "default"}
                     className="w-full"
                     disabled={posting}
                     onClick={() => onPostSignup(postModeOf(game.self_signup))}
                   >
-                    {posting ? (
-                      <Spinner className="mr-1.5 size-3.5" />
-                    ) : (
-                      <Send className="mr-1.5 size-3.5" aria-hidden="true" />
-                    )}
+                    {posting ? <Spinner /> : <Send aria-hidden="true" />}
                     {postLabel}
                   </Button>
                   {postHint ? (
@@ -687,9 +755,8 @@ function DiscordMenu({
                       >
                         <Button
                           type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-7 text-[color:var(--aqt-fg-muted)] hover:text-rose-200"
+                          variant="ghost-destructive"
+                          size="icon-sm"
                           disabled={post.status === "deleting"}
                           aria-label={t("posts.delete", { label })}
                           onClick={() => {
@@ -697,7 +764,7 @@ function DiscordMenu({
                             setConfirming(post);
                           }}
                         >
-                          <Trash2 className="size-3.5" aria-hidden="true" />
+                          <Trash2 aria-hidden="true" />
                         </Button>
                       </IconTooltip>
                     </li>

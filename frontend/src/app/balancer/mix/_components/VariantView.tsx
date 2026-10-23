@@ -6,7 +6,6 @@ import { useTranslations } from "next-intl";
 import { DndContext, DragOverlay, type DragEndEvent, type DragStartEvent } from "@dnd-kit/core";
 
 import { teamAccent } from "@/app/balancer/mix/pickup-chrome";
-import { Card } from "@/components/ui/card";
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { InlineEditText } from "@/components/kit/InlineEditText";
 import { useDragSensors } from "@/hooks/useDragSensors";
@@ -61,13 +60,13 @@ export function VariantView({
   };
 
   return (
-    // One card with a divider column, not two cards: the matchup is a single
+    // One block with a divider column, not two cards: the matchup is a single
     // object, and a gap between two boxes read as two unrelated rosters. The
     // verdict pills live inside it too, centred over the seam between the
-    // teams and above their rosters -- inside the same border, not a strip
-    // floating above the card on its own. Who the option left out is not
-    // repeated here: the lineup column already marks them benched.
-    <Card variant="flat" className="overflow-hidden rounded-2xl">
+    // teams and above their rosters. The lobby card around it is the frame.
+    // Who the option left out is not repeated here: the lineup column already
+    // marks them benched.
+    <div>
       <div className="flex flex-wrap items-center justify-center gap-1.5 border-b border-[color:var(--aqt-border)] px-4 py-2.5">
         <VariantMetrics variant={variant} />
       </div>
@@ -102,7 +101,7 @@ export function VariantView({
               mid-drag (the dragged row snaps back until drop). */}
         <DragOverlay>{activeDrag ? <SeatDragPreview seat={activeDrag.seat} owner={owner} /> : null}</DragOverlay>
       </DndContext>
-    </Card>
+    </div>
   );
 }
 
@@ -189,10 +188,10 @@ function TeamColumn({
           label={t("teamName")}
           canEdit={canWrite && onRenameTeam != null}
           onSave={(next) => onRenameTeam?.(teamIndex, next)}
-          textClassName="truncate font-display text-xl font-bold tracking-[0.01em] text-[color:var(--aqt-fg)]"
+          textClassName="truncate font-display text-heading font-bold text-[color:var(--aqt-fg)]"
         />
         <Eyebrow className="ml-auto shrink-0">{t("average")}</Eyebrow>
-        <span className="shrink-0 text-xl font-bold tabular-nums text-[color:var(--aqt-fg)]">
+        <span className="shrink-0 font-display text-heading font-bold tabular-nums text-[color:var(--aqt-fg)]">
           {team.averageRank == null ? "\u2014" : Math.round(team.averageRank)}
         </span>
       </header>

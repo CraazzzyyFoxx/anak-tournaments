@@ -35,7 +35,7 @@
 //     round lists its bans.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -315,6 +315,7 @@ type PanelOptions = {
   omitUndoMatch?: boolean;
   omitPostToDiscord?: boolean;
   owner?: MixOwner;
+  emptyState?: (balanceAction: ReactNode) => ReactNode;
 };
 
 function panel(current: CustomGame | undefined, props: PanelOptions) {
@@ -364,6 +365,7 @@ function panel(current: CustomGame | undefined, props: PanelOptions) {
       onCopyHandles={onCopyHandles}
       postingToDiscord={false}
       onPostToDiscord={props.omitPostToDiscord ? undefined : onPostToDiscord}
+      emptyState={props.emptyState}
     />
   );
 }
@@ -649,6 +651,21 @@ describe("PickupTeamsPanel", () => {
 
     await click(byName(scope, "Balance teams"));
 
+    expect(onBalance).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands Balance to the host's checklist instead of repeating it in the footer", async () => {
+    const scope = await mount(
+      game({ status: "draft", lobbies: [lobbyRow({ balance_result: null, balanced_at: null })] }),
+      { emptyState: (balanceAction) => <section aria-label="checklist">{balanceAction}</section> },
+    );
+
+    expect(scope.textContent).not.toContain("No teams yet");
+    const balances = [...scope.querySelectorAll("button")].filter((node) => node.textContent?.trim() === "Balance teams");
+    expect(balances).toHaveLength(1);
+    expect(balances[0]?.closest('[aria-label="checklist"]')).not.toBeNull();
+
+    await click(balances[0]);
     expect(onBalance).toHaveBeenCalledTimes(1);
   });
 
@@ -1139,7 +1156,6 @@ describe("PickupTeamsPanel", () => {
     const scope = await mount(game());
 
     expect(byName(scope, "Draw")).toBeNull();
-    expect(scope.querySelector('[aria-current="step"]')?.textContent).toContain("Ready");
     await click(byName(scope, "Start match"));
 
     expect(onStartMatch).toHaveBeenCalledWith(false);
@@ -1159,7 +1175,6 @@ describe("PickupTeamsPanel", () => {
   it("freezes a live lineup: results and Cancel match, but no balance, pager, swap or captaincy", async () => {
     const scope = await mount(game({ lobbies: [lobbyRow(LIVE)] }));
 
-    expect(scope.querySelector('[aria-current="step"]')?.textContent).toContain("Live");
     expect(scope.textContent).toContain("Lineup frozen while the match is live");
     expect(byName(scope, "Balance teams")).toBeNull();
     expect(byName(scope, "Next balance option")).toBeNull();
@@ -1190,13 +1205,6 @@ describe("PickupTeamsPanel", () => {
     });
     const scope = await mount(game({ hero_ban_preset: "hero_bo1_simple", lobbies: [pregame] }));
 
-    expect([...scope.querySelectorAll("ol li")].map((step) => step.textContent)).toEqual([
-      "Idle",
-      "Ready",
-      expect.stringContaining("Pre-game"),
-      "Live",
-    ]);
-    expect(scope.querySelector('[aria-current="step"]')?.textContent).toContain("Pre-game");
     // The team that bans first sits in slot 1.
     expect(scope.querySelector('[data-testid="ban-board"]')?.textContent).toBe("50: Team 2 vs Team 1");
     expect(scope.textContent).toContain("Lineup frozen while the match is live");
@@ -1207,16 +1215,6 @@ describe("PickupTeamsPanel", () => {
     await click(byName(scope, "Cancel match"));
     await click(byName(document, "Yes, cancel the match"));
     expect(onCancelMatch).toHaveBeenCalledTimes(1);
-  });
-
-  it("lists no Pre-game step for a mix without bans", async () => {
-    const scope = await mount(game({ hero_ban_preset: null }));
-
-    expect([...scope.querySelectorAll("ol li")].map((step) => step.textContent)).toEqual([
-      "Idle",
-      "Ready",
-      "Live",
-    ]);
   });
 
   it("keeps the settled bans and the starting sides on screen while the match is live", async () => {
@@ -1271,7 +1269,7 @@ describe("PickupTeamsPanel", () => {
       await tick();
     });
 
-    expect(scope.textContent).toContain("Live");
+    expect(scope.textContent).toContain("Lineup frozen while the match is live");
     expect(scope.textContent).not.toContain("Hero bans");
     expect(scope.querySelector('[aria-label="Bans"]')).toBeNull();
     expect(scope.textContent).not.toContain("Blue side: Team 2");
