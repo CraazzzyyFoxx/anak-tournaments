@@ -386,7 +386,7 @@ describe("questionnaire builder", () => {
       if (state === "pending") getTournament.mockReturnValue(Promise.withResolvers().promise);
       else getTournament.mockRejectedValue(new Error("Owner unavailable"));
       await mount();
-      await click(button("Stream POVstream_pov"));
+      await click(button("Stream POV"));
       await click(labelled("Required"));
       await click(button("Save changes"));
       const schema: FormSchema = upsertRegistrationForm.mock.calls[0][1].form_schema;
@@ -403,7 +403,7 @@ describe("questionnaire builder", () => {
     const owner = Promise.withResolvers<unknown>();
     getTournament.mockReturnValue(owner.promise);
     await mount();
-    await click(button("Stream POVstream_pov"));
+    await click(button("Stream POV"));
     await click(labelled("Required"));
     await act(async () => owner.resolve({ id: 1, discipline: "lol", identity_provider: "riot" }));
     await settle();
@@ -512,7 +512,7 @@ describe("questionnaire builder", () => {
 
     // `stream_pov` is the field that path names; open it and dirty the form so
     // the save bar is reachable.
-    await click(button("Stream POVstream_pov"));
+    await click(button("Stream POV"));
     await click(labelled("Required"));
     await click(button("Save changes"));
     await settle();

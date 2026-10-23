@@ -88,18 +88,24 @@ function FieldRow({
   const tKinds = useTranslations("registrationFormAdmin.kinds");
   const { ref, style, handleProps, isDragging } = useSortableRow(`${FIELD_DRAG_PREFIX}${field.key}`);
 
+  // One owner for the row's states, as in `SectionList`: the select button
+  // covers the row, the grip and the delete button sit above it.
   return (
     <li
       ref={ref}
       style={style}
       className={cn(
-        "flex items-center gap-2 rounded-lg border px-2 py-1.5",
-        selected ? "border-primary/40 bg-primary/10" : "border-border/60",
+        "relative flex items-center gap-2 rounded-lg border px-2 py-1.5",
+        selected ? "border-primary/40" : "border-border/60",
         invalid && "border-destructive/50 bg-destructive/5",
         isDragging && "opacity-90"
       )}
     >
-      <SortableGrip handleProps={handleProps} label={t("reorderField", { field: label })} />
+      <SortableGrip
+        className="relative z-10"
+        handleProps={handleProps}
+        label={t("reorderField", { field: label })}
+      />
       {/* The save bar says "fix the highlighted questions", so the highlight
           cannot be a border tint alone — colour is never the only cue. */}
       {invalid && (
@@ -112,9 +118,14 @@ function FieldRow({
       <RowButton
         onClick={onSelect}
         aria-current={selected ? "true" : undefined}
-        className="min-w-0 flex-1 rounded-md"
+        className="absolute inset-0 rounded-[inherit]"
       >
-        <span className="block truncate text-sm font-medium">{label}</span>
+        <span className="sr-only">{label}</span>
+      </RowButton>
+      <span className="pointer-events-none relative min-w-0 flex-1">
+        <span aria-hidden className="block truncate text-sm font-medium">
+          {label}
+        </span>
         <span className="flex flex-wrap items-center gap-1.5 pt-0.5">
           <span className="font-mono text-xs text-muted-foreground">{field.key}</span>
           {field.kind === "builtin" ? null : (
@@ -126,11 +137,11 @@ function FieldRow({
           )}
           {field.visible_when && <Badge variant="outline">{t("conditionalBadge")}</Badge>}
         </span>
-      </RowButton>
+      </span>
       <Button
         variant="ghost"
         size="icon"
-        className="size-7 shrink-0"
+        className="relative z-10 size-7 shrink-0"
         aria-label={t("deleteField", { field: label })}
         onClick={onDelete}
       >

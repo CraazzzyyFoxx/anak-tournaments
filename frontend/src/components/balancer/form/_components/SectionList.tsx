@@ -37,31 +37,44 @@ function SectionRow({
   );
   const title = section.title?.trim() || t("sectionFallback", { index: index + 1 });
 
+  // The select button covers the row (it owns the hover, the selected fill and
+  // the focus ring); the grip and the delete button sit above it, and the text
+  // beneath is decoration. A frame tint plus the button's own fill painted the
+  // selected row twice.
   return (
     <li
       ref={ref}
       style={style}
       className={cn(
-        "flex items-center gap-2 rounded-lg border px-2 py-1.5",
-        selected ? "border-primary/40 bg-primary/10" : "border-border/60",
+        "relative flex items-center gap-2 rounded-lg border px-2 py-1.5",
+        selected ? "border-primary/40" : "border-border/60",
         isDragging && "opacity-90"
       )}
     >
-      <SortableGrip handleProps={handleProps} label={t("reorderSection", { section: title })} />
+      <SortableGrip
+        className="relative z-10"
+        handleProps={handleProps}
+        label={t("reorderSection", { section: title })}
+      />
       <RowButton
         onClick={onSelect}
         aria-current={selected ? "true" : undefined}
-        className="min-w-0 flex-1 rounded-md"
+        className="absolute inset-0 rounded-[inherit]"
       >
-        <span className="block truncate text-sm font-medium">{title}</span>
+        <span className="sr-only">{title}</span>
+      </RowButton>
+      <span className="pointer-events-none relative min-w-0 flex-1">
+        <span aria-hidden className="block truncate text-sm font-medium">
+          {title}
+        </span>
         <span className="block text-xs text-muted-foreground">
           {t("fieldCount", { count: section.fields.length })}
         </span>
-      </RowButton>
+      </span>
       <Button
         variant="ghost"
         size="icon"
-        className="size-7 shrink-0"
+        className="relative z-10 size-7 shrink-0"
         disabled={!deletable}
         title={deletable ? t("deleteSection") : t("deleteSectionBlocked")}
         aria-label={
