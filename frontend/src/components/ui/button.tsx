@@ -7,20 +7,20 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 /**
- * A filled button speaks in the product's label voice: uppercase, the label
- * tracking, semibold, with one 1px sheen along its top edge. Under the
+ * A filled button is semibold, in the same sentence case and size as every
+ * other button in its row, with one 1px sheen along its top edge. Under the
  * pointer it brightens rather than fading, so it never dims into the surface.
  */
-const SOLID = "font-semibold uppercase tracking-label shadow-[inset_0_1px_0_var(--aqt-sheen)] hover:brightness-110";
-const SOLID_VARIANTS = ["default", "destructive", "positive"] as const;
+const SOLID = "font-semibold shadow-[inset_0_1px_0_var(--aqt-sheen)] hover:brightness-110";
 
 const buttonVariants = cva(
   [
     "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium",
-    "transition-[color,background-color,border-color,box-shadow,filter,scale] duration-150 ease-out",
+    "transition-[color,background-color,border-color,box-shadow,filter,translate] duration-150 ease-out",
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-    // The press: a short sink under the finger, off for reduced motion.
-    "motion-safe:active:scale-[0.97]",
+    // The press: a 1px sink, the same on every width (a scale shrinks a wide
+    // button by several pixels and blurs its text), off for reduced motion.
+    "motion-safe:active:translate-y-px",
     "disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
   ],
   {
@@ -59,17 +59,12 @@ const buttonVariants = cva(
         /** An icon inside a dense strip (a bracket card's footer, a wiring port): 20px box, 14px glyph or a label-size letter. */
         "icon-xs": "h-5 w-5 rounded text-label [&_svg]:size-3.5",
         /** Text action inside a sentence or row (`variant="link"`): no box, the surrounding text size, no press. */
-        inline: "h-auto rounded-sm p-0 text-[length:inherit] motion-safe:active:scale-100",
+        inline: "h-auto rounded-sm p-0 text-[length:inherit] motion-safe:active:translate-y-0",
         /** A sortable column head's own label (`variant="ghost"`): no box, the eyebrow voice, 12px glyph. Font family follows the cell. */
         label:
-          "h-auto gap-1 rounded-sm p-0 text-label font-semibold uppercase tracking-label motion-safe:active:scale-100 [&_svg]:size-3"
+          "h-auto gap-1 rounded-sm p-0 text-label font-semibold uppercase tracking-label motion-safe:active:translate-y-0 [&_svg]:size-3"
       }
     },
-    compoundVariants: [
-      // Uppercase reads a step larger: a filled button's text sits one role below the row's.
-      { variant: [...SOLID_VARIANTS], size: ["default", "lg"], className: "text-caption" },
-      { variant: [...SOLID_VARIANTS], size: "sm", className: "text-label" }
-    ],
     defaultVariants: {
       variant: "default",
       size: "default"

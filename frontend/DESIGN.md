@@ -159,10 +159,9 @@ prop picks the row; the text follows the row height:
   `FilterChip`, `ToggleGroupItem`, `TabsTrigger`, date and combobox
   triggers) is 500; what you type into (`Input`, `NumberInput`, `TimeInput`,
   `Textarea`, `SearchField`) is 400.
-- A filled button (`default`, `destructive`, `positive`) speaks in the label
-  voice: uppercase, `tracking-label`, 600, one role below its row (13px at
-  `default`/`lg`, 12px at `sm`/`xs`). The primitive sets it; labels stay
-  sentence case in code and in the accessible name.
+- A filled button (`default`, `destructive`, `positive`) is 600; its text is
+  its row's size and sentence case, like every control. The fill and its
+  sheen carry the emphasis, not the type.
 - Text-entry fields stay 16px below `sm`: iOS Safari zooms into any smaller
   focused field. The primitives carry this; do not undo it.
 - No `text-*` or `font-*` on a control, no `h-8`/`h-9` where `size` says it.
@@ -288,7 +287,7 @@ the last-resort `global-error`) are listed in the script with their reason.
 | Pagination                  | `ui/data-pagination.tsx` (`leading` slot for the range or rows-per-page)                                                |
 | Data table                  | `components/data-table/DataTable.tsx`                                                                                   |
 | URL state                   | `hooks/useQueryParams.ts`                                                                                               |
-| Button                      | `ui/button.tsx`. Filled, in the label voice: `default` (teal, the screen's main action) · `destructive` · `positive` (check in). Tonal: `outline` (the everyday button, raised off any surface). Quiet: `ghost` · `ghost-destructive` (icon remove) · `link`. Tinted: `accent` (teal row action, and the chosen option of a choice, so picking never changes its shape). `dashed` (add one more). Sizes `default` · `sm` · `lg` · `xs` · `icon` · `icon-sm` (28px, icon beside text) · `icon-xs` · `inline` (a link in a sentence) · `label` (sortable header). Every button sinks on press (§10) |
+| Button                      | `ui/button.tsx`. Filled, semibold: `default` (teal, the screen's main action) · `destructive` · `positive` (check in). Tonal: `outline` (the everyday button, raised off any surface). Quiet: `ghost` · `ghost-destructive` (icon remove) · `link`. Tinted: `accent` (teal row action, and the chosen option of a choice, so picking never changes its shape). `dashed` (add one more). Sizes `default` · `sm` · `lg` · `xs` · `icon` · `icon-sm` (28px, icon beside text) · `icon-xs` · `inline` (a link in a sentence) · `label` (sortable header). Every button sinks on press (§10) |
 | Row that is one action      | `RowButton` (`ui/row-button.tsx`): row hover, `aria-current="true"` selected fill, inset focus ring; the caller lays out |
 | Dialog / sheet chrome       | `DialogContent` / `SheetContent` + their headers, `variant="panel"` for the edge-to-edge panel with a bordered header |
 | Range                       | `ui/slider.tsx`, `accent` for a role-tinted track                                                                       |
@@ -404,8 +403,9 @@ system.
   one lifts away in 180ms, the new one rises in 320ms). Only named elements
   animate; the page itself is never captured, so it stays clickable.
 - No hover that changes size or shifts layout.
-- The one press: every `Button` sinks to `scale(0.97)` while pressed (150ms,
-  `motion-safe` only); the `inline` and `label` sizes, which are text, do not.
+- The one press: every `Button` sinks 1px while pressed (`translate-y-px`,
+  `motion-safe` only), the same on every width; the `inline` and `label`
+  sizes, which are text, do not.
 - `prefers-reduced-motion` mutes all of it; the static cue (colour, border,
   word) always remains.
 
@@ -597,7 +597,7 @@ Rules on every admin screen:
 - Hover that scales or shifts layout; entrance animations; perpetual loops
   on anything that is not live.
 - A button filled darker than the surface it sits on (`bg-background` on a
-  card or a dialog); a filled button in sentence case set at the call site.
+  card or a dialog).
 - A spinner where a skeleton fits; `empty` shown for a failed load.
 - Hand-rolling a primitive listed in §6.
 
