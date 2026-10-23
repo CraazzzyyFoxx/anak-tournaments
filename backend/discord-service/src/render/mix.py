@@ -28,22 +28,32 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import urljoin
 
-from shared.division_grid import DEFAULT_GRID
+from shared.core.social import PROVIDERS
+from shared.disciplines import identity_provider
+from shared.division_grid import DEFAULT_GRID, ladder_grid
 from shared.domain.mix_lobby import LOBBY_LETTERS
-from src.render.card import DiscordActionButton, DiscordCard, DiscordLinkButton
+from src.render.card import DISCORD_CARD_TEXT_LIMIT, DiscordActionButton, DiscordCard, DiscordLinkButton
 from src.render.mix_lineup_image import LineupPicture, LineupSeat, LineupTeam
 from src.ui import BLUE, ROLE_EMOJI, SHORTCODE, TEAL, division_emoji, emoji
 
-__all__ = ("SignupPlayer", "lineup_card", "lineup_picture", "signup_card")
+__all__ = ("SignupLobby", "SignupPlayer", "lineup_card", "lineup_picture", "signup_card")
 
 #: Mix statuses nobody can sign up for any more.
 _TERMINAL = {"completed": "завершён", "cancelled": "отменён"}
-#: The roles a signup counter breaks down by: the three role codes, then full flex.
-_COUNTED_ROLES = ("tank", "damage", "support", "flex")
-#: Room the player lists may take, measured as Discord counts it: AFTER the bot
-#: swaps every ``:owt_*:`` shortcode for ``<:owt_name:id>``, which the card's
-#: own length check cannot see. Leaves the rest of the card its headroom.
-_LISTS_BUDGET = 3000
+#: A lobby's stage as the card names it: the site's own words, so the card and the room never disagree.
+_LOBBY_STATES = {
+    "idle": "Пусто",
+    "ready": "Готово",
+    "pregame": "Пре-гейм",
+    "draft_setup": "Подготовка драфта",
+    "draft_live": "Драфт",
+    "live": "Идёт матч",
+}
+#: The stages the card times: a match from its start, a draft from its first pick (spec §12.1 R3-4).
+_TIMED_STATES = frozenset({"live", "draft_live"})
+#: What the player lists may add past their budget check: the bench heading (46 rendered
+#: characters) and a ``-# и ещё N`` under each list (at most 13 each: a roster holds 100).
+_LISTS_OVERRUN = 100
 #: What the bot's swap adds to one shortcode: ``<`` + a snowflake id + ``>``.
 _SHORTCODE_GROWTH = 21
 
@@ -56,13 +66,25 @@ class SignupPlayer:
     otherwise its preferred role -- the first explicit one, or the best ranked
     one for "every role I have a rank for" -- and ``None`` when it has none.
     ``name`` is the one the balancer shows for the row, and ``rank`` the number
-    it balances them at on their preferred role.
+    it balances them at on their preferred role. ``away`` is the player's own
+    break (spec §7.4): marked on the line, left out of the role counters.
     """
 
     name: str
     role: str | None
     benched: bool = False
     rank: int | None = None
+    away: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class SignupLobby:
+    """One lobby's stage as the card shows it (``discord_view``'s ``signup.lobbies``)."""
+
+    index: int
+    state: str
+    #: When its match started, or its live draft's first pick; ``None`` for a stage with no clock.
+    since: datetime | None = None
 
 
 #: Everything Discord markdown gives a meaning to; a backslash before ASCII
@@ -84,13 +106,26 @@ def _timestamp(moment: datetime) -> str:
     return f"<t:{int(moment.timestamp())}:R>"
 
 
-def _signup_counts(players: Sequence[SignupPlayer]) -> dict[str, int]:
-    """How many rows come for each role; a row with no role is in no counter."""
-    counts = dict.fromkeys(_COUNTED_ROLES, 0)
+def _is_overwatch(discipline: str) -> bool:
+    """Overwatch, told by the registry rather than by its code: the game whose own ladder is the grid
+    (``DEFAULT_GRID``) the bot's ``div_*`` badges and role emoji were drawn for (spec §12.1 R3-5)."""
+    return ladder_grid(discipline) is DEFAULT_GRID
+
+
+def _signup_counts(players: Sequence[SignupPlayer], codes: Sequence[str]) -> dict[str, int]:
+    """How many rows that are not away come for each of ``codes``; a row with no role is in no counter."""
+    counts = dict.fromkeys(codes, 0)
     for player in players:
-        if player.role in counts:
+        if not player.away and player.role in counts:
             counts[player.role] += 1
     return counts
+
+
+def _role_mark(role: str, labels: Mapping[str, str], overwatch: bool) -> str:
+    """A role as the card writes it: Overwatch's three and Full flex by their emoji, any other game's by its name."""
+    if role == "flex" or (overwatch and role in ROLE_EMOJI):
+        return emoji(ROLE_EMOJI[role])
+    return _escape(labels.get(role, role))
 
 
 def _rendered_len(text: str) -> int:
@@ -98,21 +133,29 @@ def _rendered_len(text: str) -> int:
     return len(text) + _SHORTCODE_GROWTH * len(SHORTCODE.findall(text))
 
 
-def _player_line(player: SignupPlayer) -> str:
+def _player_line(player: SignupPlayer, labels: Mapping[str, str] | None, overwatch: bool) -> str:
     """``:role: :badge: Name · 2450``: the role they come for, and how good they are at it.
 
-    The badge is the Overwatch rank the number lands in (the seat panel's own
-    badges) and simply disappears until it is uploaded; the number stays.
+    ``labels`` is ``None`` in a one-role game, whose rows carry no role mark. Only an Overwatch row wears the
+    badge -- the Overwatch rank the number lands in, the seat panel's own (spec §12.1 R3-5) -- and it simply
+    disappears until it is uploaded; the number stays. An away row says so last.
     """
-    role = emoji(ROLE_EMOJI[player.role]) if player.role in ROLE_EMOJI else ""
-    if player.rank is None:
-        return " ".join(part for part in (role, _escape(player.name)) if part) + " · без ранга"
-    badge = division_emoji(DEFAULT_GRID.resolve_division(player.rank).slug)
-    return " ".join(part for part in (role, badge, _escape(player.name)) if part) + f" · {player.rank}"
+    role = _role_mark(player.role, labels, overwatch) if labels is not None and player.role else ""
+    badge = (
+        division_emoji(DEFAULT_GRID.resolve_division(player.rank).slug) if overwatch and player.rank is not None else ""
+    )
+    rank = " · без ранга" if player.rank is None else f" · {player.rank}"
+    return (
+        " ".join(part for part in (role, badge, _escape(player.name)) if part)
+        + rank
+        + (" · отошёл" if player.away else "")
+    )
 
 
-def _player_lists(players: Sequence[SignupPlayer]) -> list[str]:
-    """The pool, then the bench, one player a line, cut at the budget with the rest counted."""
+def _player_lists(
+    players: Sequence[SignupPlayer], labels: Mapping[str, str] | None, overwatch: bool, budget: int
+) -> list[str]:
+    """The pool, then the bench, one player a line, cut at ``budget`` with the rest counted."""
     sections = [
         ("**Игроки**", [player for player in players if not player.benched]),
         (f"{emoji('bench')} **Скамейка**", [player for player in players if player.benched]),
@@ -125,13 +168,22 @@ def _player_lists(players: Sequence[SignupPlayer]) -> list[str]:
         lines.append(heading)
         used += _rendered_len(heading) + 1
         for index, player in enumerate(members):
-            line = _player_line(player)
-            if used + _rendered_len(line) + 1 > _LISTS_BUDGET:
+            line = _player_line(player, labels, overwatch)
+            if used + _rendered_len(line) + 1 > budget:
                 lines.append(f"-# и ещё {len(members) - index}")
                 break
             lines.append(line)
             used += _rendered_len(line) + 1
     return lines
+
+
+def _lobby_line(lobby: SignupLobby) -> str:
+    """``:owt_lobby_b: Лобби B — Драфт · начат <t:…:R>``: the stage, and how long a match or a live draft has run."""
+    letter = LOBBY_LETTERS[lobby.index]
+    line = f"{emoji(f'lobby_{letter.lower()}')} Лобби {letter} — {_LOBBY_STATES.get(lobby.state, lobby.state)}"
+    if lobby.state in _TIMED_STATES and lobby.since is not None:
+        line += f" · начат {_timestamp(lobby.since)}"
+    return line
 
 
 def signup_card(
@@ -145,6 +197,10 @@ def signup_card(
     lobby_count: int,
     players: Sequence[SignupPlayer],
     updated_at: datetime,
+    discipline: str,
+    roles: Sequence[tuple[str, str]],
+    flex: bool,
+    lobbies: Sequence[SignupLobby],
 ) -> DiscordCard:
     """The live channel post that opens a mix for self-signup.
 
@@ -158,6 +214,14 @@ def signup_card(
     lobby is shaping up, the lists say who is in it with the role and rank they
     come with -- the pool (must-play included) and the bench apart, as the
     balancer splits them.
+
+    ``roles`` is the mix game's rated roles as ``(code, label)`` and ``flex``
+    whether it has Full flex (``discord_view``): the counters break the roster
+    down by them, away rows left out, and a one-role game (Deadlock) has no
+    counters, no role marks and nothing to set up (spec §12.1 R3-1, R3-2).
+    ``lobbies`` is each lobby's stage with the clock of a running match or
+    draft (R3-4); a finished mix shows none. The footer asks for the game's own
+    account, ``discipline``'s identity provider.
     """
     name = _escape(mix_name)
     terminal = _TERMINAL.get(str(status))
@@ -177,21 +241,34 @@ def signup_card(
         facts.append(f"{emoji('pool')} сразу в пул")
     elif terminal is None and self_signup == "benched":
         facts.append(f"{emoji('bench')} сначала на скамейку")
+    text = "\n".join([headline, " · ".join(facts)])
 
-    counts = _signup_counts(players)
-    details = [
+    overwatch = _is_overwatch(discipline)
+    # One role is no role: nothing to count, mark or set up.
+    labels = dict(roles) if len(roles) > 1 else None
+    counted = [*(code for code, _label in roles), *(["flex"] if flex else [])] if labels is not None else []
+    counts = _signup_counts(players, counted)
+    head = [
         f"{emoji('players')} **{len(players)}** записано"
-        f" · {emoji('tank')} {counts['tank']}"
-        f" · {emoji('damage')} {counts['damage']}"
-        f" · {emoji('support')} {counts['support']}"
-        f" · {emoji('flex')} {counts['flex']}"
+        + "".join(f" · {_role_mark(code, labels or {}, overwatch)} {counts[code]}" for code in counted)
     ]
-    details.extend(_player_lists(players))
+    if terminal is None:
+        head.extend(_lobby_line(lobby) for lobby in lobbies)
     if terminal is None and not closed:
-        details.append("1. Нажмите «Записаться»  2. Настройте роли в ответе бота")
-        details.append(f"-# Нужны привязанные Discord и Battle.net · обновлено {_timestamp(updated_at)}")
+        provider = PROVIDERS[identity_provider(discipline)].label
+        foot = [
+            "1. Нажмите «Записаться»  2. Настройте роли в ответе бота"
+            if labels is not None
+            else "Нажмите «Записаться»",
+            f"-# Нужны привязанные Discord и {provider} · обновлено {_timestamp(updated_at)}",
+        ]
     else:
-        details.append(f"-# обновлено {_timestamp(updated_at)}")
+        foot = [f"-# обновлено {_timestamp(updated_at)}"]
+    # Discord caps the card's text as it renders it: AFTER the bot swaps every ``:owt_*:`` shortcode for
+    # ``<:owt_name:id>``, which the card's own length check cannot see. Everything else is kept whole, every
+    # lobby line included; the lists take what is left.
+    budget = DISCORD_CARD_TEXT_LIMIT - _rendered_len(text) - _rendered_len("\n".join([*head, *foot])) - _LISTS_OVERRUN
+    details = [*head, *_player_lists(players, labels, overwatch, budget), *foot]
 
     target = str(custom_game_id)
     answers: list[DiscordActionButton] = (
@@ -207,18 +284,19 @@ def signup_card(
     )
     return DiscordCard(
         accent_color=BLUE if terminal is not None else TEAL,
-        text="\n".join([headline, " · ".join(facts)]),
+        text=text,
         details="\n".join(details),
         answers=answers,
         rows=[[_board_button(board_url)]],
     )
 
 
-def _picture_seat(bucket: str, uuid: str, player: Mapping[str, Any], board_url: str) -> LineupSeat:
+def _picture_seat(bucket: str, uuid: str, player: Mapping[str, Any], board_url: str, overwatch: bool) -> LineupSeat:
     # A lobby document's player carries one rating per role bucket (``Tank``, ``Damage``...).
     ratings = player.get("ratings")
     rating = int(ratings.get(bucket, 0)) if isinstance(ratings, Mapping) else 0
-    icon = DEFAULT_GRID.resolve_division(rating).icon_url
+    # Only an Overwatch seat wears a division badge (spec §12.1 R3-5): the ladder is Overwatch's.
+    icon = DEFAULT_GRID.resolve_division(rating).icon_url if overwatch else None
     return LineupSeat(
         role=bucket.strip().lower(),
         name=str(player.get("name") or f"#{uuid}"),
@@ -229,10 +307,12 @@ def _picture_seat(bucket: str, uuid: str, player: Mapping[str, Any], board_url: 
     )
 
 
-def _picture_team(name: str, team: Mapping[str, Any], players: Mapping[str, Any], board_url: str) -> LineupTeam:
+def _picture_team(
+    name: str, team: Mapping[str, Any], players: Mapping[str, Any], board_url: str, overwatch: bool
+) -> LineupTeam:
     roster = team.get("roster")
     seats = tuple(
-        _picture_seat(bucket, str(uuid), players.get(str(uuid)) or {}, board_url)
+        _picture_seat(bucket, str(uuid), players.get(str(uuid)) or {}, board_url, overwatch)
         for bucket, uuids in (roster.items() if isinstance(roster, Mapping) else ())
         if isinstance(uuids, list)
         for uuid in uuids
@@ -261,19 +341,21 @@ def lineup_picture(
     points_per_win: int | None,
     board_url: str,
     lobby_label: str | None = None,
+    discipline: str,
 ) -> LineupPicture:
     """What the matchup picture of one lobby shows.
 
     ``variant`` is one option of a stored ``lobby_document`` and ``players``
-    that document's player map, which its seat uuids resolve against. A rank
-    badge is the Overwatch 2 ladder tier the seat's rating lands in, the one
-    the mix board badges with (``OW_REFERENCE_GRID``) -- not a workspace's
-    tournament grid. ``map_image`` is the next map's art as the database
-    stores its URL.
+    that document's player map, which its seat uuids resolve against. An
+    Overwatch seat's rank badge is the Overwatch 2 ladder tier its rating lands
+    in (``OW_REFERENCE_GRID``) -- not a workspace's tournament grid; another
+    game's seat shows its number alone (spec §12.1 R3-5). ``map_image`` is the
+    next map's art as the database stores its URL.
     """
+    overwatch = _is_overwatch(discipline)
     raw_teams = variant.get("teams")
     teams = tuple(
-        _picture_team(team_names.get(index) or f"Команда {index + 1}", team, players, board_url)
+        _picture_team(team_names.get(index) or f"Команда {index + 1}", team, players, board_url, overwatch)
         for index, team in enumerate(raw_teams if isinstance(raw_teams, list) else [])
         if isinstance(team, Mapping)
     )

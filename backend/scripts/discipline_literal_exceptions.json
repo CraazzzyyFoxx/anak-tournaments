@@ -372,66 +372,6 @@
       "remove_when": "the benchmark seeds through the module's declarations"
     },
     {
-      "path": "backend/discord-service/src/render/mix.py",
-      "rule": "role-vocabulary",
-      "token": "tank",
-      "context": "_COUNTED_ROLES = (\"tank\", \"damage\", \"support\", \"flex\")",
-      "count": 1,
-      "reason": "C21 Discord-copy debt: the OW mix bot's role tally line",
-      "owner": "P9",
-      "remove_when": "the mix card counts the mix game's roles"
-    },
-    {
-      "path": "backend/discord-service/src/render/mix.py",
-      "rule": "role-vocabulary",
-      "token": "damage",
-      "context": "_COUNTED_ROLES = (\"tank\", \"damage\", \"support\", \"flex\")",
-      "count": 1,
-      "reason": "C21 Discord-copy debt: the OW mix bot's role tally line",
-      "owner": "P9",
-      "remove_when": "the mix card counts the mix game's roles"
-    },
-    {
-      "path": "backend/discord-service/src/render/mix.py",
-      "rule": "role-vocabulary",
-      "token": "support",
-      "context": "_COUNTED_ROLES = (\"tank\", \"damage\", \"support\", \"flex\")",
-      "count": 1,
-      "reason": "C21 Discord-copy debt: the OW mix bot's role tally line",
-      "owner": "P9",
-      "remove_when": "the mix card counts the mix game's roles"
-    },
-    {
-      "path": "backend/discord-service/src/render/mix.py",
-      "rule": "role-vocabulary",
-      "token": "tank",
-      "context": "f\" · {emoji('tank')} {counts['tank']}\"",
-      "count": 2,
-      "reason": "C21 Discord-copy debt: the OW mix bot's role tally line",
-      "owner": "P9",
-      "remove_when": "the mix card counts the mix game's roles"
-    },
-    {
-      "path": "backend/discord-service/src/render/mix.py",
-      "rule": "role-vocabulary",
-      "token": "damage",
-      "context": "f\" · {emoji('damage')} {counts['damage']}\"",
-      "count": 2,
-      "reason": "C21 Discord-copy debt: the OW mix bot's role tally line",
-      "owner": "P9",
-      "remove_when": "the mix card counts the mix game's roles"
-    },
-    {
-      "path": "backend/discord-service/src/render/mix.py",
-      "rule": "role-vocabulary",
-      "token": "support",
-      "context": "f\" · {emoji('support')} {counts['support']}\"",
-      "count": 2,
-      "reason": "C21 Discord-copy debt: the OW mix bot's role tally line",
-      "owner": "P9",
-      "remove_when": "the mix card counts the mix game's roles"
-    },
-    {
       "path": "backend/discord-service/src/interactions/copy.py",
       "rule": "discipline-code",
       "token": "overwatch",
