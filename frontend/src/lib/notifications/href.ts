@@ -33,6 +33,14 @@ export function notificationHref(item: NotificationItem): string | null {
     case "registration.opened":
     case "check_in.opened":
       return isId(payload.tournament_id) ? tournamentHref(payload.tournament_id) : null;
+    // A mix captain's room: the lobby's own page, whose route takes the letter.
+    case "mix.ban_room_opened":
+    case "mix.draft_started":
+      return isId(payload.custom_game_id) &&
+        typeof payload.lobby === "string" &&
+        /^[A-F]$/.test(payload.lobby)
+        ? `/balancer/mix/${payload.custom_game_id}/lobby/${payload.lobby}`
+        : null;
     // An answered invite has only a pre-formation team ID, not a tournament
     // reference. It cannot link to the unrelated post-balancer team routes.
     case "team_invite.answered":

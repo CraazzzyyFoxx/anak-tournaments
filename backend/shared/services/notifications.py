@@ -67,6 +67,7 @@ __all__ = (
     "EncounterDisputeReviewPayload",
     "EncounterReportDisputedPayload",
     "EncounterScheduledPayload",
+    "MixRoomOpenedPayload",
     "NotificationGroup",
     "RegistrationDecisionPayload",
     "TeamInviteAnsweredPayload",
@@ -213,6 +214,16 @@ class EncounterScheduledPayload(_Payload):
     pick_ban: bool = False
 
 
+class MixRoomOpenedPayload(_Payload):
+    """Shared by ``mix.ban_room_opened`` and ``mix.draft_started`` -- the kind is the room (spec §12.1 R3-3). Sent to
+    a mix lobby's captain; ``lobby`` is the lobby's letter, which both the sentence and the link
+    (``/balancer/mix/{custom_game_id}/lobby/{lobby}``) use."""
+
+    custom_game_id: int
+    mix_name: str
+    lobby: str = Field(pattern=r"^[A-F]$")
+
+
 class AnnouncementText(_Payload):
     title: str = Field(min_length=1, max_length=200)
     body: str | None = Field(default=None, max_length=4000)
@@ -287,6 +298,8 @@ NOTIFICATION_KINDS: dict[str, type[BaseModel]] = {
     "registration.opened": TournamentPhaseOpenedPayload,
     "check_in.opened": TournamentPhaseOpenedPayload,
     "encounter.scheduled": EncounterScheduledPayload,
+    "mix.ban_room_opened": MixRoomOpenedPayload,
+    "mix.draft_started": MixRoomOpenedPayload,
 }
 
 #: Kinds ``broadcast()`` may post to a workspace channel. Everything else is
@@ -310,6 +323,8 @@ NOTIFICATION_KIND_GROUPS: dict[str, NotificationGroup] = {
     "registration.rejected": "tournament",
     "encounter.scheduled": "matches",
     "encounter.report_disputed": "matches",
+    "mix.ban_room_opened": "matches",
+    "mix.draft_started": "matches",
     "encounter.dispute_review": "staff",
     "team_invite.received": "team",
     "team_invite.answered": "team",

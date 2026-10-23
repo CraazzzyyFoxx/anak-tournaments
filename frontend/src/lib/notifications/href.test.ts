@@ -84,6 +84,17 @@ describe("notification destinations", () => {
     }
   });
 
+  it("sends a mix captain's DM to the lobby's own room", () => {
+    for (const kind of ["mix.ban_room_opened", "mix.draft_started"]) {
+      expect(
+        notificationHref({ ...item, kind, payload: { custom_game_id: 12, mix_name: "Friday", lobby: "B" } })
+      ).toBe("/balancer/mix/12/lobby/B");
+      expect(notificationHref({ ...item, kind, payload: { custom_game_id: 12, lobby: "../admin" } })).toBeNull();
+      expect(notificationHref({ ...item, kind, payload: { custom_game_id: "12", lobby: "B" } })).toBeNull();
+      expect(notificationHref({ ...item, kind, payload: { lobby: "B" } })).toBeNull();
+    }
+  });
+
   it("rejects malformed IDs instead of coercing wire values into routes", () => {
     for (const tournament_id of [
       undefined,

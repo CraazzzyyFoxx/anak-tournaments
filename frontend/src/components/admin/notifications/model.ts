@@ -11,6 +11,8 @@ export const KINDS = [
   "encounter.report_disputed",
   "encounter.dispute_review",
   "encounter.scheduled",
+  "mix.ban_room_opened",
+  "mix.draft_started",
   "team.kicked",
   "team.rejected",
   "team.disbanded"

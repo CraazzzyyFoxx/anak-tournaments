@@ -1044,7 +1044,7 @@
         },
         "matches": {
           "label": "Matches",
-          "desc": "Your match being scheduled or moved, and disputed reports."
+          "desc": "Your match being scheduled or moved, disputed reports, and your mix lobby's ban room or draft starting while you are its captain."
         },
         "team": {
           "label": "Teams",
@@ -7490,6 +7490,10 @@
         "dispute_review": "{position, plural, =0 {{teams} disagree on the final series score — an organizer has to decide} other {{teams} disagree on the score of map # — an organizer has to decide}}",
         "scheduled": "{teams} in {tournament_name} {scheduled_at, select, none {is ready to play — the time is still to be announced} other {is scheduled for {scheduled_at}}}"
       },
+      "mix": {
+        "ban_room_opened": "You captain lobby {lobby} of <b>{mix_name}</b>: the hero ban room is open",
+        "draft_started": "You captain lobby {lobby} of <b>{mix_name}</b>: the draft has started — pick on your turn"
+      },
       "announcement": {
         "published": "New announcement"
       },
@@ -7591,6 +7595,10 @@
           "report_disputed": "Report disputed",
           "dispute_review": "Organizer decision needed",
           "scheduled": "Match scheduled"
+        },
+        "mix": {
+          "ban_room_opened": "Mix ban room opened",
+          "draft_started": "Mix draft started"
         },
         "team": {
           "kicked": "Removed from team",
@@ -10214,7 +10222,7 @@
     },
     "notifications": {
       "checkInOpening": "Check-in opening, registration decisions",
-      "matchMoved": "Match scheduled or moved, disputed reports",
+      "matchMoved": "Match scheduled or moved, disputed reports, a mix room opening for its captain",
       "teamInvites": "Invites, answers, removals",
       "disputes": "Disputes awaiting a decision; ignores the tournament DM mute",
       "checkInOpened": "Check-in opened",
@@ -10228,6 +10236,8 @@
       "removedFromTeam": "Removed from team",
       "teamDisbanded": "Team disbanded",
       "teamRejected": "Team rejected",
+      "mixBanRoom": "Mix ban room opened",
+      "mixDraft": "Mix draft started",
       "dmSettingError": "Could not change the DM setting",
       "loadError": "Could not load notification settings.",
       "noDiscord": "No Discord linked. DMs are not sent; the inbox still receives everything.",
