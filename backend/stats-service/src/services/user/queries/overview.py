@@ -555,7 +555,13 @@ class UserOverviewQueries(DisciplineQueries):
                 sa.func.row_number()
                 .over(
                     partition_by=[models.WorkspaceMember.player_id, models.Tournament.discipline, models.Player.role],
-                    order_by=[models.Player.tournament_id.desc(), models.Player.id.desc()],
+                    # Newest event first by start date (undated last), not id: ids follow creation, not play, so
+                    # across workspaces an older event can carry the higher id.
+                    order_by=[
+                        models.Tournament.start_date.desc().nulls_last(),
+                        models.Player.tournament_id.desc(),
+                        models.Player.id.desc(),
+                    ],
                 )
                 .label("row_num"),
             )

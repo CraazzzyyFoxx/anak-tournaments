@@ -605,8 +605,6 @@ export async function fetchPlayerRankHistoryPreview(
       // The read is this game's tournaments only, so every grid version it names is this game's.
       const { results, division_grid_versions } = await userService.getUserTournaments(user.id, discipline, workspaceId);
       if (results.length) {
-        const sorted = [...results].sort((a, b) => b.id - a.id);
-
         let normalizer: DivisionGridNormalizer | null = null;
         if (targetGridVersion) {
           normalizer = await DivisionGridNormalizer.build(
@@ -615,7 +613,8 @@ export async function fetchPlayerRankHistoryPreview(
           );
         }
 
-        for (const tournament of sorted) {
+        // The read lists them newest event first (by date: ids follow creation, not play).
+        for (const tournament of results) {
           // A flex participation (or none) carries ONE rank that stands for no particular role (the player's
           // maximum), so attributing it to a role would invent per-role history the tournament never recorded —
           // the same call the backend makes in `registration/rank_sources.py::canonical_to_registration_role`.

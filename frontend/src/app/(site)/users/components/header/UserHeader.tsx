@@ -76,9 +76,8 @@ const UserHeader = async ({ profile, user, scope, discipline, axis }: UserHeader
 
   // No seasons in the system — show the trend from the most recent tournament:
   // its map winrate vs the user's career map winrate. One lightweight fetch.
-  const lastSummary = profile.tournaments.length
-    ? [...profile.tournaments].sort((a, b) => b.id - a.id)[0]
-    : null;
+  // The server sends the cards newest event first (by date: ids follow creation, not play).
+  const lastSummary = profile.tournaments[0] ?? null;
   // The form streak, the last-tournament fetch and the game's metadata are independent — run them
   // in parallel instead of awaiting sequentially.
   const [formStreak, lastTournament, metadata] = await Promise.all([

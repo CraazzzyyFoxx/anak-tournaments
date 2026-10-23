@@ -139,7 +139,8 @@ class UserProfileQueries(DisciplineQueries):
         ``division_grid_version_id`` — the tournament's *effective* grid version
         (own pin, else its workspace default, else the system default). The rank
         is raw, so the caller resolves the division against the grid version that
-        tournament was actually played on.
+        tournament was actually played on. Entries come newest event first (start date, undated last, then id):
+        ids follow creation, not play, across workspaces.
         """
 
         seat = Seat()
@@ -153,6 +154,7 @@ class UserProfileQueries(DisciplineQueries):
                 seat.maps_lost.label("maps_lost"),
                 models.Team.tournament_id.label("tournament_id"),
                 models.Player.rank.label("rank"),
+                models.Tournament.start_date.label("start_date"),
                 tournament_effective_version_id_expr(models.Team.tournament_id).label("division_grid_version_id"),
             )
             .join(models.Team, models.Team.id == models.Player.team_id)
@@ -176,13 +178,17 @@ class UserProfileQueries(DisciplineQueries):
                 sa.func.sum(sides.c.maps_won).label("won_maps"),
                 sa.func.sum(sides.c.maps_lost).label("lost_maps"),
                 sa.func.jsonb_agg(
-                    sa.func.jsonb_build_object(
-                        "tournament",
-                        sides.c.tournament_id,
-                        "rank",
-                        sides.c.rank,
-                        "division_grid_version_id",
-                        sides.c.division_grid_version_id,
+                    aggregate_order_by(
+                        sa.func.jsonb_build_object(
+                            "tournament",
+                            sides.c.tournament_id,
+                            "rank",
+                            sides.c.rank,
+                            "division_grid_version_id",
+                            sides.c.division_grid_version_id,
+                        ),
+                        sides.c.start_date.desc().nulls_last(),
+                        sides.c.tournament_id.desc(),
                     )
                 ),
             )

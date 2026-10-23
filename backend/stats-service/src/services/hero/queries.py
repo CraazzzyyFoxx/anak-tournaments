@@ -524,7 +524,8 @@ class HeroQueries(DisciplineQueries):
                 sa.func.row_number()
                 .over(
                     partition_by=models.WorkspaceMember.player_id,
-                    order_by=models.Player.tournament_id.desc(),
+                    # Newest event first by start date (undated last), not id: ids follow creation, not play.
+                    order_by=[models.Tournament.start_date.desc().nulls_last(), models.Player.tournament_id.desc()],
                 )
                 .label("rn"),
             )

@@ -1030,9 +1030,9 @@ class UserService(DisciplineQueries):
         grid is unknown has no division to report and is left out.
         """
         roles = await self.profile.get_roles(session, user_id, workspace_id=workspace_id)
+        # Entries arrive newest event first (by start date, not id: see ``get_roles``).
         latest_by_role = [
-            (role, maps_won, maps_lost, division, max(division, key=lambda item: item["tournament"]))
-            for role, maps_won, maps_lost, division in roles
+            (role, maps_won, maps_lost, division, division[0]) for role, maps_won, maps_lost, division in roles
         ]
 
         all_workspaces = workspace_id is None
@@ -1127,8 +1127,14 @@ class UserService(DisciplineQueries):
         tournaments_count: int = 0
         tournaments_won: int = 0
 
-        # Narrow tournament summary — only fields the frontend renders on the user overview.
-        tournaments = [_mappers.to_user_tournament_summary(team.tournament) for team in teams]
+        # Narrow tournament summary — only fields the frontend renders on the user overview. Newest event first: the
+        # page's "last tournament" is the first card.
+        tournaments = [
+            _mappers.to_user_tournament_summary(tournament)
+            for tournament in sorted(
+                (team.tournament for team in teams), key=_mappers.tournament_recency_key, reverse=True
+            )
+        ]
 
         for team in teams:
             if team.tournament.is_league:
@@ -1170,7 +1176,7 @@ class UserService(DisciplineQueries):
             characters_count=hero_statistics.total if hero_statistics is not None else 0,
             roles=roles,
             character_statistics=hero_statistics.results if hero_statistics is not None else [],
-            tournaments=sorted(tournaments, key=lambda x: x.id, reverse=True),
+            tournaments=tournaments,
             games=games,
         )
 
@@ -1319,7 +1325,7 @@ class UserService(DisciplineQueries):
         tournaments_count = 0
         tournaments_won = 0
         recent: dict[int, schemas.UserDraftCardTournament] = {}
-        for team in sorted(teams, key=lambda item: item.tournament_id, reverse=True):
+        for team in sorted(teams, key=lambda item: _mappers.tournament_recency_key(item.tournament), reverse=True):
             tournament = team.tournament
             if tournament.is_league:
                 continue
