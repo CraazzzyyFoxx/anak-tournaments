@@ -2,10 +2,11 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Check, Scale } from "lucide-react";
+import { Check } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
+import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
 import { PageStateCard } from "@/components/ui/page-state-card";
@@ -116,10 +117,33 @@ export default function MixBalancerSection() {
   }, [pendingPayload, dirty, mutate]);
 
   if (preferencesQuery.isLoading) {
+    // The two groups below, row for row: `true` marks a stacked row.
+    const groups = [
+      { id: "mixes-balancing", title: t("mixBalancer.balancingTitle"), description: undefined, rows: [true, true, false, false, false] },
+      { id: "mixes-defaults", title: t("mixBalancer.defaultsTitle"), description: t("mixBalancer.defaultsDesc"), rows: [false, true] },
+    ];
     return (
-      <div className="space-y-4" aria-hidden>
-        <Skeleton className="h-64 rounded-xl" />
-        <Skeleton className="h-96 rounded-xl" />
+      <div className="space-y-6">
+        {groups.map((group) => (
+          <SettingGroup key={group.id} id={group.id} level={4} title={group.title} description={group.description}>
+            {group.rows.map((stacked, index) => (
+              <div
+                key={index}
+                aria-hidden
+                className={cn(
+                  "grid gap-2 py-3 first:pt-0 last:pb-0",
+                  !stacked && "@xl:grid-cols-2 @xl:items-center @xl:gap-6",
+                )}
+              >
+                <div className="space-y-1.5">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-full max-w-xs" />
+                </div>
+                <Skeleton className={stacked ? "h-8 w-full" : "h-8 w-24 @xl:justify-self-end"} />
+              </div>
+            ))}
+          </SettingGroup>
+        ))}
       </div>
     );
   }
@@ -135,45 +159,37 @@ export default function MixBalancerSection() {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Switching game mid-save would write one game's knobs under another's roles: the tabs wait for the save. */}
-      <fieldset disabled={dirty || save.isPending} className="m-0 min-w-0 border-0 p-0">
-        <GameScopeControl scope={gameScope} variant="single" />
-      </fieldset>
-      <Card className="border-border/40 bg-card/50">
-        <CardHeader className="flex-row items-center justify-between gap-3 space-y-0 pb-4">
-          <div className="flex items-center gap-2">
-            <Scale className="size-4 text-primary" aria-hidden />
-            <CardTitle asChild className="text-sm font-semibold">
-              <h4>{t("mixBalancer.balancingTitle")}</h4>
-            </CardTitle>
-          </div>
-          {/* One line, three states, no button: saving, saved, or nothing.
-              It covers the roster shape too — both halves share one draft. */}
-          <span
-            role="status"
-            aria-live="polite"
-            className="flex items-center gap-1.5 text-xs text-[color:var(--aqt-fg-dim)]"
-          >
-            {save.isPending || dirty ? (
-              <>
-                <Spinner className="size-3" />
-                {t("mixBalancer.saving")}
-              </>
-            ) : save.isSuccess ? (
-              <>
-                <Check className="h-3 w-3" aria-hidden />
-                {t("mixBalancer.saved")}
-              </>
-            ) : null}
-          </span>
-        </CardHeader>
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* Switching game mid-save would write one game's knobs under another's roles: the tabs wait for the save. */}
+        <fieldset disabled={dirty || save.isPending} className="m-0 min-w-0 border-0 p-0">
+          <GameScopeControl scope={gameScope} variant="single" />
+        </fieldset>
+        {/* One line, three states, no button: saving, saved, or nothing.
+            It covers the roster shape too — both groups share one draft. */}
+        <span
+          role="status"
+          aria-live="polite"
+          className="ms-auto flex items-center gap-1.5 text-caption text-[color:var(--aqt-fg-dim)]"
+        >
+          {save.isPending || dirty ? (
+            <>
+              <Spinner className="size-3" />
+              {t("mixBalancer.saving")}
+            </>
+          ) : save.isSuccess ? (
+            <>
+              <Check className="size-3" aria-hidden />
+              {t("mixBalancer.saved")}
+            </>
+          ) : null}
+        </span>
+      </div>
 
-        <CardContent className="space-y-6">
-          <div className="space-y-1.5">
-            <Label asChild>
-              <span>{t("mixBalancer.tilt.label")}</span>
-            </Label>
+      <SettingGroup id="mixes-balancing" level={4} title={t("mixBalancer.balancingTitle")}>
+        {/* No `htmlFor`: the slider's thumb is not labelable, so it carries its own name. */}
+        <SettingRow label={t("mixBalancer.tilt.label")} hint={t("mixBalancer.tilt.hint")} stacked>
+          <div className="w-full space-y-1.5">
             <Slider
               aria-label={t("mixBalancer.tilt.label")}
               min={0}
@@ -184,158 +200,154 @@ export default function MixBalancerSection() {
                 setDraft((current) => ({ ...current, tilt: (next ?? 50) / 100 }))
               }
             />
-            <div className="flex justify-between text-xs text-[color:var(--aqt-fg-dim)]">
+            <div className="flex justify-between text-caption text-[color:var(--aqt-fg-dim)]">
               <span>{t("mixBalancer.tilt.evenRanks")}</span>
-              <span className="tabular-nums">
+              <span className="aqt-tnum">
                 {draft.tilt === DEFAULT_COMFORT_TILT
                   ? t("mixBalancer.tilt.balanced")
                   : t("mixBalancer.tilt.comfort", { percent: Math.round(draft.tilt * 100) })}
               </span>
               <span>{t("mixBalancer.tilt.preferredRoles")}</span>
             </div>
-            <p className="text-xs text-[color:var(--aqt-fg-dim)]">{t("mixBalancer.tilt.hint")}</p>
           </div>
+        </SettingRow>
 
-          <div className="space-y-1.5">
-            <Label asChild>
-              <span>{t("mixBalancer.weights.label")}</span>
-            </Label>
-            <div className="flex flex-wrap gap-2">
-              {code && !metadata.isError && rated && [...weightRoles.map(role => ({ code: role.code, name: nameOf(role) })), { code: "flex", name: roleT("openSlot") }].map(({ code, name }) => (
-                <div key={code} className="flex items-center gap-2">
-                  <Label
-                    htmlFor={`mix-role-weight-${code}`}
-                    className="text-xs text-[color:var(--aqt-fg-dim)]"
-                  >
-                    {name}
-                  </Label>
-                  <NumberInput
-                    id={`mix-role-weight-${code}`}
-                    min={0}
-                    max={MAX_ROLE_WEIGHT}
-                    placeholder={String(DEFAULT_ROLE_WEIGHT)}
-                    value={draft.weights[code] ?? DEFAULT_ROLE_WEIGHT}
-                    onValueChange={(next) =>
-                      setDraft((current) => ({
-                        ...current,
-                        weights: withRoleWeight(current.weights, code, next),
-                      }))
-                    }
-                    size="sm"
-                    className="w-16 bg-background/50 px-2 text-center tabular-nums"
-                  />
-                </div>
-              ))}
-            </div>
-            {metadata.isError || (metadata.data && !rated) ? <p role="alert">{roleT("metadataError")}</p> : null}
-            <p className="text-xs text-[color:var(--aqt-fg-dim)]">{t("mixBalancer.weights.hint")}</p>
+        <SettingRow
+          label={t("mixBalancer.weights.label")}
+          hint={t("mixBalancer.weights.hint")}
+          error={metadata.isError || (metadata.data && !rated) ? roleT("metadataError") : undefined}
+          stacked
+        >
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
+            {code && !metadata.isError && rated && [...weightRoles.map(role => ({ code: role.code, name: nameOf(role) })), { code: "flex", name: roleT("openSlot") }].map(({ code, name }) => (
+              <div key={code} className="flex items-center gap-2">
+                <Label
+                  htmlFor={`mix-role-weight-${code}`}
+                  className="text-caption font-normal text-[color:var(--aqt-fg-muted)]"
+                >
+                  {name}
+                </Label>
+                <NumberInput
+                  id={`mix-role-weight-${code}`}
+                  min={0}
+                  max={MAX_ROLE_WEIGHT}
+                  placeholder={String(DEFAULT_ROLE_WEIGHT)}
+                  value={draft.weights[code] ?? DEFAULT_ROLE_WEIGHT}
+                  onValueChange={(next) =>
+                    setDraft((current) => ({
+                      ...current,
+                      weights: withRoleWeight(current.weights, code, next),
+                    }))
+                  }
+                  size="sm"
+                  className="w-16 px-2 tabular-nums"
+                />
+              </div>
+            ))}
           </div>
+        </SettingRow>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="mix-result-variants">{t("mixBalancer.variants.label")}</Label>
-            <NumberInput
-              id="mix-result-variants"
-              integer
-              min={1}
-              max={MAX_RESULT_VARIANTS}
-              placeholder={String(DEFAULT_RESULT_VARIANTS)}
-              value={draft.variants}
-              onValueChange={(next) =>
-                setDraft((current) => ({ ...current, variants: next ?? DEFAULT_RESULT_VARIANTS }))
+        <SettingRow
+          htmlFor="mix-result-variants"
+          label={t("mixBalancer.variants.label")}
+          hint={t("mixBalancer.variants.hint", { max: MAX_RESULT_VARIANTS })}
+        >
+          <NumberInput
+            id="mix-result-variants"
+            integer
+            min={1}
+            max={MAX_RESULT_VARIANTS}
+            placeholder={String(DEFAULT_RESULT_VARIANTS)}
+            value={draft.variants}
+            onValueChange={(next) =>
+              setDraft((current) => ({ ...current, variants: next ?? DEFAULT_RESULT_VARIANTS }))
+            }
+            size="sm"
+            className="w-24 px-2 tabular-nums"
+          />
+        </SettingRow>
+
+        <SettingRow
+          htmlFor="mix-rating-mode"
+          label={t("mixBalancer.mode.label")}
+          hint={draft.ratingMode === "ranker" ? t("mixBalancer.mode.hint") : undefined}
+        >
+          <Select
+            value={draft.ratingMode}
+            onValueChange={(next) =>
+              setDraft((current) => ({ ...current, ratingMode: next as MixRatingMode }))
+            }
+          >
+            <SelectTrigger id="mix-rating-mode" size="sm" className="w-56">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="points">{t("mixBalancer.mode.points")}</SelectItem>
+              <SelectItem value="ranker">{t("mixBalancer.mode.ranker")}</SelectItem>
+            </SelectContent>
+          </Select>
+        </SettingRow>
+
+        <SettingRow
+          htmlFor="mix-points-per-win"
+          label={t("mixBalancer.points.label")}
+          hint={t("mixBalancer.points.hint")}
+        >
+          <NumberInput
+            id="mix-points-per-win"
+            integer
+            min={0}
+            max={MAX_POINTS_PER_WIN}
+            // Kept, not cleared: switching back to points restores the number.
+            disabled={draft.ratingMode === "ranker"}
+            placeholder={t("mixBalancer.points.placeholder")}
+            value={draft.pointsPerWin}
+            onValueChange={(next) => setDraft((current) => ({ ...current, pointsPerWin: next }))}
+            size="sm"
+            className="w-24 px-2 tabular-nums"
+          />
+        </SettingRow>
+      </SettingGroup>
+
+      {code != null ? (
+        // One description for both rows: each value is copied into a new mix the same way.
+        <SettingGroup
+          id="mixes-defaults"
+          level={4}
+          title={t("mixBalancer.defaultsTitle")}
+          description={t("mixBalancer.defaultsDesc")}
+        >
+          <SettingRow htmlFor="mix-ban-default" label={t("mixBalancer.bans.label")}>
+            <BanPresetSelect
+              id="mix-ban-default"
+              discipline={code}
+              label={t("mixBalancer.bans.label")}
+              value={draft.banPresets[code] ?? null}
+              onChange={(next) =>
+                setDraft((current) => {
+                  const banPresets = { ...current.banPresets };
+                  if (next == null) delete banPresets[code];
+                  else banPresets[code] = next;
+                  return { ...current, banPresets };
+                })
               }
-              size="sm"
-              className="w-24 bg-background/50 px-2 tabular-nums"
             />
-            <p className="text-xs text-[color:var(--aqt-fg-dim)]">
-              {t("mixBalancer.variants.hint", { max: MAX_RESULT_VARIANTS })}
-            </p>
-          </div>
+          </SettingRow>
 
-          <div className="space-y-1.5">
-            <Label asChild>
-              <span>{t("mixBalancer.mode.label")}</span>
-            </Label>
-            <Select
-              value={draft.ratingMode}
-              onValueChange={(next) =>
-                setDraft((current) => ({ ...current, ratingMode: next as MixRatingMode }))
+          <SettingRow htmlFor={`mix-formation-${code}-formation`} label={t("mixBalancer.formation.label")} stacked>
+            <MixFormationControl
+              idPrefix={`mix-formation-${code}`}
+              value={draft.formationDefaults[code] ?? { team_formation: "balance", draft_pick_seconds: 30 }}
+              onChange={(next) =>
+                setDraft((current) => ({
+                  ...current,
+                  formationDefaults: { ...current.formationDefaults, [code]: next },
+                }))
               }
-            >
-              <SelectTrigger
-                id="mix-rating-mode"
-                aria-label={t("mixBalancer.mode.label")}
-                size="sm"
-                className="w-56 bg-background/50"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="points">{t("mixBalancer.mode.points")}</SelectItem>
-                <SelectItem value="ranker">{t("mixBalancer.mode.ranker")}</SelectItem>
-              </SelectContent>
-            </Select>
-            {draft.ratingMode === "ranker" ? (
-              <p className="text-xs text-[color:var(--aqt-fg-dim)]">{t("mixBalancer.mode.hint")}</p>
-            ) : null}
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="mix-points-per-win">{t("mixBalancer.points.label")}</Label>
-            <NumberInput
-              id="mix-points-per-win"
-              integer
-              min={0}
-              max={MAX_POINTS_PER_WIN}
-              // Kept, not cleared: switching back to points restores the number.
-              disabled={draft.ratingMode === "ranker"}
-              placeholder={t("mixBalancer.points.placeholder")}
-              value={draft.pointsPerWin}
-              onValueChange={(next) => setDraft((current) => ({ ...current, pointsPerWin: next }))}
-              size="sm"
-              className="w-24 bg-background/50 px-2 tabular-nums"
             />
-            <p className="text-xs text-[color:var(--aqt-fg-dim)]">{t("mixBalancer.points.hint")}</p>
-          </div>
-
-          {code != null ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="mix-ban-default">{t("mixBalancer.bans.label")}</Label>
-              <BanPresetSelect
-                id="mix-ban-default"
-                discipline={code}
-                label={t("mixBalancer.bans.label")}
-                value={draft.banPresets[code] ?? null}
-                onChange={(next) =>
-                  setDraft((current) => {
-                    const banPresets = { ...current.banPresets };
-                    if (next == null) delete banPresets[code];
-                    else banPresets[code] = next;
-                    return { ...current, banPresets };
-                  })
-                }
-              />
-              <p className="text-xs text-[color:var(--aqt-fg-dim)]">{t("mixBalancer.bans.hint")}</p>
-            </div>
-          ) : null}
-
-          {code != null ? (
-            <div className="space-y-1.5">
-              <Label htmlFor={`mix-formation-${code}-formation`}>{t("mixBalancer.formation.label")}</Label>
-              <MixFormationControl
-                idPrefix={`mix-formation-${code}`}
-                value={draft.formationDefaults[code] ?? { team_formation: "balance", draft_pick_seconds: 30 }}
-                onChange={(next) =>
-                  setDraft((current) => ({
-                    ...current,
-                    formationDefaults: { ...current.formationDefaults, [code]: next },
-                  }))
-                }
-              />
-              <p className="text-xs text-[color:var(--aqt-fg-dim)]">{t("mixBalancer.formation.hint")}</p>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+          </SettingRow>
+        </SettingGroup>
+      ) : null}
     </div>
   );
 }

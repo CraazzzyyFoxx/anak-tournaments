@@ -14,6 +14,19 @@ export function settingErrorId(controlId: string): string {
   return `${controlId}-error`;
 }
 
+/** Id of the label a `SettingRow` renders for the control `controlId`. */
+export function settingLabelId(controlId: string): string {
+  return `${controlId}-label`;
+}
+
+/**
+ * Id of the hint a `SettingRow` renders for the control `controlId`: a control
+ * the label alone cannot explain (a switch) points `aria-describedby` at it.
+ */
+export function settingHintId(controlId: string): string {
+  return `${controlId}-hint`;
+}
+
 /**
  * The control half of an inline error: spread on the control whose row gets
  * the same `error`, so the field is marked and names its message.
@@ -80,7 +93,11 @@ export function SettingRow({
     >
       <div className="min-w-0">
         <div className="flex items-baseline justify-between gap-3">
-          <Label htmlFor={htmlFor} className="text-sm font-medium text-foreground">
+          <Label
+            id={htmlFor ? settingLabelId(htmlFor) : undefined}
+            htmlFor={htmlFor}
+            className="text-sm font-medium text-foreground"
+          >
             {label}
           </Label>
           {count ? (
@@ -94,7 +111,11 @@ export function SettingRow({
             </span>
           ) : null}
         </div>
-        {hint ? <p className="mt-0.5 max-w-prose text-xs text-muted-foreground">{hint}</p> : null}
+        {hint ? (
+          <p id={htmlFor ? settingHintId(htmlFor) : undefined} className="mt-0.5 max-w-prose text-xs text-muted-foreground">
+            {hint}
+          </p>
+        ) : null}
       </div>
       <div className="min-w-0">
         <div className={cn("flex min-w-0 items-center", !stacked && "@xl:justify-end")}>
@@ -123,24 +144,30 @@ export function SettingRow({
  * `immediate` marks a group whose controls act on their own (an upload, a
  * transfer, a DNS check) rather than through the page's save bar, so the two
  * save models never share a group without saying so.
+ *
+ * `level` is the title's heading rank: 2 under a page `h1`, deeper inside a
+ * dialog whose own title and section heading sit above the group.
  */
 export function SettingGroup({
   id,
   title,
   description,
   immediate = false,
+  level = 2,
   children
 }: Readonly<{
   id: string;
   title: string;
   description?: ReactNode;
   immediate?: boolean;
+  level?: 2 | 3 | 4;
   children: ReactNode;
 }>) {
   const t = useTranslations("kit.settings");
   const titleId = useId();
   const ref = useRef<HTMLElement>(null);
   useSettingsOutlineEntry(id, title, ref);
+  const Heading = `h${level}` as const;
 
   return (
     // `scroll-mt-16` keeps a jumped-to group clear of the admin top bar.
@@ -148,9 +175,9 @@ export function SettingGroup({
       <section id={id} ref={ref} aria-labelledby={titleId}>
         <header className="px-5 py-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-            <h2 id={titleId} className="text-ui font-semibold text-foreground">
+            <Heading id={titleId} className="text-ui font-semibold text-foreground">
               {title}
-            </h2>
+            </Heading>
             {immediate ? (
               <p className="text-xs text-muted-foreground">{t("appliesImmediately")}</p>
             ) : null}

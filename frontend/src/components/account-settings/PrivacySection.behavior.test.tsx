@@ -11,6 +11,7 @@ import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import PrivacySection from "@/components/account-settings/PrivacySection";
+import { settingHintId } from "@/components/kit/SettingRow";
 import type { User } from "@/types/user.types";
 
 declare global {
@@ -65,9 +66,7 @@ async function mount() {
 }
 
 function streamSwitch(container: HTMLElement): HTMLButtonElement {
-  const found = container.querySelector<HTMLButtonElement>(
-    '[role="switch"][aria-labelledby="stream-visibility-label"]'
-  );
+  const found = container.querySelector<HTMLButtonElement>('[role="switch"]#stream-visibility');
   expect(found, "stream-privacy switch").toBeTruthy();
   return found!;
 }
@@ -117,9 +116,11 @@ describe("PrivacySection stream privacy", () => {
     const container = await mount();
 
     const toggle = streamSwitch(container);
-    expect(toggle.getAttribute("aria-describedby")).toBe("stream-visibility-desc");
-    expect(container.querySelector("#stream-visibility-label")?.textContent).toBeTruthy();
-    expect(container.querySelector("#stream-visibility-desc")?.textContent).toBeTruthy();
+    const hintId = settingHintId("stream-visibility");
+    expect(toggle.getAttribute("aria-describedby")).toBe(hintId);
+    // Named by its `<label for>`, described by the hint under it.
+    expect(container.querySelector('label[for="stream-visibility"]')?.textContent).toBeTruthy();
+    expect(container.querySelector(`#${hintId}`)?.textContent).toBeTruthy();
   });
 
   it("stays inert until the current value has actually loaded", async () => {

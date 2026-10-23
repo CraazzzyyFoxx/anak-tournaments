@@ -121,7 +121,7 @@ export function AccountMenuPanel({
       ) : null}
       {actions}
       <PopoverClose asChild>
-        <RowButton className={ACCOUNT_MENU_ITEM_CLASS} onClick={() => openSettings("profile")}>
+        <RowButton className={ACCOUNT_MENU_ITEM_CLASS} onClick={() => openSettings()}>
           <Settings className="size-4 shrink-0" aria-hidden />
           <span className="min-w-0 flex-1 truncate">{t("common.accountSettings")}</span>
         </RowButton>

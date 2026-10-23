@@ -92,6 +92,9 @@ export function EditableAvatar({
   const t = useTranslations("kit.avatar");
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
+  // A stored avatar whose file no longer loads draws the initials, not an empty frame.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const imageSrc = src && src !== failedSrc ? src : null;
   const interactive = editable && !disabled && !busy;
   const radius = shape === "circle" ? "rounded-full" : "rounded-md";
 
@@ -155,13 +158,14 @@ export function EditableAvatar({
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
       >
-        {src ? (
+        {imageSrc ? (
           <Image
-            src={src}
+            src={imageSrc}
             alt={name ?? "avatar"}
             width={width ?? size}
             height={size}
             className="h-full w-full select-none object-cover"
+            onError={() => setFailedSrc(imageSrc)}
           />
         ) : (
           <div

@@ -1,33 +1,35 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Eye, EyeOff, Plus, Star, Unlink } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
+import { invalidProps, SettingGroup, settingHintId, SettingRow } from "@/components/kit/SettingRow";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import { EditableAvatar } from "@/components/ui/editable-avatar";
-import { SocialIcon } from "@/components/social/SocialIcon";
-import { SITE_NAME } from "@/config/site";
-import { getSocialProviderConfig, sortSocialAccounts } from "@/lib/social/providers";
-import { notify } from "@/lib/notify";
-import { cn } from "@/lib/utils";
-import { useAuthProfileStore } from "@/stores/auth-profile.store";
-import { usePermissions } from "@/hooks/usePermissions";
-import meService from "@/services/me.service";
-import { refreshAccessToken } from "@/lib/auth/tokens";
+import { FileButton } from "@/components/ui/file-button";
+import { Input } from "@/components/ui/input";
 import { revalidateUser } from "@/app/actions/users";
+import { usePermissions } from "@/hooks/usePermissions";
+import { ApiError, getApiErrorMessage } from "@/lib/api/error";
+import { refreshAccessToken } from "@/lib/auth/tokens";
+import { notify } from "@/lib/notify";
 import { MAX_AVATAR_BYTES } from "@/lib/uploads";
-import type { User } from "@/types/user.types";
+import meService from "@/services/me.service";
+import { useAuthProfileStore } from "@/stores/auth-profile.store";
 
-import { SettingsGroup } from "./SettingsGroup";
-import { userQueryKeys } from "@/lib/users/query-keys";
+import { LinkedAccountsGroup } from "./LinkedAccountsGroup";
 
-// Providers a user can OAuth-link (and thereby verify).
-const OAUTH_ADDABLE = ["battlenet", "riot", "steam", "discord", "twitch"] as const;
+const AVATAR_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
+const AVATAR_MB = Math.round(MAX_AVATAR_BYTES / (1024 * 1024));
+
+// The account-name rule, mirroring `normalize_username` in identity-service
+// `schemas/auth.py`: NFKC, trimmed, 3-32 characters (code points, as Python
+// counts them) of letters and digits in any script plus `_`, `.` and `-`
+// (Python's Unicode `\w` is letters, numbers and `_`).
+const USERNAME_MIN = 3;
+const USERNAME_MAX = 32;
+const USERNAME_RE = /^[\p{L}\p{N}_.-]+$/u;
 
 export default function MyAccountSection() {
   const t = useTranslations("accountSettings");
@@ -36,51 +38,54 @@ export default function MyAccountSection() {
   const { canUseCapability } = usePermissions();
   const canAvatar = canUseCapability("account.avatar");
   const canRename = canUseCapability("account.rename");
-  const canSocial = canUseCapability("account.social");
-  const queryClient = useQueryClient();
-
-  const socialQuery = useQuery({
-    queryKey: userQueryKeys.mySocial(),
-    queryFn: () => meService.getSocialAccounts(),
-    enabled: canSocial,
-  });
-  const accounts = sortSocialAccounts(socialQuery.data?.social_accounts ?? []);
 
   const currentName = user?.username ?? "";
   const [name, setName] = useState(currentName);
+  // The client check speaks once the reader leaves the field or tries to save,
+  // then follows the value, so it clears as they fix it.
+  const [touched, setTouched] = useState(false);
+  // The server's refusal (a taken name), cleared by the next edit.
+  const [refusal, setRefusal] = useState<string>();
   // Re-seed the field when the profile's name changes (load, save, refetch).
   const [seededName, setSeededName] = useState(currentName);
   if (seededName !== currentName) {
     setSeededName(currentName);
     setName(currentName);
+    setTouched(false);
+    setRefusal(undefined);
   }
-  const trimmedName = name.trim();
 
-  // Persist the fresh user into the query cache AND bust the Next Data Cache so
-  // the public users/[slug] header / list / search reflect the change at once.
-  const writeSocial = (user: User) => {
-    void revalidateUser(user.id);
-    queryClient.setQueryData(userQueryKeys.mySocial(), user);
-  };
+  const normalized = name.normalize("NFKC").trim();
+  const length = [...normalized].length;
+  const changed = normalized !== currentName;
+  const issue =
+    length < USERNAME_MIN || length > USERNAME_MAX
+      ? t("name.errors.length", { min: USERNAME_MIN, max: USERNAME_MAX })
+      : USERNAME_RE.test(normalized)
+        ? undefined
+        : t("name.errors.chars");
+  const nameError = refusal ?? (touched && changed ? issue : undefined);
 
-  // Failures surface via the global MutationCache.onError toast (see providers.tsx),
-  // so these only need to refresh the profile on success.
+  // Avatar failures surface via the global MutationCache.onError toast (see
+  // providers.tsx), so these only need to refresh the profile on success.
   const avatarUpload = useMutation({
     mutationFn: (file: File) => meService.setAvatar(file),
     onSuccess: () => {
       void revalidateUser();
       fetchMe({ force: true });
-    },
+    }
   });
   const avatarDelete = useMutation({
     mutationFn: () => meService.deleteAvatar(),
     onSuccess: () => {
       void revalidateUser();
       fetchMe({ force: true });
-    },
+    }
   });
   const rename = useMutation({
     mutationFn: (username: string) => meService.updateUsername(username),
+    // A refusal belongs under the field it is about, not in a toast.
+    meta: { suppressErrorToast: true },
     onSuccess: async () => {
       // The access token carries the name too (audit labels, chat fallback):
       // re-issue it so the rest of the platform stops seeing the old one.
@@ -88,220 +93,116 @@ export default function MyAccountSection() {
       fetchMe({ force: true });
       notify.success(t("name.saved"));
     },
+    // identity-svc answers a taken name with an English 400 (`update_me`); say it in the reader's language.
+    onError: (error) =>
+      setRefusal(
+        error instanceof ApiError && error.status === 400
+          ? t("name.errors.taken")
+          : getApiErrorMessage(error, t("name.errors.failed"))
+      )
   });
+
+  const canSave = canRename && changed && !issue && !rename.isPending;
   const submitName = (event: FormEvent) => {
     event.preventDefault();
-    if (trimmedName && trimmedName !== currentName) rename.mutate(trimmedName);
+    setTouched(true);
+    if (canSave) rename.mutate(normalized);
   };
-  const setPrimary = useMutation({
-    mutationFn: (id: number) => meService.setSocialPrimary(id),
-    onSuccess: writeSocial,
-  });
-  const setVisibility = useMutation({
-    mutationFn: ({ id, visible }: { id: number; visible: boolean }) =>
-      meService.setSocialVisibility(id, visible),
-    onSuccess: writeSocial,
-  });
-  // Self-service OAuth unlink. Returns no body (204), so refetch the list rather
-  // than writing it back; errors (e.g. "set a password first") surface via the
-  // global mutation toast.
-  const unlinkAccount = useMutation({
-    mutationFn: (provider: string) => meService.unlinkOAuth(provider),
-    onSuccess: () => {
-      void revalidateUser();
-      void queryClient.invalidateQueries({ queryKey: userQueryKeys.mySocial() });
-    },
-  });
 
-  const linkHref = (provider: string) => {
-    const next =
-      typeof window !== "undefined" ? `${window.location.pathname}?settings=profile` : "/?settings=profile";
-    return `/auth/${provider}/login?action=link&next=${encodeURIComponent(next)}`;
-  };
+  const hasAvatar = Boolean(user?.avatarUrl);
+  const avatarBusy = avatarUpload.isPending || avatarDelete.isPending;
 
   return (
-    <div className="space-y-8">
-      <SettingsGroup title={t("name.title")} description={canRename ? t("name.hint") : t("name.disabled")}>
-        <form className="flex max-w-md items-end gap-2" onSubmit={submitName}>
-          <div className="min-w-0 flex-1 space-y-1.5">
-            <Label htmlFor="account-username" className="sr-only">
-              {t("name.label")}
-            </Label>
+    <div className="space-y-6">
+      <SettingGroup id="account-identity" level={4} title={t("identity.title")}>
+        <SettingRow
+          htmlFor="account-username"
+          stacked
+          label={t("name.label")}
+          hint={canRename ? t("name.hint") : t("name.disabled")}
+          count={{ value: length, max: USERNAME_MAX }}
+          error={nameError}
+        >
+          <form className="flex w-full gap-2" onSubmit={submitName}>
             <Input
               id="account-username"
+              className="min-w-0 flex-1"
               value={name}
-              onChange={(event) => setName(event.target.value)}
-              maxLength={32}
+              onChange={(event) => {
+                setName(event.target.value);
+                setRefusal(undefined);
+              }}
+              onBlur={() => setTouched(true)}
+              // A disabled submit blocks implicit submission, so Enter on an
+              // invalid name would otherwise say nothing.
+              onKeyDown={(event) => {
+                if (event.key === "Enter") setTouched(true);
+              }}
+              maxLength={USERNAME_MAX}
               autoComplete="nickname"
               spellCheck={false}
               disabled={!canRename || rename.isPending}
+              aria-describedby={settingHintId("account-username")}
+              {...invalidProps("account-username", nameError)}
             />
+            <Button type="submit" disabled={!canSave}>
+              {t("name.save")}
+            </Button>
+          </form>
+        </SettingRow>
+
+        <SettingRow
+          label={t("avatar.title")}
+          hint={canAvatar ? t("avatar.hint", { mb: AVATAR_MB }) : t("avatar.disabled")}
+        >
+          <div className="flex items-center gap-3">
+            <EditableAvatar
+              src={user?.avatarUrl}
+              name={user?.username}
+              size={56}
+              editable={canAvatar}
+              busy={avatarBusy}
+              accept={AVATAR_ACCEPT}
+              onSelectFile={(file) => avatarUpload.mutate(file)}
+              maxSizeBytes={MAX_AVATAR_BYTES}
+              onError={(message) => notify.error(message)}
+              labels={{
+                change: t("avatar.change"),
+                upload: t("avatar.upload"),
+                edit: t("avatar.edit"),
+                drop: t("avatar.drop"),
+                unsupportedType: t("avatar.unsupported"),
+                tooLarge: t("avatar.tooLarge", { mb: AVATAR_MB })
+              }}
+            />
+            {canAvatar ? (
+              <>
+                <FileButton
+                  variant="outline"
+                  size="sm"
+                  accept={AVATAR_ACCEPT}
+                  disabled={avatarBusy}
+                  onFiles={([file]) => {
+                    // The picker's `accept` is a hint, not a filter: check what came back.
+                    if (!AVATAR_ACCEPT.split(",").includes(file.type)) notify.error(t("avatar.unsupported"));
+                    else if (file.size > MAX_AVATAR_BYTES) notify.error(t("avatar.tooLarge", { mb: AVATAR_MB }));
+                    else avatarUpload.mutate(file);
+                  }}
+                >
+                  {hasAvatar ? t("avatar.replace") : t("avatar.upload")}
+                </FileButton>
+                {hasAvatar ? (
+                  <Button variant="ghost" size="sm" disabled={avatarBusy} onClick={() => avatarDelete.mutate()}>
+                    {t("avatar.remove")}
+                  </Button>
+                ) : null}
+              </>
+            ) : null}
           </div>
-          <Button
-            type="submit"
-            disabled={!canRename || rename.isPending || !trimmedName || trimmedName === currentName}
-          >
-            {t("name.save")}
-          </Button>
-        </form>
-        <p className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">{t("name.rules")}</p>
-      </SettingsGroup>
+        </SettingRow>
+      </SettingGroup>
 
-      <SettingsGroup title={t("avatar.title")}>
-        <div className="flex items-center gap-4">
-          <EditableAvatar
-            src={user?.avatarUrl}
-            name={user?.username}
-            size={72}
-            editable={canAvatar}
-            busy={avatarUpload.isPending || avatarDelete.isPending}
-            onSelectFile={(file) => avatarUpload.mutate(file)}
-            onDelete={user?.avatarUrl ? () => avatarDelete.mutate() : undefined}
-            maxSizeBytes={MAX_AVATAR_BYTES}
-            onError={(message) => notify.error(message)}
-            labels={{
-              change: t("avatar.change"),
-              upload: t("avatar.upload"),
-              edit: t("avatar.edit"),
-              drop: t("avatar.drop"),
-              remove: t("avatar.remove"),
-              unsupportedType: t("avatar.unsupported"),
-              tooLarge: t("avatar.tooLarge", { mb: Math.round(MAX_AVATAR_BYTES / (1024 * 1024)) }),
-            }}
-          />
-          <p className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">
-            {canAvatar ? t("avatar.hint") : t("avatar.disabled")}
-          </p>
-        </div>
-      </SettingsGroup>
-
-      <SettingsGroup title={t("linked.title")}>
-        {!canSocial ? (
-          <p className="text-caption text-[color:var(--aqt-fg-dim)]">{t("linked.disabled")}</p>
-        ) : (
-          <>
-            {socialQuery.isLoading ? (
-              <div className="space-y-1.5" aria-hidden>
-                <Skeleton className="h-11 rounded-lg" />
-                <Skeleton className="h-11 rounded-lg" />
-              </div>
-            ) : accounts.length === 0 ? (
-              <p className="text-caption text-[color:var(--aqt-fg-dim)]">{t("linked.empty")}</p>
-            ) : (
-              <ul className="space-y-1.5">
-                {accounts.map((account) => {
-                  const visible = account.visible_global !== false;
-                  return (
-                    <li
-                      key={account.id}
-                      className="flex items-center gap-2 rounded-lg border border-[color:var(--aqt-border)] bg-[color:var(--aqt-overlay-2)] px-3 py-2"
-                    >
-                      {/* Hidden is shown as a word, and only the identity dims:
-                          fading the whole row used to make its live controls
-                          look disabled. */}
-                      <span className={cn("flex min-w-0 flex-1 items-center gap-2", !visible && "opacity-60")}>
-                        <SocialIcon provider={account.provider} size={15} />
-                        <span className="truncate text-sm text-[color:var(--aqt-fg)]" title={account.username}>
-                          {account.username}
-                        </span>
-                      </span>
-                      {!visible ? (
-                        <span className="shrink-0 text-caption text-[color:var(--aqt-fg-dim)]">
-                          {t("linked.hidden")}
-                        </span>
-                      ) : null}
-                      {account.is_verified && (
-                        <Check
-                          className="h-3.5 w-3.5 shrink-0 text-[color:var(--aqt-emerald)]"
-                          aria-label={t("linked.verifiedAria")}
-                        />
-                      )}
-                      {account.is_primary ? (
-                        <Star
-                          className="h-4 w-4 shrink-0 fill-[color:var(--aqt-amber)] text-[color:var(--aqt-amber)]"
-                          aria-label={t("linked.primaryAria")}
-                        />
-                      ) : (
-                        <Button
-                          size="icon-sm"
-                          variant="ghost"
-                          disabled={!account.is_verified || setPrimary.isPending}
-                          onClick={() => setPrimary.mutate(account.id)}
-                          aria-label={
-                            account.is_verified
-                              ? t("linked.makePrimary")
-                              : t("linked.primaryNeedsVerified")
-                          }
-                        >
-                          <Star aria-hidden />
-                        </Button>
-                      )}
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        className="text-[color:var(--aqt-fg-muted)] hover:text-[color:var(--aqt-fg)]"
-                        disabled={setVisibility.isPending}
-                        onClick={() => setVisibility.mutate({ id: account.id, visible: !visible })}
-                        aria-label={
-                          visible
-                            ? t("linked.hideAria", { name: account.username })
-                            : t("linked.showAria", { name: account.username })
-                        }
-                      >
-                        {visible ? (
-                          <Eye aria-hidden />
-                        ) : (
-                          <EyeOff aria-hidden />
-                        )}
-                      </Button>
-                      {account.is_verified && (
-                        <Button
-                          size="icon-sm"
-                          variant="ghost-destructive"
-                          disabled={unlinkAccount.isPending}
-                          onClick={() => {
-                            const label = getSocialProviderConfig(account.provider).label;
-                            if (window.confirm(t("linked.disconnectConfirm", { provider: label }))) {
-                              unlinkAccount.mutate(account.provider);
-                            }
-                          }}
-                          aria-label={t("linked.disconnectAria", { name: account.username })}
-                        >
-                          <Unlink aria-hidden />
-                        </Button>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            <div className="flex flex-wrap gap-2">
-              {OAUTH_ADDABLE.map((provider) => {
-                const label = getSocialProviderConfig(provider).label;
-                return (
-                  <a
-                    key={provider}
-                    href={linkHref(provider)}
-                    aria-label={t("linked.linkAria", { provider: label })}
-                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[color:var(--aqt-border-2)] bg-[color:var(--aqt-overlay-2)] px-2.5 text-xs text-[color:var(--aqt-fg)] transition-colors hover:bg-[color:var(--aqt-overlay-3)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <Plus className="h-3 w-3" aria-hidden />
-                    <SocialIcon provider={provider} size={13} />
-                    {label}
-                  </a>
-                );
-              })}
-            </div>
-            <p className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">
-              {t("linked.riotNotice", { siteName: SITE_NAME })}
-            </p>
-            <p className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">
-              {t("linked.steamNotice", { siteName: SITE_NAME })}
-            </p>
-            <p className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">{t("linked.footnote")}</p>
-          </>
-        )}
-      </SettingsGroup>
+      <LinkedAccountsGroup />
     </div>
   );
 }

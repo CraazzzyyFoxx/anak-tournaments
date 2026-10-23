@@ -6,12 +6,11 @@ import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
+import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { Button } from "@/components/ui/button";
 import { logout } from "@/lib/auth/logout";
 import meService from "@/services/me.service";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
-
-import { SettingsGroup } from "./SettingsGroup";
 
 export default function DeleteAccountSection() {
   const t = useTranslations("accountSettings.danger");
@@ -38,30 +37,37 @@ export default function DeleteAccountSection() {
   if (isSuperuser) return null;
 
   return (
-    <SettingsGroup title={t("title")} tone="danger">
-      <div className="space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4">
-        <p className="text-caption text-[color:var(--aqt-fg-muted)]">{t("deleteDesc")}</p>
-        <p className="text-caption text-[color:var(--aqt-fg-dim)]">{t("deleteKeeps")}</p>
-        <Button variant="destructive" size="sm" onClick={() => setConfirmOpen(true)}>
-          <Trash2 aria-hidden />
-          {t("delete")}
-        </Button>
-        {/* The dialog stays open while the request is in flight so the pending
-            state stays visible; onError closes it and the global toast carries
-            the reason. */}
-        <ConfirmDialog
-          open={confirmOpen}
-          onOpenChange={setConfirmOpen}
-          intent={{
-            title: t("confirmTitle"),
-            description: t("confirmBody"),
-            confirmLabel: t("confirmDelete"),
-            tone: "danger"
-          }}
-          pending={deleteAccount.isPending}
-          onConfirm={() => deleteAccount.mutate()}
-        />
-      </div>
-    </SettingsGroup>
+    <>
+      <SettingGroup id="security-delete" level={4} title={t("title")}>
+        <SettingRow
+          label={t("delete")}
+          hint={
+            <>
+              {t("deleteDesc")} {t("deleteKeeps")}
+            </>
+          }
+        >
+          <Button variant="destructive" size="sm" onClick={() => setConfirmOpen(true)}>
+            <Trash2 aria-hidden />
+            {t("delete")}
+          </Button>
+        </SettingRow>
+      </SettingGroup>
+      {/* The dialog stays open while the request is in flight so the pending
+          state stays visible; onError closes it and the global toast carries
+          the reason. */}
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        intent={{
+          title: t("confirmTitle"),
+          description: t("confirmBody"),
+          confirmLabel: t("confirmDelete"),
+          tone: "danger"
+        }}
+        pending={deleteAccount.isPending}
+        onConfirm={() => deleteAccount.mutate()}
+      />
+    </>
   );
 }

@@ -3,11 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
+import { SettingGroup, SettingRow, settingHintId } from "@/components/kit/SettingRow";
+import { Switch } from "@/components/ui/switch";
 import { usePermissions } from "@/hooks/usePermissions";
 import meService from "@/services/me.service";
 import { revalidateUser } from "@/app/actions/users";
-
-import { SettingsGroup, SwitchTile } from "./SettingsGroup";
 import { userQueryKeys } from "@/lib/users/query-keys";
 
 export default function PrivacySection() {
@@ -39,19 +39,19 @@ export default function PrivacySection() {
   });
 
   return (
-    <SettingsGroup title={t("stream.title")}>
-      <SwitchTile
-        id="stream-visibility"
-        label={t("stream.toggleLabel")}
-        desc={t("stream.toggleDesc")}
-        checked={streamVisible}
-        // Never let the switch act on a guess: without a loaded response
-        // there is no current value to invert, and a wrong payload here
-        // silently re-publishes a stream the user meant to hide.
-        disabled={!socialQuery.data || setStreamVisibility.isPending}
-        onCheckedChange={(next) => setStreamVisibility.mutate(next)}
-      />
-      <p className="text-caption text-pretty text-[color:var(--aqt-fg-dim)]">{t("stream.footnote")}</p>
-    </SettingsGroup>
+    <SettingGroup id="privacy-stream" level={4} title={t("stream.title")} description={t("stream.footnote")}>
+      <SettingRow htmlFor="stream-visibility" label={t("stream.toggleLabel")} hint={t("stream.toggleDesc")}>
+        <Switch
+          id="stream-visibility"
+          aria-describedby={settingHintId("stream-visibility")}
+          checked={streamVisible}
+          // Never let the switch act on a guess: without a loaded response
+          // there is no current value to invert, and a wrong payload here
+          // silently re-publishes a stream the user meant to hide.
+          disabled={!socialQuery.data || setStreamVisibility.isPending}
+          onCheckedChange={(next) => setStreamVisibility.mutate(next)}
+        />
+      </SettingRow>
+    </SettingGroup>
   );
 }

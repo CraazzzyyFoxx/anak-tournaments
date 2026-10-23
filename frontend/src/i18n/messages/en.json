@@ -1073,7 +1073,7 @@
       "saved": "Saved",
       "loadError": "Could not load your mix preferences.",
       "tilt": {
-        "label": "Balancing (rank balance vs role comfort)",
+        "label": "Rank balance vs role comfort",
         "evenRanks": "Even ranks",
         "preferredRoles": "Preferred roles",
         "balanced": "Balanced",
@@ -1100,55 +1100,66 @@
         "hint": "Recording who won bumps every winning player's rank by this many points in your own book, and every losing player's down by the same. Leave empty to record results without touching ranks."
       },
       "bans": {
-        "label": "Hero bans in new mixes of this game",
-        "hint": "Copied into each new mix; change it in the mix's header any time."
+        "label": "Hero bans in new mixes of this game"
       },
       "formation": {
-        "label": "Teams in new mixes of this game",
-        "hint": "Copied into each new mix; change it in the mix's header any time."
-      }
+        "label": "Teams in new mixes of this game"
+      },
+      "defaultsTitle": "Defaults for a new mix",
+      "defaultsDesc": "Copied into each new mix of this game; change them in the mix's header any time."
     },
     "name": {
-      "title": "Name",
       "label": "Your name",
-      "hint": "How you appear across the site. In tournaments you are shown by the Battle.net account you registered with.",
+      "hint": "How you appear across the site. In tournaments you are shown by the Battle.net account you registered with. Use letters in any alphabet, digits, dots, hyphens and underscores, no spaces.",
       "disabled": "Changing your name has been disabled by an administrator.",
-      "rules": "3–32 characters: letters in any alphabet, digits, and _ - .",
       "save": "Save",
-      "saved": "Name updated"
+      "saved": "Name updated",
+      "errors": {
+        "length": "Use {min} to {max} characters.",
+        "chars": "Use only letters, digits, dots, hyphens and underscores, no spaces.",
+        "failed": "Could not save your name. Try again.",
+        "taken": "This name is already taken."
+      }
     },
     "avatar": {
       "title": "Avatar",
-      "hint": "Select your avatar or drop an image onto it to change it.",
+      "hint": "PNG, JPEG, WebP or GIF, up to {mb} MB. You can also drop an image onto the avatar.",
       "disabled": "Changing your avatar has been disabled by an administrator.",
       "change": "Change your avatar",
-      "upload": "Add",
+      "upload": "Upload",
       "edit": "Change",
       "drop": "Drop",
-      "remove": "Remove your avatar",
+      "remove": "Remove",
       "unsupported": "Choose a PNG, JPEG, WebP or GIF image.",
-      "tooLarge": "Choose an image under {mb} MB."
+      "tooLarge": "Choose an image under {mb} MB.",
+      "replace": "Replace"
     },
     "linked": {
       "title": "Linked accounts",
       "disabled": "Managing your accounts has been disabled by an administrator.",
-      "empty": "No linked accounts yet — add one via OAuth below.",
       "makePrimary": "Make primary",
-      "primaryNeedsVerified": "Only OAuth-verified accounts can be primary",
-      "primaryAria": "Primary",
-      "verifiedAria": "Verified",
+      "primaryNeedsVerified": "Verify this account first",
       "hide": "Hide from your public profile",
       "show": "Show on your public profile",
       "hideAria": "Hide {name}",
       "showAria": "Show {name}",
-      "disconnect": "Disconnect this OAuth account",
-      "disconnectAria": "Disconnect {name}",
-      "disconnectConfirm": "Disconnect your {provider} account? You can reconnect it later via OAuth.",
+      "disconnect": "Disconnect",
       "riotNotice": "Linking your Riot account makes your League of Legends rank public on {siteName}.",
       "steamNotice": "Linking your Steam account makes your Deadlock rank public on {siteName}.",
-      "footnote": "Accounts can only be added through OAuth, which also verifies them. Disconnect removes the OAuth link (the account stays, unverified, until you reconnect); hiding removes it from your public profile. Only an administrator can erase a linked account from your profile entirely.",
       "hidden": "Hidden",
-      "linkAria": "Link {provider}"
+      "linkAria": "Connect {provider}",
+      "desc": "Added through OAuth, which confirms the account is yours.",
+      "add": "Add",
+      "addAria": "Add another {provider} account",
+      "primary": "Primary",
+      "unverified": "Not verified",
+      "verify": "Verify",
+      "verifyAria": "Verify {name}",
+      "actionsAria": "Actions for {name}",
+      "disconnectTitle": "Disconnect {provider}?",
+      "disconnectBody": "The account stays on your profile, unverified, until you connect it again. Only an administrator can remove it from your profile completely.",
+      "connectableTitle": "Available to connect",
+      "connect": "Connect"
     },
     "stream": {
       "title": "Live stream",
@@ -1182,7 +1193,16 @@
       "loadFailed": "Unable to load sessions",
       "revokedToast": "Session signed out",
       "revokedToastDesc": "That device has been signed out."
-    }
+    },
+    "identity": {
+      "title": "Name and avatar"
+    },
+    "groups": {
+      "account": "Account",
+      "personal": "Personal"
+    },
+    "back": "All sections",
+    "publicProfile": "Public profile"
   },
   "draft": {
     "loading": "Loading draft…",
