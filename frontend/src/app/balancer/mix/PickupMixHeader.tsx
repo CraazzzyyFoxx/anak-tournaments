@@ -205,7 +205,8 @@ export function PickupMixHeader({
 
         <span aria-hidden="true" className="h-5 w-px shrink-0 bg-[color:var(--aqt-border)]" />
 
-        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+        {/* Wraps rather than squeezing: on a phone the id and the stage drop under the name, which keeps its width. */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1">
           {canWrite && game != null && onRename ? (
             <InlineEditText
               value={game.name}
