@@ -834,6 +834,95 @@ class StatisticsQueries(DisciplineQueries):
         result = await session.execute(query)
         return result.first()
 
+    async def get_tournament_user_ranks(
+        self,
+        session: AsyncSession,
+        tournament: models.Tournament,
+        user_id: int,
+        stats_names: list[enums.LogStatsName],
+    ) -> tuple[list[tuple[enums.LogStatsName, int, typing.Any, int, int, int]], sa.Row | None]:
+        """``get_tournament_avg_match_stat_for_user_bulk`` and ``get_tournament_mvp_stat_for_user`` in one statement.
+
+        Each of those reads every fact of every tournament match through ``player_facts`` (90k index rows to keep 13k
+        and 4k); here the tournament's totals are read once from the tables, MATERIALIZED, and both rankings
+        aggregate that. Returns ``(stat rows, mvp row)`` in those two functions' shapes.
+        """
+        f, d, m, wm = models.StatsFact, models.StatDef, models.StatsMatch, models.WorkspaceMember
+        mvp_codes = [enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance]
+        matches = self._tournament_match_ids_cte(tournament.id, cte_name="tournament_rank_matches")
+        facts = (
+            sa.select(
+                wm.player_id.label("user_id"), f.match_id, f.workspace_member_id, d.code.label("stat_code"), f.value
+            )
+            .select_from(matches)
+            .join(f, f.match_id == matches.c.match_id)
+            .join(m, m.id == f.match_id)
+            .join(d, sa.and_(d.id == f.stat_id, d.discipline == m.discipline))
+            .join(wm, sa.and_(wm.id == f.workspace_member_id, wm.workspace_id == m.workspace_id))
+            .where(d.code.in_([*stats_names, *mvp_codes]), f.segment == 0, f.entity_id.is_(None))
+            .cte("tournament_rank_facts")
+            .prefix_with("MATERIALIZED")
+        )
+        avg_value = sa.func.avg(aggregate_order_by(facts.c.value, facts.c.match_id, facts.c.workspace_member_id))
+        stats = (
+            sa.select(
+                facts.c.stat_code.label("name"),
+                facts.c.user_id,
+                avg_value.cast(sa.Numeric(10, 2)).label("value"),
+                sa.func.dense_rank().over(order_by=sa.desc(avg_value), partition_by=facts.c.stat_code).label("rank"),
+                sa.func.dense_rank().over(order_by=sa.asc(avg_value), partition_by=facts.c.stat_code).label("rank_asc"),
+            )
+            .where(facts.c.stat_code.in_(stats_names))
+            .group_by(facts.c.user_id, facts.c.stat_code)
+        ).cte("tournament_rank_stats")
+        per_match = (
+            sa.select(
+                facts.c.user_id,
+                facts.c.match_id,
+                sa.func.max(sa.case((facts.c.stat_code == enums.LogStatsName.ImpactRank, facts.c.value))).label(
+                    "impact_rank"
+                ),
+                sa.func.max(sa.case((facts.c.stat_code == enums.LogStatsName.Performance, facts.c.value))).label(
+                    "performance"
+                ),
+            )
+            .where(facts.c.stat_code.in_(mvp_codes))
+            .group_by(facts.c.user_id, facts.c.match_id)
+        ).cte("tournament_rank_mvp_per_match")
+        placement = sa.func.coalesce(per_match.c.impact_rank, per_match.c.performance)
+        average = sa.func.avg(aggregate_order_by(placement, per_match.c.match_id))
+        mvp = (
+            sa.select(
+                per_match.c.user_id,
+                average.cast(sa.Numeric(10, 2)).label("value"),
+                sa.func.dense_rank().over(order_by=sa.asc(average)).label("rank"),
+            )
+            .where(placement.isnot(None))
+            .group_by(per_match.c.user_id)
+        ).cte("tournament_rank_mvp")
+        query = sa.union_all(
+            sa.select(
+                stats.c.name,
+                stats.c.user_id,
+                stats.c.value,
+                stats.c.rank,
+                stats.c.rank_asc,
+                sa.select(sa.func.count(stats.c.user_id) / len(stats_names)).scalar_subquery().label("total"),
+            ).where(stats.c.user_id == user_id),
+            # The MVP row: no stat name, its ascending rank in both rank columns.
+            sa.select(
+                sa.literal(None, sa.String).label("name"),
+                mvp.c.user_id,
+                mvp.c.value,
+                mvp.c.rank,
+                mvp.c.rank,
+                sa.select(sa.func.count(mvp.c.user_id)).scalar_subquery(),
+            ).where(mvp.c.user_id == user_id),
+        )
+        rows = (await session.execute(query)).all()
+        stat_rows = [(enums.LogStatsName(row.name), *row[1:]) for row in rows if row.name is not None]
+        return stat_rows, next((row for row in rows if row.name is None), None)
+
     async def get_tournament_mvp_stat_leaderboard(
         self,
         session: AsyncSession,

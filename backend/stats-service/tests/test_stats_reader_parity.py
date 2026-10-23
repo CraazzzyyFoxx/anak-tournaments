@@ -861,6 +861,14 @@ def test_native_mvp_prefers_impact_then_falls_back_to_performance(
                     await session.execute(sa.delete(facts).where(*whole, facts.c.stat_id == impact_id))
                 row = await statistics_queries.get_tournament_mvp_stat_for_user(session, tournament, ids["player"])
                 assert row is not None and row.value == expected
+                _, merged = await statistics_queries.get_tournament_user_ranks(
+                    session, tournament, ids["player"], [enums.LogStatsName.KDA]
+                )
+                assert merged is not None and (merged.value, merged.rank, merged.total) == (
+                    row.value,
+                    row.rank,
+                    row.total,
+                )
                 leaderboard = await statistics_queries.get_tournament_mvp_stat_leaderboard(session, tournament.id)
                 assert next(item.value for item in leaderboard if item.user_id == ids["player"]) == expected
                 assert await users.encounters.count_user_mvp_maps(session, ids["player"], ids["workspace"]) == int(
@@ -1062,6 +1070,10 @@ def test_native_ow_readers_exclude_same_player_foreign_discipline(
                     ALL_STATS,
                 )
                 == []
+            )
+            assert await statistics_queries.get_tournament_user_ranks(session, foreign, ids["player"], ALL_STATS) == (
+                [],
+                None,
             )
             assert (
                 await statistics_queries.get_tournament_stat_leaderboard(

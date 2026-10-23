@@ -250,11 +250,11 @@ class UserProfileQueries(DisciplineQueries):
                 agg.c.lost_maps,
                 agg.c.closeness,
             )
+            # Only the columns of the tournament and the team's standings are read (``get_tournaments``).
             .options(
                 selectinload(models.Team.players).selectinload(models.Player.workspace_member),
-                selectinload(models.Team.tournament).selectinload(models.Tournament.standings),
-                selectinload(models.Team.tournament).selectinload(models.Tournament.division_grid_version),
-                selectinload(models.Team.standings).selectinload(models.Standing.stage_item),
+                selectinload(models.Team.tournament),
+                selectinload(models.Team.standings),
             )
             .join(agg, agg.c.team_id == models.Team.id)
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
@@ -593,6 +593,7 @@ class UserProfileQueries(DisciplineQueries):
         # match's rows into one (impact_rank, performance, kda) tuple via an
         # outer join (keeps a teammate with zero stat rows in the result with
         # NULLs), THEN average per teammate.
+        teammate_codes = [enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance, enums.LogStatsName.KDA]
         stats_per_match = (
             sa.select(
                 shared_teams.c.teammate_id.label("user_id"),
@@ -616,12 +617,13 @@ class UserProfileQueries(DisciplineQueries):
                     self._facts.c.player_id == shared_teams.c.teammate_id,
                     self._facts.c.segment == 0,
                     self._facts.c.entity_id.is_(None),
-                    self._facts.c.stat_code.in_(
-                        [
-                            enums.LogStatsName.ImpactRank,
-                            enums.LogStatsName.Performance,
-                            enums.LogStatsName.KDA,
-                        ]
+                    self._facts.c.stat_code.in_(teammate_codes),
+                    # The same stats by id: lets the fact index probe (member, stat) directly instead of reading every
+                    # stat of each match and joining stat_def per row (44k lookups for a 950-match career).
+                    self._facts.c.stat_id.in_(
+                        sa.select(models.StatDef.id).where(
+                            models.StatDef.discipline == self.discipline, models.StatDef.code.in_(teammate_codes)
+                        )
                     ),
                 ),
             )
@@ -629,13 +631,19 @@ class UserProfileQueries(DisciplineQueries):
         ).cte("teammate_stats_per_match")
 
         mvp_placement = sa.func.coalesce(stats_per_match.c.impact_rank, stats_per_match.c.performance)
+        # MATERIALIZED (and maps_query below): under pgBouncer the statement is a reused server-side prepared
+        # statement, and its generic plan estimates teammates_query at one row and re-runs an inlined aggregate once
+        # per teammate (1.1s instead of 70ms).
         stats_query = (
             sa.select(
                 stats_per_match.c.user_id,
                 sa.func.avg(aggregate_order_by(mvp_placement, stats_per_match.c.match_id)).label("performance"),
                 sa.func.avg(aggregate_order_by(stats_per_match.c.kda, stats_per_match.c.match_id)).label("kda"),
-            ).group_by(stats_per_match.c.user_id)
-        ).cte("stats_query")
+            )
+            .group_by(stats_per_match.c.user_id)
+            .cte("stats_query")
+            .prefix_with("MATERIALIZED")
+        )
 
         # Distinct maps played together (separate CTE so the encounter→match fan-out
         # does not skew the winrate/tournament aggregates in teammates_query).
@@ -658,8 +666,11 @@ class UserProfileQueries(DisciplineQueries):
             sa.select(
                 map_sides.c.user_id,
                 sa.func.count(sa.distinct(map_sides.c.map_id)).label("maps"),
-            ).group_by(map_sides.c.user_id)
-        ).cte("maps_query")
+            )
+            .group_by(map_sides.c.user_id)
+            .cte("maps_query")
+            .prefix_with("MATERIALIZED")
+        )
 
         count_query = sa.select(sa.func.count(teammates_query.c.user_id))
 

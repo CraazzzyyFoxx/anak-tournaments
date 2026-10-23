@@ -376,22 +376,21 @@ class UserEncounterQueries(DisciplineQueries):
             for row in await get_match_members(session, match_ids=ids)
             if row.player_id is not None and row.player_id == user_id
         }
+        # Direct tables: player_facts' match_team / encounter-team joins are FK-implied, and ``reads`` already passed
+        # the encounter owner check. Through the view these two reads plan in 10-24 ms against 1-22 ms of execution.
+        f, d, m, wm = models.StatsFact, models.StatDef, models.StatsMatch, models.WorkspaceMember
+        owned = (
+            sa.select(f.match_id)
+            .join(m, m.id == f.match_id)
+            .join(d, sa.and_(d.id == f.stat_id, d.discipline == m.discipline))
+            .join(wm, sa.and_(wm.id == f.workspace_member_id, wm.workspace_id == m.workspace_id))
+            .where(m.discipline == self.discipline, f.match_id.in_(ids), f.segment == 0)
+        )
         totals: dict[int, list[NativeFact]] = {}
         for match_id, team_id, member_id, code, value in await session.execute(
-            sa.select(
-                self._facts.c.match_id,
-                self._facts.c.encounter_team_id,
-                self._facts.c.workspace_member_id,
-                self._facts.c.stat_code,
-                self._facts.c.value,
-            )
-            .where(self._facts.c.match_id.in_(ids), self._facts.c.segment == 0, self._facts.c.entity_id.is_(None))
-            .order_by(
-                self._facts.c.match_id,
-                self._facts.c.encounter_team_id,
-                self._facts.c.workspace_member_id,
-                self._facts.c.stat_code,
-            )
+            owned.with_only_columns(f.match_id, f.encounter_team_id, f.workspace_member_id, d.code, f.value)
+            .where(f.entity_id.is_(None))
+            .order_by(f.match_id, f.encounter_team_id, f.workspace_member_id, d.code)
         ):
             totals.setdefault(match_id, []).append(
                 NativeFact(
@@ -406,19 +405,17 @@ class UserEncounterQueries(DisciplineQueries):
         # The ``> 60`` playtime eligibility is the OW module's rule for "played this character".
         characters: dict[int, list[CatalogEntityRead]] = {}
         for match_id, entity in await session.execute(
-            sa.select(self._facts.c.match_id, models.CatalogEntity)
-            .join(models.CatalogEntity, self._facts.c.entity_id == models.CatalogEntity.id)
+            owned.with_only_columns(f.match_id, models.CatalogEntity)
+            .join(models.CatalogEntity, f.entity_id == models.CatalogEntity.id)
             .where(
                 models.CatalogEntity.kind == "character",
                 models.CatalogEntity.discipline == self.discipline,
-                self._facts.c.match_id.in_(ids),
-                self._facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
-                self._facts.c.player_id == user_id,
-                self._facts.c.entity_id.isnot(None),
-                self._facts.c.value > 60,
-                self._facts.c.segment == 0,
+                d.code == enums.LogStatsName.HeroTimePlayed,
+                wm.player_id == user_id,
+                f.entity_id.isnot(None),
+                f.value > 60,
             )
-            .order_by(self._facts.c.match_id, self._facts.c.entity_id)
+            .order_by(f.match_id, f.entity_id)
         ):
             characters.setdefault(match_id, []).append(CatalogEntityRead.from_entity(entity, with_parent=False))
         output = {}
@@ -480,7 +477,9 @@ class UserEncounterQueries(DisciplineQueries):
                 .join(models.Encounter, models.Encounter.id == models.EncounterTeamMember.encounter_id)
                 .where(
                     models.EncounterTeamMember.encounter_id.in_(ids),
-                    models.EncounterTeamMember.active.is_(True),
+                    # Bare ``active``: the (encounter, member) index is partial ``WHERE active``, which ``IS TRUE``
+                    # does not match (a seq scan of team_member per role dimension).
+                    models.EncounterTeamMember.active,
                     models.RoleDimension.rated.is_(True),
                     models.RoleDimension.discipline == models.Encounter.discipline,
                 )
@@ -495,7 +494,7 @@ class UserEncounterQueries(DisciplineQueries):
                 .join(
                     models.WorkspaceMember, models.WorkspaceMember.id == models.EncounterTeamMember.workspace_member_id
                 )
-                .where(models.EncounterTeamMember.encounter_id.in_(ids), models.EncounterTeamMember.active.is_(True))
+                .where(models.EncounterTeamMember.encounter_id.in_(ids), models.EncounterTeamMember.active)
                 .order_by(models.EncounterTeamMember.id)
             )
         ).all():
@@ -652,45 +651,29 @@ class UserEncounterQueries(DisciplineQueries):
         if not tournament_ids or not user_ids:
             return {}
 
+        # Direct tables: player_facts' FK-implied match_team / encounter-team joins are per-row probes over every
+        # roster member's facts (~2x the execution, ~5x the planning of this read).
+        f, d, wm, mc = models.StatsFact, models.StatDef, models.WorkspaceMember, self._matches
         per_match = (
             sa.select(
-                models.Encounter.tournament_id.label("tournament_id"),
-                self._facts.c.player_id.label("user_id"),
-                self._facts.c.match_id.label("match_id"),
-                sa.func.max(
-                    sa.case(
-                        (
-                            self._facts.c.stat_code == enums.LogStatsName.ImpactRank,
-                            self._facts.c.value,
-                        )
-                    )
-                ).label("impact_rank"),
-                sa.func.max(
-                    sa.case(
-                        (
-                            self._facts.c.stat_code == enums.LogStatsName.Performance,
-                            self._facts.c.value,
-                        )
-                    )
-                ).label("performance"),
+                mc.c.tournament_id.label("tournament_id"),
+                wm.player_id.label("user_id"),
+                f.match_id.label("match_id"),
+                sa.func.max(sa.case((d.code == enums.LogStatsName.ImpactRank, f.value))).label("impact_rank"),
+                sa.func.max(sa.case((d.code == enums.LogStatsName.Performance, f.value))).label("performance"),
             )
-            .select_from(self._facts)
-            .join(self._matches, self._matches.c.id == self._facts.c.match_id)
-            .join(models.Encounter, models.Encounter.id == self._matches.c.encounter_id)
+            .select_from(f)
+            .join(mc, mc.c.id == f.match_id)
+            .join(d, sa.and_(d.id == f.stat_id, d.discipline == mc.c.discipline))
+            .join(wm, sa.and_(wm.id == f.workspace_member_id, wm.workspace_id == mc.c.workspace_id))
             .where(
-                sa.and_(
-                    self._facts.c.player_id.in_(user_ids),
-                    self._facts.c.stat_code.in_([enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance]),
-                    self._facts.c.entity_id.is_(None),
-                    self._facts.c.segment == 0,
-                    models.Encounter.tournament_id.in_(tournament_ids),
-                )
+                wm.player_id.in_(user_ids),
+                d.code.in_([enums.LogStatsName.ImpactRank, enums.LogStatsName.Performance]),
+                f.entity_id.is_(None),
+                f.segment == 0,
+                mc.c.tournament_id.in_(tournament_ids),
             )
-            .group_by(
-                models.Encounter.tournament_id,
-                self._facts.c.player_id,
-                self._facts.c.match_id,
-            )
+            .group_by(mc.c.tournament_id, wm.player_id, f.match_id)
             .cte("roster_mvp_per_match")
         )
 
@@ -730,37 +713,28 @@ class UserEncounterQueries(DisciplineQueries):
         if not tournament_ids or not user_ids:
             return {}
 
+        f, d, wm, mc = models.StatsFact, models.StatDef, models.WorkspaceMember, self._matches
         playtime = (
             sa.select(
-                models.Encounter.tournament_id.label("tournament_id"),
-                self._facts.c.player_id.label("user_id"),
-                self._facts.c.entity_id.label("hero_id"),
-                sa.func.sum(
-                    aggregate_order_by(
-                        self._facts.c.value,
-                        self._facts.c.match_id,
-                        self._facts.c.workspace_member_id,
-                    )
-                ).label("playtime"),
+                mc.c.tournament_id.label("tournament_id"),
+                wm.player_id.label("user_id"),
+                f.entity_id.label("hero_id"),
+                sa.func.sum(aggregate_order_by(f.value, f.match_id, f.workspace_member_id)).label("playtime"),
             )
-            .select_from(self._facts)
-            .join(self._matches, self._matches.c.id == self._facts.c.match_id)
-            .join(models.Encounter, models.Encounter.id == self._matches.c.encounter_id)
+            # Direct tables, as in ``get_roster_avg_mvp_bulk``: the view's FK-implied joins were 46k per-row probes.
+            .select_from(f)
+            .join(mc, mc.c.id == f.match_id)
+            .join(d, sa.and_(d.id == f.stat_id, d.discipline == mc.c.discipline))
+            .join(wm, sa.and_(wm.id == f.workspace_member_id, wm.workspace_id == mc.c.workspace_id))
             .where(
-                sa.and_(
-                    self._facts.c.player_id.in_(user_ids),
-                    self._facts.c.stat_code == enums.LogStatsName.HeroTimePlayed,
-                    self._facts.c.entity_id.isnot(None),
-                    self._facts.c.value > 60,
-                    self._facts.c.segment == 0,
-                    models.Encounter.tournament_id.in_(tournament_ids),
-                )
+                wm.player_id.in_(user_ids),
+                d.code == enums.LogStatsName.HeroTimePlayed,
+                f.entity_id.isnot(None),
+                f.value > 60,
+                f.segment == 0,
+                mc.c.tournament_id.in_(tournament_ids),
             )
-            .group_by(
-                models.Encounter.tournament_id,
-                self._facts.c.player_id,
-                self._facts.c.entity_id,
-            )
+            .group_by(mc.c.tournament_id, wm.player_id, f.entity_id)
             .cte("roster_hero_playtime")
         )
 
@@ -782,7 +756,7 @@ class UserEncounterQueries(DisciplineQueries):
             sa.select(
                 ranked.c.tournament_id,
                 ranked.c.user_id,
-                models.CatalogEntity,
+                ranked.c.hero_id,
             )
             .select_from(ranked)
             .join(models.CatalogEntity, models.CatalogEntity.id == ranked.c.hero_id)
@@ -794,10 +768,19 @@ class UserEncounterQueries(DisciplineQueries):
             .order_by(ranked.c.tournament_id, ranked.c.user_id, ranked.c.playtime.desc(), ranked.c.hero_id.asc())
         )
 
-        result = await session.execute(query)
+        # Hero ids, then each distinct hero once: an entity per row decodes its JSONB columns thousands of times.
+        rows = (await session.execute(query)).all()
+        if not rows:
+            return {}
+        entities = {
+            entity.id: entity
+            for entity in await session.scalars(
+                sa.select(models.CatalogEntity).where(models.CatalogEntity.id.in_({row.hero_id for row in rows}))
+            )
+        }
         characters_map: dict[tuple[int, int], list[models.CatalogEntity]] = {}
-        for tournament_id, user_id, character in result:
-            characters_map.setdefault((tournament_id, user_id), []).append(character)
+        for tournament_id, user_id, hero_id in rows:
+            characters_map.setdefault((tournament_id, user_id), []).append(entities[hero_id])
         return characters_map
 
     async def get_user_hero_records(

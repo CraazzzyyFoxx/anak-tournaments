@@ -1619,24 +1619,18 @@ class UserService(DisciplineQueries):
         else:
             stats["winrate"] = schemas.UserTournamentStat(value=0, rank=0, total=0)
 
-        for values in await self.statistics_queries.get_tournament_avg_match_stat_for_user_bulk(
+        stat_rows, mvp_row = await self.statistics_queries.get_tournament_user_ranks(
             session,
             team.tournament,
             user.id,
             [name for name in tournament_stats if name != enums.LogStatsName.Performance],
-        ):
-            if not values:
-                continue
-            stat, _user_id, value, rank_desc, rank_asc, total = values
-
+        )
+        for stat, _user_id, value, rank_desc, rank_asc, total in stat_rows:
             rank = rank_asc if enums.is_ascending_stat(stat) else rank_desc
-
             stats[stat] = schemas.UserTournamentStat(value=value, rank=rank, total=total)
 
-        # MVP placement spans two LogStatsName columns (COALESCE(ImpactRank, Performance) —
-        # see get_tournament_mvp_stat_for_user), so it can't ride the generic single-name
-        # loop above. Slots into the same "performance" key the frontend already reads.
-        mvp_row = await self.statistics_queries.get_tournament_mvp_stat_for_user(session, team.tournament, user.id)
+        # MVP placement spans two LogStatsName columns (COALESCE(ImpactRank, Performance)), so it can't ride the
+        # generic single-name ranking above. Slots into the same "performance" key the frontend already reads.
         if mvp_row:
             stats[enums.LogStatsName.Performance] = schemas.UserTournamentStat(
                 value=mvp_row.value, rank=mvp_row.rank, total=mvp_row.total

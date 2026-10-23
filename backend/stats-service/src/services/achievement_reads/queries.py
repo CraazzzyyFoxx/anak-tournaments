@@ -387,13 +387,17 @@ class AchievementQueries:
         without_tournament: bool = False,
         discipline: str | None = None,
     ) -> list[UserAchievementRow]:
-        """Retrieve all effective achievement results for a user, with rarity."""
+        """Retrieve all effective achievement results for a user, with rarity.
+
+        Rarity comes from the cached per-workspace map (``_get_rarity_map``), never an inline aggregate over every
+        player's rows: only the user's own effective rows are read per call.
+        """
         effective_rows = _effective_rows_subq(
             workspace_id=workspace_id,
             user_ids=[user.id],
             name="user_effective_rows",
         )
-        rarity_subq = get_rarity_subq(workspace_id=workspace_id, merge_slugs=workspace_id is None)
+        rarity_map = await self._get_rarity_map(session, workspace_id=workspace_id)
 
         query = (
             sa.select(
@@ -401,16 +405,10 @@ class AchievementQueries:
                 effective_rows.c.tournament_id,
                 effective_rows.c.match_id,
                 effective_rows.c.qualified_at,
-                rarity_subq.c.rarity,
             )
             .select_from(effective_rows)
             .join(AchievementRule, AchievementRule.id == effective_rows.c.achievement_rule_id)
-            .outerjoin(
-                rarity_subq,
-                AchievementRule.id == rarity_subq.c.achievement_rule_id,
-            )
             .where(AchievementRule.enabled.is_(True))
-            .order_by(sa.asc(rarity_subq.c.rarity), AchievementRule.id.asc())
         )
 
         if tournament_id is not None:
@@ -423,16 +421,19 @@ class AchievementQueries:
             query = query.where(AchievementRule.discipline == discipline)
 
         results = await session.execute(query)
-        return [
+        rows = [
             UserAchievementRow(
                 rule=row[0],
                 tournament_id=row[1],
                 match_id=row[2],
                 qualified_at=row[3],
-                rarity=row[4],
+                rarity=rarity_map.get(row[0].id),
             )
             for row in results.all()
         ]
+        # The SQL order this replaces: rarity ASC (NULLS LAST), then rule id.
+        rows.sort(key=lambda r: (r.rarity is None, r.rarity or 0.0, r.rule.id))
+        return rows
 
     async def get_tournaments_bulk(
         self,

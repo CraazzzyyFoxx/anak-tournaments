@@ -161,8 +161,9 @@ def register(broker: Any, logger: Any, *, channel: Any) -> None:
         async def op(session: Any) -> Any:
             discipline = c.optional_discipline(data)
             ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=discipline)
+            # ``ws.normalizer`` is the one ``_roles_on_game_grid`` would otherwise rebuild (same workspace and game).
             return await UserService.of(discipline).get_profile(
-                session, c.require_id(data), workspace_id=ws.id, grid=ws.grid
+                session, c.require_id(data), workspace_id=ws.id, grid=ws.grid, normalizer=ws.normalizer
             )
 
         return await c.envelope(logger, "users.get_profile", op, session_factory=_SF)
