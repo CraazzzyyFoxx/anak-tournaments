@@ -388,6 +388,42 @@ class MixDraftTests(EncounterWriterCase):
             (guarded["error"]["code"], guarded["error"]["details"]["fields"][0]["code"]),
         )
 
+    async def test_a_co_host_removed_while_their_draft_write_waits_is_refused(self) -> None:
+        """Authorized under the mix lock, against the owner as it is once the lock is held (as ``_writable`` does): a
+        co-host whose grant is revoked while their pause and their pick for a team wait on the mix row is refused."""
+        host, co_host = await self._host()
+        async with self.Session() as s:
+            s.add(models.CustomGameCoHost(custom_game_id=self.cg_id, user_id=co_host))
+            await s.commit()
+        draft_id = await self._seed_lobby(host)
+        await self._start(draft_id, host)
+        async with self.Session() as s:
+            pick = await s.get_one(models.DraftPick, (await s.get_one(models.DraftSession, draft_id)).current_pick_id)
+            m2_seat = await self._seat(s, draft_id, "m2")
+        handlers = self._rpc().handlers
+        identity = {"user_id": co_host, "is_active": True}
+        async with self.Session() as holder:
+            await CustomGameService().remove_co_host(holder, **self._as_host(host, co_host_user_id=co_host))
+            waiting = [
+                asyncio.create_task(handlers["rpc.balancer.draft.pause"]({"id": draft_id, "identity": identity}, None)),
+                asyncio.create_task(
+                    handlers["rpc.balancer.draft.pick_select"](
+                        {
+                            "id": pick.id,
+                            "identity": identity,
+                            "payload": {"player_id": m2_seat, "expected_version": pick.version},
+                        },
+                        None,
+                    )
+                ),
+            ]
+            await asyncio.sleep(0.5)
+            await holder.commit()
+        replies = await asyncio.wait_for(asyncio.gather(*waiting), 10)
+
+        self.assertEqual(["forbidden", "forbidden"], [reply.get("error", {}).get("code") for reply in replies], replies)
+        self.assertEqual("live", await self._status(draft_id))
+
     async def test_board_events_land_on_the_sessions_own_topic(self) -> None:
         draft_id = await self._seeded()
         async with self.Session() as s:

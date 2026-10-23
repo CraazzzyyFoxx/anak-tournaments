@@ -2,7 +2,7 @@
 
 A tournament's draft is run by its workspace's ``team.create`` holders, and its workspace admins pick for any team;
 a mix lobby's draft by the mix's hosts (host, co-hosts, superuser) in both roles. Captains act for their own team
-through the engine's captain check, never through here.
+through the engine's captain check, never through here. A write on a mix draft authorizes after ``hold_owner``.
 """
 
 from __future__ import annotations
@@ -14,10 +14,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.models.draft import DraftSession, DraftTeam
+from shared.repository import CustomGameRepository
 from shared.rpc.identity import ensure_workspace_permission
 from shared.services.mix_hosts import is_mix_host
 
-__all__ = ("acts_for_any_team", "ensure_organizer", "ensure_team_actor")
+__all__ = ("acts_for_any_team", "ensure_organizer", "ensure_team_actor", "hold_owner")
+
+_games = CustomGameRepository()
+
+
+async def hold_owner(session: AsyncSession, draft: DraftSession) -> None:
+    """A mix draft's write takes the mix row first -- the lock and the order every host write of the mix takes
+    (``CustomGameService._writable``) -- and re-reads the session under it. Authorize AFTER this: a host transfer or a
+    co-host removal that committed while the write waited is then what the check reads. A tournament draft has no
+    owner row to hold."""
+    if draft.custom_game_id is None:
+        return
+    await _games.get(session, draft.custom_game_id, for_update=True)
+    await session.refresh(draft)
 
 
 async def ensure_organizer(session: AsyncSession, user: Any, draft: DraftSession, action: str = "create") -> None:

@@ -40,7 +40,7 @@ from src.core.config import config
 from src.rpc import _common as c
 from src.services.draft import clock as clock_svc
 from src.services.draft import loaders
-from src.services.draft.access import acts_for_any_team, ensure_organizer, ensure_team_actor
+from src.services.draft.access import acts_for_any_team, ensure_organizer, ensure_team_actor, hold_owner
 from src.services.draft.board import board_service
 from src.services.draft.chat_access import draft_chat_service
 from src.services.draft.export import export_service
@@ -334,7 +334,9 @@ def register(broker: Any, logger: Any) -> None:
             async def op(session: Any) -> Any:
                 user = c.active_actor(data)
                 session_id = c.require_id(data)
-                await ensure_organizer(session, user, await lifecycle_service.get_session(session, session_id))
+                draft = await lifecycle_service.get_session(session, session_id)
+                await hold_owner(session, draft)
+                await ensure_organizer(session, user, draft)
                 # Only a tournament's ``start`` has a phase gate, and only a superuser may skip it.
                 extra = {"force": bool(user.is_superuser)} if superuser_forces else {}
                 draft = await lifecycle_service.transition(
@@ -437,6 +439,7 @@ def register(broker: Any, logger: Any) -> None:
             pick_id = c.require_id(data)
             payload = schemas.DraftPickSelectRequest.model_validate(c.payload(data))
             draft, pick = await lifecycle_service.get_pick(session, pick_id)
+            await hold_owner(session, draft)
             await lifecycle_service.select_pick(
                 session,
                 draft,
@@ -456,6 +459,7 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             pick_id = c.require_id(data)
             draft, pick = await lifecycle_service.get_pick(session, pick_id)
+            await hold_owner(session, draft)
             await ensure_organizer(session, user, draft)
             payload = schemas.DraftPickAutopickRequest.model_validate(c.payload(data))
             await lifecycle_service.autopick_pick(
@@ -496,6 +500,7 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             pick_id = c.require_id(data)
             draft, pick = await lifecycle_service.get_pick(session, pick_id)
+            await hold_owner(session, draft)
             await ensure_organizer(session, user, draft)
             payload = schemas.DraftPickOverrideRequest.model_validate(c.payload(data))
             await lifecycle_service.override_pick(session, draft, pick, payload, actor_auth_user_id=user.id)
