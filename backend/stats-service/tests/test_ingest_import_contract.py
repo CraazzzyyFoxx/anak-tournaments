@@ -71,4 +71,9 @@ print(json.dumps({
 """
     )
     assert out["pandas"] is False
-    assert out["ingestors"] == [["overwatch", "discord"], ["overwatch", "manual"], ["overwatch", "upload"]]
+    assert out["ingestors"] == [
+        ["deadlock", "deadlock_api"],
+        ["overwatch", "discord"],
+        ["overwatch", "manual"],
+        ["overwatch", "upload"],
+    ]
