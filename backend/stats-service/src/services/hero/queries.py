@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import enums, pagination
 from shared.division_grid import DivisionGrid, division_case_expr, ladder_grid
+from shared.repository.stats_reads import duel_matches
 from shared.services.division_grid.access import canonical_division_expr, tournament_grid_versions
 from shared.services.tournament.visibility import visible_tournament_ids_subquery
 from src.services.discipline_queries import DisciplineQueries
@@ -237,13 +238,21 @@ class HeroQueries(DisciplineQueries):
             self._matches.c.map_entity_id,
         ).cte("hero_match")
 
+        # The user's duels only, MATERIALIZED: the planner estimates both sides at one row, and an inlined whole-game
+        # duel subquery lands on the inner side of a nested loop and re-runs its score lookups per hero row (past the
+        # 30s statement timeout for a long career).
+        duels = (
+            sa.select(duel_matches(discipline=self.discipline, match_ids=sa.select(hero_match.c.match_id)))
+            .cte("hero_match_duels")
+            .prefix_with("MATERIALIZED")
+        )
         team_score = sa.case(
-            (self._duels.c.home_encounter_team_id == hero_match.c.encounter_team_id, self._duels.c.home_score),
-            else_=self._duels.c.away_score,
+            (duels.c.home_encounter_team_id == hero_match.c.encounter_team_id, duels.c.home_score),
+            else_=duels.c.away_score,
         )
         opponent_score = sa.case(
-            (self._duels.c.home_encounter_team_id == hero_match.c.encounter_team_id, self._duels.c.away_score),
-            else_=self._duels.c.home_score,
+            (duels.c.home_encounter_team_id == hero_match.c.encounter_team_id, duels.c.away_score),
+            else_=duels.c.home_score,
         )
 
         win_case = sa.case((team_score > opponent_score, 1), else_=0)
@@ -270,7 +279,7 @@ class HeroQueries(DisciplineQueries):
                 ).label("playtime_seconds"),
             )
             .select_from(hero_match)
-            .join(self._duels, self._duels.c.id == hero_match.c.match_id)
+            .join(duels, duels.c.id == hero_match.c.match_id)
             .group_by(hero_match.c.map_id, hero_match.c.hero_id)
             .cte("hero_map_agg")
         )

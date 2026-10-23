@@ -228,7 +228,22 @@ class MapService:
 
         ``workspace_id`` scopes the stats to a single workspace; ``None`` spans all of them.
         """
-        matches = duel_matches(discipline=discipline)
+        # The user's match ids, found from their own teams' seats: a superset of the duel rows the OR-join below keeps,
+        # so the duel participant aggregate and its score lookups run for those matches, not every match of the game.
+        user_match_ids = (
+            sa.select(models.StatsMatchTeam.match_id)
+            .join(
+                models.EncounterTeam,
+                sa.and_(
+                    models.EncounterTeam.id == models.StatsMatchTeam.encounter_team_id,
+                    models.EncounterTeam.encounter_id == models.StatsMatchTeam.encounter_id,
+                ),
+            )
+            .join(models.Player, models.Player.team_id == models.EncounterTeam.team_id)
+            .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
+            .where(models.WorkspaceMember.player_id == user_id, models.Player.is_substitution.is_(False))
+        )
+        matches = duel_matches(discipline=discipline, match_ids=user_match_ids)
         # DISTINCT avoids fan-out when a roster has multiple rows for one player.
         user_match_teams = (
             sa.select(
@@ -340,9 +355,12 @@ class MapService:
         query = query.order_by(models.CatalogEntity.id.asc())
         query = params.apply_pagination(query)
 
-        result = await session.execute(query)
+        rows = (await session.execute(query)).all()
+        # Unpaginated (a map catalog never reaches the 10k cap): the rows are the total; skip re-running it as a COUNT.
+        if params.per_page == -1 and not params.only_count:
+            return rows, len(rows)  # type: ignore
         result_total = await session.execute(total_query)
-        return result.all(), result_total.scalar_one()  # type: ignore
+        return rows, result_total.scalar_one()  # type: ignore
 
 
 maps = MapService()

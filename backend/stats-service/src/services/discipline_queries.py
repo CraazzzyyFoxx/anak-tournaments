@@ -14,13 +14,12 @@ import typing
 import sqlalchemy as sa
 
 from shared.repository.stats_queries import match_context, player_facts
-from shared.repository.stats_reads import duel_matches
 
 __all__ = ("DisciplineQueries",)
 
 
 class DisciplineQueries:
-    """Base of the query classes: ``self._facts`` / ``self._matches`` / ``self._duels`` of ``discipline``.
+    """Base of the query classes: ``self._facts`` / ``self._matches`` of ``discipline``.
 
     ``DisciplineQueries()`` (no discipline) is for the few methods that touch no game data (user lookups by id or
     name) and for cross-game list reads, which narrow with :meth:`discipline_filter`; reading the fact subqueries of
@@ -54,7 +53,3 @@ class DisciplineQueries:
     def _matches(self) -> sa.Subquery:
         # Match headers carry their own game: an unbound (cross-game) read spans every game's matches.
         return match_context(discipline=self._discipline)
-
-    @functools.cached_property
-    def _duels(self) -> sa.Subquery:
-        return duel_matches(discipline=self.discipline)

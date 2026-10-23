@@ -33,8 +33,13 @@ __all__ = (
 )
 
 
-def duel_matches(*, discipline: str) -> sa.Subquery:
-    """Native headers and observed scores in the owner's historical participation slots."""
+def duel_matches(*, discipline: str, match_ids: sa.Select | None = None) -> sa.Subquery:
+    """Native headers and observed scores in the owner's historical participation slots.
+
+    ``match_ids`` narrows the duels to those matches before the participant aggregate: the planner estimates that
+    aggregate (``HAVING count(*) = 2 ...``) at one row whatever its input, so an unnarrowed one is walked, with its
+    score lookups, for every match of the game, and once per outer row when it lands on the inner side of a nested loop.
+    """
     context = match_context(discipline=discipline)
     mt, et = models.StatsMatchTeam, models.EncounterTeam
     participants = (
@@ -48,6 +53,7 @@ def duel_matches(*, discipline: str) -> sa.Subquery:
         .select_from(mt)
         .join(context, sa.and_(context.c.id == mt.match_id, context.c.encounter_id == mt.encounter_id))
         .join(et, sa.and_(et.id == mt.encounter_team_id, et.encounter_id == mt.encounter_id))
+        .where(*([mt.match_id.in_(match_ids)] if match_ids is not None else []))
         .group_by(mt.match_id)
         .having(sa.func.count() == 2, sa.func.min(et.slot) == 1, sa.func.max(et.slot) == 2)
         .subquery()

@@ -16,7 +16,7 @@ from shared import models
 from shared.core import enums, pagination
 from shared.models.catalog.role import leaf_code
 from shared.repository.stats_queries import match_context
-from shared.repository.stats_reads import MatchReadContext, get_match_members, get_match_reads
+from shared.repository.stats_reads import MatchReadContext, duel_matches, get_match_members, get_match_reads
 from shared.schemas.catalog import CatalogEntityRead
 from shared.schemas.match import NativeFact
 from shared.schemas.role import RoleRef
@@ -861,13 +861,20 @@ class UserEncounterQueries(DisciplineQueries):
             .prefix_with("MATERIALIZED")
         )
 
+        # The duels of those matches only, MATERIALIZED: an inlined whole-game duel subquery lands on the inner side
+        # of a nested loop under the one-row-estimated CTE and re-runs its score lookups per hero match.
+        duels = (
+            sa.select(duel_matches(discipline=self.discipline, match_ids=sa.select(hero_match.c.match_id)))
+            .cte("hero_record_duels")
+            .prefix_with("MATERIALIZED")
+        )
         team_score = sa.case(
-            (self._duels.c.home_encounter_team_id == hero_match.c.encounter_team_id, self._duels.c.home_score),
-            else_=self._duels.c.away_score,
+            (duels.c.home_encounter_team_id == hero_match.c.encounter_team_id, duels.c.home_score),
+            else_=duels.c.away_score,
         )
         opponent_score = sa.case(
-            (self._duels.c.home_encounter_team_id == hero_match.c.encounter_team_id, self._duels.c.away_score),
-            else_=self._duels.c.home_score,
+            (duels.c.home_encounter_team_id == hero_match.c.encounter_team_id, duels.c.away_score),
+            else_=duels.c.home_score,
         )
         games = sa.func.count(hero_match.c.match_id)
 
@@ -880,7 +887,7 @@ class UserEncounterQueries(DisciplineQueries):
                 sa.func.sum(sa.case((team_score == opponent_score, 1), else_=0)).label("drawn"),
             )
             .select_from(hero_match)
-            .join(self._duels, self._duels.c.id == hero_match.c.match_id)
+            .join(duels, duels.c.id == hero_match.c.match_id)
             .join(models.CatalogEntity, models.CatalogEntity.id == hero_match.c.hero_id)
             .where(models.CatalogEntity.kind == "character", models.CatalogEntity.discipline == self.discipline)
             .group_by(models.CatalogEntity.id)
