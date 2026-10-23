@@ -210,7 +210,13 @@ export function displaySocialHandle(provider: string, handle: string): string {
   const text = handle.trim();
   const rule = getSocialProviderConfig(provider).normalizeRule;
   if (rule === "steam_id") return steamAccountId(text) ?? text;
-  return rule === "battletag" || rule === "riot_id" ? text.replace(BATTLE_TAG_HASH, "#") : text;
+  return hasTaggedHandle(provider) ? text.replace(BATTLE_TAG_HASH, "#") : text;
+}
+
+/** Whether a provider's handle carries a `#tag` discriminator: a BattleTag or a Riot ID. */
+export function hasTaggedHandle(provider: string): boolean {
+  const rule = getSocialProviderConfig(provider).normalizeRule;
+  return rule === "battletag" || rule === "riot_id";
 }
 
 /**
