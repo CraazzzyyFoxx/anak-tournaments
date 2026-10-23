@@ -29,8 +29,10 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from shared.core import enums
 from shared.core import http_status as status
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.models.encounter.encounter import Encounter
 from shared.models.identity.auth_user import AuthUser
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament.preview_access import TournamentPreviewAccess
@@ -46,6 +48,7 @@ __all__ = (
     "admin_visible_workspace_ids",
     "visible_tournaments_predicate",
     "visible_tournament_ids_subquery",
+    "completed_encounters_clauses",
 )
 
 
@@ -230,3 +233,18 @@ def visible_tournament_ids_subquery(user: AuthUser | None):
     "every non-hidden tournament", excluding all hidden ones.
     """
     return sa.select(Tournament.id).where(visible_tournaments_predicate(user))
+
+
+def completed_encounters_clauses() -> tuple[sa.ColumnElement[bool], ...]:
+    """WHERE clauses of the public "completed encounters" count: every decided duel of a tournament an anonymous
+    viewer may see, leagues included.
+
+    One definition for every page that states the number (``/encounters``' hero, the ``/statistics`` figure), so
+    they never disagree. Duels only, like every encounter list (a lobby has its own read). Callers add their own
+    scope (workspace, game) on top.
+    """
+    return (
+        Encounter.status == enums.EncounterStatus.COMPLETED,
+        Encounter.slot_count == 2,
+        Encounter.tournament_id.in_(visible_tournament_ids_subquery(None)),
+    )

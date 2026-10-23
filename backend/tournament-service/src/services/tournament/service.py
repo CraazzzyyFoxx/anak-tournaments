@@ -8,6 +8,7 @@ from sqlalchemy.orm.strategy_options import _AbstractLoad
 from shared import models
 from shared.core import enums, pagination, utils
 from shared.repository import TournamentRepository
+from shared.services.tournament.visibility import completed_encounters_clauses, visible_tournaments_predicate
 from src import schemas
 from src.core.query_page import execute_page_with_total
 
@@ -223,21 +224,19 @@ class TournamentService:
     ) -> schemas.OverallStatistics:
         """Return tournament/team/player/champion counts and played volume (encounters, maps, days, hours).
 
-        ``workspace_id`` restricts every count to one workspace; None means the platform.
+        ``workspace_id`` restricts every count to one workspace; None means the platform. Every count is over the
+        tournaments an anonymous viewer may see, leagues included: the set ``/tournaments`` lists and
+        ``/encounters`` counts, so the platform totals never disagree with them.
         """
-        # Hidden tournaments never contribute to public overall stats.
-        ws_filters = [models.Tournament.is_hidden.is_(False)]
-        if workspace_id is not None:
-            ws_filters.append(models.Tournament.workspace_id == workspace_id)
+        ws_filter = [models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []
+        tournament_scope = [visible_tournaments_predicate(None), *ws_filter]
 
-        tournaments_count_query = sa.select(sa.func.count(models.Tournament.id)).where(
-            models.Tournament.is_league.is_(False), *ws_filters
-        )
+        tournaments_count_query = sa.select(sa.func.count(models.Tournament.id)).where(*tournament_scope)
 
         teams_count_query = (
             sa.select(sa.func.count(models.Team.id))
             .join(models.Tournament, models.Tournament.id == models.Team.tournament_id)
-            .where(models.Tournament.is_league.is_(False), *ws_filters)
+            .where(*tournament_scope)
         )
 
         players_count_query = (
@@ -245,7 +244,7 @@ class TournamentService:
             .select_from(models.Player)
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
-            .where(models.Tournament.is_league.is_(False), *ws_filters)
+            .where(*tournament_scope)
         )
 
         champions_count_query = (
@@ -266,20 +265,17 @@ class TournamentService:
                         models.StageItem.type != enums.StageItemType.GROUP,
                     ),
                     models.Player.is_substitution.is_(False),
-                    models.Tournament.is_league.is_(False),
-                    *ws_filters,
+                    *tournament_scope,
                 )
             )
         )
 
-        tournament_scope = [models.Tournament.is_league.is_(False), *ws_filters]
-
-        # Played volume. ``encounters`` counts only decided ones -- the same
-        # COMPLETED status every public encounter feed treats as finished.
+        # Played volume. ``encounters`` is the shared public "completed encounters" definition: the number the
+        # ``/encounters`` hero states.
         encounters_count_query = (
             sa.select(sa.func.count(models.Encounter.id))
             .join(models.Tournament, models.Tournament.id == models.Encounter.tournament_id)
-            .where(models.Encounter.status == enums.EncounterStatus.COMPLETED, *tournament_scope)
+            .where(*completed_encounters_clauses(), *ws_filter)
         )
 
         # Generic played volume includes every discipline owned by the tournament.

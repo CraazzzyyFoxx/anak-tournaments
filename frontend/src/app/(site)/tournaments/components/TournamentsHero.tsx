@@ -23,10 +23,11 @@ interface TournamentsHeroProps {
  * There is deliberately NO "total tournaments" stat here.
  *
  * The list section below states its own count, and the platform-wide total from
- * `getOverallStatistics` counts a narrower set — so showing both put two
- * disagreeing tournament counts in one viewport with no way to tell which
- * answers "how many tournaments are there". The list owns that number on this
- * page; `/` and `/statistics` own the platform total.
+ * `getOverallStatistics` counts what an anonymous visitor sees, not this viewer's
+ * filtered list — so showing both put two disagreeing tournament counts in one
+ * viewport with no way to tell which answers "how many tournaments are there".
+ * The list owns that number on this page; `/` and `/statistics` own the
+ * platform total.
  *
  * The live counter renders only while something IS live: a nothing-happening
  * site should not spend its most prominent number saying so.

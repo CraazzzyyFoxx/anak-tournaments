@@ -7,6 +7,7 @@ from sqlalchemy.orm import aliased
 
 from shared import models
 from shared.core import enums, pagination
+from shared.services.tournament.visibility import visible_tournaments_predicate
 from src.services.discipline_queries import DisciplineQueries
 from src.services.encounter_seats import Seat
 
@@ -55,16 +56,25 @@ class StatisticsQueries(DisciplineQueries):
 
     # ---- shared query builders -------------------------------------------------
 
-    def _public_tournaments(self, workspace_id: int | None) -> tuple[sa.ColumnElement[bool], ...]:
-        """What every public board counts: no hidden or league tournament, this game, this workspace (``None``: all)."""
+    def _public_tournaments(
+        self, workspace_id: int | None, *, almanac: bool = True
+    ) -> tuple[sa.ColumnElement[bool], ...]:
+        """What a public board counts: this game, this workspace (``None``: all), and the ``/statistics`` set -- every
+        tournament an anonymous viewer may see, leagues included (the overall figures' and ``/encounters``' set).
+        ``almanac=False`` keeps the champion/win-rate boards (home, hall of fame) on their own rule: no hidden or
+        league tournament."""
+        visible = (
+            (visible_tournaments_predicate(None),)
+            if almanac
+            else (models.Tournament.is_hidden.is_(False), models.Tournament.is_league.is_(False))
+        )
         return (
-            models.Tournament.is_hidden.is_(False),
-            models.Tournament.is_league.is_(False),
+            *visible,
             *self.discipline_filter(models.Tournament.discipline),
             *([models.Tournament.workspace_id == workspace_id] if workspace_id is not None else []),
         )
 
-    def _scored_participations(self, *columns: typing.Any, workspace_id: int | None) -> sa.Select:
+    def _scored_participations(self, *columns: typing.Any, workspace_id: int | None, almanac: bool = True) -> sa.Select:
         """``columns`` over one row per non-substitute roster entry and two-seat encounter its team played
         (``encounter_query``) in a public tournament: the win-rate board's participation rule."""
         return (
@@ -73,10 +83,10 @@ class StatisticsQueries(DisciplineQueries):
             .join(models.WorkspaceMember, models.WorkspaceMember.id == models.Player.workspace_member_id)
             .join(encounter_query, encounter_query.c.id == models.Player.id)
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-            .where(models.Player.is_substitution.is_(False), *self._public_tournaments(workspace_id))
+            .where(models.Player.is_substitution.is_(False), *self._public_tournaments(workspace_id, almanac=almanac))
         )
 
-    def _championships(self, *columns: typing.Any, workspace_id: int | None) -> sa.Select:
+    def _championships(self, *columns: typing.Any, workspace_id: int | None, almanac: bool = True) -> sa.Select:
         """``columns`` over one row per title (:data:`_TITLE`) of a non-substitute roster entry in a public tournament."""
         return (
             sa.select(*columns)
@@ -85,7 +95,11 @@ class StatisticsQueries(DisciplineQueries):
             .join(models.Standing, models.Standing.team_id == models.Player.team_id)
             .outerjoin(models.StageItem, models.StageItem.id == models.Standing.stage_item_id)
             .join(models.Tournament, models.Tournament.id == models.Player.tournament_id)
-            .where(*_TITLE, models.Player.is_substitution.is_(False), *self._public_tournaments(workspace_id))
+            .where(
+                *_TITLE,
+                models.Player.is_substitution.is_(False),
+                *self._public_tournaments(workspace_id, almanac=almanac),
+            )
         )
 
     def _decided_series(self, *columns: typing.Any, workspace_id: int | None) -> sa.Select:
@@ -233,7 +247,9 @@ class StatisticsQueries(DisciplineQueries):
     ) -> tuple[typing.Sequence[tuple[models.Player, int]], int]:
         """Paginated players with their championship counts, plus the total player count."""
         query = (
-            self._championships(models.User, sa.func.count("*").label("value"), workspace_id=workspace_id)
+            self._championships(
+                models.User, sa.func.count("*").label("value"), workspace_id=workspace_id, almanac=False
+            )
             .join(models.User, models.User.id == models.WorkspaceMember.player_id)
             .group_by(models.User.id)
         )
@@ -249,7 +265,10 @@ class StatisticsQueries(DisciplineQueries):
         won, lost = sa.func.sum(encounter_query.c.maps_won), sa.func.sum(encounter_query.c.maps_lost)
         query = (
             self._scored_participations(
-                models.User, (won / sa.func.nullif(won + lost, 0)).label("value"), workspace_id=workspace_id
+                models.User,
+                (won / sa.func.nullif(won + lost, 0)).label("value"),
+                workspace_id=workspace_id,
+                almanac=False,
             )
             .join(models.User, models.User.id == models.WorkspaceMember.player_id)
             .group_by(models.User.id)

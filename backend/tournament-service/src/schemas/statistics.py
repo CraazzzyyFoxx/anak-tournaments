@@ -34,7 +34,8 @@ class OverallStatistics(BaseModel):
     teams: int
     players: int
     champions: int
-    # Played volume. ``encounters`` counts finished (COMPLETED) ones only;
+    # Played volume. ``encounters`` counts finished (COMPLETED) duels only
+    # (``completed_encounters_clauses``, the ``/encounters`` hero's number);
     # ``days`` is the distinct calendar days the tournaments cover, so a shared
     # weekend counts once; ``hours`` is whole hours of logged map time.
     encounters: int

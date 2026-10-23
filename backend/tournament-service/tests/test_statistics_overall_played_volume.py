@@ -32,6 +32,7 @@ from shared.models.tenancy.workspace import Workspace  # noqa: E402
 from shared.models.tournament import Team, Tournament  # noqa: E402
 from src.services.tournament.service import tournament_service  # noqa: E402
 from tests._encounter_layer import add_encounter, add_scoring_rule  # noqa: E402
+from tests.encounter_seed import seed_encounter  # noqa: E402
 
 
 def _day(year: int, month: int, day: int) -> datetime:
@@ -39,7 +40,7 @@ def _day(year: int, month: int, day: int) -> datetime:
 
 
 async def _seed(session: Any) -> tuple[int, int]:
-    """Two counted tournaments sharing a day, plus a hidden one that must not count.
+    """Two counted tournaments sharing a day, a counted league, plus a hidden one that must not count.
 
     Returns ``(workspace id, gamemode id)``; the map is the gamemode's own, so
     dropping both clears the lot (the test DB ships no maps to borrow).
@@ -81,8 +82,8 @@ async def _seed(session: Any) -> tuple[int, int]:
     # 1-3 Jan and 3-4 Jan overlap on the 3rd: four distinct days, not five.
     first = _tournament("a", _day(2031, 1, 1), _day(2031, 1, 3))
     second = _tournament("b", _day(2031, 1, 3), _day(2031, 1, 4))
-    # Hidden and league tournaments are excluded from every public count, their
-    # days and maps included.
+    # A hidden tournament is excluded from every public count, its days and maps
+    # included. A league counts like any other tournament.
     hidden = _tournament("h", _day(2031, 6, 1), _day(2031, 6, 9), is_hidden=True)
     league = _tournament("l", _day(2031, 7, 1), _day(2031, 7, 9), is_league=True)
     session.add_all([first, second, hidden, league])
@@ -106,6 +107,16 @@ async def _seed(session: Any) -> tuple[int, int]:
     session.add_all(hidden_teams)
     await session.flush()
     await add_encounter(session, hidden, rule.id, teams=[team.id for team in hidden_teams], scores=(2, 0))
+    # The league's finished duel counts.
+    league_teams = [
+        Team(tournament_id=league.id, name=f"L{index} {suffix}", balancer_name=f"l{index}-{suffix}")
+        for index in range(2)
+    ]
+    session.add_all(league_teams)
+    await session.flush()
+    await add_encounter(session, league, rule.id, teams=[team.id for team in league_teams], scores=(2, 1))
+    # A finished lobby is not an encounter of the public count (duels only, like /encounters).
+    await seed_encounter(session, first, rule.id, [(None, 3.0), (None, 2.0), (None, 1.0)], name=f"Lobby {suffix}")
     await session.flush()
 
     # 3600 + 1800 on the finished encounter, 1800 on the open one: three maps,
@@ -138,7 +149,11 @@ def test_overall_counts_played_volume(db_session) -> None:
     async def _run():
         seeded = await _seed(db_session)
         try:
-            return await tournament_service.get_tournaments_overall(db_session, workspace_id=seeded[0])
+            visible = await tournament_service.get_tournaments_overall(db_session, workspace_id=seeded[0])
+            # The shared visibility rule: a hidden workspace hides its ordinary tournaments too.
+            await db_session.execute(sa.update(Workspace).where(Workspace.id == seeded[0]).values(is_hidden=True))
+            hidden = await tournament_service.get_tournaments_overall(db_session, workspace_id=seeded[0])
+            return visible, hidden
         finally:
             # One loop for seed, read and drop: the session's connection is bound to it.
             await db_session.rollback()
@@ -148,11 +163,14 @@ def test_overall_counts_played_volume(db_session) -> None:
             await db_session.execute(sa.delete(CatalogEntity).where(CatalogEntity.id == seeded[1]))
             await db_session.commit()
 
-    overall = asyncio.run(_run())
+    overall, hidden_workspace = asyncio.run(_run())
 
-    assert overall.tournaments == 2
-    assert overall.encounters == 1
+    assert overall.tournaments == 3
+    assert overall.teams == 4
+    # The first tournament's finished duel and the league's; not the open one, the lobby or the hidden one's.
+    assert overall.encounters == 2
     assert overall.maps == 4
-    # 1-3 Jan plus 3-4 Jan = 1,2,3,4 — the shared 3rd counted once.
-    assert overall.days == 4
+    # 1-3 Jan plus 3-4 Jan = 1,2,3,4 (the shared 3rd counted once), plus the league's 1-9 Jul.
+    assert overall.days == 13
     assert overall.hours == 2
+    assert (hidden_workspace.tournaments, hidden_workspace.encounters, hidden_workspace.days) == (0, 0, 0)
