@@ -10,18 +10,28 @@ const UserHeroesContainer = dynamic(
 
 const UserHeroesPage = ({
   user,
+  tournaments,
   scope,
   discipline,
   axis
 }: {
   user: User;
+  /** The game's profile tournaments: the tournament filter's options. */
+  tournaments: { id: number; name: string }[];
   scope: StatsScope;
   discipline: string;
   axis: WorkspaceAxis;
 }) => {
   // Keyed by game: the tournament filter is one game's, never carried into another's.
   return (
-    <UserHeroesContainer key={discipline} userId={user.id} scope={scope} discipline={discipline} axis={axis} />
+    <UserHeroesContainer
+      key={discipline}
+      userId={user.id}
+      tournaments={tournaments}
+      scope={scope}
+      discipline={discipline}
+      axis={axis}
+    />
   );
 };
 

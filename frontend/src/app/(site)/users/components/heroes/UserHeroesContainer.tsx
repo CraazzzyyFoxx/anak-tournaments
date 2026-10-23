@@ -14,20 +14,16 @@ import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
 interface UserHeroesContainerProps {
   userId: number;
+  /** The game's profile tournaments: the tournament filter's options. */
+  tournaments: { id: number; name: string }[];
   scope: StatsScope;
   discipline: string;
   /** The viewed workspace axis the game's metadata is read on. */
   axis: WorkspaceAxis;
 }
 
-const UserHeroesContainer = ({ userId, scope, discipline, axis }: UserHeroesContainerProps) => {
+const UserHeroesContainer = ({ userId, tournaments, scope, discipline, axis }: UserHeroesContainerProps) => {
   const [tournamentId, setTournamentId] = useState<number | undefined>(undefined);
-
-  const tournamentsQuery = useQuery({
-    queryKey: userQueryKeys.tournaments(userId, scope, discipline),
-    queryFn: () => userService.getUserTournaments(userId, discipline, scope === "all" ? "all" : undefined),
-    staleTime: 5 * 60 * 1000
-  });
 
   const charactersQuery = useQuery({
     queryKey: userQueryKeys.characters(userId, scope, discipline, tournamentId),
@@ -62,13 +58,7 @@ const UserHeroesContainer = ({ userId, scope, discipline, axis }: UserHeroesCont
 
   const filterSlot = (
     <div className="w-60">
-      <TournamentCombobox
-        tournaments={tournamentsQuery.data ?? []}
-        value={tournamentId}
-        onValueChange={setTournamentId}
-        isLoading={tournamentsQuery.isLoading}
-        disabled={tournamentsQuery.isLoading || tournamentsQuery.isError}
-      />
+      <TournamentCombobox tournaments={tournaments} value={tournamentId} onValueChange={setTournamentId} />
     </div>
   );
 

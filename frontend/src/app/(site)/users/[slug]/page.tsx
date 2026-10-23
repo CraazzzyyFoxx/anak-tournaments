@@ -31,6 +31,7 @@ import ProfileGameTabs from "@/app/(site)/users/components/shared/ProfileGameTab
 import ProfileGameData from "@/app/(site)/users/components/shared/ProfileGameData";
 import ProfileNotPlayed from "@/app/(site)/users/components/shared/ProfileNotPlayed";
 import { blockGameOf, orderPlayerGames } from "@/app/(site)/users/components/shared/profile-games";
+import { tournamentOptions } from "@/app/(site)/users/components/shared/list-utils";
 import { UsersMissingGrid } from "@/app/(site)/users/components/shared/UsersMissingGrid";
 import ProfileScopeUnavailable from "@/app/(site)/users/components/shared/ProfileScopeUnavailable";
 import { resolveStatsScope } from "@/lib/site/tenant-host";
@@ -309,7 +310,15 @@ const UserMapsTab = async ({
   const { user } = await userAndProfile;
   return (
     <PerGameTab userAndProfile={userAndProfile} view={view}>
-      {(game) => <UserMapsPage user={user} scope={view.scope} discipline={game} axis={view.axis} />}
+      {(game, gameProfile) => (
+        <UserMapsPage
+          user={user}
+          tournaments={tournamentOptions(gameProfile.tournaments)}
+          scope={view.scope}
+          discipline={game}
+          axis={view.axis}
+        />
+      )}
     </PerGameTab>
   );
 };
@@ -324,7 +333,15 @@ const UserHeroesTab = async ({
   const { user } = await userAndProfile;
   return (
     <PerGameTab userAndProfile={userAndProfile} view={view}>
-      {(game) => <UserHeroesPage user={user} scope={view.scope} discipline={game} axis={view.axis} />}
+      {(game, gameProfile) => (
+        <UserHeroesPage
+          user={user}
+          tournaments={tournamentOptions(gameProfile.tournaments)}
+          scope={view.scope}
+          discipline={game}
+          axis={view.axis}
+        />
+      )}
     </PerGameTab>
   );
 };
@@ -342,7 +359,7 @@ const UserAchievementsTab = async ({
   return (
     <UserAchievementPage
       user={user}
-      tournaments={profile.tournaments}
+      tournaments={tournamentOptions(profile.tournaments)}
       selectedTournamentId={selectedTournamentId}
       scope={view.scope}
       discipline={view.game ?? undefined}

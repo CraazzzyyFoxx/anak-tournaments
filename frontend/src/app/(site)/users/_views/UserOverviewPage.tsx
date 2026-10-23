@@ -13,6 +13,7 @@ import CharacterStatsTable from "@/components/profile/CharacterStatsTable";
 import ProfileWidget from "@/components/profile/ProfileWidget";
 import OverviewAchievementsPreview from "@/app/(site)/users/components/overview/OverviewAchievementsPreview";
 import { tournamentMapPips } from "@/app/(site)/users/components/overview/map-results";
+import { tournamentOptions } from "@/app/(site)/users/components/shared/list-utils";
 import { getPlayerSlug } from "@/lib/player";
 import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
@@ -43,8 +44,12 @@ interface SectionProps {
 const getTournaments = cache((userId: number, scope: StatsScope, discipline: string) =>
   userService.getUserTournaments(userId, discipline, scope === "all" ? "all" : undefined).catch(() => [])
 );
-const getCharacters = cache((userId: number, scope: StatsScope, discipline: string) =>
-  userService.getUserCharacters(userId, discipline, { scope }).catch(() => null)
+// One array for every section: the RSC payload writes an object once and refers back to it, so the top characters
+// and the role split's signatures carry a single copy of the list.
+const getCharacterCards = cache(async (userId: number, scope: StatsScope, discipline: string) =>
+  characterCards(
+    (await userService.getUserCharacters(userId, discipline, { scope }).catch(() => null))?.results ?? []
+  )
 );
 
 export const UserOverviewPageSkeleton = () => {
@@ -92,7 +97,7 @@ const LastTournamentSection = async ({
     <OverviewLastTournamentCard
       tournament={tournament}
       metadata={metadata}
-      tournaments={profile.tournaments}
+      tournaments={tournamentOptions(profile.tournaments)}
       userId={user.id}
       mapPips={tournamentMapPips(tournamentEncounters, user.id)}
     />
@@ -114,7 +119,7 @@ const characterCards = (characters: CharacterWithUserStats[]): CharacterSummary[
   }));
 
 const TopHeroesSection = async ({ user, userSlug, scope, discipline, axis }: SectionProps & { userSlug: string }) => {
-  const characters = characterCards((await getCharacters(user.id, scope, discipline))?.results ?? []);
+  const characters = await getCharacterCards(user.id, scope, discipline);
   if (characters.length === 0) return null;
   return (
     <ProfileWidget
@@ -161,8 +166,16 @@ const RoleSplitSection = async ({
   discipline,
   axis
 }: SectionProps & { profile: UserProfile }) => {
-  const characters = characterCards((await getCharacters(user.id, scope, discipline))?.results ?? []);
-  return <OverviewRoleSplit profile={profile} discipline={discipline} axis={axis} characters={characters} />;
+  const characters = await getCharacterCards(user.id, scope, discipline);
+  const { roles, maps_total, tournaments_count } = profile;
+  return (
+    <OverviewRoleSplit
+      profile={{ roles, maps_total, tournaments_count }}
+      discipline={discipline}
+      axis={axis}
+      characters={characters}
+    />
+  );
 };
 
 const AchievementsSection = async ({

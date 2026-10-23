@@ -22,6 +22,8 @@ import type { WorkspaceAxis } from "@/lib/site/discipline-scope";
 
 interface Props {
   userId: number;
+  /** The game's profile tournaments: the tournament filter's options. */
+  tournaments: { id: number; name: string }[];
   scope: StatsScope;
   discipline: string;
   /** The viewed workspace axis the game's metadata is read on. */
@@ -33,7 +35,7 @@ const MODE_ORDER = ["Control", "Escort", "Hybrid", "Flashpoint", "Push", "Assaul
 type SortKey = "winrate" | "count" | "name";
 type OrderKey = "asc" | "desc";
 
-const MapsView = ({ userId, scope, discipline, axis }: Props) => {
+const MapsView = ({ userId, tournaments, scope, discipline, axis }: Props) => {
   const t = useTranslations();
   const [modeFilter, setModeFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -53,12 +55,6 @@ const MapsView = ({ userId, scope, discipline, axis }: Props) => {
     setPrevFilterKey(filterKey);
     setPage(1);
   }
-
-  const tournamentsQuery = useQuery({
-    queryKey: userQueryKeys.tournaments(userId, scope, discipline),
-    queryFn: () => userService.getUserTournaments(userId, discipline, scope === "all" ? "all" : undefined),
-    staleTime: 5 * 60 * 1000
-  });
 
   const mapFilters = { query: debouncedSearch, minCount, tournamentId };
   const mapsQuery = useQuery({
@@ -235,9 +231,7 @@ const MapsView = ({ userId, scope, discipline, axis }: Props) => {
       <MapsFilters
         tournamentId={tournamentId}
         onTournamentIdChange={setTournamentId}
-        tournaments={tournamentsQuery.data ?? []}
-        tournamentsLoading={tournamentsQuery.isLoading}
-        tournamentsError={tournamentsQuery.isError}
+        tournaments={tournaments}
         minCount={minCount}
         onMinCountChange={setMinCount}
         perPage={perPage}

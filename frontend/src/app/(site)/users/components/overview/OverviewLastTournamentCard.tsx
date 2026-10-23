@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { ArrowUpRight, Hourglass } from "lucide-react";
 import { HoverPrefetchLink } from "@/components/HoverPrefetchLink";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { UserTournamentWithStats, UserTournamentSummary } from "@/types/user.types";
+import { UserTournamentWithStats } from "@/types/user.types";
 import type { DisciplineMetadata } from "@/types/discipline.types";
 import { type MapResultPip } from "@/app/(site)/users/components/overview/map-results";
 import { UserTournamentStat } from "@/types/statistics.types";
@@ -29,7 +29,8 @@ interface Props {
   tournament: UserTournamentWithStats;
   /** The server's read of that workspace and game's metadata, so the first paint names the role. */
   metadata?: DisciplineMetadata;
-  tournaments: UserTournamentSummary[];
+  /** The switcher's options: the profile's tournaments. */
+  tournaments: readonly { id: number; name: string }[];
   /** Profile owner's user id — the row highlighted in the lobby leaderboard. */
   userId: number;
   mapPips?: MapResultPip[] | null;

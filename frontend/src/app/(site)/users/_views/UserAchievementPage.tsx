@@ -1,4 +1,4 @@
-import { User, UserTournamentSummary } from "@/types/user.types";
+import { User } from "@/types/user.types";
 import type { StatsScope } from "@/lib/site/stats-scope";
 import userService from "@/services/user.service";
 import { AchievementRarity } from "@/types/achievement.types";
@@ -7,7 +7,7 @@ import AchievementsView from "@/app/(site)/users/components/achievements/Achieve
 interface UserAchievementPageProps {
   user: User;
   /** The profile's tournaments (of the browsed game, or of every game): the tournament filter's options. */
-  tournaments: UserTournamentSummary[];
+  tournaments: { id: number; name: string }[];
   selectedTournamentId?: string;
   scope: StatsScope;
   /** One game's rules only (earned and locked); omitted = every game's, marked. */

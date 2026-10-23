@@ -32,7 +32,8 @@ interface Bucket {
 }
 
 interface Props {
-  profile: UserProfile;
+  /** The profile's per-role totals and career counts — all of the profile it reads. */
+  profile: Pick<UserProfile, "roles" | "maps_total" | "tournaments_count">;
   /** The profile's game: its ontology names and paints the roles, its module may add signature characters. */
   discipline: string;
   /** The workspace axis the profile is viewed on: its ontology carries that workspace's sub-roles (tenant host: its own). */

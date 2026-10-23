@@ -23,6 +23,13 @@ export const formatOptional = (value: number | null): string => {
   return value.toFixed(2);
 };
 
+/**
+ * What a tournament picker reads of the profile's tournaments. Handed to client components instead of the summaries:
+ * each summary carries its division grid, which would ride the RSC payload once per tournament.
+ */
+export const tournamentOptions = (tournaments: readonly { id: number; name: string }[]) =>
+  tournaments.map(({ id, name }) => ({ id, name }));
+
 
 /**
  * Compact, language-neutral handle for a tournament in dense UI (chart axis

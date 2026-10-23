@@ -4,12 +4,12 @@ import React from "react";
 import { useTranslations } from "next-intl";
 import { CardSurface, ProfileStat } from "@/components/profile/atoms";
 import { Button } from "@/components/ui/button";
-import { UserProfile, UserTournament } from "@/types/user.types";
+import { UserTournament } from "@/types/user.types";
 
 interface Props {
   tournaments: UserTournament[];
-  /** Career totals; the Titles figure prefers the profile count when present. */
-  profile?: UserProfile | null;
+  /** The career Titles figure. */
+  tournamentsWon: number;
   /** Tournament ids that belong to the currently-selected dossier event. */
   selectedIds?: number[];
   /** Selecting a point selects that event in the dossier (and scrolls to it). */
@@ -23,7 +23,7 @@ const colorClass = (placement: number, field: number): "gold" | "silver" | "bron
   return placement / field < 0.5 ? "mid" : "bottom";
 };
 
-const TournamentsPlacementTimeline = ({ tournaments, profile = null, selectedIds = [], onSelect }: Props) => {
+const TournamentsPlacementTimeline = ({ tournaments, tournamentsWon, selectedIds = [], onSelect }: Props) => {
   const tr = useTranslations();
   const valid = tournaments
     .filter((t) => t.placement && t.count_teams)
@@ -36,7 +36,6 @@ const TournamentsPlacementTimeline = ({ tournaments, profile = null, selectedIds
   const podiumCount = valid.filter((t) => t.placement <= 3).length;
   const podiumRate = Math.round((podiumCount / n) * 100);
   const bestPlacement = Math.min(...valid.map((t) => t.placement));
-  const titles = profile?.tournaments_won ?? valid.filter((t) => t.placement === 1).length;
 
   return (
     <CardSurface
@@ -50,8 +49,8 @@ const TournamentsPlacementTimeline = ({ tournaments, profile = null, selectedIds
       <div className="grid grid-cols-2 gap-x-6 gap-y-5 md:grid-cols-3">
         <ProfileStat
           label={tr("users.tournaments.kpi.titles")}
-          value={String(titles)}
-          color={titles > 0 ? "var(--aqt-gold)" : undefined}
+          value={String(tournamentsWon)}
+          color={tournamentsWon > 0 ? "var(--aqt-gold)" : undefined}
         />
         <ProfileStat
           label={tr("users.tournaments.kpi.podiumRate")}

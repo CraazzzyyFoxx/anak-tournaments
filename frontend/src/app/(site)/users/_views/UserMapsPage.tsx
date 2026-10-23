@@ -8,18 +8,28 @@ const MapsView = dynamic(() => import("@/app/(site)/users/components/maps/MapsVi
 
 const UserMapsPage = ({
   user,
+  tournaments,
   scope,
   discipline,
   axis
 }: {
   user: User;
+  /** The game's profile tournaments: the tournament filter's options. */
+  tournaments: { id: number; name: string }[];
   scope: StatsScope;
   discipline: string;
   axis: WorkspaceAxis;
 }) => {
   // Keyed by game: the filters (a tournament included) are one game's, never carried into another's.
   return (
-    <MapsView key={discipline} userId={user.id} scope={scope} discipline={discipline} axis={axis} />
+    <MapsView
+      key={discipline}
+      userId={user.id}
+      tournaments={tournaments}
+      scope={scope}
+      discipline={discipline}
+      axis={axis}
+    />
   );
 };
 

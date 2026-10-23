@@ -1,12 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { EncounterWithUserStats, UserProfile, UserTournament } from "@/types/user.types";
+import { useQueries } from "@tanstack/react-query";
+import { UserTournament } from "@/types/user.types";
 import userService from "@/services/user.service";
 import { usePrefersReducedMotion } from "@/hooks/usePrefersReducedMotion";
+import { userQueryKeys } from "@/lib/users/query-keys";
 import {
   type TournamentGroup,
+  groupEntries,
   groupRepId,
   groupTournamentIds,
   groupTournamentsByLeague,
@@ -19,13 +22,13 @@ import TournamentDossier from "@/app/(site)/users/components/tournaments/Tournam
 interface Props {
   tournaments: UserTournament[];
   selfUserId: number;
-  /** Career totals for the KPI strip; optional so the tab still renders without it. */
-  profile?: UserProfile | null;
+  /** The career Titles figure of the KPI strip. */
+  tournamentsWon: number;
   /** "All games": rows mark their game. */
   showGames?: boolean;
 }
 
-const TournamentsHistory = ({ tournaments, selfUserId, profile = null, showGames = false }: Props) => {
+const TournamentsHistory = ({ tournaments, selfUserId, tournamentsWon, showGames = false }: Props) => {
   const searchParams = useSearchParams();
   const dossierRef = useRef<HTMLDivElement>(null);
   const reduceMotion = usePrefersReducedMotion();
@@ -60,55 +63,26 @@ const TournamentsHistory = ({ tournaments, selfUserId, profile = null, showGames
   const selectedIds = useMemo(() => (selectedGroup ? groupTournamentIds(selectedGroup) : []), [selectedGroup]);
 
   // Lazy dossier detail: the list endpoint never populates `encounters` (see
-  // UserTournament.encounters) — fetch them per tournament id in the
-  // selected group only, and merge the results in before handing the group
-  // to the dossier. Mirrors LobbyLeaderboardModal's reset-on-param-change
-  // pattern: a synchronous state adjustment during render, not an effect.
-  const [selectionKey, setSelectionKey] = useState<number | null>(effectiveKey);
-  const [encountersByTournamentId, setEncountersByTournamentId] = useState<
-    Map<number, EncounterWithUserStats[]>
-  >(new Map());
-  const [encountersStatus, setEncountersStatus] = useState<"idle" | "loading" | "error">(
-    selectedIds.length > 0 ? "loading" : "idle"
-  );
+  // UserTournament.encounters) — read them per tournament in the selected
+  // group only, cached per tournament so re-selecting an event reads nothing,
+  // and merge them in before handing the group to the dossier. A failed read
+  // leaves that tournament's run empty, without a toast.
+  const selectedEntries = selectedGroup ? groupEntries(selectedGroup) : [];
+  const encounterQueries = useQueries({
+    queries: selectedEntries.map((t) => ({
+      queryKey: userQueryKeys.tournamentEncounters(selfUserId, t.workspace_id, t.discipline, t.id),
+      queryFn: () => userService.getUserTournamentEncounters(selfUserId, t.id),
+      staleTime: 5 * 60 * 1000,
+      meta: { suppressErrorToast: true }
+    }))
+  });
+  const loadingEncounters = encounterQueries.some((query) => query.isPending);
 
-  if (effectiveKey !== selectionKey) {
-    setSelectionKey(effectiveKey);
-    setEncountersByTournamentId(new Map());
-    setEncountersStatus(selectedIds.length > 0 ? "loading" : "idle");
+  let detailedGroup: TournamentGroup | null = null;
+  if (selectedGroup) {
+    const detailed = selectedEntries.map((t, index) => ({ ...t, encounters: encounterQueries[index]?.data ?? [] }));
+    detailedGroup = isLeagueGroup(selectedGroup) ? detailed : detailed[0];
   }
-
-  useEffect(() => {
-    if (selectedIds.length === 0) return;
-    let cancelled = false;
-    Promise.all(
-      selectedIds.map((id) =>
-        userService.getUserTournamentEncounters(selfUserId, id).then((list) => [id, list] as const)
-      )
-    )
-      .then((pairs) => {
-        if (cancelled) return;
-        setEncountersByTournamentId(new Map(pairs));
-        setEncountersStatus("idle");
-      })
-      .catch(() => {
-        if (!cancelled) setEncountersStatus("error");
-      });
-    return () => {
-      cancelled = true;
-    };
-    // effectiveKey (not selectedIds) is the selection identity this fetch is
-    // for; selectedIds is memoized off the same selection so it never drifts.
-  }, [effectiveKey, selfUserId, selectedIds]);
-
-  const detailedGroup: TournamentGroup | null = useMemo(() => {
-    if (!selectedGroup) return null;
-    const attach = (t: UserTournament): UserTournament => ({
-      ...t,
-      encounters: encountersByTournamentId.get(t.id) ?? []
-    });
-    return isLeagueGroup(selectedGroup) ? selectedGroup.map(attach) : attach(selectedGroup);
-  }, [selectedGroup, encountersByTournamentId]);
 
   const syncUrl = (id: number) => {
     if (typeof window === "undefined") return;
@@ -136,7 +110,7 @@ const TournamentsHistory = ({ tournaments, selfUserId, profile = null, showGames
     <>
       <TournamentsPlacementTimeline
         tournaments={tournaments}
-        profile={profile}
+        tournamentsWon={tournamentsWon}
         selectedIds={selectedIds}
         onSelect={selectEvent}
       />
@@ -145,7 +119,7 @@ const TournamentsHistory = ({ tournaments, selfUserId, profile = null, showGames
           <TournamentDossier
             group={detailedGroup}
             selfUserId={selfUserId}
-            loadingEncounters={encountersStatus === "loading"}
+            loadingEncounters={loadingEncounters}
           />
         </div>
         {/* Desktop: the list is taken out of flow so the row height is the dossier's and the list scrolls inside it. */}

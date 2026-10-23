@@ -5,7 +5,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { AchievementRarity } from "@/types/achievement.types";
-import type { UserTournamentSummary } from "@/types/user.types";
 import {
   Select,
   SelectContent,
@@ -29,7 +28,7 @@ const TOURNAMENT_QUERY_KEY = "achievementTournamentId";
 
 interface Props {
   achievements: AchievementRarity[];
-  tournaments?: UserTournamentSummary[];
+  tournaments?: readonly { id: number; name: string }[];
   /** Tournament id; `"none"` = earned outside any tournament; `undefined` = all. */
   selectedTournament?: number | "none";
   /** "All games": every tile marks its rule's game. */

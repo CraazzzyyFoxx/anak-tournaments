@@ -33,7 +33,12 @@ export const UserTournamentsPage = async ({
 
   return (
     <div className="aqt-player flex flex-col gap-3.5">
-      <TournamentsHistory tournaments={tournaments} selfUserId={user.id} profile={profile} showGames={showGames} />
+      <TournamentsHistory
+        tournaments={tournaments}
+        selfUserId={user.id}
+        tournamentsWon={profile.tournaments_won}
+        showGames={showGames}
+      />
     </div>
   );
 };

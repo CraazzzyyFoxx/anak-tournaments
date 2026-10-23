@@ -263,7 +263,8 @@ export default class userService {
         tournament_id: tournamentId,
         discipline,
         ...scopeQuery(scope)
-      }
+      },
+      next: { revalidate: USER_TTL_SECONDS, tags: [`user:${id}`] }
     }).then((res) => res.json());
   }
   static async getUserAchievements(
@@ -291,7 +292,8 @@ export default class userService {
         include_locked: includeLocked,
         discipline,
         ...scopeQuery(scope)
-      }
+      },
+      next: { revalidate: USER_TTL_SECONDS, tags: [`user:${id}`] }
     }).then((res) => res.json());
   }
   static async getUserBestTeammates(

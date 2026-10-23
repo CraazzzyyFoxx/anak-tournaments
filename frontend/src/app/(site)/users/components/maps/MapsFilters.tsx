@@ -20,8 +20,6 @@ interface MapsFiltersProps {
   tournamentId: number | undefined;
   onTournamentIdChange: (id: number | undefined) => void;
   tournaments: readonly { id: number; name: string }[];
-  tournamentsLoading: boolean;
-  tournamentsError: boolean;
   minCount: number;
   onMinCountChange: (value: number) => void;
   perPage: number;
@@ -38,8 +36,6 @@ const MapsFilters = ({
   tournamentId,
   onTournamentIdChange,
   tournaments,
-  tournamentsLoading,
-  tournamentsError,
   minCount,
   onMinCountChange,
   perPage,
@@ -60,13 +56,7 @@ const MapsFilters = ({
   return (
     <Card variant="flat" className="aqt-filters p-2.5">
       <div className="w-48">
-        <TournamentCombobox
-          tournaments={tournaments}
-          value={tournamentId}
-          onValueChange={onTournamentIdChange}
-          isLoading={tournamentsLoading}
-          disabled={tournamentsLoading || tournamentsError}
-        />
+        <TournamentCombobox tournaments={tournaments} value={tournamentId} onValueChange={onTournamentIdChange} />
       </div>
 
       <Select value={String(minCount)} onValueChange={(v) => onMinCountChange(Number(v))}>
