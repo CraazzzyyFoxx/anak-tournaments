@@ -16,6 +16,14 @@ import type { OwTeam } from "./view";
 
 const { getMatchKillFeed } = vi.hoisted(() => ({ getMatchKillFeed: vi.fn() }));
 
+// The comparison tab's chart is lazy. Left lazy, recharts finished loading in
+// whichever test ran next and billed that test its import time (seconds under a
+// loaded runner). Every `dynamic()` here is that chart: resolve it up front
+// (imported inside the factory because `vi.mock` is hoisted above static imports).
+vi.mock("next/dynamic", async () => {
+  const chart = await import("./ContributionChart");
+  return { default: () => chart.default };
+});
 vi.mock("@/services/encounter.service", () => ({ default: { getMatchKillFeed } }));
 vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({ number: (value: number) => String(value) })

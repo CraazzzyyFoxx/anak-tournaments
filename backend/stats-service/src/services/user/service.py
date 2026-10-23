@@ -55,11 +55,12 @@ tournament_stats = [
     enums.LogStatsName.Performance,
 ]
 
-# The stat a character's career-best game (``CharacterWithUserStats.record``) is judged by, per ``attrs["class"]``.
+# The stat a character's career-best game (``CharacterWithUserStats.record``) is judged by, per ``attrs["class"]``
+# (a ``HeroClass`` member name).
 _CHARACTER_RECORD_STAT: dict[str, enums.LogStatsName] = {
-    "tank": enums.LogStatsName.DamageBlocked,
-    "damage": enums.LogStatsName.HeroDamageDealt,
-    "support": enums.LogStatsName.HealingDealt,
+    enums.HeroClass.tank.name: enums.LogStatsName.DamageBlocked,
+    enums.HeroClass.damage.name: enums.LogStatsName.HeroDamageDealt,
+    enums.HeroClass.support.name: enums.LogStatsName.HealingDealt,
 }
 
 

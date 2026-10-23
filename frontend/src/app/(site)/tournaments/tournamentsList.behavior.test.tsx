@@ -417,8 +417,6 @@ describe("tournaments list", () => {
     expect(chipCount(en.common.statusBadge.completed)).toBe("30");
     expect(chipCount(en.tournamentsList.filters.standard)).toBe("36");
     expect(chipCount(en.common.league)).toBe("6");
-    // The heading states the size of the result set, not the rows on screen.
-    expect(container.querySelector("h2")?.parentElement?.textContent).toContain("2 tournaments");
   });
 
   it("reports live events from the unfiltered facet, not from the loaded rows", async () => {

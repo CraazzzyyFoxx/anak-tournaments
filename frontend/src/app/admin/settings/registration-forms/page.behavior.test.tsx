@@ -228,7 +228,7 @@ describe("workspace registration form templates", () => {
 
     await click(button("Open cup"));
     // Dirty the draft: open the one question and flip Required.
-    await click(button("Battle.netidentity_battlenetRequired"));
+    await click(button("Battle.net"));
     await click(labelled("Required"));
 
     await click(button("Closed cup"));

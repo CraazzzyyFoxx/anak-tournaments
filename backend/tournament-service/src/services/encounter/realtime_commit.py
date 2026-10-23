@@ -39,13 +39,15 @@ from sqlalchemy import event, select
 from sqlalchemy.orm import Session
 
 from shared.core.enums import MapVetoSessionStatus, PickBanKind
-from shared.models.encounter.encounter import Encounter
 from shared.models.encounter.pick_ban import PickBanSession
+from shared.repository import EncounterRepository
 from shared.services.pickup_mix_realtime import emit_pickup_mix_changed
 from shared.services.realtime import DomainEvent, Scope, emit
 from src.services.encounter.room_reconcile import request_room_reconcile
 
 __all__ = ("emit_pick_ban_update",)
+
+_encounters = EncounterRepository()
 
 _DOMAIN_BY_KIND = {"map": "map-veto", "hero": "pick-ban:hero"}
 _EVENT_TYPE_BY_KIND = {"map": "map_veto.updated", "hero": "pick_ban.updated"}
@@ -107,7 +109,7 @@ async def emit_pick_ban_update(session: Any, encounter_id: int, *, kind: str = "
 async def _announce_mix_overview_change(session: Any, encounter_id: int) -> None:
     """Tell a mix's overview its match crossed between Pre-game and Live: the hero room settled (completed or
     cancelled), or a settled one came back (reopen, undo, reset)."""
-    encounter = await session.get(Encounter, encounter_id)
+    encounter = await _encounters.get_any_owner(session, encounter_id)
     if encounter is None or encounter.custom_game_id is None:
         return
     status = await session.scalar(

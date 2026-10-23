@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Cookies from "js-cookie";
 import { useTranslations } from "next-intl";
@@ -209,8 +209,11 @@ export function usePlayerEditForm({
     return Number(val);
   };
 
-  useEffect(() => {
-    const normalized = normalizeRoleEntries(player.role_entries_json);
+  // Another player (or a refetched one) starts the form over. Adjusted during
+  // render, so the previous player's values are never painted first.
+  const [formSource, setFormSource] = useState({ player, registration });
+  if (formSource.player !== player || formSource.registration !== registration) {
+    setFormSource({ player, registration });
     setIsFlex(player.is_flex);
     setNotes(player.admin_notes ?? "");
     setRegistrationStatus(registration?.status ?? "approved");
@@ -219,8 +222,8 @@ export function usePlayerEditForm({
     setHistoryPreviewRequested(false);
     setHistoryLoadError(null);
     setPinToTournament(false);
-    setRoleEntries(normalized);
-  }, [player, registration]);
+    setRoleEntries(normalizeRoleEntries(player.role_entries_json));
+  }
 
   const readHistory = async (workspaceValue: string) => {
     // Without the game's rated dimension there is no role dictionary to read a history against.

@@ -486,7 +486,7 @@ class TestSignUpDeferral(_GateCase):
             )
         # Asked, answered "no code path", refused -- naming sign-up, not check-in.
         assert resolver.code_queries == [(7, ("boosty",))]
-        assert "регистрации" in ctx.exception.detail[0]["msg"]
+        assert "for registration" in ctx.exception.detail[0]["msg"]
 
     async def test_no_code_query_when_nothing_is_refused(self):
         """Deferring can only ever WEAKEN a refusal, so the happy path skips it."""

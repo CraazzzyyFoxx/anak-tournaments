@@ -101,6 +101,8 @@ TABLE_NAMES = (
     "tournament.pick_ban_config_item",
     "tournament.pick_ban_config_slot",
     "tournament.pick_ban_config_slot_item",
+    # The room's pool load drops a map pool's mode items by their catalog kind.
+    "catalog.entity",
 )
 
 

@@ -93,4 +93,13 @@ export default [
       ],
     },
   },
+  {
+    // Playwright fixtures hand their value to the test through a `use`
+    // callback. The e2e harness renders no React, so the hooks rule only
+    // misreads that name as React's `use` hook.
+    files: ["e2e/**"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+    },
+  },
 ];

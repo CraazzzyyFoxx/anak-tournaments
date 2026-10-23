@@ -37,6 +37,7 @@ from shared.observability.broker import require_broker
 from shared.repository.ranks import (
     RankAccountStateRepository,
     RankFetchLogRepository,
+    RankSnapshotRepository,
     compute_per_tick,
     jittered_interval,
     workspace_account_ids,
@@ -118,6 +119,7 @@ OWNED_DLQS = tuple(
 
 _states = RankAccountStateRepository()
 _logs = RankFetchLogRepository()
+_snapshots = RankSnapshotRepository()
 rank_client = riot.api_client()
 
 
@@ -343,7 +345,8 @@ def _log(
     error: str | None = None,
     written: int = 0,
 ) -> None:
-    session.add(
+    _logs.add(
+        session,
         models.RankFetchLog(
             discipline=DISCIPLINE,
             social_account_id=social_account_id,
@@ -352,7 +355,7 @@ def _log(
             source=source,
             error=error[:2000] if error else None,
             snapshots_written=written,
-        )
+        ),
     )
 
 
@@ -503,7 +506,8 @@ async def _fetch_and_record(
             rows = changed_queue_ranks(
                 queue_ranks(fetched.entries), await _latest_queue_ranks(session, target.social_account_id)
             )
-            session.add_all(
+            _snapshots.add_many(
+                session,
                 [
                     models.UserRankSnapshot(
                         discipline=DISCIPLINE,
@@ -522,7 +526,7 @@ async def _fetch_and_record(
                         source=source,
                     )
                     for row in rows
-                ]
+                ],
             )
             written = len(rows)
             mark_ok(state, now=now, config=config)

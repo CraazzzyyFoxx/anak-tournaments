@@ -35,9 +35,11 @@ from shared.messaging.config import ACHIEVEMENT_EVALUATE_QUEUE
 from shared.messaging.outbox import enqueue_outbox_event
 from shared.models import MatchFetch, MatchFetchStatus
 from shared.observability import observe_scheduled_job
+from shared.repository.encounter import EncounterGameRepository
 from shared.repository.identity import UserRepository
 from shared.repository.match_fetch import MatchFetchRepository
 from shared.repository.stats import IngestJobRepository
+from shared.repository.tournament import TournamentRepository
 from shared.schemas.events import AchievementEvaluateEvent
 from shared.services.distributed_lock import (
     DistributedLockUnavailable,
@@ -77,7 +79,9 @@ _EXTERNAL_ID = re.compile(r"[A-Za-z0-9_.:-]{1,128}")
 _REASON_LIMIT = 500
 
 _fetches = MatchFetchRepository()
+_games = EncounterGameRepository()
 _jobs = IngestJobRepository()
+_tournaments = TournamentRepository()
 _users = UserRepository()
 _scheduler = IntervalScheduler(job_id="match_fetch_tick", label="Match fetch tick")
 
@@ -180,11 +184,11 @@ async def _warnings(session: AsyncSession, row: MatchFetch) -> list[dict[str, An
             .group_by(team.encounter_team_id)
         )
     ).scalars()
-    tournament = await session.get(models.Tournament, row.hint_tournament_id)
+    tournament = await _tournaments.get(session, row.hint_tournament_id)
     starters = (await tournament_format(session, tournament))[0].starter_min
     if dropped := sum(max(0, starters - count) for count in seated):
         warnings.append({"code": "participants_dropped", "count": dropped, "characters": []})
-    game = await session.get(models.EncounterGame, match.encounter_game_id)
+    game = await _games.get(session, match.encounter_game_id)
     entry, room, entity = models.PickBanEntry, models.PickBanSession, models.CatalogEntity
     banned = (
         sa.select(entry.item_id)
@@ -289,7 +293,7 @@ async def _settle(
 
 async def _attempt(fetch_id: int, *, session_factory: Any, s3: S3Client, now: datetime) -> None:
     async with session_factory() as session:
-        row = await session.get(MatchFetch, fetch_id)
+        row = await _fetches.get(session, fetch_id)
         if row is None or row.status != MatchFetchStatus.PENDING:
             return
         spec, kind, external_id = DISCIPLINES.get(row.discipline), row.source_kind, row.external_id

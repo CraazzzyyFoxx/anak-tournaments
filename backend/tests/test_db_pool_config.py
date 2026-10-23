@@ -105,31 +105,47 @@ def test_create_database_omits_connect_timeout_when_disabled(monkeypatch):
     assert captured["async_kwargs"]["connect_args"] == {}
 
 
-def test_create_database_pgbouncer_mode_disables_prepared_statements(monkeypatch):
-    captured: dict[str, object] = {}
+class _RecordingEvent:
+    """Stands in for ``sqlalchemy.event``: records each listener instead of attaching it."""
 
-    def fake_create_async_engine(*, url, **kwargs):
-        captured["async_url"] = url
-        captured["async_kwargs"] = kwargs
-        return object()
+    def __init__(self) -> None:
+        self.listeners: list[tuple[object, str, object]] = []
+
+    def listens_for(self, target, identifier):
+        def decorator(fn):
+            self.listeners.append((target, identifier, fn))
+            return fn
+
+        return decorator
+
+
+class _FakeAsyncEngine:
+    def __init__(self) -> None:
+        self.sync_engine = object()
+
+
+def _pgbouncer_database(monkeypatch, **kwargs):
+    """``create_database`` behind pgBouncer on a fake engine: ``(engine kwargs, engine, recorded events)``."""
+    captured: dict[str, object] = {}
+    engine = _FakeAsyncEngine()
+    events = _RecordingEvent()
+
+    def fake_create_async_engine(*, url, **engine_kwargs):
+        captured.update(engine_kwargs)
+        return engine
 
     monkeypatch.setattr(db_module, "create_async_engine", fake_create_async_engine)
-    monkeypatch.setattr(db_module, "async_sessionmaker", lambda *args, **kwargs: object())
-
-    registered: dict[str, object] = {}
-    monkeypatch.setattr(
-        db_module,
-        "_register_statement_timeout",
-        lambda engine, timeout: registered.update(engine=engine, timeout=timeout),
-    )
-
+    monkeypatch.setattr(db_module, "async_sessionmaker", lambda *args, **kw: object())
+    monkeypatch.setattr(db_module, "event", events)
     db_module.create_database(
-        async_url="postgresql+asyncpg://user:pass@pgbouncer:6432/testdb",
-        statement_timeout=5000,
-        pgbouncer=True,
+        async_url="postgresql+asyncpg://user:pass@pgbouncer:6432/testdb", pgbouncer=True, **kwargs
     )
+    return captured, engine, events
 
-    kwargs = captured["async_kwargs"]
+
+def test_create_database_pgbouncer_mode_disables_prepared_statements(monkeypatch):
+    kwargs, engine, events = _pgbouncer_database(monkeypatch, statement_timeout=5000)
+
     # pgBouncer caps server backends; the client-side pool stays bounded and
     # pre-pinged so connections are reused instead of one connect per message.
     assert "poolclass" not in kwargs
@@ -146,28 +162,13 @@ def test_create_database_pgbouncer_mode_disables_prepared_statements(monkeypatch
     assert connect_args["timeout"] == 10.0
 
     # statement_timeout is instead applied per-transaction.
-    assert registered["timeout"] == 5000
-    assert "engine" in registered
+    assert [(target, identifier) for target, identifier, _ in events.listeners] == [(engine.sync_engine, "begin")]
 
 
 def test_create_database_pgbouncer_skips_timeout_registration_when_disabled(monkeypatch):
-    monkeypatch.setattr(db_module, "create_async_engine", lambda *, url, **kwargs: object())
-    monkeypatch.setattr(db_module, "async_sessionmaker", lambda *args, **kwargs: object())
+    _, _, events = _pgbouncer_database(monkeypatch, statement_timeout=0)
 
-    registered: dict[str, object] = {}
-    monkeypatch.setattr(
-        db_module,
-        "_register_statement_timeout",
-        lambda engine, timeout: registered.update(called=True),
-    )
-
-    db_module.create_database(
-        async_url="postgresql+asyncpg://user:pass@pgbouncer:6432/testdb",
-        statement_timeout=0,
-        pgbouncer=True,
-    )
-
-    assert registered == {}
+    assert events.listeners == []
 
 
 def test_unique_prepared_statement_name_is_unique():
@@ -179,34 +180,9 @@ def test_unique_prepared_statement_name_is_unique():
     assert first.endswith("__")
 
 
-def test_register_statement_timeout_sets_local_on_begin(monkeypatch):
-    handlers: dict[str, object] = {}
-
-    class FakeEvent:
-        @staticmethod
-        def listens_for(target, identifier):
-            def decorator(fn):
-                handlers["target"] = target
-                handlers["identifier"] = identifier
-                handlers["fn"] = fn
-                return fn
-
-            return decorator
-
-    monkeypatch.setattr(db_module, "event", FakeEvent)
-
-    sync_engine = object()
-
-    class FakeAsyncEngine:
-        pass
-
-    engine = FakeAsyncEngine()
-    engine.sync_engine = sync_engine
-
-    db_module._register_statement_timeout(engine, 7500)
-
-    assert handlers["target"] is sync_engine
-    assert handlers["identifier"] == "begin"
+def test_create_database_pgbouncer_applies_session_settings_on_begin(monkeypatch):
+    _, _, events = _pgbouncer_database(monkeypatch, statement_timeout=7500, session_settings={"jit": "off"})
+    [(_, _, on_begin)] = events.listeners
 
     executed: list[str] = []
 
@@ -214,6 +190,7 @@ def test_register_statement_timeout_sets_local_on_begin(monkeypatch):
         def exec_driver_sql(self, sql):
             executed.append(sql)
 
-    handlers["fn"](FakeConn())
+    on_begin(FakeConn())
 
-    assert executed == ["SET LOCAL statement_timeout = 7500"]
+    # One round trip per transaction; ``set_config(..., true)`` is ``SET LOCAL``: it ends with the transaction.
+    assert executed == ["SELECT set_config('jit', 'off', true), set_config('statement_timeout', '7500', true)"]

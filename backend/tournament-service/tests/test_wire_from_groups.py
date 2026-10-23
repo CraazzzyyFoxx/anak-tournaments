@@ -54,6 +54,7 @@ def _playoff_stage(*, stage_id: int, tournament_id: int, stage_item_id: int = 20
         id=stage_id,
         tournament_id=tournament_id,
         stage_type=enums.StageType.SINGLE_ELIMINATION,
+        bracket_template=None,
         items=[
             SimpleNamespace(
                 id=stage_item_id,
@@ -100,13 +101,15 @@ class WireFromGroupsTests(IsolatedAsyncioTestCase):
             self.assertIsNotNone(inp.source_stage_item_id)
             self.assertIsNotNone(inp.source_position)
 
-        # Cross seeding: column 0 = (A, 1), (B, 1); column 1 = (B, 2), (A, 2)
+        # Cross seeding draws column 0 = (A, 1), (B, 1); column 1 = (B, 2), (A, 2),
+        # but the generated bracket opens 1-vs-4 and 2-vs-3, which would pair A1
+        # with A2 -- so the runners-up swap places (separate_groups).
         # Expected (slot, source_item.name, position):
         # 1 → A, 1
         # 2 → B, 1
-        # 3 → B, 2
-        # 4 → A, 2
-        expected = [(1, 100, 1), (2, 101, 1), (3, 101, 2), (4, 100, 2)]
+        # 3 → A, 2
+        # 4 → B, 2
+        expected = [(1, 100, 1), (2, 101, 1), (3, 100, 2), (4, 101, 2)]
         actual = [(inp.slot, inp.source_stage_item_id, inp.source_position) for inp in added_inputs]
         self.assertEqual(expected, actual)
 
@@ -326,6 +329,7 @@ def _de_stage_with_lb(
         id=stage_id,
         tournament_id=tournament_id,
         stage_type=enums.StageType.DOUBLE_ELIMINATION,
+        bracket_template=None,
         items=[
             SimpleNamespace(
                 id=ub_item_id,
@@ -351,6 +355,7 @@ def _de_stage_single_item(*, stage_id: int, tournament_id: int, ub_item_id: int 
         id=stage_id,
         tournament_id=tournament_id,
         stage_type=enums.StageType.DOUBLE_ELIMINATION,
+        bracket_template=None,
         items=[
             SimpleNamespace(
                 id=ub_item_id,

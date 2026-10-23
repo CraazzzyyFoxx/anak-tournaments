@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { FormField } from "@/types/forms.types";
 
@@ -57,9 +57,13 @@ export default function AccountCombobox({
   const shownError = error ?? liveError;
   const normalizedInputValue = normalize(inputValue);
 
-  useEffect(() => {
+  // A new answer from the form (a pick, a reset) replaces what the box shows.
+  // Adjusted during render, so the stale text is never painted first.
+  const [syncedValue, setSyncedValue] = useState(value);
+  if (value !== syncedValue) {
+    setSyncedValue(value);
     setInputValue(value);
-  }, [value]);
+  }
 
   const handleSelect = (selected: string) => {
     if (formatError(selected)) {

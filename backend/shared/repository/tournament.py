@@ -504,6 +504,12 @@ class EncounterRepository(BaseRepository[models.Encounter]):
         )
         return result.unique().scalars().first()
 
+    async def get_any_owner(self, session: AsyncSession, encounter_id: int) -> models.Encounter | None:
+        """``get_any_owner_for_update``'s plain read: no lock, no refresh, the identity-mapped row when there is one --
+        for the room reads (state, the healer's pre-check, a mix's overview signal) that must not queue behind a
+        writer."""
+        return await session.get(models.Encounter, encounter_id)
+
     async def list_by_tournament(
         self,
         session: AsyncSession,

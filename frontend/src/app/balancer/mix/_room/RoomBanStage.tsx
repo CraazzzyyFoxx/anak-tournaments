@@ -16,6 +16,7 @@ import { PickBanSideChoice } from "@/components/pick-ban/PickBanSideChoice";
 import { PickBanUndoControl } from "@/components/pick-ban/PickBanUndoControl";
 import { PregameAdminControls } from "@/components/pick-ban/PregameAdminControls";
 import {
+  CHARACTER_PICK_BAN_KIND,
   isSessionActive,
   memberName,
   pickBanReserveMap,
@@ -77,7 +78,7 @@ export function RoomBanStage({
     [workspaceId, discipline, seats]
   );
   const room = usePickBanController({
-    kind: "hero",
+    kind: CHARACTER_PICK_BAN_KIND,
     encounterId,
     encounter,
     state,
@@ -123,7 +124,7 @@ export function RoomBanStage({
       : null;
   const hostAct = useMutation({
     mutationFn: (input: { encounter_team_id: number; item_id: number; action: PickBanAction }) =>
-      adminService.adminPickBanAct(encounterId, { kind: "hero", ...input }),
+      adminService.adminPickBanAct(encounterId, { kind: CHARACTER_PICK_BAN_KIND, ...input }),
     onSuccess: () => room.cancelSelection(),
     onError: (error) => notify.apiError(error, { title: tPickBan("admin.actFailed") }),
     onSettled: () => void queryClient.invalidateQueries({ queryKey })
@@ -162,7 +163,7 @@ export function RoomBanStage({
 
       {room.revealedStep != null ? (
         <PickBanRevealPanel
-          kind="hero"
+          kind={CHARACTER_PICK_BAN_KIND}
           step={room.revealedStep}
           submissions={stepSubmissions(state.submissions, room.revealedStep.index)}
           itemsById={heroesById}
@@ -195,7 +196,7 @@ export function RoomBanStage({
         </Card>
       ) : room.assignStep ? (
         <PickBanAssignBoard
-          kind="hero"
+          kind={CHARACTER_PICK_BAN_KIND}
           encounterId={encounterId}
           state={state}
           itemsById={heroesById}
@@ -206,7 +207,7 @@ export function RoomBanStage({
         />
       ) : (
         <PickBanGrid
-          kind="hero"
+          kind={CHARACTER_PICK_BAN_KIND}
           pool={state.pool}
           itemsById={heroesById}
           selectedItemId={room.selectedItemId}
@@ -226,7 +227,7 @@ export function RoomBanStage({
       )}
 
       <PickBanUndoControl
-        kind="hero"
+        kind={CHARACTER_PICK_BAN_KIND}
         encounterId={encounterId}
         undo={state.undo}
         viewerTeamId={room.viewerTeamId}
@@ -238,7 +239,7 @@ export function RoomBanStage({
 
       {canHost && showAdmin ? (
         <PregameAdminControls
-          kind="hero"
+          kind={CHARACTER_PICK_BAN_KIND}
           encounterId={encounterId}
           state={state}
           selectedItemId={room.adminSlot.selectedItemId}
@@ -263,7 +264,7 @@ export function RoomBanStage({
           draft={
             room.isBlindStep && step != null && room.viewerTeamId != null ? (
               <PickBanDraftTray
-                kind="hero"
+                kind={CHARACTER_PICK_BAN_KIND}
                 step={step}
                 items={room.draftItems}
                 locked={room.draftLocked}
@@ -283,7 +284,7 @@ export function RoomBanStage({
             ) : null
           }
           draftOpen={room.isBlindStep && state.viewer_can_act && !room.draftLocked && !state.is_complete}
-          kind="hero"
+          kind={CHARACTER_PICK_BAN_KIND}
           selectedItemId={room.isSideStep ? room.selectedSide : room.selectedItemId}
           selectedItemName={
             room.isSideStep
@@ -312,7 +313,7 @@ export function RoomBanStage({
       )}
 
       <ElectOpenerDialog
-        kind="hero"
+        kind={CHARACTER_PICK_BAN_KIND}
         encounterId={encounterId}
         open={room.showElectOpener}
         seats={room.seats}

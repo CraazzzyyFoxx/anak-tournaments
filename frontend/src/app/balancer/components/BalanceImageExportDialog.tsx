@@ -118,14 +118,7 @@ export function BalanceImageExportDialog({
   useEffect(() => () => clearGeneratedImages(), [clearGeneratedImages]);
 
   useEffect(() => {
-    if (!open) {
-      clearGeneratedImages();
-      setError(null);
-      setIsGenerating(false);
-      return;
-    }
-
-    if (!payload || chunks.length === 0) {
+    if (!open || !payload || chunks.length === 0) {
       return;
     }
 
@@ -187,8 +180,13 @@ export function BalanceImageExportDialog({
 
     void generateImages();
 
+    // Closing the dialog (or new teams) ends this run: its images go, their
+    // object URLs are freed, and the next open starts clean.
     return () => {
       cancelled = true;
+      clearGeneratedImages();
+      setError(null);
+      setIsGenerating(false);
     };
   }, [chunks, clearGeneratedImages, open, payload, t]);
 

@@ -15,6 +15,9 @@ __all__ = ("MatchFetchRepository",)
 
 
 class MatchFetchRepository:
+    async def get(self, session: AsyncSession, fetch_id: int) -> MatchFetch | None:
+        return await session.get(MatchFetch, fetch_id)
+
     async def get_for_update(self, session: AsyncSession, fetch_id: int) -> MatchFetch | None:
         return await session.get(MatchFetch, fetch_id, with_for_update=True, populate_existing=True)
 

@@ -47,6 +47,11 @@ export interface SectionNavProps {
  */
 let picked: { href: string; edge: Edge } | null = null;
 
+// A module-level writer: the rail's handlers record a pick, render never does.
+function recordPick(href: string, edge: Edge) {
+  picked = { href, edge };
+}
+
 /**
  * Ref for the content column beside the rail: a rail pick plays the scroll
  * chain's entrance on it, so picking a section moves like scrolling to it.
@@ -82,9 +87,8 @@ export function SectionNav({ groups, activeKey }: Readonly<SectionNavProps>) {
   const allItems = visibleGroups.flatMap((group) => group.items);
   const active = allItems.find((item) => item.key === activeKey);
   const activeIndex = active ? allItems.indexOf(active) : -1;
-  const pick = (item: SectionNavItem) => {
-    picked = { href: item.href, edge: allItems.indexOf(item) < activeIndex ? "bottom" : "top" };
-  };
+  const pick = (item: SectionNavItem) =>
+    recordPick(item.href, allItems.indexOf(item) < activeIndex ? "bottom" : "top");
 
   // One section is not a choice: no rail, no select.
   if (allItems.length < 2) return null;

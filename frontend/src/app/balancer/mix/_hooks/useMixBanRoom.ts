@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
+import { CHARACTER_PICK_BAN_KIND } from "@/components/pick-ban/pick-ban-model";
 import { useCatalogEntities } from "@/hooks/useCatalogEntities";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
@@ -37,7 +38,7 @@ export function useMixBanRoom(encounterId: number | null, discipline: string) {
   );
   const stateQuery = useQuery({
     queryKey,
-    queryFn: () => pickBanService.getPickBanState("hero", encounterId as number),
+    queryFn: () => pickBanService.getPickBanState(CHARACTER_PICK_BAN_KIND, encounterId as number),
     enabled: encounterId != null,
     refetchInterval: (query) => {
       const state = query.state.data;

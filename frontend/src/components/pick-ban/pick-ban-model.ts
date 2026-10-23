@@ -16,6 +16,7 @@ import type {
   PickBanEntry,
   PickBanEntryStatus,
   PickBanGame,
+  PickBanKind,
   PickBanMember,
   PickBanResolvedStep,
   PickBanSession,
@@ -31,6 +32,9 @@ import type { EncounterTeam } from "@/types/encounter.types";
 
 /** How long a draft edit waits before it is saved, so five quick clicks are one request. */
 export const DRAFT_SAVE_DELAY_MS = 300;
+
+/** The character catalog's pick-ban kind. Its wire value (DB enum, realtime domain `pick-ban:hero`) is still `hero`. */
+export const CHARACTER_PICK_BAN_KIND: PickBanKind = "hero";
 
 /**
  * One participation of the room as its components name it: `id` is the

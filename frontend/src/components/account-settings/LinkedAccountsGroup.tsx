@@ -23,7 +23,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { revalidateUser } from "@/app/actions/users";
 import { SITE_NAME } from "@/config/site";
 import { usePermissions } from "@/hooks/usePermissions";
-import { getSocialProviderConfig, socialAccountLabel } from "@/lib/social/providers";
+import { getSocialProviderConfig, hasTaggedHandle, socialAccountLabel } from "@/lib/social/providers";
 import { userQueryKeys } from "@/lib/users/query-keys";
 import { cn } from "@/lib/utils";
 import meService from "@/services/me.service";
@@ -33,9 +33,6 @@ import { OAUTH_ADDABLE, groupLinkedAccounts } from "./linked-accounts";
 
 /** One block of the group body; the body's `divide-y` draws the hairlines between blocks. */
 const BLOCK = "py-3 first:pt-0 last:pb-0";
-
-/** Providers whose handle carries a `#tag` discriminator. */
-const TAGGED: readonly SocialProvider[] = ["battlenet", "riot"];
 
 /** The OAuth link flow; it returns to this dialog's profile tab. Linking an existing account verifies it. */
 function linkHref(provider: string) {
@@ -147,7 +144,7 @@ export function LinkedAccountsGroup() {
                   return (
                     <li key={account.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <div className="flex min-w-0 flex-1 basis-40 items-center gap-2">
-                        {TAGGED.includes(provider) ? (
+                        {hasTaggedHandle(provider) ? (
                           <HandleLabel handle={account.username} title={account.username} className={identityClass} />
                         ) : (
                           <span title={name} className={identityClass}>
@@ -235,12 +232,9 @@ export function LinkedAccountsGroup() {
             <ul className="space-y-3">
               {connectable.map((provider) => {
                 const label = getSocialProviderConfig(provider).label;
-                const notice =
-                  provider === "riot"
-                    ? t("linked.riotNotice", { siteName: SITE_NAME })
-                    : provider === "steam"
-                      ? t("linked.steamNotice", { siteName: SITE_NAME })
-                      : null;
+                // A provider whose link makes a game rank public says so in `linked.<provider>Notice`.
+                const noticeKey = `linked.${provider}Notice` as "linked.riotNotice";
+                const notice = t.has(noticeKey) ? t(noticeKey, { siteName: SITE_NAME }) : null;
                 return (
                   <li key={provider} className="flex items-center gap-3">
                     <ProviderTile provider={provider} />

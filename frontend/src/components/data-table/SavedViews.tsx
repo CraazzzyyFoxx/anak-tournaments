@@ -1,7 +1,7 @@
 "use client";
 
 import { Bookmark, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
@@ -74,11 +74,6 @@ export function AdminSavedViews({
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState("");
 
-  // localStorage is client-only, so the first render has to match the server's.
-  useEffect(() => {
-    setViews(loadViews(storageKey));
-  }, [storageKey]);
-
   function commit(next: SavedView[]) {
     setViews(next);
     saveViews(storageKey, next);
@@ -103,7 +98,16 @@ export function AdminSavedViews({
 
   return (
     <>
-      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      {/* localStorage is client-only, so the list is read as the menu opens:
+          an event, never the server render, and it picks up a view saved in
+          another tab. Every reader of `views` sits behind this menu. */}
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={(next) => {
+          if (next) setViews(loadViews(storageKey));
+          setMenuOpen(next);
+        }}
+      >
         <DropdownMenuTrigger asChild>
           <Button variant="outline" size="sm">
             <Bookmark aria-hidden />

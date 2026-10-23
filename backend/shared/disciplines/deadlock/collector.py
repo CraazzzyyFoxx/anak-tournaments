@@ -39,6 +39,7 @@ from shared.observability.broker import require_broker
 from shared.repository.ranks import (
     RankAccountStateRepository,
     RankFetchLogRepository,
+    RankSnapshotRepository,
     compute_per_tick,
     jittered_interval,
     workspace_account_ids,
@@ -118,6 +119,7 @@ OWNED_DLQS = tuple(
 
 _states = RankAccountStateRepository()
 _logs = RankFetchLogRepository()
+_snapshots = RankSnapshotRepository()
 rank_client = deadlock_client()
 
 
@@ -312,16 +314,6 @@ async def _latest_ranks(session: AsyncSession, social_account_ids: Sequence[int]
     return {row[0]: AccountRank(*row[1:]) for row in rows.all()}
 
 
-async def _defer(session: AsyncSession, social_account_ids: Sequence[int], *, delay_seconds: float) -> None:
-    """``RankAccountStateRepository.defer`` for a whole batch: no failure count, no status change."""
-    state = models.RankAccountState
-    await session.execute(
-        sa.update(state)
-        .where(state.social_account_id.in_(list(social_account_ids)))
-        .values(next_eligible_at=_now() + timedelta(seconds=delay_seconds))
-    )
-
-
 def _log(
     session: AsyncSession,
     *,
@@ -332,7 +324,8 @@ def _log(
     error: str | None = None,
     written: int = 0,
 ) -> None:
-    session.add(
+    _logs.add(
+        session,
         models.RankFetchLog(
             discipline=DISCIPLINE,
             social_account_id=social_account_id,
@@ -341,7 +334,7 @@ def _log(
             source=source,
             error=error[:2000] if error else None,
             snapshots_written=written,
-        )
+        ),
     )
 
 
@@ -419,19 +412,22 @@ def _record_batch(
             state.handle = target.handle
             changed = changed_rank(row, latest.get(target.social_account_id))
             if changed is not None:
-                session.add(
-                    models.UserRankSnapshot(
-                        discipline=DISCIPLINE,
-                        user_id=target.user_id,
-                        social_account_id=target.social_account_id,
-                        handle=target.handle,
-                        division=changed.division,
-                        tier=changed.tier,
-                        rank_value=changed.rank_value,
-                        is_ranked=changed.is_ranked,
-                        captured_at=now,
-                        source=source,
-                    )
+                _snapshots.add_many(
+                    session,
+                    [
+                        models.UserRankSnapshot(
+                            discipline=DISCIPLINE,
+                            user_id=target.user_id,
+                            social_account_id=target.social_account_id,
+                            handle=target.handle,
+                            division=changed.division,
+                            tier=changed.tier,
+                            rank_value=changed.rank_value,
+                            is_ranked=changed.is_ranked,
+                            captured_at=now,
+                            source=source,
+                        )
+                    ],
                 )
             mark_ok(state, now=now, config=config)
             _log(
@@ -457,7 +453,7 @@ async def process_fetch(
         config = await collection_config(session)
         # Self-throttling is not an upstream failure: deferred, never written to fetch_log.
         if await redis_client.get(COOLDOWN_KEY):
-            await _defer(session, ids, delay_seconds=config.backoff_base_seconds)
+            await _states.defer_many(session, ids, delay_seconds=config.backoff_base_seconds, now=_now())
             await session.commit()
             return
         loaded = await _load_targets(session, ids)
@@ -508,12 +504,12 @@ async def process_fetch(
         claimed = [target.social_account_id for owners in targets.values() for target in owners]
         if deferred:
             # The shared request window is full: the batch waits for the next one (no fetch_log row, no failure).
-            await _defer(session, claimed, delay_seconds=deferred)
+            await _states.defer_many(session, claimed, delay_seconds=deferred, now=_now())
         elif failure is not None:
             # A failed batch says nothing about any one account: defer them all with no failure count, and log the
             # failure against each one so a workspace-scoped reader sees it (one row per account, like a success).
             status, error = failure
-            await _defer(session, claimed, delay_seconds=config.backoff_base_seconds)
+            await _states.defer_many(session, claimed, delay_seconds=config.backoff_base_seconds, now=_now())
             for owners in targets.values():
                 for target in owners:
                     _log(

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useTransition } from "react";
+import React, { useState, useTransition } from "react";
 import { Tabs } from "@/components/ui/tabs";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import UserProfileTabList, { type TabBadges } from "@/app/(site)/users/components/tabs/UserProfileTabList";
@@ -21,9 +21,13 @@ const UserTabsClient = ({ activeTab, children, badges }: UserTabsClientProps) =>
   const [value, setValue] = useState(activeTab);
   useGameBoundParams(PROFILE_GAME_BOUND_PARAMS);
 
-  useEffect(() => {
+  // The server's tab wins once it changes (Back/Forward, a link). Adjusted
+  // during render, so the previous tab is never painted first.
+  const [syncedTab, setSyncedTab] = useState(activeTab);
+  if (activeTab !== syncedTab) {
+    setSyncedTab(activeTab);
     setValue(activeTab);
-  }, [activeTab]);
+  }
 
   const onValueChange = (tab: string) => {
     setValue(tab);

@@ -186,11 +186,13 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
   // The check-in window is open and this player still has to confirm: open the
   // dialog for them rather than trusting they will find the button. `claimCheckInPrompt`
   // makes it once per tournament per browser.
+  /* eslint-disable react-hooks/set-state-in-effect -- The claim is a localStorage write (an external system), so it cannot run during render, and the dialog opens only for the render that won it. */
   useEffect(() => {
     if (!canCheckIn) return;
     if (!claimCheckInPrompt(window.localStorage, tournament.id)) return;
     setIsCheckInDialogOpen(true);
   }, [canCheckIn, tournament.id]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const divisionGrid = useDivisionGrid(tournament.discipline);
   // The owner game's metadata: its identity provider names the roster's identity columns, its
@@ -319,9 +321,13 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
     [defaultColumnIds, tournament.id]
   );
   const [activeSearchParams, setActiveSearchParams] = useState(searchParamsString);
-  useEffect(() => {
+  // A new URL from the router (Back/Forward, a link) replaces the local one.
+  // Adjusted during render, so the previous filters are never painted first.
+  const [syncedSearchParams, setSyncedSearchParams] = useState(searchParamsString);
+  if (searchParamsString !== syncedSearchParams) {
+    setSyncedSearchParams(searchParamsString);
     setActiveSearchParams(searchParamsString);
-  }, [searchParamsString]);
+  }
 
   // The table is the default everywhere: it answers "is my registration in and
   // what is its state" for every reader, which is what the section is opened
@@ -375,11 +381,9 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
   // can re-reveal in one click.
   const cardShowsHeroes =
     myRegistration != null && builtColumns.some((column) => column.id === "top_heroes");
-  useEffect(() => {
-    if (view === "pool" || visibleColumnIdSet.has("top_heroes") || cardShowsHeroes) {
-      setNeedsHeroes(true);
-    }
-  }, [cardShowsHeroes, view, visibleColumnIdSet]);
+  if (!needsHeroes && (view === "pool" || visibleColumnIdSet.has("top_heroes") || cardShowsHeroes)) {
+    setNeedsHeroes(true);
+  }
 
   useEffect(() => {
     latestParamsRef.current = searchParamsString;
@@ -416,6 +420,7 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
       onCommit: commitSearch
     });
 
+  /* eslint-disable react-hooks/set-state-in-effect -- The normalized URL is written to browser history (an external system) once the data it depends on has loaded; the state mirrors exactly what was written, as `navigateParticipantUrl` does. */
   useEffect(() => {
     if (!listQuery.isFetched || !formQuery.isFetched || !participantUrl.needsNormalization) {
       return;
@@ -434,6 +439,7 @@ function TournamentParticipantsView({ tournament }: Readonly<{ tournament: Tourn
     participantUrl.params,
     pathname
   ]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const toggleColumn = useCallback(
     (columnId: string) => {
