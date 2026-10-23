@@ -133,7 +133,7 @@ playable  ⇔  is_active  AND  a rank number was found (> 0)
 
 Form flex mode: `optional` | `all_roles` | `forced`. Unreadable form → `optional`.
 
-A game with one rated role (Deadlock) is normalized like `forced` on every write path: the role set is always that role,
+A game with one rated role (Deadlock, VALORANT) is normalized like `forced` on every write path: the role set is always that role,
 primary; a write naming no role keeps the stored row (and its rank); a new registration without a `roles` answer gets
 it; a public sign-up's absent `roles` answer is that role (`_common.only_role_answer`) — its form shows no role step.
 
@@ -190,7 +190,7 @@ Export into `tournament.team` skips waitlisted / incomplete / empty and records 
 
 Codes: `tank | damage | support | flex`. Built-in 5v5: `{tank: 1, damage: 2, support: 2}`.
 
-A game without open slots (`DisciplineSpec.flex = False`: Deadlock) gives every open starter to its single rated role — Deadlock 6v6 is `{agent: 6}`; with several rated roles such a format is refused (`team_format_open_slots_without_flex`).
+A game without open slots (`DisciplineSpec.flex = False`: Deadlock, VALORANT) gives every open starter to its single rated role — Deadlock 6v6 is `{agent: 6}`, VALORANT 5v5 `{agent: 5}`; with several rated roles such a format is refused (`team_format_open_slots_without_flex`).
 
 Team size **2–12**. A one-slot roster is forbidden (nothing to draft or balance). `draft_rounds = team_size - 1`.
 
@@ -313,14 +313,14 @@ Self-signup (`custom_game.self_signup` = `closed` | `pool` | `benched`, `self_ro
 `mix_self_service.mix_self_policy`, gates Discord and the board alike. Check order is the reason order —
 `mix_closed` → `discord_not_linked` → `<provider>_not_linked` → `player_not_linked` → `self_join_denied` →
 `already_joined`/`not_on_roster` → `signup_closed` → `roster_full` → `role_edit_off`. Discord **and** the mix game's
-identity provider must be linked (`account_links.required_link_providers`: Battle.net for Overwatch, Riot for LoL,
-Steam for Deadlock; `missing_account_links`); capability `custom_game.self_join` is
+identity provider must be linked (`account_links.required_link_providers`: Battle.net for Overwatch, Riot for LoL and
+VALORANT, Steam for Deadlock; `missing_account_links`); capability `custom_game.self_join` is
 allow-by-default, an admin cuts one account with a deny. `already_joined` is not an error: `self_join` is
 idempotent and a host's bench decision survives a second press. `can_leave` ignores every link. A signup is an
 ordinary `custom_game_player` row — no separate application table. A player writes `roles` and `is_flex` only;
 ranks stay the host's book, participation the host's decision, and an edit applies from the next balance
 (`balance_result_json` is a snapshot).
-`is_flex = true` in a game without Full flex (`DisciplineSpec.flex = False`: Deadlock) is a 422 `full_flex_unsupported`
+`is_flex = true` in a game without Full flex (`DisciplineSpec.flex = False`: Deadlock, VALORANT) is a 422 `full_flex_unsupported`
 from the host and the player alike; `false` is accepted.
 
 Caps: 6 lobbies (`MAX_LOBBIES`), 8 teams, 16 co-hosts, 100 roster rows for a self-signup (`roster_full`). Host role required (`custom_game.*`).
@@ -425,7 +425,7 @@ Grids are versioned. Cosmetic tier edits apply in place; structural edits spawn 
 
 Workspace defaults are independently persisted per `(workspace_id, discipline)`: activating Overwatch cannot replace the LoL default. Public workspace reads expose `default_division_grid_versions` (explicit selections only) and `effective_division_grid_versions` (resolved public version/tier payloads, including same-discipline persisted system fallback); the workspace list's rows carry only the former, and the frontend reads the current workspace's grids from its own single-workspace read. Missing persisted versions are omitted; native ladders remain module-owned. These replace the former singular ID/payload wire fields; grid activation, not workspace create/update, changes assignments.
 
-Overwatch (45 tiers), LoL (31 league-v4 tiers) and Deadlock (66 tiers: 11 × 6 subranks) declare native ladders: a new grid of any of them is seeded with its ladder, and a tournament or mix (including a clone) without a grid of its own falls back to its own game's ladder, never another game's. A game without a native ladder needs a tiered grid of its own; missing or empty runtime grids return 422 `division_grid_required`.
+Overwatch (45 tiers), LoL (31 league-v4 tiers), Deadlock (66 tiers: 11 × 6 subranks) and VALORANT (25 tiers: Iron 1 … Immortal 3, Radiant) declare native ladders: a new grid of any of them is seeded with its ladder, and a tournament or mix (including a clone) without a grid of its own falls back to its own game's ladder, never another game's. VALORANT has no native rank reader: its ranks are entered by organizers. A game without a native ladder needs a tiered grid of its own; missing or empty runtime grids return 422 `division_grid_required`.
 
 Legacy public player/hero statistics and workspace-wide achievements still query Overwatch data, so their grid and normalization target remain explicitly Overwatch even in a LoL-first workspace. Generic workspace rank entrypoints continue to use the first enabled discipline. Tournament player sheets, autofill previews, and pick/ban crests carry the owner's resolved grid through nested controls; the player sheet exposes no rank controls until that owner scope is available. Grid administration renders native ladder bars, native-rank columns, and native crest fallbacks only for Overwatch, never for a LoL grid with or without an activated version. Activation and version-mapping explanations apply to the selected game.
 

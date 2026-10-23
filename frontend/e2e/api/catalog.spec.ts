@@ -5,10 +5,10 @@ import { type CatalogEntity, seedModeAndMap, setMapPool } from "../support/works
 
 type Page<T> = { results: T[]; total: number };
 
-test("disciplines and their metadata describe three games with their own roles", async ({ anonApi }) => {
+test("disciplines and their metadata describe four games with their own roles", async ({ anonApi }) => {
   const games = await anonApi.get<{ code: string; kinds: Record<string, string>; enabled: boolean }[]>("/api/v1/disciplines");
   const byCode = Object.fromEntries(games.map((g) => [g.code, g]));
-  expect(Object.keys(byCode).sort()).toEqual(["deadlock", "lol", "overwatch"]);
+  expect(Object.keys(byCode).sort()).toEqual(["deadlock", "lol", "overwatch", "valorant"]);
   expect(Object.keys(byCode.overwatch.kinds).sort()).toEqual(["character", "map", "mode"]);
   // LoL declares no game modes.
   expect(Object.keys(byCode.lol.kinds).sort()).toEqual(["character", "map"]);
@@ -18,6 +18,7 @@ test("disciplines and their metadata describe three games with their own roles",
   expect(await roles("overwatch")).toEqual(["tank", "damage", "support"]);
   expect(await roles("lol")).toEqual(["top", "jungle", "mid", "bot", "support"]);
   expect(await roles("deadlock")).toEqual(["agent"]);
+  expect(await roles("valorant")).toEqual(["agent"]);
 });
 
 test("public catalog reads per game: declared kinds answer, undeclared kinds and unknown games are 404", async ({ anonApi }) => {
@@ -25,6 +26,7 @@ test("public catalog reads per game: declared kinds answer, undeclared kinds and
     ["overwatch", ["character", "map", "mode"]],
     ["lol", ["character", "map"]],
     ["deadlock", ["character", "map", "mode"]],
+    ["valorant", ["character", "map"]],
   ] as const) {
     for (const kind of kinds) {
       const page = await anonApi.get<Page<CatalogEntity>>(`/api/v1/catalog/${d}/${kind}`);
@@ -33,7 +35,8 @@ test("public catalog reads per game: declared kinds answer, undeclared kinds and
     }
   }
   expect((await anonApi.raw("GET", "/api/v1/catalog/lol/mode")).status()).toBe(404);
-  expect((await anonApi.raw("GET", "/api/v1/catalog/valorant/map")).status()).toBe(404);
+  expect((await anonApi.raw("GET", "/api/v1/catalog/valorant/mode")).status()).toBe(404);
+  expect((await anonApi.raw("GET", "/api/v1/catalog/dota/map")).status()).toBe(404);
 });
 
 test("admin CRUD across games; validation, duplicates and in-use guards", async ({ adminApi, anonApi }) => {

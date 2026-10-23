@@ -30,6 +30,7 @@ from shared.disciplines.spec import (
     StatFormat,
     TeamFormatPreset,
 )
+from shared.disciplines.valorant import SPEC as _VALORANT
 
 __all__ = (
     "INGESTORS",
@@ -67,7 +68,7 @@ def _assemble(specs: tuple[DisciplineSpec, ...]) -> dict[str, DisciplineSpec]:
     return registry
 
 
-DISCIPLINES: dict[str, DisciplineSpec] = _assemble((_OVERWATCH, _LOL, _DEADLOCK))
+DISCIPLINES: dict[str, DisciplineSpec] = _assemble((_OVERWATCH, _LOL, _DEADLOCK, _VALORANT))
 INGESTORS.update(assemble_ingestors(DISCIPLINES.values()))
 
 

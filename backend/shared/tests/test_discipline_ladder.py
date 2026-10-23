@@ -31,6 +31,26 @@ def test_overwatch_native_rank_boundaries(rank: int, slug: str) -> None:
     assert tier is not None and tier.slug == slug
 
 
+@pytest.mark.parametrize(
+    ("rank", "slug"),
+    [
+        (100, "iron-1"),
+        (199, "iron-1"),
+        (200, "iron-2"),
+        (399, "iron-3"),
+        (400, "bronze-1"),
+        (2499, "immortal-3"),
+        (2500, "radiant"),
+        (9000, "radiant"),
+    ],
+)
+def test_valorant_native_rank_boundaries(rank: int, slug: str) -> None:
+    grid = ladder_grid("valorant")
+    assert grid is not None
+    tier = grid.resolve_division_from_native_rank(rank)
+    assert tier is not None and tier.slug == slug
+
+
 @pytest.mark.parametrize("code", ["unregistered-game"])
 def test_a_discipline_without_a_ladder_does_not_inherit_overwatch(code: str) -> None:
     assert ladder_grid(code) is None

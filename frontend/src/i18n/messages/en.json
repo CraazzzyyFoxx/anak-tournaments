@@ -4173,6 +4173,10 @@
         "deadlock": {
           "hidden_king": "Hidden King",
           "archmother": "Archmother"
+        },
+        "valorant": {
+          "attack": "Attack",
+          "defense": "Defense"
         }
       },
       "sideAssignment": "{side}: {team}",
@@ -4880,7 +4884,8 @@
         "map_bracket": "Standard map veto",
         "map_slot_veto": "Veto per map group",
         "lol_side_selection": "Side selection: higher seed, then previous loser",
-        "deadlock_hero_bans": "Two bans each, A-B-A-B"
+        "deadlock_hero_bans": "Two bans each, A-B-A-B",
+        "valorant_vct_bo1": "VCT Bo1: six bans, side, decider"
       },
       "preview": {
         "title": "Over the series",

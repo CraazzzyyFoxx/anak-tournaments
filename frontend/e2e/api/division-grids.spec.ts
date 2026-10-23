@@ -12,7 +12,7 @@ test("every enabled game gets its own default grid with the game's native ladder
   expect(initial.map((g) => [g.discipline, g.slug])).toEqual([["overwatch", "overwatch-default"]]);
 
   const updated = await enableGames(adminApi, ws.id);
-  expect(Object.keys(updated.default_division_grid_versions).sort()).toEqual(["deadlock", "lol", "overwatch"]);
+  expect(Object.keys(updated.default_division_grid_versions).sort()).toEqual(["deadlock", "lol", "overwatch", "valorant"]);
 
   const grids = await listGrids(adminApi, ws.id);
   const ladder = (d: string) => {
@@ -22,6 +22,7 @@ test("every enabled game gets its own default grid with the game's native ladder
   expect(ladder("overwatch")).toEqual([45, "Champion 1", "Bronze 5"]);
   expect(ladder("lol")).toEqual([31, "Challenger", "Iron IV"]);
   expect(ladder("deadlock")[0]).toBeGreaterThan(10);
+  expect(ladder("valorant")).toEqual([25, "Radiant", "Iron 1"]);
   for (const g of grids) {
     expect(g.versions.map((v) => v.status), `${g.discipline} default grid is published`).toEqual(["published"]);
     expect(updated.default_division_grid_versions[g.discipline]).toBe(g.versions[0].id);

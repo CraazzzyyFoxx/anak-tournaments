@@ -159,9 +159,10 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
         self.assertEqual(list(DISCIPLINES), [row["code"] for row in listed])
         self.assertTrue(all(row["enabled"] for row in listed))
         by_code = {row["code"]: row for row in listed}
-        # Deadlock alone has no open slot and no Full flex player (DisciplineSpec.flex).
+        # Deadlock and VALORANT have no open slot and no Full flex player (DisciplineSpec.flex).
         self.assertEqual(
-            {"overwatch": True, "lol": True, "deadlock": False}, {row["code"]: row["flex"] for row in listed}
+            {"overwatch": True, "lol": True, "deadlock": False, "valorant": False},
+            {row["code"]: row["flex"] for row in listed},
         )
         overwatch, lol = by_code["overwatch"], by_code["lol"]
         self.assertEqual({"character": "Hero", "map": "Map", "mode": "Mode"}, overwatch["kinds"])
@@ -199,6 +200,7 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
                 "overwatch": ("OW", f"{ORIGIN}/assets/overwatch/icon.svg"),
                 "lol": ("LoL", f"{ORIGIN}/assets/lol/icon.svg"),
                 "deadlock": ("Deadlock", f"{ORIGIN}/assets/deadlock/icon.png"),
+                "valorant": ("VAL", f"{ORIGIN}/assets/valorant/icon.svg"),
             },
             {row["code"]: (row["short_name"], row["icon"]) for row in listed},
         )
@@ -211,10 +213,10 @@ class DisciplineMetadataTests(IsolatedAsyncioTestCase):
         reply = await self.list(workspace.id)
         self.assertTrue(reply["ok"], reply)
         self.assertEqual(
-            {"overwatch": True, "lol": False, "deadlock": False},
+            {"overwatch": True, "lol": False, "deadlock": False, "valorant": False},
             {row["code"]: row["enabled"] for row in reply["data"]},
         )
-        both = await self.workspace("both", enabled=("overwatch", "lol", "deadlock"))
+        both = await self.workspace("both", enabled=tuple(DISCIPLINES))
         self.assertTrue(all(row["enabled"] for row in (await self.list(both.id))["data"]))
 
     async def test_a_community_lists_its_own_games_first_in_its_own_order(self) -> None:

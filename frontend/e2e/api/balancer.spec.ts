@@ -13,7 +13,7 @@ type CreateJob = BalancerJob & { status_url: string; result_url: string };
 const SHAPE = { tank: 1, damage: 2, support: 2 };
 
 test("public balancer config answers for every installed game, 404 for an unknown one", async ({ anonApi }) => {
-  for (const discipline of ["overwatch", "lol", "deadlock"]) {
+  for (const discipline of ["overwatch", "lol", "deadlock", "valorant"]) {
     const config = await anonApi.get<{ defaults: Record<string, unknown>; presets: Record<string, unknown>; limits: object }>(
       "/api/v1/balancer/config",
       { discipline }

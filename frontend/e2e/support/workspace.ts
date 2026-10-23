@@ -36,7 +36,7 @@ export type WorkspaceRead = {
   default_division_grid_versions: Partial<Record<Discipline, number>>;
 };
 
-export const ALL_GAMES: Discipline[] = ["overwatch", "lol", "deadlock"];
+export const ALL_GAMES: Discipline[] = ["overwatch", "lol", "deadlock", "valorant"];
 
 export async function enableGames(api: Api, workspaceId: number, games: Discipline[] = ALL_GAMES): Promise<WorkspaceRead> {
   return api.patch<WorkspaceRead>(`/api/v1/workspaces/${workspaceId}`, { disciplines_enabled: games });

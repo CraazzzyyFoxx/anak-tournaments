@@ -262,10 +262,11 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   sides, catalog sync, `native_ranks`, `native_ladder`, `native_rank_rows`, `identity_provider` and `match_fetchers`.
   Overwatch declares its 45-tier ladder, OverFast native reader and `battlenet`; LoL declares its 31-tier league-v4
   ladder, a Solo/Duo native reader and `riot`; Deadlock declares its 66-tier ladder (11 tiers × 6 subranks), a
-  per-account native reader, `steam` and the `deadlock_api` match fetcher. Catalog sources are OverFast, Data Dragon
-  and deadlock-api. Each game's rank collector (OverFast for Overwatch, the Riot API for LoL, deadlock-api for
+  per-account native reader, `steam` and the `deadlock_api` match fetcher; VALORANT declares its 25-tier ladder and
+  `riot`, with no native reader (organizers enter ranks). Catalog sources are OverFast, Data Dragon, deadlock-api and
+  valorant-api.com. Each game's rank collector (OverFast for Overwatch, the Riot API for LoL, deadlock-api for
   Deadlock) runs as that module's jobs inside `stats-worker` and writes the shared `rank` schema, one `discipline` per
-  row. These declarations are not the complete LoL or Deadlock gameplay vertical.
+  row. These declarations are not the complete LoL, Deadlock or VALORANT gameplay vertical.
   Stats-service runs the module's sync (`rpc.stats.catalog.sync`) as a background job in its RPC process: one per
   discipline (409 `catalog_sync_running` otherwise), its stage snapshot in Redis for `rpc.stats.catalog.sync_status`
   and published to the starter's `user:{id}:catalog-sync` topic;
@@ -299,7 +300,7 @@ Full entity diagrams are in [`docs/database_erd.md`](./database_erd.md).
   that discipline. Registration/author overrides precede workspace canon and then the registry's
   native reader; effective source values use `native`. Open slots hold no hidden rating or host-book
   rank. `division_grid.discipline` scopes grids, mappings and fallback; tier native bounds are
-  `native_rank_min/max`. A game with a native ladder (Overwatch, LoL, Deadlock) falls back to it when it has no grid of its own;
+  `native_rank_min/max`. A game with a native ladder (Overwatch, LoL, Deadlock, VALORANT) falls back to it when it has no grid of its own;
   a ladder-less game's creation/clone/runtime reads without a usable grid fail with 422 `division_grid_required`.
   `public.workspace_division_grid_default` selects one version per `(workspace_id, discipline)`.
   Activation and deletion affect only that game's assignment and preserve valid event pins.
@@ -418,8 +419,8 @@ Shared substrate: **PostgreSQL** (optionally behind pgBouncer), **Redis** (cache
 bus + active-user counters), **RabbitMQ** (all RPC/events/jobs), **S3/MinIO** (avatars,
 icons, match-log files). Workers that call external APIs (Discord, Twitch, Challonge, S3)
 egress through the outbound `proxy` container (xray); the self-hosted OverFast runs on the
-production host and is called directly, and so are the Riot API (the LoL rank collector) and deadlock-api (the
-Deadlock catalog, rank collector and match fetcher).
+production host and is called directly, and so are the Riot API (the LoL rank collector), deadlock-api (the
+Deadlock catalog, rank collector and match fetcher) and valorant-api.com (the VALORANT catalog).
 
 **Releases.** Pushing a `v*` tag is the whole ritual:
 

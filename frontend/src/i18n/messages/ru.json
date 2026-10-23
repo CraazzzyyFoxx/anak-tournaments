@@ -4173,6 +4173,10 @@
         "deadlock": {
           "hidden_king": "Скрытый король",
           "archmother": "Архимать"
+        },
+        "valorant": {
+          "attack": "Атака",
+          "defense": "Защита"
         }
       },
       "sideAssignment": "{side}: {team}",
@@ -4880,7 +4884,8 @@
         "map_bracket": "Обычное вето карт",
         "map_slot_veto": "Вето по группам карт",
         "lol_side_selection": "Выбор стороны: старший посев, затем проигравший",
-        "deadlock_hero_bans": "По два бана, A-B-A-B"
+        "deadlock_hero_bans": "По два бана, A-B-A-B",
+        "valorant_vct_bo1": "VCT Bo1: шесть банов, сторона, десайдер"
       },
       "preview": {
         "title": "По всей серии",

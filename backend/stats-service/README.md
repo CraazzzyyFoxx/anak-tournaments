@@ -502,8 +502,10 @@ No service ships its own migrations — there is one Alembic project at
   latest published version.
 - **deadlock-api** (`https://api.deadlock-api.com`, called directly; `X-API-KEY` when
   `DEADLOCK_API_KEY` is set) — the Deadlock module's catalog (`/v1/assets/heroes`, `/v1/assets/map`),
-  rank collector (`/v1/players/rank`) and match fetcher (`/v1/matches/{id}/metadata`). All three
-  catalog sources mirror images through `shared.catalog_sync`.
+  rank collector (`/v1/players/rank`) and match fetcher (`/v1/matches/{id}/metadata`).
+- **valorant-api.com** (`https://valorant-api.com`, public, no key) — the VALORANT module's catalog
+  (`/v1/agents`, `/v1/maps`: bomb-site maps only). All four catalog sources mirror images through
+  `shared.catalog_sync`.
 - **discord-service** (RabbitMQ RPC `discord_member_roles`) — Boosty entitlement verification; this
   service holds no Discord bot token.
 - **Twitch API** — Twitch subscription verification, egressing through the outbound **`proxy`**

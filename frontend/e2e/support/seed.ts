@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Api } from "./api";
 
-export type Discipline = "overwatch" | "lol" | "deadlock";
+export type Discipline = "overwatch" | "lol" | "deadlock" | "valorant";
 
 export function uniq(prefix: string) {
   return `${prefix}-${randomUUID().slice(0, 8)}`;

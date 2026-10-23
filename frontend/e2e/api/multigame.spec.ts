@@ -54,7 +54,7 @@ for (const { game, role, foreignRole } of GAMES) {
 }
 
 test("an unknown game is a 422 on the filters, not an empty page", async ({ anonApi }) => {
-  expect((await anonApi.raw("GET", "/api/v1/tournaments", { query: { discipline: "valorant" } })).status()).toBe(422);
+  expect((await anonApi.raw("GET", "/api/v1/tournaments", { query: { discipline: "dota" } })).status()).toBe(422);
 });
 
 test("the admin dashboard lists every game's tournaments", async ({ adminApi }) => {
