@@ -11,6 +11,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 import en from "@/i18n/messages/en.json";
+import { notify } from "@/lib/notify";
 import type { PickBanSubmitInput } from "@/services/pickBan.service";
 import type {
   PickBanEntry,
@@ -270,48 +271,52 @@ function afterPick(state: PickBanState, input: { item_id: number; member_id?: nu
   return acting.length === 0 ? completed(next) : next;
 }
 
-/** The server's answer to a team's locked assignment: refused unless each of the team's players gets a distinct hero
- * they may play. */
+/** The server's answer to a team's assignment, saved (unlocked) or locked: refused unless each hero goes to a player of
+ * the team who may play it, once, and the rest of the team can still get one each -- all of them, on a lock. */
 function afterAssign(state: PickBanState, teamId: number, input: PickBanSubmitInput): PickBanState {
   const players = MEMBERS.filter((member) => member.encounter_team_id === teamId);
-  const complete =
-    input.lock &&
-    new Set(input.items.map((item) => item.item_id)).size === players.length &&
-    players.every((player) =>
-      input.items.some(
-        (item) =>
-          item.member_id === player.id && state.member_eligible?.[String(player.id)]?.includes(item.item_id),
-      ),
+  const extends_ = ([player, ...rest]: typeof players, taken: number[]): boolean =>
+    player == null ||
+    (state.member_eligible?.[String(player.id)] ?? []).some(
+      (hero) =>
+        (input.items.find((item) => item.member_id === player.id)?.item_id ?? hero) === hero &&
+        !taken.includes(hero) &&
+        extends_(rest, [...taken, hero]),
     );
-  if (!complete || state.current_step_index == null) throw new Error("every player gets one hero they may play");
+  const step = state.current_step_index;
+  if (step == null || !extends_(players, []) || (input.lock && input.items.length !== players.length))
+    throw new Error("item_not_eligible");
+  const submissions = [
+    ...state.submissions.filter((row) => row.step_index !== step || row.encounter_team_id !== teamId),
+    {
+      step_index: step,
+      encounter_team_id: teamId,
+      team_member_id: null,
+      attempt: 1,
+      state: input.lock ? ("locked" as const) : ("draft" as const),
+      items: input.items,
+    },
+  ];
+  if (!input.lock) return { ...state, submissions };
   const acting = state.acting_team_ids.filter((id) => id !== teamId);
   const next: PickBanState = {
     ...state,
     pool: owned(state.pool, input.items),
-    submissions: [
-      ...state.submissions,
-      {
-        step_index: state.current_step_index,
-        encounter_team_id: teamId,
-        team_member_id: null,
-        attempt: 1,
-        state: "locked",
-        items: input.items,
-      },
-    ],
+    submissions,
     acting_team_ids: acting,
     viewer_can_act: false,
   };
   return acting.length === 0 ? completed(next) : next;
 }
 
-/** Serves `answer(state, input)` as the server's reply, and as every read after it. */
+/** Serves `answer(state, input)` as the server's reply, and as every read after it; each write builds on the last. */
 function serve<I>(service: Mock, state: PickBanState, answer: (state: PickBanState, input: I) => PickBanState) {
+  let current = state;
   getPickBanState.mockResolvedValue(state);
   service.mockImplementation(async (_kind: unknown, _encounterId: unknown, input: I) => {
-    const next = answer(state, input);
-    getPickBanState.mockResolvedValue(next);
-    return next;
+    current = answer(current, input);
+    getPickBanState.mockResolvedValue(current);
+    return current;
   });
 }
 
@@ -368,6 +373,19 @@ async function render(onComplete: () => void, canHost = true) {
 
 const byLabel = (label: string) =>
   [...document.body.querySelectorAll("button")].find((button) => button.textContent?.trim() === label) ?? null;
+
+const give = (hero: string, player: string) =>
+  document.body.querySelector<HTMLButtonElement>(`[aria-label="Give ${hero} to ${player}"]`);
+
+/** Past the board's ~300ms draft-save debounce, then let the response land. */
+async function debounce() {
+  await act(async () => {
+    const { promise, resolve } = Promise.withResolvers<void>();
+    setTimeout(resolve, 400);
+    await promise;
+  });
+  await settle();
+}
 
 describe("MixBanBoard", () => {
   it("re-reads the lobby once when a host cancels the ban room", async () => {
@@ -526,7 +544,7 @@ describe("MixBanBoard", () => {
     expect(vibrate.mock.calls.filter(([ms]) => ms === 200)).toHaveLength(2);
   });
 
-  it("lets a captain give each player one of the team's heroes and lock the assignment", async () => {
+  it("saves a captain's assignment as they make it, so a refresh keeps it, and locks it", async () => {
     let refreshes = 0;
     serve(
       submitDraft,
@@ -542,8 +560,19 @@ describe("MixBanBoard", () => {
     );
     await render(() => (refreshes += 1));
 
-    await act(async () => document.body.querySelector<HTMLButtonElement>('[aria-label="Give Hero 101 to P0"]')?.click());
-    await act(async () => document.body.querySelector<HTMLButtonElement>('[aria-label="Give Hero 102 to P1"]')?.click());
+    await act(async () => give("Hero 101", "P0")?.click());
+    await debounce();
+
+    // A fresh page reads the choice back from the server: saved, and still the captain's to change.
+    act(() => root.unmount());
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    root = createRoot(container);
+    await render(() => (refreshes += 1));
+    expect(give("Hero 101", "P0")?.getAttribute("aria-pressed")).toBe("true");
+    expect(give("Hero 101", "P1")?.getAttribute("aria-pressed")).toBe("false");
+    expect(byLabel(en.pickBan.room.assign.lock)?.disabled).toBe(false);
+
+    await act(async () => give("Hero 102", "P1")?.click());
     await act(async () => byLabel(en.pickBan.room.assign.lock)?.click());
     await settle();
 
@@ -553,5 +582,28 @@ describe("MixBanBoard", () => {
     expect(container.querySelector('[data-pick-ban-step="0"] [title="Hero 102"]')).not.toBeNull();
     expect(tile("Hero 102")?.getAttribute("aria-label")).toBe(`Hero 102 — ${en.pickBan.room.status.picked}`);
     expect(refreshes).toBe(1);
+  });
+
+  it("keeps the saved assignment when the server refuses a choice that leaves a player without a hero", async () => {
+    // P1 may play only Hero 101: giving it to P0 leaves P1 nothing.
+    serve(
+      submitDraft,
+      stepState(ASSIGN, {
+        expected_action: "assign",
+        viewer_team_id: 71,
+        viewer_can_act: true,
+        allowed_actions: ["assign"],
+        acting_team_ids: [71],
+        member_eligible: { "501": [101, 102], "502": [101] },
+      }),
+      (state, input: PickBanSubmitInput) => afterAssign(state, 71, input),
+    );
+    await render(() => {});
+
+    await act(async () => give("Hero 101", "P0")?.click());
+    await debounce();
+
+    expect(notify.apiError).toHaveBeenCalledTimes(1);
+    expect(give("Hero 101", "P0")?.getAttribute("aria-pressed")).toBe("false");
   });
 });

@@ -21,6 +21,7 @@ import type {
 } from "@/types/tournament.types";
 
 import {
+  DRAFT_SAVE_DELAY_MS,
   eligibleItemIds,
   isSessionActive,
   lastRevealedBlindStep,
@@ -43,9 +44,6 @@ import { PickBanUndoControl } from "@/components/pick-ban/PickBanUndoControl";
 import { PickBanSideAssignment, PickBanSideChoice } from "@/components/pick-ban/PickBanSideChoice";
 import { useSideLabel } from "@/components/pick-ban/useSideLabel";
 import { ElectOpenerDialog } from "@/components/pick-ban/ElectOpenerDialog";
-
-/** How long a blind draft edit waits before it is saved, so five quick clicks are one request. */
-const DRAFT_SAVE_DELAY_MS = 300;
 
 /**
  * What the board lends the room's admin panel: the tile the organizer has

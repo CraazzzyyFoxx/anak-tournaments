@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -13,6 +13,7 @@ import adminService from "@/services/admin.service";
 import pickBanService from "@/services/pickBan.service";
 import type { PickBanKind, PickBanState, PickBanSubmissionItem } from "@/types/tournament.types";
 
+import { DRAFT_SAVE_DELAY_MS, stepSubmissions } from "./pick-ban-model";
 import type { PickBanItemLike } from "./PickBanGrid";
 
 /** Whom a member pick is made for, when the viewer may pick for more than one player (spec §11.6 R4-3, R4-9). */
@@ -50,7 +51,8 @@ export function PickBanMemberChooser({
 /**
  * An assignment step (spec §11.6 R4-1, model c): a team's captain gives each player one of the heroes the team
  * picked; the offer per player is the server's (`member_eligible`, Fearless applied). A host assigns for any team
- * still owing. What nobody locks in time the clock assigns at random.
+ * still owing. Each choice is saved unlocked as it is made (the server refuses one that leaves no full assignment),
+ * so a refresh reads it back and the clock keeps it; what nobody locks in time the clock completes at random.
  */
 export function PickBanAssignBoard({
   kind,
@@ -75,21 +77,49 @@ export function PickBanAssignBoard({
   const queryClient = useQueryClient();
   const own = state.viewer_can_act && state.viewer_team_id != null ? [state.viewer_team_id] : [];
   const teams = isAdmin ? [...new Set([...own, ...state.acting_team_ids])] : own;
-  // member -> hero; giving a hero to one player takes it from whoever had it.
-  const [chosen, setChosen] = useState<Record<number, number>>({});
+  const stepIndex = state.current_step_index ?? -1;
+  const saved = stepSubmissions(state.submissions, stepIndex);
+  // member -> hero per team as edited on this step; until then, or after a refused save, the server's saved one.
+  const [edits, setEdits] = useState<{ step: number; teams: Partial<Record<number, Record<number, number>>> }>({
+    step: stepIndex,
+    teams: {}
+  });
+  const saveTimers = useRef<Record<number, number>>({});
+  useEffect(() => {
+    const timers = saveTimers.current;
+    return () => Object.values(timers).forEach((timer) => window.clearTimeout(timer));
+  }, []);
   const submit = useMutation({
-    mutationFn: ({ teamId, items }: { teamId: number; items: PickBanSubmissionItem[] }) =>
-      own.includes(teamId)
-        ? pickBanService.submitDraft(kind, encounterId, { items, lock: true })
-        : adminService.adminPickBanSubmit(encounterId, {
-            kind,
-            encounter_team_id: teamId,
-            items,
-            lock: true
-          }),
-    onError: (error) => notify.apiError(error, { title: t("assign.failed") }),
+    mutationFn: ({ teamId, picks, lock }: { teamId: number; picks: Record<number, number>; lock: boolean }) => {
+      const items: PickBanSubmissionItem[] = Object.entries(picks).map(([member, hero]) => ({
+        item_id: hero,
+        target_player_id: null,
+        member_id: Number(member)
+      }));
+      return own.includes(teamId)
+        ? pickBanService.submitDraft(kind, encounterId, { items, lock })
+        : adminService.adminPickBanSubmit(encounterId, { kind, encounter_team_id: teamId, items, lock });
+    },
+    onError: (error, { teamId }) => {
+      // Refused: the server's saved assignment is the board again.
+      setEdits((current) => ({ ...current, teams: { ...current.teams, [teamId]: undefined } }));
+      notify.apiError(error, { title: t("assign.failed") });
+    },
     onSettled: () => void queryClient.invalidateQueries({ queryKey })
   });
+  const locking = submit.isPending && submit.variables?.lock === true;
+  // Saved like the blind draft tray: a burst of clicks is one debounced save; the lock goes at once and supersedes it.
+  const choose = (teamId: number, picks: Record<number, number>) => {
+    window.clearTimeout(saveTimers.current[teamId]);
+    setEdits((current) => ({
+      step: stepIndex,
+      teams: { ...(current.step === stepIndex ? current.teams : {}), [teamId]: picks }
+    }));
+    saveTimers.current[teamId] = window.setTimeout(
+      () => submit.mutate({ teamId, picks, lock: false }),
+      DRAFT_SAVE_DELAY_MS
+    );
+  };
   const heroName = (heroId: number) =>
     itemsById[heroId]?.name ?? t(`${kind}.itemNumber`, { id: heroId });
 
@@ -107,11 +137,14 @@ export function PickBanAssignBoard({
         ) : null}
         {teams.map((teamId) => {
           const members = state.members.filter((member) => member.encounter_team_id === teamId);
-          const items: PickBanSubmissionItem[] = members.flatMap((member) =>
-            chosen[member.id] != null
-              ? [{ item_id: chosen[member.id], target_player_id: null, member_id: member.id }]
-              : []
-          );
+          const picks: Record<number, number> =
+            (edits.step === stepIndex ? edits.teams[teamId] : undefined) ??
+            Object.fromEntries(
+              (
+                saved.find((row) => row.encounter_team_id === teamId && row.team_member_id == null)?.items ??
+                []
+              ).flatMap((item) => (item.member_id != null ? [[item.member_id, item.item_id]] : []))
+            );
           return (
             <section key={teamId} className="flex flex-col gap-2" aria-label={teamName(teamId)}>
               <Eyebrow>{teamName(teamId)}</Eyebrow>
@@ -123,16 +156,14 @@ export function PickBanAssignBoard({
                       key={heroId}
                       type="button"
                       size="sm"
-                      variant={chosen[member.id] === heroId ? "default" : "outline"}
-                      aria-pressed={chosen[member.id] === heroId}
+                      variant={picks[member.id] === heroId ? "default" : "outline"}
+                      aria-pressed={picks[member.id] === heroId}
                       aria-label={t("assign.give", { hero: heroName(heroId), member: member.name })}
                       onClick={() =>
-                        setChosen((current) => ({
-                          ...Object.fromEntries(
-                            Object.entries(current).filter(([, hero]) => hero !== heroId)
-                          ),
+                        choose(teamId, {
+                          ...Object.fromEntries(Object.entries(picks).filter(([, hero]) => hero !== heroId)),
                           [member.id]: heroId
-                        }))
+                        })
                       }
                     >
                       {heroName(heroId)}
@@ -143,10 +174,13 @@ export function PickBanAssignBoard({
               <Button
                 size="sm"
                 className="self-start"
-                disabled={items.length === 0 || submit.isPending}
-                onClick={() => submit.mutate({ teamId, items })}
+                disabled={Object.keys(picks).length === 0 || locking}
+                onClick={() => {
+                  window.clearTimeout(saveTimers.current[teamId]);
+                  submit.mutate({ teamId, picks, lock: true });
+                }}
               >
-                {submit.isPending ? <Spinner className="mr-2" /> : null}
+                {locking ? <Spinner className="mr-2" /> : null}
                 {t("assign.lock")}
               </Button>
             </section>

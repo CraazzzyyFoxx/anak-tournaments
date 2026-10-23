@@ -29,6 +29,9 @@ import type {
 import { duelSeats, type Duel } from "@/lib/encounter/seats";
 import type { EncounterTeam } from "@/types/encounter.types";
 
+/** How long a draft edit waits before it is saved, so five quick clicks are one request. */
+export const DRAFT_SAVE_DELAY_MS = 300;
+
 /**
  * One participation of the room as its components name it: `id` is the
  * `EncounterTeam.id` every pick-ban write and read addresses, `slot` fixes the
