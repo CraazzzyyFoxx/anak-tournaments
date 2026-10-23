@@ -28,9 +28,12 @@ from shared.models.division_grid import (
 )
 from shared.models.tenancy.workspace import Workspace
 from shared.models.tournament import Tournament
+from shared.repository.support import DivisionGridRepository
 from shared.services.division_grid import cache as division_grid_cache
 
 __all__ = ("create_workspace_grid", "provision_default_grids")
+
+_grids = DivisionGridRepository()
 
 
 async def create_workspace_grid(
@@ -79,8 +82,7 @@ async def create_workspace_grid(
         if tiers
         else [],
     )
-    session.add(grid)
-    await session.flush()
+    await _grids.create(session, grid)
     for version in grid.versions:
         await division_grid_cache.invalidate_grid_version(version.id)
     # Every column, version and tier loaded now: a read model serialized later must not lazy-load.
