@@ -23,8 +23,9 @@ transaction, and it does two things:
   reached discord-service's projector. It carries no state either -- the bot
   re-renders from ``rpc.balancer.custom.discord_view``.
 
-Only balancer-service ever writes either signal (custom-game roster/lineup
-edits, workspace rank writes), so it lives here rather than in ``shared``.
+Two services write mix changes -- balancer-service (every roster, lineup,
+draft and rank write) and tournament-service (a mix match's hero room
+crossing between Pre-game and Live) -- so the one emitter lives in ``shared``.
 """
 
 from __future__ import annotations

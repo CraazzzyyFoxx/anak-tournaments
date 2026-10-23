@@ -17,8 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.models.draft import DraftSession
 from shared.repository.realtime import WorkspaceEventRepository
+from shared.services.pickup_mix_realtime import emit_pickup_mix_changed
 from shared.services.realtime import DomainEvent, Scope, emit
-from src.services.pickup_mix_realtime import emit_pickup_mix_changed
 
 __all__ = ("DRAFT_BOARD_DOMAIN", "DRAFT_BOARD_RESOURCE", "last_event_id", "mix_changed", "publish_draft_event")
 

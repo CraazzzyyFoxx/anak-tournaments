@@ -147,6 +147,7 @@ All of these go through the outbox, never directly from the request transaction:
 | `tournament.encounter.completed` | `tournament.events` | Encounter result confirmed |
 | `tournament.encounter.challonge_push_requested` | `tournament.events` | A write left a Challonge-linked encounter confirmed (every confirm path, corrections included); one per `result_version`, consumed by this service's `tournament_challonge_push` |
 | `tournament.compute.division-grid-import` | `tournament.compute` | Grid import job dispatched |
+| `pickup_mix_changed` (queue) | default (`""`) | A mix match's hero room completes, is cancelled, reopened or reset — the Pre-game ↔ Live crossing (`realtime_commit._announce_mix_overview_change`); `PickupMixChangedEvent{change: "pick_ban"}`, consumed by discord-service |
 
 A rejected registration publishes no domain event: nothing consumed one. The registrant's
 `registration.rejected` notification and the realtime invalidation still go out.

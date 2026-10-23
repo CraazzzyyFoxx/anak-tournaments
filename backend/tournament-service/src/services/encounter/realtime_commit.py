@@ -16,8 +16,9 @@ resource itself. A MIX match's hero room is the exception: its mix's overview
 shows the match in Pre-game while the room is missing or running and Live once
 it completed or was cancelled (spec §5), so a write that moves the room across
 that line -- either way: a finish, a cancel, a reopen, an undo, a reset -- also
-stales the workspace's ``workspace.pickup_mix``, the same signal balancer-service's
-``emit_pickup_mix_changed`` sends web clients.
+stales the workspace's ``workspace.pickup_mix`` and queues the durable
+``pickup_mix_changed`` fact the Discord cards re-render on -- through the same
+``emit_pickup_mix_changed`` every balancer write calls.
 
 Staging/persistence/publishing all live in ``shared.services.realtime.emit``:
 call this immediately before the commit that owns the pool mutation.
@@ -40,7 +41,8 @@ from sqlalchemy.orm import Session
 from shared.core.enums import MapVetoSessionStatus, PickBanKind
 from shared.models.encounter.encounter import Encounter
 from shared.models.encounter.pick_ban import PickBanSession
-from shared.services.realtime import DomainEvent, Resource, Scope, emit
+from shared.services.pickup_mix_realtime import emit_pickup_mix_changed
+from shared.services.realtime import DomainEvent, Scope, emit
 from src.services.encounter.room_reconcile import request_room_reconcile
 
 __all__ = ("emit_pick_ban_update",)
@@ -118,14 +120,8 @@ async def _announce_mix_overview_change(session: Any, encounter_id: int) -> None
     if seen.get(encounter_id, False) == settled:
         return
     seen[encounter_id] = settled
-    await emit(
-        session,
-        scope=Scope.workspace(int(encounter.workspace_id)),
-        invalidates=[Resource.WORKSPACE_PICKUP_MIX],
-        data=DomainEvent(
-            domain="pickup_mix",
-            event_type="pickup_mix.updated",
-            payload={"workspace_id": int(encounter.workspace_id), "change": "pick_ban"},
-            durable=False,
-        ),
+    # The overview's web signal and the bot's durable fact, as every balancer write sends them: the Discord signup
+    # card shows each lobby's stage and has no client to refetch (spec §12.1 R3-4).
+    await emit_pickup_mix_changed(
+        session, int(encounter.workspace_id), custom_game_id=int(encounter.custom_game_id), change="pick_ban"
     )

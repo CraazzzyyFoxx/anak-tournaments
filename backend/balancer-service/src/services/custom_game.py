@@ -70,6 +70,7 @@ from shared.services.division_grid.access import (
 )
 from shared.services.member_rank import MIX_ORDER, MemberRankService, member_rank_service
 from shared.services.ontology import assert_discipline_enabled, resolve_role_ref
+from shared.services.pickup_mix_realtime import emit_pickup_mix_changed
 from shared.services.team_format import (
     copy_for_custom_game,
     custom_game_format,
@@ -94,7 +95,6 @@ from src.services.draft import realtime as draft_rt
 from src.services.mix_ranker import MixRankerService, RatedSeat, mix_ranker_service
 from src.services.mix_room_dms import notify_mix_captain
 from src.services.mix_rounds import MixMatchDraft, MixMatchSeat, MixResultDraft, record_mix_result, start_mix_match
-from src.services.pickup_mix_realtime import emit_pickup_mix_changed
 from src.services.workspace_roster import (
     RosterMember,
     hosts_by_user_id,

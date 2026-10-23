@@ -14,6 +14,8 @@ import sqlalchemy as sa
 from shared import models
 from shared.core import enums
 from shared.core.errors import BaseAPIException
+from shared.messaging.config import PICKUP_MIX_CHANGED_QUEUE
+from shared.models.platform.outbox import EventOutbox
 from shared.models.platform.realtime import WorkspaceEvent
 from shared.schemas.events import PickBanRoomOpenRequestedEvent
 from shared.services.chat import ChatRoom
@@ -132,6 +134,11 @@ class MixBanRoomCase(EncounterWriterCase):
             await s.execute(sa.delete(models.CatalogEntity).where(models.CatalogEntity.id.in_(self.hero_rows)))
             await s.execute(sa.delete(models.AuthUser).where(models.AuthUser.id.in_(self.auth.values())))
             await s.execute(sa.delete(WorkspaceEvent).where(WorkspaceEvent.workspace_id == self.ids["ws"]))
+            # The outbox keeps the mix's pickup-mix facts: the workspace cascade misses them.
+            await s.execute(
+                sa.text("DELETE FROM event_outbox WHERE routing_key = :key AND payload_json->>'custom_game_id' = :id"),
+                {"key": PICKUP_MIX_CHANGED_QUEUE.name, "id": str(self.mix_id)},
+            )
             await s.commit()
         await super().asyncTearDown()
 
@@ -195,6 +202,16 @@ class MixBanRoomCase(EncounterWriterCase):
                 )
             ).all()
         return sum(Resource.WORKSPACE_PICKUP_MIX.value in payload["resources"] for payload in payloads)
+
+    async def pickup_mix_facts(self) -> list[str]:
+        """The durable ``pickup_mix_changed`` facts this mix staged -- what re-renders its Discord cards."""
+        async with self.Session() as s:
+            payloads = (
+                await s.scalars(
+                    sa.select(EventOutbox.payload_json).where(EventOutbox.routing_key == PICKUP_MIX_CHANGED_QUEUE.name)
+                )
+            ).all()
+        return [payload["change"] for payload in payloads if payload.get("custom_game_id") == self.mix_id]
 
     def account(self, who: str) -> models.AuthUser:
         user = models.AuthUser()
@@ -339,6 +356,21 @@ class MixBanRoomTests(MixBanRoomCase):
         self.assertTrue(reset["ok"], reset)
         self.assertEqual(enums.MapVetoSessionStatus.ACTIVE, (await self.hero_session()).status)
         self.assertEqual(2, await self.pickup_mix_invalidations())
+
+    async def test_the_room_settling_and_reopening_queues_the_bots_card_refresh(self) -> None:
+        """R3-4: the Discord signup card shows the lobby's stage, and a channel post has no client to refetch -- so
+        Pre-game -> Live (and back) is the durable fact too, not only the web signal."""
+        await self.open_room()
+        self.assertEqual([], await self.pickup_mix_facts())
+
+        for who, hero in zip(("p0", "p2", "p0", "p2"), self.heroes, strict=True):
+            await self.captain_ban(who, hero)
+        self.assertEqual(["pick_ban"], await self.pickup_mix_facts())
+
+        reopened = await self.host_room_call("rpc.tournament.admin_pick_ban_reopen", {"kind": "hero"})
+
+        self.assertTrue(reopened["ok"], reopened)
+        self.assertEqual(["pick_ban", "pick_ban"], await self.pickup_mix_facts())
 
 
 class MixWithoutBansTests(MixBanRoomCase):

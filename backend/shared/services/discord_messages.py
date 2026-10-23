@@ -57,7 +57,7 @@ _PENDING_TTL = timedelta(milliseconds=int(DISCORD_COMMANDS_QUEUE.arguments["x-me
 #: How the page that shows a subject's messages hears that one changed, by
 #: subject prefix (``mix:42`` -> ``mix``): the resource it invalidates and the
 #: domain signal it already listens to -- for a mix, exactly what
-#: balancer-service's ``emit_pickup_mix_changed`` sends. A subject not listed
+#: ``shared.services.pickup_mix_realtime.emit_pickup_mix_changed`` sends. A subject not listed
 #: here has no page that shows its messages.
 _SUBJECT_SIGNALS: dict[str, tuple[Resource, str, str]] = {
     "mix": (Resource.WORKSPACE_PICKUP_MIX, "pickup_mix", "pickup_mix.updated"),

@@ -12,9 +12,9 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import DISCIPLINES
 from shared.services.member_rank import MemberRankService, member_rank_service
 from shared.services.ontology import workspace_discipline
+from shared.services.pickup_mix_realtime import emit_pickup_mix_changed
 from src.schemas import WorkspacePlayerRead
 from src.services import workspace_roster
-from src.services.pickup_mix_realtime import emit_pickup_mix_changed
 
 __all__ = ("WorkspacePlayersService", "workspace_players_service")
 

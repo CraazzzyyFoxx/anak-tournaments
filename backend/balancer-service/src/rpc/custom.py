@@ -61,6 +61,7 @@ from shared.services.discord_client import DiscordClient
 from shared.services.discord_messages import mix_subject
 from shared.services.member_rank import MIX_ORDER
 from shared.services.ontology import workspace_discipline
+from shared.services.pickup_mix_realtime import emit_pickup_mix_changed
 from src.core import db
 from src.core.config import config
 from src.domain.balancer.result_serializer import as_lobby_document
@@ -70,7 +71,6 @@ from src.rpc import _common as c
 from src.schemas import custom_game as schemas
 from src.services.custom_game import custom_game_service
 from src.services.mix_draft import mix_draft_service
-from src.services.pickup_mix_realtime import emit_pickup_mix_changed
 
 _SF = db.async_session_maker
 #: Map thumbnails a list row carries; ``maps_count`` says how many more were played.
