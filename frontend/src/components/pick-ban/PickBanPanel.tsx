@@ -224,8 +224,12 @@ export function PickBanPanel({
       .find((player) => player.player_id === playerId)?.name ?? null;
 
   const isBlindStep = step?.blind === true;
+  // An assignment is answered by submit, never by an act (spec §11.6 R4-1).
   const captainAction: PickBanAction | null =
-    !isBlindStep && state.viewer_can_act && state.allowed_actions.length > 0
+    !isBlindStep &&
+    state.viewer_can_act &&
+    state.allowed_actions.length > 0 &&
+    state.allowed_actions[0] !== "assign"
       ? state.allowed_actions[0]
       : null;
   // An organizer standing in for an absent captain fills the blind draft out of

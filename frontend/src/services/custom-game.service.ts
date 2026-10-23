@@ -222,6 +222,8 @@ export type CustomGame = {
   self_role_edit: boolean;
   /** The hero ban preset the next Start opens a room on; null = no bans (spec §4.3). */
   hero_ban_preset: string | null;
+  /** Fearless (spec §11.4): a player never picks a hero they played earlier in this mix. */
+  hero_fearless: boolean;
   /** How the lobbies form teams by default: the balancer, or a captain draft (spec §4.3). */
   team_formation: MixTeamFormation;
   /** A mix draft's pick clock in seconds (10..600). */
@@ -351,6 +353,8 @@ export type CustomGameMatch = {
   points_per_win_applied: number | null;
   /** The hero bans, in the order they were made (spec §8.4). */
   bans: { slot: number; item_id: number }[];
+  /** Each player's hero, in pick order (spec §11.6). */
+  picks: { slot: number; member_id: number; name: string; item_id: number }[];
 };
 
 /** Patch semantics: an omitted key is left untouched on the server. */
@@ -1031,12 +1035,19 @@ export const customGameService = {
     ).then((r) => r.json());
   },
 
-  /** The mix's hero ban preset (a preset of its own game) or null; applies from the next Start. 422 for another code. */
-  setBanPreset(workspaceId: number, gameId: number, heroBanPreset: string | null): Promise<CustomGame> {
+  /**
+   * The mix's hero room: its ban preset (one of its own game's, or null) and, when given, Fearless; both apply from
+   * the next Start. 422 for another preset code.
+   */
+  setBanPreset(
+    workspaceId: number,
+    gameId: number,
+    patch: { hero_ban_preset: string | null; hero_fearless?: boolean },
+  ): Promise<CustomGame> {
     return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/ban-preset`, {
       skipWorkspace: true,
       method: "PUT",
-      body: { hero_ban_preset: heroBanPreset },
+      body: patch,
     }).then((r) => r.json());
   },
 

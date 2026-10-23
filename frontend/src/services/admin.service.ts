@@ -1687,6 +1687,7 @@ class AdminService {
       item_id: number;
       action: "pick" | "ban" | "protect" | "side_pick";
       target_player_id?: number | null;
+      member_id?: number | null;
     }
   ): Promise<PickBanState> {
     const response = await apiFetch(`/api/v1/admin/encounters/${encounterId}/pick-ban-act`, {

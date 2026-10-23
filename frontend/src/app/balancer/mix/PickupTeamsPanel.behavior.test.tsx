@@ -228,6 +228,7 @@ function match(overrides: Partial<CustomGameMatch> = {}): CustomGameMatch {
     points_per_win_applied: null,
     lobby_index: 0,
     bans: [],
+    picks: [],
     ...overrides,
   };
 }
@@ -1119,6 +1120,19 @@ describe("PickupTeamsPanel", () => {
     const scope = await mount(game({ discipline: "overwatch" }), { matches: [match({ id: 12 })] });
 
     expect(scope.querySelector('[aria-label="Bans"]')).toBeNull();
+  });
+
+  it("shows whose hero each pick of a round was", async () => {
+    const scope = await mount(game({ discipline: "overwatch" }), {
+      matches: [match({ id: 12, picks: [{ slot: 1, member_id: 7, name: "Kiri main", item_id: 101 }] })],
+    });
+    await act(async () => {
+      await tick();
+    });
+
+    const list = scope.querySelector('[aria-label="Picks"]');
+    expect(list?.textContent).toContain("Kiri main");
+    expect([...(list?.querySelectorAll("[title]") ?? [])].map((node) => node.getAttribute("title"))).toEqual(["Ana"]);
   });
 
   it("starts the match from a Ready lobby, which offers no result yet", async () => {

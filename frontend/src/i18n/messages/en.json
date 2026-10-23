@@ -4041,7 +4041,8 @@
   "pickBan": {
     "mixBans": {
       "none": "No bans",
-      "label": "Hero bans"
+      "label": "Hero bans",
+      "fearless": "Fearless"
     },
     "room": {
       "playerHeroes": {
@@ -4145,21 +4146,24 @@
           "pick": "Both teams pick",
           "protect": "Both teams protect",
           "decider": "Decider",
-          "side_pick": "Both teams choose sides"
+          "side_pick": "Both teams choose sides",
+          "assign": "Both captains assign heroes"
         },
         "side": {
           "ban": "{team} bans",
           "pick": "{team} picks",
           "protect": "{team} protects",
           "decider": "Decider",
-          "side_pick": "{team} chooses a side"
+          "side_pick": "{team} chooses a side",
+          "assign": "{team} assigns heroes"
         },
         "system": {
           "ban": "Random ban",
           "pick": "Random pick",
           "protect": "Random protect",
           "decider": "Decider",
-          "side_pick": "Side chosen at random"
+          "side_pick": "Side chosen at random",
+          "assign": "Heroes assigned at random"
         }
       },
       "carried": {
@@ -4207,7 +4211,8 @@
         "pick": "pick",
         "protect": "protect",
         "decider": "decide",
-        "side_pick": "choose a side"
+        "side_pick": "choose a side",
+        "assign": "assign heroes"
       },
       "deciderResolving": "Decider is being resolved",
       "completedBanner": "Sequence completed",
@@ -4674,7 +4679,8 @@
         "pick": "Pick",
         "protect": "Protect",
         "decider": "Decider",
-        "side_pick": "Side pick"
+        "side_pick": "Side pick",
+        "assign": "Hero assignment"
       },
       "actors": {
         "first": "Opener",
@@ -7842,6 +7848,7 @@
       "tabsLabel": "Lobbies",
       "tab": "Lobby {letter}",
       "bans": "Bans",
+      "picks": "Picks",
       "game": "game {number}",
       "rebalanceTitle": "Rebalance this lobby?",
       "rebalanceDescription": "The result of the lineup on screen has not been recorded. Balancing replaces it, and there will be nothing left to record it from.",

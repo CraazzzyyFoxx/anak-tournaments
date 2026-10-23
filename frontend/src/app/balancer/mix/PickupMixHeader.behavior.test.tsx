@@ -146,41 +146,59 @@ function tick() {
 
 const roots: { unmount: () => void }[] = [];
 
-async function mount(
-  currentGame: CustomGame | undefined,
-  props: { canWrite?: boolean; gameLoading?: boolean; canDelete?: boolean; showsRoles?: boolean } = {}
-) {
+type MountProps = {
+  canWrite?: boolean;
+  gameLoading?: boolean;
+  canDelete?: boolean;
+  showsRoles?: boolean;
+  onSetFearless?: (fearless: boolean) => void;
+};
+
+function header(currentGame: CustomGame | undefined, props: MountProps, client: QueryClient) {
+  return (
+    <QueryClientProvider client={client}>
+      <PickupMixHeader
+        canWrite={props.canWrite ?? true}
+        game={currentGame}
+        gameLoading={props.gameLoading ?? false}
+        onOpenPool={onOpenPool}
+        showsRoles={props.showsRoles ?? true}
+        onOpenAccess={onOpenAccess}
+        canDelete={props.canDelete ?? false}
+        onDeleteMix={onDeleteMix}
+        onRename={onRename}
+        onSetSelfService={onSetSelfService}
+        onSetBanPreset={onSetBanPreset}
+        onSetFearless={props.onSetFearless}
+        onPostSignup={onPostSignup}
+        settingLobbyCount={false}
+        onLobbyCountChange={onLobbyCountChange}
+        onDeleteDiscordPost={onDeleteDiscordPost}
+      />
+    </QueryClientProvider>
+  );
+}
+
+async function mount(currentGame: CustomGame | undefined, props: MountProps = {}) {
   const container = document.createElement("div");
   document.body.appendChild(container);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const root = createRoot(container);
+  roots.push(root);
   await act(async () => {
-    const root = createRoot(container);
-    roots.push(root);
-    root.render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <PickupMixHeader
-          canWrite={props.canWrite ?? true}
-          game={currentGame}
-          gameLoading={props.gameLoading ?? false}
-          onOpenPool={onOpenPool}
-          showsRoles={props.showsRoles ?? true}
-          onOpenAccess={onOpenAccess}
-          canDelete={props.canDelete ?? false}
-          onDeleteMix={onDeleteMix}
-          onRename={onRename}
-          onSetSelfService={onSetSelfService}
-          onSetBanPreset={onSetBanPreset}
-          onPostSignup={onPostSignup}
-          settingLobbyCount={false}
-          onLobbyCountChange={onLobbyCountChange}
-          onDeleteDiscordPost={onDeleteDiscordPost}
-        />
-      </QueryClientProvider>
-    );
+    root.render(header(currentGame, props, client));
   });
   await act(async () => {
     await tick();
   });
-  return container;
+  return Object.assign(container, {
+    /** The same header on the mix as the server saved it: a host write hands the game back down. */
+    rerender: (savedGame: CustomGame) =>
+      act(async () => {
+        root.render(header(savedGame, props, client));
+        await tick();
+      })
+  });
 }
 
 function click(node: Element | null | undefined) {
@@ -396,6 +414,30 @@ describe("PickupMixHeader hero bans", () => {
       "hero_classic",
       "hero_anti_one_trick"
     ]);
+  });
+
+  it("gives a host the Fearless switch next to the preset, on what the mix saved", async () => {
+    // The write answers with the saved mix (`usePickupMix`'s `applyGame`), which the screen hands back down.
+    let saved = game({ hero_fearless: false });
+    const scope = await mount(saved, {
+      onSetFearless: (fearless) => {
+        saved = game({ hero_fearless: fearless });
+      }
+    });
+    const fearless = () => scope.querySelector('[role="switch"][aria-label="fearless"]');
+    expect(fearless()?.getAttribute("aria-checked")).toBe("false");
+
+    await click(fearless());
+    await scope.rerender(saved);
+
+    expect(fearless()?.getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("tells a viewer the mix plays Fearless, with no switch", async () => {
+    const scope = await mount(game({ hero_fearless: true }), { canWrite: false });
+
+    expect(scope.textContent).toContain("fearless");
+    expect(scope.querySelector('[role="switch"][aria-label="fearless"]')).toBeNull();
   });
 });
 

@@ -39,8 +39,11 @@ export function MatchHistoryList({
   discipline: string | null;
 }>) {
   const t = useTranslations("mixes.matchHistory");
-  // The heroes are read only once a round has bans to show (spec §8.4).
-  const heroes = useCatalogEntities(matches.some((match) => match.bans.length > 0) ? discipline : null, "character");
+  // The heroes are read only once a round has bans or picks to show (spec §8.4, §11.6).
+  const heroes = useCatalogEntities(
+    matches.some((match) => match.bans.length > 0 || match.picks.length > 0) ? discipline : null,
+    "character",
+  );
   const heroById = new Map((heroes.data ?? []).map((hero) => [hero.id, hero]));
   // Newest first, so the first row of each lobby IS that lobby's newest -- the
   // only one the server will undo (`newest_id_for_lobby`).
@@ -159,6 +162,7 @@ function MatchHistoryRow({
           <span className="shrink-0">{formatRelative(format, match.recorded_at)}</span>
         </div>
         {match.bans.length > 0 ? <HeroBanStrip bans={match.bans} heroById={heroById} className="mt-1" /> : null}
+        {match.picks.length > 0 ? <HeroPickList picks={match.picks} heroById={heroById} className="mt-1" /> : null}
       </div>
       {canUndo ? (
         <>
@@ -224,5 +228,35 @@ export function HeroBanStrip({
         );
       })}
     </div>
+  );
+}
+
+/** Each player's hero, behind their team's dot: a recorded round's, or the live match's (spec §11.6 R4-11). */
+export function HeroPickList({
+  picks,
+  heroById,
+  className
+}: Readonly<{
+  picks: { slot: number; name: string; item_id: number }[];
+  heroById: Map<number, CatalogEntityRead>;
+  className?: string;
+}>) {
+  const t = useTranslations("mixes.lobbies");
+  return (
+    <ul className={cn("flex flex-wrap items-center gap-x-3 gap-y-1", className)} aria-label={t("picks")}>
+      {picks.map((pick) => {
+        const hero = heroById.get(pick.item_id);
+        return (
+          <li key={`${pick.item_id}-${pick.name}`} className="flex items-center gap-1 text-xs">
+            <StatusDot className={cn("inline-block", teamAccent(pick.slot - 1).bar)} />
+            <CatalogEntityImage
+              entity={{ name: hero?.name ?? `#${pick.item_id}`, image_path: hero?.image_path ?? null }}
+              size={20}
+            />
+            <span className="text-[color:var(--aqt-fg-muted)]">{pick.name}</span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
