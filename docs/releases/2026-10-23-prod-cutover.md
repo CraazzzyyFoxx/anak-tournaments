@@ -389,6 +389,22 @@ Every step here runs with the site open.
 
    Keep the outputs and the receipt with the dumps. A discrepancy is fixed forward from this copy: its legacy tables
    still hold every original row ([backend-cleanup §5](./2026-10-21-backend-cleanup.md#5-legacy-storage-drop-legacy01)).
+
+   **Done 2026-10-24, on a local copy** (restore 27 min, 8.5 GB; outputs in S3 under `cutover-v2.0.0/proofs/`):
+   - The three reconcile scripts as tagged do not run at `rank01`. `schemasplit01` moved `balancer.*` to `registration`,
+     `mix` and `draft`, and `discipline01b` renamed the text role table to `encounter.team_member_role_legacy`. They ran
+     as copies with only those names changed (`rank01-rebase.diff`).
+   - `NOT convalidated`: 0 rows.
+   - `discipline01`: 18 of 19 classes ok. `team member roles` shows 62,963 vs 62,756: 207 members with legacy
+     `{damage,flex}` kept their `damage` leaf, as `discipline01b` intends. The script's `max(role)` sorts `flex` after
+     `damage`, so it expects none. A script bug, not lost data.
+   - `enclayer01`: 24 of 25 ok. The self-duel of encounter 94 differs only by `custom_game_id = null`, a column
+     `mixround01` added after `enclayer01` wrote its audit.
+   - `mixround01`: 66/66 busy players, 110/110 rounds and 220/220 sides ok. Seats show 1,100 vs 1,049: the 51 seats
+     with no workspace member, dropped by design ("seats whose member left … are dropped"). They survive only in
+     `db-rank01.dump` (`mixround01_null_member_seats.out`).
+   - P4 receipt with `owt-app:v2.0.0`. Capture: exit 0, 88 min, 25/25 classes ok (facts 27,949,908, events 1,234,363,
+     matches 7,500, MV 2,067 with equal hashes). Check: exit 0, 75 min, 212,758 owners unchanged, 0 blocking.
 5. **Off-host copy and the Release.**
    ```bash
    docker run --rm --env-file "$S3ENV" -v "$CUT:/data:ro" rclone/rclone \
