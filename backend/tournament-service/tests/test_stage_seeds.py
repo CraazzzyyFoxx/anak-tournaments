@@ -95,6 +95,45 @@ class BuildSeedingTests(TestCase):
         self.assertEqual([], seeds.build_seeding([], "cross"))
 
 
+def _first_round(order: list[tuple[int, int]]) -> list[tuple[tuple[int, int], tuple[int, int]]]:
+    """The seeds of every match the engine's 1-vs-N layout opens with (byes left out)."""
+    seeding_order = importlib.import_module("src.domain.bracket.seeding_order").seeding_order
+    layout = seeding_order(1 << (len(order) - 1).bit_length())
+    return [
+        (order[a], order[b])
+        for a, b in zip(layout[::2], layout[1::2], strict=True)
+        if a < len(order) and b < len(order)
+    ]
+
+
+class SeparateGroupsTests(TestCase):
+    _slices = BuildSeedingTests._slices
+
+    def test_two_groups_cross_no_longer_opens_a1_against_a2(self) -> None:
+        cross = seeds.build_seeding(self._slices(2, 2), "cross")
+        self.assertEqual(((100, 1), (100, 2)), _first_round(cross)[0], "the column order alone pairs A1-A2")
+        self.assertEqual([(100, 1), (101, 1), (100, 2), (101, 2)], seeds.separate_groups(cross))
+
+    def test_three_groups_sending_two_keep_c1_away_from_c2(self) -> None:
+        snake = seeds.build_seeding(self._slices(2, 2, 2), "snake")
+        self.assertIn(((102, 1), (102, 2)), _first_round(snake), "the column order alone pairs C1-C2")
+        self.assertEqual([(100, 1), (101, 1), (102, 1), (102, 2), (101, 2), (100, 2)], seeds.separate_groups(snake))
+
+    def test_no_group_opens_against_itself_and_every_place_keeps_its_seeds(self) -> None:
+        for groups in range(2, 9):
+            for top in (1, 2, 3):
+                for mode in ("snake", "cross"):
+                    wired = seeds.build_seeding(self._slices(*[top] * groups), mode)
+                    arranged = seeds.separate_groups(wired)
+                    with self.subTest(groups=groups, top=top, mode=mode):
+                        self.assertEqual(sorted(wired), sorted(arranged))
+                        self.assertEqual([place for _, place in wired], [place for _, place in arranged])
+                        self.assertEqual([], [pair for pair in _first_round(arranged) if pair[0][0] == pair[1][0]])
+
+    def test_a_clash_no_swap_can_resolve_stays(self) -> None:
+        self.assertEqual([(100, 1), (100, 2)], seeds.separate_groups([(100, 1), (100, 2)]))
+
+
 class GroupAdvanceCountsTests(TestCase):
     def test_stage_default_splits_every_group(self) -> None:
         counts = seeds.group_advance_counts([_group(1), _group(2)], default_advance=6, default_upper=2)

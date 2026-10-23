@@ -803,6 +803,34 @@ def _stage_item_team_ids(stage_item: models.StageItem | None) -> list[int]:
     return team_ids
 
 
+def rank_group(
+    tournament: models.Tournament,
+    stage: models.Stage,
+    stage_item: models.StageItem | None,
+    encounters: typing.Sequence[StageEncounter],
+    *,
+    bye_counts: typing.Mapping[int, int] = _EMPTY,
+) -> list[RankedStageTeam]:
+    """One group's ranking on its results, before any pin.
+
+    What the stored table is built from, and what a Swiss round is paired on:
+    pairing must read real results, and must read them from the same snapshot
+    that found the previous round closed -- never the stored table, which the
+    standings job may have ranked a moment before that round's last result.
+    """
+    win_points, draw_points, loss_points = _scoring(stage, tournament)
+    return prepare_teams_for_groups(
+        encounters,
+        seed_team_ids=_stage_item_team_ids(stage_item),
+        bye_counts=dict(bye_counts) if stage.stage_type == StageType.SWISS else {},
+        bye_points=win_points if stage.swiss_bye_points is None else stage.swiss_bye_points,
+        win_points=win_points,
+        draw_points=draw_points,
+        loss_points=loss_points,
+        tiebreak_order=_tiebreak_order(stage),
+    )
+
+
 def _build_group_stage_standings(
     tournament: models.Tournament,
     stage: models.Stage,
@@ -812,26 +840,13 @@ def _build_group_stage_standings(
     pins: typing.Mapping[int, int] = _EMPTY,
     bye_counts: typing.Mapping[int, int] = _EMPTY,
 ) -> list[models.Standing]:
-    seed_team_ids = _stage_item_team_ids(stage_item)
-    if not encounters and not seed_team_ids:
+    if not encounters and not _stage_item_team_ids(stage_item):
         return []
 
     tiebreak_order = _tiebreak_order(stage)
-    win_points, draw_points, loss_points = _scoring(stage, tournament)
-    bye_points = win_points if stage.swiss_bye_points is None else stage.swiss_bye_points
-
-    teams = prepare_teams_for_groups(
-        encounters,
-        seed_team_ids=seed_team_ids,
-        bye_counts=dict(bye_counts) if stage.stage_type == StageType.SWISS else {},
-        bye_points=bye_points,
-        win_points=win_points,
-        draw_points=draw_points,
-        loss_points=loss_points,
-        tiebreak_order=tiebreak_order,
-    )
-    # Pinned after ranking, never inside ``prepare_teams_for_groups``: that one
-    # also feeds the Swiss pairing preview, which must pair on real results.
+    teams = rank_group(tournament, stage, stage_item, encounters, bye_counts=bye_counts)
+    # Pinned after ranking, never inside ``rank_group``: that one also feeds the
+    # Swiss pairing, which must pair on real results.
     teams, pinned = _pin_group_table(teams, pins, tiebreak_order=tiebreak_order)
 
     standings: list[models.Standing] = []

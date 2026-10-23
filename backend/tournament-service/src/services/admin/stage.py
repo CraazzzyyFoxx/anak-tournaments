@@ -1,6 +1,6 @@
 """Admin service layer for stage CRUD and bracket generation."""
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Sequence
 from dataclasses import asdict
 from types import SimpleNamespace
@@ -80,6 +80,9 @@ from src.domain.stage.seeds import (
 from src.domain.stage.seeds import (
     resolve_seeds as _resolve_seeds,
 )
+from src.domain.stage.seeds import (
+    separate_groups as _separate_groups,
+)
 from src.services.admin.stage_common import (
     BRACKET_STAGE_TYPES,
     FFA_STAGE_TYPES,
@@ -100,6 +103,7 @@ from src.services.bracket.swiss_state import (
 from src.services.encounter.ffa import ffa_encounter_service
 from src.services.encounter.room_reconcile import request_stage_reconcile
 from src.services.notifications.lifecycle import after_encounter_teams_changed, lifecycle_notifier
+from src.services.standings.service import rank_group, standings_service
 from src.services.tournament.events import (
     STRUCTURE_RESOURCES,
     enqueue_tournament_recalculation,
@@ -1549,9 +1553,10 @@ class AdminStageService:
     async def _get_swiss_generation_context(
         self,
         session: AsyncSession,
-        stage_id: int,
+        stage: models.Stage,
         stage_item_id: int | None,
     ) -> tuple[list[SwissStanding] | None, set[frozenset[int]] | None, int]:
+        stage_id = stage.id
         rounds = (
             await session.execute(
                 select(models.BracketEncounter.encounter_id, models.BracketEncounter.round).where(
@@ -1586,24 +1591,22 @@ class AdminStageService:
             frozenset(team_ids) for team_ids in by_encounter.values() if len(team_ids) > 1
         }
 
-        # No repository method covers standings ordered by position within one
-        # stage scope; built from the repo's select() meanwhile.
-        standing_result = await session.execute(
-            self.standing_repo.select()
-            .where(
-                models.Standing.stage_id == stage_id,
-                models.Standing.stage_item_id == stage_item_id,
-            )
-            .order_by(models.Standing.position, models.Standing.team_id)
-        )
-        raw_standings = list(standing_result.scalars().all())
+        # Ranked here, off the results as they stand now -- not read from the
+        # stored table. The standings job that closes a round recalculates from a
+        # snapshot and then looks for closed rounds again: a last result that
+        # committed in between closes the round on a table that never counted
+        # it, and the round would be paired on records a round old.
+        tournament = await session.get_one(models.Tournament, stage.tournament_id)
+        encounters = [
+            encounter
+            for encounter in await standings_service.load_stage_encounters(session, stage_id)
+            if encounter.stage_item_id == stage_item_id
+        ]
+        stage_item = next((item for item in stage.items if item.id == stage_item_id), None)
+        byes = Counter(await swiss_bye_team_ids(session, stage_id, stage_item_id))
         swiss_standings = [
-            SwissStanding(
-                team_id=standing.team_id,
-                points=standing.points,
-                buchholz=standing.buchholz or 0.0,
-            )
-            for standing in raw_standings
+            SwissStanding(team_id=team.team_id, points=team.points, buchholz=team.median_buchholz)
+            for team in rank_group(tournament, stage, stage_item, encounters, bye_counts=byes)
         ]
 
         return swiss_standings, swiss_played_pairs, swiss_round
@@ -1625,7 +1628,7 @@ class AdminStageService:
         swiss_round = 1
         if stage.stage_type == enums.StageType.SWISS:
             swiss_standings, swiss_played_pairs, swiss_round = await self._get_swiss_generation_context(
-                session, stage.id, stage_item_id
+                session, stage, stage_item_id
             )
             if swiss_standings is None:
                 await clear_swiss_byes(session, stage.id, stage_item_id)
@@ -2012,16 +2015,12 @@ class AdminStageService:
         """Wire TENTATIVE inputs in ``target_stage`` pointing to top-N of each group in
         ``source_stage``.
 
-        Supports two seeding modes:
-
-        - ``cross`` (default): standard cross-group seeding that avoids same-group
-          rematches in the first playoff round. Given groups A, B, C, ... and
-          ``top=2``, slots are arranged as:
-              A1, B2, C1, D2, ...  A2, B1, C2, D1
-          i.e. every slot ``i`` uses group ``i % G`` and position ``1 + (i // G) % top``
-          with odd "columns" flipped. This guarantees group A's 1st-seed does not
-          meet group A's 2nd-seed in round 1.
-        - ``snake``: simple top-down (all 1st-seeds first, then all 2nd-seeds, ...).
+        Two column orders, ``cross`` (default: every odd column of places
+        flipped, A1, B1, B2, A2) and ``snake`` (all 1st places, then all 2nd
+        places, ...). A generated bracket then has the order rearranged
+        (``separate_groups``) so no first-round match of its 1-vs-N layout seats
+        two teams of one group; a custom bracket template pairs its seeds as
+        drawn and keeps the column order.
 
         Each group sends its own ``StageItem.advance_count`` when that is set,
         else ``top + top_lb``; of those, ``upper_per_group`` (defaulting to
@@ -2132,13 +2131,16 @@ class AdminStageService:
                 detail="Target stage has only a lower bracket item; create an upper bracket item before wiring",
             )
         ub_item = sorted(ub_items, key=lambda item: (item.order, item.id))[0]
-        _apply_seeding(session, _build_seeding([GroupSlice(i, 1, ub) for i, ub, _ in counts], mode), ub_item)
+        # A generated bracket opens 1-vs-N, so its seeds are arranged to keep a
+        # group's teams apart there; a custom template pairs them as drawn.
+        arrange = _separate_groups if target_stage.bracket_template is None else list
+        _apply_seeding(session, arrange(_build_seeding([GroupSlice(i, 1, ub) for i, ub, _ in counts], mode)), ub_item)
 
         lb_slices = [GroupSlice(i, ub + 1, lb) for i, ub, lb in counts if lb > 0]
         # Unconditional on purpose: a re-wire that now sends nobody lower has to
         # clear the TENTATIVE rows the previous one left on the lower item.
         if lb_item is not None:
-            _apply_seeding(session, _build_seeding(lb_slices, mode), lb_item)
+            _apply_seeding(session, arrange(_build_seeding(lb_slices, mode)), lb_item)
 
         if notify:
             await self._publish_structure_changed(session, target_stage.tournament_id)
@@ -2538,11 +2540,10 @@ class AdminStageService:
         # A single elimination playoff has no lower bracket, so the source's split
         # is ignored there and every advancing team starts in the bracket.
         #
-        # The bracket engine applies standard 1-vs-N seeding (``_seeding_order``)
-        # internally, which already spreads the top seeds across the bracket. Feeding
-        # it a plain group-major order ("snake": A1, B1, …, A2, B2, …) therefore
-        # avoids same-group round-1 rematches; the "cross" order double-crosses and
-        # reunites group opponents in round 1.
+        # The plain group-major order ("snake": A1, B1, …, A2, B2, …) puts the
+        # group winners on the top seeds the engine's 1-vs-N layout spreads
+        # apart; ``wire_from_groups`` then swaps runners-up so none opens against
+        # its own group (three groups sending two would otherwise pair C1-C2).
         await self.wire_from_groups(
             session,
             stage.id,

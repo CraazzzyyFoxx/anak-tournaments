@@ -16,14 +16,15 @@ Three layers, all of them here, none of them touching a session:
    ``seed_teams`` vocabulary (``snake_sr``/``by_total_sr``/``random``) and the
    snake/round-robin deal across a stage's groups.
 
-3. Group -> playoff wiring — ``group_advance_counts`` + ``build_seeding``: how
-   many teams each group sends and how many of them start upper
-   (``advance_count`` / ``advance_upper_count``, a group's own value overriding
-   its stage's), and which (group, position) pair lands in which playoff slot,
-   ``cross`` or ``snake``.
+3. Group -> playoff wiring — ``group_advance_counts`` + ``build_seeding`` +
+   ``separate_groups``: how many teams each group sends and how many of them
+   start upper (``advance_count`` / ``advance_upper_count``, a group's own value
+   overriding its stage's), which (group, position) pair lands in which playoff
+   slot, ``cross`` or ``snake``, and the swaps that keep a group's teams apart in
+   the first round.
 
-The one seeding rule NOT here is the engine's 1-vs-N slot layout
-(``src.domain.bracket.seeding_order``): it stays next to the generators that apply it.
+The engine's 1-vs-N slot layout itself (``src.domain.bracket.seeding_order``)
+stays next to the generators that apply it; ``separate_groups`` only reads it.
 """
 
 from __future__ import annotations
@@ -36,6 +37,7 @@ from typing import Any, NamedTuple, Protocol
 
 from shared.core import enums
 from src.domain.bracket import BracketSkeleton
+from src.domain.bracket.seeding_order import seeding_order
 
 __all__ = (
     "SEED_TEAMS_MODES",
@@ -51,6 +53,7 @@ __all__ = (
     "parse_seed_mode",
     "rank_team_ids",
     "resolve_seeds",
+    "separate_groups",
 )
 
 
@@ -222,18 +225,14 @@ def group_advance_counts(
 def build_seeding(slices: Sequence[GroupSlice], mode: str) -> list[tuple[int, int]]:
     """Ordered (source_item_id, position) pairs wiring a playoff from groups.
 
-    ``snake``: all 1st places, then all 2nd places, ... The engine's own 1-vs-N
-    layout then spreads them, which is why this is what auto-wiring uses.
-    ``cross`` flips every odd column so group A's 1st cannot meet A's 2nd in
-    round 1 of a bracket that is NOT re-seeded by the engine.
+    ``snake``: all 1st places, then all 2nd places, ... ``cross`` flips every
+    odd column. Neither order alone keeps a group's teams apart in round 1 of
+    a generated bracket -- its 1-vs-N layout decides who opens against whom --
+    which is :func:`separate_groups`' job.
 
     Slices may be ragged (groups advancing different counts): a group that has
     run out of positions is skipped for the remaining columns, and the ones
-    still advancing keep their alternating order. ``cross``'s guarantee weakens
-    there — with A sending 3 and B sending 5, B's 4th and 5th have no partner
-    left to alternate against, so a same-group round-1 rematch becomes possible
-    again. Auto-wiring uses ``snake`` (the engine re-seeds 1-vs-N anyway), so
-    only an explicit ``cross`` wire is exposed to it.
+    still advancing keep their alternating order.
     """
     seeding: list[tuple[int, int]] = []
     for col in range(max((one.count for one in slices), default=0)):
@@ -242,3 +241,42 @@ def build_seeding(slices: Sequence[GroupSlice], mode: str) -> list[tuple[int, in
             ordered.reverse()
         seeding.extend((one.item_id, one.start + col) for one in ordered if col < one.count)
     return seeding
+
+
+def separate_groups(seeding: Sequence[tuple[int, int]]) -> list[tuple[int, int]]:
+    """``seeding`` rearranged so no first-round match seats two teams of one group.
+
+    A generated bracket lays its seeds out 1-vs-N (``seeding_order``): seed
+    ``i`` opens against seed ``size - 1 - i``, the top seeds taking the byes.
+    No column order guarantees anything about that -- ``cross`` opens A1
+    against A2 in a four-team bracket, ``snake`` C1 against C2 when three
+    groups send two. A clash is resolved by swapping the lower seed with
+    another team of the same finishing place, so every place keeps its band of
+    seeds; one that no such swap resolves stays.
+    """
+    order = list(seeding)
+    count = len(order)
+    if count < 2:
+        return order
+    layout = seeding_order(1 << (count - 1).bit_length())
+    opponent: dict[int, int] = {}
+    for home, away in zip(layout[::2], layout[1::2], strict=True):
+        if home < count and away < count:
+            opponent[home], opponent[away] = away, home
+
+    def clashes(seed: int) -> bool:
+        other = opponent.get(seed)
+        return other is not None and order[seed][0] == order[other][0]
+
+    for better in sorted(opponent):
+        lower = opponent[better]
+        if lower < better or not clashes(better):
+            continue
+        for candidate in range(count):
+            if candidate in (better, lower) or order[candidate][1] != order[lower][1]:
+                continue
+            order[lower], order[candidate] = order[candidate], order[lower]
+            if not clashes(lower) and not clashes(candidate):
+                break
+            order[lower], order[candidate] = order[candidate], order[lower]
+    return order

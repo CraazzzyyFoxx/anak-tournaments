@@ -559,6 +559,139 @@ class StandingsTests(StageLayerCase):
         self.assertEqual(1, by_team[seats[1].team_id].lose)
 
 
+class SwissPairingTests(StageLayerCase):
+    """A Swiss round is paired on the results that closed the round before it."""
+
+    async def test_the_next_round_pairs_records_even_when_the_stored_table_is_a_round_old(self) -> None:
+        # The standings job that closes a round can rank a snapshot read a moment
+        # before the round's last result committed, then see the round closed when
+        # it looks again: the stored table still reads 0-0 for everyone.
+        from src.services.standings.swiss_auto_round import swiss_rounds_service
+
+        t0, t1, t2, t3 = self.team_ids
+        stage = await self.make_stage(enums.StageType.SWISS, teams=self.team_ids)
+        async with self.Session() as s:
+            row = await s.get_one(Stage, stage.id)
+            # Two rounds of four teams is not a full circle, so the round is Monrad-paired.
+            row.max_rounds = 2
+            row.is_active = True
+            item_id = (await s.scalars(sa.select(StageItem.id).where(StageItem.stage_id == stage.id))).one()
+            await s.commit()
+        async with self.Session() as s:
+            round_one = await stage_service.generate_encounters(s, stage.id, notify=False)
+        async with self.Session() as s:
+            pairs = {frozenset(seat.team_id for seat in await active_teams(s, e.id)) for e in round_one}
+            self.assertEqual({frozenset({t0, t2}), frozenset({t1, t3})}, pairs, "Monrad: top half meets bottom half")
+            await standings_service.recalculate_for_tournament(s, self.tournament_id)
+        # The bottom half wins both matches; the stored table is not recalculated.
+        async with self.Session() as s:
+            for card in round_one:
+                encounter = await s.get_one(Encounter, card.id)
+                seats = await active_teams(s, encounter.id)
+                won = {seat.id: seat.team_id in (t2, t3) for seat in seats}
+                await apply_result(
+                    s,
+                    encounter,
+                    source=enums.EncounterResultSource.ADMIN,
+                    totals={seat_id: 1.0 if winner else 0.0 for seat_id, winner in won.items()},
+                    placements={seat_id: 1 if winner else 2 for seat_id, winner in won.items()},
+                    action=enums.EncounterResultAuditAction.CONFIRM,
+                    audit_source="admin",
+                    actor_user_id=None,
+                    reason="test",
+                )
+            await s.commit()
+        async with self.Session() as s:
+            round_two = await swiss_rounds_service.generate_next_swiss_round(
+                s,
+                tournament_id=self.tournament_id,
+                stage_id=stage.id,
+                stage_item_id=item_id,
+                expected_next_round=2,
+            )
+            pairs = {frozenset(seat.team_id for seat in await active_teams(s, e.id)) for e in round_two}
+            await s.commit()
+        self.assertEqual({frozenset({t2, t3}), frozenset({t0, t1})}, pairs, "round 2 pairs the two 1-0 teams")
+
+
+class PlayoffWiringTests(StageLayerCase):
+    """Wiring a playoff from groups keeps a group's teams apart in round 1."""
+
+    async def test_three_groups_sending_two_never_open_against_their_own_group(self) -> None:
+        # Six teams, three groups of two, the top two of each advance: the 1-vs-N
+        # layout gives the two best group winners a bye and plays the rest, and
+        # the plain group-major order opened C1 against C2 there.
+        async with self.Session() as s:
+            extra = [Team(tournament_id=self.tournament_id, name=f"T{i}", balancer_name=f"T{i}") for i in (4, 5)]
+            s.add_all(extra)
+            await s.flush()
+            teams = [*self.team_ids, *(team.id for team in extra)]
+            groups = await stage_service.create_stage(
+                s,
+                self.tournament_id,
+                schemas.StageCreate(name="Groups", stage_type=enums.StageType.ROUND_ROBIN, order=0, advance_count=2),
+            )
+            playoff = await stage_service.create_stage(
+                s,
+                self.tournament_id,
+                schemas.StageCreate(name="Playoffs", stage_type=enums.StageType.SINGLE_ELIMINATION, order=1),
+            )
+            group_of: dict[int, int] = {}
+            for order, pair in enumerate(([teams[0], teams[5]], [teams[1], teams[4]], [teams[2], teams[3]])):
+                item = StageItem(stage_id=groups.id, name="ABC"[order], type=enums.StageItemType.GROUP, order=order)
+                s.add(item)
+                await s.flush()
+                for slot, team_id in enumerate(pair, 1):
+                    s.add(
+                        StageItemInput(
+                            stage_item_id=item.id,
+                            slot=slot,
+                            input_type=enums.StageItemInputType.FINAL,
+                            team_id=team_id,
+                        )
+                    )
+                    group_of[team_id] = item.id
+            s.add(StageItem(stage_id=playoff.id, name="Bracket", type=enums.StageItemType.SINGLE_BRACKET, order=0))
+            await s.commit()
+        async with self.Session() as s:
+            cards = await stage_service.generate_encounters(s, groups.id, notify=False)
+        async with self.Session() as s:
+            for card in cards:
+                encounter = await s.get_one(Encounter, card.id)
+                home, away = await active_teams(s, encounter.id)
+                await apply_result(
+                    s,
+                    encounter,
+                    source=enums.EncounterResultSource.ADMIN,
+                    totals={home.id: 1.0, away.id: 0.0},
+                    placements={home.id: 1, away.id: 2},
+                    action=enums.EncounterResultAuditAction.CONFIRM,
+                    audit_source="admin",
+                    actor_user_id=None,
+                    reason="test",
+                )
+            await s.commit()
+        async with self.Session() as s:
+            await standings_service.recalculate_for_tournament(s, self.tournament_id)
+        async with self.Session() as s:
+            _stage, bracket = await stage_service.activate_and_generate(s, playoff.id, notify=False)
+            rounds = dict(
+                (
+                    await s.execute(
+                        sa.select(BracketEncounter.encounter_id, BracketEncounter.round).where(
+                            BracketEncounter.stage_id == playoff.id
+                        )
+                    )
+                )
+                .tuples()
+                .all()
+            )
+            first_round = [[seat.team_id for seat in await active_teams(s, e.id)] for e in bracket if rounds[e.id] == 1]
+        self.assertEqual(2, len(first_round), "six teams: two byes, two first-round matches")
+        for home_id, away_id in first_round:
+            self.assertNotEqual(group_of[home_id], group_of[away_id], f"round 1 pairs one group: {home_id}-{away_id}")
+
+
 class ScrimClaimTests(StageLayerCase):
     """``claim_side`` fills slot 2 through ``place_team``.
 
