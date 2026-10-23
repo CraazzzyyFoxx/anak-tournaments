@@ -7,7 +7,7 @@ import { createPortal } from "react-dom";
 
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { LinkTabs } from "@/components/kit/LinkTabs";
-import { SectionNav } from "@/components/kit/SectionNav";
+import { SectionNav, useSectionNavEntrance } from "@/components/kit/SectionNav";
 import { SettingsOutlineProvider } from "@/components/kit/SettingsOutline";
 import { useInSettingsPreview } from "@/components/kit/SettingsContinuation";
 import { cn } from "@/lib/utils";
@@ -78,6 +78,7 @@ export function WorkspaceSettingsShell({
   const t = useTranslations("adminWorkspace.workspaceSettings");
   const pathname = usePathname();
   const [actionsNode, setActionsNode] = useState<HTMLDivElement | null>(null);
+  const columnRef = useSectionNavEntrance<HTMLDivElement>();
   if (FULL_SCREEN_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return <>{children}</>;
 
   const trailing = pathname.startsWith(basePath) ? pathname.slice(basePath.length) : "";
@@ -96,7 +97,7 @@ export function WorkspaceSettingsShell({
         />
         {/* Not `<main>`: the admin shell already exposes the page-level main
             landmark (`AdminLayoutClient`'s `#admin-content`). */}
-        <div className={cn("flex min-w-0 flex-1 flex-col gap-4", !page?.wide && "max-w-3xl")}>
+        <div ref={columnRef} className={cn("flex min-w-0 flex-1 flex-col gap-4", !page?.wide && "max-w-3xl")}>
           <AdminPageHeader
             title={page?.title ?? t("sections.settingsTitle")}
             description={page?.description}

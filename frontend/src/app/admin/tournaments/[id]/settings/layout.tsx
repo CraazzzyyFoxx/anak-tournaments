@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import type messages from "@/i18n/messages/en.json";
 import type { ComponentType, ReactNode } from "react";
 
-import { SectionNav, type SectionNavGroup } from "@/components/kit/SectionNav";
+import { SectionNav, useSectionNavEntrance, type SectionNavGroup } from "@/components/kit/SectionNav";
 import { SettingsContinuation } from "@/components/kit/SettingsContinuation";
 import { SettingsOutlineProvider } from "@/components/kit/SettingsOutline";
 import { useHubTournamentQuery } from "../hubQueries";
@@ -62,6 +62,7 @@ export default function TournamentSettingsLayout({
 
   const tournamentQuery = useHubTournamentQuery(tournamentId);
   const access = useTabAccess(tournamentQuery.data);
+  const columnRef = useSectionNavEntrance<HTMLDivElement>();
 
   type SectionKey = keyof typeof messages.adminTournament.settings.sections;
   type GroupKey = keyof typeof messages.adminTournament.settings.groups;
@@ -96,7 +97,7 @@ export default function TournamentSettingsLayout({
     <SettingsOutlineProvider>
       <div className="flex flex-col gap-4 lg:flex-row lg:gap-6">
         <SectionNav groups={groups} activeKey={activeKey} />
-        <div className="flex min-w-0 flex-1 flex-col gap-4">
+        <div ref={columnRef} className="flex min-w-0 flex-1 flex-col gap-4">
           <SettingsContinuation
             key={activeKey}
             previous={

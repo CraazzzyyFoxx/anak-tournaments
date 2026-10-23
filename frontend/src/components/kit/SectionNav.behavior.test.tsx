@@ -5,12 +5,15 @@
 //  2. a hidden (permission-gated) section is absent from BOTH the rail and the
 //     narrow-viewport `Select` — one list, two renderings, no drift;
 //  3. picking a section in the `Select` navigates, so the mobile control is a
-//     real navigation and not a second source of state.
+//     real navigation and not a second source of state;
+//  4. picking a section moves the page the way scrolling to it would: one
+//     below the open section rises from below, one above drops from above,
+//     and a new-tab click leaves nothing behind for a later visit to play.
 import { act, forwardRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SectionNav } from "@/components/kit/SectionNav";
+import { SectionNav, useSectionNavEntrance } from "@/components/kit/SectionNav";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -18,7 +21,9 @@ declare global {
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const push = vi.fn();
+let pathname = "/admin/tournaments/1/settings/rules";
 vi.mock("next/navigation", () => ({
+  usePathname: () => pathname,
   useRouter: () => ({ push })
 }));
 
@@ -133,5 +138,73 @@ describe("SectionNav", () => {
       item.textContent?.trim()
     );
     expect(options).not.toContain("Links");
+  });
+});
+
+describe("SectionNav entrance", () => {
+  const animate = vi.fn();
+  const preventNavigation = (event: Event) => event.preventDefault();
+
+  function Hub() {
+    const columnRef = useSectionNavEntrance<HTMLDivElement>();
+    const activeKey = GROUPS.flatMap((group) => group.items).find((item) => item.href === pathname)?.key;
+    return (
+      <>
+        <SectionNav groups={GROUPS} activeKey={activeKey ?? ""} />
+        <div ref={columnRef} />
+      </>
+    );
+  }
+
+  async function navigate(to: string) {
+    pathname = to;
+    await act(async () => root.render(<Hub />));
+  }
+
+  async function pick(label: string, init: MouseEventInit = {}) {
+    const link = [...container.querySelectorAll("nav a")].find((a) => a.textContent === label);
+    await act(async () => {
+      link?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...init }));
+    });
+  }
+
+  /** The first keyframe's offset: positive rises from below, negative drops from above. */
+  const enteredFrom = () => (animate.mock.calls.at(-1)?.[0] as Keyframe[])[0].transform;
+
+  beforeEach(async () => {
+    animate.mockReset();
+    HTMLElement.prototype.animate = animate as unknown as HTMLElement["animate"];
+    document.addEventListener("click", preventNavigation);
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await navigate("/admin/tournaments/1/settings/rules");
+  });
+
+  afterEach(() => {
+    document.removeEventListener("click", preventNavigation);
+  });
+
+  it("brings a section below the open one in from below", async () => {
+    await pick("Danger zone");
+    await navigate("/admin/tournaments/1/settings/danger");
+
+    expect(animate).toHaveBeenCalledTimes(1);
+    expect(enteredFrom()).toBe("translateY(32px)");
+  });
+
+  it("brings a section above the open one in from above", async () => {
+    await pick("General");
+    await navigate("/admin/tournaments/1/settings/general");
+
+    expect(animate).toHaveBeenCalledTimes(1);
+    expect(enteredFrom()).toBe("translateY(-32px)");
+  });
+
+  it("does not play a new-tab pick on a later visit by another route", async () => {
+    await pick("Danger zone", { ctrlKey: true });
+    await navigate("/admin/tournaments/1/settings/danger");
+
+    expect(animate).not.toHaveBeenCalled();
   });
 });

@@ -54,7 +54,7 @@ export interface SettingsNextPage extends SettingsAdjacentPage {
   preview: ReactNode;
 }
 
-type Edge = "top" | "bottom";
+export type Edge = "top" | "bottom";
 
 /** Scroll intent past the end (or the top) of the page that opens its neighbour. */
 const PULL_DISTANCE_PX = 360;
@@ -93,7 +93,8 @@ function playLeave(page: HTMLElement | null, edge: Edge) {
   );
 }
 
-function playEnter(page: HTMLElement | null, edge: Edge) {
+/** Also the rail's page change (`SectionNav`), so the admin keeps one entrance. */
+export function playEnter(page: HTMLElement | null, edge: Edge) {
   if (!page) return;
   const shift = edge === "top" ? SHIFT_PX : -SHIFT_PX;
   page.animate?.(

@@ -382,7 +382,9 @@ system.
   the live pulse (`StatusDot pulse`, `.livePulse`) on something that is live,
   and the settings page change through `kit/SettingsContinuation` (the old
   page lifts away in 180ms, the new one rises from where its ghost was in
-  320ms; reversed going back), which says which way the reader went.
+  320ms; reversed going back), which says which way the reader went. A pick
+  in `kit/SectionNav` plays the same 320ms entrance on the content column,
+  from below for a section under the open one, from above for one over it.
 - No hover that changes size or shifts layout.
 - `prefers-reduced-motion` mutes all of it; the static cue (colour, border,
   word) always remains.
