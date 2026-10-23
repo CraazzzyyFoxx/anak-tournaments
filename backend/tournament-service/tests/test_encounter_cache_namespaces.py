@@ -52,26 +52,23 @@ async def _write(tournament_id: int, *resources: Resource) -> None:
 
 
 _EMPTY_OVERVIEW = {
-    "total": 0,
-    "with_logs_count": 0,
-    "recent_count": 0,
-    "avg_closeness": None,
-    "live_now_count": 0,
-    "upcoming_count": 0,
-    "histogram_rows": [],
-    "score_rows": [],
-    "stage_rows": [],
-    "hot_map_rows": [],
-    "avg_series_seconds": None,
-    "completed_series_count": 0,
-    "sweep_count": 0,
-    "went_distance_count": 0,
-    "slot_one_wins": 0,
-    "slot_two_wins": 0,
-    "closest": [],
-    "upcoming": [],
+    "counts": dict.fromkeys(("all", "live", "upcoming", "completed", "finals", "upsets", "with_logs", "my_team"), 0),
+    "completed_with_logs": 0,
+    "recent_completed": 0,
     "live": [],
-    "preset_counts": {},
+}
+_EMPTY_INSIGHTS = {
+    "completed": 0,
+    "avg_closeness": None,
+    "avg_series_seconds": None,
+    "multi_map": 0,
+    "sweeps": 0,
+    "went_distance": 0,
+    "closeness_histogram": [],
+    "stage_kinds": [],
+    "score_lines": [],
+    "hot_maps": [],
+    "closest": [],
 }
 
 
@@ -80,13 +77,18 @@ class EncounterCacheNamespaceTests(IsolatedAsyncioTestCase):
         configure_test_cache()
         await cache.clear()
 
-    def test_both_families_moved_off_their_pre_cutover_names(self) -> None:
+    def test_every_family_moved_off_its_pre_cutover_name(self) -> None:
         for template, function, name in (
-            (flows.ENCOUNTERS_CACHE_KEY, flows.EncounterFlowsService.get_all_encounters, "native_encounters:v3"),
+            (flows.ENCOUNTERS_CACHE_KEY, flows.EncounterFlowsService.get_all_encounters, "native_encounters:v4"),
             (
                 flows.ENCOUNTERS_OVERVIEW_CACHE_KEY,
                 flows.EncounterFlowsService.get_encounters_overview,
-                "native_encounters_overview:v3",
+                "native_encounters_overview:v4",
+            ),
+            (
+                flows.ENCOUNTERS_INSIGHTS_CACHE_KEY,
+                flows.EncounterFlowsService.get_encounters_insights,
+                "native_encounters_insights:v1",
             ),
         ):
             key = _key(template, function, workspace_id=5, tournament_id=7)
@@ -151,16 +153,15 @@ class EncounterCacheNamespaceTests(IsolatedAsyncioTestCase):
             await service.get_encounters_overview(object(), params, workspace_id=5)
         self.assertEqual(2, read.await_count, "the write did not force a rebuild")
 
-    async def test_every_resource_that_changes_an_encounter_misses_both_families(self) -> None:
+    async def test_every_resource_that_changes_an_encounter_misses_every_family(self) -> None:
         service = flows.flows_service
         page = AsyncMock(return_value=([], 0))
         overview = AsyncMock(return_value=_EMPTY_OVERVIEW)
+        insights = AsyncMock(return_value=_EMPTY_INSIGHTS)
         with (
             patch.object(service.encounters, "get_all_encounters", page),
             patch.object(service.encounters, "get_overview_data", overview),
-            patch.object(flows, "resolve_encounter_challonge", AsyncMock(return_value={})),
-            patch.object(flows, "resolve_tournament_challonge", AsyncMock(return_value={})),
-            patch.object(flows, "resolve_slot_sources", AsyncMock(return_value={})),
+            patch.object(service.encounters, "get_insights_data", insights),
         ):
 
             async def read_all() -> None:
@@ -168,11 +169,16 @@ class EncounterCacheNamespaceTests(IsolatedAsyncioTestCase):
                     params = schemas.EncounterSearchParams(tournament_id=tournament_id)
                     await service.get_all_encounters(object(), params, workspace_id=5)
                     await service.get_encounters_overview(object(), params, workspace_id=5)
+                    await service.get_encounters_insights(object(), params, workspace_id=5)
 
             await read_all()
             for resource in (Resource.TOURNAMENT_ENCOUNTERS, Resource.TOURNAMENT_STRUCTURE):
-                before = (page.await_count, overview.await_count)
+                before = (page.await_count, overview.await_count, insights.await_count)
                 await _write(7, resource)
                 await read_all()
-                # Tournament 7's list and overview rebuilt once each; tournament 8's stayed cached.
-                self.assertEqual((before[0] + 1, before[1] + 1), (page.await_count, overview.await_count), resource)
+                # Tournament 7's three reads rebuilt once each; tournament 8's stayed cached.
+                self.assertEqual(
+                    (before[0] + 1, before[1] + 1, before[2] + 1),
+                    (page.await_count, overview.await_count, insights.await_count),
+                    resource,
+                )

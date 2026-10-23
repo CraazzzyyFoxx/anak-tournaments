@@ -1,6 +1,6 @@
-"""``discipline`` narrows the encounters overview before any strip limit.
+"""``discipline`` narrows the encounters overview and insights before any strip limit.
 
-The live/upcoming/closest strips are ``encounter JOIN base_ids ... LIMIT 4``; ``base_ids`` is built by
+Every board read (the counts, the live and closest strips, the insights' aggregates) is built by
 ``_apply_encounter_filters``, so a game filter there is applied upstream of every limit and aggregate, and a
 client never has to filter a truncated cross-game sample.
 """
@@ -19,22 +19,24 @@ backend_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(backend_root))
 sys.path.insert(0, str(backend_root / "tournament-service"))
 
+from shared import models  # noqa: E402
 from shared.rpc.query import build_query_model  # noqa: E402
 from src import schemas  # noqa: E402
-from src.services.encounter.service import _encounter_ids_query  # noqa: E402
+from src.services.encounter.service import _apply_encounter_filters  # noqa: E402
 
 
 def _params(query: dict) -> schemas.EncounterSearchParams:
     return schemas.EncounterSearchParams.from_query_params(build_query_model(schemas.EncounterSearchQueryParams, query))
 
 
-def _sql(statement: sa.Select) -> str:
+def _sql(params: schemas.EncounterSearchParams) -> str:
+    statement = _apply_encounter_filters(sa.select(models.Encounter.id), params)
     return str(statement.compile(dialect=postgresql.dialect()))
 
 
-def test_the_game_reaches_the_id_subquery_every_overview_read_joins() -> None:
-    assert "encounter.discipline = " in _sql(_encounter_ids_query(_params({"discipline": ["lol"]})))
-    assert "encounter.discipline = " not in _sql(_encounter_ids_query(_params({})))
+def test_the_game_reaches_the_filters_every_board_read_shares() -> None:
+    assert "encounter.discipline = " in _sql(_params({"discipline": ["lol"]}))
+    assert "encounter.discipline = " not in _sql(_params({}))
 
 
 @pytest.mark.parametrize("bogus", ["starcraft", "", "all"])

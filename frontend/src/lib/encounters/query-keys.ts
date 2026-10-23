@@ -26,6 +26,8 @@ export const encounterQueryKeys = {
     ["encounters-list", workspaceId, discipline, page, filters, query] as const,
   overview: (workspaceId: KeyPart, discipline: KeyPart, filters: unknown, query: KeyPart) =>
     ["encounters-overview", workspaceId, discipline, filters, query] as const,
+  insights: (workspaceId: KeyPart, discipline: KeyPart, filters: unknown, query: KeyPart) =>
+    ["encounters-insights", workspaceId, discipline, filters, query] as const,
   savedViews: (workspaceId: KeyPart, userKey: KeyPart) =>
     ["encounters-saved-views", workspaceId, userKey] as const,
   tournamentsLookup: (workspaceId: KeyPart, discipline: KeyPart) =>

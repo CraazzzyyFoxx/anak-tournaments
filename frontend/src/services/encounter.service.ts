@@ -1,7 +1,9 @@
 import {
   Encounter,
   EncounterFilters,
+  EncounterInsights,
   EncounterOverview,
+  EncounterSavedFilters,
   EncounterSavedView,
   MatchWithStats
 } from "@/types/encounter.types";
@@ -87,6 +89,20 @@ export default class encounterService {
     }).then((res) => res.json());
   }
 
+  /** The aggregate reads (overview, insights) take the list's filter params; paging and order mean nothing there. */
+  private static aggregateQuery(query: string, filters: EncounterFilters, workspaceId?: number | "all" | null) {
+    return {
+      workspace_id: workspaceId,
+      per_page: -1,
+      page: 1,
+      query,
+      fields: ["name"],
+      sort: filters.sort ?? "id",
+      order: "desc",
+      ...filters
+    };
+  }
+
   static async getOverview(
     query: string,
     filters: EncounterFilters = {},
@@ -95,16 +111,20 @@ export default class encounterService {
   ): Promise<EncounterOverview> {
     return apiFetch(`/api/v1/encounters/overview`, {
       signal: opts.signal,
-      query: {
-        workspace_id: workspaceId,
-        per_page: -1,
-        page: 1,
-        query,
-        fields: ["name"],
-        sort: filters.sort ?? "id",
-        order: "desc",
-        ...filters
-      }
+      query: encounterService.aggregateQuery(query, filters, workspaceId)
+    }).then((res) => res.json());
+  }
+
+  /** Completed encounters only (the server forces the status), so the heavy read is made only while it is shown. */
+  static async getInsights(
+    query: string,
+    filters: EncounterFilters = {},
+    workspaceId?: number | "all" | null,
+    opts: { signal?: AbortSignal } = {}
+  ): Promise<EncounterInsights> {
+    return apiFetch(`/api/v1/encounters/insights`, {
+      signal: opts.signal,
+      query: encounterService.aggregateQuery(query, filters, workspaceId)
     }).then((res) => res.json());
   }
 
@@ -118,7 +138,7 @@ export default class encounterService {
 
   static async saveView(
     name: string,
-    filters: EncounterFilters & { query?: string },
+    filters: EncounterSavedFilters,
     workspaceId?: number | null
   ): Promise<EncounterSavedView> {
     return apiFetch(`/api/v1/encounters/views`, {

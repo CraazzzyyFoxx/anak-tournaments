@@ -268,6 +268,7 @@ function encounter(
     ended_at: ended,
     played_at: null,
     is_live: false,
+    is_final: false,
     current_map_index: null,
     confirmed_at: ended,
     sources: [],

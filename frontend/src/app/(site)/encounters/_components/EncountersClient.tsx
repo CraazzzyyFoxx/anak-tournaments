@@ -1,42 +1,39 @@
 "use client";
 
+import { useRef } from "react";
 import { useTranslations } from "next-intl";
 import { useFormatter } from "@/lib/datetime/client";
 
 import { DataPagination } from "@/components/ui/data-pagination";
 import { PageStateCard } from "@/components/ui/page-state-card";
-import { EncountersDataTable, FULL_ENCOUNTER_COLUMNS } from "@/components/EncountersTable";
+import { EncountersDataTable } from "@/components/EncountersTable";
 import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 import { useGameBoundParams } from "@/components/workspace/scope-pill-store";
 import { useGameDescriptors } from "@/hooks/useGameDescriptors";
 import { useGameScope } from "@/hooks/useGameScope";
 import { ALL_DISCIPLINES, showsGameMarks, type GameScopeInit } from "@/lib/site/discipline-scope";
 import type { StatsScope } from "@/lib/site/stats-scope";
+import { cn } from "@/lib/utils";
 
 import Loading from "../loading";
 import {
-  EMPTY_OVERVIEW,
+  DEFAULT_FILTERS,
   ENCOUNTERS_PAGE_SIZE,
   GAME_SCOPED_FILTERS,
-  type EncounterFilterState
+  hasActiveFilters,
+  type EncountersUrlState
 } from "./encounters.helpers";
-import { countLabel, hasActiveFilters } from "./encounters.model";
 import { useEncountersFilters } from "./useEncountersFilters";
 import { useEncountersData, type EncountersSeed } from "./useEncountersData";
 import { EncountersHero } from "./EncountersHero";
-import { EncountersViewsBar } from "./EncountersViewsBar";
-import { EncountersFilterBar } from "./EncountersFilterBar";
+import { EncountersActiveFilters, EncountersToolbar } from "./EncountersToolbar";
 import { EncountersInsights } from "./EncountersInsights";
-import { EncountersFeatured } from "./EncountersFeatured";
-import { EncountersRail } from "./EncountersRail";
-import styles from "./Encounters.module.css";
 
 type EncountersClientProps = {
+  /** `null` when the server read nothing (an unreadable game) or its read failed: the browser reads instead. */
   seed: EncountersSeed | null;
   initial: GameScopeInit;
-  initialFilters: EncounterFilterState;
-  initialPage: number;
-  initialError?: string | null;
+  initialUrl: EncountersUrlState;
   scope: StatsScope;
 };
 
@@ -45,17 +42,10 @@ const GAME_SCOPED_PARAMS = Object.keys(GAME_SCOPED_FILTERS);
 
 /**
  * The encounters index (spec §5, multi): every game under "all games", one game under a game. Filter/URL state and
- * the reads it drives live in `useEncountersFilters` / `useEncountersData`; everything below is layout plus the one
- * piece of state neither owns — which page of the list is on screen.
+ * the reads it drives live in `useEncountersFilters` / `useEncountersData`; this is the layout: the hero's global
+ * numbers, one toolbar, the chips of what narrows, then the list or the summary under the same filters.
  */
-export default function EncountersClient({
-  seed,
-  initial,
-  initialFilters,
-  initialPage,
-  initialError,
-  scope
-}: Readonly<EncountersClientProps>) {
+export default function EncountersClient({ seed, initial, initialUrl, scope }: Readonly<EncountersClientProps>) {
   const t = useTranslations();
   const format = useFormatter();
   const gameScope = useGameScope({ initial });
@@ -67,28 +57,23 @@ export default function EncountersClient({
   // "all" or the game once readable, `null` otherwise: another game drops the game-bound filters and returns to the
   // first page; leaving an unavailable state reads them from the URL again.
   const gameKey = ready ? (discipline ?? ALL_DISCIPLINES) : null;
-  const controls = useEncountersFilters(initialFilters, initialPage, gameKey, unavailable);
-  const { effectiveFilters, page } = controls;
-  const { listQuery, overviewQuery, tournamentsLookupQuery } = useEncountersData({
+  const controls = useEncountersFilters(initialUrl, gameKey, unavailable);
+  const { effectiveFilters, page, view } = controls;
+  const { listQuery, overviewQuery, countsQuery, insightsQuery, tournamentsLookupQuery } = useEncountersData({
     seed,
-    initialFilters,
-    initialPage,
+    initial: initialUrl,
     effectiveFilters,
     page,
+    view,
     scope,
     discipline,
     enabled: ready
   });
   const descriptors = useGameDescriptors();
   const marks = resolution !== null && showsGameMarks(resolution, gameScope.games ?? []) ? descriptors : undefined;
-
-  const overview = overviewQuery.data ?? EMPTY_OVERVIEW;
-  const rows = listQuery.data?.results ?? [];
-  const total = listQuery.data?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / ENCOUNTERS_PAGE_SIZE));
-  const isFiltered = hasActiveFilters(effectiveFilters);
-  const showingStart = rows.length ? (page - 1) * ENCOUNTERS_PAGE_SIZE + 1 : 0;
-  const showingEnd = Math.min(page * ENCOUNTERS_PAGE_SIZE, total);
+  // The page turn and the histogram land the reader back at the top of the results, under the sticky header.
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const toResults = () => resultsRef.current?.scrollIntoView({ block: "start" });
 
   if (unavailable) {
     return <GameScopeControl scope={gameScope} variant="multi" dropParams={GAME_SCOPED_PARAMS} headingLevel={1} />;
@@ -101,92 +86,73 @@ export default function EncountersClient({
     );
   }
 
-  const listBody = () => {
-    if (listQuery.isError) {
-      return <PageStateCard state="error" onAction={() => void listQuery.refetch()} />;
-    }
+  const tournaments = tournamentsLookupQuery.data ?? [];
+  // The order is not a filter: a reset keeps it.
+  const clearFilters = () => controls.applyFilters({ ...DEFAULT_FILTERS, sort: effectiveFilters.sort });
+  const rows = listQuery.data?.results ?? [];
+  const total = listQuery.data?.total ?? 0;
+
+  const list = () => {
+    if (listQuery.isError) return <PageStateCard state="error" onAction={() => void listQuery.refetch()} />;
     if (!rows.length && !listQuery.isFetching) {
-      return (
-        <PageStateCard
-          state={isFiltered ? "filtered-empty" : "empty"}
-          onAction={isFiltered ? controls.clearFilters : undefined}
-        />
-      );
+      const filtered = hasActiveFilters(effectiveFilters);
+      return <PageStateCard state={filtered ? "filtered-empty" : "empty"} onAction={filtered ? clearFilters : undefined} />;
     }
     return (
-      <EncountersDataTable
-        rows={rows}
-        columns={FULL_ENCOUNTER_COLUMNS}
-        loading={listQuery.isFetching && !rows.length}
-        games={marks}
-      />
+      <>
+        {/* The previous page stays on screen while the next one loads, dimmed: not yet the answer. */}
+        <div className={cn("transition-opacity", listQuery.isFetching && rows.length > 0 && "opacity-60")}>
+          <EncountersDataTable rows={rows} loading={listQuery.isFetching && !rows.length} games={marks} />
+        </div>
+        {rows.length ? (
+          <DataPagination
+            page={page}
+            totalPages={Math.max(1, Math.ceil(total / ENCOUNTERS_PAGE_SIZE))}
+            onPageChange={(next) => {
+              controls.setPage(next);
+              toResults();
+            }}
+            leading={t("encounters.list.showing", {
+              start: format.number((page - 1) * ENCOUNTERS_PAGE_SIZE + 1),
+              end: format.number(Math.min(page * ENCOUNTERS_PAGE_SIZE, total)),
+              total: format.number(total)
+            })}
+          />
+        ) : null}
+      </>
     );
   };
 
   return (
-    <div className={styles.surface}>
-      <EncountersHero overview={overview} />
+    <div className="space-y-4">
+      <EncountersHero overview={overviewQuery.data} />
 
-      {initialError ? (
-        <PageStateCard
-          state="error"
-          description={initialError}
-          onAction={() => {
-            void listQuery.refetch();
-            void overviewQuery.refetch();
-          }}
+      <div ref={resultsRef} className="scroll-mt-[var(--aqt-header-h)] space-y-3">
+        <EncountersToolbar
+          controls={controls}
+          counts={countsQuery.data?.counts}
+          tournaments={tournaments}
+          gameBound={discipline !== null}
         />
-      ) : null}
+        <EncountersActiveFilters controls={controls} tournaments={tournaments} />
 
-      <EncountersViewsBar
-        filters={effectiveFilters}
-        presetCounts={overview.preset_counts}
-        onApplyFilters={controls.applyFilters}
-      />
-
-      <EncountersFilterBar
-        filters={controls.filters}
-        searchValue={controls.searchValue}
-        kpis={overview.kpis}
-        tournaments={tournamentsLookupQuery.data ?? []}
-        gameBound={discipline !== null}
-        onSearchChange={controls.setSearchValue}
-        onPatch={controls.patchFilters}
-      />
-
-      <EncountersInsights overview={overview} />
-
-      <EncountersFeatured overview={overview} />
-
-      <section aria-label={t("encounters.list.title")}>
-        <div className={styles.sectionHead}>
-          <h2 className={styles.sectionTitle}>{t("encounters.list.title")}</h2>
-          <span className={styles.sectionMeta}>
-            {t("encounters.list.pageMeta", {
-              page: String(page),
-              total: String(totalPages),
-              sort: effectiveFilters.sort
-            })}
-          </span>
-        </div>
-        <div className={styles.gridTable}>
-          <div className="flex min-w-0 flex-col gap-3">
-            {listBody()}
-            <DataPagination
-              page={page}
-              totalPages={totalPages}
-              onPageChange={controls.setPage}
-              leading={t("encounters.list.showing", {
-                start: String(showingStart),
-                end: String(showingEnd),
-                total: countLabel(format, total)
-              })}
-            />
-          </div>
-
-          <EncountersRail overview={overview} />
-        </div>
-      </section>
+        {view === "insights" ? (
+          <EncountersInsights
+            query={insightsQuery}
+            filtered={hasActiveFilters({ ...effectiveFilters, status: null })}
+            onClearFilters={clearFilters}
+            onPickCloseness={(start, end) => {
+              controls.patchFilters({ closeness_min: start, closeness_max: end });
+              controls.setView("list");
+              toResults();
+            }}
+          />
+        ) : (
+          <section aria-label={t("encounters.list.label")} aria-busy={listQuery.isFetching} className="space-y-3">
+            {list()}
+          </section>
+        )}
+      </div>
     </div>
   );
 }

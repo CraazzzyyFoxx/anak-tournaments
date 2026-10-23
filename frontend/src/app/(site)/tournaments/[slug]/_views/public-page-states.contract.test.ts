@@ -20,19 +20,6 @@ type GetQueryPresentation = (input: {
   isFetching: boolean;
 }) => QueryPresentation;
 
-const encountersModule =
-  (await import("../../../../../components/EncountersTable")) as typeof import("../../../../../components/EncountersTable") & {
-    getEncountersQueryPresentation?: GetQueryPresentation;
-    activateEncounterRowFromKeyboard?: (
-      event: {
-        key: string;
-        target: object;
-        currentTarget: object;
-        preventDefault: () => void;
-      },
-      navigate: () => void
-    ) => boolean;
-  };
 const heroesModule =
   (await import("./TournamentStatsPage")) as typeof import("./TournamentStatsPage") & {
     getHeroesQueryPresentation?: GetQueryPresentation;
@@ -67,7 +54,6 @@ describe("public tournament page query states", () => {
   // (content state named "teams", count named `teamCount`); it now shares this
   // one helper, so it is covered by exactly the same table.
   const presentations: Array<[string, GetQueryPresentation | undefined]> = [
-    ["matches", encountersModule.getEncountersQueryPresentation],
     ["heroes", heroesModule.getHeroesQueryPresentation],
     ["teams", getPublicPageQueryPresentation]
   ];
@@ -157,64 +143,6 @@ describe("public tournament page query states", () => {
 });
 
 describe("public tournament data interactions", () => {
-  it("activates only the focused encounter row for Enter and Space", () => {
-    for (const key of ["Enter", " "]) {
-      const row = {};
-      let navigations = 0;
-      let prevented = 0;
-      const activated = encountersModule.activateEncounterRowFromKeyboard?.(
-        {
-          key,
-          target: row,
-          currentTarget: row,
-          preventDefault: () => {
-            prevented += 1;
-          }
-        },
-        () => {
-          navigations += 1;
-        }
-      );
-
-      expect(activated).toBe(true);
-      expect(navigations).toBe(1);
-      expect(prevented).toBe(1);
-    }
-  });
-
-  it("leaves nested log links and buttons in control of their keyboard action", () => {
-    for (const key of ["Enter", " "]) {
-      const row = {};
-      const nestedControl = {};
-      let navigations = 0;
-      let prevented = 0;
-      let nestedActions = 0;
-      const activated = encountersModule.activateEncounterRowFromKeyboard?.(
-        {
-          key,
-          target: nestedControl,
-          currentTarget: row,
-          preventDefault: () => {
-            prevented += 1;
-          }
-        },
-        () => {
-          navigations += 1;
-        }
-      );
-      nestedActions += 1;
-
-      expect(activated).toBe(false);
-      expect(navigations).toBe(0);
-      expect(prevented).toBe(0);
-      expect(nestedActions).toBe(1);
-    }
-
-    const table = readFileSync(join(componentsRoot, "EncountersTable.tsx"), "utf8");
-    expect(table).toContain("onClick={openEncounter}");
-    expect(table).toContain("event.stopPropagation()");
-  });
-
   it("scales a hero's bar against its column's leader, keeping the exact share finite", () => {
     const metric = heroesModule.getHeroPlaytimeMetric;
     const cases: Array<[number, number, number, number]> = [
@@ -271,20 +199,6 @@ describe("public tournament data page contracts", () => {
     }
   });
 
-  it("keeps matches on the supported 15-row server page and URL search contract", () => {
-    const table = readFileSync(join(componentsRoot, "EncountersTable.tsx"), "utf8");
-
-    expect(table).toContain("const PER_PAGE = 15");
-    expect(table).toContain("encounterService.getAll(");
-    expect(table).toContain("new URLSearchParams(window.location.search)");
-    expect(table).toContain('params.set("search"');
-    expect(table).toContain('params.set("page"');
-    expect(table).not.toMatch(/statusFilter|status_filter|status:\s/);
-    expect(table).not.toContain("setSearchValue(search)");
-    expect(table).toContain("searchInputRef");
-    expect(table).toContain("nextSearch");
-  });
-
   it("keeps the standings table contained, sticky and semantic", () => {
     const table = readFileSync(join(componentsRoot, "StandingsTable.tsx"), "utf8");
 
@@ -311,16 +225,14 @@ describe("public tournament data page contracts", () => {
 
   it("contains page width and horizontal table overflow at 360px", () => {
     const css = readFileSync(join(tournamentRoot, "TournamentDetail.module.css"), "utf8");
-    // The two data tables own their own CSS modules now, so the horizontal
-    // overflow boundary is asserted where it lives rather than in the route's
-    // module — which no longer defines (or needs) those classes.
-    const matchesCss = readFileSync(join(componentsRoot, "EncountersTable.module.css"), "utf8");
+    // The standings table owns its CSS module, so its horizontal overflow
+    // boundary is asserted where it lives rather than in the route's module —
+    // which no longer defines (or needs) that class.
     const standingsCss = readFileSync(join(componentsRoot, "StandingsTable.module.css"), "utf8");
 
     expect(css).toMatch(/\.publicDataPage\s*\{[\s\S]*?min-width:\s*0/);
     expect(css).toContain("@media (max-width: 640px)");
     expect(css).not.toContain("tableViewport{");
-    expect(matchesCss).toMatch(/\.tableViewport[\s\S]*?\{[\s\S]*?overflow-x:\s*auto/);
     expect(standingsCss).toMatch(/\.standingsViewport[\s\S]*?\{[\s\S]*?overflow-x:\s*auto/);
     expect(standingsCss).toMatch(/\.stickyTeamColumn\s*\{[\s\S]*?position:\s*sticky/);
   });
@@ -364,8 +276,6 @@ describe("public tournament data page contracts", () => {
 
   it("scopes every workspace-aware query with the hydrated tournament workspace", () => {
     const bracketData = readFileSync(join(tournamentRoot, "bracket", "bracketData.ts"), "utf8");
-    const encountersTable = readFileSync(join(componentsRoot, "EncountersTable.tsx"), "utf8");
-
     expect(bracketData).toContain(
       "tournamentQueryKeys.encounters(tournament.id, tournament.workspace_id)"
     );
@@ -373,8 +283,6 @@ describe("public tournament data page contracts", () => {
       pageSource("TournamentEncountersPage.tsx") +
         readFileSync(join(process.cwd(), "src/lib/tournament/encounters-query.ts"), "utf8")
     ).toContain("tournament.workspace_id");
-    expect(encountersTable).toContain("encounterService.getAll(");
-    expect(encountersTable).toContain("workspaceId");
   });
 
   it("keeps the teams grid scoped, responsive and non-destructive during refresh", () => {

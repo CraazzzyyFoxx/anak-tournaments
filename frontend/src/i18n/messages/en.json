@@ -3069,9 +3069,6 @@
     },
     "publicPages": {
       "matches": {
-        "searchLabel": "Search tournament matches",
-        "searchPlaceholder": "Search by name",
-        "tableLabel": "Tournament matches. Scroll horizontally for all result details.",
         "emptyTitle": "No matches found",
         "emptyDescription": "Matches will appear here after they are scheduled or published."
       },
@@ -3693,147 +3690,142 @@
       "title": "Encounters",
       "description": "View encounters on {siteName}."
     },
-    "dataUnavailable": "Encounter data is temporarily unavailable. Retrying in the background.",
-    "views": "Views",
-    "searchPlaceholder": "Search by team, player, or matchup…",
+    "hero": {
+      "eyebrowRoot": "Tournaments",
+      "eyebrowCurrent": "Encounters",
+      "title": "Encounters",
+      "lede": "Every encounter of every tournament and league: results, closeness and game logs.",
+      "completed": "Completed",
+      "recent": "+{count} in 7 days",
+      "withLogs": "With logs",
+      "withLogsOf": "{count} of {total}",
+      "live": "Live",
+      "upcoming": "Upcoming"
+    },
+    "toolbar": {
+      "label": "Encounter filters",
+      "status": {
+        "all": "All",
+        "live": "Live",
+        "upcoming": "Upcoming",
+        "completed": "Completed"
+      },
+      "tournamentAny": "Any tournament",
+      "format": "Format",
+      "formatAny": "Any format",
+      "formatValue": "Bo{count}",
+      "closeness": "Closeness",
+      "closenessAny": "Any closeness",
+      "closenessMin": "Closeness from {pct}",
+      "closenessRange": "Closeness {from}–{to}",
+      "searchLabel": "Search encounters",
+      "searchPlaceholder": "Team or player",
+      "sort": {
+        "date": "Newest first",
+        "closeness": "By closeness",
+        "soonest": "Soonest first"
+      },
+      "view": {
+        "label": "View",
+        "list": "List",
+        "insights": "Summary"
+      }
+    },
+    "presets": {
+      "trigger": "Presets",
+      "quick": "Quick filters",
+      "finals": "Finals",
+      "upsets": "Upsets",
+      "withLogs": "With logs",
+      "myTeam": "My team",
+      "saved": "Saved views",
+      "save": "Save current filters"
+    },
+    "savedViews": {
+      "nameLabel": "Name",
+      "defaultName": "My filters",
+      "saved": "View saved",
+      "deleted": "View deleted",
+      "deleteAria": "Delete saved view {name}",
+      "deleteTitle": "Delete saved view",
+      "deleteBody": "Delete the saved view \"{name}\"?",
+      "exists": "You already have a saved view with this name.",
+      "limit": "You can keep up to 20 saved views. Delete one to save another.",
+      "failed": "Could not save the view. Try again."
+    },
+    "chips": {
+      "label": "Active filters",
+      "remove": "Remove filter: {label}",
+      "tournament": "Tournament: {name}",
+      "stage": "Stage",
+      "search": "Search: {query}"
+    },
+    "list": {
+      "label": "Encounters",
+      "showing": "Showing {start}–{end} of {total}"
+    },
+    "insights": {
+      "title": "Summary",
+      "meta": "All time · {count, plural, one {# completed encounter} other {# completed encounters}}",
+      "closeness": {
+        "title": "Closeness",
+        "sub": "Completed encounters by closeness",
+        "avg": "Average {avg}",
+        "bar": "{from}–{to}: {count, plural, one {# encounter} other {# encounters}}. Show them in the list"
+      },
+      "length": {
+        "title": "Length and sweeps",
+        "avg": "Average length",
+        "sweepRate": "Sweep rate",
+        "sweepsMeta": "{sweeps, plural, one {# sweep} other {# sweeps}} · {distance} went the distance · Bo1 excluded"
+      },
+      "scoreLines": {
+        "title": "Final scores",
+        "sub": "Winner's score first",
+        "row": "{score}{draw, select, yes {, draw} other {}}: {count, plural, one {# encounter} other {# encounters}}, {share}"
+      },
+      "stages": {
+        "title": "By stage",
+        "groups": "Groups",
+        "playoffs": "Playoffs",
+        "swiss": "Swiss",
+        "unassigned": "No stage"
+      },
+      "maps": {
+        "title": "Popular maps",
+        "sub": "Most played",
+        "row": "{name}: {count, plural, one {played # time} other {played # times}}",
+        "empty": "No map data yet."
+      },
+      "closest": {
+        "title": "Closest encounters",
+        "sub": "Highest closeness",
+        "closeness": "Closeness"
+      }
+    },
     "roundNum": "Round {round}",
-    "roundShort": "R{round}",
     "bestOfShort": "Bo{count}",
     "mapsCount": "{count, plural, one {# map} other {# maps}}",
-    "aria": {
-      "views": "Encounter views",
-      "filters": "Encounter filters"
-    },
-    "view": {
-      "all": "All encounters",
-      "myTeam": "My team's series",
-      "finals": "Finals only",
-      "closeBo5": "Close Bo5s",
-      "upsets": "Upsets",
-      "withLogs": "With logs"
-    },
     "state": {
       "live": "Live",
       "upcoming": "Upcoming",
       "final": "Final",
       "pending": "Pending",
       "open": "Open",
-      "soon": "Soon",
-      "upset": "Upset"
-    },
-    "media": {
-      "comingTwitch": "Coming with Twitch integration"
-    },
-    "sort": {
-      "date": "Date",
-      "closeness": "Closeness",
-      "upcoming": "Upcoming"
-    },
-    "filter": {
-      "withLogs": "With logs",
-      "tournamentAny": "Tournament: Any",
-      "tournamentNamed": "Tournament: {name}",
-      "bestOf": "Best-of",
-      "bestOfAny": "Best-of: Any",
-      "bestOfValue": "Best-of: {count}",
-      "closenessAny": "Closeness: Any",
-      "closenessMin": "Closeness ≥ {pct}%",
-      "statusLive": "Live",
-      "statusUpcoming": "Upcoming",
-      "statusCompleted": "Completed",
-      "sortDate": "Sort: Date",
-      "sortCloseness": "Sort: Closeness",
-      "sortUpcoming": "Sort: Upcoming",
-      "sortTrigger": "Sort: {label}"
+      "soon": "Soon"
     },
     "col": {
       "matchup": "Matchup",
-      "round": "Round",
-      "score": "Score",
-      "maps": "Maps",
+      "result": "Result",
       "closeness": "Closeness",
-      "media": "Media",
-      "played": "Played",
-      "format": "Format",
       "when": "When",
       "logs": "Logs"
     },
-    "savedView": {
-      "saved": "View saved",
-      "deleted": "View deleted",
-      "promptName": "Saved view name",
-      "promptDefault": "Current view",
-      "deleteAria": "Delete saved view {name}",
-      "confirmDelete": "Delete saved view \"{name}\"?",
-      "saveCurrent": "Save current view",
-      "deleteTitle": "Delete saved view"
-    },
-    "insights": {
-      "title": "Insights",
-      "meta": "Past 30 days · {count, plural, one {# series} other {# series}}",
-      "avg": "Avg",
-      "max": "Max",
-      "fewer": "fewer",
-      "more": "more",
-      "series": "Series",
-      "closenessTitle": "Closeness distribution",
-      "closenessSub": "Series binned by how competitive they were",
-      "scoreTitle": "Score distribution",
-      "scoreSub": "Final series scores · Bo3 / Bo5",
-      "byStageTitle": "By stage",
-      "byStageSub": "Where series happen",
-      "noStageData": "No stage data yet."
-    },
-    "featured": {
-      "title": "Featured series",
-      "meta": "Auto-curated · Current filter scope",
-      "closestTitle": "Closest fights",
-      "closestSub": "Highest closeness reports",
-      "liveTitle": "Happening now",
-      "liveSub": "Live & upcoming series",
-      "empty": "No featured series in this slice."
-    },
-    "list": {
-      "title": "All encounters",
-      "pageMeta": "Page {page} of {total} · sorted by {sort, select, closeness {closeness} upcoming {upcoming} other {date}}",
-      "loading": "Loading encounters…",
-      "empty": "No encounters found.",
-      "showing": "Showing {start}–{end} of {total} series"
-    },
-    "hero": {
-      "eyebrow": "All tournaments · Encounters",
-      "title": "Every fight, quantified",
-      "lede": "All series across all tournaments and leagues on the platform — sliceable by stage, tournament, closeness and logs availability.",
-      "totalLabel": "Total encounters",
-      "last7Days": "last 7 days",
-      "allTime": "All time",
-      "withLogsLabel": "With game logs",
-      "ofSeries": "{count} of {total} series",
-      "avgClosenessLabel": "Avg closeness",
-      "acrossReported": "Across reported series",
-      "liveNowLabel": "Live now",
-      "upcomingCount": "{count} upcoming"
-    },
-    "pulse": {
-      "title": "This week's pulse",
-      "avgLength": "Avg series length",
-      "avgLengthMeta": "across {count} completed series",
-      "sweepRate": "Sweep rate",
-      "sweepMeta": "{sweeps} sweeps · {distance} went distance",
-      "reverseSweepRate": "Reverse-sweep rate",
-      "reverseSweepMeta": "series that came back from match point",
-      "mostDecisiveMap": "Most-decisive map"
-    },
-    "hotMaps": {
-      "title": "Hot maps",
-      "sub": "Current filter scope",
-      "empty": "No map data yet."
-    },
-    "slotBalance": {
-      "title": "Slot balance",
-      "sub": "Slot 1 vs. slot 2 winner",
-      "slotOneWins": "Slot 1 wins",
-      "slotTwoWins": "Slot 2 wins"
+    "table": {
+      "label": "Encounters",
+      "linkScore": "{one} {scoreOne}–{scoreTwo} {two}",
+      "linkVs": "{one} vs {two}",
+      "closenessValue": "Closeness {value}"
     },
     "detail": {
       "metaTitle": "{first} vs {second}",
@@ -3929,11 +3921,6 @@
     },
     "team": {
       "colName": "Name"
-    },
-    "chart": {
-      "title": "Kills and Assists Overview",
-      "kills": "Kills",
-      "assists": "Assists"
     },
     "veto": {
       "room": {

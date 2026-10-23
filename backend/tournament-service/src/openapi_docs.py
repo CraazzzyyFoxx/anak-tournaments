@@ -38,7 +38,11 @@ DOCS: dict[str, dict] = {
     },
     "rpc.tournament.encounters_overview": {
         "summary": "Get encounters overview",
-        "description": "Permission: public; no authentication required. Returns an aggregated encounters overview for the search filters, with viewer-scoped fields resolved from the optional identity.",
+        "description": "Permission: public; no authentication required — an explicit tournament_id is visibility-gated against the caller, and an unfiltered overview counts publicly visible tournaments only. Takes the encounter list's filters and returns the browse's counts: the status segments (`all`, `live`, `upcoming`, `completed`; the status filter ignored, the toggles applied) and the toggles (`finals`, `upsets`, `with_logs`, `my_team`; every other filter applied, that toggle forced on — `my_team` is 0 without an identity), plus `completed_with_logs`, `recent_completed` (played in the last 7 days) and up to 4 encounters in play.",
+    },
+    "rpc.tournament.encounters_insights": {
+        "summary": "Get encounters insights",
+        "description": "Permission: public; no authentication required — an explicit tournament_id is visibility-gated against the caller, and an unfiltered read covers publicly visible tournaments only. Takes the encounter list's filters with the status forced to `completed` and returns their analytics: the count, average closeness (0..1) and its histogram in tenths, final score lines, the split by stage kind, the 6 most played maps, the 4 closest encounters, average series length, and — over the duels of more than one map (`multi_map`) — sweeps and series that went the distance.",
     },
     "rpc.tournament.statistics_overall": {
         "summary": "Get overall statistics",
@@ -1630,7 +1634,7 @@ DOCS: dict[str, dict] = {
     # ── encounter saved-view writes ────────────────────────────────────────
     "rpc.tournament.saved_view_create": {
         "summary": "Save encounter view",
-        "description": "Permission: authenticated member of the workspace named by `workspace_id` (403 otherwise); self-service — the view belongs to the caller. Creates or upserts the calling user's saved encounter filter view in a workspace.",
+        "description": "Permission: authenticated member of the workspace named by `workspace_id` (403 otherwise); self-service — the view belongs to the caller. Creates the calling user's saved encounter filter view in a workspace; 409 `saved_view_exists` when the caller already has a view of that name, 409 `saved_view_limit` when the caller already keeps 20 views there.",
     },
     "rpc.tournament.saved_view_delete": {
         "summary": "Delete saved view",

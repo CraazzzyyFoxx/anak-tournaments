@@ -11,11 +11,11 @@ import { navigation } from "@/test/url-navigation";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import type { DisciplineDescriptor } from "@/types/discipline.types";
-import type { Encounter } from "@/types/encounter.types";
+import type { Encounter, EncounterOverview } from "@/types/encounter.types";
 import type { LookupItem, PaginatedResponse } from "@/types/pagination.types";
 
 import EncountersClient from "./EncountersClient";
-import { DEFAULT_FILTERS, EMPTY_OVERVIEW } from "./encounters.helpers";
+import { DEFAULT_FILTERS } from "./encounters.helpers";
 import type { EncountersSeed } from "./useEncountersData";
 import { PillPick } from "@/test/pill-pick";
 
@@ -55,7 +55,6 @@ vi.mock("@/services/discipline.service", () => ({ default: { list: mocks.list } 
 // The rows are the subject; the table's cells are covered by its own suite. `data-marked` is whether the page asked
 // the table to name each row's game.
 vi.mock("@/components/EncountersTable", () => ({
-  FULL_ENCOUNTER_COLUMNS: [],
   EncountersDataTable: ({ rows, games }: { rows: Encounter[]; games?: Map<string, unknown> }) => (
     <ul data-marked={games ? "yes" : "no"}>
       {rows.map((row) => (
@@ -65,16 +64,17 @@ vi.mock("@/components/EncountersTable", () => ({
   )
 }));
 // The picker's options are the subject (the Radix select only renders them while open); `data-game-bound` is whether
-// the game-bound filters are offered at all. `[data-type-search]` types "new" into the search box.
-vi.mock("./EncountersFilterBar", () => ({
-  EncountersFilterBar: ({
+// the game-bound filters are offered at all. `[data-type-search]` types "new" into the search box. The toolbar's own
+// controls have their suite (`EncountersToolbar.behavior.test.tsx`).
+vi.mock("./EncountersToolbar", () => ({
+  EncountersToolbar: ({
     tournaments,
     gameBound,
-    onSearchChange
+    controls
   }: {
     tournaments: LookupItem[];
     gameBound: boolean;
-    onSearchChange: (value: string) => void;
+    controls: { setSearchValue: (value: string) => void };
   }) => (
     <>
       <ol data-game-bound={String(gameBound)}>
@@ -82,9 +82,10 @@ vi.mock("./EncountersFilterBar", () => ({
           <li key={item.id} data-tournament={item.name} />
         ))}
       </ol>
-      <button type="button" data-type-search onClick={() => onSearchChange("new")} />
+      <button type="button" data-type-search onClick={() => controls.setSearchValue("new")} />
     </>
-  )
+  ),
+  EncountersActiveFilters: () => null
 }));
 
 const GAMES = [
@@ -103,10 +104,18 @@ const pageOf = (game: string | null, page = 1): PaginatedResponse<Encounter> => 
   };
 };
 
+const OVERVIEW: EncounterOverview = {
+  counts: { all: 0, live: 0, upcoming: 0, completed: 0, finals: 0, upsets: 0, with_logs: 0, my_team: 0 },
+  completed_with_logs: 0,
+  recent_completed: 0,
+  live: []
+};
+
 const seedOf = (game: string | null, page = 1): EncountersSeed => ({
   discipline: game,
   data: pageOf(game, page),
-  overview: EMPTY_OVERVIEW
+  overview: OVERVIEW,
+  counts: OVERVIEW
 });
 
 const TOURNAMENTS: Record<string, LookupItem[]> = {
@@ -161,8 +170,7 @@ async function mount(
           <EncountersClient
             seed={seed}
             initial={{ stored, lastGame: null, axis: "all", hostLockedWorkspaceId: null, disciplines: GAMES }}
-            initialFilters={initialFilters}
-            initialPage={initialPage}
+            initialUrl={{ page: initialPage, view: "list", filters: initialFilters }}
             scope="all"
           />
           {GAMES.map((game) => (
@@ -197,7 +205,7 @@ beforeEach(() => {
   mocks.getAll
     .mockReset()
     .mockImplementation(async (...args: ListArgs) => pageOf(args[7].discipline, args[0]));
-  mocks.getOverview.mockReset().mockResolvedValue(EMPTY_OVERVIEW);
+  mocks.getOverview.mockReset().mockResolvedValue(OVERVIEW);
   mocks.getSavedViews.mockReset().mockResolvedValue([]);
   mocks.lookup.mockReset().mockImplementation(async (_workspace: unknown, game: string) => TOURNAMENTS[game]);
   mocks.list.mockReset().mockResolvedValue(GAMES);
@@ -226,9 +234,9 @@ describe("the encounters index across games", () => {
 
     expect(mocks.getAll).toHaveBeenCalledTimes(1);
     expect(mocks.getAll).toHaveBeenCalledWith(...listRead(null));
-    expect(mocks.getOverview).toHaveBeenCalledWith("", expect.objectContaining({ discipline: null }), "all", {
-      signal: expect.any(AbortSignal)
-    });
+    // The hero's global overview and the toolbar's counts are one read while nothing narrows.
+    expect(mocks.getOverview).toHaveBeenCalledTimes(1);
+    expect(mocks.getOverview).toHaveBeenCalledWith("", { discipline: null }, "all", { signal: expect.any(AbortSignal) });
     expect(rows()).toEqual(["overwatch", "lol"]);
     expect(marked()).toBe("yes");
     // The tournament/stage pickers are one game's: under every game they give way to the hint, and nothing is looked up.
@@ -283,12 +291,9 @@ describe("the encounters index across games", () => {
     expect(mocks.getAll).toHaveBeenCalledTimes(1);
     expect(mocks.getAll).toHaveBeenCalledWith(...listRead("lol", 1));
     expect((mocks.getAll.mock.calls[0] as ListArgs)[7]).toMatchObject({ tournament_id: null, stage_id: null });
-    expect(mocks.getOverview).toHaveBeenCalledWith(
-      "",
-      expect.objectContaining({ discipline: "lol", tournament_id: null, stage_id: null }),
-      "all",
-      { signal: expect.any(AbortSignal) }
-    );
+    expect(mocks.getOverview).toHaveBeenCalledWith("", { discipline: "lol" }, "all", {
+      signal: expect.any(AbortSignal)
+    });
     expect(rows()).toEqual([]);
 
     await act(async () => lol.resolve(pageOf("lol")));
@@ -381,12 +386,7 @@ describe("the encounters index across games", () => {
     expect(pushed.get("best_of")).toBe("3");
   });
 
-  it("under every game no tournament/stage reaches a read or the URL: not the landing URL's, nor a saved view's", async () => {
-    // A signed-in viewer's saved view narrowed to one game's stage.
-    useAuthProfileStore.setState({ status: "authenticated", user: { username: "fan" } as never });
-    mocks.getSavedViews.mockResolvedValue([
-      { id: 7, workspace_id: 1, name: "Stage five", filters: { stage_id: 5, best_of: 5 }, sort_order: 0 }
-    ]);
+  it("under every game no tournament/stage reaches a read or the URL, not even the landing URL's", async () => {
     const url = "/encounters?tournament_id=11&best_of=3";
     navigation.reset(url);
     window.history.replaceState(null, "", url);
@@ -395,19 +395,12 @@ describe("the encounters index across games", () => {
     expect(mocks.getAll).toHaveBeenCalledTimes(1);
     expect(mocks.getAll).toHaveBeenCalledWith(...listRead(null));
     expect((mocks.getAll.mock.calls[0] as ListArgs)[7]).toMatchObject({ tournament_id: null, best_of: 3 });
-    expect(mocks.getOverview).toHaveBeenCalledWith(
-      "",
-      expect.objectContaining({ discipline: null, tournament_id: null, best_of: 3 }),
-      "all",
-      { signal: expect.any(AbortSignal) }
-    );
-
-    const saved = [...container.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Stage five");
-    await act(async () => saved?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    await tick();
-
-    expect((mocks.getAll.mock.lastCall as ListArgs)[7]).toMatchObject({ discipline: null, stage_id: null, best_of: 5 });
-    expect(window.location.search).toBe("?best_of=5");
+    // The counts are this filter set's; the hero's stay global.
+    expect(mocks.getOverview).toHaveBeenCalledWith("", { best_of: 3, discipline: null }, "all", {
+      signal: expect.any(AbortSignal)
+    });
+    expect(mocks.getOverview).toHaveBeenCalledWith("", { discipline: null }, "all", { signal: expect.any(AbortSignal) });
+    expect(window.location.search).toBe("?best_of=3");
   });
 
   it("leaving an unknown requested game for every game drops its tournament/stage and starts on the first page", async () => {

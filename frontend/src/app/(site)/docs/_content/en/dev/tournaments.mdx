@@ -130,7 +130,20 @@ Recalculation is a background job: `POST /api/v1/admin/standings/recalculate/{to
 
 ## What to read and what to subscribe to
 
-The public reads are `/api/v1/tournaments`, `/api/v1/tournaments/{id}`, `/api/v1/tournaments/{id}/stages`, `/api/v1/tournaments/{id}/standings`, `/api/v1/encounters` and `/api/v1/encounters/{id}`. The tournament list filters on `workspace_id`, `status` and `is_league`; the encounter list on `tournament_id`, `stage_id`, `stage_item_id`, `best_of`, `status`, `has_logs`, `closeness_min`/`closeness_max` and `scope` (`all` or `my_team`). The full route list and response schemas live in the [endpoint reference](/api/docs).
+The public reads are `/api/v1/tournaments`, `/api/v1/tournaments/{id}`, `/api/v1/tournaments/{id}/stages`, `/api/v1/tournaments/{id}/standings`, `/api/v1/encounters` and `/api/v1/encounters/{id}`. The tournament list filters on `workspace_id`, `status` and `is_league`.
+
+The encounter list filters on `tournament_id`, `stage_id`, `stage_item_id`, `best_of`, `discipline`, `status`, `has_logs`, `is_final`, `is_upset`, `closeness_min`/`closeness_max` and `scope` (`all` or `my_team`), and searches with `query`:
+
+- `status` is a stored status (`open`, `pending`, `completed`) or a derived one: `live` (in play) or `upcoming` (open or pending and not in play). Any other value is a 400.
+- `is_final=true` keeps the last positive round of a single or double elimination stage (a double elimination's grand final); `false` leaves it out. Every encounter also carries `is_final`.
+- `is_upset=true` keeps the completed duels won by the seat standing lower (a larger `position`) in the same stage item; `false` leaves them out.
+- Closeness is the range `[closeness_min, closeness_max)`; a `closeness_max` of 1 closes it.
+- `query` with `fields=name` matches the title (either way round), the seats' names and the player names on their rosters.
+- `sort` is one of `id`, `name`, `best_of`, `status`, `scheduled_at`, `closeness`, `has_logs`, `discipline` and `played_at` (anything else is a 400). NULLs sort last either way and the id breaks ties; `played_at` orders by the play date, then the schedule, then the tournament's dates.
+
+`/api/v1/encounters/overview` takes the same filters and answers the counts: the status segments (`all`, `live`, `upcoming`, `completed`) ignore `status`, and each toggle (`finals`, `upsets`, `with_logs`, `my_team`) counts the current filters with that toggle forced on. It also carries `completed_with_logs`, `recent_completed` (played in the last 7 days) and up to 4 encounters in play. `/api/v1/encounters/insights` takes them too, with `status` forced to `completed`, and answers the analytics: the closeness histogram in tenths, score lines, stage kinds, the most played maps, the closest encounters, average series length and sweeps. Rates are fractions from 0 to 1.
+
+The full route list and response schemas live in the [endpoint reference](/api/docs).
 
 The admin surface sits under `/api/v1/admin/`: tournament status and schedule, CRUD for stages, items and inputs, `activate-and-generate` for bracket generation (202, a job), standings recalculation.
 

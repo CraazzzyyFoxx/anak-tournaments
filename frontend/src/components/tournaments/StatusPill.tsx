@@ -7,27 +7,18 @@ import { cn } from "@/lib/utils";
 /**
  * Presentation buckets for tournament-domain lifecycle state. `live`,
  * `upcoming`, `finished` and `draft` are the four `TOURNAMENT_STATUS_META`
- * variants; `open` and `upset` are encounter-only states (`EncounterState`,
- * `isUpset`) that the encounters table has always drawn as the same pill.
+ * variants; `open` is a joinable state (a pickup mix taking players).
  */
-export type TournamentStatusVariant =
-  | "live"
-  | "upcoming"
-  | "finished"
-  | "draft"
-  | "open"
-  | "upset";
+export type TournamentStatusVariant = "live" | "upcoming" | "finished" | "draft" | "open";
 
 // The hue `Badge palette="aqt"` tints with, off the `--aqt-status-*` tokens
-// (design-book §1). `open`/`upset` have no status token of their own and borrow
-// the accent they have always used.
+// (design-book §1). `open` has no status token of its own and borrows the accent.
 const STATUS_HUE: Record<TournamentStatusVariant, string> = {
   live: "[--badge-hue:var(--aqt-status-live)]",
   upcoming: "[--badge-hue:var(--aqt-status-upcoming)]",
   finished: "[--badge-hue:var(--aqt-status-finished)]",
   draft: "[--badge-hue:var(--aqt-status-draft)]",
-  open: "[--badge-hue:var(--aqt-teal)]",
-  upset: "[--badge-hue:var(--aqt-violet)]"
+  open: "[--badge-hue:var(--aqt-teal)]"
 };
 
 export interface TournamentStatusPillProps extends ComponentPropsWithoutRef<"span"> {

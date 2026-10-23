@@ -8896,8 +8896,8 @@
       },
       "summary": "Update match"
     },
-    "rpc.tournament.encounters_overview": {
-      "description": "Permission: public; no authentication required. Returns an aggregated encounters overview for the search filters, with viewer-scoped fields resolved from the optional identity.",
+    "rpc.tournament.encounters_insights": {
+      "description": "Permission: public; no authentication required \u2014 an explicit tournament_id is visibility-gated against the caller, and an unfiltered read covers publicly visible tournaments only. Takes the encounter list's filters with the status forced to `completed` and returns their analytics: the count, average closeness (0..1) and its histogram in tenths, final score lines, the split by stage kind, the 6 most played maps, the 4 closest encounters, average series length, and \u2014 over the duels of more than one map (`multi_map`) \u2014 sweeps and series that went the distance.",
       "query_params": [
         {
           "name": "page",
@@ -9082,6 +9082,346 @@
             ],
             "default": null,
             "title": "Has Logs"
+          }
+        },
+        {
+          "name": "is_final",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Is Final"
+          }
+        },
+        {
+          "name": "is_upset",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Is Upset"
+          }
+        },
+        {
+          "name": "closeness_min",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Closeness Min"
+          }
+        },
+        {
+          "name": "closeness_max",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Closeness Max"
+          }
+        },
+        {
+          "name": "scope",
+          "required": false,
+          "schema": {
+            "default": "all",
+            "enum": [
+              "all",
+              "my_team"
+            ],
+            "title": "Scope",
+            "type": "string"
+          }
+        },
+        {
+          "name": "slot_count",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Slot Count"
+          }
+        },
+        {
+          "name": "discipline",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Discipline"
+          }
+        }
+      ],
+      "response": {
+        "array": false,
+        "ref": "tournament.EncounterInsightsRead"
+      },
+      "summary": "Get encounters insights"
+    },
+    "rpc.tournament.encounters_overview": {
+      "description": "Permission: public; no authentication required \u2014 an explicit tournament_id is visibility-gated against the caller, and an unfiltered overview counts publicly visible tournaments only. Takes the encounter list's filters and returns the browse's counts: the status segments (`all`, `live`, `upcoming`, `completed`; the status filter ignored, the toggles applied) and the toggles (`finals`, `upsets`, `with_logs`, `my_team`; every other filter applied, that toggle forced on \u2014 `my_team` is 0 without an identity), plus `completed_with_logs`, `recent_completed` (played in the last 7 days) and up to 4 encounters in play.",
+      "query_params": [
+        {
+          "name": "page",
+          "required": false,
+          "schema": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "per_page",
+          "required": false,
+          "schema": {
+            "default": 10,
+            "maximum": 100,
+            "minimum": -1,
+            "title": "Per Page",
+            "type": "integer"
+          }
+        },
+        {
+          "name": "entities",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Entities",
+            "type": "array"
+          }
+        },
+        {
+          "name": "only_count",
+          "required": false,
+          "schema": {
+            "default": false,
+            "title": "Only Count",
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "sort",
+          "required": false,
+          "schema": {
+            "default": "id",
+            "enum": [
+              "id",
+              "name",
+              "best_of",
+              "status",
+              "scheduled_at",
+              "closeness",
+              "has_logs",
+              "discipline",
+              "played_at"
+            ],
+            "title": "Sort",
+            "type": "string"
+          }
+        },
+        {
+          "name": "order",
+          "required": false,
+          "schema": {
+            "$ref": "#/components/schemas/tournament.SortOrder",
+            "default": "asc"
+          }
+        },
+        {
+          "name": "query",
+          "required": false,
+          "schema": {
+            "default": "",
+            "title": "Query",
+            "type": "string"
+          }
+        },
+        {
+          "name": "fields",
+          "required": false,
+          "schema": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fields",
+            "type": "array"
+          }
+        },
+        {
+          "name": "tournament_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Tournament Id"
+          }
+        },
+        {
+          "name": "stage_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stage Id"
+          }
+        },
+        {
+          "name": "stage_item_id",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Stage Item Id"
+          }
+        },
+        {
+          "name": "best_of",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Best Of"
+          }
+        },
+        {
+          "name": "status",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Status"
+          }
+        },
+        {
+          "name": "has_logs",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Has Logs"
+          }
+        },
+        {
+          "name": "is_final",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Is Final"
+          }
+        },
+        {
+          "name": "is_upset",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Is Upset"
           }
         },
         {
@@ -9793,6 +10133,38 @@
             ],
             "default": null,
             "title": "Has Logs"
+          }
+        },
+        {
+          "name": "is_final",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Is Final"
+          }
+        },
+        {
+          "name": "is_upset",
+          "required": false,
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Is Upset"
           }
         },
         {
@@ -11034,7 +11406,7 @@
       "summary": "Upsert match report form"
     },
     "rpc.tournament.saved_view_create": {
-      "description": "Permission: authenticated member of the workspace named by `workspace_id` (403 otherwise); self-service \u2014 the view belongs to the caller. Creates or upserts the calling user's saved encounter filter view in a workspace.",
+      "description": "Permission: authenticated member of the workspace named by `workspace_id` (403 otherwise); self-service \u2014 the view belongs to the caller. Creates the calling user's saved encounter filter view in a workspace; 409 `saved_view_exists` when the caller already has a view of that name, 409 `saved_view_limit` when the caller already keeps 20 views there.",
       "request": {
         "array": false,
         "ref": "tournament.EncounterSavedViewCreate"
@@ -45135,6 +45507,55 @@
       "title": "ElectOpenerInput",
       "type": "object"
     },
+    "tournament.EncounterCountsRead": {
+      "description": "The toolbar's numbers under the current filters.\n\nThe segments (``all``/``live``/``upcoming``/``completed``) ignore the status filter and apply every active\ntoggle; each toggle (``finals``/``upsets``/``with_logs``/``my_team``) applies every other filter, the status\nincluded, with itself forced on. ``my_team`` is 0 for an anonymous viewer.",
+      "properties": {
+        "all": {
+          "title": "All",
+          "type": "integer"
+        },
+        "completed": {
+          "title": "Completed",
+          "type": "integer"
+        },
+        "finals": {
+          "title": "Finals",
+          "type": "integer"
+        },
+        "live": {
+          "title": "Live",
+          "type": "integer"
+        },
+        "my_team": {
+          "title": "My Team",
+          "type": "integer"
+        },
+        "upcoming": {
+          "title": "Upcoming",
+          "type": "integer"
+        },
+        "upsets": {
+          "title": "Upsets",
+          "type": "integer"
+        },
+        "with_logs": {
+          "title": "With Logs",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "all",
+        "live",
+        "upcoming",
+        "completed",
+        "finals",
+        "upsets",
+        "with_logs",
+        "my_team"
+      ],
+      "title": "EncounterCountsRead",
+      "type": "object"
+    },
     "tournament.EncounterCreate": {
       "properties": {
         "best_of": {
@@ -45257,39 +45678,8 @@
       "title": "EncounterCreate",
       "type": "object"
     },
-    "tournament.EncounterFeaturedRead": {
-      "properties": {
-        "closest": {
-          "items": {
-            "$ref": "#/components/schemas/tournament.EncounterRead"
-          },
-          "title": "Closest",
-          "type": "array"
-        },
-        "live": {
-          "items": {
-            "$ref": "#/components/schemas/tournament.EncounterRead"
-          },
-          "title": "Live",
-          "type": "array"
-        },
-        "upcoming": {
-          "items": {
-            "$ref": "#/components/schemas/tournament.EncounterRead"
-          },
-          "title": "Upcoming",
-          "type": "array"
-        }
-      },
-      "required": [
-        "closest",
-        "upcoming",
-        "live"
-      ],
-      "title": "EncounterFeaturedRead",
-      "type": "object"
-    },
     "tournament.EncounterFiltersRead": {
+      "description": "A saved view's whole filter state; applying one replaces the page's filters.",
       "properties": {
         "best_of": {
           "anyOf": [
@@ -45339,6 +45729,30 @@
           "default": null,
           "title": "Has Logs"
         },
+        "is_final": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Final"
+        },
+        "is_upset": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Upset"
+        },
         "query": {
           "default": "",
           "title": "Query",
@@ -45355,6 +45769,10 @@
         },
         "sort": {
           "default": "date",
+          "enum": [
+            "date",
+            "closeness"
+          ],
           "title": "Sort",
           "type": "string"
         },
@@ -45393,6 +45811,18 @@
           ],
           "default": null,
           "title": "Status"
+        },
+        "tournament_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tournament Id"
         }
       },
       "title": "EncounterFiltersRead",
@@ -45598,17 +46028,12 @@
           "title": "End",
           "type": "number"
         },
-        "label": {
-          "title": "Label",
-          "type": "string"
-        },
         "start": {
           "title": "Start",
           "type": "number"
         }
       },
       "required": [
-        "label",
         "start",
         "end",
         "count"
@@ -45616,7 +46041,8 @@
       "title": "EncounterHistogramBucketRead",
       "type": "object"
     },
-    "tournament.EncounterKpiRead": {
+    "tournament.EncounterInsightsRead": {
+      "description": "``GET /encounters/insights``: the analytics of the completed encounters under the browse's filters (the status\nfilter is forced to ``completed``). Rates are fractions, 0..1.",
       "properties": {
         "avg_closeness": {
           "anyOf": [
@@ -45629,41 +46055,83 @@
           ],
           "title": "Avg Closeness"
         },
-        "live_now_count": {
-          "title": "Live Now Count",
+        "avg_series_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Avg Series Seconds"
+        },
+        "closeness_histogram": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterHistogramBucketRead"
+          },
+          "title": "Closeness Histogram",
+          "type": "array"
+        },
+        "closest": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterRead"
+          },
+          "title": "Closest",
+          "type": "array"
+        },
+        "completed": {
+          "title": "Completed",
           "type": "integer"
         },
-        "recent_count": {
-          "title": "Recent Count",
+        "hot_maps": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterMapMetricRead"
+          },
+          "title": "Hot Maps",
+          "type": "array"
+        },
+        "multi_map": {
+          "title": "Multi Map",
           "type": "integer"
         },
-        "total_encounters": {
-          "title": "Total Encounters",
+        "score_lines": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterScoreLineRead"
+          },
+          "title": "Score Lines",
+          "type": "array"
+        },
+        "stage_kinds": {
+          "items": {
+            "$ref": "#/components/schemas/tournament.EncounterStageKindRead"
+          },
+          "title": "Stage Kinds",
+          "type": "array"
+        },
+        "sweeps": {
+          "title": "Sweeps",
           "type": "integer"
         },
-        "upcoming_count": {
-          "title": "Upcoming Count",
+        "went_distance": {
+          "title": "Went Distance",
           "type": "integer"
-        },
-        "with_logs_count": {
-          "title": "With Logs Count",
-          "type": "integer"
-        },
-        "with_logs_pct": {
-          "title": "With Logs Pct",
-          "type": "number"
         }
       },
       "required": [
-        "total_encounters",
-        "recent_count",
-        "with_logs_count",
-        "with_logs_pct",
+        "completed",
         "avg_closeness",
-        "live_now_count",
-        "upcoming_count"
+        "closeness_histogram",
+        "score_lines",
+        "stage_kinds",
+        "hot_maps",
+        "closest",
+        "avg_series_seconds",
+        "multi_map",
+        "sweeps",
+        "went_distance"
       ],
-      "title": "EncounterKpiRead",
+      "title": "EncounterInsightsRead",
       "type": "object"
     },
     "tournament.EncounterMapMetricRead": {
@@ -45685,65 +46153,32 @@
       "type": "object"
     },
     "tournament.EncounterOverviewRead": {
+      "description": "``GET /encounters/overview``: the cheap summary; asked with no filters it is the platform's own numbers.",
       "properties": {
-        "closeness_histogram": {
+        "completed_with_logs": {
+          "title": "Completed With Logs",
+          "type": "integer"
+        },
+        "counts": {
+          "$ref": "#/components/schemas/tournament.EncounterCountsRead"
+        },
+        "live": {
           "items": {
-            "$ref": "#/components/schemas/tournament.EncounterHistogramBucketRead"
+            "$ref": "#/components/schemas/tournament.EncounterRead"
           },
-          "title": "Closeness Histogram",
+          "title": "Live",
           "type": "array"
         },
-        "featured": {
-          "$ref": "#/components/schemas/tournament.EncounterFeaturedRead"
-        },
-        "hot_maps": {
-          "items": {
-            "$ref": "#/components/schemas/tournament.EncounterMapMetricRead"
-          },
-          "title": "Hot Maps",
-          "type": "array"
-        },
-        "kpis": {
-          "$ref": "#/components/schemas/tournament.EncounterKpiRead"
-        },
-        "preset_counts": {
-          "additionalProperties": {
-            "type": "integer"
-          },
-          "title": "Preset Counts",
-          "type": "object"
-        },
-        "pulse": {
-          "$ref": "#/components/schemas/tournament.EncounterPulseRead"
-        },
-        "score_heatmap": {
-          "items": {
-            "$ref": "#/components/schemas/tournament.EncounterScoreHeatmapCellRead"
-          },
-          "title": "Score Heatmap",
-          "type": "array"
-        },
-        "slot_balance": {
-          "$ref": "#/components/schemas/tournament.EncounterSlotBalanceRead"
-        },
-        "stage_split": {
-          "items": {
-            "$ref": "#/components/schemas/tournament.EncounterStageSplitRead"
-          },
-          "title": "Stage Split",
-          "type": "array"
+        "recent_completed": {
+          "title": "Recent Completed",
+          "type": "integer"
         }
       },
       "required": [
-        "kpis",
-        "preset_counts",
-        "closeness_histogram",
-        "score_heatmap",
-        "stage_split",
-        "featured",
-        "hot_maps",
-        "pulse",
-        "slot_balance"
+        "counts",
+        "completed_with_logs",
+        "recent_completed",
+        "live"
       ],
       "title": "EncounterOverviewRead",
       "type": "object"
@@ -45782,63 +46217,6 @@
         "name"
       ],
       "title": "EncounterParticipationRef",
-      "type": "object"
-    },
-    "tournament.EncounterPulseRead": {
-      "properties": {
-        "avg_series_seconds": {
-          "anyOf": [
-            {
-              "type": "number"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Avg Series Seconds"
-        },
-        "completed_series_count": {
-          "title": "Completed Series Count",
-          "type": "integer"
-        },
-        "most_decisive_map": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "title": "Most Decisive Map"
-        },
-        "reverse_sweep_rate": {
-          "title": "Reverse Sweep Rate",
-          "type": "number"
-        },
-        "sweep_count": {
-          "title": "Sweep Count",
-          "type": "integer"
-        },
-        "sweep_rate": {
-          "title": "Sweep Rate",
-          "type": "number"
-        },
-        "went_distance_count": {
-          "title": "Went Distance Count",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "avg_series_seconds",
-        "completed_series_count",
-        "sweep_rate",
-        "sweep_count",
-        "went_distance_count",
-        "reverse_sweep_rate",
-        "most_decisive_map"
-      ],
-      "title": "EncounterPulseRead",
       "type": "object"
     },
     "tournament.EncounterRead": {
@@ -45927,6 +46305,11 @@
         "id": {
           "title": "Id",
           "type": "integer"
+        },
+        "is_final": {
+          "default": false,
+          "title": "Is Final",
+          "type": "boolean"
         },
         "is_live": {
           "default": false,
@@ -46728,28 +47111,28 @@
       "title": "EncounterSavedViewRead",
       "type": "object"
     },
-    "tournament.EncounterScoreHeatmapCellRead": {
-      "description": "One scoreline of a two-seat encounter, slot 1 against slot 2.",
+    "tournament.EncounterScoreLineRead": {
+      "description": "One final score of a completed duel, the winner's side first; ``winner == loser`` is a draw.",
       "properties": {
         "count": {
           "title": "Count",
           "type": "integer"
         },
-        "slot_one": {
-          "title": "Slot One",
+        "loser": {
+          "title": "Loser",
           "type": "integer"
         },
-        "slot_two": {
-          "title": "Slot Two",
+        "winner": {
+          "title": "Winner",
           "type": "integer"
         }
       },
       "required": [
-        "slot_one",
-        "slot_two",
+        "winner",
+        "loser",
         "count"
       ],
-      "title": "EncounterScoreHeatmapCellRead",
+      "title": "EncounterScoreLineRead",
       "type": "object"
     },
     "tournament.EncounterSearchQueryParams": {
@@ -46831,6 +47214,30 @@
           ],
           "default": null,
           "title": "Has Logs"
+        },
+        "is_final": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Final"
+        },
+        "is_upset": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Is Upset"
         },
         "only_count": {
           "default": false,
@@ -46975,35 +47382,6 @@
       "title": "EncounterSeatInput",
       "type": "object"
     },
-    "tournament.EncounterSlotBalanceRead": {
-      "description": "How often each seat of a duel wins \u2014 the seeding bias a bracket's slot 1\ncarries, which is all \"side\" ever meant here.",
-      "properties": {
-        "slot_one_win_pct": {
-          "title": "Slot One Win Pct",
-          "type": "number"
-        },
-        "slot_one_wins": {
-          "title": "Slot One Wins",
-          "type": "integer"
-        },
-        "slot_two_win_pct": {
-          "title": "Slot Two Win Pct",
-          "type": "number"
-        },
-        "slot_two_wins": {
-          "title": "Slot Two Wins",
-          "type": "integer"
-        }
-      },
-      "required": [
-        "slot_one_wins",
-        "slot_two_wins",
-        "slot_one_win_pct",
-        "slot_two_win_pct"
-      ],
-      "title": "EncounterSlotBalanceRead",
-      "type": "object"
-    },
     "tournament.EncounterSlotSourceRead": {
       "description": "Where an unresolved slot's team comes from: ``source_position`` of\n``encounter_id`` fills ``slot`` of this encounter.\n\nThe bracket's real advancement edges (``EncounterLink``). A reader labels an\nempty slot from them (\"1st of M3\") instead of inferring the bracket's shape\nfrom round numbers, which cannot tell a lower bracket seeded from the group\nstage apart from one fed by the upper bracket's first losers. Both ends are\nplaces and seats, never winner/loser or home/away.",
       "properties": {
@@ -47028,27 +47406,28 @@
       "title": "EncounterSlotSourceRead",
       "type": "object"
     },
-    "tournament.EncounterStageSplitRead": {
+    "tournament.EncounterStageKindRead": {
       "properties": {
         "count": {
           "title": "Count",
           "type": "integer"
         },
-        "name": {
-          "title": "Name",
+        "kind": {
+          "enum": [
+            "groups",
+            "playoffs",
+            "swiss",
+            "unassigned"
+          ],
+          "title": "Kind",
           "type": "string"
-        },
-        "pct": {
-          "title": "Pct",
-          "type": "number"
         }
       },
       "required": [
-        "name",
-        "count",
-        "pct"
+        "kind",
+        "count"
       ],
-      "title": "EncounterStageSplitRead",
+      "title": "EncounterStageKindRead",
       "type": "object"
     },
     "tournament.EncounterStatus": {

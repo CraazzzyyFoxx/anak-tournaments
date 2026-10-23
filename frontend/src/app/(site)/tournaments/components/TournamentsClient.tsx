@@ -215,7 +215,7 @@ const TournamentsClient = ({
   );
 
   // The overview is read for the chosen game, so its live strip is that game's before the server limit.
-  const liveGroups = useMemo(() => groupLiveByTournament(overview?.featured.live ?? []), [overview]);
+  const liveGroups = useMemo(() => groupLiveByTournament(overview?.live ?? []), [overview]);
 
   if (resolution === null) {
     return gameScope.isError ? (

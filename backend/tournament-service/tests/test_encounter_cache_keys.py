@@ -39,19 +39,26 @@ class EncounterCacheKeyTests(IsolatedAsyncioTestCase):
 
         self.assertEqual(load_encounters.await_count, 2)
 
-    def test_every_sql_changing_param_reaches_both_keys(self) -> None:
+    def test_every_sql_changing_param_reaches_every_key(self) -> None:
         # The key once left the game out: whichever game asked first had its page served to every other game.
         variants = [
             encounter_schemas.EncounterSearchParams(discipline="overwatch"),
             encounter_schemas.EncounterSearchParams(discipline="deadlock"),
             encounter_schemas.EncounterSearchParams(),
             encounter_schemas.EncounterSearchParams(slot_count=8),
+            encounter_schemas.EncounterSearchParams(is_final=True),
+            encounter_schemas.EncounterSearchParams(is_final=False),
+            encounter_schemas.EncounterSearchParams(is_upset=True),
         ]
         for template, function in (
             (encounter_flows.ENCOUNTERS_CACHE_KEY, encounter_flows.EncounterFlowsService.get_all_encounters),
             (
                 encounter_flows.ENCOUNTERS_OVERVIEW_CACHE_KEY,
                 encounter_flows.EncounterFlowsService.get_encounters_overview,
+            ),
+            (
+                encounter_flows.ENCOUNTERS_INSIGHTS_CACHE_KEY,
+                encounter_flows.EncounterFlowsService.get_encounters_insights,
             ),
         ):
             keys = {

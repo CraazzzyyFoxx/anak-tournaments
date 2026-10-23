@@ -22,8 +22,12 @@ export interface SavedViewCallbacks {
 }
 
 export interface EncounterSavedViews {
+  /** `undefined` for an anonymous viewer, and while the list loads. */
   views: EncounterSavedView[] | undefined;
   savePending: boolean;
+  /** The last save's refusal, shown in the naming dialog (`null` once cleared). */
+  saveError: unknown;
+  clearSaveError: () => void;
   deletePending: boolean;
   /**
    * Opens the sign-in modal (returning here afterwards) and answers `false`
@@ -35,10 +39,7 @@ export interface EncounterSavedViews {
 }
 
 /** The viewer's own saved filter sets, plus the writes that maintain them. */
-export function useEncounterSavedViews({
-  onSaved,
-  onDeleted
-}: SavedViewCallbacks): EncounterSavedViews {
+export function useEncounterSavedViews({ onSaved, onDeleted }: SavedViewCallbacks): EncounterSavedViews {
   const t = useTranslations();
   const queryClient = useQueryClient();
   const { user } = useAuthProfile();
@@ -56,12 +57,14 @@ export function useEncounterSavedViews({
   });
 
   const saveViewMutation = useMutation({
+    // A refusal (a taken name, the 20-view limit) belongs in the dialog, next to the name it is about.
+    meta: { suppressErrorToast: true },
     mutationFn: ({ name, filters }: { name: string; filters: EncounterFilterState }) =>
       encounterService.saveView(name, filters, currentWorkspaceId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: listKey });
       onSaved();
-      notify.success(t("encounters.savedView.saved"));
+      notify.success(t("encounters.savedViews.saved"));
     }
   });
 
@@ -70,13 +73,15 @@ export function useEncounterSavedViews({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: listKey });
       onDeleted();
-      notify.success(t("encounters.savedView.deleted"));
+      notify.success(t("encounters.savedViews.deleted"));
     }
   });
 
   return {
-    views: savedViewsQuery.data,
+    views: user ? savedViewsQuery.data : undefined,
     savePending: saveViewMutation.isPending,
+    saveError: saveViewMutation.error,
+    clearSaveError: saveViewMutation.reset,
     deletePending: deleteViewMutation.isPending,
     requireAuth: () => {
       if (user) return true;

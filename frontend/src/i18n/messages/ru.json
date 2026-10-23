@@ -3069,9 +3069,6 @@
     },
     "publicPages": {
       "matches": {
-        "searchLabel": "Поиск по матчам турнира",
-        "searchPlaceholder": "Поиск по названию",
-        "tableLabel": "Матчи турнира. Прокрутите по горизонтали, чтобы увидеть все данные.",
         "emptyTitle": "Матчи не найдены",
         "emptyDescription": "Матчи появятся здесь после публикации или составления расписания."
       },
@@ -3693,147 +3690,142 @@
       "title": "Встречи",
       "description": "Встречи на {siteName}."
     },
-    "dataUnavailable": "Данные о встречах временно недоступны. Повторяем попытку в фоновом режиме.",
-    "views": "Виды",
-    "searchPlaceholder": "Поиск по команде, игроку или паре соперников…",
-    "roundNum": "Раунд {round}",
-    "roundShort": "Р{round}",
-    "bestOfShort": "Bo{count}",
-    "mapsCount": "{count, plural, one {# карта} few {# карты} many {# карт} other {# карты}}",
-    "aria": {
-      "views": "Виды встреч",
-      "filters": "Фильтры встреч"
-    },
-    "view": {
-      "all": "Все встречи",
-      "myTeam": "Серии моей команды",
-      "finals": "Только финалы",
-      "closeBo5": "Напряжённые Bo5",
-      "upsets": "Апсеты",
-      "withLogs": "С логами"
-    },
-    "state": {
-      "live": "Идёт",
-      "upcoming": "Предстоит",
-      "final": "Завершён",
-      "pending": "Ожидание",
-      "open": "Открыт",
-      "soon": "Скоро",
-      "upset": "Апсет"
-    },
-    "media": {
-      "comingTwitch": "Появится с интеграцией Twitch"
-    },
-    "sort": {
-      "date": "Дата",
-      "closeness": "Напряжённость",
-      "upcoming": "Ближайшие"
-    },
-    "filter": {
+    "hero": {
+      "eyebrowRoot": "Турниры",
+      "eyebrowCurrent": "Встречи",
+      "title": "Встречи",
+      "lede": "Все встречи турниров и лиг: результаты, напряжённость и логи игр.",
+      "completed": "Завершено",
+      "recent": "+{count} за 7 дней",
       "withLogs": "С логами",
-      "tournamentAny": "Турнир: любой",
-      "tournamentNamed": "Турнир: {name}",
-      "bestOf": "Формат",
-      "bestOfAny": "Формат: любой",
-      "bestOfValue": "Формат: Bo{count}",
-      "closenessAny": "Напряжённость: любая",
-      "closenessMin": "Напряжённость ≥ {pct}%",
-      "statusLive": "Идут",
-      "statusUpcoming": "Предстоят",
-      "statusCompleted": "Завершены",
-      "sortDate": "Сортировка: дата",
-      "sortCloseness": "Сортировка: напряжённость",
-      "sortUpcoming": "Сортировка: ближайшие",
-      "sortTrigger": "Сортировка: {label}"
+      "withLogsOf": "{count} из {total}",
+      "live": "Идут",
+      "upcoming": "Предстоят"
     },
-    "col": {
-      "matchup": "Пара",
-      "round": "Раунд",
-      "score": "Счёт",
-      "maps": "Карты",
-      "closeness": "Напряжённость",
-      "media": "Медиа",
-      "played": "Сыграно",
+    "toolbar": {
+      "label": "Фильтры встреч",
+      "status": {
+        "all": "Все",
+        "live": "Идут",
+        "upcoming": "Предстоят",
+        "completed": "Завершены"
+      },
+      "tournamentAny": "Любой турнир",
       "format": "Формат",
-      "when": "Когда",
-      "logs": "Логи"
+      "formatAny": "Любой формат",
+      "formatValue": "Bo{count}",
+      "closeness": "Напряжённость",
+      "closenessAny": "Любая напряжённость",
+      "closenessMin": "Напряжённость от {pct}",
+      "closenessRange": "Напряжённость {from}–{to}",
+      "searchLabel": "Поиск встреч",
+      "searchPlaceholder": "Команда или игрок",
+      "sort": {
+        "date": "Сначала новые",
+        "closeness": "По напряжённости",
+        "soonest": "Сначала ближайшие"
+      },
+      "view": {
+        "label": "Вид",
+        "list": "Список",
+        "insights": "Сводка"
+      }
     },
-    "savedView": {
-      "saved": "Вид сохранён",
-      "deleted": "Вид удалён",
-      "promptName": "Название вида",
-      "promptDefault": "Текущий вид",
-      "deleteAria": "Удалить сохранённый вид {name}",
-      "confirmDelete": "Удалить сохранённый вид «{name}»?",
-      "saveCurrent": "Сохранить текущий вид",
-      "deleteTitle": "Удалить сохранённый вид"
+    "presets": {
+      "trigger": "Подборки",
+      "quick": "Быстрые фильтры",
+      "finals": "Финалы",
+      "upsets": "Апсеты",
+      "withLogs": "С логами",
+      "myTeam": "Моя команда",
+      "saved": "Мои подборки",
+      "save": "Сохранить текущие фильтры"
+    },
+    "savedViews": {
+      "nameLabel": "Название",
+      "defaultName": "Мои фильтры",
+      "saved": "Подборка сохранена",
+      "deleted": "Подборка удалена",
+      "deleteAria": "Удалить подборку «{name}»",
+      "deleteTitle": "Удалить подборку",
+      "deleteBody": "Удалить подборку «{name}»?",
+      "exists": "Подборка с таким названием уже есть.",
+      "limit": "Можно хранить до 20 подборок. Удалите одну, чтобы сохранить новую.",
+      "failed": "Не удалось сохранить подборку. Попробуйте ещё раз."
+    },
+    "chips": {
+      "label": "Активные фильтры",
+      "remove": "Убрать фильтр: {label}",
+      "tournament": "Турнир: {name}",
+      "stage": "Стадия",
+      "search": "Поиск: {query}"
+    },
+    "list": {
+      "label": "Встречи",
+      "showing": "Показано {start}–{end} из {total}"
     },
     "insights": {
       "title": "Сводка",
-      "meta": "За последние 30 дней · {count, plural, one {# серия} few {# серии} many {# серий} other {# серии}}",
-      "avg": "Сред.",
-      "max": "Макс.",
-      "fewer": "меньше",
-      "more": "больше",
-      "series": "Серии",
-      "closenessTitle": "Распределение напряжённости",
-      "closenessSub": "Серии, сгруппированные по накалу",
-      "scoreTitle": "Распределение счёта",
-      "scoreSub": "Итоговый счёт серий · Bo3 / Bo5",
-      "byStageTitle": "По этапам",
-      "byStageSub": "Где проходят серии",
-      "noStageData": "Пока нет данных по этапам."
+      "meta": "За всё время · {count, plural, one {# завершённая встреча} few {# завершённые встречи} many {# завершённых встреч} other {# завершённой встречи}}",
+      "closeness": {
+        "title": "Напряжённость",
+        "sub": "Завершённые встречи по напряжённости",
+        "avg": "В среднем {avg}",
+        "bar": "{from}–{to}: {count, plural, one {# встреча} few {# встречи} many {# встреч} other {# встречи}}. Показать в списке"
+      },
+      "length": {
+        "title": "Длительность и победы всухую",
+        "avg": "Средняя длительность",
+        "sweepRate": "Победы всухую",
+        "sweepsMeta": "{sweeps} всухую · {distance} до последней карты · без Bo1"
+      },
+      "scoreLines": {
+        "title": "Итоговый счёт",
+        "sub": "Первым — счёт победителя",
+        "row": "{score}{draw, select, yes {, ничья} other {}}: {count, plural, one {# встреча} few {# встречи} many {# встреч} other {# встречи}}, {share}"
+      },
+      "stages": {
+        "title": "По стадиям",
+        "groups": "Группы",
+        "playoffs": "Плей-офф",
+        "swiss": "Швейцарская система",
+        "unassigned": "Без стадии"
+      },
+      "maps": {
+        "title": "Популярные карты",
+        "sub": "Чаще всего сыгранные",
+        "row": "{name}: {count, plural, one {сыграна # раз} few {сыграна # раза} many {сыграна # раз} other {сыграна # раза}}",
+        "empty": "Данных по картам пока нет."
+      },
+      "closest": {
+        "title": "Самые напряжённые",
+        "sub": "С наибольшей напряжённостью",
+        "closeness": "Напряжённость"
+      }
     },
-    "featured": {
-      "title": "Избранные серии",
-      "meta": "Автоподборка · Текущая область фильтра",
-      "closestTitle": "Самые напряжённые",
-      "closestSub": "Отчёты с наивысшей напряжённостью",
-      "liveTitle": "Прямо сейчас",
-      "liveSub": "Идущие и предстоящие серии",
-      "empty": "Нет избранных серий в этой выборке."
+    "roundNum": "Раунд {round}",
+    "bestOfShort": "Bo{count}",
+    "mapsCount": "{count, plural, one {# карта} few {# карты} many {# карт} other {# карты}}",
+    "state": {
+      "live": "Идёт",
+      "upcoming": "Предстоит",
+      "final": "Завершена",
+      "pending": "Ожидание",
+      "open": "Открыта",
+      "soon": "Скоро"
     },
-    "list": {
-      "title": "Все встречи",
-      "pageMeta": "Страница {page} из {total} · сортировка по {sort, select, closeness {напряжённости} upcoming {ближайшим} other {дате}}",
-      "loading": "Загрузка встреч…",
-      "empty": "Встречи не найдены.",
-      "showing": "Показано {start}–{end} из {total} серий"
+    "col": {
+      "matchup": "Пара",
+      "result": "Результат",
+      "closeness": "Напряжённость",
+      "when": "Когда",
+      "logs": "Логи"
     },
-    "hero": {
-      "eyebrow": "Все турниры · Встречи",
-      "title": "Каждый бой — в цифрах",
-      "lede": "Все серии всех турниров и лиг на платформе — с фильтрами по этапу, турниру, напряжённости и наличию логов.",
-      "totalLabel": "Всего встреч",
-      "last7Days": "за 7 дней",
-      "allTime": "За всё время",
-      "withLogsLabel": "С логами матча",
-      "ofSeries": "{count} из {total} серий",
-      "avgClosenessLabel": "Средняя напряжённость",
-      "acrossReported": "По сериям с отчётами",
-      "liveNowLabel": "Идёт сейчас",
-      "upcomingCount": "{count} предстоящих"
-    },
-    "pulse": {
-      "title": "Пульс недели",
-      "avgLength": "Средняя длина серии",
-      "avgLengthMeta": "по {count} завершённым сериям",
-      "sweepRate": "Доля сухих серий",
-      "sweepMeta": "{sweeps} всухую · {distance} до последней карты",
-      "reverseSweepRate": "Доля камбэков",
-      "reverseSweepMeta": "серии, отыгранные с матчпоинта",
-      "mostDecisiveMap": "Самая частая решающая карта"
-    },
-    "hotMaps": {
-      "title": "Популярные карты",
-      "sub": "Текущая область фильтра",
-      "empty": "Пока нет данных по картам."
-    },
-    "slotBalance": {
-      "title": "Баланс слотов",
-      "sub": "Победитель: слот 1 или слот 2",
-      "slotOneWins": "Победы слота 1",
-      "slotTwoWins": "Победы слота 2"
+    "table": {
+      "label": "Встречи",
+      "linkScore": "{one} {scoreOne}–{scoreTwo} {two}",
+      "linkVs": "{one} против {two}",
+      "closenessValue": "Напряжённость {value}"
     },
     "detail": {
       "metaTitle": "{first} против {second}",
@@ -3929,11 +3921,6 @@
     },
     "team": {
       "colName": "Имя"
-    },
-    "chart": {
-      "title": "Обзор убийств и ассистов",
-      "kills": "Убийства",
-      "assists": "Ассисты"
     },
     "veto": {
       "room": {

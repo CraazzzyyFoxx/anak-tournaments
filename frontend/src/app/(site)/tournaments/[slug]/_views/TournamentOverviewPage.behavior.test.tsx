@@ -305,6 +305,7 @@ function makeEncounter(
     ended_at: new Date("2024-08-12T13:00:00Z").toISOString(),
     played_at: null,
     is_live: false,
+    is_final: false,
     current_map_index: null,
     confirmed_at: null,
     matches: [],

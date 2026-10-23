@@ -294,10 +294,7 @@ beforeEach(() => {
     }
   );
   getFacets.mockReset().mockResolvedValue(facets());
-  getOverview.mockReset().mockResolvedValue({
-    featured: { live: [] },
-    kpis: { live_now_count: 0 }
-  });
+  getOverview.mockReset().mockResolvedValue({ live: [] });
   getOverallStatistics.mockReset().mockResolvedValue({ players: 1453, teams: 210 });
 });
 

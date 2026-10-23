@@ -130,7 +130,20 @@ Host: owt.craazzzyyfoxx.me
 
 ## Что читать и на что подписываться
 
-Публичные чтения — `/api/v1/tournaments`, `/api/v1/tournaments/{id}`, `/api/v1/tournaments/{id}/stages`, `/api/v1/tournaments/{id}/standings`, `/api/v1/encounters`, `/api/v1/encounters/{id}`. Список турниров фильтруется по `workspace_id`, `status` и `is_league`; список встреч — по `tournament_id`, `stage_id`, `stage_item_id`, `best_of`, `status`, `has_logs`, `closeness_min`/`closeness_max` и `scope` (`all` или `my_team`). Полный перечень маршрутов и схемы ответов — в [справочнике эндпоинтов](/api/docs).
+Публичные чтения — `/api/v1/tournaments`, `/api/v1/tournaments/{id}`, `/api/v1/tournaments/{id}/stages`, `/api/v1/tournaments/{id}/standings`, `/api/v1/encounters`, `/api/v1/encounters/{id}`. Список турниров фильтруется по `workspace_id`, `status` и `is_league`.
+
+Список встреч фильтруется по `tournament_id`, `stage_id`, `stage_item_id`, `best_of`, `discipline`, `status`, `has_logs`, `is_final`, `is_upset`, `closeness_min`/`closeness_max` и `scope` (`all` или `my_team`), а ищет по `query`:
+
+- `status` — сохранённый статус (`open`, `pending`, `completed`) или производный: `live` (идёт сейчас) и `upcoming` (открыта или ожидает и ещё не идёт). Любое другое значение — 400.
+- `is_final=true` оставляет последний положительный раунд стадии с одиночным или двойным выбыванием (в двойном — гранд-финал); `false` его исключает. Каждая встреча несёт и поле `is_final`.
+- `is_upset=true` оставляет завершённые дуэли, которые выиграла команда, стоящая ниже (с большим `position`) в том же элементе стадии; `false` их исключает.
+- Напряжённость — полуинтервал `[closeness_min, closeness_max)`; при `closeness_max`, равном 1, он замкнут.
+- `query` с `fields=name` ищет по названию встречи (в любом порядке команд), по названиям участвующих команд и по именам игроков в их составах.
+- `sort` — одно из `id`, `name`, `best_of`, `status`, `scheduled_at`, `closeness`, `has_logs`, `discipline` и `played_at` (иначе 400). `NULL` в любом направлении идут последними, равенство разрешает id; `played_at` упорядочивает по дате игры, затем по расписанию, затем по датам турнира.
+
+`/api/v1/encounters/overview` принимает те же фильтры и отдаёт счётчики: сегменты статуса (`all`, `live`, `upcoming`, `completed`) не учитывают `status`, а каждый переключатель (`finals`, `upsets`, `with_logs`, `my_team`) считает текущие фильтры с ним самим включённым. Ещё в ответе `completed_with_logs`, `recent_completed` (сыгранные за последние 7 дней) и до 4 идущих встреч. `/api/v1/encounters/insights` принимает их же, но `status` всегда `completed`, и отдаёт аналитику: гистограмму напряжённости по десятым, счета, виды стадий, самые частые карты, самые напряжённые встречи, среднюю длительность встречи и сухие победы. Доли — дроби от 0 до 1.
+
+Полный перечень маршрутов и схемы ответов — в [справочнике эндпоинтов](/api/docs).
 
 Административная часть живёт под `/api/v1/admin/`: статус и расписание турнира, CRUD стадий, элементов и входов, `activate-and-generate` для генерации сетки (202, задача), пересчёт таблицы.
 

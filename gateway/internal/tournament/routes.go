@@ -33,6 +33,7 @@ var PublicReadRoutes = []edge.RouteSpec{
 	// encounter.py
 	{Method: "GET", Pattern: "/api/v1/encounters", Queue: "rpc.tournament.list_encounters", AllQuery: true, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/encounters/overview", Queue: "rpc.tournament.encounters_overview", AllQuery: true, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/encounters/insights", Queue: "rpc.tournament.encounters_insights", AllQuery: true, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/encounters/views", Queue: "rpc.tournament.saved_views", Query: []string{"workspace_id"}, Auth: edge.AuthRequired},
 	{Method: "GET", Pattern: "/api/v1/encounters/{id}", Queue: "rpc.tournament.get_encounter", IDParam: "id", Query: []string{"entities"}, Auth: edge.AuthOptional},
 	{Method: "GET", Pattern: "/api/v1/encounters/{encounter_id}/ffa", Queue: "rpc.tournament.ffa_lobby", IDParam: "encounter_id", Auth: edge.AuthOptional},

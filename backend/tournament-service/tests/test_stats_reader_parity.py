@@ -479,7 +479,7 @@ async def collect_outputs(session: AsyncSession, ids: dict[str, int]) -> dict:
     outputs["encounter_overviews"] = {}
     outputs["tournament_overviews"] = {}
     for name, scope in (("platform", None), ("workspace", workspace), ("other_workspace", ids["workspace_other"])):
-        # The featured strips expand ``matches`` and ``matches.map``.
+        # Collected so the read runs over the parity data; the redesigned shape is not compared (``comparable``).
         outputs["encounter_overviews"][name] = await _golden(
             session,
             await _uncached(
@@ -648,15 +648,15 @@ def assert_tournament_golden(actual: dict) -> None:
     def without_post_capture_fields(value):
         """Fields added after the frozen P4 capture are not reader output: ``TournamentRead.logs_official`` (P5),
         the owner context (``workspace_id``/``discipline``) P7 added to ``EncounterRead`` and ``MatchRead``, and the
-        browse's ``played_at``/``is_live`` on ``EncounterRead`` (a match's own ``played_at`` was captured and stays).
-        The golden's nested ``tournament`` objects already carried theirs and keep them."""
+        browse's ``played_at``/``is_live``/``is_final`` on ``EncounterRead`` (a match's own ``played_at`` was captured
+        and stays). The golden's nested ``tournament`` objects already carried theirs and keep them."""
         if isinstance(value, dict):
             encounter = value.keys() >= {"scoring_preset", "tournament_id"}
             owner = encounter or value.keys() >= {"encounter_id", "map_id"}
             dropped = {
                 "logs_official",
                 *(("workspace_id", "discipline") if owner else ()),
-                *(("played_at", "is_live") if encounter else ()),
+                *(("played_at", "is_live", "is_final") if encounter else ()),
             }
             return {key: without_post_capture_fields(item) for key, item in value.items() if key not in dropped}
         if isinstance(value, list):
@@ -667,6 +667,9 @@ def assert_tournament_golden(actual: dict) -> None:
         payload = without_post_capture_fields(deepcopy(payload))
         # The removed roster/user-batch API's empty-input shape has no facts.
         payload.pop("empty_user_batch", None)
+        # The encounters overview was redesigned after the capture (the browse's counts and live strip, its
+        # analytics moved to the insights read); ``test_encounter_board_db.py`` pins the new numbers.
+        payload.pop("encounter_overviews", None)
         page = payload["match_pages"]["duration_desc"]
         # SQL orders only by duration. Preserve every group and its position;
         # incidental order inside equal-duration groups is not a reader contract.

@@ -1,25 +1,34 @@
-import type { Encounter, EncounterFilters, EncounterOverview } from "@/types/encounter.types";
+import type { Formatter } from "@/lib/datetime";
+import type {
+  EncounterFilters,
+  EncounterOverview,
+  EncounterSavedFilters,
+  EncounterStatusFilter
+} from "@/types/encounter.types";
 
 export const ENCOUNTERS_PAGE_SIZE = 15;
 
-type EncounterSortKey = "date" | "closeness" | "upcoming";
+/** A status segment; `null` is «Все». */
+export type EncounterStatus = Extract<EncounterStatusFilter, "live" | "upcoming" | "completed">;
 
-export type TeamColor = "teal" | "amber" | "rose" | "violet" | "blue";
+export type EncountersView = "list" | "insights";
 
-export type EncounterFilterState = Required<
-  Pick<EncounterFilters, "scope">
-> & {
+export interface EncounterFilterState {
   query: string;
   tournament_id: number | null;
   stage_id: number | null;
   stage_item_id: number | null;
   best_of: number | null;
-  status: string | null;
-  has_logs: boolean | null;
+  status: EncounterStatus | null;
+  /** The quick filters narrow or stay out of the way: `null` is off, never `false`. */
+  has_logs: true | null;
+  is_final: true | null;
+  is_upset: true | null;
   closeness_min: number | null;
   closeness_max: number | null;
-  sort: EncounterSortKey;
-};
+  scope: "all" | "my_team";
+  sort: "date" | "closeness";
+}
 
 export const DEFAULT_FILTERS: EncounterFilterState = {
   query: "",
@@ -29,10 +38,12 @@ export const DEFAULT_FILTERS: EncounterFilterState = {
   best_of: null,
   status: null,
   has_logs: null,
+  is_final: null,
+  is_upset: null,
   closeness_min: null,
   closeness_max: null,
   scope: "all",
-  sort: "date",
+  sort: "date"
 };
 
 /**
@@ -42,121 +53,97 @@ export const DEFAULT_FILTERS: EncounterFilterState = {
 export const GAME_SCOPED_FILTERS = {
   tournament_id: null,
   stage_id: null,
-  stage_item_id: null,
+  stage_item_id: null
 } as const satisfies Partial<EncounterFilterState>;
 
-/** The overview of nothing: what the page shows before (or instead of) a read. */
-export const EMPTY_OVERVIEW: EncounterOverview = {
-  kpis: {
-    total_encounters: 0,
-    recent_count: 0,
-    with_logs_count: 0,
-    with_logs_pct: 0,
-    avg_closeness: null,
-    live_now_count: 0,
-    upcoming_count: 0,
-  },
-  preset_counts: {
-    all: 0,
-    my_team: 0,
-    finals: 0,
-    close_bo5: 0,
-    upsets: 0,
-    with_logs: 0,
-  },
-  closeness_histogram: [],
-  score_heatmap: [],
-  stage_split: [],
-  featured: {
-    closest: [],
-    upcoming: [],
-    live: [],
-  },
-  hot_maps: [],
-  pulse: {
-    avg_series_seconds: null,
-    completed_series_count: 0,
-    sweep_rate: 0,
-    sweep_count: 0,
-    went_distance_count: 0,
-    reverse_sweep_rate: 0,
-    most_decisive_map: null,
-  },
-  slot_balance: {
-    slot_one_wins: 0,
-    slot_two_wins: 0,
-    slot_one_win_pct: 0,
-    slot_two_win_pct: 0,
-  },
-};
+export type QuickFilterId = keyof Pick<EncounterOverview["counts"], "finals" | "upsets" | "with_logs" | "my_team">;
 
-export type BuiltInViewId = "all" | "my_team" | "finals" | "close_bo5" | "upsets" | "with_logs";
+/** The «Подборки» toggles, in menu order: each narrows the current filters (additive) and has its overview count. */
+export const QUICK_FILTERS = [
+  {
+    id: "finals",
+    label: "encounters.presets.finals",
+    isOn: (filters: EncounterFilterState) => filters.is_final === true,
+    patch: (on: boolean): Partial<EncounterFilterState> => ({ is_final: on ? true : null })
+  },
+  {
+    id: "upsets",
+    label: "encounters.presets.upsets",
+    isOn: (filters: EncounterFilterState) => filters.is_upset === true,
+    patch: (on: boolean): Partial<EncounterFilterState> => ({ is_upset: on ? true : null })
+  },
+  {
+    id: "with_logs",
+    label: "encounters.presets.withLogs",
+    isOn: (filters: EncounterFilterState) => filters.has_logs === true,
+    patch: (on: boolean): Partial<EncounterFilterState> => ({ has_logs: on ? true : null })
+  },
+  {
+    id: "my_team",
+    label: "encounters.presets.myTeam",
+    isOn: (filters: EncounterFilterState) => filters.scope === "my_team",
+    patch: (on: boolean): Partial<EncounterFilterState> => ({ scope: on ? "my_team" : "all" })
+  }
+] as const satisfies readonly {
+  id: QuickFilterId;
+  label: string;
+  isOn: (filters: EncounterFilterState) => boolean;
+  patch: (on: boolean) => Partial<EncounterFilterState>;
+}[];
 
-// Translation keys for the built-in view tabs. Kept as a literal union so the
-// strictly-typed `t()` in the client accepts `t(view.labelKey)` directly.
-type BuiltInViewLabelKey =
-  | "encounters.view.all"
-  | "encounters.view.myTeam"
-  | "encounters.view.finals"
-  | "encounters.view.closeBo5"
-  | "encounters.view.upsets"
-  | "encounters.view.withLogs";
+/** The «Напряжённость» select's lower bounds. */
+export const CLOSENESS_STEPS = [0.4, 0.6, 0.8] as const;
 
-export interface BuiltInViewMeta {
-  id: BuiltInViewId;
-  labelKey: BuiltInViewLabelKey;
-  swatch: TeamColor | null;
-  showPin?: boolean;
-}
-
-export const BUILT_IN_VIEWS: readonly BuiltInViewMeta[] = [
-  { id: "all", labelKey: "encounters.view.all", swatch: "teal" },
-  { id: "my_team", labelKey: "encounters.view.myTeam", swatch: null, showPin: true },
-  { id: "finals", labelKey: "encounters.view.finals", swatch: "rose" },
-  { id: "close_bo5", labelKey: "encounters.view.closeBo5", swatch: "amber" },
-  { id: "upsets", labelKey: "encounters.view.upsets", swatch: "violet" },
-  { id: "with_logs", labelKey: "encounters.view.withLogs", swatch: "blue" },
-] as const;
-
-function parseNumberParam(value: string | undefined): number | null {
+function numberParam(value: string | undefined): number | null {
   if (!value) return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function parseBooleanParam(value: string | undefined): boolean | null {
-  if (value === "true") return true;
-  if (value === "false") return false;
+function statusParam(params: Record<string, string | undefined>): EncounterStatus | null {
+  const { status } = params;
+  if (status === "live" || status === "upcoming" || status === "completed") return status;
+  // `open`/`pending` were two chips, and «Ближайшие» a sort, before both became the «Предстоят» segment.
+  if (status === "open" || status === "pending" || params.sort === "upcoming") return "upcoming";
   return null;
 }
 
+/** The filter state a URL (or a saved view's filters, as strings) names; anything unknown is ignored. */
 export function normalizeEncounterFilters(params: Record<string, string | undefined>): EncounterFilterState {
-  const sort = params.sort === "closeness" || params.sort === "upcoming" ? params.sort : "date";
-  const scope = params.scope === "my_team" ? "my_team" : "all";
-
   return {
     query: params.search ?? params.query ?? "",
-    tournament_id: parseNumberParam(params.tournament_id),
-    stage_id: parseNumberParam(params.stage_id),
-    stage_item_id: parseNumberParam(params.stage_item_id),
-    best_of: parseNumberParam(params.best_of),
-    // `open` and `pending` were two chips before they merged into "upcoming"; an old link lands on the merged one.
-    status: params.status === "open" || params.status === "pending" ? "upcoming" : params.status || null,
-    has_logs: parseBooleanParam(params.has_logs),
-    closeness_min: parseNumberParam(params.closeness_min) ?? DEFAULT_FILTERS.closeness_min,
-    closeness_max: parseNumberParam(params.closeness_max),
-    scope,
-    sort,
+    tournament_id: numberParam(params.tournament_id),
+    stage_id: numberParam(params.stage_id),
+    stage_item_id: numberParam(params.stage_item_id),
+    best_of: numberParam(params.best_of),
+    status: statusParam(params),
+    has_logs: params.has_logs === "true" || null,
+    is_final: params.is_final === "true" || null,
+    is_upset: params.is_upset === "true" || null,
+    closeness_min: numberParam(params.closeness_min),
+    closeness_max: numberParam(params.closeness_max),
+    scope: params.scope === "my_team" ? "my_team" : "all",
+    sort: params.sort === "closeness" ? "closeness" : "date"
   };
 }
 
-/** The list page a `?page=` value names; anything but a positive integer is the first page. */
-export function parsePageParam(value: string | undefined): number {
-  const page = Number.parseInt(value ?? "", 10);
-  return Number.isFinite(page) && page > 0 ? page : 1;
+/** What the page's URL says: the list page (a positive integer, else the first), the view and the filters. */
+export interface EncountersUrlState {
+  page: number;
+  view: EncountersView;
+  filters: EncounterFilterState;
 }
 
-export function filtersToSearchParams(filters: EncounterFilterState, page: number): URLSearchParams {
+export function readEncountersUrl(params: Record<string, string | undefined>): EncountersUrlState {
+  const page = Number.parseInt(params.page ?? "", 10);
+  return {
+    page: Number.isFinite(page) && page > 0 ? page : 1,
+    view: params.view === "insights" ? "insights" : "list",
+    filters: normalizeEncounterFilters(params)
+  };
+}
+
+export function filtersToSearchParams(filters: EncounterFilterState, page: number, view: EncountersView): URLSearchParams {
   const params = new URLSearchParams();
   if (filters.query) params.set("search", filters.query);
   if (page > 1) params.set("page", String(page));
@@ -165,22 +152,21 @@ export function filtersToSearchParams(filters: EncounterFilterState, page: numbe
   if (filters.stage_item_id != null) params.set("stage_item_id", String(filters.stage_item_id));
   if (filters.best_of != null) params.set("best_of", String(filters.best_of));
   if (filters.status) params.set("status", filters.status);
-  if (filters.has_logs != null) params.set("has_logs", String(filters.has_logs));
-  if (filters.closeness_min != null && filters.closeness_min !== DEFAULT_FILTERS.closeness_min) {
-    params.set("closeness_min", String(filters.closeness_min));
-  }
+  if (filters.has_logs) params.set("has_logs", "true");
+  if (filters.is_final) params.set("is_final", "true");
+  if (filters.is_upset) params.set("is_upset", "true");
+  if (filters.closeness_min != null) params.set("closeness_min", String(filters.closeness_min));
   if (filters.closeness_max != null) params.set("closeness_max", String(filters.closeness_max));
   if (filters.scope !== "all") params.set("scope", filters.scope);
   if (filters.sort !== "date") params.set("sort", filters.sort);
+  if (view !== "list") params.set("view", view);
   return params;
 }
 
-// "Upcoming" reads soonest first; the other two lead with the newest / tightest.
-const API_SORT: Record<EncounterSortKey, { sort: string; order: "asc" | "desc" }> = {
+const API_SORT = {
   date: { sort: "played_at", order: "desc" },
-  closeness: { sort: "closeness", order: "desc" },
-  upcoming: { sort: "scheduled_at", order: "asc" },
-};
+  closeness: { sort: "closeness", order: "desc" }
+} as const;
 
 export function filtersToApiFilters(
   filters: EncounterFilterState
@@ -192,43 +178,61 @@ export function filtersToApiFilters(
     best_of: filters.best_of,
     status: filters.status,
     has_logs: filters.has_logs,
+    is_final: filters.is_final,
+    is_upset: filters.is_upset,
     closeness_min: filters.closeness_min,
     closeness_max: filters.closeness_max,
     scope: filters.scope,
-    ...API_SORT[filters.sort],
+    // «Предстоят» always reads soonest first; the sort select speaks for the other segments.
+    ...(filters.status === "upcoming" ? { sort: "scheduled_at", order: "asc" } : API_SORT[filters.sort])
   };
 }
 
-export function applyBuiltInView(viewId: string, filters: EncounterFilterState): EncounterFilterState {
-  switch (viewId) {
-    case "my_team":
-      return { ...filters, scope: "my_team" };
-    case "finals":
-      return { ...filters, stage_id: null, stage_item_id: null, status: "completed" };
-    case "close_bo5":
-      return { ...filters, best_of: 5, closeness_min: 0.6 };
-    case "with_logs":
-      return { ...filters, has_logs: true };
-    case "upsets":
-      return { ...filters, status: "completed", sort: "closeness" };
-    default:
-      return { ...DEFAULT_FILTERS, query: filters.query };
-  }
+const LIST_ENTITIES = ["tournament", "stage", "stage_item", "teams", "matches", "matches.map"];
+
+/** The list read's arguments, shared by the server render and the browser so both make the same request. */
+export function listReadArgs(filters: EncounterFilterState, page: number) {
+  const { sort, order, ...narrowing } = filtersToApiFilters(filters);
+  return { page, query: filters.query, sort, order, filters: { ...narrowing, entities: LIST_ENTITIES } };
 }
 
-export function formatDuration(seconds: number | null | undefined): string {
-  if (!seconds || seconds <= 0) return "-";
-  const totalMinutes = Math.round(seconds / 60);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+/**
+ * The aggregate reads' filter params: the list's without its order, and only what narrows — so "no filters" is the
+ * same request (and cache entry) as the hero's global overview.
+ */
+export function aggregateFilters(filters: EncounterFilterState): EncounterFilters {
+  const { sort: _sort, order: _order, ...narrowing } = filtersToApiFilters(filters);
+  return Object.fromEntries(
+    Object.entries(narrowing).filter(([key, value]) => value != null && !(key === "scope" && value === "all"))
+  ) as EncounterFilters;
 }
 
-export function formatPercent(value: number | null | undefined, fallback = "-"): string {
-  if (value == null || Number.isNaN(value)) return fallback;
-  return `${Math.round(value)}%`;
+/** A saved view's filters as this page's state, read the way a URL is: an old view's `sort=upcoming` included. */
+export function savedViewState(filters: EncounterSavedFilters): EncounterFilterState {
+  return normalizeEncounterFilters(
+    Object.fromEntries(Object.entries(filters).flatMap(([key, value]) => (value == null ? [] : [[key, String(value)]])))
+  );
 }
 
-export function getSeriesDuration(encounter: Encounter): number {
-  return encounter.matches?.reduce((sum, match) => sum + (match.duration_s || 0), 0) ?? 0;
+export function sameFilters(a: EncounterFilterState, b: EncounterFilterState): boolean {
+  return (Object.keys(DEFAULT_FILTERS) as (keyof EncounterFilterState)[]).every((key) => a[key] === b[key]);
+}
+
+/** True once anything narrows the list, status included: the empty list then offers to clear them. */
+export function hasActiveFilters(filters: EncounterFilterState): boolean {
+  return !sameFilters({ ...filters, sort: DEFAULT_FILTERS.sort }, DEFAULT_FILTERS);
+}
+
+/** Only `number` is needed here; `useFormatter()` and `await getFormatter()` both satisfy it. */
+export type NumberFormatter = Pick<Formatter, "number">;
+
+export function formatPercent(format: NumberFormatter, fraction: number): string {
+  return format.number(fraction, { style: "percent", maximumFractionDigits: 0 });
+}
+
+/** A series length in the locale's own units: minutes under an hour, hours to one decimal past it. */
+export function formatSeriesLength(format: NumberFormatter, seconds: number): string {
+  return seconds < 3600
+    ? format.number(seconds / 60, { style: "unit", unit: "minute", unitDisplay: "short", maximumFractionDigits: 0 })
+    : format.number(seconds / 3600, { style: "unit", unit: "hour", unitDisplay: "short", maximumFractionDigits: 1 });
 }

@@ -63,12 +63,6 @@ export const tournamentQueryKeys = {
     workspaceId == null
       ? (["statistics", "overall"] as const)
       : (["statistics", "overall", workspaceId] as const),
-  encountersPage: (
-    tournamentId: number,
-    workspaceId: number | null | undefined,
-    page: number,
-    search: string,
-  ) => [...tournamentQueryKeys.encounters(tournamentId, workspaceId), page, search] as const,
   registration: (workspaceId: number, tournamentId: number) =>
     ["registration", workspaceId, tournamentId] as const,
   registrationsList: (workspaceId: number, tournamentId: number) =>

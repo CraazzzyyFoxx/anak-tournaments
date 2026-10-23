@@ -216,17 +216,31 @@ def register(broker: Any, logger: Any) -> None:
 
         return await _read(logger, op, exclude_none=True)
 
+    async def _encounter_board(data: dict, session: Any, read: Any) -> Any:
+        """The overview and the insights: the list's params and gate, one board read."""
+        tid = _q1(data, "tournament_id", int)
+        if tid is not None:
+            # Gate BEFORE the cached read: its key carries no visibility, and the strips name hidden encounters.
+            await ensure_tournament_viewable(session, rehydrate_user_optional(data.get("identity")), tid)
+        qp = build_query_model(schemas.EncounterSearchQueryParams, data.get("query"))
+        return await read(
+            session,
+            schemas.EncounterSearchParams.from_query_params(qp),
+            workspace_id=_q1(data, "workspace_id", int),
+            viewer_auth_user_id=_identity_user_id(data),
+        )
+
     @broker.subscriber("rpc.tournament.encounters_overview")
     async def _encounters_overview(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
-            qp = build_query_model(schemas.EncounterSearchQueryParams, data.get("query"))
-            params = schemas.EncounterSearchParams.from_query_params(qp)
-            return await encounter_flows.flows_service.get_encounters_overview(
-                session,
-                params,
-                workspace_id=_q1(data, "workspace_id", int),
-                viewer_auth_user_id=_identity_user_id(data),
-            )
+            return await _encounter_board(data, session, encounter_flows.flows_service.get_encounters_overview)
+
+        return await _read(logger, op, exclude_none=True)
+
+    @broker.subscriber("rpc.tournament.encounters_insights")
+    async def _encounters_insights(data: dict, msg: RabbitMessage) -> dict:
+        async def op(session: Any) -> Any:
+            return await _encounter_board(data, session, encounter_flows.flows_service.get_encounters_insights)
 
         return await _read(logger, op, exclude_none=True)
 

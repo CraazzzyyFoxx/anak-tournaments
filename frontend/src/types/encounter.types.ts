@@ -95,6 +95,8 @@ export interface Encounter {
   played_at: string | null;
   /** The server's live definition; never re-derive it from the stamps. */
   is_live: boolean;
+  /** In the last positive round of an elimination stage: the server's "final" (`is_final` filter). */
+  is_final: boolean;
   /** Empty on a bracket whose advancement edges were never recorded. */
   sources?: EncounterSlotSource[];
 
@@ -241,13 +243,21 @@ export interface MatchWithStats extends Match {
 
 type EncounterScope = "all" | "my_team";
 
+/** The list's status dimension: `upcoming` is open|pending and not live, server-side. */
+export type EncounterStatusFilter = "live" | "upcoming" | "completed" | "open" | "pending";
+
 export interface EncounterFilters {
   tournament_id?: number | null;
   stage_id?: number | null;
   stage_item_id?: number | null;
   best_of?: number | null;
+  /** An `EncounterStatusFilter`; typed wide because the admin browser forwards its URL value as is. */
   status?: string | null;
   has_logs?: boolean | null;
+  /** In the last positive round of an elimination stage. */
+  is_final?: boolean | null;
+  /** Completed, and the winning seat stood lower in the standings. */
+  is_upset?: boolean | null;
   closeness_min?: number | null;
   closeness_max?: number | null;
   scope?: EncounterScope;
@@ -256,81 +266,67 @@ export interface EncounterFilters {
   discipline?: string | null;
 }
 
+/** A saved view's filter set (`EncounterFiltersRead`): `sort` is the page's own key, not a column. */
+export interface EncounterSavedFilters extends Omit<EncounterFilters, "sort" | "discipline"> {
+  query?: string | null;
+  sort?: "date" | "closeness" | null;
+}
+
 export interface EncounterSavedView {
   id: number;
   workspace_id: number;
   name: string;
-  filters: EncounterFilters & { query?: string };
+  filters: EncounterSavedFilters;
   sort_order: number;
 }
 
-interface EncounterKpis {
-  total_encounters: number;
-  recent_count: number;
-  with_logs_count: number;
-  with_logs_pct: number;
-  avg_closeness: number | null;
-  live_now_count: number;
-  upcoming_count: number;
-}
-
-interface EncounterHistogramBucket {
-  label: string;
-  start: number;
-  end: number;
-  count: number;
-}
-
-/** One scoreline of a two-seat encounter, slot 1 against slot 2. */
-export interface EncounterScoreHeatmapCell {
-  slot_one: number;
-  slot_two: number;
-  count: number;
-}
-
-export interface EncounterStageSplit {
-  name: string;
-  count: number;
-  pct: number;
-}
-
-interface EncounterMapMetric {
-  name: string;
-  count: number;
-}
-
-interface EncounterPulse {
-  avg_series_seconds: number | null;
-  completed_series_count: number;
-  sweep_rate: number;
-  sweep_count: number;
-  went_distance_count: number;
-  reverse_sweep_rate: number;
-  most_decisive_map: string | null;
-}
-
-/** How often each seat of a duel wins — the seeding bias slot 1 carries. */
-interface EncounterSlotBalance {
-  slot_one_wins: number;
-  slot_two_wins: number;
-  slot_one_win_pct: number;
-  slot_two_win_pct: number;
-}
-
-interface EncounterFeatured {
-  closest: Encounter[];
-  upcoming: Encounter[];
+/** `GET /encounters/overview`: the cheap counts, under the same filter params as the list. */
+export interface EncounterOverview {
+  counts: {
+    /** The status segments: the current filters with the status dimension ignored. */
+    all: number;
+    live: number;
+    upcoming: number;
+    completed: number;
+    /** The toggles: the current filters, status included, with that toggle forced on. */
+    finals: number;
+    upsets: number;
+    with_logs: number;
+    /** 0 for an anonymous viewer. */
+    my_team: number;
+  };
+  /** Completed ∩ has_logs, status ignored. */
+  completed_with_logs: number;
+  /** Completed with `played_at` in the last 7 days, status ignored. */
+  recent_completed: number;
+  /** Up to 4 live encounters, status ignored. */
   live: Encounter[];
 }
 
-export interface EncounterOverview {
-  kpis: EncounterKpis;
-  preset_counts: Record<string, number>;
-  closeness_histogram: EncounterHistogramBucket[];
-  score_heatmap: EncounterScoreHeatmapCell[];
-  stage_split: EncounterStageSplit[];
-  featured: EncounterFeatured;
-  hot_maps: EncounterMapMetric[];
-  pulse: EncounterPulse;
-  slot_balance: EncounterSlotBalance;
+export type EncounterStageKind = "groups" | "playoffs" | "swiss" | "unassigned";
+
+/**
+ * `GET /encounters/insights`: completed encounters only, all time; every rate a fraction 0..1. The wire omits a null
+ * field, hence the optional averages.
+ */
+export interface EncounterInsights {
+  completed: number;
+  avg_closeness?: number | null;
+  /** 10 buckets of 0.1, each `[start, end)`; the last closes at 1. */
+  closeness_histogram: { start: number; end: number; count: number }[];
+  /** Completed duels, count desc; `winner == loser` is a draw. */
+  score_lines: { winner: number; loser: number; count: number }[];
+  /** Count desc; a kind with none is left out. */
+  stage_kinds: { kind: EncounterStageKind; count: number }[];
+  /** Top 6 played maps. */
+  hot_maps: { name: string; count: number }[];
+  /** Top 4 completed by closeness. */
+  closest: Encounter[];
+  avg_series_seconds?: number | null;
+  /** Completed duels with `best_of > 1`: the base of the sweep and went-the-distance rates (a Bo1 is both). */
+  multi_map: number;
+  /** Multi-map completed duels won with the loser on 0. */
+  sweeps: number;
+  /** Multi-map completed duels whose seat scores sum to `best_of`. */
+  went_distance: number;
 }

@@ -1,11 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-import sqlalchemy as sa
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
-from shared.core import db, pagination
+from shared.core import pagination
 from shared.schemas.catalog import CatalogEntityRead
 from shared.schemas.discipline_filter import InstalledDisciplineFilter
 from shared.schemas.match import MatchRead as NativeMatchRead
@@ -19,23 +18,21 @@ from src.schemas import (
 )
 
 __all__ = (
-    "EncounterFeaturedRead",
+    "EncounterCountsRead",
     "EncounterFiltersRead",
     "EncounterGameRead",
     "EncounterGameTeamRead",
     "EncounterHistogramBucketRead",
-    "EncounterKpiRead",
+    "EncounterInsightsRead",
     "EncounterMapMetricRead",
     "EncounterRead",
     "EncounterOverviewRead",
-    "EncounterPulseRead",
     "EncounterSavedViewCreate",
     "EncounterSavedViewRead",
-    "EncounterScoreHeatmapCellRead",
+    "EncounterScoreLineRead",
     "EncounterSlotSourceRead",
+    "EncounterStageKindRead",
     "EncounterSummaryRead",
-    "EncounterSlotBalanceRead",
-    "EncounterStageSplitRead",
     "EncounterTeamRead",
     "MatchRead",
     "MatchReadWithStats",
@@ -176,6 +173,10 @@ class EncounterRead(BaseRead):
     played_at: datetime | None = None
     #: The server's one reading of "in play" (``service._live_condition``); readers never re-derive it from the clocks.
     is_live: bool = False
+    #: The last positive round of an elimination stage (``service._is_final_condition``) -- the same predicate as the
+    #: browse's ``is_final`` filter. Set on the browse, the detail and the overview/insights strips; a match's nested
+    #: encounter leaves it ``False``, like ``played_at``.
+    is_final: bool = False
 
     stage: StageSummaryRead | None
     stage_item: StageItemSummaryRead | None
@@ -199,16 +200,32 @@ class MatchReadWithStats(MatchRead):
 
 
 class EncounterFiltersRead(BaseModel):
+    """A saved view's whole filter state; applying one replaces the page's filters."""
+
     query: str = ""
+    #: Game-bound: a reader browsing every game drops it, like the page's own tournament filter.
+    tournament_id: int | None = None
     stage_id: int | None = None
     stage_item_id: int | None = None
     best_of: int | None = None
     status: str | None = None
     has_logs: bool | None = None
+    is_final: bool | None = None
+    is_upset: bool | None = None
     closeness_min: float | None = None
     closeness_max: float | None = None
     scope: Literal["all", "my_team"] = "all"
-    sort: str = "date"
+    #: The page's own order, not a column: ``date`` (played, newest first) or ``closeness``.
+    sort: Literal["date", "closeness"] = "date"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _retired_upcoming_sort(cls, data: Any) -> Any:
+        # The retired «Ближайшие» order is the «Предстоят» segment now (it always orders by schedule); a view saved
+        # under it must still read, the way an old ``?sort=upcoming`` URL does.
+        if isinstance(data, dict) and data.get("sort") == "upcoming":
+            return {**data, "sort": "date", "status": data.get("status") or "upcoming"}
+        return data
 
 
 class EncounterSavedViewCreate(BaseModel):
@@ -223,35 +240,55 @@ class EncounterSavedViewRead(BaseRead):
     workspace_id: int
 
 
-class EncounterKpiRead(BaseModel):
-    total_encounters: int
-    recent_count: int
-    with_logs_count: int
-    with_logs_pct: float
-    avg_closeness: float | None
-    live_now_count: int
-    upcoming_count: int
+class EncounterCountsRead(BaseModel):
+    """The toolbar's numbers under the current filters.
+
+    The segments (``all``/``live``/``upcoming``/``completed``) ignore the status filter and apply every active
+    toggle; each toggle (``finals``/``upsets``/``with_logs``/``my_team``) applies every other filter, the status
+    included, with itself forced on. ``my_team`` is 0 for an anonymous viewer.
+    """
+
+    all: int
+    live: int
+    upcoming: int
+    completed: int
+    finals: int
+    upsets: int
+    with_logs: int
+    my_team: int
+
+
+class EncounterOverviewRead(BaseModel):
+    """``GET /encounters/overview``: the cheap summary; asked with no filters it is the platform's own numbers."""
+
+    counts: EncounterCountsRead
+    #: Completed and with logs, the status filter ignored.
+    completed_with_logs: int
+    #: Completed with a play date in the last 7 days, the status filter ignored.
+    recent_completed: int
+    #: Up to 4 series in play, the status filter ignored.
+    live: list[EncounterRead]
 
 
 class EncounterHistogramBucketRead(BaseModel):
-    label: str
+    #: ``[start, end)``; the last bucket closes at 1.
     start: float
     end: float
     count: int
 
 
-class EncounterScoreHeatmapCellRead(BaseModel):
-    """One scoreline of a two-seat encounter, slot 1 against slot 2."""
+class EncounterScoreLineRead(BaseModel):
+    """One final score of a completed duel, the winner's side first; ``winner == loser`` is a draw."""
 
-    slot_one: int
-    slot_two: int
+    winner: int
+    loser: int
     count: int
 
 
-class EncounterStageSplitRead(BaseModel):
-    name: str
+class EncounterStageKindRead(BaseModel):
+    #: ``groups``: round robin (and an FFA league); ``playoffs``: single/double elimination; ``unassigned``: no stage.
+    kind: Literal["groups", "playoffs", "swiss", "unassigned"]
     count: int
-    pct: float
 
 
 class EncounterMapMetricRead(BaseModel):
@@ -259,42 +296,30 @@ class EncounterMapMetricRead(BaseModel):
     count: int
 
 
-class EncounterPulseRead(BaseModel):
-    avg_series_seconds: float | None
-    completed_series_count: int
-    sweep_rate: float
-    sweep_count: int
-    went_distance_count: int
-    reverse_sweep_rate: float
-    most_decisive_map: str | None
+class EncounterInsightsRead(BaseModel):
+    """``GET /encounters/insights``: the analytics of the completed encounters under the browse's filters (the status
+    filter is forced to ``completed``). Rates are fractions, 0..1."""
 
-
-class EncounterSlotBalanceRead(BaseModel):
-    """How often each seat of a duel wins — the seeding bias a bracket's slot 1
-    carries, which is all "side" ever meant here."""
-
-    slot_one_wins: int
-    slot_two_wins: int
-    slot_one_win_pct: float
-    slot_two_win_pct: float
-
-
-class EncounterFeaturedRead(BaseModel):
-    closest: list[EncounterRead]
-    upcoming: list[EncounterRead]
-    live: list[EncounterRead]
-
-
-class EncounterOverviewRead(BaseModel):
-    kpis: EncounterKpiRead
-    preset_counts: dict[str, int]
+    completed: int
+    avg_closeness: float | None
+    #: Ten buckets of 0.1 closeness.
     closeness_histogram: list[EncounterHistogramBucketRead]
-    score_heatmap: list[EncounterScoreHeatmapCellRead]
-    stage_split: list[EncounterStageSplitRead]
-    featured: EncounterFeaturedRead
+    #: Completed duels by final score, most common first.
+    score_lines: list[EncounterScoreLineRead]
+    #: Most common first; a kind with no encounter is left out.
+    stage_kinds: list[EncounterStageKindRead]
+    #: The 6 most played maps of the parsed logs.
     hot_maps: list[EncounterMapMetricRead]
-    pulse: EncounterPulseRead
-    slot_balance: EncounterSlotBalanceRead
+    #: The 4 closest completed encounters.
+    closest: list[EncounterRead]
+    #: Mean summed map duration of a series with parsed logs.
+    avg_series_seconds: float | None
+    #: Completed duels of more than one map (``best_of > 1``): the base of ``sweeps`` and ``went_distance``.
+    multi_map: int
+    #: Multi-map duels won without dropping a map.
+    sweeps: int
+    #: Multi-map duels whose scores add up to their ``best_of``.
+    went_distance: int
 
 
 @dataclass
@@ -305,6 +330,8 @@ class EncounterSearchParams(pagination.PaginationSortSearchParams):
     best_of: int | None = None
     status: str | None = None
     has_logs: bool | None = None
+    is_final: bool | None = None
+    is_upset: bool | None = None
     closeness_min: float | None = None
     closeness_max: float | None = None
     scope: Literal["all", "my_team"] = "all"
@@ -313,21 +340,6 @@ class EncounterSearchParams(pagination.PaginationSortSearchParams):
     slot_count: int | None = None
     #: One game's encounters (every aggregate and the live/upcoming strips included); ``None`` is every game.
     discipline: str | None = None
-
-    def apply_search(self, query: sa.Select, model: type[db.Base]) -> sa.Select:
-        criteria = []
-        search_query = f"%{self.query}%"
-        for field in self.fields:
-            column = model.depth_get_column(field.split("."))
-            criteria.append(column.ilike(search_query))
-            if field == "name":
-                reverted_name = sa.func.concat(
-                    (sa.func.split_part(column, " vs ", 2)),
-                    " vs ",
-                    (sa.func.split_part(column, " vs ", 1)),
-                )
-                criteria.append(reverted_name.ilike(f"%{self.query}%"))
-        return query.where(sa.or_(*criteria))
 
 
 #: The browse's sort keys. ``played_at`` orders by when a series was played (else when it is due, else its
@@ -347,6 +359,11 @@ class EncounterSearchQueryParams(pagination.PaginationSortSearchQueryParams):
     #: not live).
     status: str | None = None
     has_logs: bool | None = None
+    #: In (``true``) or out of (``false``) the last positive round of an elimination stage.
+    is_final: bool | None = None
+    #: A completed duel won by the seat standing lower in its stage item, or every other encounter (``false``).
+    is_upset: bool | None = None
+    #: ``[closeness_min, closeness_max)``; a ``closeness_max`` of 1 closes the range.
     closeness_min: float | None = Field(default=None, ge=0.0, le=1.0)
     closeness_max: float | None = Field(default=None, ge=0.0, le=1.0)
     scope: Literal["all", "my_team"] = "all"

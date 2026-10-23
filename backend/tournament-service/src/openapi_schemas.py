@@ -55,6 +55,9 @@ OPERATIONS: dict[str, Op] = {
     "rpc.tournament.encounters_overview": Op(
         response=schemas.EncounterOverviewRead, query=schemas.EncounterSearchQueryParams
     ),
+    "rpc.tournament.encounters_insights": Op(
+        response=schemas.EncounterInsightsRead, query=schemas.EncounterSearchQueryParams
+    ),
     "rpc.tournament.statistics_overall": Op(response=schemas.OverallStatistics, query_params=(_WS,)),
     # ── public reads (arrays) ──────────────────────────────────────────────
     "rpc.tournament.lookup_tournaments": Op(

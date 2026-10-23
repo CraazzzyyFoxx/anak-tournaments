@@ -26,7 +26,7 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const { page } = vi.hoisted(() => {
+const { page, overview } = vi.hoisted(() => {
   const encounter = (id: number, discipline: string) =>
     ({
       id,
@@ -55,6 +55,7 @@ const { page } = vi.hoisted(() => {
       // One row stamped, one left to its tournament's dates: both hydrate.
       played_at: id === 1 ? "2026-05-01T12:00:00Z" : null,
       is_live: false,
+      is_final: false,
       created_at: null,
       updated_at: null,
       matches: [],
@@ -63,7 +64,15 @@ const { page } = vi.hoisted(() => {
       stage: null,
       stage_item: null
     }) as unknown as Encounter;
-  return { page: { page: 1, per_page: 15, total: 2, results: [encounter(1, "overwatch"), encounter(2, "lol")] } };
+  return {
+    page: { page: 1, per_page: 15, total: 2, results: [encounter(1, "overwatch"), encounter(2, "lol")] },
+    overview: {
+      counts: { all: 2, live: 0, upcoming: 0, completed: 2, finals: 0, upsets: 0, with_logs: 0, my_team: 0 },
+      completed_with_logs: 0,
+      recent_completed: 0,
+      live: []
+    }
+  };
 });
 
 // `vi.mock` factories run before this file's imports, so the modules they hand out are loaded inside them.
@@ -76,21 +85,18 @@ vi.mock("@/lib/site/tenant-host", () => ({
   resolveServerDisciplineScope: async () => ({ stored: "all", lastGame: null, axis: 7, hostLockedWorkspaceId: null })
 }));
 vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
-vi.mock("@/services/encounter.service", async () => {
-  const { EMPTY_OVERVIEW } = await import("./_components/encounters.helpers");
-  return {
-    default: { getAll: async () => page, getOverview: async () => EMPTY_OVERVIEW, getSavedViews: async () => [] }
-  };
-});
+vi.mock("@/services/encounter.service", () => ({
+  default: { getAll: async () => page, getOverview: async () => overview, getSavedViews: async () => [] }
+}));
 // The layout's chrome has its own suites.
 vi.mock("@/components/Header", () => ({ default: () => null }));
 vi.mock("@/components/Footer", () => ({ Footer: () => null }));
 vi.mock("@/components/notifications/FloatStack", () => ({ FloatStack: () => null }));
 vi.mock("@/services/notification.service", () => ({ default: { activeAnnouncements: async () => [] } }));
 vi.mock("@/i18n/ZoneIntlProvider", () => ({ default: ({ children }: { children: ReactNode }) => children }));
-// The filter bar has its own suite; its select triggers' `[&>span]` classes also come back from happy-dom's HTML
+// The toolbar has its own suite; its select triggers' `[&>span]` classes also come back from happy-dom's HTML
 // parser as `[&&gt;span]`, a mismatch no browser makes.
-vi.mock("./_components/EncountersFilterBar", () => ({ EncountersFilterBar: () => null }));
+vi.mock("./_components/EncountersToolbar", () => ({ EncountersToolbar: () => null, EncountersActiveFilters: () => null }));
 
 let hydrated: Root | undefined;
 let host: HTMLElement | undefined;
@@ -135,7 +141,10 @@ it("names each row's game on the server, and hydrates the rows where the scope p
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(disciplineQueryKeys.list("all"), [OW_METADATA.discipline, LOL_METADATA.discipline]);
   host = document.body.appendChild(document.createElement("div"));
-  host.innerHTML = html;
+  // happy-dom leaves `&gt;` / `&#x27;` undecoded inside attribute values (a class like `[&>tbody>tr]` or
+  // `after:content-['']` comes back escaped), a mismatch no browser makes; the same markup without the escapes is
+  // what a browser parses.
+  host.innerHTML = html.replaceAll("&gt;", ">").replaceAll("&#x27;", "'");
   const recoverable: unknown[] = [];
   const errors = vi.spyOn(console, "error").mockImplementation(() => {});
   await act(async () => {
@@ -149,6 +158,7 @@ it("names each row's game on the server, and hydrates the rows where the scope p
 
   expect(recoverable.map(String)).toEqual([]);
   expect(mismatches).toEqual([]);
-  expect(html).toContain(">Overwatch<");
-  expect(html).toContain(">League of Legends<");
+  // Each row's game mark is named for assistive tech.
+  expect(html).toContain('aria-label="Overwatch"');
+  expect(html).toContain('aria-label="League of Legends"');
 });

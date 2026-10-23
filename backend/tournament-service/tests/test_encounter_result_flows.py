@@ -1089,25 +1089,21 @@ class ReadPathTests(ResultFlowCase):
     number.
     """
 
-    async def test_the_overview_counts_the_two_seats_by_slot(self) -> None:
+    async def test_the_insights_read_the_two_seats_by_slot(self) -> None:
         async with self.Session() as s:
             first, second = await self.seats(s)
             await self.play(s, 1, first.id, second.id)
             await self.play(s, 2, first.id, second.id)
 
         async with self.Session() as s:
-            data = await encounter_service.get_overview_data(
+            data = await encounter_service.get_insights_data(
                 s,
                 schemas.EncounterSearchParams(page=1, per_page=50, tournament_id=self.ids["t"]),
             )
-        self.assertEqual(1, data["total"])
-        self.assertEqual(1, data["completed_series_count"])
-        # Slot 1 took both maps: a 2:0 is a sweep, and the win belongs to the
-        # first seat. Nothing here reads a side column.
-        self.assertEqual(1, data["sweep_count"])
-        self.assertEqual(1, data["slot_one_wins"])
-        self.assertEqual(0, data["slot_two_wins"])
-        self.assertEqual([(2, 0, 1)], [tuple(row) for row in data["score_rows"]])
+        self.assertEqual(1, data["completed"])
+        # Slot 1 took both maps: a 2:0 is a sweep and a 2:0 score line. Nothing here reads a side column.
+        self.assertEqual((1, 1), (data["multi_map"], data["sweeps"]))
+        self.assertEqual([(2, 0, 1)], data["score_lines"])
 
     async def test_a_lobby_is_left_out_of_the_two_seat_metrics(self) -> None:
         async with self.Session() as s:
@@ -1127,16 +1123,15 @@ class ReadPathTests(ResultFlowCase):
             await s.commit()
 
         async with self.Session() as s:
-            data = await encounter_service.get_overview_data(
+            data = await encounter_service.get_insights_data(
                 s,
                 schemas.EncounterSearchParams(page=1, per_page=50, tournament_id=self.ids["t"], slot_count=3),
             )
-        # The lobby is in scope, but it contributes to neither win column: a
-        # three-seat encounter has no first-versus-second to balance.
-        self.assertEqual(1, data["total"])
-        self.assertEqual(0, data["slot_one_wins"])
-        self.assertEqual(0, data["slot_two_wins"])
-        self.assertEqual([], [tuple(row) for row in data["score_rows"]])
+        # The lobby is in scope, but it has no score line, sweep or full-distance series: a three-seat encounter
+        # has no first-versus-second.
+        self.assertEqual(1, data["completed"])
+        self.assertEqual((0, 0), (data["sweeps"], data["went_distance"]))
+        self.assertEqual([], data["score_lines"])
 
     async def test_an_entity_less_read_serializes_from_the_seats(self) -> None:
         async with self.Session() as s:

@@ -63,10 +63,17 @@ var PublicCacheableReads = map[string]respcache.Rule{
 		AuthedRead:       true,
 		AuthedReadUnless: respcache.QueryEquals("scope", "my_team"),
 	},
-	// NO AuthedRead: the overview body carries a per-viewer my_team_count
-	// (encounter/service.py get_encounters_overview) — an anonymous entry
-	// would always show 0 to logged-in players.
+	// NO AuthedRead: the overview body carries a per-viewer counts.my_team
+	// (encounter/service.py get_overview_data) — an anonymous entry would
+	// always show 0 to logged-in players.
 	"/api/v1/encounters/overview": {Extract: respcache.FromQuery("tournament_id")},
+	// The insights take the list's filters and, like the list, read the viewer
+	// only through scope=my_team — the same grant with the same carve-out.
+	"/api/v1/encounters/insights": {
+		Extract:          respcache.FromQuery("tournament_id"),
+		AuthedRead:       true,
+		AuthedReadUnless: respcache.QueryEquals("scope", "my_team"),
+	},
 	// list_teams passes no viewer into the flow (reads.py) — gate-only, like
 	// the page shell routes.
 	"/api/v1/teams": {Extract: respcache.FromQuery("tournament_id"), AuthedRead: true},
