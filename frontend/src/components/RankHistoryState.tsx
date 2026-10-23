@@ -54,7 +54,7 @@ export function ChartEmptyState({
 export function RankHistorySkeleton({ className }: Readonly<{ className?: string }>) {
   return (
     <div className={cn("@container space-y-3", className)}>
-      <Skeleton className="h-[74px] w-full bg-[color:var(--aqt-overlay-2)] @lg:h-[114px]" />
+      <Skeleton className="h-[52px] w-full bg-[color:var(--aqt-overlay-2)]" />
       <div className="flex flex-wrap items-center gap-3">
         <Skeleton className="w-[130px] h-8 bg-[color:var(--aqt-overlay-2)]" />
         <Skeleton className="w-[120px] h-8 bg-[color:var(--aqt-overlay-2)]" />

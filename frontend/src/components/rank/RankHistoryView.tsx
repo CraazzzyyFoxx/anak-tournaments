@@ -193,25 +193,25 @@ function RankHistoryBody({
             ranked?.wins != null && ranked.losses != null ? t("record", { wins: ranked.wins, losses: ranked.losses }) : null
           ].filter(Boolean);
           return (
-            <Card key={key ?? "rank"} variant="flat" className="flex items-center gap-3 p-3 @lg:gap-4 @lg:p-4">
+            <Card key={key ?? "rank"} variant="flat" className="flex items-center gap-2 px-2.5 py-1.5">
               {tier ? (
                 <Image
                   src={tier.icon_url}
                   alt=""
                   aria-hidden
-                  width={80}
-                  height={80}
-                  className="size-12 shrink-0 object-contain @lg:size-20"
+                  width={40}
+                  height={40}
+                  className="size-8 shrink-0 object-contain @3xl:size-10"
                 />
               ) : (
                 <div
                   aria-hidden
-                  className="size-12 shrink-0 rounded-full border border-dashed border-[color:var(--aqt-border-2)] @lg:size-20"
+                  className="size-8 shrink-0 rounded-full border border-dashed border-[color:var(--aqt-border-2)] @3xl:size-10"
                 />
               )}
               <div className="min-w-0">
-                <dt className="text-caption text-[color:var(--aqt-fg-dim)]">{dimensionLabel(key)}</dt>
-                <dd className="mt-0.5 text-base font-semibold tabular-nums text-[color:var(--aqt-fg)] @lg:text-lg">
+                <dt className="truncate text-caption text-[color:var(--aqt-fg-dim)]">{dimensionLabel(key)}</dt>
+                <dd className="truncate text-sm font-semibold tabular-nums text-[color:var(--aqt-fg)]">
                   {tier?.name ?? ranked?.division ?? t("unranked")}
                 </dd>
                 {details.length > 0 ? (
