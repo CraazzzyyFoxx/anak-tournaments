@@ -32,6 +32,7 @@ from shared.models.encounter.report import EncounterTeamReport, EncounterTeamRep
 from shared.models.encounter.team import EncounterTeam
 from shared.models.tournament.bracket_encounter import BracketEncounter
 from src import schemas
+from src.services.encounter.captain import serialize_team_report
 from src.services.encounter.replay_codes import replay_codes_by_encounter
 
 __all__ = ("encounter_reports_service",)
@@ -159,36 +160,6 @@ class _Query:
         return where
 
 
-def _report_read(
-    report: EncounterTeamReport,
-    lines: Sequence[EncounterTeamReportResult],
-    reporter_name: str | None,
-) -> schemas.TeamReportRead:
-    return schemas.TeamReportRead(
-        id=report.id,
-        encounter_id=report.encounter_id,
-        encounter_team_id=report.encounter_team_id,
-        reporter_user_id=report.reporter_user_id,
-        reporter_name=reporter_name,
-        games_played=report.games_played,
-        basis_version=report.basis_version,
-        closeness=report.closeness,
-        comment=report.comment,
-        custom_fields=dict(report.custom_fields_json or {}),
-        results=[
-            schemas.TeamReportResultRead(
-                encounter_team_id=row.encounter_team_id,
-                score=row.score,
-                placement=row.placement,
-                wins=row.wins,
-            )
-            for row in sorted(lines, key=lambda row: row.encounter_team_id)
-        ],
-        created_at=report.created_at.isoformat() if report.created_at else None,
-        updated_at=report.updated_at.isoformat() if report.updated_at else None,
-    )
-
-
 def _series_valid(encounter: models.Encounter, reports: Sequence[EncounterTeamReport]) -> bool:
     """Advisory: a report may predate the encounter's current card, so a
     ``games_played`` past ``best_of`` is information, not a violation nobody can
@@ -241,7 +212,7 @@ class AdminEncounterReportsService:
                 for seat in seats
             ],
             reports=[
-                _report_read(
+                serialize_team_report(
                     report,
                     lines.get(report.id, []),
                     names.get(report.reporter_user_id) if report.reporter_user_id else None,

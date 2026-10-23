@@ -108,7 +108,10 @@ def serialize_team_report(
         basis_version=report.basis_version,
         closeness=report.closeness,
         comment=report.comment,
-        custom_fields=dict(report.custom_fields_json or {}),
+        # Answers only: enclayer01 parks a list audit (``historical_replay_codes``) in the same blob.
+        custom_fields={
+            key: value for key, value in (report.custom_fields_json or {}).items() if isinstance(value, str)
+        },
         results=[
             schemas.TeamReportResultRead(
                 encounter_team_id=row.encounter_team_id,
