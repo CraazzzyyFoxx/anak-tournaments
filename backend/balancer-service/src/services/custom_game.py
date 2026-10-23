@@ -79,7 +79,7 @@ from shared.services.team_format import (
 from src.domain.balancer.result_serializer import as_lobby_document, seat_rating
 from src.domain.balancer.role_naming import role_slot_code
 from src.domain.draft import ranks as draft_ranks
-from src.domain.mix_lobbies import current_lobbies, seated_member_ids, seated_teams, with_captains
+from src.domain.mix_lobbies import current_lobbies, lobby_state, seated_member_ids, seated_teams, with_captains
 from src.domain.mix_lobby_split import LobbySplitError, SplitCandidate, split_into_lobbies
 from src.domain.mix_opener import ban_opener
 from src.domain.mix_ranker import Ranker
@@ -200,6 +200,17 @@ def _uniq(ids: Sequence[int]) -> list[int]:
         seen.add(item)
         out.append(item)
     return out
+
+
+def _discipline_facts(code: str) -> dict[str, Any]:
+    """The mix game's own role vocabulary, for the bot (spec §12.1 R3-1): its code, its rated roles as ``{code,
+    label}`` in declaration order, and whether it has Full flex. One role means no role UI at all."""
+    spec = DISCIPLINES[code]
+    return {
+        "discipline": code,
+        "discipline_roles": [{"code": role.code, "label": role.name} for role in spec.rated_dimension.roles],
+        "discipline_flex": spec.flex,
+    }
 
 
 def _mix_channel_id(config_json: Any) -> int | None:
@@ -1292,6 +1303,8 @@ class CustomGameService:
             # Whether "you are in lobby A" is a sentence worth saying: a
             # one-lobby mix has nothing to distinguish.
             "lobby_count": ctx.game.lobby_count,
+            # The game's roles, so the bot asks for exactly them -- or for none in a one-role game.
+            **_discipline_facts(ctx.game.discipline),
             "seat": seat,
             "unranked_roles": unranked,
             "policy": {
@@ -1632,7 +1645,9 @@ class CustomGameService:
         tables hold: the signup roster, and one entry per ``(lobby_index,
         match_number)`` lineup the bot is about to post or re-render -- the
         match number is the one in the row's slot, so a card keeps announcing
-        the match it was posted for.
+        the match it was posted for. It also names the game's roles
+        (``_discipline_facts``) and, on the signup facts, each lobby's stage and
+        who is away (spec §12.1).
         """
         game = await self.games.get(session, custom_game_id)
         if game is None:
@@ -1647,7 +1662,8 @@ class CustomGameService:
             "workspace_id": game.workspace_id,
             "status": game.status,
             "board_url": self._board_url(board_url_base, game.id),
-            "signup": await self._signup_view(session, game),
+            **_discipline_facts(game.discipline),
+            "signup": await self._signup_view(session, game, list(lobbies.values())),
             "lineups": [
                 await self._lineup_view(
                     session,
@@ -1662,7 +1678,9 @@ class CustomGameService:
             ],
         }
 
-    async def _signup_view(self, session: AsyncSession, game: models.CustomGame) -> dict[str, Any]:
+    async def _signup_view(
+        self, session: AsyncSession, game: models.CustomGame, lobbies: Sequence[models.CustomGameLobby]
+    ) -> dict[str, Any]:
         """The signup card's facts as the mix stands right now.
 
         Rebuilt from current state on every render rather than kept anywhere:
@@ -1714,6 +1732,7 @@ class CustomGameService:
                     "role": "flex" if row.is_flex else role,
                     "benched": row.participation == MixParticipation.BENCHED,
                     "rank": ranks.get(role) if role else None,
+                    "away": row.away,
                 }
             )
         # When the mix or its roster last changed: the card's "updated" stamp,
@@ -1727,8 +1746,44 @@ class CustomGameService:
             "status": game.status,
             "lobby_count": game.lobby_count,
             "players": players,
+            "lobbies": await self._lobby_stages(session, game.id, lobbies),
             "updated_at": updated_at.isoformat(),
         }
+
+    async def _lobby_stages(
+        self, session: AsyncSession, custom_game_id: int, lobbies: Sequence[models.CustomGameLobby]
+    ) -> list[dict[str, Any]]:
+        """Each lobby's stage for the signup card (spec §12.1 R3-4), derived as the detail read derives it
+        (``lobby_state``), with its clock: a live or pre-game match's start, else a live draft's first pick clock --
+        the bot prints it for ``live`` and ``draft_live`` only. No pick count: a pick emits no mix fact."""
+        live_ids = [lobby.live_encounter_id for lobby in lobbies if lobby.live_encounter_id is not None]
+        started = await self.lobbies.live_started_at(session, live_ids)
+        pregame = await self.lobbies.pregame_ids(session, live_ids)
+        drafts = await self.draft_lobbies(session, custom_game_id)
+        first_picks = (
+            await self.drafts.first_clock_starts(session, [entry[0] for entry in drafts.values()]) if drafts else {}
+        )
+        stages: list[dict[str, Any]] = []
+        for lobby in sorted(lobbies, key=lambda row: row.lobby_index):
+            draft = drafts.get(lobby.lobby_index)
+            if lobby.live_encounter_id is not None:
+                since = started.get(lobby.live_encounter_id)
+            else:
+                since = first_picks.get(draft[0]) if draft is not None else None
+            stages.append(
+                {
+                    "lobby_index": lobby.lobby_index,
+                    "state": lobby_state(
+                        lobby.balance_result_json,
+                        lobby.selected_variant_index,
+                        lobby.live_encounter_id,
+                        lobby.live_encounter_id in pregame,
+                        draft[1] if draft is not None else None,
+                    ),
+                    "live_started_at": since.isoformat() if since is not None else None,
+                }
+            )
+        return stages
 
     async def signup_post(
         self,

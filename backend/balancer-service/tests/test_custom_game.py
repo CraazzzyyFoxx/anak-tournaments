@@ -368,6 +368,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.lobbies.get = AsyncMock(side_effect=lambda _s, _gid, index: self.lobby_rows.get(index))
         self.lobbies.create = AsyncMock(side_effect=lambda _s, row: self.lobby_rows.setdefault(row.lobby_index, row))
         self.lobbies.delete = AsyncMock(side_effect=lambda _s, row: self.lobby_rows.pop(row.lobby_index, None))
+        # No lobby's match is timed or in its ban room unless a test says otherwise.
+        self.lobbies.live_started_at = AsyncMock(return_value={})
+        self.lobbies.pregame_ids = AsyncMock(return_value=frozenset())
         # The host's own row: solver knobs, roster shape and points per win.
         # Nobody has saved one unless a test says otherwise -- the mix then
         # balances on the engine defaults, fields the workspace/built-in roster
@@ -466,7 +469,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.scoring_rules.get = AsyncMock(return_value=None)
         self.scoring_rules.delete = AsyncMock()
         self.drafts = SimpleNamespace(
-            active_lobby_pools=AsyncMock(return_value={}), active_for_custom_game=AsyncMock(return_value=[])
+            active_lobby_pools=AsyncMock(return_value={}),
+            active_for_custom_game=AsyncMock(return_value=[]),
+            first_clock_starts=AsyncMock(return_value={}),
         )
         self.service = CustomGameService(
             games=self.games,
@@ -1445,6 +1450,21 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         state = await self.service.self_state(self.session, custom_game_id=11, auth_user=_auth(), workspace_id=1)
         self.assertEqual(state["seat"]["divisions"]["support"], {"name": "Grandmaster", "slug": "grandmaster"})
 
+    async def test_self_state_names_the_games_roles_for_the_bot(self) -> None:
+        """R3-1: the seat panel builds its role UI from these -- LoL's five positions with Full flex, Deadlock's one
+        role without (a one-role game has no role form at all)."""
+        self.games.get.return_value = _game(self_signup="pool", discipline="lol")
+        lol = await self.service.self_state(self.session, custom_game_id=11, auth_user=_auth(), workspace_id=1)
+        self.games.get.return_value = _game(self_signup="pool", discipline="deadlock")
+        deadlock = await self.service.self_state(self.session, custom_game_id=11, auth_user=_auth(), workspace_id=1)
+
+        self.assertEqual(("lol", True), (lol["discipline"], lol["discipline_flex"]))
+        self.assertEqual(["top", "jungle", "mid", "bot", "support"], [role["code"] for role in lol["discipline_roles"]])
+        self.assertEqual(
+            ("deadlock", [{"code": "agent", "label": "Agent"}], False),
+            (deadlock["discipline"], deadlock["discipline_roles"], deadlock["discipline_flex"]),
+        )
+
     async def test_self_state_says_which_lobby_this_player_sits_in(self) -> None:
         """Where a player sits is the same derivation the board shows -- the
         seats of each lobby's selected option -- so the panel and the bot read
@@ -1644,7 +1664,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         )
         self.roster.list_for_game.return_value = [
             _roster_row(1, 7, 0, roles=["tank"]),
-            _roster_row(2, 8, 1, roles=["damage", "support"], updated_at=datetime(2026, 10, 2, 9, 30, tzinfo=UTC)),
+            _roster_row(
+                2, 8, 1, roles=["damage", "support"], away=True, updated_at=datetime(2026, 10, 2, 9, 30, tzinfo=UTC)
+            ),
             _roster_row(3, 9, 2, participation=MixParticipation.BENCHED),
             _roster_row(4, 10, 3, roles=["support"], is_flex=True, participation=MixParticipation.BENCHED),
         ]
@@ -1676,11 +1698,13 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
                 "status": "draft",
                 "lobby_count": 1,
                 "players": [
-                    {"name": "P7", "role": "tank", "benched": False, "rank": 2500},
-                    {"name": "P8", "role": "damage", "benched": False, "rank": 2200},
-                    {"name": "P9", "role": "support", "benched": True, "rank": 2700},
-                    {"name": "P10", "role": "flex", "benched": True, "rank": 2300},
+                    {"name": "P7", "role": "tank", "benched": False, "rank": 2500, "away": False},
+                    {"name": "P8", "role": "damage", "benched": False, "rank": 2200, "away": True},
+                    {"name": "P9", "role": "support", "benched": True, "rank": 2700, "away": False},
+                    {"name": "P10", "role": "flex", "benched": True, "rank": 2300, "away": False},
                 ],
+                # The one lobby a fresh mix has, with no lineup yet.
+                "lobbies": [{"lobby_index": 0, "state": "idle", "live_started_at": None}],
                 # The newest change of the mix or its roster: stable while nothing moves.
                 "updated_at": "2026-10-02T09:30:00+00:00",
             },
@@ -1694,6 +1718,42 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         with self.assertRaises(HTTPException) as ctx:
             await self.service.discord_view(self.session, 11, [], board_url_base="https://owt.example")
         self.assertEqual(ctx.exception.status_code, 404)
+
+    async def test_discord_view_names_the_games_roles_and_each_lobbys_stage(self) -> None:
+        """R3-1/R3-4: the bot builds its role UI from the game's own roles and prints every lobby's stage -- the
+        detail read's derivation -- with the clock of a running match (pre-game too) or a live draft's first pick."""
+        self.games.get.return_value = _game(discipline="lol", lobby_count=3)
+        self.lobby_rows[0] = _lobby(0, live_encounter_id=900)
+        self.lobby_rows[1] = _lobby(1)
+        self.lobby_rows[2] = _lobby(2, live_encounter_id=901)
+        started = datetime(2026, 10, 23, 18, 0, tzinfo=UTC)
+        first_pick = datetime(2026, 10, 23, 18, 5, tzinfo=UTC)
+        self.lobbies.live_started_at.return_value = {900: started, 901: started}
+        self.lobbies.pregame_ids.return_value = frozenset({901})
+        self.drafts.active_lobby_pools.return_value = {1: (31, "live", frozenset())}
+        self.drafts.first_clock_starts.return_value = {31: first_pick}
+
+        view = await self.service.discord_view(self.session, 11, [], board_url_base="https://owt.example")
+
+        self.assertEqual(("lol", True), (view["discipline"], view["discipline_flex"]))
+        self.assertEqual(
+            [
+                {"code": "top", "label": "Top"},
+                {"code": "jungle", "label": "Jungle"},
+                {"code": "mid", "label": "Mid"},
+                {"code": "bot", "label": "Bot"},
+                {"code": "support", "label": "Support"},
+            ],
+            view["discipline_roles"],
+        )
+        self.assertEqual(
+            [
+                {"lobby_index": 0, "state": "live", "live_started_at": started.isoformat()},
+                {"lobby_index": 1, "state": "draft_live", "live_started_at": first_pick.isoformat()},
+                {"lobby_index": 2, "state": "pregame", "live_started_at": started.isoformat()},
+            ],
+            view["signup"]["lobbies"],
+        )
 
     async def test_deleting_one_post_marks_only_that_one(self) -> None:
         self.games.get.return_value = _game()
