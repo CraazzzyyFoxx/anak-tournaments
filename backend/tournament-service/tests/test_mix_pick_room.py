@@ -5,7 +5,9 @@ earlier in the mix -- until that round is undone."""
 from __future__ import annotations
 
 import asyncio
+import random
 from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 import sqlalchemy as sa
 
@@ -236,7 +238,9 @@ class MixFearlessTests(MixPickRoomCase):
         await self.pick("m1", seat["m1"], self.picks[2])
 
         # Left: picks 0 and 3. m2 may play either; m3 only pick 0 -- a stand-in giving m2 pick 0 would strand m3.
-        await self.run_out_the_clock()
+        # Seed 4 is an order in which filling m2 on its own takes pick 0: only a joint fill gets this right every time.
+        with patch("shared.domain.pick_ban_rules.runtime.secrets.SystemRandom", lambda: random.Random(4)):
+            await self.run_out_the_clock()
 
         self.assertEqual(
             {
