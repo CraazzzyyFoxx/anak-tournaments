@@ -133,11 +133,6 @@ export function StageList({
     return moved.length === stages.length ? moved : stages;
   }, [pendingOrder, stages]);
 
-  // A phase number is only worth showing where two stages share it: that is
-  // the one case where the order is not already the list's own order.
-  const phaseSizes = new Map<number, number>();
-  for (const stage of stages) phaseSizes.set(stage.order, (phaseSizes.get(stage.order) ?? 0) + 1);
-
   const dirty =
     name.trim().length > 0 ||
     stageType !== "round_robin" ||
@@ -171,7 +166,6 @@ export function StageList({
                 stage={stage}
                 progress={progressByStageId.get(stage.id)}
                 selected={selectedStageId === stage.id}
-                sharedPhase={(phaseSizes.get(stage.order) ?? 0) > 1}
                 onSelect={() => onSelect(stage.id)}
               />
             )}
@@ -278,13 +272,11 @@ function StageCard({
   stage,
   progress,
   selected,
-  sharedPhase,
   onSelect
 }: Readonly<{
   stage: Stage;
   progress: StageProgress | undefined;
   selected: boolean;
-  sharedPhase: boolean;
   onSelect: () => void;
 }>) {
   const t = useTranslations("adminBracket.list");
@@ -327,18 +319,21 @@ function StageCard({
           ) : null}
         </div>
 
-        {sharedPhase ? (
-          <p className="mt-1 text-xs tabular-nums text-muted-foreground">
-            {t("phase", { number: stage.order })}
-          </p>
-        ) : null}
+        <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+          {t("phase", { number: stage.order })}
+        </p>
 
         {progress && progress.total > 0 ? (
-          <Progress
-            value={getProgressPercent(progress.completed, progress.total)}
-            className="mt-2 h-1.5"
-            aria-label={t("progress", { completed: progress.completed, total: progress.total })}
-          />
+          <div className="mt-2 flex items-center gap-2">
+            <Progress
+              value={getProgressPercent(progress.completed, progress.total)}
+              className="h-1.5 flex-1"
+              aria-label={t("progress", { completed: progress.completed, total: progress.total })}
+            />
+            <span aria-hidden className="shrink-0 text-xs tabular-nums text-muted-foreground">
+              {progress.completed}/{progress.total}
+            </span>
+          </div>
         ) : null}
       </div>
     </div>

@@ -10,9 +10,8 @@ import {
   AdminDetailTableShell,
   getAdminDetailTableStyles
 } from "@/components/admin/AdminDetailTable";
-import { ConfirmDialog, type ConfirmIntent } from "@/components/kit/ConfirmDialog";
 import { EmptyNote } from "@/components/kit/EmptyNote";
-import { Button } from "@/components/ui/button";
+import { SettingGroup } from "@/components/kit/SettingRow";
 import { DateTimePicker } from "@/components/ui/date-picker";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -31,11 +30,10 @@ import { utcToZonedInput, zonedInputToUtc } from "@/lib/workspace/timezone";
 import adminService from "@/services/admin.service";
 import ffaService from "@/services/ffa.service";
 import type { Stage } from "@/types/tournament.types";
-import { Spinner } from "@/components/ui/spinner";
 
 import { useHubEncountersQuery } from "../../hubQueries";
 
-interface RoundScheduleSectionProps {
+interface RoundScheduleOptions {
   stage: Stage;
   /**
    * The team count that fixes this bracket's depth — the same value the Best-of
@@ -76,17 +74,31 @@ interface RoundRow {
   overrides: ScheduledEncounter[];
 }
 
+/** One PATCH a save would send: a match that does not carry its round's new time yet. */
+interface ScheduleWrite {
+  encounterId: number;
+  iso: string | null;
+  round: string;
+  /** The match was moved on its own: overwriting it needs the organizer's yes. */
+  moved: boolean;
+}
+
+function instantOf(value: string | Date | null): number | null {
+  if (value == null) return null;
+  const ts = new Date(value).getTime();
+  return Number.isNaN(ts) ? null : ts;
+}
+
 /**
  * The round's applied time: the instant most of its matches share. A round
- * scheduled in one click carries one instant on every match, so the mode IS
+ * scheduled in one go carries one instant on every match, so the mode IS
  * that applied time; ties resolve to the earliest so the answer is stable.
  */
 function modeInstant(encounters: ScheduledEncounter[]): string {
   const counts = new Map<number, number>();
   for (const encounter of encounters) {
-    if (encounter.scheduled_at == null) continue;
-    const ts = new Date(encounter.scheduled_at).getTime();
-    if (Number.isNaN(ts)) continue;
+    const ts = instantOf(encounter.scheduled_at);
+    if (ts === null) continue;
     counts.set(ts, (counts.get(ts) ?? 0) + 1);
   }
   let best: { ts: number; count: number } | null = null;
@@ -108,9 +120,8 @@ function scheduleRow(round: number, label: string, encounters: ScheduledEncounte
     encounters,
     baseIso,
     overrides: encounters.filter((encounter) => {
-      if (encounter.scheduled_at == null) return false;
-      const ts = new Date(encounter.scheduled_at).getTime();
-      return !Number.isNaN(ts) && ts !== baseTs;
+      const ts = instantOf(encounter.scheduled_at);
+      return ts !== null && ts !== baseTs;
     })
   };
 }
@@ -121,22 +132,26 @@ function scheduleRow(round: number, label: string, encounters: ScheduledEncounte
  * The alternative was typing a time into forty match editors. A round is the
  * unit organizers actually schedule, so it is the unit entered here — while a
  * single match that moved keeps its own time (§7 DATA: "1. by round" and
- * "2. per match"), which is why applying a round asks before overwriting those.
+ * "2. per match"), which is why saving asks before overwriting those.
  *
- * `ponytail:` matches generated AFTER an apply carry no time — the organizer
- * presses Apply again. A hook on bracket generation belongs on the backend, and
- * only once pressing a button twice is what actually hurts.
+ * The round times are drafts of the stage editor's one `SaveBar`, like every
+ * other field on the settings page, so the editor owns this state and the
+ * section below only draws it. A save writes only the matches that do not
+ * carry their round's new time yet.
+ *
+ * `ponytail:` matches generated AFTER a save carry no time — the organizer
+ * picks the round time again and saves. A hook on bracket generation belongs
+ * on the backend, and only once doing that twice is what actually hurts.
  */
-export function RoundScheduleSection({
+export function useRoundSchedule({
   stage,
   bracketTeamCount,
   lowerBracketTeamCount,
   plannedRounds,
   onChanged
-}: Readonly<RoundScheduleSectionProps>) {
+}: Readonly<RoundScheduleOptions>) {
   const t = useTranslations("adminBracket.roundSchedule");
   const formatRound = useBracketRoundLabel();
-  const styles = getAdminDetailTableStyles("compact");
   const encountersQuery = useHubEncountersQuery(stage.tournament_id);
   // An FFA stage's lobbies are NOT in that list — `encounterService.getAll`
   // answers duels — so the section read an empty stage and offered no row at
@@ -156,7 +171,6 @@ export function RoundScheduleSection({
 
   /** Edited values, keyed by round. Absent = show what the matches carry. */
   const [drafts, setDrafts] = useState<Record<number, string>>({});
-  const [pending, setPending] = useState<{ row: RoundRow; iso: string | null } | null>(null);
 
   const stageEncounters = useMemo(
     () => (encountersQuery.data?.results ?? []).filter((row) => row.stage_id === stage.id),
@@ -217,16 +231,40 @@ export function RoundScheduleSection({
     t
   ]);
 
-  const applyMutation = useMutation({
-    mutationFn: ({ encounters, iso }: { encounters: ScheduledEncounter[]; iso: string | null }) =>
+  const writes = useMemo<ScheduleWrite[]>(
+    () =>
+      rows.flatMap((row) => {
+        const value = drafts[row.round];
+        if (value === undefined) return [];
+        const iso = value === "" ? null : zonedInputToUtc(value, timeZone);
+        // Not an instant: writing it would clear the round instead of setting it.
+        if (value !== "" && iso === null) return [];
+        const target = iso === null ? null : new Date(iso).getTime();
+        const moved = new Set(row.overrides.map((encounter) => encounter.id));
+        return row.encounters
+          .filter((encounter) => instantOf(encounter.scheduled_at) !== target)
+          .map((encounter) => ({
+            encounterId: encounter.id,
+            iso,
+            round: row.label,
+            moved: moved.has(encounter.id)
+          }));
+      }),
+    [rows, drafts, timeZone]
+  );
+  const moved = writes.filter((write) => write.moved);
+
+  const saveMutation = useMutation({
+    mutationFn: (batch: ScheduleWrite[]) =>
       Promise.all(
-        encounters.map((encounter) =>
-          adminService.updateEncounter(encounter.id, { scheduled_at: iso })
+        batch.map((write) =>
+          adminService.updateEncounter(write.encounterId, { scheduled_at: write.iso })
         )
       ),
-    onSuccess: (_result, variables) => {
-      setPending(null);
-      notify.success(t("applied", { count: variables.encounters.length }));
+    onSuccess: (_result, batch) => {
+      setDrafts({});
+      if (batch.length === 0) return;
+      notify.success(t("applied", { count: batch.length }));
       // Refreshes the hub's encounters query along with the public bracket and
       // matches views — those times are what they now render.
       onChanged();
@@ -241,35 +279,40 @@ export function RoundScheduleSection({
     onError: (error) => notify.apiError(error, { title: t("applyError") })
   });
 
-  const apply = (encounters: ScheduledEncounter[], iso: string | null) => {
-    setPending(null);
-    if (encounters.length === 0) return;
-    applyMutation.mutate({ encounters, iso });
-  };
-
-  const intent: ConfirmIntent = pending
-    ? {
-        title: t("confirmTitle", { count: pending.row.overrides.length }),
-        description: t("confirmDescription", {
-          count: pending.row.overrides.length,
-          round: pending.row.label
-        }),
-        confirmLabel: t("confirmLabel"),
-        tone: "warning"
-      }
-    : { title: "", description: "", confirmLabel: t("confirmLabel"), tone: "neutral" };
-
   // Whichever read actually feeds this stage. The other one is disabled, and a
   // disabled query reports `isPending` forever.
   const source = isFfa
     ? { isPending: lobbiesQuery.isPending, isError: lobbiesQuery.isError }
     : { isPending: encountersQuery.isPending, isError: encountersQuery.isError };
 
-  return (
-    <div className="flex flex-col gap-3">
-      <h3 className="text-sm font-semibold text-foreground">{t("title")}</h3>
-      <p className="text-xs text-muted-foreground">{t("description")}</p>
+  return {
+    isFfa,
+    source,
+    rows,
+    valueOf: (row: RoundRow) => drafts[row.round] ?? utcToZonedInput(row.baseIso, timeZone),
+    setDraft: (round: number, value: string) =>
+      setDrafts((current) => ({ ...current, [round]: value })),
+    discard: () => setDrafts({}),
+    dirty: writes.length > 0,
+    /** The individually moved matches a save would overwrite, for the question before it. */
+    moved,
+    /** `overwriteMoved: false` keeps the moved matches and still schedules the rest. */
+    save: (overwriteMoved: boolean) =>
+      saveMutation.mutateAsync(overwriteMoved ? writes : writes.filter((write) => !write.moved)),
+    saving: saveMutation.isPending
+  };
+}
 
+export type RoundSchedule = ReturnType<typeof useRoundSchedule>;
+
+export function RoundScheduleSection({ schedule }: Readonly<{ schedule: RoundSchedule }>) {
+  const t = useTranslations("adminBracket.roundSchedule");
+  const tEditor = useTranslations("adminBracket.editor");
+  const styles = getAdminDetailTableStyles("compact");
+  const { isFfa, source, rows } = schedule;
+
+  return (
+    <SettingGroup id="stage-round-schedule" title={tEditor("schedule")} description={t("description")}>
       {source.isPending ? (
         <Skeleton className="h-40 w-full rounded-lg" />
       ) : source.isError ? (
@@ -293,102 +336,43 @@ export function RoundScheduleSection({
                 <TableHead className={styles.head}>
                   {isFfa ? t("lobbies") : t("matchesColumn")}
                 </TableHead>
-                <TableHead className={styles.head}>
-                  <span className="sr-only">{t("actionsColumn")}</span>
-                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row) => {
-                const value = drafts[row.round] ?? utcToZonedInput(row.baseIso, timeZone);
-                const iso = value ? zonedInputToUtc(value, timeZone) : null;
-                // A picker value with no date part would otherwise clear the
-                // round's times instead of setting them.
-                const unparseable = value !== "" && iso === null;
-                return (
-                  <TableRow key={row.round} className={styles.row}>
-                    <TableCell className={styles.cell}>
-                      <span className="font-medium text-foreground">{row.label}</span>
-                    </TableCell>
-                    <TableCell className={styles.cell}>
-                      <div className="w-[22rem]">
-                        <DateTimePicker
-                          id={`round-schedule-${row.round}`}
-                          timeId={`round-schedule-${row.round}-time`}
-                          dateLabel={t("timeInputLabel", { round: row.label })}
-                          timeLabel={t("timeFieldLabel", { round: row.label })}
-                          clearLabel={t("clearTime")}
-                          placeholder={t("timePlaceholder")}
-                          labelClassName="sr-only"
-                          value={value}
-                          onChange={(next) =>
-                            setDrafts((current) => ({ ...current, [row.round]: next }))
-                          }
-                        />
-                      </div>
-                    </TableCell>
-                    <TableCell className={styles.numericCell}>
-                      {row.encounters.length}
-                      {row.overrides.length > 0 ? (
-                        <span className="ml-2 text-xs text-warning">
-                          {t("overrides", { count: row.overrides.length })}
-                        </span>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className={styles.cell}>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={applyMutation.isPending || unparseable}
-                        onClick={() => {
-                          if (row.overrides.length > 0) setPending({ row, iso });
-                          else apply(row.encounters, iso);
-                        }}
-                      >
-                        {applyMutation.isPending ? (
-                          <Spinner />
-                        ) : null}
-                        {t("apply")}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
+              {rows.map((row) => (
+                <TableRow key={row.round} className={styles.row}>
+                  <TableCell className={styles.cell}>
+                    <span className="font-medium text-foreground">{row.label}</span>
+                  </TableCell>
+                  <TableCell className={styles.cell}>
+                    <div className="w-[22rem]">
+                      <DateTimePicker
+                        id={`round-schedule-${row.round}`}
+                        timeId={`round-schedule-${row.round}-time`}
+                        dateLabel={t("timeInputLabel", { round: row.label })}
+                        timeLabel={t("timeFieldLabel", { round: row.label })}
+                        clearLabel={t("clearTime")}
+                        placeholder={t("timePlaceholder")}
+                        labelClassName="sr-only"
+                        value={schedule.valueOf(row)}
+                        onChange={(next) => schedule.setDraft(row.round, next)}
+                      />
+                    </div>
+                  </TableCell>
+                  <TableCell className={styles.numericCell}>
+                    {row.encounters.length}
+                    {row.overrides.length > 0 ? (
+                      <span className="ml-2 text-xs text-warning">
+                        {t("overrides", { count: row.overrides.length })}
+                      </span>
+                    ) : null}
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </AdminDetailTableShell>
       )}
-
-      {/*
-        The screen's one domain-specific dialog (the kit budget allows exactly
-        one beside the shared `ConfirmDialog` in `StageEditor`, which answers
-        destructive stage operations). It is mounted here because what it
-        confirms — this round's matches — is derived here; routing it through the
-        editor's `PendingOp` union would smear one feature across two files.
-
-        Cancelling is NOT "do nothing": the question is only about the
-        individually-moved matches, so cancelling still writes the round time to
-        the rest and leaves those alone. The description says exactly that.
-      */}
-      <ConfirmDialog
-        open={pending !== null}
-        onOpenChange={(open) => {
-          if (open || applyMutation.isPending || !pending) return;
-          const kept: Record<number, true> = {};
-          for (const encounter of pending.row.overrides) kept[encounter.id] = true;
-          apply(
-            pending.row.encounters.filter((encounter) => !kept[encounter.id]),
-            pending.iso
-          );
-        }}
-        intent={intent}
-        onConfirm={() => {
-          if (pending) {
-            applyMutation.mutate({ encounters: pending.row.encounters, iso: pending.iso });
-          }
-        }}
-        pending={applyMutation.isPending}
-      />
-    </div>
+    </SettingGroup>
   );
 }

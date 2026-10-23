@@ -62,7 +62,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
   usePathname: () => "/admin/tournaments/84/bracket",
   useParams: () => ({ id: "84" }),
-  useSearchParams: () => new URLSearchParams("stage=10&section=tiebreakers")
+  useSearchParams: () => new URLSearchParams("stage=10")
 }));
 
 vi.mock("next/link", () => ({
@@ -82,7 +82,10 @@ vi.mock("next/link", () => ({
   )
 }));
 
-vi.mock("@/lib/tournament/workspace-query-keys", () => ({
+// Partial: the Settings page's bracket preview and round schedule observe
+// `useHubEncountersQuery`, which reads the real key factory from this module.
+vi.mock("@/lib/tournament/workspace-query-keys", async (importOriginal) => ({
+  ...((await importOriginal()) as object),
   invalidateTournamentWorkspace: vi.fn()
 }));
 

@@ -93,7 +93,10 @@ vi.mock("../hubQueries", () => ({
   useHubTournamentQuery: () => ({
     data: { id: 84, name: "OWT 84", workspace_id: 4 },
     isLoading: false
-  })
+  }),
+  // The editor owns the round-time drafts on every tab, so it reads the
+  // stage's matches even here.
+  useHubEncountersQuery: () => ({ data: { results: [] }, isPending: false, isError: false })
 }));
 
 function stage(overrides: Partial<Stage> = {}): Stage {

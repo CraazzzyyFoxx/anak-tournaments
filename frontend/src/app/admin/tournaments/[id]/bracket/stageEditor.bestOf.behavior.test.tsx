@@ -14,9 +14,9 @@
 // final.
 //
 // Carried over from `stageManager.bestOf.behavior.test.tsx` when PR-2e split
-// `StageManager` into the Bracket tab: same claims, now driven through
-// `?stage=&section=best-of` and saved by `SaveBar` instead of the "Advanced"
-// disclosure and its "Save override" button.
+// `StageManager` into the Bracket tab: same claims, now driven through the
+// Best-of block of the stage's Settings page and saved by `SaveBar` instead of
+// the "Advanced" disclosure and its "Save override" button.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -47,6 +47,9 @@ vi.mock("@/services/admin.service", () => ({
     getStagesProgress: (...args: unknown[]) => getStagesProgress(...args),
     updateStage: (...args: unknown[]) => updateStage(...args),
     applyStageBestOf: vi.fn(),
+    // The Settings page also draws the bracket preview; these claims are about
+    // the best-of fields beside it.
+    getStageBracketPreview: vi.fn().mockResolvedValue([]),
     // The rounds the engine says the stage has; empty means "not known yet",
     // which falls the editor back to the team-count formula.
     getStagePlannedRounds: (...args: unknown[]) => getStagePlannedRounds(...args)
@@ -71,7 +74,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
   usePathname: () => "/admin/tournaments/84/bracket",
   useParams: () => ({ id: "84" }),
-  useSearchParams: () => new URLSearchParams("stage=10&section=best-of")
+  useSearchParams: () => new URLSearchParams("stage=10")
 }));
 
 vi.mock("next/link", () => ({
@@ -91,7 +94,10 @@ vi.mock("next/link", () => ({
   )
 }));
 
-vi.mock("@/lib/tournament/workspace-query-keys", () => ({
+// Partial: the Settings page's bracket preview and round schedule observe
+// `useHubEncountersQuery`, which reads the real key factory from this module.
+vi.mock("@/lib/tournament/workspace-query-keys", async (importOriginal) => ({
+  ...((await importOriginal()) as object),
   invalidateTournamentWorkspace: vi.fn()
 }));
 
@@ -228,34 +234,36 @@ function only(name: string): HTMLElement {
   return matches[0];
 }
 
-/** The best-of section, addressed by its heading. */
+/** The best-of card, addressed by its heading. */
 function bestOfPanel(): HTMLElement {
-  const heading = [...container.querySelectorAll("h3")].find(
-    (element) => (element.textContent ?? "").trim() === "Best-of per round"
+  const heading = [...container.querySelectorAll("h2")].find(
+    (element) => (element.textContent ?? "").trim() === "Best-of"
   );
-  const found = heading?.parentElement?.parentElement;
+  const found = heading?.closest("section");
   if (!(found instanceof HTMLElement)) throw new Error("best-of section is not rendered");
   return found;
 }
 
-/** Bracket heading -> the round labels it offers, in order. */
+/** Bracket row label -> the round labels it offers, in order. */
 function roundLabelsBySection(): Record<string, string[]> {
   const sections: Record<string, string[]> = {};
-  for (const heading of bestOfPanel().querySelectorAll("h4")) {
-    const grid = heading.nextElementSibling;
-    sections[(heading.textContent ?? "").trim()] = [
-      ...(grid?.querySelectorAll("label") ?? [])
-    ].map((label) => (label.textContent ?? "").trim());
+  // A bracket's row is labelled as a whole (no `for`); its rounds each name a select.
+  for (const heading of bestOfPanel().querySelectorAll("label:not([for])")) {
+    const rounds = [...(heading.closest("div.grid")?.querySelectorAll("label[for]") ?? [])];
+    if (rounds.length === 0) continue;
+    sections[(heading.textContent ?? "").trim()] = rounds.map((label) =>
+      (label.textContent ?? "").trim()
+    );
   }
   return sections;
 }
 
-/** The select trigger under the round labelled `label`. */
+/** The select trigger the round label `label` names. */
 function roundSelect(label: string): HTMLElement {
   const found = [...bestOfPanel().querySelectorAll("label")].find(
     (element) => (element.textContent ?? "").trim() === label
   );
-  const trigger = found?.parentElement?.querySelector("button");
+  const trigger = found?.htmlFor ? document.getElementById(found.htmlFor) : null;
   if (!(trigger instanceof HTMLElement)) throw new Error(`no select for round "${label}"`);
   return trigger;
 }

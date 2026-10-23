@@ -4,8 +4,10 @@ import { useId } from "react";
 import { useTranslations } from "next-intl";
 import { useBracketRoundLabel } from "@/hooks/useBracketRoundLabel";
 
+import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -17,7 +19,6 @@ import { BEST_OF_OPTIONS, stageBestOfRoundSections } from "@/lib/tournament/best
 import type { StageBestOfConfig } from "@/types/tournament.types";
 
 import { FFA_STAGE_TYPES, normalizeMaxRounds } from "@/lib/bracket/projection";
-import { Spinner } from "@/components/ui/spinner";
 import type { SectionProps } from "./types";
 
 export function BestOfSection({
@@ -34,6 +35,7 @@ export function BestOfSection({
   lowerBracketTeamCount: number;
   /** The engine's own rounds, from the editor's `planned-rounds` query. */
   plannedRounds?: readonly number[];
+  /** Writes the SAVED best-of onto matches that already exist, right away. */
   onApplyToExisting: () => void;
   applying: boolean;
 }) {
@@ -73,79 +75,64 @@ export function BestOfSection({
       });
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-foreground">
-          {isFfa ? t("lobbyLength") : t("bestOfRound")}
-        </h3>
-        <Button size="sm" variant="ghost" disabled={applying} onClick={onApplyToExisting}>
-          {applying ? <Spinner /> : null}
-          {t("applyExisting")}
-        </Button>
-      </div>
-      {/* One expression, not JSX text: Next's SWC transform drops the leading
-          space of a multi-line text node that follows an expression and carries
-          an HTML entity, which read as "Baked into lobbieson (re)generation". */}
-      <p className="text-xs text-muted-foreground">
-        {t("baked", { target: isFfa ? t("lobbies") : t("matches") })}
-        {isDoubleElimination ? ` ${t("separateBrackets")}` : ""}
-      </p>
+    <SettingGroup
+      id="stage-best-of"
+      title={isFfa ? t("lobbyLength") : tRoot("editor.bestOf")}
+      description={isDoubleElimination ? t("separateBrackets") : undefined}
+    >
+      <SettingRow htmlFor={`${ids}-default`} label={isFfa ? t("gamesPerLobby") : t("default")}>
+        <Select
+          value={String(form.bestOf.default)}
+          onValueChange={(value) => patchBestOf({ default: Number(value) })}
+        >
+          <SelectTrigger id={`${ids}-default`}>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {BEST_OF_OPTIONS.map((n) => (
+              <SelectItem key={n} value={String(n)}>
+                {isFfa ? t("games", { count: n }) : `Bo${n}`}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingRow>
 
-      <div className={isFfa ? "grid gap-3" : "grid grid-cols-2 gap-3"}>
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${ids}-default`}>{isFfa ? t("gamesPerLobby") : t("default")}</Label>
+      {isFfa ? null : (
+        <SettingRow htmlFor={`${ids}-final`} label={isDoubleElimination ? t("grandFinalCap") : t("final")}>
           <Select
-            value={String(form.bestOf.default)}
-            onValueChange={(value) => patchBestOf({ default: Number(value) })}
+            value={form.bestOf.final != null ? String(form.bestOf.final) : "none"}
+            onValueChange={(value) =>
+              patchBestOf({ final: value === "none" ? null : Number(value) })
+            }
           >
-            <SelectTrigger id={`${ids}-default`}>
+            <SelectTrigger id={`${ids}-final`}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="none">
+                {isDoubleElimination ? t("sameUpper") : t("sameRounds")}
+              </SelectItem>
               {BEST_OF_OPTIONS.map((n) => (
-                <SelectItem key={n} value={String(n)}>
-                  {isFfa ? t("games", { count: n }) : `Bo${n}`}
-                </SelectItem>
+                <SelectItem key={n} value={String(n)}>{`Bo${n}`}</SelectItem>
               ))}
             </SelectContent>
           </Select>
-        </div>
-        {isFfa ? null : (
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${ids}-final`}>{isDoubleElimination ? t("grandFinalCap") : t("final")}</Label>
-            <Select
-              value={form.bestOf.final != null ? String(form.bestOf.final) : "none"}
-              onValueChange={(value) =>
-                patchBestOf({ final: value === "none" ? null : Number(value) })
-              }
-            >
-              <SelectTrigger id={`${ids}-final`}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">
-                  {isDoubleElimination ? t("sameUpper") : t("sameRounds")}
-                </SelectItem>
-                {BEST_OF_OPTIONS.map((n) => (
-                  <SelectItem key={n} value={String(n)}>{`Bo${n}`}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
-      </div>
+        </SettingRow>
+      )}
 
       {sections.map((section) => (
-        <div key={section.key} className="flex flex-col gap-2">
-          {section.label ? (
-            <h4 className="text-xs font-medium text-muted-foreground">
-              {tRoot(`bestOfSections.${section.key}` as never)}
-            </h4>
-          ) : null}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <SettingRow
+          key={section.key}
+          label={section.label ? tRoot(`bestOfSections.${section.key}` as never) : t("bestOfRound")}
+          stacked
+        >
+          <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3">
             {section.rounds.map(({ round, label }) => (
               <div key={round} className="flex flex-col gap-1.5">
-                <Label htmlFor={`${ids}-round-${round}`}>{label}</Label>
+                <Label htmlFor={`${ids}-round-${round}`} className="text-xs text-muted-foreground">
+                  {label}
+                </Label>
                 <Select
                   value={
                     form.bestOf.by_round[String(round)] != null
@@ -169,8 +156,21 @@ export function BestOfSection({
               </div>
             ))}
           </div>
-        </div>
+        </SettingRow>
       ))}
-    </div>
+
+      {/* One expression, not JSX text: Next's SWC transform drops the leading
+          space of a multi-line text node that follows an expression and carries
+          an HTML entity, which read as "Baked into lobbieson (re)generation". */}
+      <SettingRow
+        label={t("existingMatches")}
+        hint={t("baked", { target: isFfa ? t("lobbies") : t("matches") })}
+      >
+        <Button type="button" size="sm" variant="outline" disabled={applying} onClick={onApplyToExisting}>
+          {applying ? <Spinner /> : null}
+          {t("applyExisting")}
+        </Button>
+      </SettingRow>
+    </SettingGroup>
   );
 }

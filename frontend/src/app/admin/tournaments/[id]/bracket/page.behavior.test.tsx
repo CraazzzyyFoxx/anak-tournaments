@@ -5,8 +5,8 @@
 //     a stage's format after creation, and a non-superuser is told why rather
 //     than left with a control that silently does nothing;
 //  2. `?stage=` and `?section=` ARE the state: selecting pushes a linkable URL,
-//     and a section that does not apply to the stage's format falls back to
-//     General instead of rendering an empty panel. Without `?stage=` a wide
+//     and a tab that does not apply to the stage's format falls back to
+//     Settings instead of rendering an empty panel. Without `?stage=` a wide
 //     viewport opens the last stage; a narrow one keeps the list, because
 //     `MasterDetail`'s Back there is `history.back()`;
 //  3. one destructive operation end to end — the kebab opens the screen's ONE
@@ -288,7 +288,7 @@ describe("Bracket tab · permission gate", () => {
     const format = [...container.querySelectorAll("label")].find(
       (element) => (element.textContent ?? "").trim() === "Format"
     );
-    const trigger = format?.parentElement?.querySelector("button");
+    const trigger = format ? document.getElementById(format.htmlFor) : null;
     expect(trigger?.hasAttribute("disabled")).toBe(false);
     expect(bodyText()).not.toContain("Only superusers can modify stage type");
   });
@@ -300,7 +300,7 @@ describe("Bracket tab · permission gate", () => {
     const format = [...container.querySelectorAll("label")].find(
       (element) => (element.textContent ?? "").trim() === "Format"
     );
-    const trigger = format?.parentElement?.querySelector("button");
+    const trigger = format ? document.getElementById(format.htmlFor) : null;
     expect(trigger?.hasAttribute("disabled")).toBe(true);
     expect(bodyText()).toContain("Only superusers can modify stage type after creation.");
   });
@@ -363,12 +363,12 @@ describe("Bracket tab · URL is the state", () => {
     ).toBe(true);
   });
 
-  it("falls back to General for a section the stage's format does not have", async () => {
-    // Tiebreakers rank a group stage; a double elimination has no standings.
-    await mount("?stage=20&section=tiebreakers");
+  it("falls back to Settings for a tab the stage's format does not have", async () => {
+    // Only an elimination bracket has a layout; stage 10 is a round robin.
+    await mount("?stage=10&section=layout");
 
-    expect(sectionTab("Tiebreakers")).toBeNull();
-    expect(sectionTab("General")?.getAttribute("aria-current")).toBe("page");
+    expect(sectionTab("Bracket layout")).toBeNull();
+    expect(sectionTab("Settings")?.getAttribute("aria-current")).toBe("page");
     expect(bodyText()).toContain("Bracket preview");
   });
 });

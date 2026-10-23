@@ -65,15 +65,11 @@ vi.mock("@/lib/notify", () => ({
   notify: { success: vi.fn(), error: vi.fn(), apiError: vi.fn() }
 }));
 
-// The section under test is chosen by `?section=`, so the query string is a
-// per-test input rather than a constant.
-let currentSearch = "stage=10&section=ffa-scoring";
-
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), back: vi.fn() }),
   usePathname: () => "/admin/tournaments/84/bracket",
   useParams: () => ({ id: "84" }),
-  useSearchParams: () => new URLSearchParams(currentSearch)
+  useSearchParams: () => new URLSearchParams("stage=10")
 }));
 
 vi.mock("next/link", () => ({
@@ -93,7 +89,7 @@ vi.mock("next/link", () => ({
   )
 }));
 
-// Partial: the General section's bracket preview observes
+// Partial: the Settings page's bracket preview and round schedule observe
 // `useHubEncountersQuery`, which reads the real key factory from this module.
 vi.mock("@/lib/tournament/workspace-query-keys", async (importOriginal) => ({
   ...((await importOriginal()) as object),
@@ -215,8 +211,7 @@ async function settle(times = 12) {
   }
 }
 
-async function mount(current: Stage, section = "ffa-scoring") {
-  currentSearch = `stage=10&section=${section}`;
+async function mount(current: Stage) {
   getStages.mockResolvedValue([current]);
   getTournament.mockResolvedValue({ id: 84, name: "Cup" });
   getStagesProgress.mockResolvedValue([]);
@@ -283,7 +278,7 @@ function box(label: string): HTMLElement {
   return found;
 }
 
-/** Every `<label>` the open section renders, in order. */
+/** Every `<label>` the Settings page renders, in order. */
 function labels(): string[] {
   return [...container.querySelectorAll("label")].map((element) =>
     (element.textContent ?? "").trim()
@@ -462,7 +457,7 @@ describe("Stage editor, FFA league scoring", () => {
   it("keeps the block out of a stage that is not an FFA league", async () => {
     // A round robin that used to be an FFA league still stores its table; the
     // save of a round robin sends no FFA rule for a format that cannot use it.
-    await mount(stage("round_robin", { scoring: SAVED_SCORING }), "general");
+    await mount(stage("round_robin", { scoring: SAVED_SCORING }));
 
     await type(field("Name"), "Groups");
     await save();
@@ -473,7 +468,7 @@ describe("Stage editor, FFA league scoring", () => {
   });
 
   it("drops the FFA tiebreak order when the format stops being FFA", async () => {
-    await mount(stage("ffa_league", { scoring: SAVED_SCORING }), "general");
+    await mount(stage("ffa_league", { scoring: SAVED_SCORING }));
 
     await click(select("Format"));
     await choose("Round Robin");
@@ -525,7 +520,7 @@ describe("Stage editor, FFA league scoring", () => {
   });
 
   it("hides the duel-only points fields on an FFA stage", async () => {
-    await mount(stage("ffa_league"), "tiebreakers");
+    await mount(stage("ffa_league"));
 
     // Win/draw/loss points come from beating an opponent, and a Swiss bye is a
     // missing opponent — neither exists in a lobby.
@@ -536,7 +531,7 @@ describe("Stage editor, FFA league scoring", () => {
   });
 
   it("calls the best-of knob what it sets for a lobby", async () => {
-    await mount(stage("ffa_league"), "best-of");
+    await mount(stage("ffa_league"));
 
     expect(labels()).toContain("Games per lobby");
     // `final` resolves to the last round of a bracket; a lobby has one round.
@@ -555,10 +550,7 @@ describe("Stage editor, FFA league scoring", () => {
     // games count as round 1 — which outranks the default. Left in the payload,
     // a leftover "5" from the generic grid decides the lobby instead of the
     // knob above, and no FFA control can reach it to clear it.
-    await mount(
-      stage("ffa_league", { best_of: { default: 3, by_round: { "1": 5 }, final: 7 } }),
-      "best-of"
-    );
+    await mount(stage("ffa_league", { best_of: { default: 3, by_round: { "1": 5 }, final: 7 } }));
 
     await click(select("Games per lobby"));
     await choose("7 games");

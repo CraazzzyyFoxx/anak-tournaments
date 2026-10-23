@@ -4,7 +4,7 @@ import { useId, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
-import { eyebrowClass } from "@/components/ui/eyebrow";
+import { SettingGroup, SettingRow } from "@/components/kit/SettingRow";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { NumberInput } from "@/components/ui/number-input";
@@ -159,164 +159,157 @@ export function SeedingSection({
   const seeds = nextPlayoff ? projectedBracketSeedCounts(nextPlayoff, projected) : null;
 
   return (
-    <div className="flex flex-col gap-4">
-      {isBracket && sources.length > 0 ? (
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${ids}-feed`}>{t("wireFrom")}</Label>
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={sourceId} onValueChange={setPickedSourceId}>
-              <SelectTrigger id={`${ids}-feed`} className="sm:w-[280px]">
-                <SelectValue placeholder={t("groupStage")} />
+    <>
+      <SettingGroup id="stage-seeding" title={tRoot("editor.seeding")} description={t("fillHelp")}>
+        {isBracket && sources.length > 0 ? (
+          <SettingRow htmlFor={`${ids}-feed`} label={t("wireFrom")} hint={t("wireHelp")}>
+            <div className="flex w-full min-w-0 items-center gap-2">
+              <Select value={sourceId} onValueChange={setPickedSourceId}>
+                <SelectTrigger id={`${ids}-feed`} className="min-w-0 flex-1">
+                  <SelectValue placeholder={t("groupStage")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {sources.map((source) => (
+                    <SelectItem key={source.id} value={String(source.id)}>
+                      {source.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!sourceId || wireMutation.isPending}
+                onClick={() => wireMutation.mutate(Number(sourceId))}
+              >
+                {wireMutation.isPending ? (
+                  <Spinner />
+                ) : null}
+                {t("wire")}
+              </Button>
+            </div>
+          </SettingRow>
+        ) : null}
+
+        {isBracket ? (
+          <SettingRow htmlFor={`${ids}-seed-ranking`} label={t("bracketSeeds")} hint={t("seedHelp")}>
+            <Select
+              value={form.seedRanking}
+              onValueChange={(value) => onChange({ seedRanking: value as SeedRanking })}
+            >
+              <SelectTrigger id={`${ids}-seed-ranking`}>
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {sources.map((source) => (
-                  <SelectItem key={source.id} value={String(source.id)}>
-                    {source.name}
+                {(Object.keys(SEED_RANKING_LABELS) as SeedRanking[]).map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {tRoot(`labels.seedRanking.${SEED_RANKING_LABEL_KEYS[value]}` as never)}
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <Button
-              type="button"
-              variant="outline"
+          </SettingRow>
+        ) : null}
+
+        {isGroups ? (
+          <SettingRow htmlFor={`${ids}-advance`} label={t("advanceLabel")} hint={t("advanceHelp")}>
+            <NumberInput
+              id={`${ids}-advance`}
+              integer
+              min={1}
               size="sm"
-              disabled={!sourceId || wireMutation.isPending}
-              onClick={() => wireMutation.mutate(Number(sourceId))}
-            >
-              {wireMutation.isPending ? (
-                <Spinner />
-              ) : null}
-              {t("wire")}
-            </Button>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {t("wireHelp")}
-          </p>
-        </div>
-      ) : null}
+              className="w-56"
+              placeholder={t("advancePlaceholder")}
+              value={form.advanceCount === "" ? null : Number(form.advanceCount)}
+              onValueChange={(next) => onChange({ advanceCount: next == null ? "" : String(next) })}
+            />
+          </SettingRow>
+        ) : null}
 
-      {isBracket ? (
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${ids}-seed-ranking`}>{t("bracketSeeds")}</Label>
-          <Select
-            value={form.seedRanking}
-            onValueChange={(value) => onChange({ seedRanking: value as SeedRanking })}
-          >
-            <SelectTrigger id={`${ids}-seed-ranking`} className="sm:w-[320px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {(Object.keys(SEED_RANKING_LABELS) as SeedRanking[]).map((value) => (
-                <SelectItem key={value} value={value}>
-                  {tRoot(`labels.seedRanking.${SEED_RANKING_LABEL_KEYS[value]}` as never)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-xs text-muted-foreground">
-            {t("seedHelp")}
-          </p>
-        </div>
-      ) : null}
-
-      {isGroups ? (
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor={`${ids}-advance`}>{t("advanceLabel")}</Label>
-          <NumberInput
-            id={`${ids}-advance`}
-            integer
-            min={1}
-            placeholder={t("advancePlaceholder")}
-            className="sm:w-[280px]"
-            value={form.advanceCount === "" ? null : Number(form.advanceCount)}
-            onValueChange={(next) => onChange({ advanceCount: next == null ? "" : String(next) })}
-          />
-          <p className="text-xs text-muted-foreground">
-            {t("advanceHelp")}
-          </p>
-
-          <Label htmlFor={`${ids}-advance-upper`} className="mt-2">
-            {t("advanceUpperLabel")}
-          </Label>
-          <NumberInput
-            id={`${ids}-advance-upper`}
-            integer
-            min={0}
-            placeholder={t("all")}
-            className="sm:w-[280px]"
-            value={form.advanceUpperCount === "" ? null : Number(form.advanceUpperCount)}
-            onValueChange={(next) =>
-              onChange({ advanceUpperCount: next == null ? "" : String(next) })
+        {isGroups ? (
+          <SettingRow
+            htmlFor={`${ids}-advance-upper`}
+            label={t("advanceUpperLabel")}
+            hint={
+              <>
+                {t("advanceUpperHelp")}
+                {/* What the playoff below will actually seed, with the unsaved
+                    numbers already in place. */}
+                {seeds && seeds.lower > 0 ? (
+                  <span className="mt-1 block text-foreground">
+                    {t("seedSplit", { name: nextPlayoff?.name, upper: seeds.upper, lower: seeds.lower })}
+                  </span>
+                ) : null}
+              </>
             }
-          />
-          <p className="text-xs text-muted-foreground">
-            {t("advanceUpperHelp")}
-          </p>
-        </div>
-      ) : null}
+          >
+            <NumberInput
+              id={`${ids}-advance-upper`}
+              integer
+              min={0}
+              size="sm"
+              className="w-56"
+              placeholder={t("all")}
+              value={form.advanceUpperCount === "" ? null : Number(form.advanceUpperCount)}
+              onValueChange={(next) =>
+                onChange({ advanceUpperCount: next == null ? "" : String(next) })
+              }
+            />
+          </SettingRow>
+        ) : null}
+      </SettingGroup>
 
+      {/* Its own card: these rows PATCH on blur, not through the SaveBar. */}
       {isGroups && groups.length > 0 ? (
-        <div className="flex flex-col gap-1.5 border-t border-border pt-3">
-          <p className={eyebrowClass("muted")}>{t("advancePerGroup")}</p>
+        <SettingGroup
+          id="stage-advance-per-group"
+          title={t("advancePerGroup")}
+          description={t("overrideHelp")}
+          immediate
+        >
           {groups.map((item) => (
-            <div key={item.id} className="flex items-center gap-2">
-              <Label
-                htmlFor={`${ids}-advance-${item.id}`}
-                className="w-40 shrink-0 truncate text-xs text-muted-foreground"
-              >
-                {item.name}
-              </Label>
-              <NumberInput
-                id={`${ids}-advance-${item.id}`}
-                integer
-                min={1}
-                size="sm"
-                className="w-28 tabular-nums"
-                placeholder={stage.advance_count != null ? tRoot("extra.inherit", { value: stage.advance_count }) : undefined}
-                value={item.id in advanceDrafts ? advanceDrafts[item.id] : item.advance_count ?? null}
-                onValueChange={(next) =>
-                  setAdvanceDrafts((current) => ({ ...current, [item.id]: next }))
-                }
-                onBlur={() => commitAdvance(item)}
-              />
-              <Label
-                htmlFor={`${ids}-upper-${item.id}`}
-                className="shrink-0 text-xs text-muted-foreground"
-              >
-                {t("upper")}
-              </Label>
-              <NumberInput
-                id={`${ids}-upper-${item.id}`}
-                integer
-                min={0}
-                size="sm"
-                className="w-28 tabular-nums"
-                placeholder={tRoot("extra.inherit", { value: stage.advance_upper_count ?? t("all") })}
-                value={
-                  item.id in upperDrafts ? upperDrafts[item.id] : item.advance_upper_count ?? null
-                }
-                onValueChange={(next) =>
-                  setUpperDrafts((current) => ({ ...current, [item.id]: next }))
-                }
-                onBlur={() => commitUpper(item)}
-              />
-            </div>
+            <SettingRow key={item.id} htmlFor={`${ids}-advance-${item.id}`} label={item.name}>
+              <div className="flex items-center gap-2">
+                <NumberInput
+                  id={`${ids}-advance-${item.id}`}
+                  integer
+                  min={1}
+                  size="sm"
+                  className="w-28 tabular-nums"
+                  placeholder={stage.advance_count != null ? tRoot("extra.inherit", { value: stage.advance_count }) : undefined}
+                  value={item.id in advanceDrafts ? advanceDrafts[item.id] : item.advance_count ?? null}
+                  onValueChange={(next) =>
+                    setAdvanceDrafts((current) => ({ ...current, [item.id]: next }))
+                  }
+                  onBlur={() => commitAdvance(item)}
+                />
+                <Label
+                  htmlFor={`${ids}-upper-${item.id}`}
+                  className="shrink-0 text-xs text-muted-foreground"
+                >
+                  {t("upper")}
+                </Label>
+                <NumberInput
+                  id={`${ids}-upper-${item.id}`}
+                  integer
+                  min={0}
+                  size="sm"
+                  className="w-28 tabular-nums"
+                  placeholder={tRoot("extra.inherit", { value: stage.advance_upper_count ?? t("all") })}
+                  value={
+                    item.id in upperDrafts ? upperDrafts[item.id] : item.advance_upper_count ?? null
+                  }
+                  onValueChange={(next) =>
+                    setUpperDrafts((current) => ({ ...current, [item.id]: next }))
+                  }
+                  onBlur={() => commitUpper(item)}
+                />
+              </div>
+            </SettingRow>
           ))}
-          <p className="text-xs text-muted-foreground">
-            {t("overrideHelp")}
-          </p>
-        </div>
+        </SettingGroup>
       ) : null}
-
-      {isGroups && seeds && seeds.lower > 0 ? (
-        <p className="text-xs text-muted-foreground">
-          {t("seedSplit", { name: nextPlayoff?.name, upper: seeds.upper, lower: seeds.lower })}
-        </p>
-      ) : null}
-
-      <p className="border-t border-border pt-3 text-xs text-muted-foreground">
-        {t("fillHelp")}
-      </p>
-    </div>
+    </>
   );
 }
