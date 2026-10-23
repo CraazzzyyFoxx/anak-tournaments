@@ -20,7 +20,10 @@ from src.openapi_docs import DOCS  # noqa: E402
 
 
 def test_every_field_the_description_names_is_in_the_response() -> None:
-    fields = set(schemas.UserMixPreferencesRead.model_fields)
+    # A game's formation default is an object of its own; its keys are response fields too.
+    from src.schemas.user_prefs import MixFormationDefault
+
+    fields = set(schemas.UserMixPreferencesRead.model_fields) | set(MixFormationDefault.model_fields)
     for subject in ("rpc.balancer.prefs.get", "rpc.balancer.prefs.upsert"):
         named = set(re.findall(r"\b[a-z]+(?:_[a-z]+)+\b", DOCS[subject]["description"]))
         assert named <= fields, (subject, named - fields)
