@@ -30,11 +30,7 @@ export function toRoleRef(
   return role ? { dimension, role: subRole || role } : null;
 }
 
-/**
- * Parent-level map totals; dimensions keep same-named roles from different games apart. A parent keeps its first
- * row's other fields (a profile role's `division`): the profile sends its roles newest-ranked first, so that is the
- * parent's current division.
- */
+/** Parent-level map totals; dimensions keep same-named roles from different games apart. */
 export function aggregateRoleStats<T extends {
   role: RoleRef | null;
   maps: number;

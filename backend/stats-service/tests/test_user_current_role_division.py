@@ -1,4 +1,4 @@
-"""A role's current division comes from its newest *ranked* tournament, and roles come newest-ranked first."""
+"""A role's current division comes from its newest *ranked* tournament, pooled across its sub-roles."""
 
 from __future__ import annotations
 
@@ -35,9 +35,9 @@ class CurrentRoleDivisionTests(IsolatedAsyncioTestCase):
         self.assertIsNone(role.division)
         self.assertEqual(1, role.tournaments)
 
-    async def test_roles_come_newest_ranked_first(self) -> None:
-        # The profile's role split gives a parent role the division of its first sub-role row: the hitscan row's rank
-        # is older than the plain damage row's, so damage must come first, and a never-ranked role last.
+    async def test_sub_roles_pool_into_their_role(self) -> None:
+        # damage_hitscan is Damage: one row, its record pooled, its division the newest ranked of either (the plain
+        # damage row's 3000, not hitscan's older 2000); a never-ranked role comes last.
         never = RoleRef(dimension="player_role", role="tank")
         roles = await self._roles(
             [
@@ -46,4 +46,7 @@ class CurrentRoleDivisionTests(IsolatedAsyncioTestCase):
                 (DAMAGE, [_entry(20, None, 1), _entry(12, 3000, 2)]),
             ]
         )
-        self.assertEqual(["damage", "damage_hitscan", "tank"], [role.role.role for role in roles])
+        self.assertEqual([DAMAGE, never], [role.role for role in roles])
+        damage = roles[0]
+        self.assertEqual(DEFAULT_GRID.resolve_division(3000).number, damage.division)
+        self.assertEqual((3, 6, 8), (damage.tournaments, damage.maps_won, damage.maps))

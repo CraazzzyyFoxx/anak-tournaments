@@ -1029,19 +1029,25 @@ class UserService(DisciplineQueries):
         ``None`` only there, for a game without a system-wide grid: a role whose own
         grid is unknown has no division to report and is left out.
 
-        Roles come newest-ranked first (never-ranked last): a parent role's division is its sub-role row that comes
-        first, as the profile's role split and header aggregate them.
+        A sub-role is its parent role's (``damage_hitscan`` is Damage): one row per role, its record pooled across its
+        sub-roles and its division from the newest ranked tournament of any of them. Rows come newest-ranked first.
         """
-        roles = await self.profile.get_roles(session, user_id, workspace_id=workspace_id)
-        # Entries arrive newest event first (by start date, not id: see ``get_roles``). The current division is the
-        # newest ranked one; a role never ranked keeps its newest entry and resolves to no division.
-        latest_by_role = sorted(
-            (
-                (role, maps_won, maps_lost, division, next((e for e in division if e["rank"] is not None), division[0]))
-                for role, maps_won, maps_lost, division in roles
-            ),
-            key=lambda row: (row[4]["rank"] is None, row[4]["recency"]),
-        )
+        pooled: dict[RoleRef | None, tuple[int, int, list[dict]]] = {}
+        for role, maps_won, maps_lost, entries in await self.profile.get_roles(
+            session, user_id, workspace_id=workspace_id
+        ):
+            parent = None if role is None else RoleRef(dimension=role.dimension, role=role.parent or role.role)
+            won, lost, role_entries = pooled.get(parent, (0, 0, []))
+            pooled[parent] = (won + maps_won, lost + maps_lost, role_entries + entries)
+
+        # ``recency`` orders every entry newest event first (by start date, not id: see ``get_roles``). The current
+        # division is the newest ranked one; a role never ranked keeps its newest entry and resolves to no division.
+        latest_by_role = []
+        for role, (maps_won, maps_lost, entries) in pooled.items():
+            entries.sort(key=lambda entry: entry["recency"])
+            latest = next((entry for entry in entries if entry["rank"] is not None), entries[0])
+            latest_by_role.append((role, maps_won, maps_lost, entries, latest))
+        latest_by_role.sort(key=lambda row: (row[4]["rank"] is None, row[4]["recency"]))
 
         all_workspaces = workspace_id is None
         source_version_ids = {
@@ -1053,7 +1059,7 @@ class UserService(DisciplineQueries):
         version_reads = await _division_grid_version_reads(session, source_version_ids) if all_workspaces else {}
 
         payload: list[schemas.UserRole] = []
-        for role, maps_won, maps_lost, division, latest_role in latest_by_role:
+        for role, maps_won, maps_lost, entries, latest_role in latest_by_role:
             source_version_id = latest_role["division_grid_version_id"]
             source_grid = grids_by_version.get(source_version_id)
             fallback_grid = grid or source_grid
@@ -1062,7 +1068,7 @@ class UserService(DisciplineQueries):
             payload.append(
                 schemas.UserRole(
                     role=role,
-                    tournaments=len({item["tournament"] for item in division}),
+                    tournaments=len({item["tournament"] for item in entries}),
                     maps_won=maps_won,
                     maps=maps_won + maps_lost,
                     division=resolve_workspace_division(

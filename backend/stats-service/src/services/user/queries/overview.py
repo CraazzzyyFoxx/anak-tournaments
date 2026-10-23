@@ -550,7 +550,6 @@ class UserOverviewQueries(DisciplineQueries):
             sa.select(
                 models.WorkspaceMember.player_id.label("user_id"),
                 models.Player.role.label("role"),
-                models.Player.sub_role,
                 models.Tournament.discipline,
                 models.Player.rank.label("rank"),
                 models.Player.tournament_id.label("tournament_id"),
@@ -584,7 +583,6 @@ class UserOverviewQueries(DisciplineQueries):
         columns = (
             latest_roles_subquery.c.user_id,
             latest_roles_subquery.c.role,
-            latest_roles_subquery.c.sub_role,
             latest_roles_subquery.c.discipline,
             latest_roles_subquery.c.rank,
         )
@@ -602,11 +600,12 @@ class UserOverviewQueries(DisciplineQueries):
         result = await session.execute(query)
 
         payload: dict[int, list[tuple[RoleRef, int | None, int | None]]] = defaultdict(list)
-        for user_id, role, sub_role, discipline_code, rank, division_source in result.all():
+        for user_id, role, discipline_code, rank, division_source in result.all():
             if role is None:
                 continue
+            # The role, never the latest row's sub-role: a sub-role is its parent role's (the partition above).
             payload[user_id].append(
-                (RoleRef.of(discipline(discipline_code).rated_dimension.code, role, sub_role), rank, division_source)
+                (RoleRef.of(discipline(discipline_code).rated_dimension.code, role), rank, division_source)
             )
 
         # The game's rated roles in declaration order; a role it does not declare sorts last.
