@@ -4,6 +4,8 @@ import { ArrowRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
+import PlayerRoleIcon from "@/components/PlayerRoleIcon";
+import { findRole, ratedDimension, rolePresentation, showsRoles, type RoleOntology } from "@/lib/roster/ontology";
 import type { DivisionGrid } from "@/types/workspace.types";
 
 import type { PlayerValidationIssue } from "@/components/balancer/workspace-helpers";
@@ -52,17 +54,27 @@ export function issueChipKey(issue: PlayerValidationIssue): string {
 export function IssueChip({
   issue,
   divisionGrid,
+  ontology,
 }: Readonly<{
   issue: PlayerValidationIssue;
   /** The owner game's grid the chip's division crests resolve in. */
   divisionGrid: DivisionGrid;
+  /** The owner's role dictionary: a rank-delta chip shows the role's icon when it has one. */
+  ontology: RoleOntology | null;
 }>) {
   const t = useTranslations("balancerTool.pool.issues");
   const message = useIssueMessage()(issue);
   if (issue.code === "rank_delta_warning") {
+    const rated = ontology ? ratedDimension(ontology) : null;
+    const node = ontology && rated ? findRole(ontology, { dimension: rated.code, role: issue.role }) : null;
+    const hasIcon = ontology && node && showsRoles(ontology) && rolePresentation(ontology.roles, node.id).icon;
     return (
       <span className={CHIP_CLASS} title={message}>
-        <span className="font-semibold uppercase tracking-label">{issue.roleLabel}</span>
+        {hasIcon ? (
+          <PlayerRoleIcon role={issue.role} ontology={ontology} size={14} label={issue.roleLabel} />
+        ) : (
+          <span className="font-semibold uppercase tracking-label">{issue.roleLabel}</span>
+        )}
         {issue.currentDivision != null ? (
           <DivisionIcon division={issue.currentDivision} tournamentGrid={divisionGrid} width={14} height={14} />
         ) : null}

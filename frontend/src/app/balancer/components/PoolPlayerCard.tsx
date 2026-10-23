@@ -258,6 +258,7 @@ export const PoolPlayerCard = forwardRef<HTMLDivElement, PoolPlayerCardProps>(
                         key={`${player.id}-${issueChipKey(issue)}`}
                         issue={issue}
                         divisionGrid={divisionGrid}
+                        ontology={ontology}
                       />
                     ))}
                     <AdditionalHandleStrip additionalHandles={player.additional_handles} />
