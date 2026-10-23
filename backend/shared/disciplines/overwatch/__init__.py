@@ -203,6 +203,7 @@ SPEC = DisciplineSpec(
     kinds={"character": "Hero", "map": "Map", "mode": "Mode"},
     # Never "flex": flex is a slot without a constraint, not a hero's class.
     character_classes=("tank", "damage", "support"),
+    character_uniqueness="team",
     catalog_sync=_catalog_sync,
     native_ranks=_native_ranks,
     native_ladder=NATIVE_LADDER,

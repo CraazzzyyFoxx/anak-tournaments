@@ -231,6 +231,10 @@ class DisciplineSpec:
     #: Whether the game has open slots and Full flex players -- one flag, both meanings. ``False``: a format's open
     #: starters go to the single rated role (``shared.domain.team_format.slot_shape``) and nobody may be Full flex.
     flex: bool = True
+    #: Whether one hero may be played twice (spec §11.2): ``match`` -- once per match, ``team`` -- once per team,
+    #: ``none`` -- freely. Hero pick steps exist only for ``match`` games (an entry per item per round already makes a
+    #: picked hero unavailable to both teams); an unknown game says ``none``.
+    character_uniqueness: Literal["match", "team", "none"] = "none"
     #: The provider used for default form identities, roster names and log matching.
     identity_provider: str | None = None
     #: Projected SMALLINT dictionaries; historical definitions are deactivated, never deleted.

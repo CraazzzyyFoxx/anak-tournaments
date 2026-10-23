@@ -41,6 +41,15 @@ def test_overwatch_declares_no_sides():
     assert (spec.code, spec.name, spec.sides) == ("overwatch", "Overwatch", ())
 
 
+def test_each_game_declares_whether_a_hero_repeats_in_a_match():
+    assert {code: DISCIPLINES[code].character_uniqueness for code in ("overwatch", "lol", "deadlock")} == {
+        "overwatch": "team",
+        "lol": "match",
+        "deadlock": "match",
+    }
+    assert discipline("starcraft").character_uniqueness == "none"
+
+
 def test_lol_declares_blue_red_sides_and_only_its_minimal_vocabulary():
     spec = DISCIPLINES["lol"]
     # Index 0 = blue, 1 = red: the ``side_pick`` wire index.

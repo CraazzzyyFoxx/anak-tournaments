@@ -146,6 +146,7 @@ SPEC = DisciplineSpec(
     kinds={"character": "Champion", "map": "Map"},
     #: Data Dragon champion tags; a champion's class is its first tag.
     character_classes=("Assassin", "Fighter", "Mage", "Marksman", "Support", "Tank"),
+    character_uniqueness="match",
     catalog_sync=_catalog_sync,
     native_ranks=_native_ranks,
     native_ladder=NATIVE_LADDER,

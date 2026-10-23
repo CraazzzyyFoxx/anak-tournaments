@@ -592,6 +592,20 @@ class RulesetValidationBlocksTheWrite(_UpsertCase):
         # The response carries exactly what was stored, not what was sent.
         self.assertEqual(config.ruleset_json, envelope["data"]["ruleset"])
 
+    async def test_a_mix_only_pick_preset_is_refused_for_a_tournament(self) -> None:
+        # R4-6: member picks and assignments are a mix room's; a tournament hero config holding one is a 422.
+        offered = {row["id"]: row for row in pbr.catalog(discipline="lol")["presets"]}["lol_draft"]
+        body = {"kind": "hero", "mode": "pool", "ruleset": offered["ruleset"], "item_ids": [1, 2, 3]}
+
+        envelope, session = await self.call(
+            UPSERT,
+            {"identity": IDENTITY, "id": TOURNAMENT_ID, "payload": body},
+            session=_FakeSession(discipline="lol"),
+        )
+
+        self.assert_ruleset_issue(envelope, "mix_only")
+        self.assertEqual(0, session.commits)
+
 
 class PoolCapacityGuard(_UpsertCase):
     async def test_a_map_phase_that_outgrows_its_pool_is_refused(self) -> None:

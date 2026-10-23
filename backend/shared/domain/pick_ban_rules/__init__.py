@@ -13,6 +13,7 @@ No DB, no service imports: every service may import this.
 from .compile import (
     LEAD_BANS,
     UnassignedSide,
+    bind_members,
     build_sequence_for_best_of,
     build_slot_sequence,
     phase_matches,
@@ -137,6 +138,7 @@ __all__ = (
     "TargetPlayer",
     "applied_items",
     "assigned_sides",
+    "bind_members",
     "build_sequence_for_best_of",
     "build_slot_sequence",
     "carried_bans",

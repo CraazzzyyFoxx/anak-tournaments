@@ -193,7 +193,9 @@ def test_converted_configs_validate_clean():
             no_repeat_scope="encounter",
             unique_attribute="role",
         )
-        assert pbr.validate_ruleset(ruleset.to_json(), kind=kind, mode=mode, discipline="overwatch") == []
+        # A hero pick needs a game that fields a hero once per match (spec §11.2); Overwatch fields one per team.
+        discipline = "deadlock" if kind == "hero" else "overwatch"
+        assert pbr.validate_ruleset(ruleset.to_json(), kind=kind, mode=mode, discipline=discipline) == []
 
 
 # ── phase selection ─────────────────────────────────────────────────────────
@@ -347,4 +349,57 @@ def test_hero_round_drops_a_decider_step():
 
 def test_resolved_step_round_trips_through_json():
     (step,) = pbr.resolve_round(ANTI, kind="hero", round=1, start_index=0, participants=SEATS, opener=SLOT1, best_of=5)
+    assert pbr.ResolvedStep.from_json(step.to_json()) == step
+
+
+# ── member steps (spec §11.6 R4-1, R4-2) ─────────────────────────────────────
+
+MEMBERS = {SLOT1: (101, 102, 103), SLOT2: (201, 202, 203)}
+
+
+def _member_steps(*steps: dict) -> list[pbr.ResolvedStep]:
+    ruleset = pbr.parse_ruleset({"version": 2, "phases": [{"id": "main", "steps": list(steps)}]})
+    return pbr.resolve_round(
+        ruleset, kind="hero", round=1, start_index=0, participants=SEATS, opener=SLOT1, members=MEMBERS
+    )
+
+
+def test_next_steps_go_to_each_teams_members_in_pick_order():
+    steps = _member_steps(
+        {"id": "p1", "action": "pick", "actors": "first", "member": "next"},
+        {"id": "p2", "action": "pick", "actors": "second", "member": "next"},
+        {"id": "p3", "action": "pick", "actors": "both", "member": "next"},
+    )
+    assert [step.member_seats for step in steps] == [[(SLOT1, 101)], [(SLOT2, 201)], [(SLOT1, 102), (SLOT2, 202)]]
+    assert steps[0].answers == [(SLOT1, 101)]
+
+
+def test_an_each_step_owes_every_member_of_its_teams():
+    (step,) = _member_steps({"id": "all", "action": "pick", "actors": "both", "member": "each"})
+    assert step.answers == [(SLOT1, 101), (SLOT1, 102), (SLOT1, 103), (SLOT2, 201), (SLOT2, 202), (SLOT2, 203)]
+
+
+def test_a_side_bound_member_step_gets_its_member_once_its_side_does():
+    (resolved,) = _member_steps({"id": "p", "action": "pick", "actors": "first", "member": "next"})
+    waiting = resolved.model_copy(update={"actors": [], "actors_token": "side:blue", "member_seats": []})
+    assert pbr.bind_members([waiting], MEMBERS)[0].member_seats == []
+
+    (bound,) = pbr.bind_members([waiting.model_copy(update={"actors": [SLOT2]})], MEMBERS)
+
+    assert bound.member_seats == [(SLOT2, 201)]
+    assert bound.unbound().member_seats == []
+    assert pbr.ResolvedStep.from_json(bound.to_json()) == bound
+
+
+def test_team_steps_store_no_member_keys():
+    # R-F4a: a ruleset and a session of team steps only stay byte-compatible with readers that predate member picks.
+    ruleset = pbr.parse_ruleset(
+        {"version": 2, "phases": [{"id": "main", "steps": [{"id": "b", "action": "ban", "actors": "first"}]}]}
+    )
+    (stored,) = ruleset.to_json()["phases"][0]["steps"]
+    assert "member" not in stored
+    assert pbr.parse_ruleset(ruleset.to_json()) == ruleset
+
+    (step,) = pbr.resolve_round(ruleset, kind="hero", round=1, start_index=0, participants=SEATS, opener=SLOT1)
+    assert {"member", "member_seats"}.isdisjoint(step.to_json())
     assert pbr.ResolvedStep.from_json(step.to_json()) == step
