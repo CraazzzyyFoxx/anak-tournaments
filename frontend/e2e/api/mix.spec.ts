@@ -209,7 +209,16 @@ test("self-service seat: unlinked accounts get the blocker, a seated player may 
   expect((await player.api.raw("DELETE", `${game}/me`)).status(), "leaving twice").toBe(404);
   expect((await adminApi.get<Mix>(`/api/v1/balancer/custom-games/${mix.id}`)).players.map((p) => p.workspace_member_id)).not.toContain(seat!.member_id);
 
-  const prefs = { max_result_variants: 5, mix_comfort_tilt: 0.3, open_slot_settings: null, points_per_win: 25, rating_mode: "points", role_settings: null };
+  const prefs = {
+    max_result_variants: 5,
+    mix_comfort_tilt: 0.3,
+    open_slot_settings: null,
+    points_per_win: 25,
+    rating_mode: "points",
+    role_settings: null,
+    hero_ban_presets: {},
+    formation_defaults: {},
+  };
   expect(await player.api.put("/api/v1/balancer/me/mix-preferences", prefs)).toMatchObject(prefs);
   expect(await player.api.get("/api/v1/balancer/me/mix-preferences")).toMatchObject(prefs);
   expect(await outsider.api.get("/api/v1/balancer/me/mix-preferences"), "another account keeps its defaults").toMatchObject({ points_per_win: null, mix_comfort_tilt: null });
