@@ -370,7 +370,13 @@ Every step here runs with the site open.
 
      The apply refuses any other status (`native_inspection_drift`). On the 2026-10-16 data the P4 inventory found 153
      missing keys, 1 hash conflict and 18 keys shared by 36 matches.
-   - A `blockers` count above zero is S3 access failing: fix the credentials and verify again.
+   - A `blockers` count above zero is S3 access failing: fix the credentials and verify again. `configuration_or_database_unavailable`
+     with no S3 trouble is the server ending the session: Moscow runs `idle_in_transaction_session_timeout` = 30 s,
+     and both commands hold one transaction open while they fetch S3 objects one by one. asyncpg ignores
+     `PGOPTIONS`. On 2026-10-23 they ran through a wrapper that sets `idle_in_transaction_session_timeout=0` and
+     `statement_timeout=0` as asyncpg `server_settings` for that process only (`/root/cutover-v2.0.0/prepare_native.py`).
+     The verify took 11.5 min: 7,303 `available`, 230 `missing`, 36 `unverified` (shared), 0 conflicts. The apply
+     fetches every object again under its lock, so `stats-worker` stays stopped about as long.
 4. **Proofs on the frozen copy.** Restore `db-rank01.dump` into a throwaway PostgreSQL 18 (for example a temporary
    `postgres:18.1` container on home). Name the database `$DB_NAME`: the receipt records the name. On that copy run:
    - `discipline01_reconcile.sql` (every class ok);
