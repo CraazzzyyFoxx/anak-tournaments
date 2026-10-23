@@ -11,6 +11,7 @@ import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { RankCrest } from "@/components/RankCrest";
 import type { PickBanItemLike } from "@/components/pick-ban/PickBanGrid";
 import { PickBanItemThumb } from "@/components/pick-ban/PickBanItemThumb";
+import { CHARACTER_PICK_BAN_KIND } from "@/components/pick-ban/pick-ban-model";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
 import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
@@ -92,7 +93,13 @@ export function RoomTeamColumn({
               style={{ viewTransitionName: heroTransitionName(heroId) }}
               title={t("banned", { hero: heroName(heroId) })}
             >
-              <PickBanItemThumb kind="hero" item={heroesById[heroId]} name={heroName(heroId)} size={28} muted />
+              <PickBanItemThumb
+                kind={CHARACTER_PICK_BAN_KIND}
+                item={heroesById[heroId]}
+                name={heroName(heroId)}
+                size={28}
+                muted
+              />
               <span
                 aria-hidden
                 className="absolute -bottom-1 -right-1 grid size-4 place-items-center rounded-full bg-[color:var(--aqt-card)] ring-1 ring-[color:var(--aqt-rose)]/70"
@@ -103,7 +110,12 @@ export function RoomTeamColumn({
           ))}
           {team.unassignedPicks.map((heroId) => (
             <span key={`pick-${heroId}`} style={{ viewTransitionName: heroTransitionName(heroId) }}>
-              <PickBanItemThumb kind="hero" item={heroesById[heroId]} name={heroName(heroId)} size={26} />
+              <PickBanItemThumb
+                kind={CHARACTER_PICK_BAN_KIND}
+                item={heroesById[heroId]}
+                name={heroName(heroId)}
+                size={26}
+              />
             </span>
           ))}
         </div>
@@ -188,7 +200,7 @@ function SeatLine({
       {away ? <span className={AWAY_CHIP_CLASS}>{tRoom("away")}</span> : null}
       {heroName != null && seat.heroId != null ? (
         <span className="shrink-0" style={{ viewTransitionName: heroTransitionName(seat.heroId) }}>
-          <PickBanItemThumb kind="hero" item={hero} name={heroName} size={26} />
+          <PickBanItemThumb kind={CHARACTER_PICK_BAN_KIND} item={hero} name={heroName} size={26} />
         </span>
       ) : null}
     </li>
