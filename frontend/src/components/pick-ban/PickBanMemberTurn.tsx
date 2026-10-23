@@ -89,8 +89,24 @@ export function PickBanAssignBoard({
     const timers = saveTimers.current;
     return () => Object.values(timers).forEach((timer) => window.clearTimeout(timer));
   }, []);
+  // Per team, its writes in order, one in flight at a time: the server keeps whichever lands last, so a slow save
+  // must never land over a newer one. `revision` counts local edits, `sent` is the newest put on the wire.
+  const teamSaves = useRef<
+    Record<number, { revision: number; sent: number; picks: Record<number, number>; chain: Promise<void> }>
+  >({});
+  const teamSave = (teamId: number) =>
+    (teamSaves.current[teamId] ??= { revision: 0, sent: 0, picks: {}, chain: Promise.resolve() });
   const submit = useMutation({
-    mutationFn: ({ teamId, picks, lock }: { teamId: number; picks: Record<number, number>; lock: boolean }) => {
+    mutationFn: ({
+      teamId,
+      picks,
+      lock
+    }: {
+      teamId: number;
+      picks: Record<number, number>;
+      lock: boolean;
+      revision: number;
+    }) => {
       const items: PickBanSubmissionItem[] = Object.entries(picks).map(([member, hero]) => ({
         item_id: hero,
         target_player_id: null,
@@ -100,7 +116,9 @@ export function PickBanAssignBoard({
         ? pickBanService.submitDraft(kind, encounterId, { items, lock })
         : adminService.adminPickBanSubmit(encounterId, { kind, encounter_team_id: teamId, items, lock });
     },
-    onError: (error, { teamId }) => {
+    onError: (error, { teamId, revision }) => {
+      // A refusal of an edit a newer one already replaced is moot: that newer one is saved next.
+      if (teamSave(teamId).revision !== revision) return;
       // Refused: the server's saved assignment is the board again.
       setEdits((current) => ({ ...current, teams: { ...current.teams, [teamId]: undefined } }));
       notify.apiError(error, { title: t("assign.failed") });
@@ -108,17 +126,30 @@ export function PickBanAssignBoard({
     onSettled: () => void queryClient.invalidateQueries({ queryKey })
   });
   const locking = submit.isPending && submit.variables?.lock === true;
-  // Saved like the blind draft tray: a burst of clicks is one debounced save; the lock goes at once and supersedes it.
+  /** Queues a team's write behind its earlier ones: the newest edit when its turn comes (skipped if a turn before
+   * already sent it), or the lock of `lockPicks`. */
+  const queueSave = (teamId: number, lockPicks: Record<number, number> | null) => {
+    const team = teamSave(teamId);
+    team.chain = team.chain.then(async () => {
+      if (lockPicks == null && team.sent === team.revision) return;
+      team.sent = team.revision;
+      await submit
+        .mutateAsync({ teamId, picks: lockPicks ?? team.picks, lock: lockPicks != null, revision: team.revision })
+        .catch(() => {}); // onError has dealt with it
+    });
+  };
+  // Saved like the blind draft tray: a burst of clicks is one debounced save; the lock goes next in line and
+  // supersedes it.
   const choose = (teamId: number, picks: Record<number, number>) => {
+    const team = teamSave(teamId);
+    team.revision += 1;
+    team.picks = picks;
     window.clearTimeout(saveTimers.current[teamId]);
     setEdits((current) => ({
       step: stepIndex,
       teams: { ...(current.step === stepIndex ? current.teams : {}), [teamId]: picks }
     }));
-    saveTimers.current[teamId] = window.setTimeout(
-      () => submit.mutate({ teamId, picks, lock: false }),
-      DRAFT_SAVE_DELAY_MS
-    );
+    saveTimers.current[teamId] = window.setTimeout(() => queueSave(teamId, null), DRAFT_SAVE_DELAY_MS);
   };
   const heroName = (heroId: number) =>
     itemsById[heroId]?.name ?? t(`${kind}.itemNumber`, { id: heroId });
@@ -177,7 +208,7 @@ export function PickBanAssignBoard({
                 disabled={Object.keys(picks).length === 0 || locking}
                 onClick={() => {
                   window.clearTimeout(saveTimers.current[teamId]);
-                  submit.mutate({ teamId, picks, lock: true });
+                  queueSave(teamId, picks);
                 }}
               >
                 {locking ? <Spinner className="mr-2" /> : null}

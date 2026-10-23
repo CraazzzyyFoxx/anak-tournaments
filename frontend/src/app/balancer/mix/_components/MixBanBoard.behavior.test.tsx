@@ -309,16 +309,54 @@ function afterAssign(state: PickBanState, teamId: number, input: PickBanSubmitIn
   return acting.length === 0 ? completed(next) : next;
 }
 
-/** Serves `answer(state, input)` as the server's reply, and as every read after it; each write builds on the last. */
-function serve<I>(service: Mock, state: PickBanState, answer: (state: PickBanState, input: I) => PickBanState) {
+/** Serves `answer(state, input)` as the server's reply, and as every read after it; each write builds on the last.
+ * With `hold`, a write lands (is applied and answered) only when the case says so, in the order it picks: a slow
+ * network. */
+function serve<I>(
+  service: Mock,
+  state: PickBanState,
+  answer: (state: PickBanState, input: I) => PickBanState,
+  hold = false,
+) {
   let current = state;
-  getPickBanState.mockResolvedValue(state);
-  service.mockImplementation(async (_kind: unknown, _encounterId: unknown, input: I) => {
-    current = answer(current, input);
-    getPickBanState.mockResolvedValue(current);
-    return current;
-  });
+  const held: (() => void)[] = [];
+  getPickBanState.mockImplementation(async () => current);
+  service.mockImplementation(
+    (_kind: unknown, _encounterId: unknown, input: I) =>
+      new Promise<PickBanState>((resolve, reject) => {
+        const land = () => {
+          try {
+            current = answer(current, input);
+            resolve(current);
+          } catch (error) {
+            reject(error);
+          }
+        };
+        if (hold) held.push(land);
+        else land();
+      }),
+  );
+  return {
+    server: () => current,
+    pending: () => held.length,
+    /** Lands one held write: the oldest, or the newest. */
+    async land(newest = false) {
+      await act(async () => (newest ? held.pop() : held.shift())?.());
+      await settle();
+    },
+  };
 }
+
+/** Slot 1's captain on the assignment, each player offered the heroes `eligible` names. */
+const assigning = (eligible: Record<string, number[]>) =>
+  stepState(ASSIGN, {
+    expected_action: "assign",
+    viewer_team_id: 71,
+    viewer_can_act: true,
+    allowed_actions: ["assign"],
+    acting_team_ids: [71],
+    member_eligible: eligible,
+  });
 
 const tile = (name: string) => document.body.querySelector<HTMLButtonElement>(`[aria-label^="${name} — "]`);
 
@@ -546,17 +584,8 @@ describe("MixBanBoard", () => {
 
   it("saves a captain's assignment as they make it, so a refresh keeps it, and locks it", async () => {
     let refreshes = 0;
-    serve(
-      submitDraft,
-      stepState(ASSIGN, {
-        expected_action: "assign",
-        viewer_team_id: 71,
-        viewer_can_act: true,
-        allowed_actions: ["assign"],
-        acting_team_ids: [71],
-        member_eligible: { "501": [101, 102], "502": [101, 102] },
-      }),
-      (state, input: PickBanSubmitInput) => afterAssign(state, 71, input),
+    serve(submitDraft, assigning({ "501": [101, 102], "502": [101, 102] }), (state, input: PickBanSubmitInput) =>
+      afterAssign(state, 71, input),
     );
     await render(() => (refreshes += 1));
 
@@ -586,17 +615,8 @@ describe("MixBanBoard", () => {
 
   it("keeps the saved assignment when the server refuses a choice that leaves a player without a hero", async () => {
     // P1 may play only Hero 101: giving it to P0 leaves P1 nothing.
-    serve(
-      submitDraft,
-      stepState(ASSIGN, {
-        expected_action: "assign",
-        viewer_team_id: 71,
-        viewer_can_act: true,
-        allowed_actions: ["assign"],
-        acting_team_ids: [71],
-        member_eligible: { "501": [101, 102], "502": [101] },
-      }),
-      (state, input: PickBanSubmitInput) => afterAssign(state, 71, input),
+    serve(submitDraft, assigning({ "501": [101, 102], "502": [101] }), (state, input: PickBanSubmitInput) =>
+      afterAssign(state, 71, input),
     );
     await render(() => {});
 
@@ -605,5 +625,48 @@ describe("MixBanBoard", () => {
 
     expect(notify.apiError).toHaveBeenCalledTimes(1);
     expect(give("Hero 101", "P0")?.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("saves a team's assignment in order, so a slow save never lands over a newer one", async () => {
+    const room = serve(
+      submitDraft,
+      assigning({ "501": [101, 102], "502": [101, 102] }),
+      (state, input: PickBanSubmitInput) => afterAssign(state, 71, input),
+      true,
+    );
+    await render(() => {});
+
+    await act(async () => give("Hero 101", "P0")?.click());
+    await debounce();
+    await act(async () => give("Hero 102", "P0")?.click());
+    await debounce();
+    // The network lands whatever is in flight newest first.
+    while (room.pending() > 0) await room.land(true);
+
+    const row = room.server().submissions.find((submission) => submission.encounter_team_id === 71);
+    expect(row?.items.map((item) => [item.member_id, item.item_id])).toEqual([[501, 102]]);
+  });
+
+  it("keeps a correction made while the server was refusing the choice it replaced", async () => {
+    // P1 may play only Hero 101: giving it to P0 is refused; giving P0 Hero 102 instead is fine.
+    const room = serve(
+      submitDraft,
+      assigning({ "501": [101, 102], "502": [101] }),
+      (state, input: PickBanSubmitInput) => afterAssign(state, 71, input),
+      true,
+    );
+    await render(() => {});
+
+    await act(async () => give("Hero 101", "P0")?.click());
+    await debounce();
+    await act(async () => give("Hero 102", "P0")?.click());
+    await debounce();
+    await room.land(); // the refusal
+
+    expect(give("Hero 102", "P0")?.getAttribute("aria-pressed")).toBe("true");
+    while (room.pending() > 0) await room.land();
+    expect(give("Hero 102", "P0")?.getAttribute("aria-pressed")).toBe("true");
+    const row = room.server().submissions.find((submission) => submission.encounter_team_id === 71);
+    expect(row?.items.map((item) => [item.member_id, item.item_id])).toEqual([[501, 102]]);
   });
 });
