@@ -56,6 +56,7 @@ from src.services.draft.feasibility import DraftFeasibilityService, feasibility_
 from src.services.draft.journal import journal_service
 from src.services.draft.rosters import DraftRosterService, draft_rosters
 from src.services.draft.selection import DraftSelectionService, selection_service
+from src.services.mix_room_dms import notify_mix_captain
 
 __all__ = ("DraftLifecycleService", "lifecycle_service")
 
@@ -726,6 +727,18 @@ class DraftLifecycleService:
         draft_session.blocked_reason = None
         draft_session.current_pick_id = first.id
         await session.flush()
+        if draft_session.custom_game_id is not None:
+            # One DM per captain when the clock starts -- not at the seed, per pick or on resume (spec §12.1 R3-3).
+            game = await self.custom_games.get(session, draft_session.custom_game_id)
+            for team in await self.teams_repo.list_by_session(session, draft_session.id):
+                await notify_mix_captain(
+                    session,
+                    kind="mix.draft_started",
+                    game=game,
+                    lobby_index=draft_session.lobby_index,
+                    auth_user_id=team.captain_auth_user_id,
+                    dedupe_key=f"mix_draft:{draft_session.id}:{team.captain_workspace_member_id}",
+                )
         return draft_session
 
     async def pause(self, session: AsyncSession, draft_session: DraftSession) -> DraftSession:

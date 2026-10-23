@@ -28,6 +28,7 @@ from src.services.draft import realtime as draft_rt
 from src.services.draft.chat_access import draft_chat_service
 from src.services.draft.feasibility import feasibility_service
 from src.services.draft.lifecycle import DraftLifecycleService, lifecycle_service
+from src.services.mix_room_dms import notify_mix_captain
 
 __all__ = ("MixDraftService", "mix_draft_service")
 
@@ -156,6 +157,16 @@ class MixDraftService:
             team.captain_workspace_member_id = player.workspace_member_id
             team.captain_auth_user_id = roster.auth_user_id if roster is not None else None
             await session.flush()
+            # A captain handed the started draft, live or paused, hears it like the two who started it -- the resume
+            # sends nothing (spec §12.1 R3-3).
+            await notify_mix_captain(
+                session,
+                kind="mix.draft_started",
+                game=game,
+                lobby_index=lobby_index,
+                auth_user_id=team.captain_auth_user_id,
+                dedupe_key=f"mix_draft:{draft.id}:{player.workspace_member_id}",
+            )
         # The gateway re-checks the chat's subscribers only on the chat's visibility event: the captain who lost the
         # crown loses a chat closed to spectators now, not at their next subscribe.
         await draft_chat_service.access_changed(session, ChatRoom.draft(draft.id), actor_user_id=actor_user_id)

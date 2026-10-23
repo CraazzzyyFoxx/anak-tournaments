@@ -92,6 +92,7 @@ from src.services.balancer.solver import run_mix_balance as _run_balance
 from src.services.balancer.solver import serialize_format_context
 from src.services.draft import realtime as draft_rt
 from src.services.mix_ranker import MixRankerService, RatedSeat, mix_ranker_service
+from src.services.mix_room_dms import notify_mix_captain
 from src.services.mix_rounds import MixMatchDraft, MixMatchSeat, MixResultDraft, record_mix_result, start_mix_match
 from src.services.pickup_mix_realtime import emit_pickup_mix_changed
 from src.services.workspace_roster import (
@@ -3189,7 +3190,8 @@ class CustomGameService:
 
         With a hero ban preset the opener (``ban_opener``, flipped by ``flip_opener``) sits in slot 1, the preset is
         frozen on the lobby (``live_ban_preset``: a header edit meanwhile does not change the room) and tournament-service
-        is asked to open the room; without one the lineup order stands and the flip is ignored.
+        is asked to open the room; without one the lineup order stands and the flip is ignored. Each captain also gets
+        one DM linking the lobby's room (``mix.ban_room_opened``).
         """
         game = await self._writable(
             session,
@@ -3222,6 +3224,20 @@ class CustomGameService:
         )
         lobby.live_encounter_id = encounter.id
         lobby.live_ban_preset = game.hero_ban_preset
+        if opener is not None:
+            # The room opens on this very start: each team's captain hears it once (spec §12.1 R3-3).
+            captains = [team.get("captain_member_id") for team in teams if isinstance(team, dict)]
+            members = [member for member in captains if isinstance(member, int)]
+            accounts = await self.workspace_members.auth_user_ids(session, members)
+            for member in members:
+                await notify_mix_captain(
+                    session,
+                    kind="mix.ban_room_opened",
+                    game=game,
+                    lobby_index=lobby_index,
+                    auth_user_id=accounts.get(member),
+                    dedupe_key=f"mix_ban_room:{encounter.id}:{member}",
+                )
         await session.flush()
         return game
 
