@@ -849,11 +849,17 @@ class UserEncounterQueries(DisciplineQueries):
                 models.Tournament, models.Tournament.id == models.Encounter.tournament_id
             ).where(models.Tournament.workspace_id == workspace_id)
 
-        hero_match = hero_match_q.group_by(
-            self._facts.c.entity_id,
-            self._facts.c.encounter_team_id,
-            self._matches.c.id,
-        ).cte("hero_record_match")
+        # MATERIALIZED: inlined, the planner misjoins it against the one-row-estimated duels (874M filtered rows,
+        # past the statement timeout, for the discipline-wide baseline).
+        hero_match = (
+            hero_match_q.group_by(
+                self._facts.c.entity_id,
+                self._facts.c.encounter_team_id,
+                self._matches.c.id,
+            )
+            .cte("hero_record_match")
+            .prefix_with("MATERIALIZED")
+        )
 
         team_score = sa.case(
             (self._duels.c.home_encounter_team_id == hero_match.c.encounter_team_id, self._duels.c.home_score),

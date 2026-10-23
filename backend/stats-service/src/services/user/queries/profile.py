@@ -396,7 +396,9 @@ class UserProfileQueries(DisciplineQueries):
             .cte("hero_stats_ranked")
         )
 
-        # Hydrate map/tournament metadata only for the winning row per (hero, stat).
+        # Hydrate map/tournament metadata only for the winning row per (hero, stat). MATERIALIZED: the planner
+        # estimates the eligible facts at one row, and an inlined CTE is then re-run per aggregate row (O(heroes x stats)
+        # window sorts, 14s for a 1.4k-row career).
         best_result_cte = (
             sa.select(
                 ranked_cte.c.entity_id,
@@ -422,6 +424,7 @@ class UserProfileQueries(DisciplineQueries):
             .where(models.Tournament.discipline == self.discipline)
             .where(ranked_cte.c.row_num == 1)
             .cte("best_result_cte")
+            .prefix_with("MATERIALIZED")
         )
 
         return (
