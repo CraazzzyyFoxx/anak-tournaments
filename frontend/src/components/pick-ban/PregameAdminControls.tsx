@@ -441,6 +441,8 @@ export function PregameAdminControls({
                     {sideIndex != null ? `: ${sideLabels[sideIndex] ?? `#${sideIndex}`}` : ""}
                   </Button>
                 </>
+              ) : step?.member != null || step?.action === "assign" ? (
+                <span className="max-w-64 text-xs text-[color:var(--aqt-fg-muted)]">{t("admin.actOnBoard")}</span>
               ) : (
                 <>
                   <Button

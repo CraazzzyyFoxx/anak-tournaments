@@ -23,9 +23,10 @@ function beep(): () => void {
 /**
  * The in-browser turn alert (spec §7.5, Q29a): when it becomes the viewer's turn the page beeps once, vibrates once
  * and puts the turn in the tab title. When the turn passes (or the board goes) the title comes back and the sound
- * and the buzz are released. Nothing reaches a closed page (the Discord DM is П3).
+ * and the buzz are released. `turn` names the turn itself (session, step, attempt): a new one alerts again even when
+ * it is the viewer's straight after the last. Nothing reaches a closed page (the Discord DM is П3).
  */
-export function useTurnAlert(active: boolean, title: string): void {
+export function useTurnAlert(active: boolean, title: string, turn = ""): void {
   useEffect(() => {
     if (!active) return;
     const previous = document.title;
@@ -37,5 +38,5 @@ export function useTurnAlert(active: boolean, title: string): void {
       navigator.vibrate?.(0);
       silence();
     };
-  }, [active, title]);
+  }, [active, title, turn]);
 }

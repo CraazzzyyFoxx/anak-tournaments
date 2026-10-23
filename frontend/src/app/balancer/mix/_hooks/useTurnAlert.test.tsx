@@ -10,8 +10,8 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-function Probe({ active }: { active: boolean }) {
-  useTurnAlert(active, "Your ban");
+function Probe({ active, turn = "1:0:1" }: { active: boolean; turn?: string }) {
+  useTurnAlert(active, "Your ban", turn);
   return null;
 }
 
@@ -46,7 +46,7 @@ async function mount(active: boolean) {
   const root = createRoot(container);
   await act(async () => root.render(<Probe active={active} />));
   return {
-    rerender: (next: boolean) => act(async () => root.render(<Probe active={next} />)),
+    rerender: (next: boolean, turn?: string) => act(async () => root.render(<Probe active={next} turn={turn} />)),
     unmount: () => act(async () => root.unmount()),
   };
 }
@@ -101,6 +101,21 @@ describe("useTurnAlert", () => {
     await probe.unmount();
     expect(SuspendedAudioContext.made.map((context) => context.closed)).toEqual([1]);
     expect(vibrate).toHaveBeenLastCalledWith(0);
+    expect(document.title).toBe("Mix");
+  });
+
+  it("alerts again on the viewer's next turn right after this one, and still gives the title back", async () => {
+    const vibrate = vi.fn();
+    Object.defineProperty(navigator, "vibrate", { value: vibrate, configurable: true });
+    document.title = "Mix";
+    const probe = await mount(true);
+
+    await probe.rerender(true, "1:1:1");
+    expect(document.title).toBe("Your ban");
+    expect(vibrate.mock.calls.filter(([ms]) => ms === 200)).toHaveLength(2);
+    expect(SuspendedAudioContext.made.map((context) => context.closed)).toEqual([1, 0]);
+
+    await probe.rerender(false, "1:1:1");
     expect(document.title).toBe("Mix");
   });
 });
