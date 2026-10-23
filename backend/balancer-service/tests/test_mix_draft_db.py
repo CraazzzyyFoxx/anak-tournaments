@@ -24,6 +24,7 @@ from shared.models.platform.realtime import WorkspaceEvent  # noqa: E402
 from shared.repository import CatalogRoleRepository  # noqa: E402
 from shared.services import team_format  # noqa: E402
 from shared.services.member_rank import member_rank_service  # noqa: E402
+from shared.services.realtime.emit import _STAGED_KEY  # noqa: E402
 from shared.tests.encounter_writer_case import EncounterWriterCase  # noqa: E402
 from src.domain.draft.entities import PoolSeat  # noqa: E402
 from src.domain.mix_lobbies import seated_member_ids  # noqa: E402
@@ -676,6 +677,28 @@ class MixDraftTests(EncounterWriterCase):
         # U2: the crown the board shows, and the team's captain identity, follow the team's current captain.
         self.assertEqual((True, False), (crowns[m2_seat], crowns[m1_seat]))
         self.assertEqual(m2_player, board.teams[0].captain_user_id)
+
+    async def test_replacing_a_captain_reauthorizes_the_draft_chat(self) -> None:
+        """The gateway re-checks a chat topic's live subscribers only on ``chat.visibility_changed``: the replace
+        announces it at the room's current setting, so a former captain stops receiving a chat closed to spectators.
+        Chat events are never stored, so the transaction's staged realtime events are the record."""
+        host, _ = await self._host()
+        draft_id = await self._seed_lobby(host)
+        await self._start(draft_id, host)
+        await self._autopick(draft_id)  # team 1 (m1) takes m2
+        [first, _] = await self._teams(draft_id)
+        async with self.Session() as s:
+            await mix_draft_service.replace_captain(
+                s,
+                **self._as_host(host, lobby_index=0, team_id=first.id, player_id=await self._seat(s, draft_id, "m2")),
+            )
+            staged = [
+                (scope.domain_topic(data.domain), data.event_type, dict(data.payload))
+                for scope, data, _actor in s.info[_STAGED_KEY].domain
+            ]
+            await s.commit()
+
+        self.assertIn((f"draft:{draft_id}:chat", "chat.visibility_changed", {"spectators_can_read": True}), staged)
 
     async def test_a_picked_player_going_away_pauses_the_draft(self) -> None:
         host, _ = await self._host()

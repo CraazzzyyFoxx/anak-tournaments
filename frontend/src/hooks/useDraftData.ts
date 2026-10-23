@@ -12,6 +12,7 @@ import { realtimeClient } from "@/services/realtime.service";
 import { useRealtimeStore } from "@/stores/realtime.store";
 import { applyResourcePatch, registerRealtimeResource } from "@/services/realtime-patch";
 import { type Coalescer, createTrailingCoalescer } from "@/lib/realtime/coalesce";
+import { draftChatRoom, roomChatQueryKey } from "@/lib/realtime/chat-rooms";
 import { toRoleRef } from "@/lib/roster/role-ref";
 import type {
   DraftBoard,
@@ -324,6 +325,11 @@ export function useDraftRealtime(
       });
       if (draftEventNeedsSnapshot(event)) {
         void queryClient.invalidateQueries({ queryKey });
+      }
+      // A re-seed or a replaced captain changes who takes part in the room's chat: the viewer's envelope (their
+      // role, the write controls) is read again. The gateway drops a former captain's live subscription itself.
+      if (event.event_type === "draft.session_updated") {
+        void queryClient.invalidateQueries({ queryKey: roomChatQueryKey(draftChatRoom(cachedBoard.session.id)) });
       }
 
       // Derived reads the patch cannot fold in, re-read only where the event

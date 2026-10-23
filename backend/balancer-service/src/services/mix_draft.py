@@ -19,11 +19,13 @@ from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import RosterShape
 from shared.models.draft import DraftPlayer, DraftSession
 from shared.repository.draft import DraftPlayerRepository, DraftSessionRepository, DraftTeamRepository
+from shared.services.chat import ChatRoom
 from shared.services.team_format import custom_game_slot_shape
 from src.domain.draft import ranks, rules
 from src.domain.draft.entities import PoolSeat
 from src.services.custom_game import CustomGameService, _refuse_live, custom_game_service
 from src.services.draft import realtime as draft_rt
+from src.services.draft.chat_access import draft_chat_service
 from src.services.draft.feasibility import feasibility_service
 from src.services.draft.lifecycle import DraftLifecycleService, lifecycle_service
 
@@ -154,6 +156,9 @@ class MixDraftService:
             team.captain_workspace_member_id = player.workspace_member_id
             team.captain_auth_user_id = roster.auth_user_id if roster is not None else None
             await session.flush()
+        # The gateway re-checks the chat's subscribers only on the chat's visibility event: the captain who lost the
+        # crown loses a chat closed to spectators now, not at their next subscribe.
+        await draft_chat_service.access_changed(session, ChatRoom.draft(draft.id), actor_user_id=actor_user_id)
         await _updated(session, draft, actor_user_id)
         return game
 

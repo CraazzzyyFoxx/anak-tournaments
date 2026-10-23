@@ -19,21 +19,24 @@ import (
 const revokeTimeout = 10 * time.Second
 
 // visibilityChangedEvent is the chat event this file reacts to: the chat
-// service publishes it when an organizer flips a room's spectators_can_read.
+// service publishes it when an organizer flips a room's spectators_can_read,
+// and at the unchanged value when a room's participants change (a draft's
+// replaced captain).
 const visibilityChangedEvent = "chat.visibility_changed"
 
 // ACLCache drops cached topic-ACL answers the realtime bus says have changed.
 // Implemented by workspace.Store; the revoker needs it because the answer it
 // is about to re-compute is exactly the one the frame contradicts.
 type ACLCache interface {
-	InvalidateRoomSpectatorRead(roomKind string, refID int64)
+	InvalidateRoomAccess(roomKind string, refID int64)
 	EvictUser(userID int64)
 }
 
 // TopicRevoker re-authorizes live subscribers when who may read a topic
-// changes: an organizer toggling a chat room's spectator read
-// (chat.visibility_changed on that room's topic), or identity-svc announcing
-// that a user's memberships or roles changed (realtime:user:{id}:rbac).
+// changes: an organizer toggling a chat room's spectator read, or a draft's
+// captain being replaced (chat.visibility_changed on that room's topic), or
+// identity-svc announcing that a user's memberships or roles changed
+// (realtime:user:{id}:rbac).
 //
 // The topic ACL is evaluated at SUBSCRIBE time only, so closing a chat or
 // removing a member does not by itself stop a connection that is already
@@ -82,7 +85,7 @@ func (t *TopicRevoker) Broadcast(topic string, payload []byte) {
 }
 
 func (t *TopicRevoker) reauthorize(topic, roomKind string, refID int64) {
-	t.cache.InvalidateRoomSpectatorRead(roomKind, refID)
+	t.cache.InvalidateRoomAccess(roomKind, refID)
 
 	subs := t.hub.SubscribersOf(topic)
 	if len(subs) == 0 {

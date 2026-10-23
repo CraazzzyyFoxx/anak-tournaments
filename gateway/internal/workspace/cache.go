@@ -124,7 +124,7 @@ func (c *ttlCache[K, V]) setLocked(k K, v V) {
 }
 
 // del drops k, if present, ahead of its expiry. Used when a cached answer is
-// known to have been contradicted (see Store.InvalidateRoomSpectatorRead).
+// known to have been contradicted (see Store.InvalidateRoomAccess).
 func (c *ttlCache[K, V]) del(k K) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

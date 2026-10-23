@@ -174,7 +174,7 @@ const (
 	// the topic ACL for every live subscriber the moment that toggle is
 	// published — a re-check answered from a stale entry would leave the
 	// spectator it is meant to evict subscribed. The revoker invalidates this
-	// gateway's entry first (InvalidateRoomSpectatorRead); 15s only bounds how
+	// gateway's entry first (InvalidateRoomAccess); 15s only bounds how
 	// long ANOTHER gateway process can keep admitting new subscribes on the old
 	// answer.
 	roomSettingsCacheTTL = 15 * time.Second
@@ -496,20 +496,22 @@ func (s *Store) IsMixRoomMember(ctx context.Context, authUserID, encounterID int
 }
 
 // IsDraftSessionCaptain reports whether the auth user captains one of the
-// session's draft teams. Cached exactly like IsEncounterCaptain: both outcomes
-// cached, nothing cached on a query error.
+// session's draft teams. Cached like IsEncounterCaptain: both outcomes cached,
+// nothing cached on a query error, and nothing cached from a lookup that
+// started before InvalidateRoomAccess dropped the session's answers.
 func (s *Store) IsDraftSessionCaptain(ctx context.Context, authUserID, sessionID int64) (bool, error) {
 	key := draftCaptainKey{userID: authUserID, sessionID: sessionID}
 	if v, ok := s.draftCaptains.get(key); ok {
 		return v, nil
 	}
+	gen := s.draftCaptains.generation()
 
 	var captain bool
 	if err := s.pool.QueryRow(ctx, isDraftSessionCaptainSQL, sessionID, authUserID).Scan(&captain); err != nil {
 		return false, fmt.Errorf("draft session captain lookup: %w", err)
 	}
 
-	s.draftCaptains.set(key, captain)
+	s.draftCaptains.setIfCurrent(key, captain, gen)
 	return captain, nil
 }
 
@@ -567,12 +569,16 @@ func (s *Store) RoomSpectatorRead(ctx context.Context, roomKind string, refID in
 	return canRead, nil
 }
 
-// InvalidateRoomSpectatorRead drops the cached setting for one room, so the
-// next RoomSpectatorRead re-reads it. ws.TopicRevoker calls this before
-// re-authorizing a room's live subscribers: the whole point of that pass is to
-// act on the value the organizer just wrote.
-func (s *Store) InvalidateRoomSpectatorRead(roomKind string, refID int64) {
+// InvalidateRoomAccess drops the cached answers a room's re-authorization must
+// not reuse: its spectator setting and, for a draft room, who captains the
+// session (a replaced captain is announced on the same event). ws.TopicRevoker
+// calls this before re-authorizing a room's live subscribers: the whole point
+// of that pass is to act on what was just written.
+func (s *Store) InvalidateRoomAccess(roomKind string, refID int64) {
 	s.roomSettings.del(roomKey{kind: roomKind, refID: refID})
+	if roomKind == "draft" {
+		s.draftCaptains.evictWhere(func(k draftCaptainKey) bool { return k.sessionID == refID })
+	}
 }
 
 // roomSpectatorReadDefault mirrors _SPECTATORS_CAN_READ_DEFAULT in

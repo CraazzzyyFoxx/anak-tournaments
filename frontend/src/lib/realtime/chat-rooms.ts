@@ -25,3 +25,8 @@ export function draftChatRoom(draftSessionId: number): ChatRoomDescriptor {
     basePath: `/api/v1/balancer/draft/sessions/${draftSessionId}/chat`
   };
 }
+
+/** The room's chat envelope (messages, settings, and who the viewer is in it) in the query cache. */
+export function roomChatQueryKey(room: ChatRoomDescriptor) {
+  return ["room-chat", room.topic] as const;
+}

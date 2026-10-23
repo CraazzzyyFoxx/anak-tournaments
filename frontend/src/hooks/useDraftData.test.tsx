@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useDraftBoardQuery, useDraftPickOptionsQuery, useDraftRealtime } from "@/hooks/useDraftData";
+import { draftChatRoom, roomChatQueryKey } from "@/lib/realtime/chat-rooms";
 import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import { useRealtimeStore } from "@/stores/realtime.store";
 import type { DraftBoard, DraftEventData } from "@/types/draft.types";
@@ -150,5 +151,18 @@ describe("useDraftRealtime topic", () => {
 
     expect(container.textContent).toBe("4");
     expect(subscribe).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("useDraftRealtime chat", () => {
+  it("re-reads who the viewer is in the room's chat when the seats or captains change", async () => {
+    // A replaced captain arrives as `session_updated`: the new captain's envelope still says spectator (no write
+    // controls) and the old one's still says captain, until the envelope is read again.
+    const chatKey = roomChatQueryKey(draftChatRoom(SESSION_ID));
+    client.setQueryData(chatKey, { messages: [] });
+
+    await fire(event("draft.session_updated", { status: "live" }));
+
+    expect(client.getQueryState(chatKey)?.isInvalidated).toBe(true);
   });
 });
