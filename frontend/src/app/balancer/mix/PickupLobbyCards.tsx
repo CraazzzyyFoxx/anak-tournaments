@@ -5,7 +5,14 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { ChevronDown, DoorOpen, MoreHorizontal, Shuffle, Users } from "lucide-react";
 
-import { CAPTION_CLASS, CARD_TITLE_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
+import {
+  CAPTION_CLASS,
+  CARD_TITLE_CLASS,
+  lobbyLetter,
+  mixRoomHref,
+  playsInRoom,
+  teamAccent,
+} from "@/app/balancer/mix/pickup-chrome";
 import { useLiveMinutes } from "@/app/balancer/mix/_hooks/useLiveMinutes";
 import { LineupRow } from "@/app/balancer/mix/_components/LineupRow";
 import { LobbyStage } from "@/app/balancer/mix/_components/LobbyStage";
@@ -54,15 +61,20 @@ type PickupLobbyCardsProps = {
   onDraft: (lobbyIndex: number) => void;
   splitting: boolean;
   onSplitPool: () => void;
+  /** The lobby whose desk (its teams panel) shows under the cards, `null` for none. */
+  selectedLobby: number | null;
+  /** Shows a lobby's desk; `null` hides it. */
+  onSelectLobby: (index: number | null) => void;
 };
 
 /**
  * The overview of a mix running several lobbies (spec §7.5, A1): one card per lobby with its stage, one line about
  * it and the one action that stage calls for -- Balance (Draft in draft mode, the balancer one menu away), Start match
- * or Record -- plus the way into its room. A card's Balance is off, with the reason, while the lobby cannot fill its
- * seats. Shuffle all lobbies (Split pool in draft mode) re-forms every lobby at once, so it waits while any match is
- * live (the server refuses it too). Beside the cards, the players no lobby seats: waiting for a seat, away, or on the
- * bench. A one-lobby mix renders nothing: its room is the overview.
+ * or Record -- plus the way into its room, loud while the room is where the lobby's draft or bans are happening. A
+ * card's Teams toggle opens that lobby's desk under the cards. A card's Balance is off, with the reason, while the
+ * lobby cannot fill its seats. Shuffle all lobbies (Split pool in draft mode) re-forms every lobby at once, so it waits
+ * while any match is live (the server refuses it too). Beside the cards, the players no lobby seats: waiting for a
+ * seat, away, or on the bench. A one-lobby mix renders nothing: the overview is its desk.
  */
 export function PickupLobbyCards(props: Readonly<PickupLobbyCardsProps>) {
   const { game, rows, owner, canWrite, shufflingAll, onShuffleAll, splitting, onSplitPool } = props;
@@ -135,6 +147,8 @@ function LobbyCard({
   onStartMatch,
   onRecordOutcome,
   onDraft,
+  selectedLobby,
+  onSelectLobby,
 }: Readonly<PickupLobbyCardsProps & { lobby: CustomGameLobby }>) {
   const t = useTranslations("mixes.room");
   const tLobby = useTranslations("mixes.lobbies");
@@ -143,6 +157,7 @@ function LobbyCard({
   const index = lobby.lobby_index;
   const letter = lobbyLetter(index);
   const state = lobby.state ?? "idle";
+  const selected = selectedLobby === index;
   const variant =
     parseVariants(
       lobby.balance_result,
@@ -179,7 +194,7 @@ function LobbyCard({
   const shortTitle = short && need != null ? t("shortSeats", { count: candidates, need }) : undefined;
 
   return (
-    <Card variant="flat" asChild>
+    <Card variant="flat" asChild className={cn(selected && "border-[color:var(--aqt-teal)]")}>
       <li className="flex flex-col gap-3 px-4 py-3.5">
         <div className="flex items-center gap-2">
           <span
@@ -276,8 +291,18 @@ function LobbyCard({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
-          <Button asChild variant="outline" size="sm" className="ml-auto">
-            <Link href={`/balancer/mix/${game.id}/lobby/${letter}`}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="ml-auto"
+            aria-pressed={selected}
+            onClick={() => onSelectLobby(selected ? null : index)}
+          >
+            {tLobby("desk")}
+          </Button>
+          <Button asChild variant={playsInRoom(state) ? "accent" : "outline"} size="sm">
+            <Link href={mixRoomHref(game.id, index)}>
               <DoorOpen className="size-3.5" aria-hidden="true" />
               {t("openRoom")}
             </Link>

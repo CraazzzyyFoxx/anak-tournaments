@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 //
 // The overview of a mix running several lobbies (spec §7.5, A1). Pinned:
-//  1. a one-lobby mix has no cards -- its room is the overview;
+//  1. a one-lobby mix has no cards -- the overview is its desk;
 //  2. each card carries the one action its stage calls for, for its own lobby: Balance, Start match, Record;
 //  3. Balance is off, with the reason, while the lobby cannot fill its seats;
 //  4. a viewer gets every lobby's stage and the way into its room, and no action;
@@ -9,7 +9,9 @@
 //     unrecorded;
 //  6. beside the cards, who waits for a seat, who is away and who sits on the bench, each in its own group;
 //  7. in draft mode an idle card drafts (the balancer one menu away), Split pool replaces Shuffle all, and a drafting
-//     card reads its stage and, once the draft runs, its elapsed time.
+//     card reads its stage and, once the draft runs, its elapsed time;
+//  8. a card's room link is the loud one while its draft or bans play out there, and its Teams toggle picks the desk
+//     shown under the cards.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -58,6 +60,7 @@ const onRecordOutcome = vi.fn();
 const onShuffleAll = vi.fn();
 const onDraft = vi.fn();
 const onSplitPool = vi.fn();
+const onSelectLobby = vi.fn();
 
 function lobby(index: number, overrides: Partial<CustomGameLobby> = {}): CustomGameLobby {
   return {
@@ -135,7 +138,11 @@ function tick() {
 
 async function mount(
   current: CustomGame,
-  { rows = TEN, canWrite = true }: { rows?: CustomGamePlayer[]; canWrite?: boolean } = {},
+  {
+    rows = TEN,
+    canWrite = true,
+    selectedLobby = null,
+  }: { rows?: CustomGamePlayer[]; canWrite?: boolean; selectedLobby?: number | null } = {},
 ) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -158,6 +165,8 @@ async function mount(
         onDraft={onDraft}
         splitting={false}
         onSplitPool={onSplitPool}
+        selectedLobby={selectedLobby}
+        onSelectLobby={onSelectLobby}
       />,
     );
   });
@@ -189,11 +198,13 @@ function group(scope: ParentNode, name: string) {
 
 beforeEach(() => {
   document.body.innerHTML = "";
-  for (const fn of [onBalance, onStartMatch, onRecordOutcome, onShuffleAll, onDraft, onSplitPool]) fn.mockReset();
+  for (const fn of [onBalance, onStartMatch, onRecordOutcome, onShuffleAll, onDraft, onSplitPool, onSelectLobby]) {
+    fn.mockReset();
+  }
 });
 
 describe("PickupLobbyCards", () => {
-  it("renders nothing for a mix that runs one lobby: its room is the overview", async () => {
+  it("renders nothing for a mix that runs one lobby: the overview is its desk", async () => {
     const scope = await mount(game([lobby(0)]));
 
     expect(scope.textContent).toBe("");
@@ -244,6 +255,7 @@ describe("PickupLobbyCards", () => {
     expect([...scope.querySelectorAll("a")].map((link) => link.getAttribute("href"))).toContain(
       "/balancer/mix/3/lobby/B",
     );
+    expect(scope.querySelector('a[href="/balancer/mix/3/lobby/B"]')?.className).toContain("--aqt-teal");
   });
 
   it("keeps Balance off, with the reason, while the lobby cannot fill its seats", async () => {
@@ -326,6 +338,39 @@ describe("PickupLobbyCards", () => {
     expect(live.textContent).toContain("state.draft_live");
     expect(live.textContent).toContain("elapsed:7");
     expect(scope.textContent).not.toContain("shortSeats");
+  });
+
+  it("makes the room link the loud one while a lobby's draft or bans play out there", async () => {
+    const scope = await mount(
+      game([
+        lobby(0, { state: "ready" }),
+        lobby(1, { state: "draft_setup", draft_session_id: 77 }),
+        lobby(2, { state: "pregame", live_encounter_id: 50 }),
+        lobby(3, { state: "live", live_encounter_id: 51 }),
+      ]),
+      { canWrite: false },
+    );
+    const loud = [...scope.querySelectorAll("a")].map((link) => link.className.includes("--aqt-teal"));
+
+    expect(loud).toEqual([false, true, true, false]);
+  });
+
+  it("opens a lobby's desk from its card and closes it from the same toggle", async () => {
+    const scope = await mount(game([lobby(0), lobby(1)]));
+    const [, second] = scope.querySelectorAll("li");
+
+    expect(byName(second, "desk")?.getAttribute("aria-pressed")).toBe("false");
+    await click(byName(second, "desk"));
+    expect(onSelectLobby).toHaveBeenLastCalledWith(1);
+
+    const picked = await mount(game([lobby(0), lobby(1)]), { selectedLobby: 1 });
+    const [first, selected] = picked.querySelectorAll("li");
+
+    expect(byName(selected, "desk")?.getAttribute("aria-pressed")).toBe("true");
+    expect(selected.className).toContain("border-[color:var(--aqt-teal)]");
+    expect(first.className).not.toContain("border-[color:var(--aqt-teal)]");
+    await click(byName(selected, "desk"));
+    expect(onSelectLobby).toHaveBeenLastCalledWith(null);
   });
 
   it("lists who waits for a seat, who is away and who sits on the bench", async () => {

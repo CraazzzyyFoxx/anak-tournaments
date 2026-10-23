@@ -14610,6 +14610,8 @@ export interface components {
             user_id: number | null;
             /** Version */
             version: number;
+            /** Workspace Member Id */
+            workspace_member_id: number | null;
         };
         /**
          * DraftPlayerStatus

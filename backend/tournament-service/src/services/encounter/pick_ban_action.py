@@ -1480,8 +1480,17 @@ class PickBanActionService:
             "current_step": step.to_json() if step is not None else None,
             "expected_action": step.action if step is not None else None,
             "acting_team_ids": acting,
-            #: A mix room's seated members in pick order (spec §11.6 R4-11): who member steps and assignments name.
-            "members": [{"id": seat.id, "encounter_team_id": seat.team_id, "name": seat.name} for seat in rt.seats],
+            #: A mix room's seated members in pick order (spec §11.6 R4-11): who member steps and assignments name;
+            #: ``workspace_member_id`` ties each to the lineup seat and the viewer.
+            "members": [
+                {
+                    "id": seat.id,
+                    "encounter_team_id": seat.team_id,
+                    "name": seat.name,
+                    "workspace_member_id": seat.workspace_member_id,
+                }
+                for seat in rt.seats
+            ],
             #: Members who still owe the current member step a hero.
             "acting_member_ids": acting_members,
             #: Of those, whom THIS viewer may pick for: themselves first, then -- as captain -- their teammates.

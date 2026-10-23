@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 //
-// A lobby's Pre-game ends when its ban room does: the bans finished, or a host cancelled the room (the match then
-// plays without bans). Either way the room re-reads its lobby exactly once, which then reads Live. The board itself
-// is the shared pick-ban library's, mounted for real over a mocked server; with a pick preset it also takes each
-// player's pick and the captains' assignment, the mocked server answering a write with the room it makes.
+// A lobby's Pre-game in the room's centre ends when its ban room does: the bans finished, or a host cancelled the room
+// (the match then plays without bans). Either way the room re-reads its lobby exactly once, which then reads Live. The
+// stage is mounted the way the room mounts it -- the room's hook reads the state, the shared pick-ban pieces render it
+// -- over a mocked server; with a pick preset it also takes each player's pick and the captains' assignment, the
+// mocked server answering a write with the room it makes. A host answers the team on the clock from the same bar.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
@@ -20,7 +21,9 @@ import type {
   PickBanSubmissionItem,
 } from "@/types/tournament.types";
 
-import { MixBanBoard } from "./MixBanBoard";
+import { useMixBanRoom } from "@/app/balancer/mix/_hooks/useMixBanRoom";
+
+import { RoomBanStage } from "./RoomBanStage";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -31,6 +34,7 @@ const getPickBanState = vi.fn();
 const performPickBanAction = vi.fn();
 const submitDraft = vi.fn();
 const adminPickBanCancel = vi.fn();
+const adminPickBanAct = vi.fn();
 
 vi.mock("@/services/pickBan.service", () => ({
   default: {
@@ -46,7 +50,7 @@ vi.mock("@/services/admin.service", () => ({
   default: {
     adminPickBanCancel: (...args: unknown[]) => adminPickBanCancel(...args),
     resetPickBanSession: vi.fn(),
-    adminPickBanAct: vi.fn(),
+    adminPickBanAct: (...args: unknown[]) => adminPickBanAct(...args),
     adminPickBanSubmit: vi.fn(),
     adminPickBanReopen: vi.fn(),
     adminPickBanPause: vi.fn(),
@@ -389,19 +393,36 @@ async function settle(ticks = 3) {
   }
 }
 
-async function render(onComplete: () => void, canHost = true) {
+/** The stage as the room mounts it: the room's hook reads the state, the stage renders it once it has a session. */
+function Stage({
+  canHost,
+  showAdmin,
+  onComplete
+}: Readonly<{ canHost: boolean; showAdmin: boolean; onComplete: () => void }>) {
+  const room = useMixBanRoom(50, "overwatch");
+  if (room.state?.session == null) return null;
+  return (
+    <RoomBanStage
+      encounterId={50}
+      workspaceId={7}
+      discipline="overwatch"
+      seats={SEATS}
+      state={{ ...room.state, session: room.state.session }}
+      queryKey={room.queryKey}
+      heroesById={room.heroesById}
+      canHost={canHost}
+      showAdmin={showAdmin}
+      onComplete={onComplete}
+    />
+  );
+}
+
+async function render(onComplete: () => void, canHost = true, showAdmin = canHost) {
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
         <NextIntlClientProvider locale="en" messages={en} timeZone="UTC">
-          <MixBanBoard
-            encounterId={50}
-            workspaceId={7}
-            discipline="overwatch"
-            seats={SEATS}
-            canHost={canHost}
-            onComplete={onComplete}
-          />
+          <Stage canHost={canHost} showAdmin={showAdmin} onComplete={onComplete} />
         </NextIntlClientProvider>
       </QueryClientProvider>,
     );
@@ -425,7 +446,7 @@ async function debounce() {
   await settle();
 }
 
-describe("MixBanBoard", () => {
+describe("RoomBanStage", () => {
   it("re-reads the lobby once when a host cancels the ban room", async () => {
     let refreshes = 0;
     getPickBanState.mockResolvedValue(heroState("active"));
@@ -487,14 +508,13 @@ describe("MixBanBoard", () => {
     );
     await render(() => {});
 
-    expect(container.querySelector('[data-pick-ban-step="0"]')?.textContent).toContain("P0 picks");
+    expect(container.textContent).toContain("Picking: P0");
     await act(async () => tile("Hero 101")?.click());
     await act(async () => byLabel("Pick Hero 101 for P0")?.click());
     await settle();
 
-    // Hero 101 is out of the pool, and the step "P0 picks" took it.
+    // Hero 101 is P0's now: out of the pool, and the room is done.
     expect(tile("Hero 101")?.getAttribute("aria-label")).toBe(`Hero 101 — ${en.pickBan.room.status.picked}`);
-    expect(container.querySelector('[data-pick-ban-step="0"] [title="Hero 101"]')).not.toBeNull();
     expect(container.textContent).toContain(en.pickBan.room.completedBanner);
   });
 
@@ -513,7 +533,8 @@ describe("MixBanBoard", () => {
     serve(performPickBanAction, afterPick(open, { item_id: 101, member_id: 501 }), afterPick);
     await render(() => {}, false);
 
-    expect(container.textContent).toContain(en.pickBan.room.step.eachPlayer);
+    const step = container.querySelector(`ol[aria-label="${en.mixes.arena.bans.steps}"] li[aria-current="step"]`);
+    expect(step?.textContent).toContain(en.mixes.arena.bans.everyone);
     await act(async () => tile("Hero 102")?.click());
     await act(async () => byLabel("Pick Hero 102 for P1")?.click());
     await settle();
@@ -610,8 +631,7 @@ describe("MixBanBoard", () => {
 
     // Both heroes went out, the room is done, and the lobby re-reads once.
     expect(byLabel(en.pickBan.room.assign.lock)).toBeNull();
-    expect(container.querySelector('[data-pick-ban-step="0"] [title="Hero 101"]')).not.toBeNull();
-    expect(container.querySelector('[data-pick-ban-step="0"] [title="Hero 102"]')).not.toBeNull();
+    expect(tile("Hero 101")?.getAttribute("aria-label")).toBe(`Hero 101 — ${en.pickBan.room.status.picked}`);
     expect(tile("Hero 102")?.getAttribute("aria-label")).toBe(`Hero 102 — ${en.pickBan.room.status.picked}`);
     expect(refreshes).toBe(1);
   });
@@ -738,5 +758,33 @@ describe("MixBanBoard", () => {
     const heroes = [...document.body.querySelectorAll<HTMLButtonElement>('[aria-label^="Give Hero"]')];
     expect(heroes).toHaveLength(4);
     expect(heroes.every((button) => button.disabled)).toBe(true);
+  });
+
+  it("lets a host ban for the team on the clock from the bar", async () => {
+    // Slot 1's captain is away: the host, no captain of either team, answers its open ban.
+    getPickBanState.mockResolvedValue(heroState("active"));
+    adminPickBanAct.mockResolvedValue({});
+    await render(() => {}, true, false);
+
+    await act(async () => tile("Hero 101")?.click());
+    await act(async () => byLabel("Ban Hero 101")?.click());
+    await settle();
+
+    expect(adminPickBanAct).toHaveBeenCalledWith(50, {
+      kind: "hero",
+      encounter_team_id: 71,
+      item_id: 101,
+      action: "ban",
+    });
+  });
+
+  it("offers a spectator no answer to the step in play", async () => {
+    getPickBanState.mockResolvedValue(heroState("active"));
+    await render(() => {}, false);
+
+    await act(async () => tile("Hero 101")?.click());
+
+    expect(byLabel("Ban Hero 101")).toBeNull();
+    expect(adminPickBanAct).not.toHaveBeenCalled();
   });
 });

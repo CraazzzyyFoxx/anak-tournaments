@@ -383,6 +383,8 @@ export interface PickBanMember {
   id: number;
   encounter_team_id: number;
   name: string;
+  /** The workspace member in this seat: ties it to the lineup seat and the viewer. */
+  workspace_member_id?: number;
 }
 export type PickBanEntryStatus = "available" | "picked" | "banned" | "protected";
 

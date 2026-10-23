@@ -323,6 +323,7 @@ class MemberSeat:
     id: int
     team_id: int
     name: str
+    workspace_member_id: int
 
 
 async def load_member_seats(session: AsyncSession, encounter: Encounter) -> list[MemberSeat]:
@@ -337,19 +338,20 @@ async def load_member_seats(session: AsyncSession, encounter: Encounter) -> list
             EncounterTeamMember.id,
             EncounterTeamMember.encounter_team_id,
             EncounterTeamMember.display_name_snapshot,
+            EncounterTeamMember.workspace_member_id,
             CatalogRole.code,
         )
         .outerjoin(EncounterTeamMemberRole, EncounterTeamMemberRole.team_member_id == EncounterTeamMember.id)
         .outerjoin(CatalogRole, CatalogRole.id == EncounterTeamMemberRole.role_id)
         .where(EncounterTeamMember.encounter_id == encounter.id, EncounterTeamMember.active.is_(True))
     )
-    best: dict[int, tuple[int, int, str]] = {}
-    for member_id, team_id, name, role in rows.all():
+    best: dict[int, tuple[int, int, str, int]] = {}
+    for member_id, team_id, name, workspace_member_id, role in rows.all():
         order = role_order.get(role, len(role_order))
         if member_id not in best or order < best[member_id][0]:
-            best[member_id] = (order, team_id, name)
+            best[member_id] = (order, team_id, name, workspace_member_id)
     ordered = sorted(best.items(), key=lambda item: (item[1][0], item[0]))
-    return [MemberSeat(member_id, team_id, name) for member_id, (_order, team_id, name) in ordered]
+    return [MemberSeat(member_id, team_id, name, wm_id) for member_id, (_order, team_id, name, wm_id) in ordered]
 
 
 def members_by_team(seats: Sequence[MemberSeat]) -> dict[int, list[int]]:

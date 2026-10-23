@@ -25,18 +25,20 @@ function roomDone(state: PickBanState | null | undefined): boolean {
  * its live signal and the game's heroes. Polls until the room is done -- the clock settles server-side and a missed
  * signal must not freeze a phone on "their turn". A held room waits for the signal instead, and the room re-reads on
  * subscribing: a fresh topic replays nothing, so a resume made between the first read and the subscription would
- * otherwise never arrive (the tournament room's `usePregameRoomData` does the same).
+ * otherwise never arrive (the tournament room's `usePregameRoomData` does the same). No match (`null`): no read, no
+ * subscription, no hero catalogue.
  */
-export function useMixBanRoom(encounterId: number, discipline: string) {
+export function useMixBanRoom(encounterId: number | null, discipline: string) {
   const queryClient = useQueryClient();
-  const queryKey = useMemo(() => [...encounterQueryKeys.pregameHeroState(encounterId)], [encounterId]);
-  const topic = `encounter:${encounterId}:pick-ban:hero`;
+  const queryKey = useMemo(() => [...encounterQueryKeys.pregameHeroState(encounterId ?? 0)], [encounterId]);
+  const topic = encounterId == null ? null : `encounter:${encounterId}:pick-ban:hero`;
   const realtimeReady = useRealtimeStore(
-    (store) => store.connectionState === "connected" && !store.topicErrors[topic],
+    (store) => store.connectionState === "connected" && (topic == null || !store.topicErrors[topic]),
   );
   const stateQuery = useQuery({
     queryKey,
-    queryFn: () => pickBanService.getPickBanState("hero", encounterId),
+    queryFn: () => pickBanService.getPickBanState("hero", encounterId as number),
+    enabled: encounterId != null,
     refetchInterval: (query) => {
       const state = query.state.data;
       if (roomDone(state)) return false;
@@ -46,12 +48,11 @@ export function useMixBanRoom(encounterId: number, discipline: string) {
   });
   const refresh = () => void queryClient.invalidateQueries({ queryKey });
   useRealtimeTopic(topic, refresh, [], refresh);
-  const heroes = useCatalogEntities(discipline, "character");
+  const heroes = useCatalogEntities(encounterId == null ? null : discipline, "character");
   const heroesById = useMemo(() => {
     const byId: Record<number, PickBanItemLike | undefined> = {};
     for (const hero of heroes.data ?? []) byId[hero.id] = hero;
     return byId;
   }, [heroes.data]);
-  const state = stateQuery.data ?? null;
-  return { queryKey, state, done: roomDone(state), heroesById };
+  return { queryKey, state: stateQuery.data ?? null, heroesById };
 }

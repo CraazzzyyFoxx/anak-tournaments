@@ -332,6 +332,11 @@ class MixPickPermissionTests(MixPickRoomCase):
         self.assertFalse(spectator["viewer_can_act"])
         self.assertEqual(sorted((seat["m0"], seat["m2"], seat["m3"])), sorted(spectator["acting_member_ids"]))
         self.assertEqual(["P0", "P1", "P2", "P3"], [member["name"] for member in spectator["members"]])
+        # Each member names the workspace member in the seat, so the room ties it to the lineup and the viewer.
+        self.assertEqual(
+            {seat[who]: self.ids[who] for who in _SIDE},
+            {member["id"]: member["workspace_member_id"] for member in spectator["members"]},
+        )
         self.assertNotIn(self.picks[0], spectator["member_eligible"][str(seat["m0"])])
 
     async def test_a_captain_late_in_pick_order_is_answered_with_their_own_seat_first(self) -> None:

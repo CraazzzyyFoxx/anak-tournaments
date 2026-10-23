@@ -1,4 +1,4 @@
-import type { MixListFilter } from "@/services/custom-game.service";
+import type { MixLobbyState, MixListFilter } from "@/services/custom-game.service";
 
 /**
  * Every open mix of a workspace in one page: the directory's "now" block and the mix page's voice panel read the
@@ -18,6 +18,16 @@ export function lobbyLetter(lobbyIndex: number) {
 export function lobbyIndexFromLetter(letter: string | undefined): number | null {
   if (letter == null || !/^[A-Fa-f]$/.test(letter)) return null;
   return letter.toUpperCase().charCodeAt(0) - 65;
+}
+
+/** A lobby's room: the page its draft, bans, picks and live match play out on. */
+export function mixRoomHref(gameId: number, lobbyIndex: number) {
+  return `/balancer/mix/${gameId}/lobby/${lobbyLetter(lobbyIndex)}`;
+}
+
+/** A stage that plays out in the lobby's room, not on the overview: the captains' draft, or the hero bans and picks. */
+export function playsInRoom(state: MixLobbyState | undefined) {
+  return state === "draft_setup" || state === "draft_live" || state === "pregame";
 }
 
 /** The "Away" chip: on a seat, a lineup row and the player's own panel. */

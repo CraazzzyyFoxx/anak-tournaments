@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
@@ -9,6 +10,7 @@ import {
   Archive,
   ClipboardCopy,
   Copy,
+  DoorOpen,
   Send,
   CircleX,
   MoreHorizontal,
@@ -16,7 +18,7 @@ import {
   Users
 } from "lucide-react";
 
-import { CAPTION_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
+import { CAPTION_CLASS, CARD_TITLE_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import { PickupResultControls } from "@/app/balancer/mix/PickupResultControls";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
@@ -36,10 +38,7 @@ import type { CustomGame, CustomGameLobby, CustomGameMatch } from "@/services/cu
 import type { CatalogEntityRead } from "@/types/catalog.types";
 import { Spinner } from "@/components/ui/spinner";
 
-import { MixBanBoard } from "./_components/MixBanBoard";
-import { MixBanSummary } from "./_components/MixBanSummary";
 import { MatchHistoryList } from "./_components/MatchHistoryList";
-import { MixDraftPanel } from "./_components/MixDraftPanel";
 import { NextMapStrip } from "./_components/NextMapStrip";
 import { StartMatchButton } from "./_components/StartMatchButton";
 import { VariantView } from "./_components/VariantView";
@@ -75,12 +74,8 @@ type PickupTeamsPanelProps = {
   /** Re-forms THIS lobby as a captain draft (draft mode). The confirm for an unrecorded lineup is this panel's. */
   drafting: boolean;
   onDraft: () => void;
-  replacingCaptain: boolean;
-  addingDraftPlayer: boolean;
-  /** A draft team's new captain (a draft player id), in this lobby's draft. */
-  onReplaceDraftCaptain: (teamId: number, playerId: number) => void;
-  /** A waiting player joins this lobby's draft. */
-  onAddDraftPlayer: (workspaceMemberId: number) => void;
+  /** This lobby's room, where its draft and its bans and picks play out. */
+  roomHref: string;
   /**
    * Which of the solver's options is on screen — the lobby's own
    * `selected_variant_index`, so the host's pager moves every viewer with it.
@@ -97,8 +92,6 @@ type PickupTeamsPanelProps = {
    * first.
    */
   onStartMatch: (flipOpener: boolean) => void;
-  /** The ban room is done: the lobby is re-read, and reads Live. */
-  onBansComplete: () => void;
   cancellingMatch: boolean;
   /** Throws the live match away; nothing is recorded. */
   onCancelMatch: () => void;
@@ -140,11 +133,10 @@ type PickupTeamsPanelProps = {
 };
 
 /**
- * The lobby's room (spec §7.5): its stage, the teams it is showing, and the
- * writes that act on them -- re-balance (or Draft, in draft mode) and Start
- * match while Ready, the hero bans in Pre-game, the result or Cancel match
- * while Live (the lineup is frozen from Start to the result), and close the
- * mix. While the lobby drafts, the draft room takes the teams' place.
+ * The host's desk for one lobby: its teams and the writes that act on them -- re-balance (or Draft, in draft mode)
+ * and Start match while Ready, the result or Cancel match while Live (the lineup is frozen from Start to the result),
+ * and close the mix. What plays out in the lobby's room (spec §7.5) -- the captains' draft, the hero bans and picks --
+ * is a link to that room here, not a board.
  *
  * One lobby at a time: the page hands down which one, and every write this
  * panel makes addresses it. Teams are read from that lobby's stored
@@ -169,17 +161,13 @@ export function PickupTeamsPanel({
   onBalance,
   drafting,
   onDraft,
-  replacingCaptain,
-  addingDraftPlayer,
-  onReplaceDraftCaptain,
-  onAddDraftPlayer,
+  roomHref,
   variantIndex,
   onVariantIndexChange,
   recordingOutcome,
   onRecordOutcome,
   startingMatch,
   onStartMatch,
-  onBansComplete,
   cancellingMatch,
   onCancelMatch,
   onMakeCaptain,
@@ -229,7 +217,7 @@ export function PickupTeamsPanel({
   const pregame = state === "pregame";
   // The lineup is frozen from Start to the result, bans included (spec §5.1).
   const onFloor = live || pregame;
-  // While the lobby drafts, its draft room is the page; the draft's own controls re-form it.
+  // While the lobby drafts, its room is where the teams form; the desk only points there.
   const drafts = state === "draft_setup" || state === "draft_live";
   // Every write that re-forms, re-seats or re-maps the lineup waits for the match (409 `match_live`).
   const reshape = canWrite && !onFloor && !drafts;
@@ -349,28 +337,18 @@ export function PickupTeamsPanel({
     // rosters across an arm's length of desk, so reading "who is on my team"
     // became a head turn.
     <div className="flex w-full min-w-0 flex-col gap-3.5">
-      {drafts && game && lobby?.draft_session_id != null ? (
-        <MixDraftPanel
-          sessionId={lobby.draft_session_id}
-          owner={{
-            workspaceId: game.workspace_id,
-            discipline: game.discipline,
-            name: `${game.name} · ${t("tab", { letter: lobbyLetter(lobbyIndex) })}`,
-            href: `/balancer/mix/${game.id}`,
-            divisionGrid: owner.grid,
-            isOrganizer: canWrite
-          }}
-          canHost={canWrite}
-          waiting={(game.players ?? []).filter(
-            (row) => row.participation !== "benched" && !row.away && row.current_lobby == null
-          )}
-          replacing={replacingCaptain}
-          adding={addingDraftPlayer}
-          onReplaceCaptain={onReplaceDraftCaptain}
-          onAddPlayer={onAddDraftPlayer}
-        />
-      ) : null}
-      {drafts ? null : gamesError ? (
+      {drafts ? (
+        <Card variant="flat" className="flex flex-col items-start gap-3 px-4 py-3.5">
+          <h2 className={CARD_TITLE_CLASS}>{tRoom("draftInRoom")}</h2>
+          <p className={CAPTION_CLASS}>{tRoom("draftInRoomHint")}</p>
+          <Button asChild variant="accent" size="sm">
+            <Link href={roomHref}>
+              <DoorOpen className="size-3.5" aria-hidden="true" />
+              {tRoom("openRoom")}
+            </Link>
+          </Button>
+        </Card>
+      ) : gamesError ? (
         <Card variant="flat" asChild>
           <PageStateCard
             state="error"
@@ -463,16 +441,23 @@ export function PickupTeamsPanel({
                       }
                     />
                   ) : null}
-                  {/* Every viewer hears why the teams stopped moving; only a host can end the match. */}
+                  {/* Every viewer hears why the teams stopped moving and where the match plays out; only a host can
+                      end it. */}
                   <div className="flex flex-wrap items-center gap-2">
                     <p className={CAPTION_CLASS}>{tRoom("frozen")}</p>
+                    {pregame ? <p className={CAPTION_CLASS}>{tRoom("bansInRoom")}</p> : null}
+                    <Button asChild variant={pregame ? "accent" : "outline"} size="sm" className="ml-auto">
+                      <Link href={roomHref}>
+                        <DoorOpen className="size-3.5" aria-hidden="true" />
+                        {tRoom("openRoom")}
+                      </Link>
+                    </Button>
                     {canWrite ? (
                       <>
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="ml-auto"
                           disabled={cancellingMatch}
                           onClick={() => setCancelOpen(true)}
                         >
@@ -683,24 +668,6 @@ export function PickupTeamsPanel({
           ) : null}
         </Card>
       )}
-      {pregame && game && lobby?.live_encounter_id != null ? (
-        <MixBanBoard
-          encounterId={lobby.live_encounter_id}
-          workspaceId={game.workspace_id}
-          discipline={game.discipline}
-          seats={lobby.live_seats ?? []}
-          canHost={canWrite}
-          onComplete={onBansComplete}
-        />
-      ) : null}
-      {/* The ban board unmounts once the bans settle; Live keeps what they settled until Record or Cancel match. */}
-      {live && game && lobby?.live_encounter_id != null && lobby.live_ban_preset != null ? (
-        <MixBanSummary
-          encounterId={lobby.live_encounter_id}
-          discipline={game.discipline}
-          seats={lobby.live_seats ?? []}
-        />
-      ) : null}
     </div>
   );
 }

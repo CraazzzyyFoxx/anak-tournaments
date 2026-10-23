@@ -72,6 +72,11 @@ interface PickBanGridProps {
   seats: PickBanSeat[];
   /** Room-level header (back link, status, team matchup) merged into this card's top. */
   header: React.ReactNode;
+  /**
+   * A `view-transition-name` per hero tile, for a room that animates a hero leaving the pool (the mix room names an
+   * available tile so a ban or a pick can fly from it); unset, no tile is named.
+   */
+  itemTransitionName?: (entry: PickBanEntry) => string | undefined;
 }
 
 /** A map tile's status as coloured text: the same hue and glyph the step timeline uses per action. */
@@ -99,6 +104,7 @@ export function PickBanGrid({
   seats,
   header,
   characterClasses = [],
+  itemTransitionName,
 }: Readonly<PickBanGridProps>) {
   const t = useTranslations("pickBan.room");
   const tCommon = useTranslations("common");
@@ -298,6 +304,7 @@ export function PickBanGrid({
         title={note ?? name}
         aria-describedby={lockedRound != null ? lockedHintId(lockedRound) : undefined}
         onClick={() => onSelect(entry.item_id)}
+        style={itemTransitionName ? { viewTransitionName: itemTransitionName(entry) } : undefined}
         className={cn(
           "group relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full border p-0.5 transition-shadow",
           selected

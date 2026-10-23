@@ -239,6 +239,8 @@ class DraftPlayerRead(BaseRead):
     #: straight to the pool row an organizer must edit to change a rank.
     registration_id: int | None
     user_id: int | None
+    #: The workspace member this seat is: a mix seat's anchor, a tournament seat's when its registrant has one.
+    workspace_member_id: int | None
     #: The seat's primary handle for the tournament's identity provider; null when the registrant gave none.
     identity: PlayerIdentityRead | None
     #: The player's canonical ``players.user.name``: what a ``/users/<name>`` profile link is built from.
@@ -309,6 +311,7 @@ class DraftPlayerRead(BaseRead):
             session_id=player.session_id,
             registration_id=player.registration_id,
             user_id=player.user_id,
+            workspace_member_id=player.workspace_member_id,
             identity=roster.identity if roster is not None else None,
             player_name=roster.player_name if roster is not None else None,
             primary_role=RoleRef.of(dimension, lead.role, lead.subrole) if lead is not None else None,

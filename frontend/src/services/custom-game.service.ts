@@ -409,7 +409,7 @@ export type MixSelfSeat = {
   voice_url: string | null;
   /** Effective rank per role; `null` where no layer answers for it. */
   ranks: Record<string, number | null>;
-  /** Which lobby a balance seated them in; `null` means waiting for a seat. */
+  /** The lobby whose shown lineup seats them, or whose draft pool holds them while it drafts; `null` while waiting. */
   current_lobby: number | null;
 };
 

@@ -42,6 +42,16 @@ export function roleRefsOf(order: readonly string[], dimension: string): RoleRef
 export const PICKUP_TERMINAL_STATUSES: Record<string, true> = { completed: true, cancelled: true };
 
 /**
+ * Whoever passes the server's `CustomGameService._writable`: the host, a co-host or a superuser, while the mix is
+ * still open (a completed or cancelled one is read-only, so its controls are hidden rather than left to 409).
+ */
+export function canWriteMix(game: CustomGame | undefined, userId: number | null, isSuperuser: boolean): boolean {
+  if (game == null || PICKUP_TERMINAL_STATUSES[game.status]) return false;
+  if (isSuperuser) return true;
+  return userId != null && (game.host_user_id === userId || game.co_hosts.some((coHost) => coHost.user_id === userId));
+}
+
+/**
  * The roles the balancer may use for this row, in the order the host set them.
  *
  * A stored `null` means "not configured yet", which the backend expands to

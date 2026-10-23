@@ -1,0 +1,58 @@
+/*
+ * The mix room's view transitions (DESIGN.md §10, named exception): a pick flies from the pool into its slot, a hero
+ * lands in a team's ban row or beside its player, and the centre hands over to the next phase. Scoped to a page that
+ * renders the room; `useViewTransitionState` never starts one under reduced motion.
+ */
+
+/* Only named elements animate: the page itself is never captured, so it stays clickable through a transition. */
+:root:has([data-mix-room]) {
+  view-transition-name: none;
+}
+
+:root:has([data-mix-room])::view-transition {
+  pointer-events: none;
+}
+
+:root:has([data-mix-room])::view-transition-group(*) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* The centre: one name per phase, so a phase change is an exit and an entry while a turn inside a phase is not. */
+:root:has([data-mix-room])::view-transition-old(mix-stage-idle):only-child,
+:root:has([data-mix-room])::view-transition-old(mix-stage-draft):only-child,
+:root:has([data-mix-room])::view-transition-old(mix-stage-ready):only-child,
+:root:has([data-mix-room])::view-transition-old(mix-stage-pregame):only-child,
+:root:has([data-mix-room])::view-transition-old(mix-stage-live):only-child {
+  animation: mix-stage-out 180ms ease-in both;
+}
+
+:root:has([data-mix-room])::view-transition-new(mix-stage-idle):only-child,
+:root:has([data-mix-room])::view-transition-new(mix-stage-draft):only-child,
+:root:has([data-mix-room])::view-transition-new(mix-stage-ready):only-child,
+:root:has([data-mix-room])::view-transition-new(mix-stage-pregame):only-child,
+:root:has([data-mix-room])::view-transition-new(mix-stage-live):only-child {
+  animation: mix-stage-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes mix-stage-out {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes mix-stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:has([data-mix-room])::view-transition-group(*),
+  :root:has([data-mix-room])::view-transition-old(*),
+  :root:has([data-mix-room])::view-transition-new(*) {
+    animation: none;
+  }
+}

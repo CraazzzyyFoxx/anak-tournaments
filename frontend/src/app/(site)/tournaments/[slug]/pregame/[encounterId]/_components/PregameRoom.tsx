@@ -41,7 +41,8 @@ import { PregameFinalReport } from "./PregameFinalReport";
 import { PregameMapResult } from "./PregameMapResult";
 import { PregameReadiness } from "./PregameReadiness";
 import { EmptyRoomCard, UNAVAILABLE_ICON } from "./EmptyRoomCard";
-import { PickBanPanel, type PickBanAdminSlot } from "@/components/pick-ban/PickBanPanel";
+import { PickBanPanel } from "@/components/pick-ban/PickBanPanel";
+import type { PickBanAdminSlot } from "@/components/pick-ban/usePickBanController";
 import { encounterQueryKeys } from "@/lib/encounters/query-keys";
 import { usePregameRoomData } from "./usePregameRoomData";
 import {

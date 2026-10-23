@@ -7905,6 +7905,7 @@
     "lobbies": {
       "tabsLabel": "Lobbies",
       "tab": "Lobby {letter}",
+      "desk": "Teams",
       "bans": "Bans",
       "picks": "Picks",
       "game": "game {number}",
@@ -8060,9 +8061,10 @@
       "shortSeats": "{count} of {need} players",
       "gap": "gap {gap}",
       "openRoom": "Open room",
-      "overview": "All lobbies",
+      "draftInRoom": "Captains are drafting in the room",
+      "draftInRoomHint": "The teams show up here once the draft ends.",
+      "bansInRoom": "Hero bans and picks are on in the room",
       "notFound": "This mix has no such lobby.",
-      "waitingCount": "{count} waiting for a seat",
       "you": "You",
       "yourTeam": "Lobby {letter} · {team}",
       "nextMap": "Next map: {map}",
@@ -8097,6 +8099,86 @@
       "seeded": "Draft ready: check the captains, then start it",
       "started": "Draft started",
       "cancelled": "Draft cancelled"
+    },
+    "arena": {
+      "back": "Back to the mix",
+      "draftErrorTitle": "The draft could not be loaded",
+      "draftErrorHint": "Check your connection and try again.",
+      "rostersSummary": "{first} {firstCount} · {second} {secondCount}",
+      "stage": {
+        "idle": "Waiting for teams",
+        "draft": "Captains' draft",
+        "ready": "Teams are set",
+        "pregame": "Hero bans and picks",
+        "live": "Live match"
+      },
+      "teamHeroes": "Bans and picks of {team}",
+      "banned": "Banned: {hero}",
+      "captainOffline": "The captain is not in the room",
+      "openSlot": "Open slot",
+      "draft": {
+        "setupTitle": "Captains are set",
+        "setupHint": "The draft starts when a host starts it.",
+        "setupHintHost": "Check the captains, then start the draft.",
+        "paused": "Draft paused",
+        "blocked": "The players left cannot fill every role. Add a waiting player, then resume.",
+        "yourTurn": "Your pick",
+        "turn": "{team} is picking",
+        "done": "Draft complete",
+        "pickOf": "Pick {n} of {total}",
+        "clock": "Time left for this pick",
+        "order": "Pick order",
+        "roleFilter": "Filter players by role",
+        "allRoles": "All",
+        "poolTitle": "Players in the pool",
+        "bar": "Draft turn",
+        "reconnecting": "Reconnecting. You can confirm the pick once the connection is back.",
+        "role": "Role for this pick",
+        "pick": "Pick {player}",
+        "pickHint": "Choose a player",
+        "unpickable": {
+          "slot_filled": "That role is filled",
+          "role_shortage": "Would leave a role unfilled",
+          "no_slot": "No slot for this player",
+          "other": "Not pickable now"
+        }
+      },
+      "bans": {
+        "closed": "The bans are over.",
+        "steps": "Steps",
+        "step": {
+          "ban": "Ban",
+          "pick": "Pick",
+          "protect": "Protect",
+          "side": "Side",
+          "decider": "Decider",
+          "assign": "Assign"
+        },
+        "everyone": "all"
+      },
+      "match": {
+        "idleTitle": "No teams yet",
+        "idleHost": "Form the teams with a draft or the balancer.",
+        "idleViewer": "A host has not formed the teams yet.",
+        "draftAgain": "New draft",
+        "balanceAgain": "Balance again",
+        "readyTitle": "Teams are set",
+        "readyHost": "Start the match when everyone is in.",
+        "readyViewer": "Waiting for a host to start the match.",
+        "liveTitle": "Match in progress",
+        "liveNoMap": "No map was rolled for this match.",
+        "liveViewer": "A host records the result."
+      },
+      "host": {
+        "title": "Host",
+        "menu": "Host actions",
+        "pause": "Pause",
+        "resume": "Resume",
+        "autopick": "Autopick now",
+        "extend": "+{seconds} seconds",
+        "rollback": "Roll back the last pick",
+        "banControls": "Ban controls"
+      }
     },
     "access": {
       "description": "Who else can edit this mix, and who owns it.",

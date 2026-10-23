@@ -397,6 +397,12 @@ system.
   320ms; reversed going back), which says which way the reader went. A pick
   in `kit/SectionNav` plays the same 320ms entrance on the content column,
   from below for a section under the open one, from above for one over it.
+- The mix match room (`app/balancer/mix/_room`) moves what the server moved,
+  through view transitions: a drafted player flies from the pool into their
+  slot, a banned or picked hero from the grid into its team's ban row or
+  beside its player, and the centre hands over to the next phase (the old
+  one lifts away in 180ms, the new one rises in 320ms). Only named elements
+  animate; the page itself is never captured, so it stays clickable.
 - No hover that changes size or shifts layout.
 - The one press: every `Button` sinks to `scale(0.97)` while pressed (150ms,
   `motion-safe` only); the `inline` and `label` sizes, which are text, do not.

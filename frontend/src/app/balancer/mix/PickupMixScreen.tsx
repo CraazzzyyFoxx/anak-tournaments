@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
@@ -13,19 +13,17 @@ import { PickupMixHeader } from "@/app/balancer/mix/PickupMixHeader";
 import { PickupMySeatPanel } from "@/app/balancer/mix/PickupMySeatPanel";
 import { PickupTeamsPanel } from "@/app/balancer/mix/PickupTeamsPanel";
 import { PickupVoicePanel } from "@/app/balancer/mix/PickupVoicePanel";
-import { LobbyStage } from "@/app/balancer/mix/_components/LobbyStage";
 import { MatchHistoryList } from "@/app/balancer/mix/_components/MatchHistoryList";
-import { CAPTION_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
+import { useRoomAutoOpen } from "@/app/balancer/mix/_hooks/useRoomAutoOpen";
+import { lobbyIndexFromLetter, lobbyLetter, mixRoomHref, playsInRoom } from "@/app/balancer/mix/pickup-chrome";
 import {
-  PICKUP_TERMINAL_STATUSES,
+  canWriteMix,
   buildMixOwner,
   myLobbyTeam,
   playerLabel,
   summarizeLineup,
 } from "@/app/balancer/mix/pickup-lineup";
 import { usePickupMix } from "@/app/balancer/mix/usePickupMix";
-import { RoomChat } from "@/components/chat/RoomChat";
-import { BackLink } from "@/components/site/BackLink";
 import { Card } from "@/components/ui/card";
 import { PageStateCard } from "@/components/ui/page-state-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,8 +34,6 @@ import { useEntityWorkspace } from "@/hooks/useEntityWorkspace";
 import { usePermissions } from "@/hooks/usePermissions";
 import { notify } from "@/lib/notify";
 import { slotCodeOrder } from "@/lib/roster/ontology";
-import { encounterChatRoom } from "@/lib/realtime/chat-rooms";
-import { cn } from "@/lib/utils";
 import { customGameKeys, customGameService, type CustomGame } from "@/services/custom-game.service";
 import { useAuthProfileStore } from "@/stores/auth-profile.store";
 import { useWorkspaceStore } from "@/stores/workspace.store";
@@ -57,20 +53,18 @@ const PickupPlayerSheet = dynamic(
 );
 
 /**
- * One mix, as its overview or as one lobby's room (spec §7.5) -- one screen, so the host controls and the phone layout
- * are written once.
- *
- * `roomLobby = null` is the overview at `/balancer/mix/[gameId]`: the lineup column a host curates, the header and --
+ * One mix's overview at `/balancer/mix/[gameId]`: the host's desk. The lineup column a host curates, the header and --
  * with several lobbies -- one card per lobby carrying its next action, the players no lobby seats, the history and the
- * leaderboard. A one-lobby mix embeds its room there instead: no navigation for the common case. `roomLobby = n` is
- * the room at `/balancer/mix/[gameId]/lobby/[A-F]`: the lobby's stage, its teams and its controls, the player's own
- * panel.
+ * leaderboard. A one-lobby mix shows its lobby's desk (its teams panel) right there; with several, `?lobby=<letter>`
+ * puts the chosen lobby's desk under the cards. What plays out in a lobby's room (spec §7.5) -- the draft, the hero
+ * bans and picks, the match chat -- lives on that room's own page (`mixRoomHref`): a seated player is taken there once
+ * per phase, a host once their Draft goes through.
  *
  * Which balance option is on screen is the lobby's own `selected_variant_index`, not page state, and the mix itself
  * carries no solver or format settings: those belong to the host's account (`components/account-settings/
  * MixBalancerSection`).
  */
-export function PickupMixScreen({ roomLobby }: Readonly<{ roomLobby: number | null }>) {
+export function PickupMixScreen() {
   const params = useParams<{ gameId: string }>();
   const routeGameId = Number(params.gameId);
   const pickedGameId = Number.isSafeInteger(routeGameId) && routeGameId > 0 ? routeGameId : null;
@@ -107,12 +101,10 @@ export function PickupMixScreen({ roomLobby }: Readonly<{ roomLobby: number | nu
       </div>
     );
   }
-  return <PickupMixDetail key={entityQuery.data.id} initialGame={entityQuery.data} roomLobby={roomLobby} />;
+  return <PickupMixDetail key={entityQuery.data.id} initialGame={entityQuery.data} />;
 }
 
-function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: CustomGame; roomLobby: number | null }>) {
-  const t = useTranslations("mixes.room");
-  const tLobbies = useTranslations("mixes.lobbies");
+function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>) {
   const tTeams = useTranslations("mixes.teams");
   const tVoice = useTranslations("mixes.voice");
   const workspaceId = initialGame.workspace_id;
@@ -123,6 +115,9 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
   const isSignedIn = useAuthProfileStore((state) => state.status === "authenticated");
   const { canAccessPermission, isSuperuser, isWorkspaceAdmin } = usePermissions();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // The lobby whose desk a several-lobby overview shows under its cards; the mix's lobby count bounds it below.
+  const requestedLobby = lobbyIndexFromLetter(searchParams.get("lobby") ?? undefined);
   // The mix-hosting grant: a workspace member can run a pickup game without admin rights over teams.
   const canEdit = workspaceId != null && canAccessPermission("custom_game.create", workspaceId);
   // Workspace admin, the gate for hard-deleting a mix (`_hard_delete` in balancer-service's `rpc/custom.py`).
@@ -136,6 +131,8 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
 
   const {
     selectedGameId,
+    activeLobby,
+    setActiveLobby,
     gamesQuery,
     gameQuery,
     matchesQuery,
@@ -173,8 +170,6 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
     setDraftSettings,
     seedDraft,
     splitPool,
-    replaceDraftCaptain,
-    addDraftPlayer,
     postSignup,
     deleteDiscordPost,
     voiceOptionsQuery,
@@ -185,8 +180,8 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
     seatEnabled: isSignedIn,
     voiceEnabled,
     initialGame,
-    // A room's rotation hints are its own lobby's; an unknown letter (-1) renders not-found below, never a read of it.
-    initialLobby: Math.max(roomLobby ?? 0, 0),
+    // The rotation hints are the shown desk's lobby's; the hook falls back to A for a letter the mix does not run.
+    initialLobby: requestedLobby ?? 0,
   });
 
   const game = gameQuery.data;
@@ -209,17 +204,17 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
   const rows = game?.players ?? [];
   const lobbies = game?.lobbies ?? [];
   const lobbyCount = game?.lobby_count ?? initialGame.lobby_count;
-  // The lobby whose teams are on screen: the room's own, or a one-lobby mix's only one. Several lobbies show cards.
-  const shownLobby = roomLobby ?? (lobbyCount < 2 ? 0 : null);
+  // The lobby whose teams are on screen: a one-lobby mix's only one, else the one `?lobby=` picks (none: cards only).
+  const selectedLobby = lobbyCount > 1 && requestedLobby != null && requestedLobby < lobbyCount ? requestedLobby : null;
+  const shownLobby = lobbyCount < 2 ? 0 : selectedLobby;
   const lobby = shownLobby == null ? undefined : lobbies.find((row) => row.lobby_index === shownLobby);
+  // Picking another desk moves the lineup's rotation hints with it (state reset during render).
+  if (activeLobby !== (shownLobby ?? 0)) {
+    setActiveLobby(shownLobby ?? 0);
+  }
   const rosterIds = rows.map((row) => row.workspace_member_id);
-  // Every mix write goes through `_writable`, which 403s anyone but the host or a co-host; a superuser writes every
-  // mix. A completed or cancelled mix is read-only server-side, so its controls are hidden rather than left to 409.
   const isHost = game != null && currentUserId != null && game.host_user_id === currentUserId;
-  const isCoHost =
-    game != null && currentUserId != null && game.co_hosts.some((coHost) => coHost.user_id === currentUserId);
-  const canWrite =
-    (isHost || isCoHost || isSuperuser) && game != null && !PICKUP_TERMINAL_STATUSES[game.status];
+  const canWrite = canWriteMix(game, currentUserId, isSuperuser);
   // State reset during render: the voice read is a writer's, and that is only knowable once the mix has loaded.
   if (voiceEnabled !== canWrite) {
     setVoiceEnabled(canWrite);
@@ -236,6 +231,10 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
   const matches = matchesQuery.data ?? [];
   const mySeat = mySeatQuery.data;
   const myMemberId = mySeat?.seat?.workspace_member_id ?? null;
+  // The lobby the viewer's seat names: its seats or, while it drafts, its draft pool (balancer-service
+  // `current_lobbies`).
+  const myLobby = lobbies.find((row) => row.lobby_index === mySeat?.seat?.current_lobby);
+  useRoomAutoOpen(pickedGameId, myLobby, canWrite);
   // The phone view of the player's own lobby: their team, its captain and the map (spec §7.5, G1).
   const myTeam = myLobbyTeam(game, myMemberId, slotCodeOrder(owner.ontology), (team) =>
     tVoice("team", { n: team + 1 }),
@@ -244,9 +243,18 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
     myTeam?.nextMapId == null
       ? null
       : ((mapsQuery.data ?? []).find((map) => map.id === myTeam.nextMapId)?.name ?? null);
-  const waitingCount = rows.filter(
-    (row) => row.participation !== "benched" && !row.away && row.current_lobby == null,
-  ).length;
+  const selectLobby = (index: number | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (index == null) params.delete("lobby");
+    else params.set("lobby", lobbyLetter(index));
+    const rest = params.toString();
+    router.replace(rest ? `/balancer/mix/${pickedGameId}?${rest}` : `/balancer/mix/${pickedGameId}`, {
+      scroll: false,
+    });
+  };
+  // A host's Draft opens the lobby's room, where the captains pick.
+  const draft = (lobbyIndex: number) =>
+    seedDraft.mutate(lobbyIndex, { onSuccess: () => router.push(mixRoomHref(pickedGameId, lobbyIndex)) });
 
   const togglePoolMember = (memberId: number) => {
     if (selectedGameId == null) return;
@@ -269,10 +277,6 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
       .catch(() => notify.error(tTeams("clipboardError")));
   };
 
-  if (roomLobby != null && (roomLobby < 0 || roomLobby >= lobbyCount)) {
-    return <PageStateCard state="not-found" headingLevel={1} description={t("notFound")} />;
-  }
-
   const teamsPanel =
     shownLobby == null ? null : (
       <PickupTeamsPanel
@@ -293,25 +297,20 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
         activeCount={summarizeLineup(rows, owner.roles).active}
         onBalance={() => balance.mutate({ scope: "lobby", lobbyIndex: shownLobby })}
         drafting={seedDraft.isPending}
-        onDraft={() => seedDraft.mutate(shownLobby)}
-        replacingCaptain={replaceDraftCaptain.isPending}
-        addingDraftPlayer={addDraftPlayer.isPending}
-        onReplaceDraftCaptain={(teamId, playerId) =>
-          replaceDraftCaptain.mutate({ lobbyIndex: shownLobby, teamId, playerId })
-        }
-        onAddDraftPlayer={(workspaceMemberId) => addDraftPlayer.mutate({ lobbyIndex: shownLobby, workspaceMemberId })}
+        onDraft={() => draft(shownLobby)}
+        roomHref={mixRoomHref(pickedGameId, shownLobby)}
         variantIndex={lobby?.selected_variant_index ?? 0}
         onVariantIndexChange={(index) => setVariantIndex.mutate({ lobbyIndex: shownLobby, variantIndex: index })}
         startingMatch={startMatch.isPending}
         onStartMatch={(flipOpener) => startMatch.mutate({ lobbyIndex: shownLobby, flipOpener })}
-        onBansComplete={() => void gameQuery.refetch()}
         cancellingMatch={cancelMatch.isPending}
         onCancelMatch={() => cancelMatch.mutate(shownLobby)}
         onMakeCaptain={(workspaceMemberId) => setCaptain.mutate({ lobbyIndex: shownLobby, workspaceMemberId })}
         recordingOutcome={recordOutcome.isPending}
         onRecordOutcome={(input) => recordOutcome.mutate(input)}
         maps={mapsQuery.data ?? []}
-        matches={roomLobby == null ? matches : matches.filter((match) => match.lobby_index === roomLobby)}
+        // A several-lobby overview lists every lobby's history in its own card, under the desk.
+        matches={lobbyCount < 2 ? matches : []}
         mixMatches={matches}
         undoingMatchId={undoMatch.isPending ? (undoMatch.variables ?? null) : null}
         onUndoMatch={(matchId) => undoMatch.mutate(matchId)}
@@ -383,10 +382,15 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
         queuePosition={myQueuePosition}
         lobbies={lobbies.map((row) => ({ lobbyIndex: row.lobby_index, state: row.state ?? "idle" }))}
         onSetAway={(away) => setMyAway.mutate(away)}
+        roomHref={
+          myLobby != null && (playsInRoom(myLobby.state) || myLobby.state === "live")
+            ? mixRoomHref(pickedGameId, myLobby.lobby_index)
+            : null
+        }
       />
     ) : null;
 
-  // The host's pool, with the rotation hints of the lobby the screen is about (the room's own, else lobby A).
+  // The host's pool, with the rotation hints of the lobby whose desk is on screen (lobby A while none is).
   const lineupPanel = (
     <PickupLobbyPanel
       canWrite={canWrite}
@@ -472,36 +476,6 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
     </>
   );
 
-  // A room has a chat while its match is on (spec §7.5 amended); a viewer the chat refuses (a spectator's 403) gets
-  // none. A several-lobby overview shows no room, so no chat.
-  const chatDock =
-    lobby?.live_encounter_id != null ? <RoomChat room={encounterChatRoom(lobby.live_encounter_id)} /> : null;
-
-  if (roomLobby != null) {
-    // One column, the player's own panel right under the teams: the same room reads on a phone (spec §7.5).
-    return (
-      <>
-        <div className="mx-auto flex w-full min-w-0 max-w-[1180px] flex-col gap-5">
-          <div className="flex flex-wrap items-center gap-3">
-            <BackLink href={`/balancer/mix/${pickedGameId}`}>{t("overview")}</BackLink>
-            <h1 className="font-display text-heading font-bold text-[color:var(--aqt-fg)]">
-              {`${game?.name ?? initialGame.name} · ${tLobbies("tab", { letter: lobbyLetter(roomLobby) })}`}
-            </h1>
-            {lobby?.state != null ? <LobbyStage state={lobby.state} startedAt={lobby.live_started_at} /> : null}
-            <span className={cn(CAPTION_CLASS, "ml-auto")}>{t("waitingCount", { count: waitingCount })}</span>
-          </div>
-          {teamsPanel}
-          {mySeatPanel}
-          {/* The host's controls inline: the pool with this lobby's rotation hints, and the voices. */}
-          {canWrite ? lineupPanel : null}
-          {voicePanel}
-        </div>
-        {dialogs}
-        {chatDock}
-      </>
-    );
-  }
-
   return (
     <>
       <div className="flex flex-1 flex-col gap-5">
@@ -538,7 +512,7 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
               settingLobbyCount={setLobbyCount.isPending}
               onLobbyCountChange={(count) => setLobbyCount.mutate(count)}
             />
-            {shownLobby != null ? (
+            {lobbyCount < 2 ? (
               teamsPanel
             ) : game != null ? (
               <>
@@ -558,10 +532,13 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
                   onRecordOutcome={(input) => recordOutcome.mutate(input)}
                   onShuffleAll={() => balance.mutate({ scope: "all" })}
                   drafting={seedDraft.isPending ? (seedDraft.variables ?? null) : null}
-                  onDraft={(lobbyIndex) => seedDraft.mutate(lobbyIndex)}
+                  onDraft={draft}
                   splitting={splitPool.isPending}
                   onSplitPool={() => splitPool.mutate()}
+                  selectedLobby={selectedLobby}
+                  onSelectLobby={selectLobby}
                 />
+                {teamsPanel}
                 {matches.length > 0 ? (
                   <Card variant="flat" className="px-4 py-3.5">
                     <MatchHistoryList
@@ -583,7 +560,6 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
         </div>
       </div>
       {dialogs}
-      {chatDock}
     </>
   );
 }

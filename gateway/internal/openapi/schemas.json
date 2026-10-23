@@ -22532,6 +22532,17 @@
         "version": {
           "title": "Version",
           "type": "integer"
+        },
+        "workspace_member_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Workspace Member Id"
         }
       },
       "required": [
@@ -22539,6 +22550,7 @@
         "session_id",
         "registration_id",
         "user_id",
+        "workspace_member_id",
         "identity",
         "player_name",
         "primary_role",

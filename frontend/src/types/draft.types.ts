@@ -97,6 +97,8 @@ export interface DraftPlayer {
   /** null for a mix seat */
   registration_id: number | null;
   user_id: number | null;
+  /** The workspace member this seat is: set on every mix seat (the room ties it to its lineup seat), null otherwise. */
+  workspace_member_id?: number | null;
   identity: PlayerIdentity | null;
   /** The player's canonical unique name: every `/users/<name>` link is built from it, never from a game handle. */
   player_name: string | null;

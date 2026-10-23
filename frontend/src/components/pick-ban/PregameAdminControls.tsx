@@ -31,7 +31,7 @@ import { PickBanSideChoice } from "@/components/pick-ban/PickBanSideChoice";
 import { Spinner } from "@/components/ui/spinner";
 
 import { PregameAdminBox } from "./PregameAdminBox";
-import type { PickBanAdminSlot } from "./PickBanPanel";
+import type { PickBanAdminSlot } from "./usePickBanController";
 
 interface PregameAdminControlsProps {
   kind: PickBanKind;

@@ -765,12 +765,15 @@ class MixDraftTests(EncounterWriterCase):
             board = await board_service.build_board(s, await s.get_one(models.DraftSession, draft_id))
             m2_player = (await s.get_one(models.WorkspaceMember, self.ids["m2"])).player_id
         crowns = {player.id: player.is_captain for player in board.players}
+        members = {player.id: player.workspace_member_id for player in board.players}
 
         self.assertEqual(self.ids["m2"], (await self._teams(draft_id))[0].captain_workspace_member_id)
         self.assertEqual(1, resolved)  # the pick made stands
         # U2: the crown the board shows, and the team's captain identity, follow the team's current captain.
         self.assertEqual((True, False), (crowns[m2_seat], crowns[m1_seat]))
         self.assertEqual(m2_player, board.teams[0].captain_user_id)
+        # A mix seat names its workspace member, so the room can tie it to the lineup seat.
+        self.assertEqual((self.ids["m2"], self.ids["m1"]), (members[m2_seat], members[m1_seat]))
 
     async def test_replacing_a_captain_reauthorizes_the_draft_chat(self) -> None:
         """The gateway re-checks a chat topic's live subscribers only on ``chat.visibility_changed``: the replace

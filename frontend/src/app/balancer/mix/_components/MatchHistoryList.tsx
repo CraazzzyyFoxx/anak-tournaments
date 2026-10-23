@@ -212,8 +212,8 @@ function MatchHistoryRow({
   );
 }
 
-/** Hero bans in the order they were made, each behind its team's dot: a recorded round's, or the live match's. */
-export function HeroBanStrip({
+/** Hero bans in the order they were made, each behind its team's dot. */
+function HeroBanStrip({
   bans,
   heroById,
   className
@@ -241,8 +241,8 @@ export function HeroBanStrip({
   );
 }
 
-/** Each player's hero, behind their team's dot: a recorded round's, or the live match's (spec §11.6 R4-11). */
-export function HeroPickList({
+/** Each player's hero, behind their team's dot (spec §11.6 R4-11). */
+function HeroPickList({
   picks,
   heroById,
   className

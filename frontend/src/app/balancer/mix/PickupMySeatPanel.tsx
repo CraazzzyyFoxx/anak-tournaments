@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { Fragment, useState } from "react";
 import { useTranslations } from "next-intl";
-import { Coffee, Crown, Headphones, LogIn, LogOut } from "lucide-react";
+import { Coffee, Crown, DoorOpen, Headphones, LogIn, LogOut } from "lucide-react";
 
 import { PickupRoleOrderEditor } from "@/app/balancer/mix/PickupRoleOrderEditor";
 import { CAPTION_CLASS, CARD_TITLE_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
@@ -55,6 +56,8 @@ type PickupMySeatPanelProps = {
   /** Every lobby's stage, for the waiting view. */
   lobbies: readonly { lobbyIndex: number; state: MixLobbyState }[];
   onSetAway: (away: boolean) => void;
+  /** Their lobby's room while something plays out there (draft, bans and picks, the match); `null` otherwise. */
+  roomHref: string | null;
 };
 
 /** Everything the panel edits before Save, kept apart from the server seat. */
@@ -119,6 +122,7 @@ export function PickupMySeatPanel({
   queuePosition,
   lobbies,
   onSetAway,
+  roomHref,
 }: Readonly<PickupMySeatPanelProps>) {
   const t = useTranslations("mixes.self");
   const tRoom = useTranslations("mixes.room");
@@ -210,6 +214,14 @@ export function PickupMySeatPanel({
         </span>
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {roomHref != null ? (
+            <Button asChild variant="accent" size="sm">
+              <Link href={roomHref}>
+                <DoorOpen aria-hidden="true" />
+                {tRoom("openRoom")}
+              </Link>
+            </Button>
+          ) : null}
           {policy.can_join ? (
             <Button type="button" variant="accent" size="sm" disabled={saving} onClick={onJoin}>
               <LogIn aria-hidden="true" />

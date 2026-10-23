@@ -43,6 +43,13 @@ vi.mock("next-intl", () => ({
       { has: () => false },
     ),
 }));
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
 // A decorative icon sits beside the role's name; a bare one stands in for it, so it names the role code here.
 vi.mock("@/components/PlayerRoleIcon", () => ({
   default: ({ role, decorative }: { role: string; decorative?: boolean }) =>
@@ -124,6 +131,7 @@ type PhoneProps = {
   nextMapName: string | null;
   queuePosition: number | null;
   lobbies: { lobbyIndex: number; state: MixLobbyState }[];
+  roomHref: string | null;
 };
 
 async function mount(value: MixSelfState, owner: MixOwner = OW_OWNER, phone: Partial<PhoneProps> = {}) {
@@ -145,6 +153,7 @@ async function mount(value: MixSelfState, owner: MixOwner = OW_OWNER, phone: Par
         queuePosition={phone.queuePosition ?? null}
         lobbies={phone.lobbies ?? []}
         onSetAway={onSetAway}
+        roomHref={phone.roomHref ?? null}
       />,
     );
   rerender = async (saving) => {
@@ -449,5 +458,22 @@ describe("PickupMySeatPanel on a phone", () => {
     );
 
     expect(byName(scope, "goAway")).toBeNull();
+  });
+
+  it("leads with the way into their lobby's room while something plays out there", async () => {
+    const scope = await mount(state({ seat: seat({ current_lobby: 1 }) }), OW_OWNER, {
+      roomHref: "/balancer/mix/12/lobby/B",
+    });
+    const link = scope.querySelector('a[href="/balancer/mix/12/lobby/B"]');
+
+    expect(link?.textContent).toBe("openRoom");
+    // First among the header's actions.
+    expect(link?.parentElement?.firstElementChild).toBe(link);
+  });
+
+  it("offers no room link while their lobby has nothing on there", async () => {
+    const scope = await mount(state({ seat: seat({ current_lobby: 1 }) }));
+
+    expect(scope.querySelector("a")).toBeNull();
   });
 });
