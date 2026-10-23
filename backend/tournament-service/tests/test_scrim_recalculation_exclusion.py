@@ -87,6 +87,8 @@ TABLE_NAMES = (
     # The native has_logs EXISTS reaches both the observed match and its game.
     "stats.match",
     "encounter.game",
+    # The stage read finds third-place matches through their bracket links.
+    "tournament.encounter_link",
     "tournament.standing",
     "tournament.standing_pin",
     "tournament.scrim_room",
@@ -118,6 +120,11 @@ class _AsyncSessionShim:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             return self.sync_session.scalar(statement, *args, **kwargs)
+
+    async def scalars(self, statement, *args, **kwargs):  # noqa: ANN001, ANN002, ANN003, ANN202
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return self.sync_session.scalars(statement, *args, **kwargs)
 
     async def flush(self) -> None:
         self.sync_session.flush()
