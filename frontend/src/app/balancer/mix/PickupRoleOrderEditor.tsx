@@ -227,7 +227,7 @@ function SortableRoleCard({
   const { ref, style, handleProps } = useSortableRow(id, disabled);
   const slotLabel = useSlotLabel(owner.ontology);
   const lead = (
-    <div className="flex shrink-0 items-center gap-1">
+    <div className={cn("flex shrink-0 items-center gap-1", !compact && "flex-col")}>
       <SortableGrip
         handleProps={handleProps}
         label={t("reorder", { role: slotLabel(role), name: label })}
