@@ -669,4 +669,52 @@ describe("MixBanBoard", () => {
     const row = room.server().submissions.find((submission) => submission.encounter_team_id === 71);
     expect(row?.items.map((item) => [item.member_id, item.item_id])).toEqual([[501, 102]]);
   });
+
+  it("locks at once while an earlier save never settles", async () => {
+    const room = serve(
+      submitDraft,
+      assigning({ "501": [101, 102], "502": [101, 102] }),
+      (state, input: PickBanSubmitInput) => afterAssign(state, 71, input),
+      true,
+    );
+    await render(() => {});
+
+    await act(async () => give("Hero 101", "P0")?.click());
+    await debounce(); // this save is stuck for good
+    await act(async () => give("Hero 102", "P1")?.click());
+    await act(async () => byLabel(en.pickBan.room.assign.lock)?.click());
+    await room.land(true);
+
+    expect(byLabel(en.pickBan.room.assign.lock)).toBeNull();
+    expect(container.textContent).toContain(en.pickBan.room.completedBanner);
+    const row = room.server().submissions.find((submission) => submission.encounter_team_id === 71);
+    expect(row?.state).toBe("locked");
+    expect(row?.items.map((item) => [item.member_id, item.item_id])).toEqual([
+      [501, 101],
+      [502, 102],
+    ]);
+  });
+
+  it("sends nothing it still had queued once the board is closed", async () => {
+    const room = serve(
+      submitDraft,
+      assigning({ "501": [101, 102], "502": [101, 102] }),
+      (state, input: PickBanSubmitInput) => afterAssign(state, 71, input),
+      true,
+    );
+    await render(() => {});
+
+    await act(async () => give("Hero 101", "P0")?.click());
+    await debounce(); // on the wire
+    await act(async () => give("Hero 102", "P0")?.click());
+    await debounce(); // queued behind it
+    act(() => root.unmount());
+    root = createRoot(container);
+    await room.land();
+
+    // Only the save already on the wire landed; the queued one never went out.
+    expect(room.pending()).toBe(0);
+    const row = room.server().submissions.find((submission) => submission.encounter_team_id === 71);
+    expect(row?.items.map((item) => [item.member_id, item.item_id])).toEqual([[501, 101]]);
+  });
 });

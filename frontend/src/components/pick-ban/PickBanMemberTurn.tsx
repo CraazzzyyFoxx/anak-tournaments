@@ -85,17 +85,25 @@ export function PickBanAssignBoard({
     teams: {}
   });
   const saveTimers = useRef<Record<number, number>>({});
+  // The queue's lifecycle: a closed (unmounted) board sends nothing it still had queued.
+  const open = useRef(false);
   useEffect(() => {
-    const timers = saveTimers.current;
-    return () => Object.values(timers).forEach((timer) => window.clearTimeout(timer));
+    open.current = true;
+    return () => {
+      open.current = false;
+    };
   }, []);
-  // Per team, its writes in order, one in flight at a time: the server keeps whichever lands last, so a slow save
-  // must never land over a newer one. `revision` counts local edits, `sent` is the newest put on the wire.
+  // Per team, its autosaves in order, one in flight at a time: the server keeps whichever lands last, so a slow save
+  // must never land over a newer one. `revision` counts local edits, `sent` is the newest put on the wire; `locking`
+  // from the Lock click on, which overtakes them all.
   const teamSaves = useRef<
-    Record<number, { revision: number; sent: number; picks: Record<number, number>; chain: Promise<void> }>
+    Record<
+      number,
+      { revision: number; sent: number; picks: Record<number, number>; chain: Promise<void>; locking: boolean }
+    >
   >({});
   const teamSave = (teamId: number) =>
-    (teamSaves.current[teamId] ??= { revision: 0, sent: 0, picks: {}, chain: Promise.resolve() });
+    (teamSaves.current[teamId] ??= { revision: 0, sent: 0, picks: {}, chain: Promise.resolve(), locking: false });
   const submit = useMutation({
     mutationFn: ({
       teamId,
@@ -116,9 +124,11 @@ export function PickBanAssignBoard({
         ? pickBanService.submitDraft(kind, encounterId, { items, lock })
         : adminService.adminPickBanSubmit(encounterId, { kind, encounter_team_id: teamId, items, lock });
     },
-    onError: (error, { teamId, revision }) => {
-      // A refusal of an edit a newer one already replaced is moot: that newer one is saved next.
-      if (teamSave(teamId).revision !== revision) return;
+    onError: (error, { teamId, revision, lock }) => {
+      const team = teamSave(teamId);
+      if (lock) team.locking = false;
+      // Moot: the refusal of an autosave a newer edit replaced, or one the lock overtook.
+      else if (team.locking || team.revision !== revision) return;
       // Refused: the server's saved assignment is the board again.
       setEdits((current) => ({ ...current, teams: { ...current.teams, [teamId]: undefined } }));
       notify.apiError(error, { title: t("assign.failed") });
@@ -126,20 +136,19 @@ export function PickBanAssignBoard({
     onSettled: () => void queryClient.invalidateQueries({ queryKey })
   });
   const locking = submit.isPending && submit.variables?.lock === true;
-  /** Queues a team's write behind its earlier ones: the newest edit when its turn comes (skipped if a turn before
-   * already sent it), or the lock of `lockPicks`. */
-  const queueSave = (teamId: number, lockPicks: Record<number, number> | null) => {
+  /** Queues a team's autosave behind its earlier ones; when its turn comes it sends the newest edit, unless a turn
+   * before already did, the team is locking, or the board has closed. */
+  const queueSave = (teamId: number) => {
     const team = teamSave(teamId);
     team.chain = team.chain.then(async () => {
-      if (lockPicks == null && team.sent === team.revision) return;
+      if (!open.current || team.locking || team.sent === team.revision) return;
       team.sent = team.revision;
       await submit
-        .mutateAsync({ teamId, picks: lockPicks ?? team.picks, lock: lockPicks != null, revision: team.revision })
+        .mutateAsync({ teamId, picks: team.picks, lock: false, revision: team.revision })
         .catch(() => {}); // onError has dealt with it
     });
   };
-  // Saved like the blind draft tray: a burst of clicks is one debounced save; the lock goes next in line and
-  // supersedes it.
+  // Saved like the blind draft tray: a burst of clicks is one debounced save.
   const choose = (teamId: number, picks: Record<number, number>) => {
     const team = teamSave(teamId);
     team.revision += 1;
@@ -149,7 +158,16 @@ export function PickBanAssignBoard({
       step: stepIndex,
       teams: { ...(current.step === stepIndex ? current.teams : {}), [teamId]: picks }
     }));
-    saveTimers.current[teamId] = window.setTimeout(() => queueSave(teamId, null), DRAFT_SAVE_DELAY_MS);
+    saveTimers.current[teamId] = window.setTimeout(() => queueSave(teamId), DRAFT_SAVE_DELAY_MS);
+  };
+  // The lock goes at once with the newest draft, never behind an autosave that may not settle: the server orders the
+  // writes and refuses any save after the lock. It drops the team's autosaves not yet sent, and sends only once.
+  const lockTeam = (teamId: number, picks: Record<number, number>) => {
+    const team = teamSave(teamId);
+    if (team.locking) return;
+    team.locking = true;
+    window.clearTimeout(saveTimers.current[teamId]);
+    submit.mutate({ teamId, picks, lock: true, revision: team.revision });
   };
   const heroName = (heroId: number) =>
     itemsById[heroId]?.name ?? t(`${kind}.itemNumber`, { id: heroId });
@@ -206,10 +224,7 @@ export function PickBanAssignBoard({
                 size="sm"
                 className="self-start"
                 disabled={Object.keys(picks).length === 0 || locking}
-                onClick={() => {
-                  window.clearTimeout(saveTimers.current[teamId]);
-                  queueSave(teamId, picks);
-                }}
+                onClick={() => lockTeam(teamId, picks)}
               >
                 {locking ? <Spinner className="mr-2" /> : null}
                 {t("assign.lock")}
