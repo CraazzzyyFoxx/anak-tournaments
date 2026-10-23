@@ -187,7 +187,7 @@ export type SlotProps = {
     /** Accessible name of the division being edited. */
     label?: string;
   };
-  rankHistory: { userId: number; axis: WorkspaceAxis };
+  rankHistory: { userId: number; axis: WorkspaceAxis; discipline: string };
   /**
    * The room's character bans for one map (or the whole series when the pool is flat). Class order comes
    * from `metadata.discipline.character_classes`.

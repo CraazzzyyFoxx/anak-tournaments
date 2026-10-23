@@ -3641,33 +3641,29 @@
     "errorBody": "Failed to load rank history. Please try again later.",
     "unsupportedTitle": "Rank history is not available for this game",
     "unsupportedBody": "This game does not collect ranks, so there is no rank history to show.",
-    "groupByPlaceholder": "Group by...",
     "byRole": "By role",
-    "byBattleNet": "By account",
-    "granularityPlaceholder": "Granularity",
-    "daily": "Daily",
-    "hourly": "Hourly",
-    "allPoints": "All points",
+    "byQueue": "By queue",
+    "byAccount": "By account",
     "groupByLabel": "Group by",
     "accountLabel": "Account",
-    "lol": {
-      "solo": "Solo/Duo",
-      "flex": "Flex",
-      "unranked": "Unranked",
-      "lp": "{lp} LP",
-      "record": "{wins} W / {losses} L",
-      "chartTitle": "Rank over time",
-      "empty": "No ranked games this season."
-    },
-    "deadlock": {
-      "current": "Current rank",
-      "unranked": "Unranked",
-      "rank": "Rank",
-      "chartTitle": "Rank over time",
-      "empty": "No ranked matches yet."
-    },
     "roleLabel": "Role",
-    "platformLabel": "Platform"
+    "queueLabel": "Queue",
+    "platformLabel": "Platform",
+    "periodLabel": "Period",
+    "period": {
+      "2w": "2 weeks",
+      "3m": "3 months",
+      "1y": "Year"
+    },
+    "current": "Current rank",
+    "unranked": "Unranked",
+    "lp": "{lp} LP",
+    "record": "{wins} W / {losses} L",
+    "chartTitle": "Rank over time",
+    "queue": {
+      "solo": "Solo/Duo",
+      "flex": "Flex"
+    }
   },
   "encounters": {
     "meta": {
@@ -8919,6 +8915,7 @@
       "tail": "A place past the end of this table pays nothing, so a table shorter than the lobby is legal. The tail scores on its columns alone."
     },
     "editor": {
+      "settings": "Settings",
       "general": "General",
       "seeding": "Seeding",
       "ffaScoring": "FFA scoring",
@@ -8999,7 +8996,8 @@
       "bestOf": "Best-of",
       "pointsPerPlace": "Points per place",
       "gameColumns": "Game columns",
-      "pointsFormula": "Points formula"
+      "pointsFormula": "Points formula",
+      "roundSchedule": "Round schedule"
     },
     "preview": {
       "swapSuccess": "Teams swapped",
@@ -9068,28 +9066,25 @@
       "voided": "Game {position} voided"
     },
     "roundSchedule": {
-      "title": "Round schedule",
       "description": "One start time per round for all its matches, in your local time zone.",
       "roundColumn": "Round",
       "timeColumn": "Start time",
       "matchesColumn": "Matches",
       "emptyTitleLobbies": "No lobbies in this stage yet",
       "emptyBodyLobbies": "Generate the stage first. The start time is written onto lobbies that already exist.",
-      "actionsColumn": "Apply the round time",
       "timeInputLabel": "Start time for {round}",
       "timeFieldLabel": "Start time (hours and minutes) for {round}",
       "timePlaceholder": "Select a date",
       "clearTime": "Clear the round time",
-      "apply": "Apply",
       "applied": "{count, plural, one {# match scheduled} other {# matches scheduled}}",
-      "applyError": "Could not apply the round schedule",
+      "applyError": "Could not save the round schedule",
       "overrides": "{count} moved",
       "emptyTitle": "No matches in this stage yet",
       "emptyBody": "Generate the bracket first. Round times are written onto matches that already exist.",
       "errorTitle": "Could not load this stage's matches",
       "errorBody": "The round times are read from the matches themselves, so nothing can be shown until they load.",
       "confirmTitle": "{count, plural, one {Overwrite # individual time?} other {Overwrite # individual times?}}",
-      "confirmDescription": "{count, plural, one {# match in {round} was moved on its own} other {# matches in {round} were moved on their own}}. Overwriting replaces those times with the round time. Cancelling keeps them and still applies the round time to the rest.",
+      "confirmDescription": "{count, plural, one {# match in {round} was moved on its own} other {# matches in {round} were moved on their own}}. Overwriting replaces those times with the round time. Cancelling keeps them and still saves the rest.",
       "confirmLabel": "Overwrite all",
       "lobbies": "Lobbies"
     },
@@ -9139,7 +9134,6 @@
       "notEvaluated": "Not evaluated",
       "applyExisting": "Apply to existing matches",
       "lobbyLength": "Lobby length",
-      "bestOfRound": "Best-of per round",
       "baked": "Baked into {target} on (re)generation. Use \"Apply to existing matches\" to backfill without regenerating.",
       "lobbies": "lobbies",
       "matches": "matches",

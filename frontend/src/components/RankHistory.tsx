@@ -108,7 +108,7 @@ export default function RankHistory({
             slot="rankHistory"
             capabilities={descriptor.capabilities}
             requires="native_rank_collection"
-            props={{ userId: resolvedUserId, axis }}
+            props={{ userId: resolvedUserId, axis, discipline: descriptor.code }}
             fallback={null}
           />
         ) : (

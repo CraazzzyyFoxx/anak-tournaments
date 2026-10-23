@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
 
-import RankHistory from "./RankHistory";
+import RankHistoryView from "./RankHistoryView";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -22,28 +22,39 @@ vi.mock("@/services/rank.service", () => ({
     getUserRankHistory: (...args: unknown[]) => getUserRankHistory(...args)
   }
 }));
-// The chart is recharts; its rows are pinned by lol-rank.test.ts.
-vi.mock("./LolRankChart", () => ({ default: () => <div data-lol-chart /> }));
+vi.mock("@/services/discipline.service", () => ({
+  default: {
+    metadata: async () => ({
+      roles: [],
+      native_ladder: [
+        { number: 1, slug: "diamond-1", name: "Diamond I", rank_min: 2700, rank_max: 2799, icon_url: "/d.png" }
+      ]
+    })
+  }
+}));
 
-describe("LoL rank history", () => {
-  it("shows Solo/Duo and Flex with tier, LP and record, asking for League explicitly", async () => {
+const at = "2026-10-21T00:00:00Z";
+const unranked = { rank_value: null, division: null, tier: null, is_ranked: false, season: null, captured_at: at };
+
+describe("RankHistoryView", () => {
+  it("shows a tile per queue: the ranked one's ladder name, LP and record, the other unranked", async () => {
     getUserCurrentRanks.mockResolvedValue({
       user_id: 7,
-      generated_at: "2026-10-21T00:00:00Z",
+      generated_at: at,
       ranks: [
         { social_account_id: 1, handle: "A#EUW", role: null, platform: null, queue: "solo", rank_value: 2775,
-          division: "DIAMOND", tier: 1, is_ranked: true, season: null, lp: 75, wins: 120, losses: 98,
-          captured_at: "2026-10-21T00:00:00Z" }
+          division: "DIAMOND", tier: 1, is_ranked: true, season: null, lp: 75, wins: 120, losses: 98, captured_at: at },
+        { social_account_id: 1, handle: "A#EUW", role: null, platform: null, queue: "flex", ...unranked }
       ]
     });
-    getUserRankHistory.mockResolvedValue({ user_id: 7, series: [], generated_at: "2026-10-21T00:00:00Z" });
+    getUserRankHistory.mockResolvedValue({ user_id: 7, series: [], generated_at: at });
     const container = document.body.appendChild(document.createElement("div"));
     const root = createRoot(container);
     await act(async () => {
       root.render(
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
           <NextIntlClientProvider locale="en" messages={en}>
-            <RankHistory userId={7} axis="all" />
+            <RankHistoryView userId={7} axis="all" discipline="lol" />
           </NextIntlClientProvider>
         </QueryClientProvider>
       );
@@ -53,15 +64,10 @@ describe("LoL rank history", () => {
       setTimeout(resolve, 0);
       await promise;
     });
-    const text = container.textContent ?? "";
-    expect(text).toContain("Solo/Duo");
-    expect(text).toContain("Diamond I");
-    expect(text).toContain("75 LP");
-    expect(text).toContain("120 W / 98 L");
-    expect(text).toContain("Flex");
-    expect(text).toContain("Unranked");
+    const tiles = [...container.querySelectorAll("dl > *")].map((tile) => tile.textContent);
+    expect(tiles).toEqual(["Solo/DuoDiamond I75 LP · 120 W / 98 L", "FlexUnranked"]);
     expect(getUserCurrentRanks).toHaveBeenCalledWith(7, "lol");
-    expect(getUserRankHistory.mock.calls[0][1]).toMatchObject({ discipline: "lol" });
+    expect(getUserRankHistory.mock.calls[0][1]).toMatchObject({ discipline: "lol", granularity: "daily" });
     await act(async () => root.unmount());
     container.remove();
   });
