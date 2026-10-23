@@ -1028,14 +1028,20 @@ class UserService(DisciplineQueries):
         the grid version — of the tournament its latest rank comes from. ``grid`` is
         ``None`` only there, for a game without a system-wide grid: a role whose own
         grid is unknown has no division to report and is left out.
+
+        Roles come newest-ranked first (never-ranked last): a parent role's division is its sub-role row that comes
+        first, as the profile's role split and header aggregate them.
         """
         roles = await self.profile.get_roles(session, user_id, workspace_id=workspace_id)
         # Entries arrive newest event first (by start date, not id: see ``get_roles``). The current division is the
         # newest ranked one; a role never ranked keeps its newest entry and resolves to no division.
-        latest_by_role = [
-            (role, maps_won, maps_lost, division, next((e for e in division if e["rank"] is not None), division[0]))
-            for role, maps_won, maps_lost, division in roles
-        ]
+        latest_by_role = sorted(
+            (
+                (role, maps_won, maps_lost, division, next((e for e in division if e["rank"] is not None), division[0]))
+                for role, maps_won, maps_lost, division in roles
+            ),
+            key=lambda row: (row[4]["rank"] is None, row[4]["recency"]),
+        )
 
         all_workspaces = workspace_id is None
         source_version_ids = {

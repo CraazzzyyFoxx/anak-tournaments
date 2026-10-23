@@ -94,6 +94,7 @@ class UserProfileFlowsTests(IsolatedAsyncioTestCase):
                                     "tournament": 12,
                                     "rank": 150,
                                     "division_grid_version_id": 77,
+                                    "recency": 1,
                                 }
                             ],
                         )
