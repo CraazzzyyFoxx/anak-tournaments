@@ -21,11 +21,12 @@
 // the Redis channel "realtime:tournament:{id}:bracket". The gateway already
 // PSUBSCRIBEs to realtime:* for WebSocket fan-out (internal/events); this
 // cache is simply a second consumer of that same worker-emitted signal:
-// events.Fanout(hub, cache). Draft events ("tournament:{id}:draft") change
-// team compositions mid-draft, so they invalidate too. The balancer topic is
-// deliberately ignored — it carries ephemeral presence heartbeats that would
-// otherwise keep the cache permanently cold for any tournament with an open
-// balancer session.
+// events.Fanout(hub, cache). Draft events ride their session's own
+// "draft:{session_id}:board" topic and are data only: a pick writes no public
+// row, and what a draft does stale (its export) arrives as a tournament
+// invalidation. The balancer topic is deliberately ignored — it carries
+// ephemeral presence heartbeats that would otherwise keep the cache
+// permanently cold for any tournament with an open balancer session.
 //
 // The TTL is a staleness backstop, not the primary mechanism: some writes
 // (e.g. public registration create → participants_count) do not emit
@@ -516,10 +517,11 @@ func patternsFor(resources []string) []string {
 // existing realtime subscription (events.Fanout(hub, cache)).
 //
 // ONLY `<scope>:invalidation` topics are consumed. Domain topics (:bracket,
-// :draft, :balancer, :streams, :map-veto, ...) carry data for the UI and are
-// ignored here by design: mixing the two is what produced both halves of the
-// bug this rail replaced — a draft pick dropped the whole tournament while a
-// balancer export, which really did rewrite team rows, dropped nothing.
+// :balancer, :streams, :map-veto, a draft's draft:{session_id}:board, ...)
+// carry data for the UI and are ignored here by design: mixing the two is
+// what produced both halves of the bug this rail replaced — a draft pick
+// dropped the whole tournament while a balancer export, which really did
+// rewrite team rows, dropped nothing.
 //
 // Only the tournament scope has anything cached here (this cache stores
 // anonymous public reads); workspace/user invalidations parse fine and match

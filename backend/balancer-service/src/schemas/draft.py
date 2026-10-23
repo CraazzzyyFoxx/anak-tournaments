@@ -235,9 +235,9 @@ class DraftPlayerRead(BaseRead):
     model_config = _ReadConfig
 
     session_id: int
-    #: The balancer registration this seat IS. The client uses it to link
+    #: The balancer registration this seat IS (tournament); ``None`` for a mix seat. The client uses it to link
     #: straight to the pool row an organizer must edit to change a rank.
-    registration_id: int
+    registration_id: int | None
     user_id: int | None
     #: The seat's primary handle for the tournament's identity provider; null when the registrant gave none.
     identity: PlayerIdentityRead | None
@@ -250,6 +250,8 @@ class DraftPlayerRead(BaseRead):
     primary_role: RoleRef | None
     is_flex: bool
     status: DraftPlayerStatus
+    #: The crown: this seat is its team's current captain (the one who picks). A mix host may hand a team to a
+    #: teammate mid-draft, so it can differ from the seeded seat, which keeps ``captain_role``.
     is_captain: bool
     drafted_by_team_id: int | None
     #: A captain's seat role -- the one the organizer pinned while it stays
@@ -292,7 +294,10 @@ class DraftPlayerRead(BaseRead):
         shape: Any,
         custom_fields: list[Any],
         dimension: str,
+        crowned: bool | None = None,
     ) -> DraftPlayerRead:
+        """``crowned`` is the crown the board shows -- whether this seat is its team's current captain -- when the
+        caller knows; ``None`` reads the seed flag. ``captain_role`` stays the seeded seat's: it has no pick."""
         from src.services.draft.board import player_custom_fields
 
         seat = seat_role(roster, player.captain_role)
@@ -309,7 +314,7 @@ class DraftPlayerRead(BaseRead):
             primary_role=RoleRef.of(dimension, lead.role, lead.subrole) if lead is not None else None,
             is_flex=bool(roster.is_full_flex) if roster is not None else False,
             status=player.status,
-            is_captain=player.is_captain,
+            is_captain=player.is_captain if crowned is None else crowned,
             drafted_by_team_id=player.drafted_by_team_id,
             captain_role=RoleRef.of(dimension, seat) if player.is_captain else None,
             secondary_roles=[
@@ -374,10 +379,12 @@ _DERIVED_SESSION_FIELDS = frozenset({"roster_shape", "discipline"})
 class DraftSessionRead(BaseRead):
     model_config = _ReadConfig
 
-    tournament_id: int
+    tournament_id: int | None
+    #: The mix owning this draft and the lobby it forms teams for; both ``None`` for a tournament draft (spec §9.1).
+    custom_game_id: int | None = None
+    lobby_index: int | None = None
     workspace_id: int
-    #: The owning tournament's discipline: the owner context a draft page scopes
-    #: its catalog/ontology/identity reads by (not stored on the session row).
+    #: The owner's discipline (a column of the session).
     discipline: str
     status: DraftStatus
     blocked_reason: str | None

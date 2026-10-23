@@ -377,6 +377,18 @@ class ChatService:
         await session.commit()
         return ChatSettings(spectators_can_read=spectators_can_read)
 
+    async def access_changed(self, session: AsyncSession, room: ChatRoom, *, actor_user_id: int | None) -> None:
+        """Who takes part in the room changed while its setting did not (a draft's captain was replaced): the toggle's
+        event at the room's current value, so the gateway re-checks everyone subscribed and a former participant
+        loses a room closed to spectators. The caller commits."""
+        await self._emit(
+            session,
+            room,
+            EVENT_VISIBILITY,
+            {"spectators_can_read": await self.spectators_can_read(session, room)},
+            actor_user_id=actor_user_id,
+        )
+
     async def set_mute(
         self,
         session: AsyncSession,

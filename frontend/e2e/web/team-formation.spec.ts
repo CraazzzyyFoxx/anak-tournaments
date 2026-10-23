@@ -53,7 +53,7 @@ test("live draft: admin starts it, each captain sees the other's pick without re
   await expect(cap1.getByRole("tab", { name: "Available 6" })).toBeVisible();
   // The admin dashboard follows the same session.
   await expect.poll(async () => (await draftBoard(adminApi, d.session.id)).current_pick?.overall_no).toBe(3);
-  await adminApi.post(`${d.base}/cancel`);
+  await adminApi.post(`${d.lifecycle}/cancel`);
 });
 
 test("@mobile a spectator follows a live draft on a phone", async ({ adminApi, makeUser, page }) => {

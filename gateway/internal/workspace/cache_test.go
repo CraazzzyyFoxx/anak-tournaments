@@ -179,3 +179,32 @@ func TestStore_EvictUserDropsThatUsersMembershipAnswers(t *testing.T) {
 		t.Fatalf("a lookup started after the eviction must cache, got (%v, %v)", v, ok)
 	}
 }
+
+// A replaced draft captain is announced as chat.visibility_changed on the
+// session's chat topic. The revoker's invalidation must drop that session's
+// captain answers (and fence a lookup already querying), or the former captain
+// is re-admitted from cache. Another session's answers stay put.
+func TestStore_InvalidateRoomAccessDropsTheDraftsCaptainAnswers(t *testing.T) {
+	s := New(nil)
+	former, other := draftCaptainKey{userID: 1, sessionID: 7}, draftCaptainKey{userID: 1, sessionID: 8}
+	s.draftCaptains.set(former, true)
+	s.draftCaptains.set(other, true)
+	s.roomSettings.set(roomKey{kind: "draft", refID: 7}, false)
+	inFlight := s.draftCaptains.generation()
+
+	s.InvalidateRoomAccess("draft", 7)
+
+	if _, ok := s.draftCaptains.get(former); ok {
+		t.Fatal("session 7's captain answers must be re-read after its captain changed")
+	}
+	if _, ok := s.roomSettings.get(roomKey{kind: "draft", refID: 7}); ok {
+		t.Fatal("the room's spectator setting must be re-read too")
+	}
+	if v, ok := s.draftCaptains.get(other); !ok || !v {
+		t.Fatalf("session 8's captain answer must stay cached, got (%v, %v)", v, ok)
+	}
+	s.draftCaptains.setIfCurrent(former, true, inFlight)
+	if _, ok := s.draftCaptains.get(former); ok {
+		t.Fatal("an answer read before the invalidation must not be cached after it")
+	}
+}

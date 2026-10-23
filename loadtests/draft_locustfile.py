@@ -13,7 +13,7 @@ Traffic model — mirrors ``frontend/src/hooks/useDraftData.ts``:
 * ``DraftDriver`` (exactly one) reads the board, fires an admin autopick every
   ``OWT_DRAFT_PICK_INTERVAL`` seconds, and bumps an in-process event counter.
   That counter stands in for the ``pick_made`` + ``pick_started`` burst the
-  server publishes on ``tournament:{id}:draft`` — locust runs every user as a
+  server publishes on ``draft:{session_id}:board`` — locust runs every user as a
   greenlet in one process, so a shared counter is the whole WS feed without a
   websocket client.
 * ``DraftViewer`` — one per draft team. Wakes on the counter, waits out the
@@ -59,7 +59,7 @@ TICK_SECONDS = 0.05
 
 # Request groups. Same "[id] stands for the path parameter" convention as the
 # public suite, so the stats table reads one row per draft endpoint.
-NAME_TOURNAMENT_BOARD = "/api/v1/balancer/draft/tournaments/[id]/draft"
+NAME_SESSION_BOARD = "/api/v1/balancer/draft/sessions/[id]/board"
 NAME_FIT = "/api/v1/balancer/draft/sessions/[id]/teams/[id]/fit"
 NAME_QUEUE = "/api/v1/balancer/draft/sessions/[id]/teams/[id]/queue"
 NAME_FEASIBILITY = "/api/v1/balancer/draft/sessions/[id]/feasibility"
@@ -164,8 +164,8 @@ class DraftUser(HttpUser):
 
     def read_board(self) -> dict[str, Any] | None:
         return self.get(
-            f"/api/v1/balancer/draft/tournaments/{config.DRAFT_TOURNAMENT_ID}/draft",
-            NAME_TOURNAMENT_BOARD,
+            f"/api/v1/balancer/draft/sessions/{self.room.session_id}/board",
+            NAME_SESSION_BOARD,
         )
 
 

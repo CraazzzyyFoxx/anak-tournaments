@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuthProfile } from "@/hooks/useAuthProfile";
 import { useRealtimeTopic } from "@/hooks/useRealtimeTopic";
-import type { ChatRoomDescriptor } from "@/lib/realtime/chat-rooms";
+import { roomChatQueryKey, type ChatRoomDescriptor } from "@/lib/realtime/chat-rooms";
 import roomChatService from "@/services/roomChat.service";
 import type {
   ChatEnvelope,
@@ -32,7 +32,7 @@ function mergeMessages(current: ChatMessage[], incoming: ChatMessage[]): ChatMes
 export function useRoomChat(room: ChatRoomDescriptor) {
   const queryClient = useQueryClient();
   const { user } = useAuthProfile();
-  const queryKey = ["room-chat", room.topic];
+  const queryKey = roomChatQueryKey(room);
 
   const envelope = useQuery({
     queryKey,

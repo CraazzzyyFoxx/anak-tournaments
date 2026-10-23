@@ -59,6 +59,7 @@ async def _seed(session, *, draft_status: str | None) -> tuple[int, int]:
             DraftSession(
                 tournament_id=tournament.id,
                 workspace_id=ws.id,
+                discipline=tournament.discipline,
                 status=draft_status,
             )
         )

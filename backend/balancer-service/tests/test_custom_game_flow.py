@@ -163,6 +163,7 @@ class _HostPrefs:
             points_per_win=fields.get("points_per_win"),
             rating_mode=fields.get("rating_mode", "points"),
             hero_ban_presets=fields.get("hero_ban_presets", {}),
+            formation_defaults=fields.get("formation_defaults", {}),
         )
 
     async def get_by_user(self, _session: Any, user_id: int) -> Any:
@@ -317,6 +318,9 @@ class MixFlowTests(IsolatedAsyncioTestCase):
             load_member_user_ids=AsyncMock(return_value=set()),
             run_balance=AsyncMock(),
             ranker=in_memory_ranker(),
+            drafts=SimpleNamespace(
+                active_lobby_pools=AsyncMock(return_value={}), active_for_custom_game=AsyncMock(return_value=[])
+            ),
         )
         self.enterContext(
             patch.object(

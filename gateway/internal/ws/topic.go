@@ -19,14 +19,19 @@ const (
 	readLimit = 65536
 )
 
-// IsPresenceTopic reports whether a topic broadcasts WebSocket-derived presence.
+// IsPresenceTopic reports whether a topic broadcasts WebSocket-derived presence: a tournament's balancer, and a draft
+// session's board (spec §9.6) -- never a draft's chat.
 func IsPresenceTopic(topic string) bool {
-	return strings.HasSuffix(topic, ":balancer") || strings.HasSuffix(topic, ":draft")
+	return strings.HasSuffix(topic, ":balancer") || isDraftBoard(topic)
 }
 
 func presenceEventType(topic string) string {
-	if strings.HasSuffix(topic, ":draft") {
+	if isDraftBoard(topic) {
 		return DraftPresence
 	}
 	return BalancerPresence
+}
+
+func isDraftBoard(topic string) bool {
+	return strings.HasPrefix(topic, "draft:") && strings.HasSuffix(topic, ":board")
 }

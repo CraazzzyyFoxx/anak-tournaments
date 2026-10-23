@@ -60,6 +60,7 @@ __all__ = (
     "validate_captain_roles",
     "validate_current_pick",
     "validate_draft_rounds",
+    "validate_seat_identities",
     "validate_seed_version",
 )
 
@@ -119,6 +120,25 @@ def unranked_pool_error(rosters: Sequence[PlayerRoster]) -> ApiHTTPException:
     )
 
 
+def validate_seat_identities(seats: Sequence[PoolSeat], *, mix: bool) -> None:
+    """A tournament seat names a registration; a mix seat a workspace member and no registration (spec §9.1).
+
+    Enforced here, not in the database: ``ck_draft_player_identity`` only demands one of the two, because a CHECK
+    cannot see the session's owner, and tournament seats from before the mix draft carry no member.
+    """
+    if mix:
+        wrong = [seat for seat in seats if seat.registration_id is not None or seat.workspace_member_id is None]
+    else:
+        wrong = [seat for seat in seats if seat.registration_id is None]
+    if wrong:
+        expected = "a workspace member and no registration" if mix else "a registration"
+        raise _err(
+            "seat_identity_invalid",
+            f"A {'mix' if mix else 'tournament'} draft seat names {expected}; {len(wrong)} seat(s) do not",
+            status_code=422,
+        )
+
+
 def validate_captain_roles(
     captains: Sequence[PoolSeat], rosters: Mapping[int, PlayerRoster], shape: RosterShape
 ) -> None:
@@ -131,7 +151,7 @@ def validate_captain_roles(
     for seat in captains:
         if seat.captain_role is None:
             continue
-        roster = rosters[seat.registration_id]
+        roster = rosters[seat.key]
         if shape.role_slots.get(seat.captain_role, 0) < 1 or seat.captain_role not in roster.playable_roles:
             name = roster.handle or roster.display_name or f"#{roster.registration_id}"
             raise _err(

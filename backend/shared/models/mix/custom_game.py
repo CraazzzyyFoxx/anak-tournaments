@@ -61,6 +61,8 @@ class CustomGame(db.TimeStampIntegerMixin):
             name="ck_custom_game_self_signup",
         ),
         CheckConstraint(f"lobby_count BETWEEN 1 AND {MAX_LOBBIES}", name="ck_custom_game_lobby_count"),
+        CheckConstraint("team_formation IN ('balance', 'draft')", name="ck_custom_game_team_formation"),
+        CheckConstraint("draft_pick_seconds BETWEEN 10 AND 600", name="ck_custom_game_draft_pick_seconds"),
         # Target of ``fk_encounter_custom_game``: owner, workspace and discipline in one key.
         UniqueConstraint("id", "workspace_id", "discipline", name="uq_custom_game_owner_key"),
         # Deferred like ``fk_encounter_scoring_rule``: a workspace delete removes rule and mix in one statement.
@@ -108,6 +110,10 @@ class CustomGame(db.TimeStampIntegerMixin):
     scoring_rule_id: Mapped[int] = mapped_column(BigInteger())
     #: The hero ban preset Start opens a room on (``pick_ban_rules.mix_ban_preset`` of this game); NULL = no bans.
     hero_ban_preset: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: How a lobby forms its teams by default (spec §4.3): ``balance`` (the solver) or ``draft`` (captains pick).
+    team_formation: Mapped[str] = mapped_column(String(16), nullable=False, default="balance", server_default="balance")
+    #: A mix draft's pick clock in seconds (10..600, the draft schema's range).
+    draft_pick_seconds: Mapped[int] = mapped_column(Integer(), nullable=False, default=30, server_default="30")
 
 
 class CustomGameCoHost(db.Base):

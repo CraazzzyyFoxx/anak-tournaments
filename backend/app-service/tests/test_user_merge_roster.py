@@ -14,8 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core import enums
+from shared.core.errors import ApiHTTPException
 from shared.models.encounter import Encounter, EncounterTeam, EncounterTeamMember, ScoringRule
-from shared.models.mix import CustomGame, CustomGameRound, CustomGameRoundMember
+from shared.models.mix import CustomGame, CustomGameLobby, CustomGameRound, CustomGameRoundMember
 from shared.testing.db import create_test_async_engine, ensure_test_postgres
 from src import schemas
 from src.services.admin.user_merge import UserMergeService
@@ -282,3 +283,76 @@ class UserMergeRosterTests(IsolatedAsyncioTestCase):
             },
             set(rows),
         )
+
+    async def _mix_draft_seats(self, status: str, *, seat_target: bool) -> tuple[models.WorkspaceMember, list[int]]:
+        """A one-lobby mix whose draft (in ``status``) seats the source's member, and the target's too when asked.
+        Returns the target's member and the seat ids, source seat first."""
+        source_member = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.source.id)
+        target_member = models.WorkspaceMember(workspace_id=self.workspace.id, player_id=self.target.id)
+        mix_rule = ScoringRule(workspace_id=self.workspace.id, preset="wins", game_formula="win", end_formula=_WINS_END)
+        self.session.add_all([source_member, target_member, mix_rule])
+        await self.session.flush()
+        mix = CustomGame(workspace_id=self.workspace.id, name="Mix", scoring_rule_id=mix_rule.id)
+        self.session.add(mix)
+        await self.session.flush()
+        self.session.add(CustomGameLobby(custom_game_id=mix.id, lobby_index=0))
+        await self.session.flush()
+        draft = models.DraftSession(
+            custom_game_id=mix.id, lobby_index=0, workspace_id=self.workspace.id, discipline="overwatch", status=status
+        )
+        self.session.add(draft)
+        await self.session.flush()
+        seats = [models.DraftPlayer(session_id=draft.id, workspace_member_id=source_member.id)]
+        if seat_target:
+            seats.append(models.DraftPlayer(session_id=draft.id, workspace_member_id=target_member.id))
+        self.session.add_all(seats)
+        await self.session.flush()
+        self._draft_id = draft.id
+        return target_member, [seat.id for seat in seats]
+
+    async def _seat_members(self, seat_ids: list[int]) -> list[int]:
+        rows = dict(
+            (
+                await self.session.execute(
+                    sa.select(models.DraftPlayer.id, models.DraftPlayer.workspace_member_id).where(
+                        models.DraftPlayer.id.in_(seat_ids)
+                    )
+                )
+            ).all()
+        )
+        return [rows[seat_id] for seat_id in seat_ids]
+
+    async def test_merging_onto_a_survivor_member_moves_a_mix_draft_seat(self):
+        """A mix seat has no registration: its member is its only identity, so the merge moves it to the survivor
+        before the duplicate member goes (the seat FK is NO ACTION, deferred)."""
+        target_member, seat_ids = await self._mix_draft_seats(enums.DraftStatus.SETUP.value, seat_target=False)
+
+        await self._merge()
+
+        self.assertEqual([target_member.id], await self._seat_members(seat_ids))
+
+    async def test_a_merge_refuses_two_seats_of_one_person_in_a_running_draft(self):
+        """Both players seated in a live draft: the merge would leave one person two usable seats, so it is refused
+        before any write and names the draft."""
+        target_member, seat_ids = await self._mix_draft_seats(enums.DraftStatus.LIVE.value, seat_target=True)
+        # Committed, so the merge's own rollback cannot hide what it would have changed.
+        await self.session.commit()
+        before = await self._seat_members(seat_ids)
+        source_id = self.source.id
+
+        with self.assertRaises(ApiHTTPException) as caught:
+            await self._merge()
+
+        self.assertEqual(409, caught.exception.status_code)
+        self.assertEqual("merge_draft_seat_conflict", caught.exception.detail[0]["code"])
+        self.assertIn(str(self._draft_id), caught.exception.detail[0]["msg"])
+        self.assertEqual(before, await self._seat_members(seat_ids))
+        self.assertIsNotNone(await self.session.scalar(sa.select(models.User.id).where(models.User.id == source_id)))
+
+    async def test_a_finished_draft_keeps_both_seats_of_one_person_as_history(self):
+        """A completed draft is history: both seats move onto the survivor and the merge goes through."""
+        target_member, seat_ids = await self._mix_draft_seats(enums.DraftStatus.COMPLETED.value, seat_target=True)
+
+        await self._merge()
+
+        self.assertEqual([target_member.id, target_member.id], await self._seat_members(seat_ids))

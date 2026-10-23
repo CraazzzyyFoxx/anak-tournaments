@@ -3,18 +3,19 @@
 Membership in a lobby is not stored: it is the seats of that lobby's selected
 balance option. One pure function answers it for every caller -- the balance
 candidate filter, the pager's conflict check, the busy rows a recorded match
-freezes, the ``current_lobby`` badge on the board, and the voice mover.
+freezes, and the voice mover; :func:`current_lobbies` adds each drafting lobby's
+pool for the ``current_lobby`` the board and a player's own seat show.
 :func:`with_captains` gives each team of a stored lineup its captain; :func:`lobby_state` names the lobby's stage.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
 from src.domain.balancer.result_serializer import as_lobby_document, seat_rating
 
-__all__ = ("lobby_state", "seated_member_ids", "seated_teams", "with_captains")
+__all__ = ("current_lobbies", "lobby_state", "seated_member_ids", "seated_teams", "with_captains")
 
 
 def seated_teams(balance_result_json: Mapping[str, Any] | None, variant_index: int) -> tuple[tuple[int, ...], ...]:
@@ -98,15 +99,35 @@ def with_captains(document: dict[str, Any] | None) -> dict[str, Any] | None:
     return document
 
 
+def current_lobbies(lobbies: Iterable[Any], drafts: Mapping[int, tuple[int, str, frozenset[int]]]) -> dict[int, int]:
+    """Which lobby each member is in right now: the seats of each lobby's selected option, and each drafting lobby's
+    pool (spec §9.2; ``drafts`` is ``CustomGameService.draft_lobbies``). The board's ``current_lobby`` and a player's
+    own seat read this one map, so the two never disagree."""
+    current = {
+        member: lobby.lobby_index
+        for lobby in lobbies
+        for member in seated_member_ids(lobby.balance_result_json, lobby.selected_variant_index)
+    }
+    for lobby_index, (_session_id, _status, pool) in drafts.items():
+        current.update(dict.fromkeys(pool, lobby_index))
+    return current
+
+
 def lobby_state(
     balance_result_json: Mapping[str, Any] | None,
     variant_index: int,
     live_encounter_id: int | None,
     pregame: bool = False,
-) -> Literal["idle", "ready", "pregame", "live"]:
+    draft_status: str | None = None,
+) -> Literal["idle", "ready", "pregame", "live", "draft_setup", "draft_live"]:
     """A lobby's stage, derived and never stored (spec §5): pre-game while a match started with bans has its ban room
-    still to finish (``pregame``, read off the lobby and the encounter), live while it is played, ready while a lineup
-    shows, idle otherwise."""
+    still to finish (``pregame``, read off the lobby and the encounter), live while it is played; draft setup while its
+    active draft has not started, draft live while it runs (``draft_status``: the active session's status); ready while
+    a lineup shows, idle otherwise."""
     if live_encounter_id is not None:
         return "pregame" if pregame else "live"
+    if draft_status in ("setup", "ready"):
+        return "draft_setup"
+    if draft_status in ("live", "paused"):
+        return "draft_live"
     return "ready" if seated_teams(balance_result_json, variant_index) else "idle"

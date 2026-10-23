@@ -24,6 +24,7 @@ import { useDisciplineMetadata } from "@/hooks/useDisciplineMetadata";
 import { useRoleName } from "@/hooks/useRoleName";
 import { GameScopeControl } from "@/components/workspace/GameScopeControl";
 import { BanPresetSelect } from "@/components/pick-ban/BanPresetSelect";
+import { MixFormationControl } from "@/components/mix/MixFormationControl";
 import { notify } from "@/lib/notify";
 import {
   mixPreferencesKeys,
@@ -314,6 +315,23 @@ export default function MixBalancerSection() {
                 }
               />
               <p className="text-xs text-[color:var(--aqt-fg-dim)]">{t("mixBalancer.bans.hint")}</p>
+            </div>
+          ) : null}
+
+          {code != null ? (
+            <div className="space-y-1.5">
+              <Label htmlFor={`mix-formation-${code}-formation`}>{t("mixBalancer.formation.label")}</Label>
+              <MixFormationControl
+                idPrefix={`mix-formation-${code}`}
+                value={draft.formationDefaults[code] ?? { team_formation: "balance", draft_pick_seconds: 30 }}
+                onChange={(next) =>
+                  setDraft((current) => ({
+                    ...current,
+                    formationDefaults: { ...current.formationDefaults, [code]: next },
+                  }))
+                }
+              />
+              <p className="text-xs text-[color:var(--aqt-fg-dim)]">{t("mixBalancer.formation.hint")}</p>
             </div>
           ) : null}
         </CardContent>

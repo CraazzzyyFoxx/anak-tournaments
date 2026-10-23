@@ -98,20 +98,22 @@ Caps: at most 8 teams and at most 16 co-hosts per game. Permissions come from a 
 
 The rotation recommendation for the next map ranks the pool on one key, checked in order: longest current sit-out streak, then shortest current played-in-a-row streak, then fewest maps played this game, then input order for determinism. Pinned `must_play` members always keep a seat and rank ahead of everyone. If the seats cover the whole pool, or none of the unpinned members has any history yet, everyone comes back `neutral` — sort stability must not be dressed up as a fairness verdict.
 
+A mix forms its lobbies' teams by balance or by captain draft (`team_formation`: `balance` | `draft`, with the pick clock `draft_pick_seconds`). A mix draft is an ordinary draft session owned by one lobby (`custom_game_id`, `lobby_index`; `tournament_id` is null): its seats are workspace members ranked as the mix balance ranks them, its lifecycle runs on `/api/v1/balancer/draft/sessions/{session_id}/…` under the mix's host and co-hosts, and its last pick writes the lobby's lineup (`source: "draft"`) instead of exporting teams. A completed mix draft refuses every lifecycle move with 409 `mix_draft_completed`.
+
 ## Realtime
 
 Draft state and balancer state travel on different topics.
 
 | Topic | What it carries |
 | --- | --- |
-| `tournament:{id}:draft` | Draft events: `draft.pick_started`, `draft.paused`, `draft.resumed`, `draft.blocked`, `draft.completed`, `draft.cancelled`, `draft.session_updated`, `draft.player_updated` |
+| `draft:{session_id}:board` | Draft events of one session, a tournament's or a mix lobby's: `draft.pick_started`, `draft.paused`, `draft.resumed`, `draft.blocked`, `draft.completed`, `draft.cancelled`, `draft.session_updated`, `draft.player_updated` |
 | `tournament:{id}:balancer` | Data edits (`balancer.registrations_changed`, `balancer.balance_saved`, `balancer.teams_changed`, `balancer.config_changed`) and job lifecycle (`balancer_job.queued` / `running` / `progress` / `succeeded` / `failed`) |
 | `draft:{session_id}:chat` | The draft room chat — its own topic with its own permissions; re-seeding a session creates a new room |
 | `workspace:{id}:pickup_mix` | A workspace's mix events |
 
 Job progress ticks are not persisted — a late joiner takes a snapshot from the job status read instead. Also ephemeral are `balancer.presence`, synthesized by the gateway from live connections, and `balancer.drag`, the only event type the gateway accepts from a client.
 
-A team export announces staleness separately, as an invalidation of tournament resources: draft events themselves invalidate nothing, because a pick writes only to draft tables.
+A team export announces staleness separately, as an invalidation of tournament resources: draft events themselves invalidate nothing, because a pick writes only to draft tables. A mix draft also tells `workspace:{id}:pickup_mix` whenever its lobby's stage moves, its last pick included, since that pick writes the lobby's lineup.
 
 ## See also
 

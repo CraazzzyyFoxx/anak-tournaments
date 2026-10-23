@@ -1,11 +1,11 @@
 """Live Draft endpoints over typed RPC (rpc.balancer.draft.*).
 
-Public reads (no auth) for spectating, admin lifecycle keyed by tournament_id,
-pick actions keyed by pick_id. Every mutation's service stages its realtime
-event on ``tournament:{id}:draft`` inside the transaction the handler commits,
-so the WorkspaceEvent id orders with the pick. The draft router has no admin-panel
-gate, so handlers enforce only the per-endpoint permission (or just the active
-user, for /select).
+Public reads (no auth) for spectating; lifecycle keyed by session_id for both owners and authorized on the
+session's own owner (``services.draft.access``); tournament-only admin (create, seed, patch, delete, export) keyed
+by tournament_id; pick actions keyed by pick_id. Every mutation's service stages its realtime event on
+``draft:{session_id}:board`` inside the transaction the handler commits, so the WorkspaceEvent id orders with the
+pick. The draft router has no admin-panel gate, so handlers enforce only the per-endpoint permission (or just the
+active user, for /select).
 
 A single worker-lifetime Redis client carries the clock nudges (publish failures
 are swallowed by ``clock_svc.notify_*``).
@@ -20,7 +20,6 @@ from faststream.rabbit import RabbitMessage
 from redis.asyncio import Redis
 
 from shared.core.enums import DraftStatus
-from shared.models.draft import DraftSession, DraftTeam
 from shared.rpc.common import optional_actor
 from shared.rpc.identity import ensure_workspace_permission
 from shared.schemas.role import RoleRef
@@ -34,8 +33,6 @@ from shared.services.chat import (
 from src import schemas
 from src.core import db
 from src.core.auth import (
-    _get_draft_session_workspace_id,
-    _get_pick_workspace_id,
     _get_tournament_draft_session_workspace_id,
     _get_tournament_workspace_id,
 )
@@ -43,6 +40,7 @@ from src.core.config import config
 from src.rpc import _common as c
 from src.services.draft import clock as clock_svc
 from src.services.draft import loaders
+from src.services.draft.access import acts_for_any_team, ensure_organizer, ensure_team_actor, hold_owner
 from src.services.draft.board import board_service
 from src.services.draft.chat_access import draft_chat_service
 from src.services.draft.export import export_service
@@ -76,18 +74,6 @@ async def close() -> None:
     if _redis_client is not None:
         await _redis_client.aclose()
         _redis_client = None
-
-
-def _require_team_actor(user: Any, draft: DraftSession, team: DraftTeam, action: str) -> None:
-    """A team's own captain, else a workspace permission.
-
-    Team-scoped data (the fit column, the pick queue) belongs to the captain
-    sitting in that seat; an organizer reaches it through the workspace RBAC
-    they already hold. Nobody else, which is why this is not the public board.
-    """
-    if team.captain_auth_user_id is not None and team.captain_auth_user_id == user.id:
-        return
-    ensure_workspace_permission(user, draft.workspace_id, "team", action)
 
 
 def register(broker: Any, logger: Any) -> None:
@@ -124,9 +110,8 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             session_id = c.require_id(data)
-            ws_id = await _get_draft_session_workspace_id(session, session_id)
-            ensure_workspace_permission(user, ws_id, "team", "read")
             draft = await lifecycle_service.get_session(session, session_id)
+            await ensure_organizer(session, user, draft, "read")
 
             async def compute() -> schemas.DraftFeasibilityResponse:
                 snapshot = await feasibility_service.load_read_snapshot(session, draft)
@@ -152,7 +137,7 @@ def register(broker: Any, logger: Any) -> None:
                 pick,
                 actor_auth_user_id=user.id,
                 actor_player_ids=[player_id] if player_id is not None else [],
-                is_workspace_admin=user.is_workspace_admin(draft.workspace_id),
+                is_workspace_admin=await acts_for_any_team(session, user, draft),
             )
             dimension = await loaders.rated_dimension(session, draft)
             return schemas.DraftPickOptionsResponse(
@@ -173,10 +158,9 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             player_id = c.require_id(data)
             session_id = c.path_int(data, "session_id")
-            ws_id = await _get_draft_session_workspace_id(session, session_id)
-            ensure_workspace_permission(user, ws_id, "team", "create")
-            payload = schemas.DraftRoleEditRequest.model_validate(c.payload(data))
             draft = await lifecycle_service.get_session(session, session_id)
+            await ensure_organizer(session, user, draft)
+            payload = schemas.DraftRoleEditRequest.model_validate(c.payload(data))
             response = await role_edit_service.edit_player_role(
                 session,
                 draft,
@@ -199,9 +183,8 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             session_id = c.require_id(data)
-            ws_id = await _get_draft_session_workspace_id(session, session_id)
-            ensure_workspace_permission(user, ws_id, "team", "read")
             draft = await lifecycle_service.get_session(session, session_id)
+            await ensure_organizer(session, user, draft, "read")
             current, ranked = await feasibility_service.rank_current_suggestions(session, draft)
             dimension = await loaders.rated_dimension(session, draft)
             return schemas.DraftSuggestionsResponse(
@@ -226,7 +209,7 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             draft = await lifecycle_service.get_session(session, c.require_id(data))
             team = await lifecycle_service.get_team(session, draft, c.path_int(data, "team_id"))
-            _require_team_actor(user, draft, team, "read")
+            await ensure_team_actor(session, user, draft, team, "read")
 
             async def compute() -> schemas.DraftTeamFitResponse:
                 scores = await feasibility_service.team_fit_scores(session, draft, team_id=team.id)
@@ -253,7 +236,7 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             draft = await lifecycle_service.get_session(session, c.require_id(data))
             team = await lifecycle_service.get_team(session, draft, c.path_int(data, "team_id"))
-            _require_team_actor(user, draft, team, "create")
+            await ensure_team_actor(session, user, draft, team, "create")
             # The private queue is in the key: queue_set emits no event.
             queue = ",".join(str(player_id) for player_id in team.pick_queue or [])
             return await board_service.shared_read(
@@ -268,7 +251,7 @@ def register(broker: Any, logger: Any) -> None:
             user = c.active_actor(data)
             draft = await lifecycle_service.get_session(session, c.require_id(data))
             team = await lifecycle_service.get_team(session, draft, c.path_int(data, "team_id"))
-            _require_team_actor(user, draft, team, "create")
+            await ensure_team_actor(session, user, draft, team, "create")
             payload = schemas.DraftTeamQueueRequest.model_validate(c.payload(data))
             response = await queue_service.write(session, draft, team, payload.player_ids)
             # No realtime event: a queue is viewer-scoped, and the broadcast
@@ -283,9 +266,8 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             session_id = c.require_id(data)
-            ws_id = await _get_draft_session_workspace_id(session, session_id)
-            ensure_workspace_permission(user, ws_id, "team", "create")
             draft = await lifecycle_service.get_session(session, session_id)
+            await ensure_organizer(session, user, draft)
             return await journal_service.list_entries(
                 session, draft, limit=c.q1(data, "limit", int, JOURNAL_LIMIT_DEFAULT)
             )
@@ -343,6 +325,7 @@ def register(broker: Any, logger: Any) -> None:
 
         return await c.envelope(logger, "draft.session_patch", op, session_factory=_SF)
 
+    # --- lifecycle (keyed by session_id; both owners) -----------------------
     def _make_lifecycle(
         subject: str, action, event_type: str, audit_action: str, *, superuser_forces: bool = False
     ) -> None:
@@ -351,11 +334,10 @@ def register(broker: Any, logger: Any) -> None:
             async def op(session: Any) -> Any:
                 user = c.active_actor(data)
                 session_id = c.require_id(data)
-                ws_id = await _get_tournament_draft_session_workspace_id(
-                    session, c.path_int(data, "tournament_id"), session_id
-                )
-                ensure_workspace_permission(user, ws_id, "team", "create")
-                # Only ``start`` has a phase gate, and only a superuser may skip it.
+                draft = await lifecycle_service.get_session(session, session_id)
+                await hold_owner(session, draft)
+                await ensure_organizer(session, user, draft)
+                # Only a tournament's ``start`` has a phase gate, and only a superuser may skip it.
                 extra = {"force": bool(user.is_superuser)} if superuser_forces else {}
                 draft = await lifecycle_service.transition(
                     session,
@@ -457,13 +439,14 @@ def register(broker: Any, logger: Any) -> None:
             pick_id = c.require_id(data)
             payload = schemas.DraftPickSelectRequest.model_validate(c.payload(data))
             draft, pick = await lifecycle_service.get_pick(session, pick_id)
+            await hold_owner(session, draft)
             await lifecycle_service.select_pick(
                 session,
                 draft,
                 pick,
                 payload,
                 actor_auth_user_id=user.id,
-                is_admin=user.is_workspace_admin(draft.workspace_id),
+                is_admin=await acts_for_any_team(session, user, draft),
             )
             await session.commit()
             return await board_service.session_read(session, draft)
@@ -475,10 +458,10 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             pick_id = c.require_id(data)
-            ws_id = await _get_pick_workspace_id(session, pick_id)
-            ensure_workspace_permission(user, ws_id, "team", "create")
-            payload = schemas.DraftPickAutopickRequest.model_validate(c.payload(data))
             draft, pick = await lifecycle_service.get_pick(session, pick_id)
+            await hold_owner(session, draft)
+            await ensure_organizer(session, user, draft)
+            payload = schemas.DraftPickAutopickRequest.model_validate(c.payload(data))
             await lifecycle_service.autopick_pick(
                 session, draft, pick, expected_version=payload.expected_version, actor_auth_user_id=user.id
             )
@@ -492,10 +475,9 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             pick_id = c.require_id(data)
-            ws_id = await _get_pick_workspace_id(session, pick_id)
-            ensure_workspace_permission(user, ws_id, "team", "create")
-            payload = schemas.DraftPickExtendRequest.model_validate(c.payload(data))
             draft, pick = await lifecycle_service.get_pick(session, pick_id)
+            await ensure_organizer(session, user, draft)
+            payload = schemas.DraftPickExtendRequest.model_validate(c.payload(data))
             await lifecycle_service.extend_pick(
                 session,
                 draft,
@@ -517,10 +499,10 @@ def register(broker: Any, logger: Any) -> None:
         async def op(session: Any) -> Any:
             user = c.active_actor(data)
             pick_id = c.require_id(data)
-            ws_id = await _get_pick_workspace_id(session, pick_id)
-            ensure_workspace_permission(user, ws_id, "team", "create")
-            payload = schemas.DraftPickOverrideRequest.model_validate(c.payload(data))
             draft, pick = await lifecycle_service.get_pick(session, pick_id)
+            await hold_owner(session, draft)
+            await ensure_organizer(session, user, draft)
+            payload = schemas.DraftPickOverrideRequest.model_validate(c.payload(data))
             await lifecycle_service.override_pick(session, draft, pick, payload, actor_auth_user_id=user.id)
             await session.commit()
             return await board_service.session_read(session, draft)

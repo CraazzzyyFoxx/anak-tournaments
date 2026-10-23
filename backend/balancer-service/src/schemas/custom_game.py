@@ -20,6 +20,10 @@ __all__ = (
     "CustomGameCreate",
     "CustomGameDiscordLineup",
     "CustomGameDiscordView",
+    "CustomGameDraftCaptainPatch",
+    "CustomGameDraftPlayerAdd",
+    "CustomGameDraftSeed",
+    "CustomGameDraftSettingsPatch",
     "CustomGameHostTransfer",
     "CustomGameListQuery",
     "CustomGameLobbyCountPatch",
@@ -133,6 +137,23 @@ class _LobbyScoped(_Request):
     lobby_index: int = Field(0, ge=0, le=MAX_LOBBIES - 1)
 
 
+class CustomGameDraftSeed(_LobbyScoped):
+    """Which lobby drafts its teams (spec §9.2)."""
+
+
+class CustomGameDraftCaptainPatch(_LobbyScoped):
+    """Replace a draft team's captain: the team and the draft player who takes over (spec §9.3, §9.5)."""
+
+    team_id: int
+    player_id: int
+
+
+class CustomGameDraftPlayerAdd(_LobbyScoped):
+    """A waiting player added to a lobby's draft (spec §9.5)."""
+
+    workspace_member_id: int
+
+
 class CustomGameNextMapPatch(_LobbyScoped):
     """``null`` clears the pick; the next match then records with no map."""
 
@@ -244,6 +265,13 @@ class CustomGameBanPresetPatch(_Request):
     """The mix's hero ban preset; ``null`` turns bans off."""
 
     hero_ban_preset: str | None = Field(max_length=64)
+
+
+class CustomGameDraftSettingsPatch(_Request):
+    """How the mix's lobbies form their teams by default, and the draft's pick clock (spec §4.3)."""
+
+    team_formation: Literal["balance", "draft"]
+    draft_pick_seconds: int = Field(ge=10, le=600)
 
 
 class CustomGamePostSignup(_Request):

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import copy
-from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Awaitable, Callable, Collection, Iterable, Mapping, Sequence
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any
 
@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared import models
 from shared.core import http_status as status
 from shared.core.enums import (
+    DraftPlayerStatus,
+    DraftStatus,
     MixParticipation,
     MixRatingMode,
     MixRoleSelectionMode,
@@ -23,8 +25,11 @@ from shared.disciplines import DISCIPLINES, rated_role_codes
 from shared.division_grid import DivisionGrid, ladder_grid
 from shared.domain.custom_game_round import winner_slot
 from shared.domain.encounter_scoring import WINS_END_FORMULA
+from shared.domain.member_rank import ResolvedRank
 from shared.domain.mix_lobby import LOBBY_LETTERS
 from shared.domain.pick_ban_rules import mix_ban_preset
+from shared.domain.roster import PlayerRoster, RosterRole
+from shared.domain.roster_shape import FLEX_SLOT_CODE
 from shared.rbac import assign_workspace_system_role
 from shared.repository import (
     CatalogEntityRepository,
@@ -43,6 +48,12 @@ from shared.repository import (
     WorkspaceRepository,
 )
 from shared.repository.discord_message import LIVE_STATUSES
+from shared.repository.draft import (
+    DraftPickRepository,
+    DraftPlayerRepository,
+    DraftSessionRepository,
+    DraftTeamRepository,
+)
 from shared.repository.roles import CatalogRoleRepository
 from shared.repository.workspace import get_or_create_workspace_member
 from shared.schemas.events import DiscordCommandEvent
@@ -67,7 +78,8 @@ from shared.services.team_format import (
 )
 from src.domain.balancer.result_serializer import as_lobby_document, seat_rating
 from src.domain.balancer.role_naming import role_slot_code
-from src.domain.mix_lobbies import seated_member_ids, seated_teams, with_captains
+from src.domain.draft import ranks as draft_ranks
+from src.domain.mix_lobbies import current_lobbies, seated_member_ids, seated_teams, with_captains
 from src.domain.mix_lobby_split import LobbySplitError, SplitCandidate, split_into_lobbies
 from src.domain.mix_opener import ban_opener
 from src.domain.mix_ranker import Ranker
@@ -78,6 +90,7 @@ from src.domain.mix_voice import LobbyVoice, MixVoiceConfig, VoicePlan, plan_mov
 from src.services.account_links import missing_account_links
 from src.services.balancer.solver import run_mix_balance as _run_balance
 from src.services.balancer.solver import serialize_format_context
+from src.services.draft import realtime as draft_rt
 from src.services.mix_ranker import MixRankerService, RatedSeat, mix_ranker_service
 from src.services.mix_rounds import MixMatchDraft, MixMatchSeat, MixResultDraft, record_mix_result, start_mix_match
 from src.services.pickup_mix_realtime import emit_pickup_mix_changed
@@ -465,6 +478,7 @@ class CustomGameService:
         enroll_member=get_or_create_workspace_member,
         grant_player_role=assign_workspace_system_role,
         ranker: MixRankerService | None = None,
+        drafts: DraftSessionRepository = DraftSessionRepository(),
     ) -> None:
         self.games = games
         self.scoring_rules = scoring_rules
@@ -491,6 +505,7 @@ class CustomGameService:
         self.enroll_member = enroll_member
         self.grant_player_role = grant_player_role
         self.ranker = ranker if ranker is not None else mix_ranker_service
+        self.drafts = drafts
 
     async def members(
         self, session: AsyncSession, workspace_id: int, member_ids: Sequence[int], *, discipline: str
@@ -632,14 +647,20 @@ class CustomGameService:
 
         Empty for a one-lobby mix: with no lobby next door, nobody is playing
         one. Membership is not stored -- it is the seats of each other lobby's
-        selected option, which is what every caller here means by "busy".
+        selected option and, in draft mode, each other lobby's active draft pool
+        until its lineup exists (spec §9.2; ``draft_lobbies``, the membership the
+        board and a player's own seat read too), which is what every caller here
+        means by "busy".
         """
         if game.lobby_count < 2:
             return frozenset()
+        pools = await self.draft_lobbies(session, game.id)
         busy: set[int] = set()
         for lobby in await self.lobbies.list_for_game(session, game.id):
             if lobby.lobby_index != lobby_index:
                 busy |= seated_member_ids(lobby.balance_result_json, lobby.selected_variant_index)
+                if lobby.lobby_index in pools:
+                    busy |= pools[lobby.lobby_index][2]
         return frozenset(busy)
 
     async def _lobby_candidates(
@@ -746,7 +767,8 @@ class CustomGameService:
         the clone. The points knob and Discord target belong to the host and workspace.
         The team format is frozen per mix: a clone keeps its source's,
         otherwise the host's preset or the workspace default.
-        The hero ban preset is the source's on a clone, else the host's default for the game.
+        The hero ban preset, the team formation and the pick clock are the source's on a clone, else the host's
+        defaults for the game.
         """
         _require_host(actor_user_id, host_user_id)
         trimmed = name.strip() if isinstance(name, str) else ""
@@ -795,14 +817,18 @@ class CustomGameService:
                 workspace_id=workspace_id, preset="wins", game_formula="win", end_formula=WINS_END_FORMULA
             ),
         )
-        # A clone keeps its source's bans; a new mix starts from its host's default for this game (spec §4.3). A
-        # stored default the game no longer offers is no default.
+        # A clone keeps its source's bans and formation; a new mix starts from its host's defaults for this game
+        # (spec §4.3). A stored ban default the game no longer offers is no default.
         if source is not None:
             ban_preset = source.hero_ban_preset
+            team_formation, draft_pick_seconds = source.team_formation, source.draft_pick_seconds
         else:
             host_config = await self._host_config(session, host_user_id)
             default = (host_config.hero_ban_presets or {}).get(effective) if host_config is not None else None
             ban_preset = default if default is not None and mix_ban_preset(effective, default) is not None else None
+            formation = (host_config.formation_defaults or {}).get(effective, {}) if host_config is not None else {}
+            team_formation = formation.get("team_formation", "balance")
+            draft_pick_seconds = formation.get("draft_pick_seconds", 30)
         game = models.CustomGame(
             scoring_rule_id=rule.id,
             workspace_id=workspace_id,
@@ -818,6 +844,8 @@ class CustomGameService:
             # the clone; the matchups played in them do not.
             lobby_count=source.lobby_count if source is not None else 1,
             hero_ban_preset=ban_preset,
+            team_formation=team_formation,
+            draft_pick_seconds=draft_pick_seconds,
         )
         await self.games.create(session, game)
         await copy_for_custom_game(
@@ -924,8 +952,12 @@ class CustomGameService:
         patch: Mapping[str, Any],
         actor_user_id: int,
         actor_is_superuser: bool = False,
+        on_away: Callable[..., Awaitable[None]] | None = None,
     ) -> models.CustomGame:
-        """Patch one roster row's participation, role selection and flex mode."""
+        """Patch one roster row's participation, role selection and flex mode.
+
+        ``on_away`` (``MixDraftService.on_away``) hears an away flag that flipped, under this write's lock: the
+        lobby's running draft follows its player (spec §9.5)."""
         # Before the game read on purpose: an unknown key is a client bug, and
         # answering 422 for it must not depend on the row existing.
         _reject_unknown(patch, _PLAYER_PATCH_FIELDS)
@@ -940,10 +972,19 @@ class CustomGameService:
         row = next((item for item in roster if item.workspace_member_id == workspace_member_id), None)
         if row is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Custom game player not found")
+        was_away = row.away
         await self._apply_player_patch(
             session, row, patch, _PLAYER_PATCH_FIELDS, game=game, lobby_count=game.lobby_count
         )
         await session.flush()
+        if on_away is not None and row.away != was_away:
+            await on_away(
+                session,
+                custom_game_id=game.id,
+                workspace_member_id=workspace_member_id,
+                away=row.away,
+                actor_auth_user_id=actor_user_id,
+            )
         return game
 
     async def _apply_player_patch(
@@ -1177,7 +1218,8 @@ class CustomGameService:
         roles this player actually plays.
 
         ``current_lobby`` is the same derivation the board shows -- the seats of
-        each lobby's selected option -- so nobody downstream re-parses a solver
+        each lobby's selected option, and each drafting lobby's pool
+        (``current_lobbies``) -- so nobody downstream re-parses a solver
         document to answer "which lobby am I in", and ``lobby_count`` is what
         tells them whether that question is worth asking at all.
         """
@@ -1206,15 +1248,16 @@ class CustomGameService:
                 divisions[role] = None if tier is None else {"name": tier.name, "slug": tier.slug}
             considered = list(stored) if explicit else list(rated_role_codes(ctx.game.discipline))
             unranked = [role for role in considered if ranks.get(role) is None]
-            current_lobby: int | None = None
+            lobbies = list(await self.lobbies.list_for_game(session, ctx.game.id))
+            current_lobby = current_lobbies(lobbies, await self.draft_lobbies(session, ctx.game.id)).get(
+                ctx.row.workspace_member_id
+            )
             voice_channel: int | None = None
-            for lobby in await self.lobbies.list_for_game(session, ctx.game.id):
+            for lobby in lobbies:
                 teams = seated_teams(lobby.balance_result_json, lobby.selected_variant_index)
                 for team_index, members in enumerate(teams):
-                    if ctx.row.workspace_member_id in members:
-                        current_lobby = lobby.lobby_index
-                        if team_index < 2:
-                            voice_channel = (lobby.team1_voice_channel_id, lobby.team2_voice_channel_id)[team_index]
+                    if ctx.row.workspace_member_id in members and team_index < 2:
+                        voice_channel = (lobby.team1_voice_channel_id, lobby.team2_voice_channel_id)[team_index]
             voice_url: str | None = None
             if voice_channel is not None:
                 _channel_id, guild_id = await self.workspace_discord_target(session, ctx.game.workspace_id)
@@ -1443,20 +1486,34 @@ class CustomGameService:
         auth_user: Any,
         away: bool,
         workspace_id: int | None = None,
+        on_away: Callable[..., Awaitable[None]] | None = None,
     ) -> dict[str, Any]:
         """Step away from the mix, or come back (spec §7.4).
 
         Gated like a role edit minus the host's switch (``MixSelfPolicy.can_set_away``): a break is the player's own
         business. It never clears itself. The stored balance is left alone -- an away player already in a lineup stays
-        there with a badge, and Start match warns about them.
+        there with a badge, and Start match warns about them. ``on_away`` is ``update_player``'s: the lobby's running
+        draft hears a flag that flipped.
         """
+        # Owner first, as every host write (``_writable``): the mix row is locked before this player's own row is
+        # touched, so a host write that holds the mix and edits that row never deadlocks with this one.
+        await self.games.get(session, custom_game_id, for_update=True)
         ctx = await self._self_context(
             session, custom_game_id=custom_game_id, auth_user=auth_user, workspace_id=workspace_id
         )
         if ctx.row is None or not ctx.policy.can_set_away:
             raise _blocker(ctx.policy.away_blocker or "not_on_roster")
+        was_away = ctx.row.away
         ctx.row.away = away
         await session.flush()
+        if on_away is not None and away != was_away:
+            await on_away(
+                session,
+                custom_game_id=ctx.game.id,
+                workspace_member_id=ctx.row.workspace_member_id,
+                away=away,
+                actor_auth_user_id=auth_user.id,
+            )
         await emit_pickup_mix_changed(
             session,
             ctx.game.workspace_id,
@@ -1529,6 +1586,31 @@ class CustomGameService:
         if hero_ban_preset is not None and mix_ban_preset(game.discipline, hero_ban_preset) is None:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="unknown_ban_preset")
         game.hero_ban_preset = hero_ban_preset
+        await session.flush()
+        return game
+
+    async def set_draft_settings(
+        self,
+        session: AsyncSession,
+        *,
+        workspace_id: int,
+        custom_game_id: int,
+        team_formation: str,
+        draft_pick_seconds: int,
+        actor_user_id: int,
+        actor_is_superuser: bool = False,
+    ) -> models.CustomGame:
+        """How the lobbies form their teams by default and the draft's pick clock (spec §4.3). A running draft keeps
+        the clock it was seeded with; both apply from the next formation."""
+        game = await self._writable(
+            session,
+            workspace_id=workspace_id,
+            custom_game_id=custom_game_id,
+            actor_user_id=actor_user_id,
+            actor_is_superuser=actor_is_superuser,
+        )
+        game.team_formation = team_formation
+        game.draft_pick_seconds = draft_pick_seconds
         await session.flush()
         return game
 
@@ -1760,6 +1842,238 @@ class CustomGameService:
         """How far a decided match moves this host's rank book; 0 means "not at all" (or the ranker moves it)."""
         return _points_per_win(await self._host_config(session, host_user_id))
 
+    async def draft_rosters(
+        self, session: AsyncSession, game: models.CustomGame, member_ids: Sequence[int]
+    ) -> tuple[dict[int, PlayerRoster], frozenset[int]]:
+        """The roles and ranks a mix draft reads for these members (spec §9.1), and which of them are away.
+
+        Ranks are the numbers the mix balance reads (``_lineup_nodes``): the host's book above the workspace canon
+        (``MIX_ORDER``), corrected by the hidden rating for a ranker host, on the roles the mix lets a member play --
+        their explicit order, else every rated role. Lenient like a clone: a member who left the workspace does not
+        resolve rather than failing the board. Away is reported, not filtered: a picked seat still renders.
+        """
+        ids = _uniq(member_ids)
+        if not ids:
+            return {}, frozenset()
+        wanted = set(ids)
+        rows = {
+            row.workspace_member_id: row
+            for row in await self.roster.list_for_game(session, game.id)
+            if row.workspace_member_id in wanted
+        }
+        found = await self.load_roster(
+            session,
+            workspace_id=game.workspace_id,
+            provider=DISCIPLINES[game.discipline].identity_provider,
+            member_ids=ids,
+        )
+        rated = list(rated_role_codes(game.discipline))
+        resolved = await self.ranks.resolve(
+            session,
+            workspace_id=game.workspace_id,
+            discipline=game.discipline,
+            members={member_id: member.player_id for member_id, member in found.items()},
+            roles=rated,
+            order=MIX_ORDER,
+            author_user_id=game.host_user_id,
+            grid=await self.grid(session, game),
+        )
+        if _uses_ranker(await self._host_config(session, game.host_user_id)):
+            effective = await self.ranker.effective_ratings(
+                session,
+                workspace_id=game.workspace_id,
+                discipline=game.discipline,
+                open_ranks={key: rank.value for key, rank in resolved.items() if rank.value is not None},
+            )
+            resolved = {
+                key: ResolvedRank(effective.get(key, rank.value), rank.source) for key, rank in resolved.items()
+            }
+        explicit = await self.player_roles.roles_for_players(
+            session, [row.id for row in rows.values() if row.role_selection_mode == MixRoleSelectionMode.EXPLICIT]
+        )
+        unranked = ResolvedRank(None, "none")
+        out: dict[int, PlayerRoster] = {}
+        for member_id, member in found.items():
+            row = rows.get(member_id)
+            order = (
+                explicit.get(row.id, [])
+                if row is not None and row.role_selection_mode == MixRoleSelectionMode.EXPLICIT
+                else rated
+            )
+            out[member_id] = PlayerRoster(
+                registration_id=None,
+                identity=member.identity,
+                display_name=member.display_name,
+                player_id=member.player_id,
+                auth_user_id=member.auth_user_id,
+                workspace_member_id=member_id,
+                roles=tuple(
+                    RosterRole(
+                        role=role,
+                        rank=(rank := resolved.get((member_id, role), unranked)).value,
+                        source=rank.source,
+                        is_primary=priority == 1,
+                        priority=priority,
+                        subrole=None,
+                    )
+                    for priority, role in enumerate(order, start=1)
+                ),
+                is_full_flex=bool(row is not None and row.is_flex),
+                player_name=member.player_name,
+            )
+        return out, frozenset(member_id for member_id, row in rows.items() if row.away)
+
+    async def draft_lobbies(
+        self, session: AsyncSession, custom_game_id: int
+    ) -> dict[int, tuple[int, str, frozenset[int]]]:
+        """Each drafting lobby of the mix: its session id, status and the members its draft holds -- the one
+        membership the busy, detail and self reads share (``DraftSessionRepository.active_lobby_pools``)."""
+        return await self.drafts.active_lobby_pools(session, custom_game_id)
+
+    async def cancel_drafts(
+        self, session: AsyncSession, game: models.CustomGame, lobby_indexes: Collection[int] | None
+    ) -> None:
+        """Cancel the running drafts of these lobbies (every lobby with ``None``): a lobby re-formed or a mix closed
+        ends its draft (spec §9.5). Each board hears ``draft.cancelled``."""
+        for draft in await self.drafts.active_for_custom_game(session, game.id):
+            if lobby_indexes is not None and draft.lobby_index not in lobby_indexes:
+                continue
+            draft.status = DraftStatus.CANCELLED.value
+            draft.blocked_reason = None
+            await draft_rt.publish_draft_event(
+                session,
+                draft_session=draft,
+                event_type="draft.cancelled",
+                payload={"session_id": draft.id, "status": draft.status},
+            )
+        await session.flush()
+
+    async def draft_pools(
+        self, session: AsyncSession, game: models.CustomGame, lobby_indexes: Sequence[int]
+    ) -> dict[int, tuple[int, ...]]:
+        """Who each of these lobbies' drafts seats (spec §9.2-9.3): the seated set the balancer would take -- present,
+        non-benched players, must-play first, then rotation order (``seated_set``) -- split over the lobbies by
+        strength when there are several, as ``balance(scope="all")`` splits them. One lobby leaves out whoever the
+        others play, as ``balance(scope="lobby")`` does."""
+        roster = list(await self.roster.list_for_game(session, game.id))
+        lineup = [row for row in roster if row.participation != MixParticipation.BENCHED and not row.away]
+        if len(lobby_indexes) == 1:
+            lineup = await self._lobby_candidates(session, game, lineup, lobby_indexes[0])
+        if not lineup:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="empty_lineup")
+        host_config = await self._host_config(session, game.host_user_id)
+        _nodes, candidates, _opens = await self._lineup_nodes(
+            session, game=game, lineup=lineup, host_config=host_config
+        )
+        if len(lobby_indexes) == 1:
+            # One lobby is what the solver seats, and it reads its players in uuid order
+            # (``player_loader.load_players_from_dict``) before its overflow trim breaks a tie by that order: the
+            # draft takes the same order, so a tie seats the same people. A pin onto this lobby already passed
+            # ``_lobby_candidates``, and the splitter numbers lobbies from 0.
+            candidates = sorted(
+                (replace(candidate, pin=None) for candidate in candidates),
+                key=lambda candidate: str(candidate.member_id),
+            )
+        mask = (await custom_game_slot_shape(session, game)).slots
+        try:
+            split = split_into_lobbies(candidates, mask=mask, lobby_count=len(lobby_indexes))
+        except LobbySplitError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.code) from exc
+        return dict(zip(lobby_indexes, split.lobbies, strict=True))
+
+    async def write_draft_lineup(self, session: AsyncSession, draft_session: models.DraftSession) -> None:
+        """A finished mix draft becomes its lobby's lineup (spec §9.4): one option, ``source: "draft"``, each team
+        crowned by its current captain, scored by the same arithmetic as a hand-edited option
+        (``_recompute_variant_stats``). A seat's rating is the rank its pick froze; a captain, who has no pick, sits on
+        their seat role at its live rank. A ranker host's seats keep their open rank too, as a balanced lineup's do.
+
+        Under the mix row's lock -- the last pick took it before touching the draft (``selection``) -- and only onto a
+        mix still open and a lobby not playing (spec §5.1): a frozen lineup is never overwritten."""
+        game = await self.games.get(session, draft_session.custom_game_id, for_update=True)
+        if game.status in _TERMINAL:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Game is {game.status}")
+        lobby = await self._lobby(session, game, draft_session.lobby_index)
+        _refuse_live(lobby)
+        teams = await DraftTeamRepository().list_by_session(session, draft_session.id)
+        seated = [
+            player
+            for player in await DraftPlayerRepository().list_by_session(session, draft_session.id)
+            if player.status == DraftPlayerStatus.PICKED.value
+        ]
+        picks = {
+            pick.picked_player_id: pick for pick in await DraftPickRepository().list_resolved(session, draft_session.id)
+        }
+        rosters, _away = await self.draft_rosters(session, game, [player.workspace_member_id for player in seated])
+        shape = await custom_game_slot_shape(session, game)
+        players: dict[str, dict[str, Any]] = {}
+        lineup_teams: list[dict[str, Any]] = []
+        for team in teams:
+            buckets: dict[str, list[str]] = {}
+            for seat in (player for player in seated if player.drafted_by_team_id == team.id):
+                roster = rosters.get(seat.workspace_member_id)
+                pick = picks.get(seat.id)
+                if not shape.has_role_slots:
+                    role = None
+                elif pick is not None:
+                    role = pick.target_role
+                else:
+                    role = draft_ranks.seat_role(roster, seat.captain_role)
+                bucket = role or FLEX_SLOT_CODE
+                uuid = str(seat.workspace_member_id)
+                ratings = dict(roster.role_ranks) if roster is not None else {}
+                # The rank the pick froze, all-flex too: the host's book can change hands before the last pick, and a
+                # pick made stands on what it was worth (``drafted_rank`` re-derives a flex pick's live maximum, as a
+                # tournament's export does). A captain, who has no pick, sits on their live rank.
+                frozen = pick.target_rank_value if pick is not None else None
+                ratings[bucket] = (
+                    frozen if frozen is not None else draft_ranks.drafted_rank(roster, role, shape, frozen=None)
+                )
+                players[uuid] = {
+                    "name": (roster.display_name or roster.handle if roster is not None else None) or f"player-{uuid}",
+                    "is_captain": seat.workspace_member_id == team.captain_workspace_member_id,
+                    "is_flex": bool(roster is not None and roster.is_full_flex),
+                    "role_preferences": [entry.role for entry in roster.playable] if roster is not None else [],
+                    "ratings": ratings,
+                }
+                buckets.setdefault(bucket, []).append(uuid)
+            lineup_teams.append(
+                {
+                    "id": team.draft_position,
+                    "average_mmr": None,
+                    "total_rating": None,
+                    "format_violations": [],
+                    "format_advisories": [],
+                    "roster": buckets,
+                    "captain_member_id": team.captain_workspace_member_id,
+                }
+            )
+        variant: dict[str, Any] = {"teams": lineup_teams, "statistics": {}, "benched": []}
+        _recompute_variant_stats(variant, players)
+        document = {"source": "draft", "players": players, "feasibility": None, "variants": [variant]}
+        if _uses_ranker(await self._host_config(session, game.host_user_id)):
+            resolved = await self.ranks.resolve(
+                session,
+                workspace_id=game.workspace_id,
+                discipline=game.discipline,
+                members={roster.workspace_member_id: roster.player_id for roster in rosters.values()},
+                roles=list(rated_role_codes(game.discipline)),
+                order=MIX_ORDER,
+                author_user_id=game.host_user_id,
+                grid=await self.grid(session, game),
+            )
+            opens: dict[int, dict[str, int]] = {}
+            for (member_id, role), rank in resolved.items():
+                if rank.value is not None:
+                    opens.setdefault(member_id, {})[role] = rank.value
+            _stamp_open_ratings(document, opens)
+        lobby.balance_result_json = document
+        lobby.selected_variant_index = 0
+        lobby.balanced_at = datetime.now(UTC)
+        game.status = MixStatus.BALANCED
+        await session.flush()
+        # The overview moves this lobby Draft -> Ready, whichever pick finished it: a captain's, the clock's or a host's.
+        await emit_pickup_mix_changed(session, game.workspace_id, custom_game_id=game.id, change="draft")
+
     async def _lineup_nodes(
         self,
         session: AsyncSession,
@@ -1949,6 +2263,8 @@ class CustomGameService:
         # Refused before the pool is read: a frozen lobby answers 409 match_live, never empty_lineup.
         for lobby in targets:
             _refuse_live(lobby)
+        # Re-forming a lobby ends its running draft (spec §9.5).
+        await self.cancel_drafts(session, game, [lobby.lobby_index for lobby in targets])
         roster = list(await self.roster.list_for_game(session, game.id))
         # An away player is in no lobby's seated set, must-play or not; the mark waits for their return (§7.4).
         lineup = [row for row in roster if row.participation != MixParticipation.BENCHED and not row.away]
@@ -3270,7 +3586,7 @@ class CustomGameService:
     ) -> models.CustomGame:
         """Ends the mix. No result of its own -- matches already recorded via
         ``record_outcome`` stay recorded; this only stops further writes. Every
-        live match is cancelled first.
+        live match and every running draft is cancelled first.
         """
         game = await self._writable(
             session,
@@ -3279,10 +3595,12 @@ class CustomGameService:
             actor_user_id=actor_user_id,
             actor_is_superuser=actor_is_superuser,
         )
-        # A mix that is over plays nothing: every live match is thrown away first (spec §5.1).
+        # A mix that is over plays nothing: every live match is thrown away first (spec §5.1), and every running
+        # draft is cancelled (spec §9.5).
         for lobby in await self.lobbies.list_for_game(session, game.id):
             if lobby.live_encounter_id is not None:
                 await self._drop_live_match(session, lobby)
+        await self.cancel_drafts(session, game, None)
         game.status = MixStatus.COMPLETED
         await session.flush()
         return game
@@ -3303,10 +3621,12 @@ class CustomGameService:
             actor_user_id=actor_user_id,
             actor_is_superuser=actor_is_superuser,
         )
-        # A mix that is over plays nothing: every live match is thrown away first (spec §5.1).
+        # A mix that is over plays nothing: every live match is thrown away first (spec §5.1), and every running
+        # draft is cancelled (spec §9.5).
         for lobby in await self.lobbies.list_for_game(session, game.id):
             if lobby.live_encounter_id is not None:
                 await self._drop_live_match(session, lobby)
+        await self.cancel_drafts(session, game, None)
         game.status = MixStatus.CANCELLED
         await session.flush()
         return game

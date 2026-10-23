@@ -103,10 +103,10 @@ export type CustomGameSettings = {
 };
 
 /**
- * A lobby's stage, derived server-side and never stored (spec §5): `pregame` while a started match's ban room runs.
- * The draft stage arrives later.
+ * A lobby's stage, derived server-side and never stored (spec §5): `pregame` while a started match's ban room runs;
+ * `draft_setup` / `draft_live` while the lobby's captain draft waits or runs.
  */
-export type MixLobbyState = "idle" | "ready" | "pregame" | "live";
+export type MixLobbyState = "idle" | "ready" | "pregame" | "live" | "draft_setup" | "draft_live";
 
 /**
  * One lobby of a mix — the four columns that used to sit on the mix itself
@@ -150,7 +150,10 @@ export type CustomGameLobby = {
    * Detail reads only.
    */
   state?: MixLobbyState;
-  /** When the match started (Pre-game included): the cards' elapsed clock. Detail reads only. */
+  /**
+   * When the match started (Pre-game included), or a live draft's first pick clock: the cards' elapsed clock. Detail
+   * reads only.
+   */
   live_started_at?: string | null;
   /** The live match's participations in slot order (slot 1 bans first). Detail reads only. */
   live_seats?: { id: number; slot: number; name: string }[];
@@ -158,6 +161,8 @@ export type CustomGameLobby = {
   live_ban_preset?: string | null;
   /** The lineup team (0/1) that bans first in the next match; null without bans. Detail reads only. */
   opener_index?: number | null;
+  /** The lobby's running captain draft (setup or live); null otherwise. Detail reads only. */
+  draft_session_id?: number | null;
 };
 
 /**
@@ -178,6 +183,9 @@ export type CustomGameDiscordPost = {
   error: string | null;
   created_at: string;
 };
+
+/** How a mix's lobbies form their teams by default (spec §4.3). */
+export type MixTeamFormation = "balance" | "draft";
 
 export type CustomGame = {
   id: number;
@@ -214,6 +222,10 @@ export type CustomGame = {
   self_role_edit: boolean;
   /** The hero ban preset the next Start opens a room on; null = no bans (spec §4.3). */
   hero_ban_preset: string | null;
+  /** How the lobbies form teams by default: the balancer, or a captain draft (spec §4.3). */
+  team_formation: MixTeamFormation;
+  /** A mix draft's pick clock in seconds (10..600). */
+  draft_pick_seconds: number;
   /**
    * The voice everyone waits in and is returned to, picked from the
    * workspace's general voices (`mix_general_voice_channel_ids`).
@@ -1025,6 +1037,65 @@ export const customGameService = {
       skipWorkspace: true,
       method: "PUT",
       body: { hero_ban_preset: heroBanPreset },
+    }).then((r) => r.json());
+  },
+
+  /** The mix's team formation and draft pick clock; both apply from the next formation. */
+  setDraftSettings(
+    workspaceId: number,
+    gameId: number,
+    settings: { team_formation: MixTeamFormation; draft_pick_seconds: number },
+  ): Promise<CustomGame> {
+    return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/draft-settings`, {
+      skipWorkspace: true,
+      method: "PUT",
+      body: settings,
+    }).then((r) => r.json());
+  },
+
+  /** Draft: the lobby re-formed as a captain draft over its seated set (spec §9.2). 409 `match_live`. */
+  seedDraft(workspaceId: number, gameId: number, lobbyIndex: number): Promise<CustomGame> {
+    return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/draft`, {
+      skipWorkspace: true,
+      method: "POST",
+      body: { lobby_index: lobbyIndex },
+    }).then((r) => r.json());
+  },
+
+  /** Split pool: one draft per lobby over the seated set split by strength. */
+  splitPool(workspaceId: number, gameId: number): Promise<CustomGame> {
+    return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/draft/split`, {
+      skipWorkspace: true,
+      method: "POST",
+    }).then((r) => r.json());
+  },
+
+  /** A draft team's new captain (a draft player id): any pool player before the start, a teammate during it. */
+  replaceDraftCaptain(
+    workspaceId: number,
+    gameId: number,
+    lobbyIndex: number,
+    teamId: number,
+    playerId: number,
+  ): Promise<CustomGame> {
+    return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/draft/captain`, {
+      skipWorkspace: true,
+      method: "PUT",
+      body: { lobby_index: lobbyIndex, team_id: teamId, player_id: playerId },
+    }).then((r) => r.json());
+  },
+
+  /** A waiting player added to a lobby's draft short of a role, before the start too. */
+  addDraftPlayer(
+    workspaceId: number,
+    gameId: number,
+    lobbyIndex: number,
+    workspaceMemberId: number,
+  ): Promise<CustomGame> {
+    return apiFetch(`/api/v1/balancer/workspaces/${workspaceId}/custom-games/${gameId}/draft/players`, {
+      skipWorkspace: true,
+      method: "POST",
+      body: { lobby_index: lobbyIndex, workspace_member_id: workspaceMemberId },
     }).then((r) => r.json());
   },
 

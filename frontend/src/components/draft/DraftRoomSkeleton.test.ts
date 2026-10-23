@@ -1,9 +1,19 @@
+// @vitest-environment happy-dom
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import React from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+
+import { DraftBoard, type DraftOwner } from "@/components/draft/DraftBoard";
+
+declare global {
+  var IS_REACT_ACT_ENVIRONMENT: boolean;
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 // Module mocks are process-wide in bun: every mock of next-intl in the draft
 // suite exposes the same hooks, or whichever file loads first breaks the rest.
@@ -15,8 +25,25 @@ vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({ dateTime: () => "", number: (value: number) => String(value), relativeTime: () => "" })
 }));
 
+// The room around the board: only what it reads before it has a board to show.
+const getSessionBoard = vi.fn();
+vi.mock("@/services/draft.service", () => ({ default: { getSessionBoard: () => getSessionBoard() } }));
+vi.mock("@/services/realtime.service", () => ({ realtimeClient: { subscribe: () => () => {}, resubscribe: () => {} } }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/draft/5",
+  useRouter: () => ({ replace: () => {} }),
+  useSearchParams: () => new URLSearchParams()
+}));
+vi.mock("next/link", () => ({
+  default: ({ href, children }: { href: string; children: React.ReactNode }) =>
+    React.createElement("a", { href }, children)
+}));
+vi.mock("@/hooks/useAuthProfile", () => ({ useAuthProfile: () => ({ user: null }) }));
+vi.mock("@/hooks/useDisciplineMetadata", () => ({ useDisciplineMetadata: () => ({ data: null }) }));
+vi.mock("@/hooks/useCurrentWorkspace", () => ({ useDivisionGrid: () => ({ tiers: [] }) }));
+vi.mock("@/components/chat/RoomChat", () => ({ RoomChat: () => null }));
+
 const componentDir = import.meta.dirname;
-const routeDir = join(componentDir, "..", "..", "app", "draft", "[id]");
 const skeletonPath = join(componentDir, "DraftRoomSkeleton.tsx");
 const loadingStatePath = join(componentDir, "draft-loading-state.ts");
 const skeletonModule = existsSync(skeletonPath) ? await import("@/components/draft/DraftRoomSkeleton") : null;
@@ -29,9 +56,30 @@ function sourceFor(path: string): string {
   return existsSync(absolutePath) ? readFileSync(absolutePath, "utf8") : "";
 }
 
-function routeSourceFor(path: string): string {
-  const absolutePath = join(routeDir, path);
-  return existsSync(absolutePath) ? readFileSync(absolutePath, "utf8") : "";
+const OWNER: DraftOwner = {
+  workspaceId: 2,
+  discipline: "overwatch",
+  name: "Cup #41",
+  href: "/tournaments/5",
+  divisionGrid: null,
+  isOrganizer: false
+};
+
+/** The real room for session 1, as it first mounts. */
+async function renderBoard(): Promise<HTMLElement> {
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  await act(async () => {
+    createRoot(container).render(
+      React.createElement(
+        QueryClientProvider,
+        { client },
+        React.createElement(DraftBoard, { sessionId: 1, owner: OWNER })
+      )
+    );
+  });
+  return container;
 }
 
 describe("standalone Draft loading skeleton", () => {
@@ -87,22 +135,23 @@ describe("standalone Draft loading skeleton", () => {
     }
   });
 
-  it("uses the canonical composition in route and client initial loading states", () => {
-    const loading = routeSourceFor("loading.tsx");
-    const page = routeSourceFor("page.tsx");
-    const board = sourceFor("DraftBoard.tsx");
+  it("shows the board's skeleton while the session's first board read runs", async () => {
+    getSessionBoard.mockReturnValue(Promise.withResolvers().promise);
+    const container = await renderBoard();
 
-    expect(loading).toContain('import { DraftRoomSkeleton } from "@/components/draft/DraftRoomSkeleton"');
-    expect(loading).toContain("return <DraftRoomSkeleton />");
-    expect(page).toContain('import { DraftRoomSkeleton } from "@/components/draft/DraftRoomSkeleton"');
-    expect(page).toContain("shouldShowInitialDraftSkeleton(tournamentQuery)");
-    expect(page).toContain("return <DraftRoomSkeleton />");
-    expect(page).not.toContain("Loader2");
+    expect(container.querySelector('[aria-busy="true"] [data-draft-skeleton="pool"]')).not.toBeNull();
+    expect(container.querySelector(".animate-spin")).toBeNull();
+    expect(container.textContent).not.toContain("draftRedesign.loadErrorTitle");
+  });
 
-    expect(board).toContain("DraftBoardSkeleton");
-    expect(board).toContain("shouldShowInitialDraftSkeleton(boardQuery)");
-    expect(board).toMatch(/boardQuery\.isError\s*&&\s*!board/);
-    expect(board).not.toContain("Loader2");
+  it("offers a retry and the way back when the session's board cannot be read", async () => {
+    getSessionBoard.mockRejectedValue(new Error("board read failed"));
+    const container = await renderBoard();
+
+    await vi.waitFor(() => expect(container.querySelector("h1")?.textContent).toBe("draftRedesign.loadErrorTitle"));
+    expect(container.querySelector('[aria-busy="true"]')).toBeNull();
+    expect([...container.querySelectorAll("button")].map((button) => button.textContent)).toContain("draftRedesign.retry");
+    expect(container.querySelector('a[href="/tournaments/5"]')).not.toBeNull();
   });
 
   it("contains the 360px layout and disables shimmer for reduced motion", () => {

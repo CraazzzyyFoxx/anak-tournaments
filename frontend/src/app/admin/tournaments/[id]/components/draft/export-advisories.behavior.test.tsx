@@ -13,7 +13,7 @@ import { LifecycleControls } from "./LifecycleControls";
 vi.mock("next-intl", () => ({ useTranslations: () => (key: string) => key }));
 vi.mock("@/lib/datetime/client", () => ({ useFormatter: () => ({ dateTime: () => "Today" }) }));
 vi.mock("@/lib/notify", () => ({ notify: { success: vi.fn(), warning: vi.fn(), apiError: vi.fn() } }));
-vi.mock("@/services/draft.service", () => ({ default: { listSessions: vi.fn(), lifecycle: vi.fn() } }));
+vi.mock("@/services/draft.service", () => ({ default: { listSessions: vi.fn(), lifecycle: vi.fn(), exportDraft: vi.fn() } }));
 vi.mock("@/components/kit/ConfirmDialog", () => ({
   ConfirmDialog: ({ open, onConfirm }: { open: boolean; onConfirm: () => void }) =>
     open ? <button onClick={onConfirm}>Confirm export</button> : null
@@ -67,7 +67,7 @@ beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   vi.clearAllMocks();
   vi.mocked(draftService.listSessions).mockResolvedValue([session]);
-  vi.mocked(draftService.lifecycle).mockResolvedValue({ ...session, advisories } as DraftSession);
+  vi.mocked(draftService.exportDraft).mockResolvedValue({ ...session, advisories });
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -95,7 +95,7 @@ describe("draft export advisories", () => {
   });
 
   it("keeps a clean export as a success", async () => {
-    vi.mocked(draftService.lifecycle).mockResolvedValue({ ...session, advisories: [] } as DraftSession);
+    vi.mocked(draftService.exportDraft).mockResolvedValue({ ...session, advisories: [] });
     await mount(<DraftHistoryPanel tournamentId={5} />);
     await click("actions.export");
     await vi.waitFor(() => expect(notify.success).toHaveBeenCalled());
@@ -127,9 +127,15 @@ describe("control room pause and resume", () => {
     [...container.querySelectorAll("button")].find((item) => item.textContent === "actions.resume");
 
   it("resumes a paused draft in one click", async () => {
+    // The session's own lifecycle: it answers for this session alone, whichever tournament it sits in.
+    vi.mocked(draftService.lifecycle).mockImplementation(async (sessionId, action) => {
+      if (sessionId !== paused.id || action !== "resume") throw new Error("no such session action");
+      return { ...paused, status: "live" };
+    });
     await mount(<LifecycleControls tournamentId={5} board={board} />);
     await click("actions.resume");
-    expect(draftService.lifecycle).toHaveBeenCalledWith(5, paused.id, "resume");
+    await vi.waitFor(() => expect(notify.success).toHaveBeenCalledWith("lifecycleSuccess"));
+    expect(notify.apiError).not.toHaveBeenCalled();
   });
 
   it("keeps Resume visible but disabled, with the reason, while the roles are infeasible", async () => {

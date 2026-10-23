@@ -12,6 +12,7 @@ import asyncio
 import inspect
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -48,9 +49,17 @@ class _FakeSession:
         return None
 
 
+class _Tournaments:
+    """The owner ``create_session`` copies the discipline from."""
+
+    async def get(self, _session: Any, _id: int) -> Any:
+        return SimpleNamespace(discipline="overwatch")
+
+
 def _create(**kwargs: Any):
+    service = lifecycle.DraftLifecycleService(tournaments_repo=_Tournaments())  # type: ignore[arg-type]
     return asyncio.run(
-        lifecycle.lifecycle_service.create_session(_FakeSession(), tournament_id=1, workspace_id=2, **kwargs)  # type: ignore[arg-type]
+        service.create_session(_FakeSession(), tournament_id=1, workspace_id=2, **kwargs)  # type: ignore[arg-type]
     )
 
 

@@ -176,7 +176,7 @@ announces nothing:
 
 | Topic | Events | Durability |
 |---|---|---|
-| `tournament:{id}:draft` | `draft.pick_started`, `draft.autopicked`, `draft.blocked`, `draft.completed`, … | Durable. Published inside the mutation transaction, so the persisted event id orders with the pick and a reconnecting client replays from its cursor |
+| `draft:{session_id}:board` | `draft.pick_started`, `draft.autopicked`, `draft.blocked`, `draft.completed`, … | Durable. Published inside the mutation transaction, so the persisted event id orders with the pick and a reconnecting client replays from its cursor. One topic per draft session, a tournament's or a mix lobby's alike; a mix draft's lifecycle moves also signal `workspace:{id}:pickup_mix` |
 | `tournament:{id}:balancer` | `balancer_job.{queued,running,succeeded,failed}` | Durable, awaited so transitions keep their order |
 | `tournament:{id}:balancer` | `balancer_job.progress` | Ephemeral (`event_id=0`, Redis only) — high-frequency ticks that would pollute the replay cursor |
 | `tournament:{id}:balancer` | `balancer.balance_saved`, `balancer.teams_changed`, `balancer.config_changed` | Durable, but fire-and-forget: the mutation response does not wait on the publish |

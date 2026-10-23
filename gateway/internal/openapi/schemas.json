@@ -2270,7 +2270,7 @@
       "summary": "Add custom game co-host"
     },
     "rpc.balancer.custom.balance": {
-      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). With `scope=\"lobby\"` (the default) balances the non-benched lineup of ONE lobby (`lobby_index`, default 0) -- everyone another lobby is already playing or holds a pin on is left out. With `scope=\"all\"` it splits the whole pool into `lobby_count` equally strong lobbies and balances them all. Ranks come from the host's own book above the workspace canon. 422 when the lineup is empty, a seated player has no ranked role, the mix has one lobby (`single_lobby`) or the pool cannot be split (`not_enough_players`, `too_many_must_play`, `too_many_pinned`, `roles_infeasible`). 409 match_live when the lobby -- for scope all, any lobby -- has a live match. An away player is never a candidate.",
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). With `scope=\"lobby\"` (the default) balances the non-benched lineup of ONE lobby (`lobby_index`, default 0) -- everyone another lobby is already playing or holds a pin on is left out. With `scope=\"all\"` it splits the whole pool into `lobby_count` equally strong lobbies and balances them all. Ranks come from the host's own book above the workspace canon. 422 when the lineup is empty, a seated player has no ranked role, the mix has one lobby (`single_lobby`) or the pool cannot be split (`not_enough_players`, `too_many_must_play`, `too_many_pinned`, `roles_infeasible`). 409 match_live when the lobby -- for scope all, any lobby -- has a live match. An away player is never a candidate. A balanced lobby's running draft is cancelled.",
       "request": {
         "array": false,
         "ref": "balancer.CustomGameBalanceRequest"
@@ -2286,7 +2286,7 @@
       "summary": "Cancel custom game match"
     },
     "rpc.balancer.custom.close": {
-      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Cancels every live match, then marks the mix completed so no further writes land. Nothing is destroyed -- the mix and every match it recorded stay readable -- so this is the reversible end of a mix.",
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Cancels every live match and every running draft, then marks the mix completed so no further writes land. Nothing is destroyed -- the mix and every match it recorded stay readable -- so this is the reversible end of a mix.",
       "summary": "Close custom game"
     },
     "rpc.balancer.custom.create": {
@@ -2301,8 +2301,36 @@
       "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Asks the bot to delete one message this mix posted, named by its id from the mix's `discord_posts`, and returns the refreshed mix. 404 when the id belongs to another mix's message. Clicking twice is harmless; closing or cancelling a mix deletes nothing, its posts stay as history.",
       "summary": "Delete one custom game Discord post"
     },
+    "rpc.balancer.custom.draft_add_player": {
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Adds a present player no lobby seats to the lobby's draft as an available pick -- before the start too -- the way out of a draft short of a role. 404 not_on_roster or draft_not_found; 409 player_away or already_seated.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameDraftPlayerAdd"
+      },
+      "summary": "Add a waiting player to a custom game draft"
+    },
+    "rpc.balancer.custom.draft_captain": {
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Before the draft starts, any present pool player (`player_id`, a draft player id) captains `team_id` and the draft re-seeds with the weaker captain picking first, leaving out whoever stepped away; during it, a player already on that team takes over its picks and its crown, and the picks made stand. 404 draft_not_found; 409 already_captain or not_in_pool; 422 captain_not_on_team.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameDraftCaptainPatch"
+      },
+      "summary": "Replace a custom game draft captain"
+    },
+    "rpc.balancer.custom.draft_seed": {
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Re-forms one lobby (`lobby_index`) as a captain draft: its seated set -- present, non-benched players, must-play first, then rotation order, minus whoever another lobby plays; exactly whom a balance of the lobby would seat -- with the two strongest as captains, the weaker picking first, snake order on the mix's pick clock. The lobby's lineup is cleared and its running draft cancelled; it reads `draft_setup` until a host starts the draft (`POST /api/v1/balancer/draft/sessions/{session_id}/start`). The last pick writes the lobby's lineup; a finished mix draft is never paused or rolled back (409 mix_draft_completed: re-form instead). 409 match_live; 422 empty_lineup, missing_ranked_role or a split code.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameDraftSeed"
+      },
+      "summary": "Draft a custom game lobby"
+    },
+    "rpc.balancer.custom.draft_split": {
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Splits the seated set over every lobby by strength and seeds one captain draft per lobby, forming no team. Every running draft is cancelled and every lineup cleared. 422 single_lobby or a split code (not_enough_players, too_many_must_play, too_many_pinned, roles_infeasible); 409 match_live.",
+      "summary": "Split custom game pool into lobby drafts"
+    },
     "rpc.balancer.custom.get": {
-      "description": "Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace. It carries the mix's hero_ban_preset (null = no bans). Each lobby carries state (idle | ready | pregame | live), live_seats (the live match's participations {id, slot, name}) and opener_index (the lineup team that bans first in the next match, null without bans).",
+      "description": "Permission: public; no authentication required. Returns one mix with its full lineup: each seat's participation state, role order, the ranks the balancer would use and which layer each came from. Resolves ownership from the mix id; an optional workspace_id restricts the read and returns 404 if the mix belongs to another workspace. It carries the mix's hero_ban_preset (null = no bans). Each lobby carries state (idle | ready | pregame | live), live_seats (the live match's participations {id, slot, name}) and opener_index (the lineup team that bans first in the next match, null without bans). A lobby's `state` reads `draft_setup` / `draft_live` while its draft runs, with `draft_session_id`; a drafted lineup's document carries `source: \"draft\"`. A player in a drafting lobby's pool reads that lobby as `current_lobby`; an unpicked player who stepped away leaves the pool.",
       "query_params": [
         {
           "name": "workspace_id",
@@ -2463,7 +2491,7 @@
       "summary": "Get custom game rotation hints"
     },
     "rpc.balancer.custom.self_away": {
-      "description": "Permission: a seated account; the account links are required as for a role edit, the host's 'players edit their own roles' switch is not. Sets or clears the caller's own away flag: an away player keeps their row, roles and must-play mark, but no balance, lobby split or rotation seats them until they are back, and every match recorded meanwhile counts them as busy (neither played nor sat out). It never clears itself. 404 when the caller has no seat, 409 once the mix is over.",
+      "description": "Permission: a seated account; the account links are required as for a role edit, the host's 'players edit their own roles' switch is not. Sets or clears the caller's own away flag: an away player keeps their row, roles and must-play mark, but no balance, lobby split or rotation seats them until they are back, and every match recorded meanwhile counts them as busy (neither played nor sat out). It never clears itself. It reaches the lobby's running draft as the host's away flag does. 404 when the caller has no seat, 409 once the mix is over.",
       "request": {
         "array": false,
         "ref": "balancer.CustomGameSelfAway"
@@ -2509,6 +2537,14 @@
         "ref": "balancer.CustomGameCaptainPatch"
       },
       "summary": "Make custom game captain"
+    },
+    "rpc.balancer.custom.set_draft_settings": {
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Sets how the mix's lobbies form teams by default -- 'balance' (the solver) or 'draft' (a captain draft) -- and the draft's pick clock in seconds (10..600), then returns the refreshed mix. A running draft keeps its clock; both apply from the next formation. 422 for any other value.",
+      "request": {
+        "array": false,
+        "ref": "balancer.CustomGameDraftSettingsPatch"
+      },
+      "summary": "Set custom game team formation"
     },
     "rpc.balancer.custom.set_lobby_count": {
       "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Runs the mix as 1..6 lobbies. Growing opens the new lobbies empty, leaving the running ones untouched; shrinking deletes every lobby past the new count together with its stored matchup and clears the pins that named them. Matches already recorded for a deleted lobby stay in the history and in the statistics. 409 match_live when a lobby it would drop has a live match.",
@@ -2615,7 +2651,7 @@
       "summary": "Undo custom game match"
     },
     "rpc.balancer.custom.update_player": {
-      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Patches one seat's participation state, role order, flex flag or away flag and returns the refreshed mix; 404 when the member is not on this mix's roster.",
+      "description": "Permission: workspace membership plus being the mix's host or co-host (or a superuser). Patches one seat's participation state, role order, flex flag or away flag and returns the refreshed mix; 404 when the member is not on this mix's roster. An away flag that flips reaches the lobby's running draft: a picked player stepping away, or a pool left unable to fill every role, pauses a live draft (a return never does), and its board re-reads the seats either way.",
       "request": {
         "array": false,
         "ref": "balancer.CustomGamePlayerPatch"
@@ -2647,7 +2683,7 @@
       }
     },
     "rpc.balancer.draft.cancel": {
-      "description": "Permission: workspace `team.create`. Cancels the draft and publishes a draft-cancelled realtime event.",
+      "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Cancels the draft and publishes a draft-cancelled realtime event.",
       "response": {
         "array": false,
         "ref": "balancer.DraftSessionRead"
@@ -2741,7 +2777,7 @@
       "summary": "Re-export draft ranks"
     },
     "rpc.balancer.draft.feasibility": {
-      "description": "Permission: workspace `team.create`. Reports whether every remaining team-role slot can be filled.",
+      "description": "Permission: a tournament workspace's `team.read`, or the mix's hosts. Reports whether every remaining team-role slot can be filled.",
       "response": {
         "array": false,
         "ref": "balancer.DraftFeasibilityResponse"
@@ -2749,7 +2785,7 @@
       "summary": "Get draft feasibility"
     },
     "rpc.balancer.draft.journal": {
-      "description": "Permission: workspace `team.create`. Returns the session's audit trail newest first -- picks, autopicks, overrides, clock extensions and every lifecycle move -- with the acting account's name resolved (null for the clock and other system actions). `limit` defaults to 100 and is clamped to 500.",
+      "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Returns the session's audit trail newest first -- picks, autopicks, overrides, clock extensions and every lifecycle move -- with the acting account's name resolved (null for the clock and other system actions). `limit` defaults to 100 and is clamped to 500.",
       "query_params": [
         {
           "name": "limit",
@@ -2767,7 +2803,7 @@
       "summary": "Get draft organizer journal"
     },
     "rpc.balancer.draft.pause": {
-      "description": "Permission: workspace `team.create`. Pauses an in-progress draft and publishes a draft-paused realtime event.",
+      "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Pauses an in-progress draft and publishes a draft-paused realtime event.",
       "response": {
         "array": false,
         "ref": "balancer.DraftSessionRead"
@@ -2775,7 +2811,7 @@
       "summary": "Pause draft session"
     },
     "rpc.balancer.draft.pick_autopick": {
-      "description": "Permission: workspace `team.create`. Auto-selects the best-fit available player for a pick using the session's autopick strategy and broadcasts the result.",
+      "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Auto-selects the best-fit available player for a pick using the session's autopick strategy and broadcasts the result.",
       "request": {
         "array": false,
         "ref": "balancer.DraftPickAutopickRequest"
@@ -2787,7 +2823,7 @@
       "summary": "Autopick draft pick"
     },
     "rpc.balancer.draft.pick_extend": {
-      "description": "Permission: workspace `team.create`. Adds seconds to the current on-clock pick \u2014 to its deadline while the draft is live, to the frozen remainder while it is paused \u2014 and broadcasts the new deadline.",
+      "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Adds seconds to the current on-clock pick \u2014 to its deadline while the draft is live, to the frozen remainder while it is paused \u2014 and broadcasts the new deadline.",
       "request": {
         "array": false,
         "ref": "balancer.DraftPickExtendRequest"
@@ -2799,7 +2835,7 @@
       "summary": "Extend draft pick clock"
     },
     "rpc.balancer.draft.pick_options": {
-      "description": "Permission: the on-clock captain of the pick's team, or a workspace admin. Returns safe and blocked player-role choices for the current pick.",
+      "description": "Permission: the on-clock captain of the pick's team, or a workspace admin. Returns safe and blocked player-role choices for the current pick. A tournament's workspace admin or a mix's host may pick for whichever team is on the clock.",
       "response": {
         "array": false,
         "ref": "balancer.DraftPickOptionsResponse"
@@ -2807,7 +2843,7 @@
       "summary": "Get safe draft pick options"
     },
     "rpc.balancer.draft.pick_override": {
-      "description": "Permission: workspace `team.create`. Overrides a pick to an arbitrary player, bypassing captain/clock constraints, and broadcasts a pick-made event.",
+      "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Overrides a pick to an arbitrary player, bypassing captain/clock constraints, and broadcasts a pick-made event.",
       "request": {
         "array": false,
         "ref": "balancer.DraftPickOverrideRequest"
@@ -2819,7 +2855,7 @@
       "summary": "Override draft pick"
     },
     "rpc.balancer.draft.pick_select": {
-      "description": "Permission: the on-clock captain of the pick's team, or a workspace admin. Makes a pick for the current slot, enforcing role fit and optimistic version, then broadcasts pick-made/next-pick events.",
+      "description": "Permission: the on-clock captain of the pick's team, or a workspace admin. Makes a pick for the current slot, enforcing role fit and optimistic version, then broadcasts pick-made/next-pick events. A tournament's workspace admin or a mix's host may pick for whichever team is on the clock.",
       "request": {
         "array": false,
         "ref": "balancer.DraftPickSelectRequest"
@@ -2831,7 +2867,7 @@
       "summary": "Select draft pick"
     },
     "rpc.balancer.draft.player_role_edit": {
-      "description": "Permission: workspace `team.create`. Previews or commits an emergency role addition to the draft snapshot with optimistic versioning and private audit reason.",
+      "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Previews or commits an emergency role addition to the draft snapshot with optimistic versioning and private audit reason; 422 `role_edit_tournament_only` on a mix's draft, whose ranks are edited in the mix.",
       "request": {
         "array": false,
         "ref": "balancer.DraftRoleEditRequest"
@@ -2843,7 +2879,7 @@
       "summary": "Preview or add a draft player role"
     },
     "rpc.balancer.draft.queue_get": {
-      "description": "Permission: the team's own captain, or workspace `team.create`. Returns the team's private autopick priority in stored order, filtered to players still available, plus `autopick_preview` -- exactly what autopick would take -- while this team is on the clock. Never part of the public board.",
+      "description": "Permission: that team's own captain, or whoever runs the draft. Returns the team's private autopick priority in stored order, filtered to players still available, plus `autopick_preview` -- exactly what autopick would take -- while this team is on the clock. Never part of the public board.",
       "response": {
         "array": false,
         "ref": "balancer.DraftTeamQueueResponse"
@@ -2851,7 +2887,7 @@
       "summary": "Get captain pick queue"
     },
     "rpc.balancer.draft.queue_set": {
-      "description": "Permission: the team's own captain, or workspace `team.create`. Replaces the queue with the given order (max 60, duplicates collapsed to their first placement); 422 when an id is not an available non-captain player of this draft, 409 once the draft is completed or cancelled. Publishes no realtime event -- a queue is private to its team.",
+      "description": "Permission: that team's own captain, or whoever runs the draft. Replaces the queue with the given order (max 60, duplicates collapsed to their first placement); 422 when an id is not an available non-captain player of this draft, 409 once the draft is completed or cancelled. Publishes no realtime event -- a queue is private to its team.",
       "request": {
         "array": false,
         "ref": "balancer.DraftTeamQueueRequest"
@@ -2863,7 +2899,7 @@
       "summary": "Set captain pick queue"
     },
     "rpc.balancer.draft.resume": {
-      "description": "Permission: workspace `team.create`. Resumes a paused draft and publishes a draft-resumed realtime event.",
+      "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Resumes a paused draft and publishes a draft-resumed realtime event.",
       "response": {
         "array": false,
         "ref": "balancer.DraftSessionRead"
@@ -2871,7 +2907,7 @@
       "summary": "Resume draft session"
     },
     "rpc.balancer.draft.rollback": {
-      "description": "Permission: workspace `team.create`. Rolls back the most recent draft action and publishes a rollback realtime event.",
+      "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser). Rolls back the most recent draft action and publishes a rollback realtime event. A mix draft refuses to roll back the pick that seated its team's current captain (409 rollback_frees_captain): the host replaces the captain with a player who stays first.",
       "response": {
         "array": false,
         "ref": "balancer.DraftSessionRead"
@@ -2943,7 +2979,7 @@
       "summary": "Patch draft session"
     },
     "rpc.balancer.draft.start": {
-      "description": "Permission: workspace `team.create`, and only a superuser may start outside the tournament's draft phase. Starts the draft and opens the first pick, publishing a pick-started realtime event with the clock deadline.",
+      "description": "Permission: whoever runs the session's owner -- a tournament workspace's `team.create`, or the mix's host or a co-host (or a superuser), and only a superuser may start a tournament's draft outside its draft phase (a mix draft has no phase). Starts the draft and opens the first pick, publishing a pick-started realtime event with the clock deadline.",
       "response": {
         "array": false,
         "ref": "balancer.DraftSessionRead"
@@ -2951,7 +2987,7 @@
       "summary": "Start draft session"
     },
     "rpc.balancer.draft.suggestions": {
-      "description": "Permission: workspace `team.read`. Ranks the top five available players by fit for the current pick; 409 if the draft has no current pick.",
+      "description": "Permission: a tournament workspace's `team.read`, or the mix's hosts. Ranks the top five available players by fit for the current pick; 409 if the draft has no current pick.",
       "response": {
         "array": false,
         "ref": "balancer.DraftSuggestionsResponse"
@@ -2959,7 +2995,7 @@
       "summary": "Get pick suggestions"
     },
     "rpc.balancer.draft.team_fit": {
-      "description": "Permission: the team's own captain, or workspace `team.read`. Scores every available player against every role this team can still seat, normalized 1..99 across the response (50 when all candidates tie). `role` is null under a role-less (all-flex) roster shape, where each player has exactly one entry. Empty once the team's roster is full or the draft is completed/cancelled.",
+      "description": "Permission: that team's own captain, or whoever runs the draft. Scores every available player against every role this team can still seat, normalized 1..99 across the response (50 when all candidates tie). `role` is null under a role-less (all-flex) roster shape, where each player has exactly one entry. Empty once the team's roster is full or the draft is completed/cancelled.",
       "response": {
         "array": false,
         "ref": "balancer.DraftTeamFitResponse"
@@ -3124,7 +3160,7 @@
       "summary": "Upsert workspace player"
     },
     "rpc.balancer.prefs.get": {
-      "description": "Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, the open-slot weight, how many balance options to keep, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode). A null value means the setting was never saved and the default applies. The team format is not here: it is frozen on each mix. hero_ban_presets maps a game to the hero ban preset a new mix of it starts with.",
+      "description": "Permission: self-service -- any authenticated (active) account reads its own preferences only. Returns the signed-in account's own mix settings -- the rank-balance/role-comfort tilt, the per-role weights, the open-slot weight, how many balance options to keep, how far a decided match moves its rank book and whether the mix ranker moves it instead (rating_mode). A null value means the setting was never saved and the default applies. The team format is not here: it is frozen on each mix. hero_ban_presets maps a game to the hero ban preset a new mix of it starts with. formation_defaults maps a game to how a new mix of it forms teams (team_formation, draft_pick_seconds).",
       "response": {
         "array": false,
         "ref": "balancer.UserMixPreferencesRead"
@@ -3132,7 +3168,7 @@
       "summary": "Get my pickup mix preferences"
     },
     "rpc.balancer.prefs.upsert": {
-      "description": "Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all seven of the caller's mix settings at once and returns the stored result, exactly what the next read returns; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an unknown field or an out-of-range value. 422 when a hero_ban_presets entry is not a hero preset of its own game.",
+      "description": "Permission: self-service -- any authenticated (active) account writes its own preferences only. Replaces all eight of the caller's mix settings at once and returns the stored result, exactly what the next read returns; a null clears one back to the default, and 0 points per win stores as unset. They apply to every mix this account hosts -- a mix runs on its host's preferences whoever presses the button. 422 on an unknown field or an out-of-range value. 422 when a hero_ban_presets entry is not a hero preset of its own game. 422 when formation_defaults names a game that is not installed or a pick clock outside 10..600.",
       "request": {
         "array": false,
         "ref": "balancer.UserMixPreferencesUpsert"
@@ -20640,6 +20676,96 @@
       "title": "CustomGameCreate",
       "type": "object"
     },
+    "balancer.CustomGameDraftCaptainPatch": {
+      "additionalProperties": false,
+      "description": "Replace a draft team's captain: the team and the draft player who takes over (spec \u00a79.3, \u00a79.5).",
+      "properties": {
+        "lobby_index": {
+          "default": 0,
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Lobby Index",
+          "type": "integer"
+        },
+        "player_id": {
+          "title": "Player Id",
+          "type": "integer"
+        },
+        "team_id": {
+          "title": "Team Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "team_id",
+        "player_id"
+      ],
+      "title": "CustomGameDraftCaptainPatch",
+      "type": "object"
+    },
+    "balancer.CustomGameDraftPlayerAdd": {
+      "additionalProperties": false,
+      "description": "A waiting player added to a lobby's draft (spec \u00a79.5).",
+      "properties": {
+        "lobby_index": {
+          "default": 0,
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Lobby Index",
+          "type": "integer"
+        },
+        "workspace_member_id": {
+          "title": "Workspace Member Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "workspace_member_id"
+      ],
+      "title": "CustomGameDraftPlayerAdd",
+      "type": "object"
+    },
+    "balancer.CustomGameDraftSeed": {
+      "additionalProperties": false,
+      "description": "Which lobby drafts its teams (spec \u00a79.2).",
+      "properties": {
+        "lobby_index": {
+          "default": 0,
+          "maximum": 5,
+          "minimum": 0,
+          "title": "Lobby Index",
+          "type": "integer"
+        }
+      },
+      "title": "CustomGameDraftSeed",
+      "type": "object"
+    },
+    "balancer.CustomGameDraftSettingsPatch": {
+      "additionalProperties": false,
+      "description": "How the mix's lobbies form their teams by default, and the draft's pick clock (spec \u00a74.3).",
+      "properties": {
+        "draft_pick_seconds": {
+          "maximum": 600,
+          "minimum": 10,
+          "title": "Draft Pick Seconds",
+          "type": "integer"
+        },
+        "team_formation": {
+          "enum": [
+            "balance",
+            "draft"
+          ],
+          "title": "Team Formation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "team_formation",
+        "draft_pick_seconds"
+      ],
+      "title": "CustomGameDraftSettingsPatch",
+      "type": "object"
+    },
     "balancer.CustomGameHostTransfer": {
       "additionalProperties": false,
       "properties": {
@@ -21452,6 +21578,18 @@
           ],
           "title": "Current Pick Id"
         },
+        "custom_game_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Custom Game Id"
+        },
         "discipline": {
           "title": "Discipline",
           "type": "string"
@@ -21485,6 +21623,18 @@
         "id": {
           "title": "Id",
           "type": "integer"
+        },
+        "lobby_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lobby Index"
         },
         "overtime_seconds": {
           "title": "Overtime Seconds",
@@ -21524,8 +21674,15 @@
           "$ref": "#/components/schemas/balancer.DraftStatus"
         },
         "tournament_id": {
-          "title": "Tournament Id",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tournament Id"
         },
         "version": {
           "title": "Version",
@@ -22252,8 +22409,15 @@
           ]
         },
         "registration_id": {
-          "title": "Registration Id",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Registration Id"
         },
         "role_ranks": {
           "additionalProperties": {
@@ -22758,6 +22922,18 @@
           ],
           "title": "Current Pick Id"
         },
+        "custom_game_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Custom Game Id"
+        },
         "discipline": {
           "title": "Discipline",
           "type": "string"
@@ -22791,6 +22967,18 @@
         "id": {
           "title": "Id",
           "type": "integer"
+        },
+        "lobby_index": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Lobby Index"
         },
         "overtime_seconds": {
           "title": "Overtime Seconds",
@@ -22830,8 +23018,15 @@
           "$ref": "#/components/schemas/balancer.DraftStatus"
         },
         "tournament_id": {
-          "title": "Tournament Id",
-          "type": "integer"
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tournament Id"
         },
         "version": {
           "title": "Version",
@@ -23320,6 +23515,30 @@
         "created_at"
       ],
       "title": "JobStatusResponse",
+      "type": "object"
+    },
+    "balancer.MixFormationDefault": {
+      "additionalProperties": false,
+      "description": "How a new mix of one game forms its teams (spec \u00a74.3).",
+      "properties": {
+        "draft_pick_seconds": {
+          "default": 30,
+          "maximum": 600,
+          "minimum": 10,
+          "title": "Draft Pick Seconds",
+          "type": "integer"
+        },
+        "team_formation": {
+          "default": "balance",
+          "enum": [
+            "balance",
+            "draft"
+          ],
+          "title": "Team Formation",
+          "type": "string"
+        }
+      },
+      "title": "MixFormationDefault",
       "type": "object"
     },
     "balancer.MixParticipation": {
@@ -24342,6 +24561,14 @@
     "balancer.UserMixPreferencesRead": {
       "description": "Stored preferences; unset knobs use the engine defaults.",
       "properties": {
+        "formation_defaults": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/balancer.MixFormationDefault"
+          },
+          "description": "Per game (discipline code): how a new mix of that game forms its teams -- 'balance' (the solver) or 'draft' (captains pick) -- and the draft's pick clock in seconds (10..600). A game left out starts with the balancer and 30 seconds.",
+          "title": "Formation Defaults",
+          "type": "object"
+        },
         "hero_ban_presets": {
           "additionalProperties": {
             "type": "string"
@@ -24440,6 +24667,14 @@
       "additionalProperties": false,
       "description": "A full replacement; nullable knobs unset the corresponding override.",
       "properties": {
+        "formation_defaults": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/balancer.MixFormationDefault"
+          },
+          "description": "Per game (discipline code): how a new mix of that game forms its teams -- 'balance' (the solver) or 'draft' (captains pick) -- and the draft's pick clock in seconds (10..600). A game left out starts with the balancer and 30 seconds.",
+          "title": "Formation Defaults",
+          "type": "object"
+        },
         "hero_ban_presets": {
           "additionalProperties": {
             "type": "string"
@@ -24532,7 +24767,8 @@
         "open_slot_settings",
         "points_per_win",
         "rating_mode",
-        "hero_ban_presets"
+        "hero_ban_presets",
+        "formation_defaults"
       ],
       "title": "UserMixPreferencesUpsert",
       "type": "object"

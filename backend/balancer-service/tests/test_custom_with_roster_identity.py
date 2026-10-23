@@ -71,6 +71,7 @@ def _service(provider_seen: list) -> CustomGameService:
         pregame_ids=AsyncMock(return_value=frozenset()),
         live_seats=AsyncMock(return_value={}),
     )
+    service.draft_lobbies = AsyncMock(return_value={})
     service.ban_opener = AsyncMock(return_value=None)
     service.player_roles = SimpleNamespace(roles_for_players=AsyncMock(return_value={}))
     service.ranks = SimpleNamespace(list_layer_rows=AsyncMock(return_value=[]), resolve=AsyncMock(return_value={}))
@@ -96,6 +97,8 @@ class WithRosterIdentityTests(IsolatedAsyncioTestCase):
                     self_signup="closed",
                     self_role_edit=False,
                     hero_ban_preset=None,
+                    team_formation="balance",
+                    draft_pick_seconds=30,
                     general_voice_channel_id=None,
                     created_at=None,
                 )

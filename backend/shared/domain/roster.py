@@ -115,7 +115,8 @@ class PlayerRoster:
     or balanced go through :attr:`playable_roles` / :meth:`rank_on`.
     """
 
-    registration_id: int
+    #: ``None`` for a mix seat (spec §9.1): the member is its anchor.
+    registration_id: int | None
     #: The registrant's PRIMARY handle of the owning tournament's identity provider
     #: (``registration_identity`` ``position=0``); ``None`` when they gave none of that
     #: provider -- never another game's handle.

@@ -15,6 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { StatusDot } from "@/components/ui/status-dot";
 import { HeroCoord, HeroFrame } from "@/components/site/PageHero";
+import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
 import type { DraftBoard } from "@/types/draft.types";
 
 import { DraftHistoryPanel } from "./DraftHistoryPanel";
@@ -51,7 +52,7 @@ export function AdminControlRoom({ tournamentId, board }: Readonly<AdminControlR
   const [roleDialogOpen, setRoleDialogOpen] = useState(false);
   // Subscribed here too: the status, clock and feasibility below must follow
   // the picks made in the room without a manual reload.
-  const { connectionState } = useDraftRealtime(tournamentId, board);
+  const { connectionState } = useDraftRealtime(tournamentQueryKeys.draftBoard(tournamentId), board);
   const feasibilityQuery = useDraftFeasibilityQuery(board.session.id);
   // The session's own owner scope: the draft's roles are the tournament game's, whatever game is being browsed.
   const ontology = useDisciplineMetadata(board.session.workspace_id, board.session.discipline).data ?? null;

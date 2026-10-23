@@ -13,7 +13,7 @@ baselines and Discord channels live in `stats/`. `catalog/` writes only to `cata
 > `--check` and fails on drift, so the diagrams cannot fall behind the models again.
 
 <!-- ERD:auto _alembic_head -->
-Alembic head: **`canonical01`** (142 revisions in `backend/migrations/versions/`).
+Alembic head: **`mixdraft02`** (144 revisions in `backend/migrations/versions/`).
 <!-- /ERD:auto -->
 
 **Reading the diagrams**
@@ -2220,6 +2220,7 @@ erDiagram
         int points_per_win "nullable"
         varchar(16) rating_mode
         jsonb hero_ban_presets
+        jsonb formation_defaults
     }
     BALANCER_WORKSPACE_CONFIG {
         bigint id PK
@@ -2315,7 +2316,7 @@ erDiagram
         timestamptz created_at
         timestamptz updated_at "nullable"
         bigint session_id FK
-        bigint registration_id FK
+        bigint registration_id FK "nullable"
         bigint workspace_member_id FK "nullable"
         varchar(16) status
         boolean is_captain
@@ -2328,7 +2329,10 @@ erDiagram
         bigint id PK
         timestamptz created_at
         timestamptz updated_at "nullable"
-        bigint tournament_id FK
+        bigint tournament_id FK "nullable"
+        bigint custom_game_id FK "nullable"
+        int lobby_index FK "nullable"
+        varchar(32) discipline FK
         bigint workspace_id FK
         varchar(16) status
         varchar(64) blocked_reason "nullable"
@@ -2374,13 +2378,20 @@ erDiagram
     DRAFT_SESSION ||--o{ DRAFT_TEAM : "session_id"
     DRAFT_TEAM |o--o{ DRAFT_PLAYER : "drafted_by_team_id"
     DRAFT_TEAM ||--o{ DRAFT_PICK : "draft_team_id"
+    MIX_CUSTOM_GAME |o--o{ DRAFT_SESSION : "custom_game_id"
+    MIX_CUSTOM_GAME ||--o{ DRAFT_SESSION : "discipline"
+    MIX_CUSTOM_GAME ||--o{ DRAFT_SESSION : "workspace_id"
+    MIX_LOBBY |o--o{ DRAFT_SESSION : "custom_game_id"
+    MIX_LOBBY |o--o{ DRAFT_SESSION : "lobby_index"
     PUBLIC_WORKSPACE ||--o{ DRAFT_SESSION : "workspace_id"
     PUBLIC_WORKSPACE_MEMBER |o--o{ DRAFT_PICK : "picked_by_workspace_member_id"
     PUBLIC_WORKSPACE_MEMBER |o--o{ DRAFT_PLAYER : "workspace_member_id"
     PUBLIC_WORKSPACE_MEMBER |o--o{ DRAFT_TEAM : "captain_workspace_member_id"
-    REGISTRATION_REGISTRATION ||--o{ DRAFT_PLAYER : "registration_id"
+    REGISTRATION_REGISTRATION |o--o{ DRAFT_PLAYER : "registration_id"
     TOURNAMENT_TEAM |o--o{ DRAFT_TEAM : "exported_team_id"
-    TOURNAMENT_TOURNAMENT ||--o{ DRAFT_SESSION : "tournament_id"
+    TOURNAMENT_TOURNAMENT |o--o{ DRAFT_SESSION : "tournament_id"
+    TOURNAMENT_TOURNAMENT ||--o{ DRAFT_SESSION : "discipline"
+    TOURNAMENT_TOURNAMENT ||--o{ DRAFT_SESSION : "workspace_id"
 ```
 
 Composite unique keys:
@@ -2430,6 +2441,8 @@ erDiagram
         varchar(32) discipline FK
         bigint scoring_rule_id FK
         varchar(64) hero_ban_preset "nullable"
+        varchar(16) team_formation
+        int draft_pick_seconds
     }
     MIX_LOBBY {
         bigint custom_game_id PK,FK

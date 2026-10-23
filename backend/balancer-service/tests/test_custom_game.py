@@ -152,6 +152,8 @@ def _game(**overrides) -> SimpleNamespace:
         "self_signup": "closed",
         "self_role_edit": False,
         "hero_ban_preset": None,
+        "team_formation": "balance",
+        "draft_pick_seconds": 30,
         "general_voice_channel_id": None,
         "discipline": "overwatch",
         "scoring_rule_id": 5,
@@ -212,7 +214,13 @@ def _seated(*teams: list[tuple[int, str]]) -> dict[str, object]:
 
 def _prefs(**overrides) -> SimpleNamespace:
     """The host's solver and rating knobs, never the mix's team format."""
-    fields = {"config_json": {}, "points_per_win": None, "rating_mode": "points", "hero_ban_presets": {}}
+    fields = {
+        "config_json": {},
+        "points_per_win": None,
+        "rating_mode": "points",
+        "hero_ban_presets": {},
+        "formation_defaults": {},
+    }
     fields.update(overrides)
     return _row(**fields)
 
@@ -457,6 +465,9 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
         self.scoring_rules.create = AsyncMock(side_effect=lambda _s, row: setattr(row, "id", 5) or row)
         self.scoring_rules.get = AsyncMock(return_value=None)
         self.scoring_rules.delete = AsyncMock()
+        self.drafts = SimpleNamespace(
+            active_lobby_pools=AsyncMock(return_value={}), active_for_custom_game=AsyncMock(return_value=[])
+        )
         self.service = CustomGameService(
             games=self.games,
             workspaces=SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(disciplines_enabled=["overwatch"]))),
@@ -483,6 +494,7 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             enroll_member=self.enroll_member,
             grant_player_role=self.grant_player_role,
             ranker=self.ranker,
+            drafts=self.drafts,
         )
         self.session = _session()
 
@@ -4653,6 +4665,50 @@ class CustomGameServiceTests(IsolatedAsyncioTestCase):
             await self.service.hard_delete(self.session, workspace_id=1, custom_game_id=11)
         self.assertEqual(ctx.exception.status_code, 404)
         self.games.delete.assert_not_awaited()
+
+    async def test_create_starts_with_the_hosts_formation_default_for_its_game(self) -> None:
+        self.host_prefs.get_by_user.return_value = _prefs(
+            formation_defaults={"overwatch": {"team_formation": "draft", "draft_pick_seconds": 45}}
+        )
+
+        game = await self.service.create(
+            self.session, workspace_id=1, discipline="overwatch", host_user_id=9, name="Scrim", actor_user_id=9
+        )
+
+        self.assertEqual(("draft", 45), (game.team_formation, game.draft_pick_seconds))
+
+    async def test_create_clone_keeps_its_sources_formation_over_the_host_default(self) -> None:
+        self.games.get.return_value = _game(id=5, team_formation="draft", draft_pick_seconds=60)
+        self.roster.list_for_game.return_value = []
+        self.host_prefs.get_by_user.return_value = _prefs(
+            formation_defaults={"overwatch": {"team_formation": "balance", "draft_pick_seconds": 20}}
+        )
+
+        game = await self.service.create(
+            self.session,
+            workspace_id=1,
+            discipline="overwatch",
+            host_user_id=9,
+            name="Rematch",
+            actor_user_id=9,
+            clone_from_game_id=5,
+        )
+
+        self.assertEqual(("draft", 60), (game.team_formation, game.draft_pick_seconds))
+
+    async def test_a_host_sets_the_formation_and_the_pick_clock(self) -> None:
+        self.games.get.return_value = _game()
+
+        game = await self.service.set_draft_settings(
+            self.session,
+            workspace_id=1,
+            custom_game_id=11,
+            team_formation="draft",
+            draft_pick_seconds=90,
+            actor_user_id=9,
+        )
+
+        self.assertEqual(("draft", 90), (game.team_formation, game.draft_pick_seconds))
 
 
 class _AwaitableSession:

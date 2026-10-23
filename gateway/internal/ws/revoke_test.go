@@ -51,7 +51,7 @@ type fakeACLCache struct {
 	evicted []int64
 }
 
-func (f *fakeACLCache) InvalidateRoomSpectatorRead(roomKind string, refID int64) {
+func (f *fakeACLCache) InvalidateRoomAccess(roomKind string, refID int64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, roomCall{roomKind, refID})
@@ -145,6 +145,38 @@ func TestTopicRevoker_DropsSubscribersNowDenied(t *testing.T) {
 	// be answered from the value the event just contradicted.
 	if calls := rooms.seen(); len(calls) != 1 || calls[0] != (roomCall{"encounter", 1}) {
 		t.Fatalf("expected one invalidation of (encounter, 1), got %v", calls)
+	}
+}
+
+// A replaced draft captain arrives as the same event at an UNCHANGED setting
+// (the room is still open to spectators, or still closed): the revoker must
+// re-check the session's room anyway, so a former captain of a closed chat is
+// dropped and the session's cached answers are invalidated first.
+func TestTopicRevoker_DraftCaptainChangeDropsTheFormerCaptain(t *testing.T) {
+	const topic = "draft:7:chat"
+	ctx := context.Background()
+
+	hub := NewHub()
+	authz := &perUserAuthorizer{denied: map[int64]bool{}}
+	url := newServerWithHub(t, hub, authz)
+
+	former := dial(t, ctx, url, mintToken(t, "3"))
+	writeJSON(t, ctx, former, map[string]any{"op": "subscribe", "topic": topic})
+	if m := readJSON(t, ctx, former); m["op"] != "subscribed" {
+		t.Fatalf("former captain expected subscribed, got %v", m)
+	}
+
+	rooms := &fakeACLCache{}
+	revoker := NewTopicRevoker(hub, authz, rooms, discardLogger())
+
+	authz.deny(3)
+	revoker.Broadcast(topic, visibilityFrame(topic, false))
+
+	if m := readJSON(t, ctx, former); m["op"] != "error" || m["code"] != "forbidden" || m["topic"] != topic {
+		t.Fatalf("former captain expected a forbidden revocation frame for %s, got %v", topic, m)
+	}
+	if calls := rooms.seen(); len(calls) != 1 || calls[0] != (roomCall{"draft", 7}) {
+		t.Fatalf("expected one invalidation of (draft, 7), got %v", calls)
 	}
 }
 

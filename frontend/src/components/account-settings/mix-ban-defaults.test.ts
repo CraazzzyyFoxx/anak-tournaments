@@ -11,6 +11,7 @@ describe("per-game ban defaults", () => {
     points_per_win: null,
     rating_mode: "points" as const,
     hero_ban_presets: { deadlock: "deadlock_hero_bans" },
+    formation_defaults: {},
   };
 
   it("travel from the stored row through the draft back to the payload", () => {

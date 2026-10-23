@@ -6,6 +6,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -27,7 +28,6 @@ if TYPE_CHECKING:
     from shared.models.identity.auth_user import AuthUser
     from shared.models.registration.registration import Registration
     from shared.models.tenancy.workspace import Workspace, WorkspaceMember
-    from shared.models.tournament.tournament import Tournament
 
 __all__ = (
     "DraftAuditEvent",
@@ -44,22 +44,54 @@ __all__ = (
 class DraftSession(db.TimeStampIntegerMixin):
     __tablename__ = "session"
     __table_args__ = (
-        # One active draft per tournament — a CANCELLED/COMPLETED draft may
-        # coexist with a new one, but only one in-flight session is allowed.
+        # One active draft per owner -- a CANCELLED/COMPLETED draft may coexist with a new one.
         Index(
             "uq_draft_session_active_tournament",
             "tournament_id",
             unique=True,
             postgresql_where=text("status IN ('setup','ready','live','paused')"),
         ),
+        Index(
+            "uq_draft_session_active_lobby",
+            "custom_game_id",
+            "lobby_index",
+            unique=True,
+            postgresql_where=text("status IN ('setup','ready','live','paused')"),
+        ),
         Index("ix_draft_session_tournament_status", "tournament_id", "status"),
         Index("ix_draft_session_status_created", "status", "created_at"),
+        # Exactly one owner (spec §4.1): a tournament, or one lobby of a mix. Each owner key carries the workspace and
+        # the discipline, so a copied column can never disagree with the owner it was copied from.
+        CheckConstraint("num_nonnulls(tournament_id, custom_game_id) = 1", name="ck_draft_session_owner"),
+        CheckConstraint("(custom_game_id IS NULL) = (lobby_index IS NULL)", name="ck_draft_session_lobby"),
+        ForeignKeyConstraint(
+            ["tournament_id", "workspace_id", "discipline"],
+            ["tournament.tournament.id", "tournament.tournament.workspace_id", "tournament.tournament.discipline"],
+            ondelete="CASCADE",
+            name="fk_draft_session_tournament",
+        ),
+        ForeignKeyConstraint(
+            ["custom_game_id", "workspace_id", "discipline"],
+            ["mix.custom_game.id", "mix.custom_game.workspace_id", "mix.custom_game.discipline"],
+            ondelete="CASCADE",
+            name="fk_draft_session_custom_game",
+        ),
+        # A lobby that goes (``set_lobby_count``) takes its drafts with it.
+        ForeignKeyConstraint(
+            ["custom_game_id", "lobby_index"],
+            ["mix.lobby.custom_game_id", "mix.lobby.lobby_index"],
+            ondelete="CASCADE",
+            name="fk_draft_session_lobby",
+        ),
         {"schema": "draft"},
     )
 
-    # tournament_id index is provided by ix_draft_session_tournament_status +
-    # the partial-unique active index, so no standalone index here.
-    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournament.tournament.id", ondelete="CASCADE"))
+    tournament_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    #: The mix owning this draft, with ``lobby_index`` the lobby it forms teams for (spec §9.1).
+    custom_game_id: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    lobby_index: Mapped[int | None] = mapped_column(Integer(), nullable=True)
+    #: Copy of the owner's discipline (``catalog.discipline.code``): the owner FKs check it.
+    discipline: Mapped[str] = mapped_column(String(32), nullable=False)
     workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id", ondelete="CASCADE"), index=True)
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="setup", default="setup")
     blocked_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -89,7 +121,6 @@ class DraftSession(db.TimeStampIntegerMixin):
     settings_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, server_default="{}", default=dict)
     version: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
 
-    tournament: Mapped[Tournament] = relationship()
     workspace: Mapped[Workspace] = relationship()
     source_balance: Mapped[BalancerBalance | None] = relationship()
     teams: Mapped[list[DraftTeam]] = relationship(back_populates="session", cascade="all, delete-orphan")
@@ -157,7 +188,7 @@ class DraftTeam(db.TimeStampIntegerMixin):
 
 
 class DraftPlayer(db.TimeStampIntegerMixin):
-    """A registration's seat in a draft pool: a reference plus draft state.
+    """A seat in a draft pool: a registration (tournament) or a workspace member (mix), plus draft state.
 
     Deliberately holds NO roles, ranks, sub-role, flex flag or division. Those
     are a function of the registration and are resolved live by the one engine,
@@ -176,6 +207,7 @@ class DraftPlayer(db.TimeStampIntegerMixin):
     __tablename__ = "player"
     __table_args__ = (
         UniqueConstraint("session_id", "registration_id", name="uq_draft_player_session_registration"),
+        CheckConstraint("num_nonnulls(registration_id, workspace_member_id) >= 1", name="ck_draft_player_identity"),
         Index("ix_draft_player_session_status", "session_id", "status"),
         ForeignKeyConstraint(
             ["captain_role_id", "dimension_id"],
@@ -189,17 +221,23 @@ class DraftPlayer(db.TimeStampIntegerMixin):
 
     # session_id index is provided by ix_draft_player_session_status (leftmost prefix).
     session_id: Mapped[int] = mapped_column(ForeignKey("draft.session.id", ondelete="CASCADE"))
-    # THE anchor. RESTRICT because a registration is soft-deleted: a hard delete
-    # would be somebody erasing a row a draft depends on, and refusing beats
-    # silently dropping draft history.
-    registration_id: Mapped[int] = mapped_column(
-        ForeignKey("registration.registration.id", ondelete="RESTRICT"), nullable=False, index=True
+    # A tournament seat's anchor; a mix seat has none and is its member. RESTRICT because a registration is
+    # soft-deleted: a hard delete would be somebody erasing a row a draft depends on, and refusing beats silently
+    # dropping draft history.
+    registration_id: Mapped[int | None] = mapped_column(
+        ForeignKey("registration.registration.id", ondelete="RESTRICT"), nullable=True, index=True
     )
-    # Kept alongside the registration (which also carries it) because the draft's
-    # own ACL and audit rows join on the member: captain identity, picked_by, and
-    # the workspace RBAC baseline. Never the source of roles or ranks.
+    # A mix seat's anchor; on a tournament seat kept alongside the registration (which also carries it) because the
+    # draft's own ACL and audit rows join on the member: captain identity, picked_by, and the workspace RBAC baseline.
+    # Never the source of a tournament seat's roles or ranks. NO ACTION, deferred: the anchor rule of
+    # ``encounter.team_member`` -- a SET NULL would leave a mix seat naming nobody (``ck_draft_player_identity``),
+    # while deleting the whole workspace removes both sides by commit; a user merge repoints the seat first.
     workspace_member_id: Mapped[int | None] = mapped_column(
-        ForeignKey("workspace_member.id", ondelete="SET NULL"), nullable=True, index=True
+        ForeignKey(
+            "workspace_member.id", name="fk_draft_player_workspace_member", deferrable=True, initially="DEFERRED"
+        ),
+        nullable=True,
+        index=True,
     )
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="available", default="available")
     is_captain: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="false", default=False)
@@ -222,7 +260,7 @@ class DraftPlayer(db.TimeStampIntegerMixin):
     version: Mapped[int] = mapped_column(Integer(), nullable=False, server_default="0", default=0)
 
     session: Mapped[DraftSession] = relationship(back_populates="players")
-    registration: Mapped[Registration] = relationship()
+    registration: Mapped[Registration | None] = relationship()
     member: Mapped[WorkspaceMember | None] = relationship()
     drafted_by_team: Mapped[DraftTeam | None] = relationship(foreign_keys=[drafted_by_team_id], overlaps="roster")
 

@@ -27,9 +27,9 @@ from src.services.draft.feasibility import DraftFeasibilityService, feasibility_
 from src.services.draft.rosters import DraftRosterService, draft_rosters
 
 # Safety-net TTL for the public board cache: the event-id in the key already
-# invalidates on every persisted draft/registration event, so the TTL only
-# bounds staleness for hypothetical writes that bypass the event log and
-# expires dead keys.
+# invalidates on every persisted draft event, so the TTL only bounds how long a
+# role or rank edited elsewhere (read live, never evented on the board) stays
+# stale, and expires dead keys.
 _BOARD_CACHE_TTL = "5s"
 
 
@@ -227,8 +227,7 @@ class DraftBoardService:
         levels are cached, so this is free on the hot board path.
         """
         shape = await self.feasibility.resolve_shape(session, draft_session)
-        owner = await loaders.tournament(session, draft_session)
-        return schemas.DraftSessionRead.from_session(draft_session, shape=shape, discipline=owner.discipline)
+        return schemas.DraftSessionRead.from_session(draft_session, shape=shape, discipline=draft_session.discipline)
 
     async def list_sessions(self, session: AsyncSession, tournament_id: int) -> list[schemas.DraftSessionRead]:
         """Every session of a tournament, newest first."""
@@ -242,13 +241,9 @@ class DraftBoardService:
         # cache key: every draft mutation persists a WorkspaceEvent in the same
         # transaction (services.draft.realtime), so new event -> new key -> fresh
         # board, and an unchanged id can safely serve the cached snapshot.
-        # Two topics, because roles and ranks are not copied into the draft: a
-        # rank typed in the balancer changes what this board shows, and a
-        # registration edit lands on the tournament's INVALIDATION topic
-        # (tournament-service, resource ``tournament.registrations``). Keying on
-        # the draft topic alone would serve the pre-edit ranks until the TTL
-        # expired.
-        last_event_id = await draft_rt.last_event_id(session, draft_session.tournament_id)
+        # One topic: the session's board. Roles and ranks are read live, so an
+        # edit made elsewhere shows once the 5 s TTL runs out.
+        last_event_id = await draft_rt.last_event_id(session, draft_session.id)
         cache_key = _board_cache_key(draft_session.id, last_event_id)
         cached: schemas.DraftBoardSnapshot | None = await _cached(cache_key) if cache.is_setup() else None
         if cached is None:
@@ -289,6 +284,9 @@ class DraftBoardService:
         )
         shape = await self.feasibility.resolve_shape(session, draft_session)
         dimension = await loaders.rated_dimension(session, draft_session)
+        # The crown a seat shows is its team's current captain (a mix host may hand a team over mid-draft); a team
+        # whose captain has no member falls back to the seed flag.
+        crowns = {team.id: team.captain_workspace_member_id for team in teams}
         snapshot = schemas.DraftBoardSnapshot(
             session=await self.session_read(session, draft_session),
             teams=[schemas.DraftTeamRead.model_validate(t) for t in teams],
@@ -300,6 +298,9 @@ class DraftBoardService:
                     shape=shape,
                     custom_fields=custom_field_defs,
                     dimension=dimension,
+                    crowned=None
+                    if crowns.get(p.drafted_by_team_id) is None
+                    else p.workspace_member_id == crowns[p.drafted_by_team_id],
                 )
                 for p in players
             ],
@@ -329,7 +330,7 @@ class DraftBoardService:
         in-flight map folds the burst that arrives on this one before that answer
         lands.
         """
-        event_id = await draft_rt.last_event_id(session, draft_session.tournament_id)
+        event_id = await draft_rt.last_event_id(session, draft_session.id)
         key = _shared_read_key(draft_session.id, draft_session.version, event_id, parts)
         if cache.is_setup():
             cached = await _cached(key)

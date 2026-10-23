@@ -5,7 +5,8 @@ balance,set_team_names,set_next_map,set_variant_index,
 post_discord,post_signup,delete_discord_post,discord_view,set_voice_channels,voice_options,voice_move,voice_return,
 transfer_host,add_co_host,remove_co_host,swap_seats,set_captain,start_match,cancel_match,record_outcome,
 match_history,undo_match,rotation,stats,close,delete,hard_delete,
-self_get,self_current,self_join,self_leave,self_update,self_away,set_self_service,set_ban_preset,hosted_active}``.
+self_get,self_current,self_join,self_leave,self_update,self_away,set_self_service,set_ban_preset,set_draft_settings,
+draft_seed,draft_split,draft_captain,draft_add_player,hosted_active}``.
 
 Writes require ``actor`` to be the host, a co-host or a superuser; the per-mix check lives in
 ``CustomGameService._writable``. The reads (``list``, ``get``, ``stats``,
@@ -63,11 +64,12 @@ from shared.services.ontology import workspace_discipline
 from src.core import db
 from src.core.config import config
 from src.domain.balancer.result_serializer import as_lobby_document
-from src.domain.mix_lobbies import lobby_state, seated_member_ids, with_captains
+from src.domain.mix_lobbies import current_lobbies, lobby_state, with_captains
 from src.domain.mix_voice import snowflake
 from src.rpc import _common as c
 from src.schemas import custom_game as schemas
 from src.services.custom_game import custom_game_service
+from src.services.mix_draft import mix_draft_service
 from src.services.pickup_mix_realtime import emit_pickup_mix_changed
 
 _SF = db.async_session_maker
@@ -272,14 +274,17 @@ def _dump_lobby(
     pregame: bool = False,
     live_seats: list[dict[str, Any]] | None = None,
     opener_index: int | None = None,
+    draft: tuple[int, str, frozenset[int]] | None = None,
 ) -> dict[str, Any]:
     """One lobby: its pager, its rolled map, its live match, when it was last balanced, its match count whenever the
     read counted them (the list and the detail read do) -- and, in the detail read, its own matchup and stage.
 
     ``balance_result`` is detail-only -- the solver document grows with every stored option and no list row renders
     it -- and so are ``state`` (``idle`` | ``ready`` | ``pregame`` | ``live``, spec §5, derived from that document and
-    the live match), ``live_started_at`` (the cards' elapsed clock), ``live_seats``, ``live_ban_preset`` (the preset
-    the live match started on, so a Live room still shows its settled bans) and ``opener_index``.
+    the live match; ``draft_setup`` / ``draft_live`` while the lobby's draft runs, and ``draft_session_id`` names it),
+    ``live_started_at`` (the cards' elapsed clock: the match's start, or a live draft's first pick clock),
+    ``live_seats``, ``live_ban_preset`` (the preset the live match started on, so a Live room still shows its settled
+    bans) and ``opener_index``.
     ``lineup_recorded`` is false while a balanced lineup has not been played: the UI asks for confirmation before
     anything that would overwrite it.
     """
@@ -306,8 +311,13 @@ def _dump_lobby(
             last_match_at is not None and last_match_at >= lobby.balanced_at
         )
         out["state"] = lobby_state(
-            lobby.balance_result_json, lobby.selected_variant_index, lobby.live_encounter_id, pregame
+            lobby.balance_result_json,
+            lobby.selected_variant_index,
+            lobby.live_encounter_id,
+            pregame,
+            draft[1] if draft is not None else None,
         )
+        out["draft_session_id"] = draft[0] if draft is not None else None
         out["live_started_at"] = live_started_at.isoformat() if live_started_at is not None else None
         # The live match's seats as its ban room names them, and who bans first in the next one (spec §8.3).
         out["live_seats"] = live_seats or []
@@ -367,6 +377,8 @@ def _dump_game(
     pregame_ids: frozenset[int] = frozenset(),
     live_seats: dict[int, list[dict[str, Any]]] | None = None,
     openers: dict[int, int | None] | None = None,
+    draft_lobbies: dict[int, tuple[int, str, frozenset[int]]] | None = None,
+    draft_started_at: dict[int, Any] | None = None,
 ) -> dict[str, Any]:
     matches_count, last_match_at = activity if activity is not None else (0, None)
     out: dict[str, Any] = {
@@ -391,10 +403,12 @@ def _dump_game(
                 balance_result=roster is not None,
                 # A read that counted no lobby (``lobby_activity`` absent) says nothing, rather than a false 0.
                 activity=None if lobby_activity is None else lobby_activity.get(lobby.lobby_index, (0, None)),
-                live_started_at=(live_started_at or {}).get(lobby.live_encounter_id),
+                live_started_at=(live_started_at or {}).get(lobby.live_encounter_id)
+                or (draft_started_at or {}).get(lobby.lobby_index),
                 pregame=lobby.live_encounter_id in pregame_ids,
                 live_seats=(live_seats or {}).get(lobby.live_encounter_id),
                 opener_index=(openers or {}).get(lobby.lobby_index),
+                draft=(draft_lobbies or {}).get(lobby.lobby_index),
             )
             for lobby in (lobbies or [])
         ],
@@ -405,6 +419,9 @@ def _dump_game(
         "self_role_edit": game.self_role_edit,
         # The hero ban preset Start opens a room on; null = no bans (spec §4.3).
         "hero_ban_preset": game.hero_ban_preset,
+        # How a lobby forms its teams by default, and the draft's pick clock (spec §4.3).
+        "team_formation": game.team_formation,
+        "draft_pick_seconds": game.draft_pick_seconds,
         # Where "return everyone" sends them: the mix's own general voice.
         "general_voice_channel_id": snowflake(game.general_voice_channel_id),
         # Every Discord message this mix has out there -- the signup card and
@@ -489,13 +506,19 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         if lobby.live_encounter_id is None
     }
     lobby_activity = await custom_game_service.mix_rounds.activity_for_lobbies(session, game.id)
+    draft_lobbies = await custom_game_service.draft_lobbies(session, game.id)
+    # A live draft is timed from its first pick's clock, as a match from its start (U1); a draft in setup has none.
+    draft_starts = (
+        await custom_game_service.drafts.first_clock_starts(session, [entry[0] for entry in draft_lobbies.values()])
+        if draft_lobbies
+        else {}
+    )
+    draft_started_at = {
+        index: draft_starts[entry[0]] for index, entry in draft_lobbies.items() if entry[0] in draft_starts
+    }
     # Derived once, here: the board, the player sheet and the bot all ask the
     # same question, and none of them should re-parse a solver document.
-    current_lobby = {
-        member_id: lobby.lobby_index
-        for lobby in lobbies
-        for member_id in seated_member_ids(lobby.balance_result_json, lobby.selected_variant_index)
-    }
+    current_lobby = current_lobbies(lobbies, draft_lobbies)
     if not roster:
         return _dump_game(
             game,
@@ -513,6 +536,8 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
             pregame_ids=pregame_ids,
             live_seats=live_seats,
             openers=openers,
+            draft_lobbies=draft_lobbies,
+            draft_started_at=draft_started_at,
         )
     member_ids = [row.workspace_member_id for row in roster]
     members = await custom_game_service.members(session, game.workspace_id, member_ids, discipline=game.discipline)
@@ -562,6 +587,8 @@ async def _with_roster(session: Any, game: Any) -> dict[str, Any]:
         pregame_ids=pregame_ids,
         live_seats=live_seats,
         openers=openers,
+        draft_lobbies=draft_lobbies,
+        draft_started_at=draft_started_at,
     )
 
 
@@ -775,6 +802,8 @@ def register(broker: Any, logger: Any) -> None:
                 patch=body.model_dump(exclude_unset=True),
                 actor_user_id=user.id,
                 actor_is_superuser=user.is_superuser,
+                # An away flag that flips reaches the lobby's running draft (spec §9.5).
+                on_away=mix_draft_service.on_away,
             )
             await emit_pickup_mix_changed(
                 session, workspace_id, custom_game_id=game.id, change="roster", actor_user_id=user.id
@@ -930,6 +959,8 @@ def register(broker: Any, logger: Any) -> None:
                 auth_user=user,
                 away=body.away,
                 workspace_id=_opt_int(data, "workspace_id"),
+                # An away flag that flips reaches the lobby's running draft (spec §9.5).
+                on_away=mix_draft_service.on_away,
             )
             await session.commit()
             return state
@@ -986,6 +1017,133 @@ def register(broker: Any, logger: Any) -> None:
             return await _with_roster(session, game)
 
         return await c.envelope(logger, "custom.set_ban_preset", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.set_draft_settings")
+    async def _set_draft_settings(data: dict, msg: RabbitMessage) -> dict:
+        """The mix's team formation and pick clock: an ordinary mix write, host-or-co-host in ``_writable``."""
+
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(user, workspace_id, "update")
+            body = _body(schemas.CustomGameDraftSettingsPatch, data)
+            game = await custom_game_service.set_draft_settings(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                team_formation=body.team_formation,
+                draft_pick_seconds=body.draft_pick_seconds,
+                actor_user_id=user.id,
+                actor_is_superuser=user.is_superuser,
+            )
+            await emit_pickup_mix_changed(
+                session, workspace_id, custom_game_id=game.id, change="member", actor_user_id=user.id
+            )
+            await session.commit()
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.set_draft_settings", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.draft_seed")
+    async def _draft_seed(data: dict, msg: RabbitMessage) -> dict:
+        """Draft: the lobby re-formed as a captain draft over its seated set (spec §9.2)."""
+
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(user, workspace_id, "update")
+            body = _body(schemas.CustomGameDraftSeed, data)
+            game = await mix_draft_service.seed_lobby(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                lobby_index=body.lobby_index,
+                actor_user_id=user.id,
+                actor_is_superuser=user.is_superuser,
+            )
+            await emit_pickup_mix_changed(
+                session, workspace_id, custom_game_id=game.id, change="draft", actor_user_id=user.id
+            )
+            await session.commit()
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.draft_seed", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.draft_split")
+    async def _draft_split(data: dict, msg: RabbitMessage) -> dict:
+        """Split pool: one draft per lobby over the seated set split by strength (spec §9.2)."""
+
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(user, workspace_id, "update")
+            game = await mix_draft_service.split_pool(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                actor_user_id=user.id,
+                actor_is_superuser=user.is_superuser,
+            )
+            await emit_pickup_mix_changed(
+                session, workspace_id, custom_game_id=game.id, change="draft", actor_user_id=user.id
+            )
+            await session.commit()
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.draft_split", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.draft_captain")
+    async def _draft_captain(data: dict, msg: RabbitMessage) -> dict:
+        """Replace a draft team's captain (spec §9.3, §9.5)."""
+
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(user, workspace_id, "update")
+            body = _body(schemas.CustomGameDraftCaptainPatch, data)
+            game = await mix_draft_service.replace_captain(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                lobby_index=body.lobby_index,
+                team_id=body.team_id,
+                player_id=body.player_id,
+                actor_user_id=user.id,
+                actor_is_superuser=user.is_superuser,
+            )
+            await emit_pickup_mix_changed(
+                session, workspace_id, custom_game_id=game.id, change="draft", actor_user_id=user.id
+            )
+            await session.commit()
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.draft_captain", op, session_factory=_SF)
+
+    @broker.subscriber("rpc.balancer.custom.draft_add_player")
+    async def _draft_add_player(data: dict, msg: RabbitMessage) -> dict:
+        """A waiting player joins a lobby's draft short of a role (spec §9.5)."""
+
+        async def op(session: Any) -> Any:
+            user = c.active_actor(data)
+            workspace_id = _int(data, "workspace_id")
+            _require_mix(user, workspace_id, "update")
+            body = _body(schemas.CustomGameDraftPlayerAdd, data)
+            game = await mix_draft_service.add_player(
+                session,
+                workspace_id=workspace_id,
+                custom_game_id=_game_id(data),
+                lobby_index=body.lobby_index,
+                workspace_member_id=body.workspace_member_id,
+                actor_user_id=user.id,
+                actor_is_superuser=user.is_superuser,
+            )
+            await emit_pickup_mix_changed(
+                session, workspace_id, custom_game_id=game.id, change="draft", actor_user_id=user.id
+            )
+            await session.commit()
+            return await _with_roster(session, game)
+
+        return await c.envelope(logger, "custom.draft_add_player", op, session_factory=_SF)
 
     @broker.subscriber("rpc.balancer.custom.set_lobby_count")
     async def _set_lobby_count(data: dict, msg: RabbitMessage) -> dict:

@@ -206,10 +206,17 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
             ids = (
                 await s.scalars(sa.select(DraftSession.id).where(DraftSession.tournament_id == self.tournament_id))
             ).all()
+            # Rows created by export() + realtime publisher.
+            await s.execute(
+                sa.delete(WorkspaceEvent).where(
+                    sa.or_(
+                        WorkspaceEvent.tournament_id == self.tournament_id,
+                        WorkspaceEvent.topic.in_([f"draft:{sid}:board" for sid in ids]),
+                    )
+                )
+            )
             for sid in ids:
                 await s.execute(sa.delete(DraftSession).where(DraftSession.id == sid))
-            # Rows created by export() + realtime publisher.
-            await s.execute(sa.delete(WorkspaceEvent).where(WorkspaceEvent.tournament_id == self.tournament_id))
             await s.execute(sa.delete(models.Player).where(models.Player.tournament_id == self.tournament_id))
             await s.execute(sa.delete(models.Team).where(models.Team.tournament_id == self.tournament_id))
             await s.execute(sa.delete(Tournament).where(Tournament.id == self.tournament_id))
@@ -988,7 +995,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 payload={"session_id": draft.id, "status": draft.status},
             )
             await s.commit()
-            topic = f"tournament:{self.tournament_id}:draft"
+            topic = f"draft:{draft.id}:board"
             max_id = await s.scalar(sa.select(sa.func.max(WorkspaceEvent.id)).where(WorkspaceEvent.topic == topic))
             board = await draft_board.board_service.build_board(s, draft)
             self.assertIsNotNone(board.last_event_id)
@@ -1200,7 +1207,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 payload={"session_id": draft.id, "status": draft.status},
             )
             await s.commit()
-            topic = f"tournament:{self.tournament_id}:draft"
+            topic = f"draft:{draft.id}:board"
             row = await s.scalar(
                 sa.select(WorkspaceEvent).where(
                     WorkspaceEvent.topic == topic,
@@ -1208,7 +1215,6 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 )
             )
             self.assertIsNotNone(row)
-            self.assertEqual(row.tournament_id, self.tournament_id)
             self.assertEqual(row.payload["session_id"], draft.id)
 
     async def test_rollback_reverts_pick_and_players(self) -> None:
@@ -1584,11 +1590,6 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
         for verb in (
             "session_patch",
             "seed",
-            "start",
-            "pause",
-            "resume",
-            "cancel",
-            "rollback",
             "export",
             "export_ranks",
             "session_delete",
@@ -1601,6 +1602,84 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
         async with self.Session() as s:
             untouched = await s.get(lifecycle.DraftSession, foreign_id)
             self.assertEqual((untouched.status, untouched.pick_time_seconds), (DraftStatus.SETUP.value, 45))
+
+    async def test_session_lifecycle_answers_to_the_sessions_own_workspace(self) -> None:
+        # The lifecycle routes name only the session: its own workspace decides, so an organizer of this workspace
+        # cannot pause a draft of a workspace they hold nothing in.
+        broker = _CapturingBroker()
+        draft_rpc.register(broker, _LoudLogger())
+        async with self.Session() as s:
+            other_ws = Workspace(slug=f"ws-life-{self._suffix}", name=f"WS life {self._suffix}")
+            s.add(other_ws)
+            await s.flush()
+            other = Tournament(
+                workspace_id=other_ws.id, name=f"T life {self._suffix}", slug=f"t-life-{self._suffix}", status="draft"
+            )
+            s.add(other)
+            await s.flush()
+            foreign = await lifecycle.lifecycle_service.create_session(
+                s, tournament_id=other.id, workspace_id=other_ws.id, shape=_SHAPE
+            )
+            await s.commit()
+            foreign_id, other_id, other_ws_id = foreign.id, other.id, other_ws.id
+            own = await self._live_draft(s)
+            own_id = own.id
+
+        async def _cleanup() -> None:
+            async with self.Session() as s:
+                await s.execute(
+                    sa.delete(lifecycle.DraftSession).where(lifecycle.DraftSession.tournament_id == other_id)
+                )
+                await s.execute(sa.delete(Tournament).where(Tournament.id == other_id))
+                await s.execute(sa.delete(Workspace).where(Workspace.id == other_ws_id))
+                await s.commit()
+
+        self.addAsyncCleanup(_cleanup)
+        # A real account: the journal names the actor of every lifecycle move.
+        organizer = _identity(self.captain_auth_user_ids[0], self.workspace_id, ["read", "create"])
+
+        refused = await broker.handlers["rpc.balancer.draft.cancel"]({"id": foreign_id, "identity": organizer}, None)
+        paused = await broker.handlers["rpc.balancer.draft.pause"]({"id": own_id, "identity": organizer}, None)
+
+        self.assertEqual("forbidden", refused["error"]["code"])
+        self.assertTrue(paused["ok"], paused)
+        self.assertEqual("paused", paused["data"]["status"])
+
+    async def test_a_tournament_role_edit_answers_to_the_organizer_grant(self) -> None:
+        # R-B1: the role edit authorizes on the session's own owner -- here the tournament workspace's team.create.
+        broker = _CapturingBroker()
+        draft_rpc.register(broker, _LoudLogger())
+        handler = broker.handlers["rpc.balancer.draft.player_role_edit"]
+        async with self.Session() as s:
+            draft = await self._new_session(s)
+            player_id, version = (
+                await s.execute(
+                    sa.select(models.DraftPlayer.id, models.DraftPlayer.version)
+                    .join(Registration, Registration.id == models.DraftPlayer.registration_id)
+                    .join(RegistrationRole, RegistrationRole.registration_id == Registration.id)
+                    .where(models.DraftPlayer.session_id == draft.id, models.DraftPlayer.is_captain.is_(False))
+                    .where(RegistrationRole.catalog_role.has(code="damage"))
+                    .limit(1)
+                )
+            ).one()
+        request = {
+            "id": player_id,
+            "session_id": draft.id,
+            "payload": {
+                "expected_version": version,
+                "role": {"dimension": "player_role", "role": "tank"},
+                "rank_value": 2500,
+                "reason": "Emergency tank",
+                "preview_only": True,
+            },
+        }
+
+        refused = await handler({**request, "identity": _identity(1, self.workspace_id, ["read"])}, None)
+        edited = await handler({**request, "identity": _identity(1, self.workspace_id, ["create"])}, None)
+
+        self.assertEqual("forbidden", refused["error"]["code"])
+        self.assertTrue(edited["ok"], edited)
+        self.assertEqual((player_id, False), (edited["data"]["player_id"], edited["data"]["committed"]))
 
     async def test_all_role_input_boundaries_reject_foreign_dimensions_and_sub_roles(self) -> None:
         broker = _CapturingBroker()
@@ -1697,7 +1776,7 @@ class DraftIntegrationTests(IsolatedAsyncioTestCase):
                 shape=_SHAPE,
             )
             captains = [seat for seat in await self._seats(s) if seat.draft_position is not None]
-            pool = await draft_rosters.pool(s, self.tournament_id)
+            pool = await draft_rosters.pool(s, draft)
             self.assertTrue(all(pool[seat.registration_id].player_id is not None for seat in captains))
             await s.commit()
             payload = {

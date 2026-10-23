@@ -42,6 +42,7 @@ class UserMixPrefsService:
         points_per_win: int | None,
         rating_mode: str,
         hero_ban_presets: Mapping[str, str],
+        formation_defaults: Mapping[str, Mapping[str, Any]],
     ) -> UserBalancerConfig:
         """Replace the account's settings, splitting them the way the row stores them.
 
@@ -56,6 +57,7 @@ class UserMixPrefsService:
         Points and rating mode are columns beside the solver blob.
         Zero points stores as NULL, the single spelling of "off".
         The per-game ban defaults are a column of their own: they are not solver input.
+        The per-game formation defaults are a column of their own as well.
         """
         raw: dict[str, Any] = {
             "mix_comfort_tilt": mix_comfort_tilt,
@@ -71,6 +73,7 @@ class UserMixPrefsService:
             "points_per_win": points_per_win or None,
             "rating_mode": rating_mode,
             "hero_ban_presets": dict(hero_ban_presets),
+            "formation_defaults": {code: dict(value) for code, value in formation_defaults.items()},
         }
         config = await self.get(session, user_id)
         if config is None:

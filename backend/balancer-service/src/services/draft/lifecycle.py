@@ -31,6 +31,7 @@ from shared.core.errors import BaseAPIException
 from shared.domain.roster import PlayerRoster
 from shared.domain.roster_shape import RosterShape
 from shared.models.draft import DraftPick, DraftPlayer, DraftSession, DraftTeam
+from shared.repository import CustomGameRepository
 from shared.repository.draft import (
     DraftPickRepository,
     DraftPlayerRepository,
@@ -129,6 +130,7 @@ class DraftLifecycleService:
         feasibility: DraftFeasibilityService = feasibility_service,
         rosters: DraftRosterService = draft_rosters,
         selection: DraftSelectionService = selection_service,
+        custom_games: CustomGameRepository = CustomGameRepository(),
     ) -> None:
         self.sessions_repo = sessions_repo
         self.teams_repo = teams_repo
@@ -140,6 +142,7 @@ class DraftLifecycleService:
         self.feasibility = feasibility
         self.rosters = rosters
         self.selection = selection
+        self.custom_games = custom_games
 
     async def get_session(self, session: AsyncSession, session_id: int) -> DraftSession:
         draft = await self.sessions_repo.get(session, session_id)
@@ -165,11 +168,10 @@ class DraftLifecycleService:
 
     async def resolve_role(self, session: AsyncSession, draft_session: DraftSession, ref: RoleRef | None) -> str | None:
         """A client ``RoleRef`` -> the top-level role code of this draft's discipline/workspace."""
-        tournament = await loaders.tournament(session, draft_session)
         row = await resolve_role_ref(
             session,
-            discipline=tournament.discipline,
-            workspace_id=tournament.workspace_id,
+            discipline=draft_session.discipline,
+            workspace_id=draft_session.workspace_id,
             ref=ref,
             top_level_only=True,
         )
@@ -208,9 +210,11 @@ class DraftLifecycleService:
         self,
         session: AsyncSession,
         *,
-        tournament_id: int,
         workspace_id: int,
         shape: RosterShape,
+        tournament_id: int | None = None,
+        custom_game_id: int | None = None,
+        lobby_index: int | None = None,
         pool_source: str = "balancer_balance",
         source_balance_id: int | None = None,
         fmt: DraftFormat = DraftFormat.SNAKE,
@@ -220,6 +224,8 @@ class DraftLifecycleService:
         allow_admin_override: bool = True,
         settings: dict | None = None,
     ) -> DraftSession:
+        """A session of exactly one owner: a tournament, or one lobby of a mix (spec §9.1). One active session per
+        owner -- checked here for a tournament, by ``uq_draft_session_active_lobby`` for a lobby."""
         # `rounds` is derived, never passed: the shape owns the roster size.
         if shape.draft_rounds < 1:
             raise _err(
@@ -228,9 +234,16 @@ class DraftLifecycleService:
                 "so there is nothing to draft",
                 status_code=422,
             )
-        await self.assert_no_active_draft(session, tournament_id)
+        if tournament_id is not None:
+            await self.assert_no_active_draft(session, tournament_id)
+            owner = await self.tournaments_repo.get(session, tournament_id)
+        else:
+            owner = await self.custom_games.get(session, custom_game_id)
         draft = DraftSession(
             tournament_id=tournament_id,
+            custom_game_id=custom_game_id,
+            lobby_index=lobby_index,
+            discipline=owner.discipline,
             workspace_id=workspace_id,
             status=DraftStatus.SETUP.value,
             format=fmt.value,
@@ -395,22 +408,24 @@ class DraftLifecycleService:
     ) -> DraftSession:
         """Materialize teams + pool + all picks, then transition SETUP/READY -> READY.
 
-        A seat carries a registration id and nothing else. Roles and ranks are
-        NOT copied here -- they are resolved from the registration on every read,
+        A seat carries a registration (tournament) or a member (mix) id and nothing else. Roles and ranks are
+        NOT copied here -- they are resolved from the owner's engine on every read,
         which is what makes a rank typed in the balancer after seeding show up in
         the draft without a re-seed.
         """
         if draft_session.status not in (DraftStatus.SETUP.value, DraftStatus.READY.value):
             raise _err("draft_not_seedable", "Draft can only be seeded in SETUP or READY")
-        await self.assert_draft_formation(session, draft_session.tournament_id)
+        rules.validate_seat_identities(seats, mix=draft_session.custom_game_id is not None)
+        if draft_session.tournament_id is not None:
+            await self.assert_draft_formation(session, draft_session.tournament_id)
         captains = [seat for seat in seats if seat.draft_position is not None]
         if not captains:
             raise _err("draft_no_captains", "At least one captain is required to seed a draft")
 
         draft_state.validate_transition(DraftStatus(draft_session.status), DraftStatus.READY)
 
-        rosters = await self.rosters.pool(session, draft_session.tournament_id)
-        missing = [seat.registration_id for seat in seats if seat.registration_id not in rosters]
+        rosters = await self.rosters.pool(session, draft_session)
+        missing = [seat.key for seat in seats if seat.key not in rosters]
         if missing:
             raise _err(
                 "registration_not_in_pool",
@@ -419,7 +434,7 @@ class DraftLifecycleService:
             )
         # A registration the balancer ranks on no role has nothing to be drafted
         # on: refuse, and name who needs a rank.
-        unranked = [rosters[seat.registration_id] for seat in seats if not rosters[seat.registration_id].is_draftable]
+        unranked = [rosters[seat.key] for seat in seats if not rosters[seat.key].is_draftable]
         if unranked:
             raise rules.unranked_pool_error(unranked)
         shape = await self.feasibility.resolve_shape(session, draft_session)
@@ -439,9 +454,7 @@ class DraftLifecycleService:
         # workspace (draft identity is anchored on workspace_member).
         # Done once up front so every team/player row reuses the same member id.
         player_ids = {
-            roster.player_id
-            for roster in (rosters[seat.registration_id] for seat in seats)
-            if roster.player_id is not None
+            roster.player_id for roster in (rosters[seat.key] for seat in seats) if roster.player_id is not None
         }
         member_by_player: dict[int, int] = {}
         if player_ids:
@@ -465,7 +478,7 @@ class DraftLifecycleService:
         teams: list[DraftTeam] = []
         team_by_position: dict[int, DraftTeam] = {}
         for position, seat in enumerate(ordered_captains, start=1):
-            roster = rosters[seat.registration_id]
+            roster = rosters[seat.key]
             team = DraftTeam(
                 session_id=draft_session.id,
                 captain_workspace_member_id=_member_id(roster),
@@ -477,11 +490,11 @@ class DraftLifecycleService:
             team_by_position[position] = team
         await self.teams_repo.create_many(session, teams)
 
-        captain_registration_ids = {seat.registration_id for seat in ordered_captains}
+        captain_keys = {seat.key for seat in ordered_captains}
         players_to_create: list[DraftPlayer] = []
         for position, seat in enumerate(ordered_captains, start=1):
             # Captains become PICKED players already on their own roster.
-            roster = rosters[seat.registration_id]
+            roster = rosters[seat.key]
             players_to_create.append(
                 DraftPlayer(
                     session_id=draft_session.id,
@@ -495,9 +508,9 @@ class DraftLifecycleService:
                 )
             )
         for seat in seats:
-            if seat.registration_id in captain_registration_ids:
+            if seat.key in captain_keys:
                 continue
-            roster = rosters[seat.registration_id]
+            roster = rosters[seat.key]
             players_to_create.append(
                 DraftPlayer(
                     session_id=draft_session.id,
@@ -510,7 +523,7 @@ class DraftLifecycleService:
 
         # Pre-create all picks in deterministic order based on round rules.
         team_captain_ranks = {
-            team_by_position[position].id: ranks.captain_rank(rosters[seat.registration_id], seat.captain_role, shape)
+            team_by_position[position].id: ranks.captain_rank(rosters[seat.key], seat.captain_role, shape)
             for position, seat in enumerate(ordered_captains, start=1)
         }
         seats_in_order = [team_by_position[position] for position in sorted(team_by_position)]
@@ -572,7 +585,7 @@ class DraftLifecycleService:
         of the role each captain is seated on -- the number the captain step
         shows next to them.
         """
-        rosters = await self.rosters.pool(session, draft_session.tournament_id)
+        rosters = await self.rosters.pool(session, draft_session)
         if not captain_registration_ids:
             raise _err("draft_no_captains", "Select at least one captain from the pool")
         for registration_id in captain_registration_ids:
@@ -687,18 +700,20 @@ class DraftLifecycleService:
 
     async def start(self, session: AsyncSession, draft_session: DraftSession, *, force: bool = False) -> DraftSession:
         draft_state.validate_transition(DraftStatus(draft_session.status), DraftStatus.LIVE)
-        # Not bypassed by ``force``: no draft forms another formation's teams.
-        await self.assert_draft_formation(session, draft_session.tournament_id)
-        # The phase gate keeps organizers from going live before the tournament
-        # reaches its draft phase. A superuser may bypass it (``force``) to run a
-        # draft out of band — a test run, or a rescue after the schedule drifted.
-        if not force:
-            tournament = await self.tournaments_repo.get_summary_row(session, draft_session.tournament_id)
-            if tournament is None or tournament.status != TournamentStatus.DRAFT.value:
-                raise _err(
-                    "tournament_not_in_draft_phase",
-                    "Draft can only start while the tournament is in the draft phase",
-                )
+        # A mix draft has no tournament to be in a phase (spec §9.1).
+        if draft_session.tournament_id is not None:
+            # Not bypassed by ``force``: no draft forms another formation's teams.
+            await self.assert_draft_formation(session, draft_session.tournament_id)
+            # The phase gate keeps organizers from going live before the tournament reaches its draft phase. A
+            # superuser may bypass it (``force``) to run a draft out of band — a test run, or a rescue after the
+            # schedule drifted.
+            if not force:
+                tournament = await self.tournaments_repo.get_summary_row(session, draft_session.tournament_id)
+                if tournament is None or tournament.status != TournamentStatus.DRAFT.value:
+                    raise _err(
+                        "tournament_not_in_draft_phase",
+                        "Draft can only start while the tournament is in the draft phase",
+                    )
         first = await self.picks_repo.first_upcoming(session, draft_session.id)
         if first is None:
             raise _err("draft_no_picks", "Draft has no picks to start")
@@ -867,7 +882,10 @@ class DraftLifecycleService:
         await self.delete_session(session, draft)
 
     async def rollback(self, session: AsyncSession, draft_session: DraftSession) -> DraftSession:
-        """Rollback the last resolved pick, resetting player/pick states and pausing the draft."""
+        """Rollback the last resolved pick, resetting player/pick states and pausing the draft.
+
+        409 ``rollback_frees_captain`` when the pick seated the player a mix host has since crowned (Replace captain):
+        freed, they would captain the team from the pool. The host crowns a player who stays on the team first."""
         draft_state.validate_transition(DraftStatus(draft_session.status), DraftStatus.PAUSED)
 
         last_resolved = await self.picks_repo.last_resolved(session, draft_session.id)
@@ -879,6 +897,16 @@ class DraftLifecycleService:
         player_ids_to_free = [p.picked_player_id for p in picks_to_revert if p.picked_player_id is not None]
         if player_ids_to_free:
             players = await self.players_repo.bulk_get(session, player_ids_to_free)
+            if draft_session.custom_game_id is not None:
+                captains = {
+                    team.captain_workspace_member_id
+                    for team in await self.teams_repo.list_by_session(session, draft_session.id)
+                }
+                if any(player.workspace_member_id in captains for player in players):
+                    raise _err(
+                        "rollback_frees_captain",
+                        "This pick seated the team's captain: replace the captain with a player who stays, then roll back",
+                    )
             for player in players:
                 player.status = DraftPlayerStatus.AVAILABLE.value
                 player.drafted_by_team_id = None
@@ -929,8 +957,20 @@ class DraftLifecycleService:
         actor_auth_user_id: int,
         **action_kwargs: Any,
     ) -> DraftSession:
-        """Run a status move on the session, journal it and publish ``event_type``."""
+        """Run a status move on the session, journal it and publish ``event_type``.
+
+        A mix draft's move takes the mix row first and re-reads the session under it -- the order the last pick, which
+        writes the lobby's lineup, takes too (``selection``) -- so a move never lands on a draft that finished, or was
+        cancelled, while it waited. Nothing moves a finished mix draft: it IS its lobby's lineup, maybe already on the
+        floor (spec §5.1, §9.4), and a pause or a rollback would reopen it. The host re-forms the lobby instead."""
         draft = await self.get_session(session, session_id)
+        if draft.custom_game_id is not None:
+            await self.custom_games.get(session, draft.custom_game_id, for_update=True)
+            await session.refresh(draft)
+            if draft.status == DraftStatus.COMPLETED.value:
+                raise _err(
+                    "mix_draft_completed", "A finished mix draft is its lobby's lineup: re-form the lobby instead"
+                )
         await action(session, draft, **action_kwargs)
         current = await self.picks_repo.get(session, draft.current_pick_id) if draft.current_pick_id else None
         payload: dict[str, Any] = {"session_id": draft.id, "status": draft.status}
@@ -957,6 +997,7 @@ class DraftLifecycleService:
         await draft_rt.publish_draft_event(
             session, draft_session=draft, event_type=event_type, payload=payload, actor_user_id=actor_auth_user_id
         )
+        await draft_rt.mix_changed(session, draft, actor_user_id=actor_auth_user_id)
         return draft
 
     async def publish_result(

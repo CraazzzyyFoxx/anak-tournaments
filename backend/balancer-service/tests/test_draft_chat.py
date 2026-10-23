@@ -51,7 +51,7 @@ class _Sessions:
     async def get(self, _session: Any, id: int) -> Any:
         if id not in (SESSION_ID, OTHER_SESSION_ID):
             return None
-        return SimpleNamespace(id=id, tournament_id=11, workspace_id=WORKSPACE_ID)
+        return SimpleNamespace(id=id, tournament_id=11, custom_game_id=None, workspace_id=WORKSPACE_ID)
 
 
 class _Teams:
@@ -148,3 +148,36 @@ class DraftChatAccessTests(IsolatedAsyncioTestCase):
             await _access().resolve(object(), STAFF, ChatRoom.draft(404404))
 
         self.assertEqual(caught.exception.status_code, 404)
+
+
+class _MixSessions:
+    async def get(self, _session: Any, id: int) -> Any:
+        return SimpleNamespace(id=id, tournament_id=None, custom_game_id=77, workspace_id=WORKSPACE_ID)
+
+
+class MixDraftChatAccessTests(IsolatedAsyncioTestCase):
+    """A mix draft room (spec §4.4): watched by anyone, its hosts moderate, its captains write."""
+
+    def _access(self) -> chat_access.DraftChatAccess:
+        return chat_access.DraftChatAccess(sessions_repo=_MixSessions(), teams_repo=_Teams(SESSION_ID))
+
+    async def test_a_mix_host_moderates_and_a_captain_writes_under_their_account_name(self) -> None:
+        async def hosts(_session: Any, auth_user: Any, custom_game_id: int) -> bool:
+            return auth_user is STAFF and custom_game_id == 77
+
+        with patch.object(chat_access, "is_mix_host", hosts):
+            staff = await self._access().resolve(object(), STAFF, ChatRoom.draft(SESSION_ID))
+            captain = await self._access().resolve(object(), CAPTAIN, ChatRoom.draft(SESSION_ID))
+
+        self.assertEqual(("staff", True, "organizer"), (staff.role, staff.can_moderate, staff.display_name))
+        self.assertEqual(("captain", True, "cap_account"), (captain.role, captain.can_write, captain.display_name))
+
+    async def test_anybody_else_watches_a_mix_draft_without_a_visibility_gate(self) -> None:
+        async def no_hosts(*_args: Any) -> bool:
+            return False
+
+        with patch.object(chat_access, "is_mix_host", no_hosts):
+            anonymous = await self._access().resolve(object(), None, ChatRoom.draft(SESSION_ID))
+            viewer = await self._access().resolve(object(), VIEWER, ChatRoom.draft(SESSION_ID))
+
+        self.assertEqual((SPECTATOR_ROLE, SPECTATOR_ROLE), (anonymous.role, viewer.role))

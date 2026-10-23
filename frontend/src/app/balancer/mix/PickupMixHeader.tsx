@@ -20,6 +20,7 @@ import { MAX_LOBBIES, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { InlineEditText } from "@/components/kit/InlineEditText";
 import { BanPresetSelect, useBanPresetName } from "@/components/pick-ban/BanPresetSelect";
+import { MixFormationControl } from "@/components/mix/MixFormationControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { IconTooltip } from "@/components/ui/icon-tooltip";
@@ -41,7 +42,8 @@ import { cn } from "@/lib/utils";
 import type {
   CustomGame,
   CustomGameDiscordPost,
-  MixSelfSignup
+  MixSelfSignup,
+  MixTeamFormation
 } from "@/services/custom-game.service";
 
 /** Where an open signup seats a player. `closed` is the other half of the switch. */
@@ -95,6 +97,9 @@ type PickupMixHeaderProps = {
   /** Omitted -- the hero ban preset is shown read-only, as it is to every viewer. */
   onSetBanPreset?: (preset: string | null) => void;
   savingBanPreset?: boolean;
+  /** Omitted -- the formation is shown read-only, as it is to every viewer. */
+  onSetDraftSettings?: (settings: { team_formation: MixTeamFormation; draft_pick_seconds: number }) => void;
+  savingDraftSettings?: boolean;
   /** Omitted -- the Discord menu offers no signup post. */
   onPostSignup?: (selfSignup: "pool" | "benched") => void;
   postingSignup?: boolean;
@@ -135,6 +140,8 @@ export function PickupMixHeader({
   savingSelfService = false,
   onSetBanPreset,
   savingBanPreset = false,
+  onSetDraftSettings,
+  savingDraftSettings = false,
   onPostSignup,
   postingSignup = false,
   onDeleteDiscordPost,
@@ -219,6 +226,23 @@ export function PickupMixHeader({
           <span className="flex shrink-0 items-center gap-1.5 text-caption text-[color:var(--aqt-fg-dim)]">
             {tb("label")}
             <span className="font-semibold text-[color:var(--aqt-fg)]">{banPresetName(game.hero_ban_preset)}</span>
+          </span>
+        )}
+
+        {game == null ? null : canWrite && onSetDraftSettings ? (
+          <MixFormationControl
+            commitOnBlur
+            idPrefix="mix-header"
+            value={{ team_formation: game.team_formation, draft_pick_seconds: game.draft_pick_seconds }}
+            disabled={savingDraftSettings}
+            onChange={onSetDraftSettings}
+          />
+        ) : (
+          <span className="flex shrink-0 items-center gap-1.5 text-caption text-[color:var(--aqt-fg-dim)]">
+            {th("formation")}
+            <span className="font-semibold text-[color:var(--aqt-fg)]">
+              {game.team_formation === "draft" ? th("formationDraft") : th("formationBalance")}
+            </span>
           </span>
         )}
 

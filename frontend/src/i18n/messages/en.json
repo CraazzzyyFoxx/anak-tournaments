@@ -1102,6 +1102,10 @@
       "bans": {
         "label": "Hero bans in new mixes of this game",
         "hint": "Copied into each new mix; change it in the mix's header any time."
+      },
+      "formation": {
+        "label": "Teams in new mixes of this game",
+        "hint": "Copied into each new mix; change it in the mix's header any time."
       }
     },
     "name": {
@@ -6139,12 +6143,14 @@
     "noRoleHint": "This player has no ranked role, so there is nothing to pick them on. Add a rank in the balancer.",
     "noRoleHintViewer": "This player has no ranked role, so they can't be picked.",
     "rankSource": {
+      "author": "Host's rank",
       "registration": "Declared on registration",
       "workspace": "Workspace rank",
       "native": "Overwatch rank",
       "none": "No rank source"
     },
     "rankSourceShort": {
+      "author": "HOST",
       "registration": "REG",
       "workspace": "WS",
       "native": "OW",
@@ -7846,6 +7852,10 @@
       "shuffleTitle": "Shuffle all lobbies?",
       "shuffleDescription": "The result of a lineup on screen has not been recorded. Splitting the pool again replaces every lobby, and there will be nothing left to record it from.",
       "shuffleConfirm": "Shuffle anyway",
+      "splitPool": "Split pool",
+      "splitTitle": "Split the pool again?",
+      "splitDescription": "The result of a lineup on screen has not been recorded. Splitting the pool again starts a draft in every lobby, and there will be nothing left to record it from.",
+      "splitConfirm": "Split anyway",
       "dropTitle": "Close {letters}?",
       "dropDescription": "{letters}: teams and matchups are deleted, and every pin onto them is cleared. Matches already recorded stay in the history and in the leaderboard.",
       "dropConfirm": "Close {letters}",
@@ -7868,7 +7878,11 @@
       "deleteTitle": "Delete this mix?",
       "deleteDescription": "Permanently removes {name} and every match it recorded. This cannot be undone -- unlike Close, there is no way back to it afterwards.",
       "thisMix": "this mix",
-      "deleteConfirm": "Delete permanently"
+      "deleteConfirm": "Delete permanently",
+      "formation": "Teams",
+      "formationBalance": "Balancer",
+      "formationDraft": "Captain draft",
+      "pickSeconds": "Draft pick clock, seconds"
     },
     "start": {
       "title": "Get this mix going",
@@ -7937,7 +7951,9 @@
         "idle": "Idle",
         "ready": "Ready",
         "pregame": "Pre-game",
-        "live": "Live"
+        "live": "Live",
+        "draft_setup": "Draft setup",
+        "draft_live": "Draft"
       },
       "elapsed": "{minutes} min",
       "startMatch": "Start match",
@@ -7965,6 +7981,12 @@
       "teamWin": "{team} win",
       "draw": "Draw",
       "balance": "Balance",
+      "draft": "Draft",
+      "buildWithBalancer": "Build with balancer",
+      "moreActions": "More lobby actions",
+      "draftReformTitle": "Draft this lobby again?",
+      "draftReformDescription": "The result of the lineup on screen has not been recorded. Drafting replaces it, and there will be nothing left to record it from.",
+      "draftReformConfirm": "Draft anyway",
       "shortSeats": "{count} of {need} players",
       "gap": "gap {gap}",
       "openRoom": "Open room",
@@ -7993,6 +8015,19 @@
       "notRolled": "Not rolled yet",
       "rollMode": "Roll within mode",
       "roll": "Roll"
+    },
+    "draft": {
+      "captainOf": "Captain of {team}",
+      "startDraft": "Start draft",
+      "cancelDraft": "Cancel draft",
+      "cancelTitle": "Cancel this draft?",
+      "cancelDescription": "The lobby goes back to idle and keeps no teams. Picks made so far are discarded.",
+      "cancelConfirm": "Yes, cancel the draft",
+      "addPlayer": "Add a waiting player",
+      "yourPickTitle": "● Your pick",
+      "seeded": "Draft ready: check the captains, then start it",
+      "started": "Draft started",
+      "cancelled": "Draft cancelled"
     },
     "access": {
       "description": "Who else can edit this mix, and who owns it.",

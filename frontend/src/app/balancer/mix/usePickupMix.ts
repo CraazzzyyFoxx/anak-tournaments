@@ -14,6 +14,7 @@ import {
   type CustomGamePlayerPatch,
   type MixSelfSignup,
   type MixSelfState,
+  type MixTeamFormation,
   type MixVoicePatch,
 } from "@/services/custom-game.service";
 
@@ -83,6 +84,7 @@ export function usePickupMix(
   const queryClient = useQueryClient();
   const tVoiceError = useTranslations("mixes.voice.errors");
   const tRoom = useTranslations("mixes.room");
+  const tDraft = useTranslations("mixes.draft");
   const tToast = useTranslations("mixes.toast");
 
   // Every open mix of the workspace, whatever its game: the voice panel names the channels this workspace's OTHER
@@ -555,6 +557,53 @@ export function usePickupMix(
     onError: (error) => notify.apiError(error),
   });
 
+  /** The mix's team formation and pick clock. Returns the game, like every host write. */
+  const setDraftSettings = useMutation({
+    mutationFn: (settings: { team_formation: MixTeamFormation; draft_pick_seconds: number }) =>
+      customGameService.setDraftSettings(workspaceId, selectedGameId as number, settings),
+    onSuccess: applyGame,
+    onError: (error) => notify.apiError(error),
+  });
+
+  /** Draft: the lobby re-formed as a captain draft (spec §9.2). The variables are the lobby, so only its card spins. */
+  const seedDraft = useMutation({
+    mutationFn: (lobbyIndex: number) => customGameService.seedDraft(workspaceId, selectedGameId as number, lobbyIndex),
+    onSuccess: (game) => {
+      applyGame(game);
+      notify.success(tDraft("seeded"));
+    },
+    onError: (error) => notify.apiError(error),
+  });
+
+  const splitPool = useMutation({
+    mutationFn: () => customGameService.splitPool(workspaceId, selectedGameId as number),
+    onSuccess: (game) => {
+      applyGame(game);
+      notify.success(tDraft("seeded"));
+    },
+    onError: (error) => notify.apiError(error),
+  });
+
+  const replaceDraftCaptain = useMutation({
+    mutationFn: (input: { lobbyIndex: number; teamId: number; playerId: number }) =>
+      customGameService.replaceDraftCaptain(
+        workspaceId,
+        selectedGameId as number,
+        input.lobbyIndex,
+        input.teamId,
+        input.playerId,
+      ),
+    onSuccess: applyGame,
+    onError: (error) => notify.apiError(error),
+  });
+
+  const addDraftPlayer = useMutation({
+    mutationFn: (input: { lobbyIndex: number; workspaceMemberId: number }) =>
+      customGameService.addDraftPlayer(workspaceId, selectedGameId as number, input.lobbyIndex, input.workspaceMemberId),
+    onSuccess: applyGame,
+    onError: (error) => notify.apiError(error),
+  });
+
   /**
    * Opens signup and hands the card to the bot. The mix's own `self_signup`
    * moves server-side, so the board is refetched; the message itself is
@@ -662,6 +711,11 @@ export function usePickupMix(
     setMyAway,
     setSelfService,
     setBanPreset,
+    setDraftSettings,
+    seedDraft,
+    splitPool,
+    replaceDraftCaptain,
+    addDraftPlayer,
     postSignup,
     deleteDiscordPost,
     setVoiceChannels,

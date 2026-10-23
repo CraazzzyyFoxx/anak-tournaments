@@ -1,13 +1,15 @@
 "use client";
 
 import { useId, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslations } from "next-intl";
 
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
 import { Button } from "@/components/ui/button";
 import { notify } from "@/lib/notify";
+import { tournamentQueryKeys } from "@/lib/tournament/query-keys";
+import draftService from "@/services/draft.service";
 import type { DraftBoard } from "@/types/draft.types";
-import type { DraftLifecycleAction } from "@/hooks/useDraftData";
 import { useDraftMutations } from "@/hooks/useDraftData";
 
 interface LifecycleControlsProps {
@@ -17,7 +19,7 @@ interface LifecycleControlsProps {
   resumeBlocked?: boolean;
 }
 
-type ConfirmedAction = Extract<DraftLifecycleAction, "rollback" | "cancel" | "export"> | "autopick";
+type ConfirmedAction = "rollback" | "cancel" | "export" | "autopick";
 
 /**
  * The control room's lifecycle actions: pause and resume fire at once (both
@@ -30,9 +32,14 @@ export function LifecycleControls({ tournamentId, board, resumeBlocked = false }
   const t = useTranslations("draftAdmin.controlRoom");
   const tDraft = useTranslations("draftAdmin");
   const resumeReasonId = useId();
-  const mutations = useDraftMutations(tournamentId);
+  const mutations = useDraftMutations(tournamentQueryKeys.draftBoard(tournamentId));
   const [confirmedAction, setConfirmedAction] = useState<ConfirmedAction | null>(null);
   const session = board.session;
+  const queryClient = useQueryClient();
+  const exportMutation = useMutation({
+    mutationFn: () => draftService.exportDraft(tournamentId, session.id),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: tournamentQueryKeys.draftBoard(tournamentId) }),
+  });
   const currentPick = board.current_pick;
   const resolvedCount = board.picks.filter((pick) =>
     ["completed", "autopicked", "skipped"].includes(pick.status)
@@ -66,21 +73,26 @@ export function LifecycleControls({ tournamentId, board, resumeBlocked = false }
       );
       return;
     }
+    // Only an export answers with advisories; the other verbs just confirm.
+    const notifyResult = (advisories: string[]) => {
+      const showResult = advisories.length ? notify.warning : notify.success;
+      showResult(t(`actionSuccess.${action}`), {
+        description: advisories.join("\n"),
+        duration: advisories.length ? Infinity : undefined,
+        classNames: { description: "whitespace-pre-line" }
+      });
+      setConfirmedAction(null);
+    };
+    if (action === "export") {
+      exportMutation.mutate(undefined, {
+        onSuccess: (result) => notifyResult(result.advisories),
+        onError: (error) => notify.apiError(error)
+      });
+      return;
+    }
     mutations.lifecycle.mutate(
       { sessionId: session.id, action },
-      {
-        onSuccess: (result) => {
-          const advisories = "advisories" in result ? result.advisories : [];
-          const showResult = advisories.length ? notify.warning : notify.success;
-          showResult(t(`actionSuccess.${action}`), {
-            description: advisories.join("\n"),
-            duration: advisories.length ? Infinity : undefined,
-            classNames: { description: "whitespace-pre-line" }
-          });
-          setConfirmedAction(null);
-        },
-        onError: (error) => notify.apiError(error)
-      }
+      { onSuccess: () => notifyResult([]), onError: (error) => notify.apiError(error) }
     );
   };
 
@@ -135,7 +147,7 @@ export function LifecycleControls({ tournamentId, board, resumeBlocked = false }
           confirmLabel: confirmedAction ? t(`actions.${confirmedAction}`) : "",
           tone: confirmedAction === "cancel" ? "danger" : "warning"
         }}
-        pending={mutations.lifecycle.isPending || mutations.autopick.isPending}
+        pending={mutations.lifecycle.isPending || mutations.autopick.isPending || exportMutation.isPending}
         onConfirm={runConfirmed}
       />
     </>

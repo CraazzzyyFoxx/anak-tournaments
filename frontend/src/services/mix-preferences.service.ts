@@ -36,6 +36,8 @@ export type MixBalancerPreferences = {
   rating_mode: MixRatingMode;
   /** Per game (discipline code): the hero ban preset a new mix of that game starts with; an absent game, none. */
   hero_ban_presets: Record<string, string>;
+  /** Per game (discipline code): how a new mix of that game forms its teams, and the draft's pick clock; absent = balancer, 30 s. */
+  formation_defaults: Record<string, { team_formation: "balance" | "draft"; draft_pick_seconds: number }>;
 };
 
 /** The two ways a host's rank book reacts to a recorded match. */

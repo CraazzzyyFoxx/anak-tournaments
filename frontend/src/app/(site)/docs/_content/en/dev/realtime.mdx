@@ -69,12 +69,12 @@ A topic name is always `<kind>:<id>:<domain>`; the domain may itself contain a c
 | --- | --- | --- |
 | `tournament:{id}:invalidation` | Names of the tournament resources that went stale | Same as viewing the tournament |
 | `tournament:{id}:bracket` | Tournament bracket | Same as viewing the tournament |
-| `tournament:{id}:draft` | Live draft, plus presence | Same as viewing the tournament |
 | `tournament:{id}:streams` | Stream live statuses | Same as viewing the tournament |
 | `tournament:{id}:balancer` | Balancer jobs and roster edits, plus presence | Member of the tournament's workspace; superuser |
 | `encounter:{id}:map-veto` | The encounter's map ban and pick | Same as viewing the encounter's tournament |
 | `encounter:{id}:pick-ban:hero` | The encounter's hero ban and pick | Same as viewing the encounter's tournament |
 | `encounter:{id}:chat` | Pre-game room chat | Room participant, or a spectator while reading is open |
+| `draft:{session_id}:board` | Live draft board of a tournament or a mix lobby, plus presence | A tournament's: same as viewing the tournament; a mix lobby's: public |
 | `draft:{session_id}:chat` | Draft room chat | Room participant, or a spectator while reading is open |
 | `workspace:{id}:invalidation` | Names of the workspace resources that went stale | Workspace member; superuser |
 | `workspace:{id}:logs` | Match-log processing | Workspace member; superuser |
@@ -116,7 +116,7 @@ The log is not infinite: persisted invalidation events are deleted after seven d
 
 The pre-game room chat and the draft room chat run on their own topics (`encounter:{id}:chat`, `draft:{session_id}:chat`) with the events `chat.message`, `chat.message_deleted`, `chat.muted`, `chat.unmuted` and `chat.visibility_changed`. All of them are ephemeral: history lives in the message table and is read with ordinary requests — `GET /api/v1/encounters/{encounter_id}/chat` and `GET /api/v1/balancer/draft/sessions/{session_id}/chat` with an `after_id` parameter. Posting, deleting, mutes and settings are HTTP too, not the socket; the socket only delivers.
 
-Access: a captain of either side and the organizing workspace's staff always get in, and so does a superuser. Everyone else is a spectator, admitted only while the room has spectator reading switched on. A draft room has it on by default, a pre-game room off. The hidden-tournament rule still applies on top: an open chat never makes a hidden tournament visible.
+Access: a captain of either side and the organizing workspace's staff always get in, and so does a superuser. Everyone else is a spectator, admitted only while the room has spectator reading switched on. A draft room has it on by default, a pre-game room off. The hidden-tournament rule still applies on top: an open chat never makes a hidden tournament visible. A mix lobby's draft room has neither the staff branch nor the hidden-tournament rule: its captains and the mix's host and co-hosts always get in, everyone else only while spectator reading is on.
 
 <Callout type="warning">
 When an organizer switches spectator reading off, the gateway does not wait for a resubscribe: it re-checks every live subscriber of the room, drops the subscription for those who no longer qualify, and sends them an `error` frame with code `forbidden`. A client must handle losing a subscription at any moment, not only in response to `subscribe`.
@@ -128,7 +128,7 @@ When an organizer switches spectator reading off, the gateway does not wait for 
 
 ## Presence
 
-Topics ending in `:balancer` and `:draft` broadcast presence: on every subscribe and unsubscribe all of their subscribers receive an ephemeral `balancer.presence` or `draft.presence` event with `user_ids` (sorted ids of the authenticated subscribers) and `anonymous_viewer_count`.
+Topics ending in `:balancer` and draft boards (`draft:{session_id}:board`) broadcast presence: on every subscribe and unsubscribe all of their subscribers receive an ephemeral `balancer.presence` or `draft.presence` event with `user_ids` (sorted ids of the authenticated subscribers) and `anonymous_viewer_count`.
 
 ## Errors
 

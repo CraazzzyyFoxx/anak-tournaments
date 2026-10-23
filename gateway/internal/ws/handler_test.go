@@ -260,7 +260,7 @@ func TestWS_FanoutAndPresence(t *testing.T) {
 func TestWS_DraftPresenceIncludesAuthenticatedUsersAndAnonymousViewerCount(t *testing.T) {
 	url := newServer(t, allowAuthorizer{allow: true}, fakeReplayer{cursor: 0})
 	ctx := context.Background()
-	const topic = "tournament:1:draft"
+	const topic = "draft:1:board"
 
 	authenticated := dial(t, ctx, url, mintToken(t, "7"))
 	writeJSON(t, ctx, authenticated, map[string]any{"op": "subscribe", "topic": topic})
