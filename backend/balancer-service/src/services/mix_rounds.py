@@ -38,6 +38,7 @@ from shared.repository import (
     CustomGameRoundRepository,
     EncounterGameRepository,
     EncounterGameTeamRepository,
+    EncounterReadinessRepository,
     EncounterRepository,
     ScoringRuleRepository,
 )
@@ -49,6 +50,7 @@ __all__ = ("MixMatchDraft", "MixMatchSeat", "MixResultDraft", "record_mix_result
 
 _encounters = EncounterRepository()
 _games = EncounterGameRepository()
+_readiness = EncounterReadinessRepository()
 _game_teams = EncounterGameTeamRepository()
 _rules = ScoringRuleRepository()
 _rounds = CustomGameRoundRepository()
@@ -153,7 +155,9 @@ async def start_mix_match(session: AsyncSession, draft: MixMatchDraft) -> models
             ],
         )
         # Ready at once, bans or not (spec §5.1 step 4): the room's open rule stays the tournament one.
-        session.add(models.EncounterReadiness(encounter_id=encounter.id, encounter_team_id=participation.id))
+        await _readiness.create(
+            session, models.EncounterReadiness(encounter_id=encounter.id, encounter_team_id=participation.id)
+        )
     await _games.create(
         session,
         models.EncounterGame(
