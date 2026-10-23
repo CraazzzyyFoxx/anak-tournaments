@@ -29,7 +29,7 @@ from src.services.workspace_roster import RosterMember  # noqa: E402
 def _service(provider_seen: list) -> CustomGameService:
     async def load_roster(_session, *, workspace_id, provider, member_ids):
         provider_seen.append(provider)
-        handle = {"riot": "Riot Name#EUW", "battlenet": "Battle#1234"}[provider]
+        handle = {"riot": "Riot Name#EUW", "battlenet": "Battle#1234", "steam": "Steam Name"}[provider]
         return {
             member_id: RosterMember(
                 member_id=member_id,
@@ -153,7 +153,7 @@ class WithRosterIdentityTests(IsolatedAsyncioTestCase):
         service.mix_rounds = SimpleNamespace(seats=AsyncMock(return_value=[seat(7), seat(8)]))
         wide = (await service.mix_stats(object(), workspace_id=9, discipline=None, since=None))["members"]
         self.assertEqual(service.mix_rounds.seats.await_args.kwargs["discipline"], None)
-        self.assertEqual(sorted(set(seen)), ["battlenet", "riot"])
+        self.assertEqual(sorted(set(seen)), ["battlenet", "riot", "steam"])
         self.assertEqual({row["workspace_member_id"] for row in wide}, {7, 8})
         self.assertTrue(all(row["identity"] is not None for row in wide))
 
