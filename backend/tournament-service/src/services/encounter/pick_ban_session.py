@@ -43,16 +43,18 @@ from shared.core.enums import (
 )
 from shared.core.errors import ApiExc
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import rated_role_codes
 from shared.domain import pick_ban_engine as engine
 from shared.domain import pick_ban_rules as pbr
 from shared.domain.encounter_scoring import GameLine, ScoringRules, resolve_placements
 from shared.domain.pick_ban_config import has_pool, pick_config
 from shared.models.catalog.entity import CatalogEntity
+from shared.models.catalog.role import CatalogRole
 from shared.models.encounter.encounter import Encounter
 from shared.models.encounter.game import EncounterGame
 from shared.models.encounter.pick_ban import PickBanEntry, PickBanSession
 from shared.models.encounter.readiness import EncounterReadiness
-from shared.models.encounter.team import EncounterTeam
+from shared.models.encounter.team import EncounterTeam, EncounterTeamMember, EncounterTeamMemberRole
 from shared.models.tournament.pick_ban import PickBanConfig
 from shared.repository import (
     BracketEncounterRepository,
@@ -74,7 +76,7 @@ from src.services.encounter.games import (
 )
 from src.services.encounter.realtime_commit import emit_pick_ban_update
 from src.services.encounter.room_journal import record_room_event
-from src.services.encounter.room_owner import mix_ban_config
+from src.services.encounter.room_owner import mix_ban_config, mix_fearless_exclusions
 from src.services.encounter.room_reconcile import request_room_reconcile
 from src.services.encounter.veto_session import (
     REASON_BRACKET_PREVIEW,
@@ -312,6 +314,50 @@ async def load_item_groups(
         )
         slugs = {row[0]: row[1] for row in rows.all()}
     return {row[0]: slugs.get(row[1]) for row in maps}
+
+
+@dataclass(frozen=True, slots=True)
+class MemberSeat:
+    """One seated member of a mix match as a member step names it (``encounter.team_member``)."""
+
+    id: int
+    team_id: int
+    name: str
+
+
+async def load_member_seats(session: AsyncSession, encounter: Encounter) -> list[MemberSeat]:
+    """A mix match's seated members in pick order (spec §11.6 R4-2): the rated role's declaration order (LoL top,
+    jungle, mid, bot, support under ``positions_5v5``), then the lineup's seat order -- the order the snapshot was
+    written in. Empty for a tournament encounter: member steps are a mix's only (R4-6)."""
+    if encounter.custom_game_id is None:
+        return []
+    role_order = {code: index for index, code in enumerate(rated_role_codes(encounter.discipline))}
+    rows = await session.execute(
+        select(
+            EncounterTeamMember.id,
+            EncounterTeamMember.encounter_team_id,
+            EncounterTeamMember.display_name_snapshot,
+            CatalogRole.code,
+        )
+        .outerjoin(EncounterTeamMemberRole, EncounterTeamMemberRole.team_member_id == EncounterTeamMember.id)
+        .outerjoin(CatalogRole, CatalogRole.id == EncounterTeamMemberRole.role_id)
+        .where(EncounterTeamMember.encounter_id == encounter.id, EncounterTeamMember.active.is_(True))
+    )
+    best: dict[int, tuple[int, int, str]] = {}
+    for member_id, team_id, name, role in rows.all():
+        order = role_order.get(role, len(role_order))
+        if member_id not in best or order < best[member_id][0]:
+            best[member_id] = (order, team_id, name)
+    ordered = sorted(best.items(), key=lambda item: (item[1][0], item[0]))
+    return [MemberSeat(member_id, team_id, name) for member_id, (_order, team_id, name) in ordered]
+
+
+def members_by_team(seats: Sequence[MemberSeat]) -> dict[int, list[int]]:
+    """``{participation: its members in pick order}`` -- what ``resolve_round``/``bind_members`` read."""
+    grouped: dict[int, list[int]] = {}
+    for seat in seats:
+        grouped.setdefault(seat.team_id, []).append(seat.id)
+    return grouped
 
 
 @dataclass(frozen=True, slots=True)
@@ -777,6 +823,11 @@ class PickBanSessionService:
 
         config, teams, pool = plan.config, plan.teams, plan.pool
         participants = [team.id for team in teams]
+        seats = await load_member_seats(session, encounter)
+        if encounter.custom_game_id is not None:
+            # Fearless (spec §11.4): taken once, when the room opens -- like the pool, a running room never re-reads it.
+            exclusions = await mix_fearless_exclusions(session, encounter)
+            pool = {**pool, "exclusions": {str(member): sorted(heroes) for member, heroes in exclusions.items()}}
         seeds = await resolve_seeds(session, encounter, teams)
         now = datetime.now(UTC)
         progressive = bool(pool["progressive"])
@@ -808,6 +859,7 @@ class PickBanSessionService:
             best_of=encounter.best_of,
             pool_size=pool_size,
             candidate_count=len(candidates),
+            members=members_by_team(seats),
         )
 
         pick_ban = PickBanSession(

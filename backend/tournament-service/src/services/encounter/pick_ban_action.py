@@ -28,6 +28,7 @@ queue every spectator behind the captains and behind each other.
 from __future__ import annotations
 
 import secrets
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -58,9 +59,12 @@ from src.services.bracket.usability import is_encounter_live
 from src.services.encounter import pick_ban_undo
 from src.services.encounter.games import OPEN_STATES, EncounterGameService, encounter_game_service
 from src.services.encounter.pick_ban_session import (
+    MemberSeat,
     PickBanSessionService,
     assert_not_paused,
     load_item_groups,
+    load_member_seats,
+    members_by_team,
     pick_ban_session_service,
     resolved_steps,
     step_clock,
@@ -87,6 +91,14 @@ def _source_of(viewer: int | None) -> str:
 _CAPTAIN_ACTIONS = ("ban", "pick", "protect", "side_pick")
 
 
+def _item(item: Mapping[str, Any]) -> dict[str, Any]:
+    """One answered item as the log stores and serves it: ``member_id`` only on an assignment's items."""
+    stored = {"item_id": int(item["item_id"]), "target_player_id": item.get("target_player_id")}
+    if item.get("member_id") is not None:
+        stored["member_id"] = int(item["member_id"])
+    return stored
+
+
 # ── serialization ────────────────────────────────────────────────────────────
 
 
@@ -101,6 +113,8 @@ def serialize_pick_ban_entry(entry: PickBanEntry) -> dict[str, Any]:
         # participation, every other kind is the engine or an organizer.
         "picked_by_kind": entry.picked_by_kind,
         "picked_by_team_id": entry.picked_by_team_id,
+        # Whose hero a pick is: a mix member step's member, or whom an assignment gave it to (spec §11.6 R4-11).
+        "picked_for_member_id": entry.picked_for_member_id,
         "protected_by_kind": entry.protected_by_kind,
         "protected_by_team_id": entry.protected_by_team_id,
         "status": entry.status,
@@ -138,12 +152,11 @@ def serialize_submission(row: pbr.SubmissionLike) -> dict[str, Any]:
     return {
         "step_index": row.step_index,
         "encounter_team_id": row.encounter_team_id,
+        #: The member a member step's answer is for; null for a team step.
+        "team_member_id": row.team_member_id,
         "attempt": row.attempt,
         "state": row.state,
-        "items": [
-            {"item_id": int(item["item_id"]), "target_player_id": item.get("target_player_id")}
-            for item in (row.items_json or [])
-        ],
+        "items": [_item(item) for item in (row.items_json or [])],
     }
 
 
@@ -208,10 +221,18 @@ class _Runtime:
     #: ``{participation: its own roster}``. ``RuntimeCtx.targets`` flips it (a
     #: participation names the OPPONENT's players).
     rosters: dict[int, list[Player]] = field(default_factory=dict)
+    #: A mix match's seated members in pick order (``load_member_seats``); empty in a tournament.
+    seats: list[MemberSeat] = field(default_factory=list)
+    #: ``{member: heroes they may not pick}`` -- the session's Fearless snapshot (``pool_json["exclusions"]``).
+    exclusions: dict[int, frozenset[int]] = field(default_factory=dict)
 
     @property
     def participants(self) -> list[int]:
         return [team.id for team in self.teams]
+
+    @property
+    def members(self) -> dict[int, list[int]]:
+        return members_by_team(self.seats)
 
 
 class PickBanActionService:
@@ -247,6 +268,9 @@ class PickBanActionService:
         rosters: dict[int, list[Player]] = {}
         if any(step.target is not None for step in steps):
             rosters = await self._load_rosters(session, teams, encounter.discipline)
+        seats = await load_member_seats(session, encounter)
+        snapshot = dict(pick_ban.pool_json or {}).get("exclusions") or {}
+        exclusions = {int(member): frozenset(heroes) for member, heroes in snapshot.items()}
         return _Runtime(
             pick_ban=pick_ban,
             encounter=encounter,
@@ -256,6 +280,8 @@ class PickBanActionService:
             submissions=submissions,
             groups=groups,
             rosters=rosters,
+            seats=seats,
+            exclusions=exclusions,
         )
 
     async def _load_rosters(
@@ -310,6 +336,8 @@ class PickBanActionService:
             groups=rt.groups,
             history=pbr.history_of(rt.steps, rt.submissions),
             targets=targets,
+            members=rt.members,
+            exclusions=rt.exclusions,
         )
 
     # -- sides -------------------------------------------------------------
@@ -411,6 +439,8 @@ class PickBanActionService:
             rt.steps[index] = step.model_copy(update={"actors": actors})
             bound = True
         if bound:
+            # A member step bound to a side owes its members only now (spec §11.6 R4-2: ``lol_draft``'s picks).
+            rt.steps = pbr.bind_members(rt.steps, rt.members)
             rt.pick_ban.resolved_sequence_json = [step.to_json() for step in rt.steps]
         return bound
 
@@ -505,20 +535,20 @@ class PickBanActionService:
         items: list[dict[str, Any]],
         *,
         state: str,
+        member: int | None = None,
     ) -> PickBanSubmission:
-        """Create or replace ``actor``'s live submission for this step."""
+        """Create or replace ``actor``'s -- on a member step, ``member``'s -- live submission for this step."""
         attempt = self._writable_attempt(rt, step.index)
-        row = pbr.actor_submission(rt.submissions, step.index, actor)
+        row = pbr.actor_submission(rt.submissions, step.index, actor, member)
         now = datetime.now(UTC)
-        normalized = [
-            {"item_id": int(item["item_id"]), "target_player_id": item.get("target_player_id")} for item in items
-        ]
+        normalized = [_item(item) for item in items]
         if row is None:
             row = PickBanSubmission(
                 session_id=rt.pick_ban.id,
                 encounter_id=rt.encounter.id,
                 step_index=step.index,
                 encounter_team_id=actor,
+                team_member_id=member,
                 attempt=attempt,
                 state=state,
                 items_json=normalized,
@@ -537,8 +567,8 @@ class PickBanActionService:
     @staticmethod
     def _reveal(rt: _Runtime, step: pbr.ResolvedStep) -> None:
         now = datetime.now(UTC)
-        for actor in step.actors:
-            row = pbr.actor_submission(rt.submissions, step.index, actor)
+        for actor, member in step.answers:
+            row = pbr.actor_submission(rt.submissions, step.index, actor, member)
             if row is None or row.state == pbr.REVEALED:
                 continue
             row.state = pbr.REVEALED
@@ -615,23 +645,39 @@ class PickBanActionService:
                 changed = True
                 continue
             if step.index == timed_index and step.on_timeout != "wait" and self._expired(rt.pick_ban, step):
+                owing: list[tuple[int, int | None]] = []
+                for actor, member in step.answers:
+                    row = pbr.actor_submission(rt.submissions, step.index, actor, member)
+                    if actor is not None and (row is None or row.state not in (pbr.LOCKED, pbr.REVEALED)):
+                        owing.append((actor, member))
+                # A member step's stand-ins are matched jointly, across both teams (spec §11.6 R4-9): a hero is the
+                # match's once, so one member's random hero must never strand another's.
+                joint = (
+                    pbr.fill_member_answers(
+                        step, [(actor, member) for actor, member in owing if member is not None], self._ctx(rt, step)
+                    )
+                    if step.member is not None and step.on_timeout == "random_fill"
+                    else {}
+                )
                 stood_in: list[int] = []
-                for actor in step.acting_actors:
-                    row = pbr.actor_submission(rt.submissions, step.index, actor)
-                    if row is not None and row.state in (pbr.LOCKED, pbr.REVEALED):
-                        continue
+                for actor, member in owing:
+                    row = pbr.actor_submission(rt.submissions, step.index, actor, member)
                     items = list(row.items_json or []) if row is not None else []
                     if step.action == "side_pick":
                         # A side nobody chose is a coin flip, which is what the
                         # rules call for; ``random_fill`` has no items to draw on.
                         items = [{"item_id": self._coin_flip_side(rt), "target_player_id": None}]
+                    elif member is not None and step.on_timeout == "random_fill":
+                        items = joint[(actor, member)]
                     elif step.on_timeout == "random_fill":
+                        # A team's draft topped up at random; an assignment, a random matching (R4-9).
                         items = pbr.random_fill(step, actor, items, self._ctx(rt, step))
                     # Force-lock ignores `min`: standing in for a captain who
                     # never answered must not be blocked by what they owed.
-                    self._write(session, rt, step, actor, items, state=pbr.LOCKED)
+                    self._write(session, rt, step, actor, items, state=pbr.LOCKED, member=member)
                     pbr.project_entries(rt.entries, rt.steps, rt.submissions)
-                    stood_in.append(actor)
+                    if actor not in stood_in:
+                        stood_in.append(actor)
                 await record_room_event(
                     session,
                     rt.encounter.id,
@@ -722,22 +768,25 @@ class PickBanActionService:
         everything afresh. Callers refuse a played position first."""
         attempt = pbr.current_attempt(rt.submissions, step.index)
         side_pick = step.action == "side_pick"
-        previous: dict[int, list[dict[str, Any]]] = {}
+        previous: dict[tuple[int, int | None], list[dict[str, Any]]] = {}
         for row in rt.submissions:
             if row.step_index != step.index or row.attempt != attempt or row.state == pbr.VOIDED:
                 continue
             if row.encounter_team_id is not None:
-                previous[row.encounter_team_id] = [dict(item) for item in (row.items_json or [])]
+                previous[(row.encounter_team_id, row.team_member_id)] = [dict(item) for item in (row.items_json or [])]
             row.state = pbr.VOIDED
-        for actor in step.acting_actors:
+        for actor, member in step.answers:
+            if actor is None:
+                continue
             row = PickBanSubmission(
                 session_id=rt.pick_ban.id,
                 encounter_id=rt.encounter.id,
                 step_index=step.index,
                 encounter_team_id=actor,
+                team_member_id=member,
                 attempt=attempt + 1,
                 state=pbr.DRAFT,
-                items_json=previous.get(actor, []) if step.blind else [],
+                items_json=previous.get((actor, member), []) if step.blind else [],
             )
             self.submission_repo.add(session, row)
             rt.submissions.append(row)
@@ -762,13 +811,16 @@ class PickBanActionService:
         touched = [
             step
             for step in rt.steps
-            if any(pbr.actor_submission(rt.submissions, step.index, actor) is not None for actor in step.actors)
+            if any(
+                pbr.actor_submission(rt.submissions, step.index, actor, member) is not None
+                for actor, member in step.answers
+            )
         ]
         if not touched:
             return None
         latest = touched[-1]
-        for actor in latest.actors:
-            row = pbr.actor_submission(rt.submissions, latest.index, actor)
+        for actor, member in latest.answers:
+            row = pbr.actor_submission(rt.submissions, latest.index, actor, member)
             if row is None or row.state != pbr.REVEALED:
                 return None
         return latest
@@ -806,7 +858,7 @@ class PickBanActionService:
         return step
 
     @staticmethod
-    def _require_turn(rt: _Runtime, step: pbr.ResolvedStep, actor: int) -> None:
+    def _require_turn(rt: _Runtime, step: pbr.ResolvedStep, actor: int, member: int | None = None) -> None:
         if actor not in step.acting_actors:
             names = {team.id: team.name for team in rt.teams}
             whose = " and ".join(names.get(other, str(other)) for other in step.acting_actors) or "nobody"
@@ -814,7 +866,15 @@ class PickBanActionService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"It's {whose}'s turn, not {names.get(actor, actor)}'s",
             )
-        row = pbr.actor_submission(rt.submissions, step.index, actor)
+        if step.member is not None and (actor, member) not in step.answers:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Name a member of your team who owes this pick"
+            )
+        if step.member is None and member is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="This step is the team's, not a member's"
+            )
+        row = pbr.actor_submission(rt.submissions, step.index, actor, member)
         if row is not None and row.state in (pbr.LOCKED, pbr.REVEALED):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Your answer to this step is already locked"
@@ -831,12 +891,14 @@ class PickBanActionService:
         item_id: int,
         action: str,
         target_player_id: int | None = None,
+        member_id: int | None = None,
         viewer: int | None = ACTING_VIEWER,
         actor_auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         """One item onto an OPEN step's submission. A blind step is answered
         with :meth:`submit_items` instead -- appending one item at a time to a
-        draft nobody may see would leak its size through the progress counter."""
+        draft nobody may see would leak its size through the progress counter.
+        On a mix's member step ``member_id`` names whom the hero is for (spec §11.6 R4-1)."""
         # ``viewer`` is the admin discriminator this module already runs on
         # (see ACTING_VIEWER): an organizer acting FOR a seat passes it as None.
         encounter, pick_ban = await self._lock(session, encounter_id, kind, captain=viewer == ACTING_VIEWER)
@@ -848,24 +910,37 @@ class PickBanActionService:
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="This step is blind -- submit the whole draft instead",
             )
+        if step.action == "assign":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This step assigns the team's heroes -- submit the whole assignment instead",
+            )
         if action != step.action:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail=f"Expected action '{step.action}', got '{action}'"
             )
-        self._require_turn(rt, step, encounter_team_id)
+        self._require_turn(rt, step, encounter_team_id, member_id)
 
-        row = pbr.actor_submission(rt.submissions, step.index, encounter_team_id)
+        row = pbr.actor_submission(rt.submissions, step.index, encounter_team_id, member_id)
         items = [dict(item) for item in (row.items_json or [])] if row is not None else []
         items.append({"item_id": item_id, "target_player_id": target_player_id})
         if step.action == "side_pick":
             self._assert_side_choice(rt, item_id)
         else:
-            issues = pbr.validate_items(step, encounter_team_id, items, self._ctx(rt, step), final=False)
+            issues = pbr.validate_items(
+                step, encounter_team_id, items, self._ctx(rt, step), final=False, member=member_id
+            )
             if issues:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=", ".join(issues))
 
         self._write(
-            session, rt, step, encounter_team_id, items, state=pbr.LOCKED if len(items) >= step.count else pbr.DRAFT
+            session,
+            rt,
+            step,
+            encounter_team_id,
+            items,
+            state=pbr.LOCKED if len(items) >= step.count else pbr.DRAFT,
+            member=member_id,
         )
         await record_room_event(
             session,
@@ -884,6 +959,7 @@ class PickBanActionService:
                 "action": action,
                 "item_id": item_id,
                 "target_player_id": target_player_id,
+                **({"member_id": member_id} if member_id is not None else {}),
             },
         )
         # Any open undo consent was given against the action that WAS last; this
@@ -922,19 +998,20 @@ class PickBanActionService:
         actor_auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         """Replace a BLIND step's draft, optionally locking it. A locked draft
-        is final: the step reveals the moment every acting participation has one."""
+        is final: the step reveals the moment every acting participation has one.
+        A mix's assignment step (open, spec §11.6 R4-1) is answered here too, each item naming its ``member_id``."""
         encounter, pick_ban = await self._lock(session, encounter_id, kind, captain=viewer == ACTING_VIEWER)
         rt = await self._load(session, pick_ban, encounter, refresh=True)
         await self._settle(session, rt)
         step = self._require_step(rt)
-        if not step.blind:
+        if not step.blind and step.action != "assign":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="This step is open -- take it one item at a time",
             )
         self._require_turn(rt, step, encounter_team_id)
 
-        draft = [{"item_id": int(item["item_id"]), "target_player_id": item.get("target_player_id")} for item in items]
+        draft = [_item(item) for item in items]
         issues = pbr.validate_items(step, encounter_team_id, draft, self._ctx(rt, step), final=lock)
         if issues:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=", ".join(issues))
