@@ -11,7 +11,9 @@ defaults to false.
 
 The downgrade leaves nothing pre-П4 code cannot read: it deletes every room whose ruleset holds a member step or an
 assignment (their entries and submissions cascade), then any member answer left -- under the old key two members of
-one team would collide -- and unsets the pick presets a mix or a lobby names. Tournament rooms hold neither.
+one team would collide -- and unsets the pick presets a mix or a lobby names, and drops them from the hosts' per-game
+defaults (``balancer.user_config.hero_ban_presets``; the old prefs validator refuses them). Tournament rooms hold
+neither.
 """
 
 from __future__ import annotations
@@ -81,6 +83,12 @@ def downgrade() -> None:
     )
     op.execute(f"UPDATE mix.custom_game SET hero_ban_preset = NULL WHERE hero_ban_preset IN {_PICK_PRESETS}")
     op.execute(f"UPDATE mix.lobby SET live_ban_preset = NULL WHERE live_ban_preset IN {_PICK_PRESETS}")
+    op.execute(
+        "UPDATE balancer.user_config SET hero_ban_presets = ("
+        "SELECT coalesce(jsonb_object_agg(key, value), '{}'::jsonb) FROM jsonb_each(hero_ban_presets)"
+        f" WHERE value #>> '{{}}' NOT IN {_PICK_PRESETS})"
+        f" WHERE EXISTS (SELECT 1 FROM jsonb_each_text(hero_ban_presets) WHERE value IN {_PICK_PRESETS})"
+    )
     op.drop_column("custom_game", "hero_fearless", schema="mix")
     op.drop_constraint("fk_pick_ban_entry_picked_for", "pick_ban_entry", schema="encounter", type_="foreignkey")
     op.drop_column("pick_ban_entry", "picked_for_member_id", schema="encounter")
