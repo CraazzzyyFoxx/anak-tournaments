@@ -599,9 +599,12 @@ describe("MixBanBoard", () => {
     await render(() => (refreshes += 1));
     expect(give("Hero 101", "P0")?.getAttribute("aria-pressed")).toBe("true");
     expect(give("Hero 101", "P1")?.getAttribute("aria-pressed")).toBe("false");
-    expect(byLabel(en.pickBan.room.assign.lock)?.disabled).toBe(false);
+    expect(give("Hero 102", "P1")?.disabled).toBe(false);
+    // Not lockable until every player has a hero.
+    expect(byLabel(en.pickBan.room.assign.lock)?.disabled).toBe(true);
 
     await act(async () => give("Hero 102", "P1")?.click());
+    expect(byLabel(en.pickBan.room.assign.lock)?.disabled).toBe(false);
     await act(async () => byLabel(en.pickBan.room.assign.lock)?.click());
     await settle();
 
@@ -716,5 +719,24 @@ describe("MixBanBoard", () => {
     expect(room.pending()).toBe(0);
     const row = room.server().submissions.find((submission) => submission.encounter_team_id === 71);
     expect(row?.items.map((item) => [item.member_id, item.item_id])).toEqual([[501, 101]]);
+  });
+
+  it("holds the board still while its Lock is in flight", async () => {
+    serve(
+      submitDraft,
+      assigning({ "501": [101, 102], "502": [101, 102] }),
+      (state, input: PickBanSubmitInput) => afterAssign(state, 71, input),
+      true,
+    );
+    await render(() => {});
+
+    await act(async () => give("Hero 101", "P0")?.click());
+    await act(async () => give("Hero 102", "P1")?.click());
+    await act(async () => byLabel(en.pickBan.room.assign.lock)?.click());
+    await settle();
+
+    const heroes = [...document.body.querySelectorAll<HTMLButtonElement>('[aria-label^="Give Hero"]')];
+    expect(heroes).toHaveLength(4);
+    expect(heroes.every((button) => button.disabled)).toBe(true);
   });
 });

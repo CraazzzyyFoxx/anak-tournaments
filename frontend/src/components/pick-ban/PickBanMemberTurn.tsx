@@ -85,6 +85,8 @@ export function PickBanAssignBoard({
     teams: {}
   });
   const saveTimers = useRef<Record<number, number>>({});
+  // Teams whose Lock is in flight: their board holds still, so a refused lock can roll back no newer edit.
+  const [lockingTeams, setLockingTeams] = useState<number[]>([]);
   // The queue's lifecycle: a closed (unmounted) board sends nothing it still had queued.
   const open = useRef(false);
   useEffect(() => {
@@ -126,7 +128,10 @@ export function PickBanAssignBoard({
     },
     onError: (error, { teamId, revision, lock }) => {
       const team = teamSave(teamId);
-      if (lock) team.locking = false;
+      if (lock) {
+        team.locking = false;
+        setLockingTeams((current) => current.filter((id) => id !== teamId));
+      }
       // Moot: the refusal of an autosave a newer edit replaced, or one the lock overtook.
       else if (team.locking || team.revision !== revision) return;
       // Refused: the server's saved assignment is the board again.
@@ -135,7 +140,6 @@ export function PickBanAssignBoard({
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey })
   });
-  const locking = submit.isPending && submit.variables?.lock === true;
   /** Queues a team's autosave behind its earlier ones; when its turn comes it sends the newest edit, unless a turn
    * before already did, the team is locking, or the board has closed. */
   const queueSave = (teamId: number) => {
@@ -166,6 +170,7 @@ export function PickBanAssignBoard({
     const team = teamSave(teamId);
     if (team.locking) return;
     team.locking = true;
+    setLockingTeams((current) => [...current, teamId]);
     window.clearTimeout(saveTimers.current[teamId]);
     submit.mutate({ teamId, picks, lock: true, revision: team.revision });
   };
@@ -186,6 +191,7 @@ export function PickBanAssignBoard({
         ) : null}
         {teams.map((teamId) => {
           const members = state.members.filter((member) => member.encounter_team_id === teamId);
+          const teamLocking = lockingTeams.includes(teamId);
           const picks: Record<number, number> =
             (edits.step === stepIndex ? edits.teams[teamId] : undefined) ??
             Object.fromEntries(
@@ -205,6 +211,7 @@ export function PickBanAssignBoard({
                       key={heroId}
                       type="button"
                       size="sm"
+                      disabled={teamLocking}
                       variant={picks[member.id] === heroId ? "default" : "outline"}
                       aria-pressed={picks[member.id] === heroId}
                       aria-label={t("assign.give", { hero: heroName(heroId), member: member.name })}
@@ -223,10 +230,10 @@ export function PickBanAssignBoard({
               <Button
                 size="sm"
                 className="self-start"
-                disabled={Object.keys(picks).length === 0 || locking}
+                disabled={teamLocking || !members.every((member) => picks[member.id] != null)}
                 onClick={() => lockTeam(teamId, picks)}
               >
-                {locking ? <Spinner className="mr-2" /> : null}
+                {teamLocking ? <Spinner className="mr-2" /> : null}
                 {t("assign.lock")}
               </Button>
             </section>
