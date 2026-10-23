@@ -334,6 +334,26 @@ class MixPickPermissionTests(MixPickRoomCase):
         self.assertEqual(["P0", "P1", "P2", "P3"], [member["name"] for member in spectator["members"]])
         self.assertNotIn(self.picks[0], spectator["member_eligible"][str(seat["m0"])])
 
+    async def test_a_captain_late_in_pick_order_is_answered_with_their_own_seat_first(self) -> None:
+        async with self.Session() as s:
+            # Slot 2's crown moves to m3, who picks after m2.
+            await s.execute(
+                sa.update(models.EncounterTeamMember)
+                .where(models.EncounterTeamMember.encounter_team_id == self.seats[1])
+                .values(is_captain=models.EncounterTeamMember.workspace_member_id == self.ids["m3"])
+            )
+            await s.commit()
+        await self.open_room()
+        for who, hero in zip(("p0", "p3", "p0"), self.heroes[:3], strict=True):
+            self.assertTrue((await self.captain_ban(who, hero))["ok"])
+        seat = await self.member_seats()
+
+        # The last team ban opens the members' pick: the captain's answer already reads it as the room does.
+        answer = await self.captain_ban("p3", self.heroes[3])
+
+        self.assertEqual([seat["m3"], seat["m2"]], answer["data"]["viewer_member_ids"])
+        self.assertEqual(answer["data"]["viewer_member_ids"], (await self.read("p3"))["viewer_member_ids"])
+
 
 class TournamentMemberIdTests(RoomCase):
     """A tournament seat names no members (R-F5): ``member_id`` is a 422 for its captain and its organizer alike,

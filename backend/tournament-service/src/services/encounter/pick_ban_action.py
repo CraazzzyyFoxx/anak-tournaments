@@ -906,12 +906,14 @@ class PickBanActionService:
         target_player_id: int | None = None,
         member_id: int | None = None,
         viewer: int | None = ACTING_VIEWER,
+        viewer_member: int | None = None,
         actor_auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         """One item onto an OPEN step's submission. A blind step is answered
         with :meth:`submit_items` instead -- appending one item at a time to a
         draft nobody may see would leak its size through the progress counter.
-        On a mix's member step ``member_id`` names whom the hero is for (spec §11.6 R4-1)."""
+        On a mix's member step ``member_id`` names whom the hero is for (spec §11.6 R4-1); ``viewer_member`` is the
+        acting account's own mix seat, which the answer reads the room as (see :meth:`get_pick_ban_state`)."""
         # ``viewer`` is the admin discriminator this module already runs on
         # (see ACTING_VIEWER): an organizer acting FOR a seat passes it as None.
         encounter, pick_ban = await self._lock(session, encounter_id, kind, captain=viewer == ACTING_VIEWER)
@@ -981,7 +983,11 @@ class PickBanActionService:
         pick_ban_undo.clear_undo_request(pick_ban)
         await self._commit(session, rt, kind)
         return await self.get_pick_ban_state(
-            session, encounter_id, kind, viewer=encounter_team_id if viewer == ACTING_VIEWER else viewer
+            session,
+            encounter_id,
+            kind,
+            viewer=encounter_team_id if viewer == ACTING_VIEWER else viewer,
+            viewer_member=viewer_member,
         )
 
     def _assert_side_choice(self, rt: _Runtime, item_id: int) -> None:
@@ -1009,11 +1015,13 @@ class PickBanActionService:
         items: list[dict[str, Any]],
         lock: bool,
         viewer: int | None = ACTING_VIEWER,
+        viewer_member: int | None = None,
         actor_auth_user_id: int | None = None,
     ) -> dict[str, Any]:
         """Replace a BLIND step's draft, optionally locking it. A locked draft
         is final: the step reveals the moment every acting participation has one.
-        A mix's assignment step (open, spec §11.6 R4-1) is answered here too, each item naming its ``member_id``."""
+        A mix's assignment step (open, spec §11.6 R4-1) is answered here too, each item naming its ``member_id``;
+        ``viewer_member`` is as for :meth:`perform_pick_ban_action`."""
         encounter, pick_ban = await self._lock(session, encounter_id, kind, captain=viewer == ACTING_VIEWER)
         self._require_mix_members(encounter, [item.get("member_id") for item in items])
         rt = await self._load(session, pick_ban, encounter, refresh=True)
@@ -1050,7 +1058,11 @@ class PickBanActionService:
         pick_ban_undo.clear_undo_request(pick_ban)
         await self._commit(session, rt, kind)
         return await self.get_pick_ban_state(
-            session, encounter_id, kind, viewer=encounter_team_id if viewer == ACTING_VIEWER else viewer
+            session,
+            encounter_id,
+            kind,
+            viewer=encounter_team_id if viewer == ACTING_VIEWER else viewer,
+            viewer_member=viewer_member,
         )
 
     async def dispute_step(

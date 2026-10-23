@@ -283,9 +283,10 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             body = PickBanActionInput.model_validate(_payload(data))
             encounter = await load_room_encounter(session, encounter_id, for_update=True)
-            participation, is_captain = await captain_service.acting_seat(session, user, encounter, body.member_id)
-            # Returns the acting captain's own new state: the room re-renders
-            # from the response instead of racing its own refetch.
+            participation, is_captain, own = await captain_service.acting_seat(session, user, encounter, body.member_id)
+            # Returns the acting captain's own new state, read as the GET reads
+            # it (their own seat first): the room re-renders from the response
+            # instead of racing its own refetch.
             state = await pick_ban_action.pick_ban_action_service.perform_pick_ban_action(
                 session,
                 encounter_id,
@@ -295,14 +296,14 @@ def register(broker: Any, logger: Any) -> None:
                 action=body.action,
                 target_player_id=body.target_player_id,
                 member_id=body.member_id,
+                viewer_member=own,
                 actor_auth_user_id=user.id,
             )
             if is_captain:
                 return state
             # A member who is not the captain reads the room as themselves, never as their team's captain.
-            viewer, viewer_member = await resolve_optional_viewer(session, user, encounter)
             return await pick_ban_action.pick_ban_action_service.get_pick_ban_state(
-                session, encounter_id, kind, viewer=viewer, viewer_member=viewer_member
+                session, encounter_id, kind, viewer=None, viewer_member=own
             )
 
         return await _run(logger, op)
@@ -315,7 +316,7 @@ def register(broker: Any, logger: Any) -> None:
             encounter_id = _require_id(data)
             body = PickBanSubmitInput.model_validate(_payload(data))
             encounter = await load_room_encounter(session, encounter_id, for_update=True)
-            participation, _player_id = await captain_service.captain_seat(session, user, encounter)
+            participation, _is_captain, own = await captain_service.acting_seat(session, user, encounter, None)
             return await pick_ban_action.pick_ban_action_service.submit_items(
                 session,
                 encounter_id,
@@ -323,6 +324,7 @@ def register(broker: Any, logger: Any) -> None:
                 participation.id,
                 items=[item.model_dump() for item in body.items],
                 lock=body.lock,
+                viewer_member=own,
                 actor_auth_user_id=user.id,
             )
 

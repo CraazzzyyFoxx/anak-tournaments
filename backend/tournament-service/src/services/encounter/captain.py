@@ -224,17 +224,22 @@ class CaptainService:
 
     async def acting_seat(
         self, session: AsyncSession, auth_user: models.AuthUser, encounter: Encounter, member_id: int | None
-    ) -> tuple[EncounterTeam, bool]:
-        """The seat this account acts for on a pick-ban step, and whether it captains it (spec §11.3, §11.6 R4-9).
+    ) -> tuple[EncounterTeam, bool, int | None]:
+        """``(seat, is_captain, own seat)`` this account acts for on a pick-ban step (spec §11.3, §11.6 R4-9): the
+        own seat is ``resolve_participant``'s, which the action's answer reads the room as.
 
         Without ``member_id`` the step is the team's and only its captain acts. With one -- a mix's member pick --
         the member themselves or their team's captain acts; anyone else, a member of the other team included, is a
         403. A tournament seat names no members: its captain is resolved as ever and the action service refuses the
         ``member_id`` (422), the one check the organizer route shares. Hosts act through the organizer route."""
-        if member_id is None or encounter.custom_game_id is None:
-            seat, _player_id = await self.captain_seat(session, auth_user, encounter)
-            return seat, True
         seat, _player_id, is_captain, own = await self.resolve_participant(session, auth_user, encounter)
+        if member_id is None or encounter.custom_game_id is None:
+            if not is_captain:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="You do not captain any team in this encounter",
+                )
+            return seat, True, own
         team = await session.scalar(
             sa.select(models.EncounterTeamMember.encounter_team_id).where(
                 models.EncounterTeamMember.id == member_id,
@@ -246,7 +251,7 @@ class CaptainService:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="You pick for yourself, or as captain for your own team"
             )
-        return seat, is_captain
+        return seat, is_captain, own
 
     # -- reads -------------------------------------------------------------
     async def _position_map_ids(self, session: AsyncSession, encounter_id: int) -> dict[int, int]:
