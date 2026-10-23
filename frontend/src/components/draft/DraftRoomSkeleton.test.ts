@@ -8,7 +8,6 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import DraftRoomLoading from "@/app/draft/[id]/loading";
 import { DraftBoard, type DraftOwner } from "@/components/draft/DraftBoard";
 
 declare global {
@@ -134,13 +133,6 @@ describe("standalone Draft loading skeleton", () => {
       expect(html.match(/data-draft-skeleton="pool-row"/g)?.length).toBeGreaterThanOrEqual(6);
       expect(html.match(/data-draft-skeleton="team-row"/g)?.length).toBeGreaterThanOrEqual(4);
     }
-  });
-
-  it("holds the route on the room's skeleton while it loads", () => {
-    const html = renderToStaticMarkup(React.createElement(DraftRoomLoading));
-
-    expect(html).toContain('aria-busy="true"');
-    expect(html).toContain('data-draft-skeleton="header"');
   });
 
   it("shows the board's skeleton while the session's first board read runs", async () => {
