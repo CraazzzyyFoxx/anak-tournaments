@@ -16,7 +16,8 @@ form stores the three it shows, so a five-position order set on the site comes b
 and does not keep the hidden positions.
 
 Each lobby captain gets one notification, in the bell and as a Discord direct message (the DM only if the
-**Matches** switch is on), linking the lobby's room:
+**Matches** switch is on), linking the lobby's room on the platform host, so the bell's link opens from any
+community's host too:
 
 - **Ban room:** sent only when Start match requests the room, that is, when the mix has a ban preset (Side selection
   included) and the lobby a two-team lineup. A Start without bans sends nothing.
@@ -48,7 +49,7 @@ Back and the lobby stages.
 | Self state (`rpc.balancer.custom.self_*`, the site's `…/me`): `discipline`, `discipline_roles`, `discipline_flex` | additive |
 | Discord `custom_id`: `mix.setup` target `<game>-<discipline>-<order>-<flex>`; seat form `mix.seat_set:<game>-<discipline>` | **breaking** for panels and forms open at deploy |
 | Discord actions `mix.away`, `mix.back` → `rpc.balancer.custom.self_away` | new |
-| Notification kinds `mix.ban_room_opened`, `mix.draft_started` (`{custom_game_id, mix_name, lobby}`, DM group `matches`, link `/balancer/mix/<id>/lobby/<letter>`) | new |
+| Notification kinds `mix.ban_room_opened`, `mix.draft_started` (`{custom_game_id, mix_name, lobby}`, DM group `matches`, link `/balancer/mix/<id>/lobby/<letter>` on the platform host, in the bell and the DM) | new |
 | `pickup_mix_changed` also produced by tournament-service (`change: "pick_ban"`); `emit_pickup_mix_changed` now `shared.services.pickup_mix_realtime` | new producer / internal move |
 
 ## Not in this release
