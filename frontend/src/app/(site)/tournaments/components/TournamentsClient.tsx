@@ -260,17 +260,6 @@ const TournamentsClient = ({
         totalTeams={disciplineFilter === null ? (overall?.teams ?? 0) : null}
       />
 
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 className="m-0 font-display text-title font-bold text-[color:var(--aqt-fg)]">
-          {t("tournamentsList.heading.all")}
-        </h2>
-        {/* The size of the result set, named: "77 shown" sat above twelve cards
-            and read as a claim about the screen. */}
-        <span className="aqt-tnum text-caption text-[color:var(--aqt-fg-muted)]">
-          {t("tournamentsList.heading.count", { count: matchedTotal })}
-        </span>
-      </div>
-
       <FeaturedLive groups={liveGroups} />
 
       <TournamentsFilters

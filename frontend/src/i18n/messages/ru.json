@@ -2246,10 +2246,6 @@
     "meta": {
       "description": "Турниры на {siteName}."
     },
-    "heading": {
-      "all": "Все турниры",
-      "count": "{count, plural, one {# турнир} few {# турнира} many {# турниров} other {# турнира}}"
-    },
     "row": {
       "bracketAria": "Сетка турнира {name}"
     },

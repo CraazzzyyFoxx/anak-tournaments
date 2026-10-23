@@ -2246,10 +2246,6 @@
     "meta": {
       "description": "View tournaments on {siteName}."
     },
-    "heading": {
-      "all": "All tournaments",
-      "count": "{count, plural, one {# tournament} other {# tournaments}}"
-    },
     "row": {
       "bracketAria": "Bracket for {name}"
     },
