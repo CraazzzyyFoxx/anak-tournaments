@@ -21,8 +21,8 @@ from faststream.rabbit import RabbitBroker, TestRabbitBroker  # noqa: E402
 from loguru import logger  # noqa: E402
 
 from shared.messaging.config import (  # noqa: E402
-    CACHE_INVALIDATION_APP_QUEUE,
     CACHE_INVALIDATION_EXCHANGE,
+    CACHE_INVALIDATION_STATS_QUEUE,
 )
 from shared.services.cache_generations import current  # noqa: E402
 from shared.services.realtime.consumer import register_invalidation_consumer  # noqa: E402
@@ -30,7 +30,7 @@ from shared.testing.cache import configure_test_cache  # noqa: E402
 
 # The real topology: the binding pattern is part of what these tests pin.
 EXCHANGE = CACHE_INVALIDATION_EXCHANGE
-QUEUE = CACHE_INVALIDATION_APP_QUEUE
+QUEUE = CACHE_INVALIDATION_STATS_QUEUE
 
 
 def _event(**overrides: object) -> dict:

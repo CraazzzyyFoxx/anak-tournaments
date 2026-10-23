@@ -160,8 +160,8 @@ class RankOverviewGameBoundFilterTests(IsolatedAsyncioTestCase):
         identity = _identity(WORKSPACE_ID, "organizer", ("team", "read"), ("team", "update"))
         cases = (
             ({"role": ["tank"]}, "role"),
-            ({"rank_min": ["1000"]}, "rank_min"),
-            ({"rank_max": ["3000"]}, "rank_max"),
+            ({"div_min": ["1"]}, "div_min"),
+            ({"div_max": ["3"]}, "div_max"),
             ({"sort": ["rank_value"]}, "sort=rank_value"),
             ({"sort": ["division"]}, "sort=division"),
         )
@@ -177,6 +177,26 @@ class RankOverviewGameBoundFilterTests(IsolatedAsyncioTestCase):
                 assert response["ok"] is False, response
                 assert response["error"]["code"] == "unprocessable"
                 assert response["error"]["message"] == f"{name} requires discipline"
+        page.assert_not_awaited()
+
+    async def test_inverted_division_bounds_are_a_400(self) -> None:
+        broker = _CapturingBroker()
+        ranks_rpc.register(broker, _FakeLogger())
+        page = AsyncMock(return_value=([], 0))
+        identity = _identity(WORKSPACE_ID, "organizer", ("team", "read"), ("team", "update"))
+        query = {"discipline": ["overwatch"], "div_min": ["3"], "div_max": ["2"]}
+        with (
+            patch.object(ranks_rpc, "_SF", _FakeSession),
+            patch.object(ranks_rpc.rank_overview_queries, "page", page),
+            patch.object(ranks_rpc, "_games", AsyncMock(return_value=["overwatch"])),
+        ):
+            response = await broker.handlers[SUBJECT](
+                {"workspace_id": WORKSPACE_ID, "identity": identity, "query": query}, None
+            )
+        assert response["ok"] is False, response
+        assert response["error"]["code"] == "bad_request"
+        assert response["error"]["message"] == "div_min must be less than or equal to div_max."
+        assert response["error"]["details"]["fields"][0]["code"] == "invalid_filter"
         page.assert_not_awaited()
 
 
@@ -746,9 +766,6 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
         rows, total = await self._page(layers=("native",), roles=("tank",))
         assert total == 1 and rows[0]["rank_value"] == 3000
 
-        _rows, total = await self._page(rank_min=2600)
-        assert total == len([r for r in (await self._page())[0] if r["rank_value"] >= 2600])
-
         first, total = await self._page(sort="rank_value", order="desc", per_page=1, page=1)
         second, _ = await self._page(sort="rank_value", order="desc", per_page=1, page=2)
         assert total > 2
@@ -757,6 +774,62 @@ class RankOverviewQueryTests(IsolatedAsyncioTestCase):
 
         empty, total = await self._page(player_id=self.player_id + 10_000_000)
         assert (empty, total) == ([], 0)
+
+    async def test_division_bounds_filter_on_the_workspace_grid(self) -> None:
+        """``div_min``/``div_max`` are tier numbers on the workspace grid, 1 = top, inclusive: the top tier is
+        open-ended and every rank below the floor tier counts in the floor division."""
+        async with self.Session() as session:
+            grid = models.DivisionGrid(
+                workspace_id=self.workspace_id, slug="bands", name="Bands", discipline="overwatch"
+            )
+            version = models.DivisionGridVersion(
+                grid=grid,
+                version=1,
+                label="Bands",
+                status="published",
+                tiers=[
+                    models.DivisionGridTier(
+                        slug=slug,
+                        number=number,
+                        name=slug,
+                        sort_order=number,
+                        rank_min=low,
+                        rank_max=high,
+                        icon_url="/tier.png",
+                    )
+                    for slug, number, low, high in (
+                        ("top", 1, 2600, None),
+                        ("mid", 2, 2200, 2599),
+                        ("floor", 3, 2100, 2199),
+                    )
+                ],
+            )
+            session.add(version)
+            await session.flush()
+            session.add(
+                models.WorkspaceDivisionGridDefault(
+                    workspace_id=self.workspace_id, discipline="overwatch", version_id=version.id
+                )
+            )
+            await session.flush()
+
+            async def kept(**bounds) -> list[tuple[int, int]]:
+                rows, total = await rank_overview_queries.page(
+                    session,
+                    workspace_id=self.workspace_id,
+                    disciplines=("overwatch",),
+                    filters=RankOverviewFilters(
+                        layers=("canon", "author", "registration", "tournament", "casual"), per_page=200, **bounds
+                    ),
+                )
+                assert total == len(rows)
+                return sorted((row["rank_value"], row["division"]) for row in rows)
+
+            assert await kept() == [(1800, 3), (2050, 3), (2100, 3), (2200, 2), (2500, 2), (2700, 1)]
+            assert await kept(div_max=1) == [(2700, 1)]
+            assert await kept(div_min=2, div_max=2) == [(2200, 2), (2500, 2)]
+            assert await kept(div_min=3) == [(1800, 3), (2050, 3), (2100, 3)]
+            await session.rollback()
 
     async def test_handler_answers_a_json_serializable_envelope(self) -> None:
         """The whole RPC path: query parsing, the union, and the wire body.

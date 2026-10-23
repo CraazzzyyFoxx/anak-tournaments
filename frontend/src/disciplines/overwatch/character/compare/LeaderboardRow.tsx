@@ -4,12 +4,11 @@ import { useTranslations } from "next-intl";
 
 import DivisionIcon from "@/components/DivisionIcon";
 import { HandleLabel } from "@/components/HandleLabel";
-import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { getDivisionLabel } from "@/lib/divisions/grid";
 import { formatSeconds } from "@/lib/format";
 import { getPlayerSlug } from "@/lib/player";
 import { cn } from "@/lib/utils";
-import type { DivisionGridVersion } from "@/types/workspace.types";
+import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 
 import { beatsShare, heatTier, type RankedEntry } from "./board";
 import RankBadge from "./RankBadge";
@@ -41,15 +40,15 @@ const HEAT: Record<0 | 1 | 2 | 3 | 4, string> = {
   0: "font-medium text-[color:var(--aqt-fg-faint)]"
 };
 
-/** The player's division crest on the grid the number belongs to, its tier name in the tooltip (DESIGN.md). */
+/** The player's division crest on the grid the number belongs to, its tier name in the tooltip (DESIGN.md); none without a division. */
 const DivisionCrest = ({
   division,
   grid,
   discipline
-}: Readonly<{ division: number; grid: DivisionGridVersion | null; discipline: string }>) => {
+}: Readonly<{ division: number | null; grid: DivisionGridVersion | DivisionGrid; discipline: string }>) => {
   const t = useTranslations();
-  const workspaceGrid = useDivisionGrid(discipline);
-  const name = getDivisionLabel(grid ?? workspaceGrid, division) ?? t("common.divisionWithId", { id: String(division) });
+  if (division === null) return null;
+  const name = getDivisionLabel(grid, division) ?? t("common.divisionWithId", { id: String(division) });
   return (
     <span title={name} className="inline-flex size-5 shrink-0 items-center justify-center">
       <DivisionIcon division={division} tournamentGrid={grid} discipline={discipline} width={20} height={20} />
@@ -60,8 +59,8 @@ const DivisionCrest = ({
 interface LeaderboardRowProps {
   ranked: RankedEntry;
   cells: StatCellSpec[];
-  /** The grid this row's `div` is a number on (`null`: the workspace grid of the game). */
-  grid: DivisionGridVersion | null;
+  /** The grid this row's `div` is a number on: its own version, else the read's grid. */
+  grid: DivisionGridVersion | DivisionGrid;
   discipline: string;
   isHighlighted: boolean;
   onHoverUser: (userId: number | null) => void;

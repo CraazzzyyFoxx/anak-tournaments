@@ -35,7 +35,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from shared.disciplines.overwatch import analytics as ow_analytics
-from shared.division_grid import DEFAULT_GRID
+from shared.division_grid import DEFAULT_GRID, canonical_division_number
 from shared.domain.analytics import align_features
 from src.core import config
 from src.services.ml.features.aggregations import build_match_features_with_strength
@@ -75,7 +75,6 @@ _ow = SimpleNamespace(
     detect_trolls=exports.detect_trolls,
     detect_sandbags=exports.detect_sandbags,
     detect_throws=exports.detect_throws,
-    canonical_division_number=exports.canonical_division_number,
     build_match_features=build_match_features_with_strength,
     build_shift_frame=build_shift_feature_frame,
     build_forecast_frame=build_standings_forecast_frame,
@@ -255,7 +254,7 @@ def _fitted_performance(models: dict, frame: pd.DataFrame) -> dict:
     per_player["impact_score"] = _ow.impact_score_within_role(per_player)
     ranks = frame.groupby("player_id", dropna=False)["rank"].first().to_dict()
     per_player["division"] = per_player["player_id"].map(
-        lambda player_id: _ow.canonical_division_number(DEFAULT_GRID, int(ranks.get(player_id, 0) or 0))
+        lambda player_id: canonical_division_number(DEFAULT_GRID, int(ranks.get(player_id, 0) or 0), DEFAULT_GRID)
     )
     per_player = _ow.attach_local_performance(per_player)
     out["local"] = _frame(per_player)

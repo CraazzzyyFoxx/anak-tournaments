@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import discipline as discipline_spec
+from shared.division_grid import stamp_canonical_numbers
 from shared.domain.division_grid_defaults import (
     TIER_FIELDS,
     default_grid_plan,
@@ -58,6 +59,8 @@ async def create_workspace_grid(
         label, tiers = default_version_label(discipline), native_ladder_tiers(discipline)
     else:
         label, tiers = source.label, [{field: getattr(tier, field) for field in TIER_FIELDS} for tier in source.tiers]
+    tier_rows = [DivisionGridTier(**tier) for tier in tiers]
+    stamp_canonical_numbers(tier_rows, discipline)
     grid = DivisionGrid(
         workspace_id=workspace_id,
         discipline=discipline,
@@ -70,7 +73,7 @@ async def create_workspace_grid(
                 label=label,
                 status="published",
                 published_at=datetime.now(UTC),
-                tiers=[DivisionGridTier(**tier) for tier in tiers],
+                tiers=tier_rows,
             )
         ]
         if tiers

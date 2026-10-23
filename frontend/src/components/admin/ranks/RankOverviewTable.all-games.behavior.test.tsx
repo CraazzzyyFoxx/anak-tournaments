@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 //
 // `/admin/ranks` under "all games" (spec §6.8): every enabled game's rows with a game column, the game chip leading
-// the bar, role and rank-range filters only once a game is picked, and no rank-value sort (the values live on
+// the bar, role and division-range filters only once a game is picked, and no rank-value sort (the values live on
 // different grids).
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
@@ -182,12 +182,13 @@ afterEach(async () => {
   document.body.innerHTML = "";
 });
 
-it("reads every game: no game, role or rank range on the wire, even from leftover URL filters", async () => {
+it("reads every game: no game, role or division range on the wire, even from leftover URL filters", async () => {
   await render("?role=tank&div_min=1");
 
   expect(lastParams().discipline).toBeUndefined();
   expect(lastParams().role ?? []).toEqual([]);
-  expect(lastParams().rankMin).toBeUndefined();
+  expect(lastParams().divMin).toBeUndefined();
+  expect(container.querySelector('button[aria-label^="filters.divisions"]')).toBeNull();
 });
 
 it("adds a game column and leads the bar with the game chip, without the game-bound filters", async () => {
@@ -205,14 +206,8 @@ it("offers role and division range once a game is picked", async () => {
   game = "overwatch";
   await render("?discipline=overwatch&role=tank");
 
-  expect(await offeredFilters()).toEqual([
-    "column",
-    "filters.layer",
-    "filters.role",
-    "filters.divisionMin",
-    "filters.divisionMax",
-    "filters.differsFromCanon"
-  ]);
+  expect(container.querySelector('button[aria-label^="filters.divisions"]')).not.toBeNull();
+  expect(await offeredFilters()).toEqual(["column", "filters.layer", "filters.role", "filters.differsFromCanon"]);
   expect(lastParams()).toMatchObject({ discipline: "overwatch", role: ["tank"] });
 });
 

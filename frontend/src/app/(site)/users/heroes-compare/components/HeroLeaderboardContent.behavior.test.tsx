@@ -7,7 +7,7 @@ import { act } from "react";
 import { createRoot, hydrateRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { NextIntlClientProvider } from "next-intl";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 
 import messages from "@/i18n/messages/en.json";
 import { ApiError } from "@/lib/api/error";
@@ -15,7 +15,8 @@ import { disciplineQueryKeys } from "@/lib/site/discipline-query-keys";
 import type { GameScopeInit } from "@/lib/site/discipline-scope";
 import { useWorkspaceStore } from "@/stores/workspace.store";
 import { catalogEntity } from "@/test/catalog";
-import { LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
+import { disciplineServiceMock, LOL_METADATA, OW_METADATA } from "@/test/discipline-metadata";
+import { TEST_LADDER_TIERS } from "@/test/native-ladder";
 import { navigation } from "@/test/url-navigation";
 import { PillPick } from "@/test/pill-pick";
 
@@ -150,21 +151,21 @@ describe("hero leaderboard selection", () => {
     expect(mocks.leaderboard).not.toHaveBeenCalled();
   });
 
-  it("shows a player's division crest from the grid the row names, its tier in the tooltip", async () => {
+  it("shows an all-communities player's division crest from the game's native ladder, its tier in the tooltip", async () => {
+    const tier = TEST_LADDER_TIERS.find((entry) => entry.number === 4)!;
+    const read = disciplineServiceMock.default.metadata;
+    const metadata = vi
+      .spyOn(disciplineServiceMock.default, "metadata")
+      .mockImplementation(async (axis, code) =>
+        code === "overwatch" ? { ...OW_METADATA, native_ladder: TEST_LADDER_TIERS } : read(axis, code)
+      );
+    onTestFinished(() => metadata.mockRestore());
     mocks.getEntity.mockResolvedValue(catalogEntity({ id: 7, name: "Ana", attrs: { class: "support" } }));
-    // An all-communities board: this player's 4 is a number on their own tournament's ladder, not the workspace's.
+    // An all-communities board: every tournament's tier is mapped onto the game's own ladder, so the row names no
+    // grid version and the page ships no grids.
     mocks.leaderboard.mockResolvedValue({
-      results: [{ ...OW_ROW, div: 4, division_grid_version_id: 77 }],
-      division_grids: [
-        {
-          id: 77, grid_id: 1, version: 1, label: "Ladder", status: "published", created_from_version_id: null,
-          published_at: null,
-          tiers: [
-            { id: 1, version_id: 77, slug: "gold-2", number: 4, name: "Gold 2", sort_order: 4, rank_min: 0, rank_max: null,
-              icon_url: "https://cdn.test/gold-2.png" }
-          ]
-        }
-      ],
+      results: [{ ...OW_ROW, div: 4, division_grid_version_id: null }],
+      division_grids: [],
       total: 1,
       page: 1,
       per_page: -1
@@ -173,8 +174,8 @@ describe("hero leaderboard selection", () => {
     await mount("/users/heroes-compare?hero_id=7&discipline=overwatch");
     await settleUntil(() => container.textContent!.includes("ow-ranked"));
 
-    const crest = container.querySelector<HTMLElement>('[title="Gold 2"]');
-    expect(crest?.querySelector("img")?.getAttribute("alt")).toBe("Gold 2");
+    const crest = container.querySelector<HTMLElement>(`[title="${tier.name}"]`);
+    expect(crest?.querySelector("img")?.getAttribute("alt")).toBe(tier.name);
   });
 
   it("a game picked in the scope pill drops the picked hero and tournament", async () => {

@@ -1,22 +1,16 @@
 """Headless RPC worker for app-service (app-svc).
 
-Hosts every ``rpc.app.*`` subscriber the Go gateway calls (public reads via
-the shared CRUD read engine + bespoke reads, workspace writes, binary base64
-endpoints) plus the ``cache.invalidated`` invalidation consumer.
+Hosts every ``rpc.app.*`` subscriber the Go gateway calls (identity, catalog, discipline and workspace reads,
+workspace writes, binary base64 endpoints). The public statistics, ``/users/*`` statistics and achievement reads,
+their caches and the ``cache.invalidated`` consumer are stats-service's; the organizer dashboard is tournament-service's.
 
 Run with: ``faststream run serve:app``.
 """
 
 from faststream import FastStream
-from faststream.rabbit import Channel
 from redis.asyncio import Redis
 
-from shared.messaging.config import (
-    CACHE_INVALIDATION_APP_DLQ,
-    CACHE_INVALIDATION_APP_QUEUE,
-    CACHE_INVALIDATION_EXCHANGE,
-    NOTIFICATION_DELIVERY_DLQ,
-)
+from shared.messaging.config import NOTIFICATION_DELIVERY_DLQ
 from shared.messaging.outbox import drain_outbox
 from shared.messaging.topology import declare_dead_letter_queue
 from shared.observability import (
@@ -29,15 +23,12 @@ from shared.observability import (
 )
 from shared.quota import close as close_quota
 from shared.quota import configure as configure_quota
-from shared.schemas.events import CacheInvalidatedEvent
 from shared.services.ontology import project_disciplines
-from shared.services.realtime import Resource, configure_realtime
-from shared.services.realtime.consumer import register_invalidation_consumer
+from shared.services.realtime import configure_realtime
 from shared.services.scheduler import IntervalScheduler
 from src.core import clients, config, db
 from src.core.caching import configure_cache
 from src.rpc import (
-    achievements,
     admin_crud,
     announcements,
     audit,
@@ -49,13 +40,10 @@ from src.rpc import (
     notifications,
     notifications_admin,
     quota,
-    reads_generic,
-    statistics,
     users,
     users_admin,
     workspaces,
 )
-from src.services import hero_stats_refresh
 from src.services.notification_delivery import consumer as notification_delivery_consumer
 
 logger = setup_logging(
@@ -89,36 +77,8 @@ configure_quota(
     edge_workspace_metering=config.settings.quota_edge_workspace_metering,
 )
 
-# Isolated channel: cache-invalidation bursts must not compete with RPC QoS.
-_INVALIDATION_CHANNEL = Channel(prefetch_count=4)
-
-
-async def _refresh_hero_stats(event: CacheInvalidatedEvent) -> None:
-    """Debounced refresh of the global hero-stats materialized view.
-
-    Gated on ``tournament.standings`` — the resource that carries "match data
-    moved".
-    """
-    if Resource.TOURNAMENT_STANDINGS in event.resources:
-        hero_stats_refresh.hero_stats_refresh_service.request_refresh(db.async_session_maker, logger)
-
-
-# Single owner of CACHE_INVALIDATION_APP_QUEUE: a second process consuming it
-# would round-robin the messages.
-register_invalidation_consumer(
-    broker,
-    logger,
-    queue=CACHE_INVALIDATION_APP_QUEUE,
-    exchange=CACHE_INVALIDATION_EXCHANGE,
-    channel=_INVALIDATION_CHANNEL,
-    on_event=_refresh_hero_stats,
-)
-
-# Public reads.
-# achievement get+list via the shared CRUD read engine:
-reads_generic.register(broker, logger)
-# bespoke reads (aggregations, users/*) + workspace reads/writes/members:
-for _mod in (users, achievements, statistics, workspaces):
+# Identity and workspace reads + workspace writes/members:
+for _mod in (users, workspaces):
     _mod.register(broker, logger)
 catalog.register(broker, logger)
 disciplines.register(broker, logger)
@@ -171,9 +131,8 @@ async def start_worker() -> None:
     # Service code that is not handed a broker (WorkspaceService's post-commit
     # RBAC drop at identity) resolves this one.
     set_worker_broker(broker)
-    # The invalidation queue dead-letters here; without the declaration a
+    # The notification delivery queue dead-letters here; without the declaration a
     # poison message routes to a non-existent queue and vanishes.
-    await declare_dead_letter_queue(broker, CACHE_INVALIDATION_APP_DLQ)
     await declare_dead_letter_queue(broker, NOTIFICATION_DELIVERY_DLQ)
     await clients.s3_client.start()
     setup_sentry(
@@ -206,9 +165,6 @@ async def start_worker() -> None:
     async with db.async_session_maker() as session:
         await project_disciplines(session)
         await session.commit()
-    # Kick off the initial build of the hero global-stats materialized view as a
-    # debounced background task — never blocks startup or the event consumer.
-    hero_stats_refresh.hero_stats_refresh_service.request_refresh(db.async_session_maker, logger)
     _outbox_scheduler.start(drain_outbox, seconds=1, args=(db.async_session_maker, broker))
     logger.info("App RPC service (app-svc) started")
 

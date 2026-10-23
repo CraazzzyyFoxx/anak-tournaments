@@ -1,18 +1,26 @@
 "use client";
 
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import type { CharacterCompareProps } from "@/disciplines/types";
+import { useDivisionGrid } from "@/hooks/useCurrentWorkspace";
 import { characterStatsQueryKeys } from "@/lib/characters/query-keys";
 import statisticsService from "@/services/statistics.service";
 import type { DivisionGridVersion } from "@/types/workspace.types";
 
 /**
  * The checked character's leaderboard in the host's game and workspace axis, with every division grid its rows' `div`
- * is a number on; nothing is read before the host has a checked character.
+ * is a number on, and the read's own grid for a row naming none: the workspace's, or across workspaces the game's
+ * native ladder (empty without one). Nothing is read before the host has a checked character.
  */
 export function useCharacterLeaderboard({ character, tournamentId, axis, metadata }: CharacterCompareProps) {
   const discipline = metadata.discipline.code;
+  const workspaceGrid = useDivisionGrid(discipline);
+  const divisionGrid = useMemo(
+    () => (axis === "all" ? { tiers: [...metadata.native_ladder] } : workspaceGrid),
+    [axis, metadata, workspaceGrid]
+  );
   const query = useQuery({
     queryKey: characterStatsQueryKeys.leaderboard(axis, discipline, character?.id, { stat: null, tournamentId }),
     enabled: character !== undefined,
@@ -35,6 +43,7 @@ export function useCharacterLeaderboard({ character, tournamentId, axis, metadat
   return {
     rows: character ? (query.data?.rows ?? []) : [],
     grids: character ? (query.data?.grids ?? []) : [],
+    divisionGrid,
     isLoading: query.isLoading
   };
 }

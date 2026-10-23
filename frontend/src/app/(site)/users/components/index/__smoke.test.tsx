@@ -3,13 +3,17 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { NextIntlClientProvider } from "next-intl";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from "vitest";
 
 import en from "@/i18n/messages/en.json";
+import type { StatsScope } from "@/lib/site/stats-scope";
 import userService from "@/services/user.service";
 import UsersClient from "./UsersClient";
 import { useWorkspaceStore } from "@/stores/workspace.store";
+import { disciplineServiceMock, OW_METADATA } from "@/test/discipline-metadata";
+import { TEST_LADDER_TIERS } from "@/test/native-ladder";
 import { PillPick } from "@/test/pill-pick";
+import type { DivisionGrid } from "@/types/workspace.types";
 import { DEFAULT_MIN_ENCOUNTERS, parseMinEncounters } from "./users-index.model";
 
 declare global {
@@ -17,7 +21,11 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const { search, push } = vi.hoisted(() => ({ search: { current: new URLSearchParams() }, push: vi.fn() }));
+const { search, push, workspaceGrid } = vi.hoisted(() => ({
+  search: { current: new URLSearchParams() },
+  push: vi.fn(),
+  workspaceGrid: { current: { tiers: [] } as DivisionGrid }
+}));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/users",
@@ -26,7 +34,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/hooks/useCurrentWorkspace", () => ({
   useCurrentWorkspaceId: () => 1,
-  useDivisionGrid: () => ({ tiers: [] })
+  useDivisionGrid: () => workspaceGrid.current
 }));
 vi.mock("@/services/discipline.service", async () => (await import("@/test/discipline-metadata")).disciplineServiceMock);
 
@@ -119,6 +127,7 @@ const settle = async () => {
 
 beforeEach(() => {
   search.current = new URLSearchParams();
+  workspaceGrid.current = { tiers: [] };
   push.mockClear();
   // The index under one game: its role chips, role divisions and drawer are game-bound.
   useWorkspaceStore.setState({ gameScope: "overwatch", lastGame: null });
@@ -134,15 +143,15 @@ afterEach(() => {
   useWorkspaceStore.setState({ gameScope: "all" });
 });
 
-const renderIndex = async () => {
+const renderIndex = async (scope: StatsScope = "workspace") => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root.render(
       <QueryClientProvider client={client}>
         <NextIntlClientProvider locale="en" messages={en} timeZone="UTC">
           <UsersClient
-            scope="workspace"
-            initial={{ stored: "all", lastGame: null, axis: 1, hostLockedWorkspaceId: null, disciplines: null }}
+            scope={scope}
+            initial={{ stored: "all", lastGame: null, axis: scope === "all" ? "all" : 1, hostLockedWorkspaceId: null, disciplines: null }}
           />
           <PillPick code="lol" />
         </NextIntlClientProvider>
@@ -239,4 +248,26 @@ it("a game picked in the scope pill drops the role and division filters and keep
   expect(url.searchParams.has("role")).toBe(false);
   expect(url.searchParams.has("div")).toBe(false);
   expect(url.searchParams.get("query")).toBe("ana");
+});
+
+it("crests an all-communities role naming no grid version from the game's native ladder, not the workspace grid", async () => {
+  const tier = TEST_LADDER_TIERS.find((entry) => entry.number === 5)!;
+  workspaceGrid.current = {
+    tiers: [{ number: 5, name: "Workspace Gold", rank_min: 0, rank_max: null, icon_url: "https://cdn.test/ws-gold.png" }]
+  };
+  const read = disciplineServiceMock.default.metadata;
+  const metadata = vi
+    .spyOn(disciplineServiceMock.default, "metadata")
+    .mockImplementation(async (axis, code) =>
+      code === "overwatch" ? { ...OW_METADATA, native_ladder: TEST_LADDER_TIERS } : read(axis, code)
+    );
+  onTestFinished(() => metadata.mockRestore());
+
+  await renderIndex("all");
+
+  // The row's tank 5 has no version id: across communities it is the 5 of Overwatch's own ladder.
+  const title = en.users.list.division.badgeTitle.replace("{role}", "Tank").replace("{tier}", tier.name);
+  const crest = container.querySelector<HTMLElement>(`[title="${title}"]`);
+  expect(crest?.querySelector("img")?.getAttribute("alt")).toBe(tier.name);
+  expect(container.innerHTML).not.toContain("Workspace Gold");
 });

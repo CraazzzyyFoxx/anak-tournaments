@@ -172,7 +172,7 @@
       "remove_when": "notification copy reads role names from the owner game's ontology"
     },
     {
-      "path": "backend/app-service/src/services/hero/queries.py",
+      "path": "backend/stats-service/src/services/hero/queries.py",
       "rule": "catalog-label",
       "token": "hero_id",
       "context": "self._facts.c.entity_id.label(\"hero_id\"),",
@@ -182,7 +182,7 @@
       "remove_when": "P9 relocates it into shared.disciplines.overwatch"
     },
     {
-      "path": "backend/app-service/src/services/hero/queries.py",
+      "path": "backend/stats-service/src/services/hero/queries.py",
       "rule": "catalog-label",
       "token": "hero_id",
       "context": "hero_match.c.hero_id.label(\"hero_id\"),",
@@ -192,7 +192,7 @@
       "remove_when": "P9 relocates it into shared.disciplines.overwatch"
     },
     {
-      "path": "backend/app-service/src/services/hero/service.py",
+      "path": "backend/stats-service/src/services/hero/service.py",
       "rule": "catalog-label",
       "token": "heroes",
       "context": "__all__ = (\"HeroService\", \"heroes\")",
@@ -202,7 +202,7 @@
       "remove_when": "P9 relocates it into shared.disciplines.overwatch"
     },
     {
-      "path": "backend/app-service/src/services/statistics/queries.py",
+      "path": "backend/stats-service/src/services/statistics/queries.py",
       "rule": "stat-code",
       "token": "impact_rank",
       "context": ").label(\"impact_rank\"),",
@@ -212,7 +212,7 @@
       "remove_when": "P9 relocates it into shared.disciplines.overwatch"
     },
     {
-      "path": "backend/app-service/src/services/user/queries/compare.py",
+      "path": "backend/stats-service/src/services/user/queries/compare.py",
       "rule": "stat-code",
       "token": "impact_rank",
       "context": ").label(\"impact_rank\"),",
@@ -222,7 +222,7 @@
       "remove_when": "P9 relocates it into shared.disciplines.overwatch"
     },
     {
-      "path": "backend/app-service/src/services/user/queries/encounters.py",
+      "path": "backend/stats-service/src/services/user/queries/encounters.py",
       "rule": "stat-code",
       "token": "impact_rank",
       "context": ").label(\"impact_rank\"),",
@@ -232,7 +232,7 @@
       "remove_when": "P9 relocates it into shared.disciplines.overwatch"
     },
     {
-      "path": "backend/app-service/src/services/user/queries/encounters.py",
+      "path": "backend/stats-service/src/services/user/queries/encounters.py",
       "rule": "catalog-label",
       "token": "hero_id",
       "context": "self._facts.c.entity_id.label(\"hero_id\"),",
@@ -242,7 +242,7 @@
       "remove_when": "P9 relocates it into shared.disciplines.overwatch"
     },
     {
-      "path": "backend/app-service/src/services/user/queries/overview.py",
+      "path": "backend/stats-service/src/services/user/queries/overview.py",
       "rule": "catalog-label",
       "token": "hero_id",
       "context": "self._facts.c.entity_id.label(\"hero_id\"),",
@@ -252,7 +252,7 @@
       "remove_when": "P9 relocates it into shared.disciplines.overwatch"
     },
     {
-      "path": "backend/app-service/src/services/user/queries/profile.py",
+      "path": "backend/stats-service/src/services/user/queries/profile.py",
       "rule": "stat-code",
       "token": "impact_rank",
       "context": ").label(\"impact_rank\"),",

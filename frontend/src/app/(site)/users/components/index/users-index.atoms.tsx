@@ -13,7 +13,7 @@ import { useFormatter } from "@/lib/datetime/client";
 import { winrateColor } from "@/lib/colors";
 import { cn } from "@/lib/utils";
 import type { UserOverviewRoleDivision } from "@/types/user.types";
-import type { DivisionGridVersion } from "@/types/workspace.types";
+import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 
 import { DivisionHex } from "./DivisionHex";
 import { gridForRole, isRecentlyActive, mapsWinratePct } from "./users-index.model";
@@ -41,12 +41,15 @@ export function LastActive({ at, className }: Readonly<{ at: string | null; clas
 export function RolesCrests({
   roles,
   grids,
+  divisionGrid,
   discipline,
   ontology,
   size = 30
 }: Readonly<{
   roles: UserOverviewRoleDivision[];
   grids: DivisionGridVersion[] | undefined;
+  /** The read's grid, for a role naming no version (the workspace's; the game's native ladder across workspaces). */
+  divisionGrid: DivisionGrid;
   /** The index's game and its role dictionary (`null` while either resolves). */
   discipline: string | null;
   ontology: RoleOntology | null;
@@ -69,7 +72,7 @@ export function RolesCrests({
           discipline={discipline}
           ontology={ontology}
           division={role.division}
-          roleGrid={gridForRole(role, grids)}
+          roleGrid={gridForRole(role, grids) ?? divisionGrid}
           size={size}
         />
       ))}

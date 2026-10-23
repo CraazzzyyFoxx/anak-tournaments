@@ -15,7 +15,7 @@ from shared.domain.analytics import (
     STANDINGS_MODEL,
 )
 
-from .canonical import assign_canonical_division, canonical_div_for, canonical_division_number
+from .canonical import assign_canonical_division, canonical_div_for
 from .features.aggregations import attach_encounter_strength, attach_tournament_strength
 from .features.extractors import (
     extract_encounter_features,
@@ -76,7 +76,6 @@ __all__ = (
     "attach_local_performance",
     "attach_tournament_strength",
     "canonical_div_for",
-    "canonical_division_number",
     "compute_match_quality",
     "compute_mvp_dominance",
     "concat_shift_frames",

@@ -1,7 +1,7 @@
-"""Native-only full reader parity and download-reference authorization.
+"""Native-only download-reference authorization.
 
-The begin hook also restricts overview enrichment's independently opened sessions.
 Raw-reference checks stop before S3: this is not an object-store or transport smoke.
+The full reader parity half moved to stats-service with the readers.
 """
 
 from __future__ import annotations
@@ -18,8 +18,6 @@ from shared.core.errors import BaseAPIException
 from shared.testing.stats_access import native_role
 from src.rpc._common import gate_tournament
 from src.services.workspace.binary import workspace_binary
-from tests.stats_reader_numeric_parity import assert_app_golden
-from tests.test_stats_reader_parity import collect_outputs
 
 
 @asynccontextmanager
@@ -46,17 +44,6 @@ async def _native_session(url):
                 yield session
         finally:
             await engine.dispose()
-
-
-def test_app_full_golden_without_legacy_access(stats_parity_database):
-    """Any changed reader/enrichment output fails, under a non-owner role."""
-    url, ids = stats_parity_database
-
-    async def run():
-        async with _native_session(url) as session:
-            await assert_app_golden(session, ids, await collect_outputs(session, ids))
-
-    asyncio.run(run())
 
 
 def test_download_reference_visibility_without_legacy_access(stats_parity_database):

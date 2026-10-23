@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 from collections.abc import Iterable
 from typing import Any
 
@@ -9,7 +10,7 @@ from sqlalchemy.orm import aliased, selectinload
 
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import discipline as discipline_spec
-from shared.division_grid import DEFAULT_GRID, DivisionGrid, DivisionTier, ladder_grid
+from shared.division_grid import DEFAULT_GRID, DivisionGrid, DivisionTier, division_case_expr, ladder_grid
 from shared.models.division_grid import DivisionGrid as DivisionGridModel
 from shared.models.division_grid import (
     DivisionGridMapping,
@@ -80,39 +81,54 @@ def tournament_effective_version_id_expr(tournament_id: sa.ColumnElement[int]) -
     )
 
 
-def effective_division_number_expr(
+@functools.cache
+def tournament_grid_versions(discipline: str) -> sa.CTE:
+    """Every tournament of ``discipline`` with its effective grid version (``tournament_id``, ``version_id``).
+
+    MATERIALIZED so a caller joining it on ``tournament_id`` resolves each tournament's version once, not once per
+    player row. Cached per game: one statement may reference it from several subqueries, and SQLAlchemy only
+    renders a CTE once when every reference is the same object.
+    """
+    return (
+        sa.select(
+            Tournament.id.label("tournament_id"),
+            tournament_effective_version_id_expr(Tournament.id).label("version_id"),
+        )
+        .where(Tournament.discipline == discipline)
+        .cte("tournament_grid_versions")
+        .prefix_with("MATERIALIZED")
+    )
+
+
+def canonical_division_expr(
     rank_column: sa.ColumnElement[int],
-    tournament_id_column: sa.ColumnElement[int],
-) -> sa.ScalarSelect[int]:
-    """SQL twin of ``DivisionGrid.resolve_division(rank).number`` on the row's own grid.
+    version_id_column: sa.ColumnElement[int],
+    ladder: DivisionGrid,
+) -> sa.ColumnElement[int]:
+    """The canonical (native-ladder) division of ``rank`` played on grid version ``version_id``.
 
-    Mirrors :func:`shared.domain.division_rank.resolve_tier_for_rank`: the tier
-    whose ``[rank_min, rank_max]`` band contains the rank (unbounded top tier
-    included), and the grid's floor tier for a rank below every band.
-
-    ponytail: one correlated subquery per row — only the opt-in
-    all-workspaces reads use it; the single-grid path stays on the
-    index-friendly ``division_rank_bounds``/``division_case_expr``.
+    The rank resolves on that version the way :func:`shared.domain.division_rank.resolve_tier_for_rank` does
+    (the containing ``[rank_min, rank_max]`` band, highest floor first on overlap; the floor tier for a rank
+    below every band), and that tier's stored ``canonical_number`` is the division. No version at all: the raw
+    rank resolved on ``ladder``.
     """
     tier = aliased(DivisionGridTier)
     matched = sa.and_(
         tier.rank_min <= rank_column,
         sa.or_(tier.rank_max.is_(None), rank_column <= tier.rank_max),
     )
-    return (
-        sa.select(tier.number)
-        .select_from(tier)
-        .correlate_except(tier)
-        .where(tier.version_id == tournament_effective_version_id_expr(tournament_id_column))
-        # Containing tier first (highest floor, matching the Python iteration
-        # order on overlapping bands); otherwise the grid floor tier.
+    stored = (
+        sa.select(tier.canonical_number)
+        .where(tier.version_id == version_id_column)
         .order_by(
             sa.case((matched, 0), else_=1),
             sa.case((matched, -tier.rank_min), else_=tier.rank_min),
         )
         .limit(1)
+        .correlate_except(tier)
         .scalar_subquery()
     )
+    return sa.case((version_id_column.is_(None), division_case_expr(rank_column, ladder)), else_=stored)
 
 
 def require_grid_version_read_access(user: AuthUser, workspace_id: int | None) -> None:

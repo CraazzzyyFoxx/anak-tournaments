@@ -12,12 +12,12 @@ One PostgreSQL database, one SQLAlchemy metadata (`backend/shared`). Domain boun
 
 | Owner | Decides |
 | --- | --- |
-| `tournament-svc` | Tournament lifecycle, registration, brackets, results, pick-ban, scrims, outbox sweeper |
+| `tournament-svc` | Tournament lifecycle, registration, brackets, results, pick-ban, scrims, outbox sweeper, organizer dashboard and readiness |
 | `balancer-svc` | NSGA-II / mix balance, live draft, custom games |
 | `identity-svc` | JWT, OAuth, RBAC, hostnames, API keys, player linking |
-| `stats-svc` | Match logs, match import by external id, impact/MVP, achievements, native ranks (OverFast, Riot API, deadlock-api) |
+| `stats-svc` | Match logs, match import by external id, impact/MVP, achievements, native ranks (OverFast, Riot API, deadlock-api); public statistics, `/users/*` player statistics and achievement reads |
 | `analytics-svc` | OpenSkill / linear / ML shifts |
-| `app-svc` | Public reads: players, stats, catalogs, assets |
+| `app-svc` | Catalogs, player identity (directory, search, merge), workspaces, notifications, assets |
 | `stream-svc` | Twitch live status (Redis only, no Postgres schema) |
 | `discord-svc` | Log ingest, subscription resync |
 | Gateway | JWT, topic ACL — not domain |

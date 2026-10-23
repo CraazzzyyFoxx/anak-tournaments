@@ -30,7 +30,7 @@ const CharacterCompare = (props: CharacterCompareProps) => {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const { rows, grids, isLoading } = useCharacterLeaderboard(props);
+  const { rows, grids, divisionGrid, isLoading } = useCharacterLeaderboard(props);
   // A transient "find me" filter over the loaded board: local, not worth a history entry per keystroke.
   const [query, setQuery] = useState("");
 
@@ -119,6 +119,7 @@ const CharacterCompare = (props: CharacterCompareProps) => {
         hiddenCount={rows.length - ranked.length}
         minGames={minGames}
         grids={grids}
+        divisionGrid={divisionGrid}
         query={query}
         onQueryChange={setQuery}
         isLoading={isLoading}

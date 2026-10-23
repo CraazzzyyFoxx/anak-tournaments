@@ -129,7 +129,7 @@ export type RankOverviewRow = {
 };
 
 export type RankOverviewListParams = {
-  /** One game; omitted = every enabled game (then `role`, `rankMin`, `rankMax` and rank/division sorts are refused). */
+  /** One game; omitted = every enabled game (then `role`, `divMin`, `divMax` and rank/division sorts are refused). */
   discipline?: string;
   page?: number;
   perPage?: number;
@@ -140,8 +140,9 @@ export type RankOverviewListParams = {
   layer?: string[];
   authorUserId?: number[];
   role?: string[];
-  rankMin?: number;
-  rankMax?: number;
+  /** Tier numbers on the game's workspace grid, 1 = top, inclusive; `divMin <= divMax`. */
+  divMin?: number;
+  divMax?: number;
   /** Author rows whose number is not exactly canon (including "no canon"). */
   differsFromCanon?: boolean;
   /** `YYYY-MM-DD`, on `at`. */
@@ -216,8 +217,8 @@ export const workspacePlayerService = {
         ...(params.layer?.length ? { layer: params.layer } : {}),
         ...(params.authorUserId?.length ? { author_user_id: params.authorUserId } : {}),
         ...(params.role?.length ? { role: params.role } : {}),
-        ...(params.rankMin == null ? {} : { rank_min: params.rankMin }),
-        ...(params.rankMax == null ? {} : { rank_max: params.rankMax }),
+        ...(params.divMin == null ? {} : { div_min: params.divMin }),
+        ...(params.divMax == null ? {} : { div_max: params.divMax }),
         ...(params.differsFromCanon ? { differs_from_canon: 1 } : {}),
         ...(params.dateFrom ? { date_from: params.dateFrom } : {}),
         ...(params.dateTo ? { date_to: params.dateTo } : {}),

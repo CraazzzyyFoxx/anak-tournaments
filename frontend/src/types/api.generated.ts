@@ -11,9 +11,9 @@ export interface paths {
         };
         /**
          * List achievements
-         * @description Permission: public; no authentication required. Returns a paginated, sortable list of achievements optionally filtered by workspace via the shared CRUD read engine. Each rule carries its `discipline` and `entity_id`; `entities=entity` expands the linked character. The cross-workspace view lists one rule per (discipline, slug) and divides earners by that discipline's players.
+         * @description Permission: public; no authentication required. Returns a paginated, sortable list of achievements optionally filtered by workspace. Each rule carries its `discipline` and `entity_id`; `entities=entity` expands the linked character. The cross-workspace view lists one rule per (discipline, slug) and divides earners by that discipline's players.
          *
-         *     RPC subject: `rpc.app.read.list`
+         *     RPC subject: `rpc.stats.achievements.list`
          */
         get: operations["get__api_v1_achievements"];
         put?: never;
@@ -35,7 +35,7 @@ export interface paths {
          * User achievements
          * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's earned (and optionally locked) achievements, scoped by tournament or without-tournament and workspace, and optionally to one game's rules (`discipline`; unknown code 404 discipline_not_installed); rejects combining tournament_id with without_tournament=true.
          *
-         *     RPC subject: `rpc.app.achievements.user`
+         *     RPC subject: `rpc.stats.achievements.user`
          */
         get: operations["get__api_v1_achievements_user__user_id_"];
         put?: never;
@@ -55,9 +55,9 @@ export interface paths {
         };
         /**
          * Get achievement
-         * @description Permission: public; no authentication required. Returns a single achievement rule by id (with its `discipline`/`entity_id`; `entities=entity` expands the character) via the shared CRUD read engine, 404 if not found. Pooled numbers use the rule's own discipline.
+         * @description Permission: public; no authentication required. Returns a single achievement rule by id (with its `discipline`/`entity_id`; `entities=entity` expands the character), 404 if not found. Pooled numbers use the rule's own discipline.
          *
-         *     RPC subject: `rpc.app.read.get`
+         *     RPC subject: `rpc.stats.achievements.get`
          */
         get: operations["get__api_v1_achievements__id_"];
         put?: never;
@@ -79,7 +79,7 @@ export interface paths {
          * Achievement earners
          * @description Permission: public; no authentication required. Returns a paginated list of players who earned a given achievement.
          *
-         *     RPC subject: `rpc.app.achievements.users`
+         *     RPC subject: `rpc.stats.achievements.users`
          */
         get: operations["get__api_v1_achievements__id__users"];
         put?: never;
@@ -3187,7 +3187,7 @@ export interface paths {
          * Most-champion players
          * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments won, across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.
          *
-         *     RPC subject: `rpc.app.statistics.champion`
+         *     RPC subject: `rpc.stats.statistics.champion`
          */
         get: operations["get__api_v1_statistics_champion"];
         put?: never;
@@ -3209,7 +3209,7 @@ export interface paths {
          * Players almanac table
          * @description Permission: public; no authentication required. Returns every player with at least one public, non-league tournament (substitute entries excluded), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped: titles, tournaments, maps won/lost, map win rate (null without maps) and `low_sample` (three tournaments or fewer). `sort` = `titles` (default) | `tournaments` | `maps_won` | `winrate` (only players above the low-sample threshold), `order` = `desc` (default) | `asc`. `rank` is the competition rank (1, 2, 2, 4) over the whole population; the optional case-insensitive name search `query` filters the page without renumbering it, and `total` counts the filtered rows. Ties: win rate desc (null last), then name.
          *
-         *     RPC subject: `rpc.app.statistics.players`
+         *     RPC subject: `rpc.stats.statistics.players`
          */
         get: operations["get__api_v1_statistics_players"];
         put?: never;
@@ -3231,7 +3231,7 @@ export interface paths {
          * All-time records
          * @description Permission: public; no authentication required. Returns the all-time records of public, non-league tournaments (mixes never count), optionally workspace-scoped, in a fixed order; a record with no data is omitted. Always: `win_streak` (most consecutive series won by a player's team), `biggest_upset` (series won by the roster with the lower average SR, largest gap relative to the loser's), `underdog_champion` (champion with the lowest roster SR rank within its own tournament: `value` = rank, `of_total` = rated teams) and `closest_final` (a finished tournament's final with the highest closeness). With a `discipline` (404 `discipline_not_installed` for an unknown code) also the parsed-log records the game has: the highest single-map player `hero_damage`, `healing`, `eliminations`, `damage_blocked` and `solo_kills`, `most_mvps` (maps at impact rank 1) and `longest_map`.
          *
-         *     RPC subject: `rpc.app.statistics.records`
+         *     RPC subject: `rpc.stats.statistics.records`
          */
         get: operations["get__api_v1_statistics_records"];
         put?: never;
@@ -3253,7 +3253,7 @@ export interface paths {
          * Top winrate players
          * @description Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.
          *
-         *     RPC subject: `rpc.app.statistics.winrate`
+         *     RPC subject: `rpc.stats.statistics.winrate`
          */
         get: operations["get__api_v1_statistics_winrate"];
         put?: never;
@@ -3275,7 +3275,7 @@ export interface paths {
          * Character playtime shares
          * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns one discipline's paginated character playtime shares (fractions of the returned set, not seconds), optionally scoped to a user, tournament and workspace. 404 `discipline_not_installed` for an unknown game.
          *
-         *     RPC subject: `rpc.app.statistics.character_playtime`
+         *     RPC subject: `rpc.stats.statistics.character_playtime`
          */
         get: operations["get__api_v1_statistics__discipline__characters_playtime"];
         put?: never;
@@ -3295,9 +3295,9 @@ export interface paths {
         };
         /**
          * Character leaderboard
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated player leaderboard for one character of the path discipline, resolved against the workspace context and its division grid. A row's `div` is a number on the grid named by its `division_grid_version_id`: the workspace grid in a scoped read, the player's latest tournament grid with `workspace_id=all`; every referenced grid is returned once in `division_grids`. 404 when the id is not a character of that discipline.
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated player leaderboard for one character of the path discipline, resolved against the workspace context and its division grid. In a scoped read a row's `div` is a number on the workspace grid named by its `division_grid_version_id`, returned once in `division_grids`; with `workspace_id=all` it is the canonical number on the game's native ladder (`null` for a game without one), `division_grid_version_id` is `null` and `division_grids` empty. 404 when the id is not a character of that discipline.
          *
-         *     RPC subject: `rpc.app.statistics.character_leaderboard`
+         *     RPC subject: `rpc.stats.statistics.character_leaderboard`
          */
         get: operations["get__api_v1_statistics__discipline__characters__entity_id__leaderboard"];
         put?: never;
@@ -3319,7 +3319,7 @@ export interface paths {
          * Map statistics
          * @description Permission: public; no authentication required. Returns the path discipline's maps (404 `discipline_not_installed` for an unknown game) grouped by the mode each game was played in (the game's or parsed map's own mode, not the map's catalog parent, so one map can sit under several modes; games without a mode in a last null bucket), optionally workspace-scoped, most played first. A game is one of a completed series of a public, non-league tournament: the series' confirmed games with a map when it has any, else its parsed maps, so nothing counts twice. `share` is a map's games over its mode's; `avg_duration_s` averages the parsed maps of that map and mode (null when none).
          *
-         *     RPC subject: `rpc.app.statistics.maps`
+         *     RPC subject: `rpc.stats.statistics.maps`
          */
         get: operations["get__api_v1_statistics__discipline__maps"];
         put?: never;
@@ -3999,9 +3999,9 @@ export interface paths {
         };
         /**
          * Users overview
-         * @description Permission: public; no authentication required. Returns a paginated, workspace-normalized player overview table built from the workspace grid. `workspace_id=all` reads across every workspace instead: divisions are then resolved on each row's own tournament grid and every referenced grid is returned in `division_grids`. A missing `workspace_id` is a 400. The optional `discipline` narrows every aggregate to one game; without it the aggregates span every game, `roles` and `top_characters` are empty and `role`/`divisions` are a 422 (`<param> requires discipline`). Every row lists the games the player played in `disciplines`.
+         * @description Permission: public; no authentication required. Returns a paginated, workspace-normalized player overview table built from the workspace grid. `workspace_id=all` reads across every workspace instead: divisions (the `divisions` filter and every role's `division`) are then canonical numbers on the game's native ladder, each rank resolved on its own tournament's grid first; `division_grid_version_id` is `null`, `division_grids` is empty, and for a game without a native ladder `division` is `null` and `divisions` is a 422 `division_grid_required`. A missing `workspace_id` is a 400. The optional `discipline` narrows every aggregate to one game; without it the aggregates span every game, `roles` and `top_characters` are empty and `role`/`divisions` are a 422 (`<param> requires discipline`). Every row lists the games the player played in `disciplines`.
          *
-         *     RPC subject: `rpc.app.users.overview`
+         *     RPC subject: `rpc.stats.users.overview`
          */
         get: operations["get__api_v1_users_overview"];
         put?: never;
@@ -4021,9 +4021,9 @@ export interface paths {
         };
         /**
          * Users overview catalog
-         * @description Permission: public; no authentication required. Returns the A-Z player catalog for the players-overview table from the workspace grid, or across every workspace with `workspace_id=all` (see `division_grids`). Without the optional `discipline` the cards span every game with empty `roles`/`top_characters`; every card lists its `disciplines`; `role`/`divisions` are then a 422.
+         * @description Permission: public; no authentication required. Returns the A-Z player catalog for the players-overview table from the workspace grid, or across every workspace with `workspace_id=all` (native-ladder divisions, as in the overview). Without the optional `discipline` the cards span every game with empty `roles`/`top_characters`; every card lists its `disciplines`; `role`/`divisions` are then a 422.
          *
-         *     RPC subject: `rpc.app.users.overview_catalog`
+         *     RPC subject: `rpc.stats.users.overview_catalog`
          */
         get: operations["get__api_v1_users_overview_catalog"];
         put?: never;
@@ -4043,9 +4043,9 @@ export interface paths {
         };
         /**
          * Users overview stats
-         * @description Permission: public; no authentication required. Returns aggregate statistics for the players-overview table computed against the workspace grid, or across every workspace (each row on its own tournament grid) with `workspace_id=all`. Without the optional `discipline` the counts span every game and `role_counts`, `flex_count`, `flex_declared_count` and `division_counts` are empty; `role`/`divisions` are then a 422.
+         * @description Permission: public; no authentication required. Returns aggregate statistics for the players-overview table computed against the workspace grid, or across every workspace with `workspace_id=all` (`division_counts` then on the game's native ladder: empty for a game without one, where `divisions` is a 422 `division_grid_required`). Without the optional `discipline` the counts span every game and `role_counts`, `flex_count`, `flex_declared_count` and `division_counts` are empty; `role`/`divisions` are then a 422.
          *
-         *     RPC subject: `rpc.app.users.overview_stats`
+         *     RPC subject: `rpc.stats.users.overview_stats`
          */
         get: operations["get__api_v1_users_overview_stats"];
         put?: never;
@@ -4089,7 +4089,7 @@ export interface paths {
          * User characters
          * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated per-character stats in the required `discipline` for the requested stat names, optionally scoped to a tournament and workspace; rejects invalid stat values with 422. Each row also carries the player's scoped map record on the character (`games`/`win`/`loss`/`draw`; a draw is a game, not a win), every player's discipline-wide `win_rate_all` (unscoped, like `avg_10_all`) and the player's career-best game (`record`) in the stat the character's class is judged by.
          *
-         *     RPC subject: `rpc.app.users.characters`
+         *     RPC subject: `rpc.stats.users.characters`
          */
         get: operations["get__api_v1_users__id__characters"];
         put?: never;
@@ -4109,9 +4109,9 @@ export interface paths {
         };
         /**
          * Compare users
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a head-to-head comparison between the given user and others, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default).
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a head-to-head comparison between the given user and others, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default), where `div_min`/`div_max` are canonical numbers on the game's native ladder (a 422 `division_grid_required` for a game without one).
          *
-         *     RPC subject: `rpc.app.users.compare`
+         *     RPC subject: `rpc.stats.users.compare`
          */
         get: operations["get__api_v1_users__id__compare"];
         put?: never;
@@ -4131,9 +4131,9 @@ export interface paths {
         };
         /**
          * Compare user characters
-         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-character head-to-head comparison for the given user against others in the required `discipline`, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default). A character or map id of another game is a 404; a `stats` code the game does not declare as a character stat is a 422 `stat_not_declared`.
+         * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a per-character head-to-head comparison for the given user against others in the required `discipline`, resolved against the `workspace_id` workspace's division grid and tournaments, or across every workspace with `workspace_id=all` (the default; `div_min`/`div_max` then on the game's native ladder, a 422 `division_grid_required` without one). A character or map id of another game is a 404; a `stats` code the game does not declare as a character stat is a 422 `stat_not_declared`.
          *
-         *     RPC subject: `rpc.app.users.compare_characters`
+         *     RPC subject: `rpc.stats.users.compare_characters`
          */
         get: operations["get__api_v1_users__id__compare_characters"];
         put?: never;
@@ -4177,7 +4177,7 @@ export interface paths {
          * User draft card
          * @description Permission: public; no authentication required. Returns the draft room's player card for a user in the required `discipline`: career record, per-role and per-character map records, MVP maps and the last five tournaments, scoped to the workspace.
          *
-         *     RPC subject: `rpc.app.users.draft_card`
+         *     RPC subject: `rpc.stats.users.draft_card`
          */
         get: operations["get__api_v1_users__id__draft_card"];
         put?: never;
@@ -4199,7 +4199,7 @@ export interface paths {
          * User encounters
          * @description Permission: public; no authentication required. Returns a player's paginated encounters — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` — filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent. Each match carries its `map` and its own `mode` (null when none).
          *
-         *     RPC subject: `rpc.app.users.encounters`
+         *     RPC subject: `rpc.stats.users.encounters`
          */
         get: operations["get__api_v1_users__id__encounters"];
         put?: never;
@@ -4221,7 +4221,7 @@ export interface paths {
          * User maps
          * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated, sortable per-map record (win/loss/draw/winrate), optionally workspace-scoped. `mode_id` counts only the matches played in that mode (the match's own mode, not the map's catalog parent).
          *
-         *     RPC subject: `rpc.app.users.maps`
+         *     RPC subject: `rpc.stats.users.maps`
          */
         get: operations["get__api_v1_users__id__maps"];
         put?: never;
@@ -4243,7 +4243,7 @@ export interface paths {
          * User maps summary
          * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns aggregate totals for a player's per-map record, optionally workspace-scoped; `mode_id` filters by the match's own mode as in the per-map list.
          *
-         *     RPC subject: `rpc.app.users.maps_summary`
+         *     RPC subject: `rpc.stats.users.maps_summary`
          */
         get: operations["get__api_v1_users__id__maps_summary"];
         put?: never;
@@ -4265,7 +4265,7 @@ export interface paths {
          * User matches summary
          * @description Permission: public; no authentication required. Returns aggregate match totals for a player, optionally workspace-scoped.
          *
-         *     RPC subject: `rpc.app.users.matches_summary`
+         *     RPC subject: `rpc.stats.users.matches_summary`
          */
         get: operations["get__api_v1_users__id__matches_summary"];
         put?: never;
@@ -4287,7 +4287,7 @@ export interface paths {
          * User profile
          * @description Permission: public; no authentication required. Returns a player's profile resolved against the workspace context. With `discipline` it is that game's profile (its tournaments, roles and characters on that game's division grid) and `games` is empty. Without it the header aggregates span every game, `roles`/`character_statistics` are empty, `most_played_character` is null, and `games` lists one summary per game played (`discipline`, that game's `roles`, `tournaments_count`, `tournaments_won`), most tournaments first, ties in installed order. Every `tournaments[]` entry carries its `discipline`.
          *
-         *     RPC subject: `rpc.app.users.get_profile`
+         *     RPC subject: `rpc.stats.users.get_profile`
          */
         get: operations["get__api_v1_users__id__profile"];
         put?: never;
@@ -4331,7 +4331,7 @@ export interface paths {
          * User best teammates
          * @description Permission: public; no authentication required. Returns a player's paginated, sortable best teammates by winrate and shared tournaments, optionally workspace-scoped.
          *
-         *     RPC subject: `rpc.app.users.teammates`
+         *     RPC subject: `rpc.stats.users.teammates`
          */
         get: operations["get__api_v1_users__id__teammates"];
         put?: never;
@@ -4353,7 +4353,7 @@ export interface paths {
          * User tournaments
          * @description Permission: public; no authentication required. Returns the tournaments a player participated in — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code) — scoped to the workspace context and grid; each row names its own `discipline`.
          *
-         *     RPC subject: `rpc.app.users.tournaments`
+         *     RPC subject: `rpc.stats.users.tournaments`
          */
         get: operations["get__api_v1_users__id__tournaments"];
         put?: never;
@@ -4375,7 +4375,7 @@ export interface paths {
          * User tournament stats
          * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's participation and stats for one tournament, resolved against that tournament's division grid.
          *
-         *     RPC subject: `rpc.app.users.tournament`
+         *     RPC subject: `rpc.stats.users.tournament`
          */
         get: operations["get__api_v1_users__id__tournaments__tournament_id_"];
         put?: never;
@@ -4397,7 +4397,7 @@ export interface paths {
          * User tournament encounters
          * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's encounters (with per-match stats) within one tournament — the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI. Each match carries its `map` and its own `mode` (null when none).
          *
-         *     RPC subject: `rpc.app.users.tournament_encounters`
+         *     RPC subject: `rpc.stats.users.tournament_encounters`
          */
         get: operations["get__api_v1_users__id__tournaments__tournament_id__encounters"];
         put?: never;
@@ -4419,7 +4419,7 @@ export interface paths {
          * Tournament stat leaderboard
          * @description Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns every player in a tournament ranked by a single stat — the full ranked list behind a user's per-stat rank/total on the tournament-stats page. Inverse stats like Deaths rank ascending. The `stat` must be one of the ranked tournament stats.
          *
-         *     RPC subject: `rpc.app.users.tournament_leaderboard`
+         *     RPC subject: `rpc.stats.users.tournament_leaderboard`
          */
         get: operations["get__api_v1_users__id__tournaments__tournament_id__leaderboard"];
         put?: never;
@@ -5857,7 +5857,7 @@ export interface paths {
          * Organizer dashboard
          * @description Permission: any of workspace `tournament.read`, `team.read`, `match.read`, `user.read` or `achievement.read`. Returns the organizer home of one workspace: one card per tournament that is not finished (hidden ones included) plus completed tournaments within 14 days of finishing whose wrap-up (results confirmed, duel logs, achievements, standings) is not done; the next 7 days of phase-schedule boundaries plus every overdue phase start; the work queue of those cards ordered by severity; and the backlog of every other tournament with a data-quality issue. Each field group is null when the caller lacks the permission that gates it, never zero. 422 without `workspace_id`, 403 without any of the permissions.
          *
-         *     RPC subject: `rpc.app.statistics.admin_dashboard`
+         *     RPC subject: `rpc.tournament.admin_dashboard`
          */
         get: operations["get__api_v1_admin_dashboard"];
         put?: never;
@@ -5879,7 +5879,7 @@ export interface paths {
          * Organizer dashboard trends
          * @description Permission: workspace `tournament.read`. Returns participants, newcomers, duel log coverage and the median match-end-to-confirmation time of the workspace's last 10 finished, non-league, non-hidden tournaments, oldest first, optionally narrowed to one installed `discipline` (404 `discipline_not_installed` for an unknown code). 422 without `workspace_id`.
          *
-         *     RPC subject: `rpc.app.statistics.admin_dashboard_trends`
+         *     RPC subject: `rpc.tournament.admin_dashboard_trends`
          */
         get: operations["get__api_v1_admin_dashboard_trends"];
         put?: never;
@@ -7935,7 +7935,7 @@ export interface paths {
          * Tournament readiness checklist
          * @description Permission: workspace `tournament.read` or `team.read` on the tournament's own workspace. Returns the living readiness checklist for one tournament, telling its organisers what is still missing before it can run: schedule/grid/stage-slot configuration, bracket, duel log coverage and pending standings recalculation (`tournament.read`); the registration, pool, balance and draft state (`team.read`); the overdue, pending-confirmation and disputed results (`match.read`); and the achievement evaluation status (`achievement.read`). Each group of fields is masked to null when the caller lacks the permission that gates it, so a partial reader sees no-access rather than zeros. 403 without `tournament.read` or `team.read`, 404 if the tournament is unknown; hidden tournaments of the caller's own workspace are visible.
          *
-         *     RPC subject: `rpc.app.statistics.tournament_readiness`
+         *     RPC subject: `rpc.tournament.tournament_readiness`
          */
         get: operations["get__api_v1_admin_tournaments__id__readiness"];
         put?: never;
@@ -10903,7 +10903,7 @@ export interface paths {
         };
         /**
          * List all rank values in the workspace
-         * @description Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, native, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over the game's native rank on the workspace grid, effective_mix is the author's book over the canon over the native rank on the same workspace grid. `division` is resolved on the workspace's effective grid of the row's game. Filtering, sorting, the exact total and the page all run in the database. Optional `discipline` reads one enabled game (422 `discipline_not_enabled` for another); without it the rows are the union over every game the workspace runs, each tagged with its `discipline`, and `role`, `rank_min`, `rank_max` and `sort=rank_value|division` are a 422 (`<param> requires discipline`): those values live on different grids. A game with no grid here lists its rows with a null `division`.
+         * @description Permission: workspace member holding `team.update` -- the same grant writing the canon needs, because this read puts every author's private book on one screen. Read-only. One flat row per rank value across nine layers (canon, author, native, hidden, effective_tournament, effective_mix, registration, tournament, casual); the six current layers are the default. The two effective layers are computed in SQL and agree with the resolver the balancer runs on: effective_tournament is canon over the game's native rank on the workspace grid, effective_mix is the author's book over the canon over the native rank on the same workspace grid. `division` is resolved on the workspace's effective grid of the row's game. Filtering, sorting, the exact total and the page all run in the database. Optional `discipline` reads one enabled game (422 `discipline_not_enabled` for another); without it the rows are the union over every game the workspace runs, each tagged with its `discipline`, and `role`, `div_min`, `div_max` and `sort=rank_value|division` are a 422 (`<param> requires discipline`): those values live on different grids. A game with no grid here lists its rows with a null `division`, and a `div_min`/`div_max` on it is a 422 `division_grid_required`.
          *
          *     RPC subject: `rpc.balancer.ranks.list`
          */
@@ -12722,85 +12722,6 @@ export interface components {
              */
             updated_at: string | null;
         };
-        /** AchievementEarned */
-        "app.AchievementEarned": {
-            /** Count */
-            count: number;
-            last_match: components["schemas"]["app.AchievementMatchLink"] | null;
-            last_tournament: components["schemas"]["app.AchievementTournamentLink"] | null;
-            user: components["schemas"]["app.UserRead"];
-        };
-        /**
-         * AchievementMatchLink
-         * @description Narrow match reference for achievement payloads: the match and every participant, in slot order.
-         */
-        "app.AchievementMatchLink": {
-            /** Duration S */
-            duration_s: number | null;
-            /** Encounter Id */
-            encounter_id: number;
-            /** Id */
-            id: number;
-            /** Log Name */
-            log_name: string | null;
-            /** Map Id */
-            map_id: number;
-            /** Participants */
-            participants: components["schemas"]["app.MatchParticipantRead"][];
-        };
-        /** AchievementRead */
-        "app.AchievementRead": {
-            /**
-             * Category
-             * @default null
-             */
-            category: string | null;
-            /**
-             * Condition Tree
-             * @default null
-             */
-            condition_tree: {
-                [key: string]: unknown;
-            } | null;
-            /** Count */
-            count: number | null;
-            /** Description En */
-            description_en: string;
-            /** Description Ru */
-            description_ru: string;
-            /** Discipline */
-            discipline: string;
-            entity: components["schemas"]["app.CatalogEntityRead"] | null;
-            /** Entity Id */
-            entity_id: number | null;
-            /** Id */
-            id: number;
-            /** Image Url */
-            image_url: string | null;
-            /** Name */
-            name: string;
-            /** Rarity */
-            rarity: number;
-            /**
-             * Scope
-             * @default null
-             */
-            scope: string | null;
-            /** Slug */
-            slug: string;
-        };
-        /**
-         * AchievementTournamentLink
-         * @description Narrow tournament reference for achievement payloads.
-         */
-        "app.AchievementTournamentLink": {
-            /** Id */
-            id: number;
-            /** Is League */
-            is_league: boolean;
-            /** Name */
-            name: string;
-        };
         /**
          * CatalogEntityRead
          * @description One ``catalog.entity`` row of any discipline and kind; the public, admin and embedded catalog wire.
@@ -12843,184 +12764,6 @@ export interface components {
              * @default null
              */
             updated_at: string | null;
-        };
-        /** CharacterLeaderboardEntry */
-        "app.CharacterLeaderboardEntry": {
-            /** Avg Crit Accuracy */
-            avg_crit_accuracy: number;
-            /** Avg Weapon Accuracy */
-            avg_weapon_accuracy: number;
-            /** Div */
-            div: number;
-            /**
-             * Division Grid Version Id
-             * @default null
-             */
-            division_grid_version_id: number | null;
-            /** Games Played */
-            games_played: number;
-            /** Kd */
-            kd: number;
-            /** Kda */
-            kda: number;
-            /** Per10 All Damage */
-            per10_all_damage: number;
-            /** Per10 Crit Hits */
-            per10_crit_hits: number;
-            /** Per10 Damage */
-            per10_damage: number;
-            /** Per10 Damage Blocked */
-            per10_damage_blocked: number;
-            /** Per10 Damage Taken */
-            per10_damage_taken: number;
-            /** Per10 Deaths */
-            per10_deaths: number;
-            /** Per10 Defensive Assists */
-            per10_defensive_assists: number;
-            /** Per10 Eliminations */
-            per10_eliminations: number;
-            /** Per10 Env Kills */
-            per10_env_kills: number;
-            /** Per10 Final Blows */
-            per10_final_blows: number;
-            /** Per10 Healing */
-            per10_healing: number;
-            /** Per10 Multikills */
-            per10_multikills: number;
-            /** Per10 Obj Kills */
-            per10_obj_kills: number;
-            /** Per10 Offensive Assists */
-            per10_offensive_assists: number;
-            /** Per10 Self Healing */
-            per10_self_healing: number;
-            /** Per10 Solo Kills */
-            per10_solo_kills: number;
-            /** Per10 Ultimates Used */
-            per10_ultimates_used: number;
-            /** Player Name */
-            player_name: string;
-            /** Playtime Seconds */
-            playtime_seconds: number;
-            /** Rank */
-            rank: number;
-            /** @default null */
-            role: components["schemas"]["app.RoleRef"] | null;
-            /**
-             * Team
-             * @default null
-             */
-            team: string | null;
-            /**
-             * Team Id
-             * @default null
-             */
-            team_id: number | null;
-            /** User Id */
-            user_id: number;
-            /** Username */
-            username: string;
-        };
-        /**
-         * CharacterLeaderboardResponse
-         * @description One character's leaderboard page plus every division grid its rows' ``div`` refers to.
-         */
-        "app.CharacterLeaderboardResponse": {
-            /** Division Grids */
-            division_grids?: components["schemas"]["app.DivisionGridVersionRead"][];
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.CharacterLeaderboardEntry"][];
-            /** Total */
-            total: number;
-        };
-        /**
-         * CharacterPlaytime
-         * @description One character's share of the observed playtime (a fraction of the returned set), not a duration.
-         */
-        "app.CharacterPlaytime": {
-            entity: components["schemas"]["app.CatalogEntityRead"];
-            /** Playtime */
-            playtime: number;
-        };
-        /**
-         * CharacterRecord
-         * @description The player's career-best game on a character in the stat its class is judged by.
-         */
-        "app.CharacterRecord": {
-            /** Encounter Id */
-            encounter_id: number;
-            /** Map Name */
-            map_name: string;
-            /** Stat */
-            stat: string;
-            /** Tournament Name */
-            tournament_name: string;
-            /** Value */
-            value: number;
-        };
-        /** CharacterStat */
-        "app.CharacterStat": {
-            /** Avg 10 */
-            avg_10: number;
-            /** Avg 10 All */
-            avg_10_all: number;
-            best: components["schemas"]["app.CharacterStatBest"];
-            best_all: components["schemas"]["app.CharacterStatBest"] | null;
-            /** Name */
-            name: string;
-            /** Overall */
-            overall: number;
-        };
-        /** CharacterStatBest */
-        "app.CharacterStatBest": {
-            /** Encounter Id */
-            encounter_id: number;
-            /** Map Image Path */
-            map_image_path: string;
-            /** Map Name */
-            map_name: string;
-            /** Player Name */
-            player_name: string;
-            /** Tournament Name */
-            tournament_name: string;
-            /** Value */
-            value: number;
-        };
-        /** CharacterWithUserStats */
-        "app.CharacterWithUserStats": {
-            character: components["schemas"]["app.CatalogEntityRead"];
-            /**
-             * Draw
-             * @default 0
-             */
-            draw: number;
-            /**
-             * Games
-             * @default 0
-             */
-            games: number;
-            /**
-             * Loss
-             * @default 0
-             */
-            loss: number;
-            /** @default null */
-            record: components["schemas"]["app.CharacterRecord"] | null;
-            /** Stats */
-            stats: components["schemas"]["app.CharacterStat"][];
-            /**
-             * Win
-             * @default 0
-             */
-            win: number;
-            /**
-             * Win Rate All
-             * @default null
-             */
-            win_rate_all: number | null;
         };
         /**
          * DisciplineCapabilities
@@ -13122,64 +12865,6 @@ export interface components {
             /** Version */
             version: number;
         };
-        /**
-         * EncounterReadWithUserStats
-         * @description Encounter rendered on the user encounters page.
-         */
-        "app.EncounterReadWithUserStats": {
-            /**
-             * Best Of
-             * @default 3
-             */
-            best_of: number;
-            /**
-             * Closeness
-             * @default null
-             */
-            closeness: number | null;
-            /** Discipline */
-            discipline: string;
-            /**
-             * Has Logs
-             * @default false
-             */
-            has_logs: boolean;
-            /** Id */
-            id: number;
-            /** Matches */
-            matches?: components["schemas"]["app.MatchReadWithUserStats"][];
-            /** Name */
-            name: string;
-            /**
-             * Result Status
-             * @default none
-             */
-            result_status: string;
-            /** Round */
-            round: number;
-            /**
-             * Slot Count
-             * @default 2
-             */
-            slot_count: number;
-            /** @default null */
-            stage: components["schemas"]["app.UserEncounterStageSummary"] | null;
-            /** @default null */
-            stage_item: components["schemas"]["app.UserEncounterStageItemSummary"] | null;
-            /** Status */
-            status: string;
-            /** Teams */
-            teams?: components["schemas"]["app.UserEncounterTeamSummary"][];
-            /** @default null */
-            tournament: components["schemas"]["app.UserEncounterTournament"] | null;
-            /** Tournament Id */
-            tournament_id: number;
-            /**
-             * User Team Id
-             * @default null
-             */
-            user_team_id: number | null;
-        };
         /** EventTypeRead */
         "app.EventTypeRead": {
             /** Active */
@@ -13239,165 +12924,6 @@ export interface components {
              */
             recommended_min: number | null;
             role: components["schemas"]["app.RoleRef"];
-        };
-        /**
-         * LobbyLeaderboard
-         * @description Full ranked list of every player in a tournament for one stat.
-         *
-         *     Exposes the whole ranked population behind a single user's
-         *     ``UserTournamentWithStats.stats[stat].{rank,total}`` so the frontend can
-         *     render a per-stat "lobby leaderboard" modal.
-         */
-        "app.LobbyLeaderboard": {
-            /** Entries */
-            entries: components["schemas"]["app.LobbyLeaderboardEntry"][];
-            /** Stat */
-            stat: string;
-            /** Total Players */
-            total_players: number;
-        };
-        /**
-         * LobbyLeaderboardEntry
-         * @description One player's ranked value for a single stat inside a tournament lobby.
-         */
-        "app.LobbyLeaderboardEntry": {
-            /** Name */
-            name: string;
-            /** Player Id */
-            player_id: number;
-            /** Rank */
-            rank: number;
-            /** Value */
-            value: number;
-        };
-        /**
-         * LogStatsName
-         * @enum {string}
-         */
-        "app.LogStatsName": AppLogStatsName;
-        /** MapModeStats */
-        "app.MapModeStats": {
-            /** Games */
-            games: number;
-            /** Maps */
-            maps: components["schemas"]["app.MapStat"][];
-            mode: components["schemas"]["app.StatMapRef"] | null;
-        };
-        /** MapStat */
-        "app.MapStat": {
-            /** Avg Duration S */
-            avg_duration_s: number | null;
-            /** Games */
-            games: number;
-            map: components["schemas"]["app.StatMapRef"];
-            /** Share */
-            share: number;
-        };
-        /** MapStatsResponse */
-        "app.MapStatsResponse": {
-            /** Modes */
-            modes: components["schemas"]["app.MapModeStats"][];
-            /** Total Games */
-            total_games: number;
-        };
-        /** MatchParticipantRead */
-        "app.MatchParticipantRead": {
-            /** Encounter Team Id */
-            encounter_team_id: number;
-            /** Name */
-            name: string;
-            result: components["schemas"]["app.MatchResultRead"] | null;
-            /** Slot */
-            slot: number;
-            /** Source Position */
-            source_position: number;
-            /** Team Facts */
-            team_facts: {
-                [key: string]: number;
-            };
-            /** Tournament Team Id */
-            tournament_team_id: number | null;
-        };
-        /**
-         * MatchReadWithUserStats
-         * @description Match within a user-scoped encounter: the native header, the viewer's totals and every observed member's.
-         *
-         *     A discipline's renderer derives its per-match badges from ``viewer.facts`` against ``member_totals`` (every
-         *     member's segment-0, NULL-entity facts); no derived value rides on the wire. ``viewer`` is ``None`` for a match
-         *     the viewer's seat was a participant of without being observed.
-         */
-        "app.MatchReadWithUserStats": {
-            /**
-             * Created At
-             * Format: date-time
-             */
-            created_at: string;
-            /** Discipline */
-            discipline: string;
-            /** Duration S */
-            duration_s: number | null;
-            /** Encounter Game Id */
-            encounter_game_id: number | null;
-            /** Encounter Id */
-            encounter_id: number;
-            /** Id */
-            id: number;
-            /** Log Name */
-            log_name: string | null;
-            map: components["schemas"]["app.CatalogEntityRead"];
-            /** Map Id */
-            map_id: number;
-            /** Map Index */
-            map_index: number | null;
-            /** Member Totals */
-            member_totals?: components["schemas"]["app.NativeFact"][];
-            /** @default null */
-            mode: components["schemas"]["app.CatalogEntityRead"] | null;
-            /**
-             * Mode Id
-             * @default null
-             */
-            mode_id: number | null;
-            /** Participants */
-            participants: components["schemas"]["app.MatchParticipantRead"][];
-            /** Played At */
-            played_at: string | null;
-            /** Raw Available */
-            raw_available: boolean;
-            raw_status: components["schemas"]["app.RawSourceStatus"] | null;
-            /** Updated At */
-            updated_at: string | null;
-            /** @default null */
-            viewer: components["schemas"]["app.UserMatchViewer"] | null;
-            /** Workspace Id */
-            workspace_id: number;
-        };
-        /**
-         * MatchResultRead
-         * @description The official result, from the bound ``encounter.game_team``.
-         */
-        "app.MatchResultRead": {
-            /** Placement */
-            placement: number | null;
-            /** Score */
-            score: number | null;
-            /** Starting Side */
-            starting_side: string | null;
-        };
-        /** NativeFact */
-        "app.NativeFact": {
-            /** Encounter Team Id */
-            encounter_team_id: number;
-            /** Entity Id */
-            entity_id: number | null;
-            /** Segment */
-            segment: number;
-            /** Stat Code */
-            stat_code: string;
-            /** Value */
-            value: number;
-            /** Workspace Member Id */
-            workspace_member_id: number | null;
         };
         /**
          * NativeTierRead
@@ -13625,28 +13151,6 @@ export interface components {
             /** Workspace Id */
             workspace_id: number | null;
         };
-        /** Paginated[AchievementEarned] */
-        "app.Paginated_AchievementEarned_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.AchievementEarned"][];
-            /** Total */
-            total: number;
-        };
-        /** Paginated[AchievementRead] */
-        "app.Paginated_AchievementRead_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.AchievementRead"][];
-            /** Total */
-            total: number;
-        };
         /** Paginated[CatalogEntityRead] */
         "app.Paginated_CatalogEntityRead_": {
             /** Page */
@@ -13658,118 +13162,6 @@ export interface components {
             /** Total */
             total: number;
         };
-        /** Paginated[CharacterPlaytime] */
-        "app.Paginated_CharacterPlaytime_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.CharacterPlaytime"][];
-            /** Total */
-            total: number;
-        };
-        /** Paginated[CharacterWithUserStats] */
-        "app.Paginated_CharacterWithUserStats_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.CharacterWithUserStats"][];
-            /** Total */
-            total: number;
-        };
-        /** Paginated[EncounterReadWithUserStats] */
-        "app.Paginated_EncounterReadWithUserStats_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.EncounterReadWithUserStats"][];
-            /** Total */
-            total: number;
-        };
-        /** Paginated[PlayerLeaderboardRow] */
-        "app.Paginated_PlayerLeaderboardRow_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.PlayerLeaderboardRow"][];
-            /** Total */
-            total: number;
-        };
-        /** Paginated[PlayerStatistics] */
-        "app.Paginated_PlayerStatistics_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.PlayerStatistics"][];
-            /** Total */
-            total: number;
-        };
-        /** Paginated[UserBestTeammate] */
-        "app.Paginated_UserBestTeammate_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.UserBestTeammate"][];
-            /** Total */
-            total: number;
-        };
-        /** Paginated[UserMap] */
-        "app.Paginated_UserMap_": {
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.UserMap"][];
-            /** Total */
-            total: number;
-        };
-        /** PlayerLeaderboardRow */
-        "app.PlayerLeaderboardRow": {
-            /** Id */
-            id: number;
-            /** Low Sample */
-            low_sample: boolean;
-            /** Maps Lost */
-            maps_lost: number;
-            /** Maps Won */
-            maps_won: number;
-            /** Name */
-            name: string;
-            /** Rank */
-            rank: number;
-            /** Titles */
-            titles: number;
-            /** Tournaments */
-            tournaments: number;
-            /** Winrate */
-            winrate: number | null;
-        };
-        /** PlayerStatistics */
-        "app.PlayerStatistics": {
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-            /** Value */
-            value: number;
-        };
-        /**
-         * RawSourceStatus
-         * @enum {string}
-         */
-        "app.RawSourceStatus": AppRawSourceStatus;
         /** RoleDimensionRead */
         "app.RoleDimensionRead": {
             /** Active */
@@ -13899,92 +13291,6 @@ export interface components {
              */
             value_format: AppStatDefinitionValue_format;
         };
-        /** StatMapRef */
-        "app.StatMapRef": {
-            /** Id */
-            id: number;
-            /** Image Path */
-            image_path: string | null;
-            /** Name */
-            name: string;
-            /** Slug */
-            slug: string;
-        };
-        /** StatRecord */
-        "app.StatRecord": {
-            /**
-             * Code
-             * @enum {string}
-             */
-            code: AppStatRecordCode;
-            /**
-             * Duration S
-             * @default null
-             */
-            duration_s: number | null;
-            /**
-             * Encounter Id
-             * @default null
-             */
-            encounter_id: number | null;
-            /**
-             * Ended At
-             * @default null
-             */
-            ended_at: string | null;
-            /** @default null */
-            map: components["schemas"]["app.StatMapRef"] | null;
-            /**
-             * Match Id
-             * @default null
-             */
-            match_id: number | null;
-            /**
-             * Of Total
-             * @default null
-             */
-            of_total: number | null;
-            /** @default null */
-            opponent: components["schemas"]["app.StatRef"] | null;
-            /** @default null */
-            player: components["schemas"]["app.StatRef"] | null;
-            /**
-             * Relative
-             * @default null
-             */
-            relative: number | null;
-            /**
-             * Score
-             * @default null
-             */
-            score: [
-                number,
-                number
-            ] | null;
-            /**
-             * Started At
-             * @default null
-             */
-            started_at: string | null;
-            /** @default null */
-            team: components["schemas"]["app.StatRef"] | null;
-            /** @default null */
-            tournament: components["schemas"]["app.StatRef"] | null;
-            /** Value */
-            value: number;
-        };
-        /** StatRecords */
-        "app.StatRecords": {
-            /** Records */
-            records: components["schemas"]["app.StatRecord"][];
-        };
-        /** StatRef */
-        "app.StatRef": {
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-        };
         /** TeamFormatRead */
         "app.TeamFormatRead": {
             /** Dimensions */
@@ -14021,670 +13327,6 @@ export interface components {
              */
             substitute_min: number;
         };
-        /**
-         * TournamentStatus
-         * @enum {string}
-         */
-        "app.TournamentStatus": AppTournamentStatus;
-        /** UserAchievementRead */
-        "app.UserAchievementRead": {
-            /**
-             * Category
-             * @default null
-             */
-            category: string | null;
-            /**
-             * Condition Tree
-             * @default null
-             */
-            condition_tree: {
-                [key: string]: unknown;
-            } | null;
-            /** Count */
-            count: number;
-            /** Description En */
-            description_en: string;
-            /** Description Ru */
-            description_ru: string;
-            /** Discipline */
-            discipline: string;
-            entity: components["schemas"]["app.CatalogEntityRead"] | null;
-            /** Entity Id */
-            entity_id: number | null;
-            /** Id */
-            id: number;
-            /** Image Url */
-            image_url: string | null;
-            /** Matches */
-            matches: components["schemas"]["app.AchievementMatchLink"][];
-            /** Matches Ids */
-            matches_ids: number[];
-            /** Name */
-            name: string;
-            /** Rarity */
-            rarity: number;
-            /**
-             * Scope
-             * @default null
-             */
-            scope: string | null;
-            /** Slug */
-            slug: string;
-            /** Tournaments */
-            tournaments: components["schemas"]["app.AchievementTournamentLink"][];
-            /** Tournaments Ids */
-            tournaments_ids: number[];
-        };
-        /** UserBestTeammate */
-        "app.UserBestTeammate": {
-            /** Maps */
-            maps: number;
-            /** Stats */
-            stats: {
-                [key: string]: number | null;
-            };
-            /** Tournaments */
-            tournaments: number;
-            user: components["schemas"]["app.UserRead"];
-            /** Winrate */
-            winrate: number;
-        };
-        /** UserCatalogEntry */
-        "app.UserCatalogEntry": {
-            /** Achievements Count */
-            achievements_count: number;
-            /**
-             * Avatar Url
-             * @default null
-             */
-            avatar_url: string | null;
-            /** Avg Placement */
-            avg_placement: number | null;
-            /** Best Placement */
-            best_placement: number | null;
-            /** Disciplines */
-            disciplines?: string[];
-            /** Encounters Played */
-            encounters_played: number;
-            /** Id */
-            id: number;
-            /** Last Active At */
-            last_active_at: string | null;
-            /** Maps Lost */
-            maps_lost: number;
-            /** Maps Won */
-            maps_won: number;
-            /** Name */
-            name: string;
-            /** Roles */
-            roles: components["schemas"]["app.UserOverviewRoleDivision"][];
-            /** Top Characters */
-            top_characters: components["schemas"]["app.UserOverviewCharacter"][];
-            /** Tournaments Count */
-            tournaments_count: number;
-        };
-        /** UserCatalogLetter */
-        "app.UserCatalogLetter": {
-            /** Count */
-            count: number;
-            /** Letter */
-            letter: string;
-            /** Users */
-            users: components["schemas"]["app.UserCatalogEntry"][];
-        };
-        /** UserCatalogResponse */
-        "app.UserCatalogResponse": {
-            /** Available Letters */
-            available_letters: string[];
-            /** Division Grids */
-            division_grids?: components["schemas"]["app.DivisionGridVersionRead"][];
-            /** Letters */
-            letters: components["schemas"]["app.UserCatalogLetter"][];
-            /** Total */
-            total: number;
-        };
-        /** UserCharacterCompareMetric */
-        "app.UserCharacterCompareMetric": {
-            /** Better Worse */
-            better_worse: AppUserCharacterCompareMetricBetter_worseAnyOf0 | null;
-            /** Delta */
-            delta: number;
-            /** Delta Percent */
-            delta_percent: number | null;
-            /** Higher Is Better */
-            higher_is_better: boolean;
-            /** Left Value */
-            left_value: number;
-            /** Right Value */
-            right_value: number;
-            /** Stat */
-            stat: string;
-        };
-        /** UserCharacterCompareResponse */
-        "app.UserCharacterCompareResponse": {
-            baseline: components["schemas"]["app.UserCompareBaselineInfo"];
-            /** Left Playtime Seconds */
-            left_playtime_seconds: number;
-            map: components["schemas"]["app.CatalogEntityRead"] | null;
-            /** Metrics */
-            metrics: components["schemas"]["app.UserCharacterCompareMetric"][];
-            /** Right Playtime Seconds */
-            right_playtime_seconds: number;
-            subject: components["schemas"]["app.UserCompareUser"];
-            subject_character: components["schemas"]["app.CatalogEntityRead"] | null;
-            target: components["schemas"]["app.UserCompareUser"] | null;
-            target_character: components["schemas"]["app.CatalogEntityRead"] | null;
-        };
-        /** UserCompareBaselineInfo */
-        "app.UserCompareBaselineInfo": {
-            /** Div Max */
-            div_max: number | null;
-            /** Div Min */
-            div_min: number | null;
-            /**
-             * Mode
-             * @enum {string}
-             */
-            mode: AppUserCompareBaselineInfoMode;
-            /** @default null */
-            role: components["schemas"]["app.RoleRef"] | null;
-            /** Sample Size */
-            sample_size: number;
-            target_user: components["schemas"]["app.UserCompareUser"] | null;
-        };
-        /** UserCompareMetric */
-        "app.UserCompareMetric": {
-            /** Baseline Value */
-            baseline_value: number | null;
-            /** Better Worse */
-            better_worse: AppUserCompareMetricBetter_worseAnyOf0 | null;
-            /** Delta */
-            delta: number | null;
-            /** Delta Percent */
-            delta_percent: number | null;
-            /** Higher Is Better */
-            higher_is_better: boolean;
-            /** Key */
-            key: string;
-            /** Label */
-            label: string;
-            /** Subject Percentile */
-            subject_percentile: number | null;
-            /** Subject Rank */
-            subject_rank: number | null;
-            /** Subject Value */
-            subject_value: number | null;
-        };
-        /** UserCompareResponse */
-        "app.UserCompareResponse": {
-            baseline: components["schemas"]["app.UserCompareBaselineInfo"];
-            /** Metrics */
-            metrics: components["schemas"]["app.UserCompareMetric"][];
-            subject: components["schemas"]["app.UserCompareUser"];
-        };
-        /** UserCompareUser */
-        "app.UserCompareUser": {
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-        };
-        /**
-         * UserDraftCard
-         * @description Career summary rendered on the draft room's player island.
-         *
-         *     Leagues are excluded throughout (no placement, no bracket) so every number
-         *     on the card counts the same set of events. A player with no history is a
-         *     valid card of zeros and empty lists, never a 404.
-         */
-        "app.UserDraftCard": {
-            /**
-             * Avg Placement
-             * @default null
-             */
-            avg_placement: number | null;
-            /**
-             * Best Placement
-             * @default null
-             */
-            best_placement: number | null;
-            /** Characters */
-            characters?: components["schemas"]["app.UserDraftCardCharacter"][];
-            /** Maps */
-            maps: number;
-            /** Maps Lost */
-            maps_lost: number;
-            /** Maps Won */
-            maps_won: number;
-            /**
-             * Mvp Maps
-             * @default null
-             */
-            mvp_maps: number | null;
-            /** Recent Tournaments */
-            recent_tournaments?: components["schemas"]["app.UserDraftCardTournament"][];
-            /** Roles */
-            roles?: components["schemas"]["app.UserDraftCardRole"][];
-            /** Tournaments */
-            tournaments: number;
-            /** Tournaments Won */
-            tournaments_won: number;
-        };
-        /**
-         * UserDraftCardCharacter
-         * @description One of the player's signature characters on the draft-room player card.
-         */
-        "app.UserDraftCardCharacter": {
-            character: components["schemas"]["app.CatalogEntityRead"];
-            /** Maps */
-            maps: number;
-            /** Maps Won */
-            maps_won: number;
-        };
-        /**
-         * UserDraftCardRole
-         * @description One role's map record on the draft-room player card.
-         */
-        "app.UserDraftCardRole": {
-            /** Maps */
-            maps: number;
-            /** Maps Won */
-            maps_won: number;
-            /** @default null */
-            role: components["schemas"]["app.RoleRef"] | null;
-        };
-        /**
-         * UserDraftCardTournament
-         * @description One recent tournament row on the draft-room player card.
-         */
-        "app.UserDraftCardTournament": {
-            /**
-             * Date
-             * @default null
-             */
-            date: string | null;
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-            /**
-             * Placement
-             * @default null
-             */
-            placement: number | null;
-            /**
-             * Rank
-             * @default null
-             */
-            rank: number | null;
-            /** @default null */
-            role: components["schemas"]["app.RoleRef"] | null;
-            /** Teams Count */
-            teams_count: number;
-        };
-        /**
-         * UserEncounterStageItemSummary
-         * @description Stage-item link inside `EncounterReadWithUserStats.stage_item`.
-         */
-        "app.UserEncounterStageItemSummary": {
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-        };
-        /**
-         * UserEncounterStageSummary
-         * @description Stage link inside `EncounterReadWithUserStats.stage`.
-         */
-        "app.UserEncounterStageSummary": {
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-        };
-        /**
-         * UserEncounterTeamPlayerRef
-         * @description Roster member inside an encounter seat — minimal id+user_id+role.
-         *
-         *     Used only by the frontend to identify which seat the viewer played in
-         *     (`players.find(p => p.user_id === selfUserId)`). Renders nothing on its
-         *     own — for the full player card see `UserTournamentPlayer`. ``id`` is the
-         *     roster snapshot row, not a tournament player.
-         */
-        "app.UserEncounterTeamPlayerRef": {
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-            /** @default null */
-            role: components["schemas"]["app.RoleRef"] | null;
-            /** User Id */
-            user_id: number;
-        };
-        /**
-         * UserEncounterTeamSummary
-         * @description One live seat inside `EncounterReadWithUserStats.teams`.
-         *
-         *     ``id`` is the participation (``encounter.team``), ``team_id`` the source
-         *     tournament team -- ``None`` once that team is deleted; ``name`` is the
-         *     snapshot the encounter was played under, and ``players`` its roster snapshot.
-         */
-        "app.UserEncounterTeamSummary": {
-            /** Id */
-            id: number;
-            /** Name */
-            name: string;
-            /**
-             * Placement
-             * @default null
-             */
-            placement: number | null;
-            /** Players */
-            players?: components["schemas"]["app.UserEncounterTeamPlayerRef"][];
-            /**
-             * Score
-             * @default 0
-             */
-            score: number;
-            /** Slot */
-            slot: number;
-            /**
-             * Team Id
-             * @default null
-             */
-            team_id: number | null;
-        };
-        /**
-         * UserEncounterTournament
-         * @description Tournament link inside `EncounterReadWithUserStats.tournament`.
-         */
-        "app.UserEncounterTournament": {
-            /** Id */
-            id: number;
-            /**
-             * Is Finished
-             * @default false
-             */
-            is_finished: boolean;
-            /** Is League */
-            is_league: boolean;
-            /** Name */
-            name: string;
-            /** @default null */
-            status: components["schemas"]["app.TournamentStatus"] | null;
-        };
-        /**
-         * UserGameSummary
-         * @description One game of a cross-game profile: the player's roles on that game's grid, tournaments and wins in it.
-         */
-        "app.UserGameSummary": {
-            /** Discipline */
-            discipline: string;
-            /** Roles */
-            roles: components["schemas"]["app.UserRole"][];
-            /** Tournaments Count */
-            tournaments_count: number;
-            /** Tournaments Won */
-            tournaments_won: number;
-        };
-        /** UserMap */
-        "app.UserMap": {
-            /**
-             * Character Stats
-             * @default null
-             */
-            character_stats: components["schemas"]["app.UserMapCharacterStats"][] | null;
-            /** Characters */
-            characters: components["schemas"]["app.CharacterPlaytime"][];
-            /** Count */
-            count: number;
-            /** Draw */
-            draw: number;
-            /** Loss */
-            loss: number;
-            map: components["schemas"]["app.CatalogEntityRead"];
-            /** Win */
-            win: number;
-            /** Win Rate */
-            win_rate: number;
-        };
-        /** UserMapCharacterStats */
-        "app.UserMapCharacterStats": {
-            character: components["schemas"]["app.CatalogEntityRead"];
-            /** Draw */
-            draw: number;
-            /** Games */
-            games: number;
-            /** Loss */
-            loss: number;
-            /** Playtime Seconds */
-            playtime_seconds: number;
-            /** Playtime Share On Map */
-            playtime_share_on_map: number;
-            /** Win */
-            win: number;
-            /** Win Rate */
-            win_rate: number;
-        };
-        /** UserMapHighlight */
-        "app.UserMapHighlight": {
-            /** Count */
-            count: number;
-            /** Draw */
-            draw: number;
-            /** Loss */
-            loss: number;
-            map: components["schemas"]["app.CatalogEntityRead"];
-            /** Win */
-            win: number;
-            /** Win Rate */
-            win_rate: number;
-        };
-        /** UserMapsOverall */
-        "app.UserMapsOverall": {
-            /** Draw */
-            draw: number;
-            /** Loss */
-            loss: number;
-            /** Total Games */
-            total_games: number;
-            /** Total Maps */
-            total_maps: number;
-            /** Win */
-            win: number;
-            /** Win Rate */
-            win_rate: number;
-        };
-        /** UserMapsSummary */
-        "app.UserMapsSummary": {
-            best: components["schemas"]["app.UserMapHighlight"] | null;
-            most_played: components["schemas"]["app.UserMapHighlight"] | null;
-            overall: components["schemas"]["app.UserMapsOverall"];
-            worst: components["schemas"]["app.UserMapHighlight"] | null;
-        };
-        /**
-         * UserMatchViewer
-         * @description The viewer's own seat and whole-match totals in one match.
-         */
-        "app.UserMatchViewer": {
-            /** Characters */
-            characters?: components["schemas"]["app.CatalogEntityRead"][];
-            /** Encounter Team Id */
-            encounter_team_id: number;
-            /** Facts */
-            facts: {
-                [key: string]: number;
-            };
-            /** Workspace Member Id */
-            workspace_member_id: number;
-        };
-        /**
-         * UserMatchesSummary
-         * @description Aggregates for the Matches-tab sidebars, computed over ALL the user's
-         *     encounters (not just the current page): most-fought opponents + per-stage
-         *     win/loss record.
-         */
-        "app.UserMatchesSummary": {
-            /** Opponents */
-            opponents: components["schemas"]["app.UserOpponentStat"][];
-            /** Stages */
-            stages: {
-                [key: string]: components["schemas"]["app.UserStageRecord"];
-            };
-        };
-        /** UserOpponentStat */
-        "app.UserOpponentStat": {
-            /** Draws */
-            draws: number;
-            /** Losses */
-            losses: number;
-            /** Name */
-            name: string;
-            /** Wins */
-            wins: number;
-        };
-        /** UserOverviewAverages */
-        "app.UserOverviewAverages": {
-            /** Avg Closeness */
-            avg_closeness: number | null;
-            /** Avg Group Placement */
-            avg_group_placement: number | null;
-            /** Avg Placement */
-            avg_placement: number | null;
-            /** Avg Playoff Placement */
-            avg_playoff_placement: number | null;
-        };
-        /** UserOverviewCharacter */
-        "app.UserOverviewCharacter": {
-            character: components["schemas"]["app.CatalogEntityRead"];
-            /** Playtime Seconds */
-            playtime_seconds: number;
-        };
-        /** UserOverviewDivisionCount */
-        "app.UserOverviewDivisionCount": {
-            /** Count */
-            count: number;
-            /** Division */
-            division: number;
-        };
-        /**
-         * UserOverviewResponse
-         * @description Overview page plus every division grid its rows' divisions refer to.
-         */
-        "app.UserOverviewResponse": {
-            /** Division Grids */
-            division_grids?: components["schemas"]["app.DivisionGridVersionRead"][];
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Results */
-            results: components["schemas"]["app.UserOverviewRow"][];
-            /** Total */
-            total: number;
-        };
-        /** UserOverviewRoleDivision */
-        "app.UserOverviewRoleDivision": {
-            /** Division */
-            division: number;
-            /**
-             * Division Grid Version Id
-             * @default null
-             */
-            division_grid_version_id: number | null;
-            /** @default null */
-            role: components["schemas"]["app.RoleRef"] | null;
-        };
-        /** UserOverviewRow */
-        "app.UserOverviewRow": {
-            /** Achievements Count */
-            achievements_count: number;
-            /**
-             * Avatar Url
-             * @default null
-             */
-            avatar_url: string | null;
-            averages: components["schemas"]["app.UserOverviewAverages"];
-            /** Best Placement */
-            best_placement: number | null;
-            /** Disciplines */
-            disciplines?: string[];
-            /** Encounters Played */
-            encounters_played: number;
-            /** Id */
-            id: number;
-            /** Last Active At */
-            last_active_at: string | null;
-            /** Maps Lost */
-            maps_lost: number;
-            /** Maps Won */
-            maps_won: number;
-            /** Name */
-            name: string;
-            /** Roles */
-            roles: components["schemas"]["app.UserOverviewRoleDivision"][];
-            /** Top Characters */
-            top_characters: components["schemas"]["app.UserOverviewCharacter"][];
-            /** Tournaments Count */
-            tournaments_count: number;
-        };
-        /** UserOverviewStats */
-        "app.UserOverviewStats": {
-            /** Active Last 30D */
-            active_last_30d: number;
-            /** Active Last 30D Pct */
-            active_last_30d_pct: number;
-            /** Avg Tournaments Per Player */
-            avg_tournaments_per_player: number;
-            /** Division Counts */
-            division_counts?: components["schemas"]["app.UserOverviewDivisionCount"][];
-            /** Flex Count */
-            flex_count: number;
-            /** Flex Declared Count */
-            flex_declared_count: number;
-            /** Median Tournaments Per Player */
-            median_tournaments_per_player: number;
-            /** Role Counts */
-            role_counts?: {
-                [key: string]: number;
-            };
-            /** Total Players */
-            total_players: number;
-            /** With Logs Count */
-            with_logs_count: number;
-            /** With Logs Pct */
-            with_logs_pct: number;
-        };
-        /** UserProfile */
-        "app.UserProfile": {
-            /** Avg Closeness */
-            avg_closeness: number | null;
-            /** Avg Group Placement */
-            avg_group_placement: number | null;
-            /** Avg Placement */
-            avg_placement: number | null;
-            /** Avg Playoff Placement */
-            avg_playoff_placement: number | null;
-            /** Character Statistics */
-            character_statistics: components["schemas"]["app.CharacterPlaytime"][];
-            /** Characters Count */
-            characters_count: number;
-            /** Games */
-            games?: components["schemas"]["app.UserGameSummary"][];
-            /** Maps Total */
-            maps_total: number;
-            /** Maps Won */
-            maps_won: number;
-            most_played_character: components["schemas"]["app.CatalogEntityRead"] | null;
-            /** Roles */
-            roles: components["schemas"]["app.UserRole"][];
-            /** Tournaments */
-            tournaments: components["schemas"]["app.UserTournamentSummary"][];
-            /** Tournaments Count */
-            tournaments_count: number;
-            /** Tournaments Won */
-            tournaments_won: number;
-        };
         /** UserRead */
         "app.UserRead": {
             /**
@@ -14707,192 +13349,12 @@ export interface components {
              */
             stream_visible: boolean;
         };
-        /** UserRole */
-        "app.UserRole": {
-            /** Division */
-            division: number;
-            /** @default null */
-            division_grid_version: components["schemas"]["app.DivisionGridVersionRead"] | null;
-            /** Maps */
-            maps: number;
-            /** Maps Won */
-            maps_won: number;
-            /** @default null */
-            role: components["schemas"]["app.RoleRef"] | null;
-            /** Tournaments */
-            tournaments: number;
-        };
         /** UserSearch */
         "app.UserSearch": {
             /** Id */
             id: number;
             /** Name */
             name: string;
-        };
-        /** UserStageRecord */
-        "app.UserStageRecord": {
-            /** L */
-            l: number;
-            /** W */
-            w: number;
-        };
-        /** UserTournament */
-        "app.UserTournament": {
-            /** Closeness */
-            closeness: number;
-            /** Count Teams */
-            count_teams: number;
-            /** Discipline */
-            discipline: string;
-            /**
-             * Division
-             * @default null
-             */
-            division: number | null;
-            /** @default null */
-            division_grid_version: components["schemas"]["app.DivisionGridVersionRead"] | null;
-            /** Draw */
-            draw: number;
-            /** Encounters */
-            encounters?: components["schemas"]["app.EncounterReadWithUserStats"][];
-            /** Id */
-            id: number;
-            /** Is League */
-            is_league: boolean;
-            /** Lost */
-            lost: number;
-            /** Maps Lost */
-            maps_lost: number;
-            /** Maps Won */
-            maps_won: number;
-            /** Name */
-            name: string;
-            /** Placement */
-            placement: number | null;
-            /** Players */
-            players: components["schemas"]["app.UserTournamentPlayer"][];
-            /** @default null */
-            role: components["schemas"]["app.RoleRef"] | null;
-            /** Team */
-            team: string;
-            /** Team Id */
-            team_id: number;
-            /** Won */
-            won: number;
-            /** Workspace Id */
-            workspace_id: number;
-        };
-        /**
-         * UserTournamentPlayer
-         * @description Player card inside `UserTournament.players` (rendered by TournamentTeamTable).
-         *
-         *     Also populated inside `UserEncounterTeamSummary.players` when the
-         *     encounter view needs to identify the viewer's row (via `user_id`).
-         */
-        "app.UserTournamentPlayer": {
-            /**
-             * Avg Mvp
-             * @default null
-             */
-            avg_mvp: number | null;
-            /** Characters */
-            characters?: components["schemas"]["app.CatalogEntityRead"][];
-            /** Division */
-            division: number;
-            /** Id */
-            id: number;
-            /** Is Newcomer */
-            is_newcomer: boolean;
-            /** Is Newcomer Role */
-            is_newcomer_role: boolean;
-            /** Is Substitution */
-            is_substitution: boolean;
-            /** Name */
-            name: string;
-            /** Rank */
-            rank: number;
-            /**
-             * Related Player Id
-             * @default null
-             */
-            related_player_id: number | null;
-            /**
-             * Relative Player
-             * @default null
-             */
-            relative_player: number | null;
-            /** @default null */
-            role: components["schemas"]["app.RoleRef"] | null;
-            /** User Id */
-            user_id: number;
-        };
-        /** UserTournamentStat */
-        "app.UserTournamentStat": {
-            /** Rank */
-            rank: number;
-            /** Total */
-            total: number;
-            /** Value */
-            value: number;
-        };
-        /**
-         * UserTournamentSummary
-         * @description Tournament card shown in user profile / achievement filter lists.
-         *
-         *     Narrow projection of `models.Tournament` — only fields the frontend
-         *     actually consumes in user-scoped pages.
-         */
-        "app.UserTournamentSummary": {
-            /** Discipline */
-            discipline: string;
-            /** @default null */
-            division_grid_version: components["schemas"]["app.DivisionGridVersionRead"] | null;
-            /** Id */
-            id: number;
-            /**
-             * Is Finished
-             * @default false
-             */
-            is_finished: boolean;
-            /** Is League */
-            is_league: boolean;
-            /** Name */
-            name: string;
-            /** @default null */
-            status: components["schemas"]["app.TournamentStatus"] | null;
-        };
-        /** UserTournamentWithStats */
-        "app.UserTournamentWithStats": {
-            /** Closeness */
-            closeness: number;
-            /** Discipline */
-            discipline: string;
-            /** Division */
-            division: number;
-            /** @default null */
-            division_grid_version: components["schemas"]["app.DivisionGridVersionRead"] | null;
-            /** Group Placement */
-            group_placement: number | null;
-            /** Id */
-            id: number;
-            /** Maps */
-            maps: number;
-            /** Maps Won */
-            maps_won: number;
-            /** Name */
-            name: string;
-            /** Playoff Placement */
-            playoff_placement: number | null;
-            /** Playtime */
-            playtime: number;
-            /** @default null */
-            role: components["schemas"]["app.RoleRef"] | null;
-            /** Stats */
-            stats: {
-                [key: string]: components["schemas"]["app.UserTournamentStat"];
-            };
-            /** Workspace Id */
-            workspace_id: number;
         };
         /**
          * WorkspaceListItem
@@ -17376,6 +15838,307 @@ export interface components {
             /** Workspace Id */
             workspace_id: number;
         };
+        /** AchievementEarned */
+        "stats.AchievementEarned": {
+            /** Count */
+            count: number;
+            last_match: components["schemas"]["stats.AchievementMatchLink"] | null;
+            last_tournament: components["schemas"]["stats.AchievementTournamentLink"] | null;
+            user: components["schemas"]["stats.UserRead"];
+        };
+        /**
+         * AchievementMatchLink
+         * @description Narrow match reference for achievement payloads: the match and every participant, in slot order.
+         */
+        "stats.AchievementMatchLink": {
+            /** Duration S */
+            duration_s: number | null;
+            /** Encounter Id */
+            encounter_id: number;
+            /** Id */
+            id: number;
+            /** Log Name */
+            log_name: string | null;
+            /** Map Id */
+            map_id: number;
+            /** Participants */
+            participants: components["schemas"]["stats.MatchParticipantRead"][];
+        };
+        /** AchievementRead */
+        "stats.AchievementRead": {
+            /**
+             * Category
+             * @default null
+             */
+            category: string | null;
+            /**
+             * Condition Tree
+             * @default null
+             */
+            condition_tree: {
+                [key: string]: unknown;
+            } | null;
+            /** Count */
+            count: number | null;
+            /** Description En */
+            description_en: string;
+            /** Description Ru */
+            description_ru: string;
+            /** Discipline */
+            discipline: string;
+            entity: components["schemas"]["stats.CatalogEntityRead"] | null;
+            /** Entity Id */
+            entity_id: number | null;
+            /** Id */
+            id: number;
+            /** Image Url */
+            image_url: string | null;
+            /** Name */
+            name: string;
+            /** Rarity */
+            rarity: number;
+            /**
+             * Scope
+             * @default null
+             */
+            scope: string | null;
+            /** Slug */
+            slug: string;
+        };
+        /**
+         * AchievementTournamentLink
+         * @description Narrow tournament reference for achievement payloads.
+         */
+        "stats.AchievementTournamentLink": {
+            /** Id */
+            id: number;
+            /** Is League */
+            is_league: boolean;
+            /** Name */
+            name: string;
+        };
+        /**
+         * CatalogEntityRead
+         * @description One ``catalog.entity`` row of any discipline and kind; the public, admin and embedded catalog wire.
+         */
+        "stats.CatalogEntityRead": {
+            /** Active */
+            active: boolean;
+            /** Aliases */
+            aliases: string[];
+            /** Attrs */
+            attrs: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Discipline */
+            discipline: string;
+            /** Id */
+            id: number;
+            /** Image Path */
+            image_path: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: StatsCatalogEntityReadKind;
+            /** Name */
+            name: string;
+            /** @default null */
+            parent: components["schemas"]["stats.CatalogEntityRead"] | null;
+            /** Parent Id */
+            parent_id: number | null;
+            /** Slug */
+            slug: string;
+            /**
+             * Updated At
+             * @default null
+             */
+            updated_at: string | null;
+        };
+        /** CharacterLeaderboardEntry */
+        "stats.CharacterLeaderboardEntry": {
+            /** Avg Crit Accuracy */
+            avg_crit_accuracy: number;
+            /** Avg Weapon Accuracy */
+            avg_weapon_accuracy: number;
+            /** Div */
+            div: number | null;
+            /**
+             * Division Grid Version Id
+             * @default null
+             */
+            division_grid_version_id: number | null;
+            /** Games Played */
+            games_played: number;
+            /** Kd */
+            kd: number;
+            /** Kda */
+            kda: number;
+            /** Per10 All Damage */
+            per10_all_damage: number;
+            /** Per10 Crit Hits */
+            per10_crit_hits: number;
+            /** Per10 Damage */
+            per10_damage: number;
+            /** Per10 Damage Blocked */
+            per10_damage_blocked: number;
+            /** Per10 Damage Taken */
+            per10_damage_taken: number;
+            /** Per10 Deaths */
+            per10_deaths: number;
+            /** Per10 Defensive Assists */
+            per10_defensive_assists: number;
+            /** Per10 Eliminations */
+            per10_eliminations: number;
+            /** Per10 Env Kills */
+            per10_env_kills: number;
+            /** Per10 Final Blows */
+            per10_final_blows: number;
+            /** Per10 Healing */
+            per10_healing: number;
+            /** Per10 Multikills */
+            per10_multikills: number;
+            /** Per10 Obj Kills */
+            per10_obj_kills: number;
+            /** Per10 Offensive Assists */
+            per10_offensive_assists: number;
+            /** Per10 Self Healing */
+            per10_self_healing: number;
+            /** Per10 Solo Kills */
+            per10_solo_kills: number;
+            /** Per10 Ultimates Used */
+            per10_ultimates_used: number;
+            /** Player Name */
+            player_name: string;
+            /** Playtime Seconds */
+            playtime_seconds: number;
+            /** Rank */
+            rank: number;
+            /** @default null */
+            role: components["schemas"]["stats.RoleRef"] | null;
+            /**
+             * Team
+             * @default null
+             */
+            team: string | null;
+            /**
+             * Team Id
+             * @default null
+             */
+            team_id: number | null;
+            /** User Id */
+            user_id: number;
+            /** Username */
+            username: string;
+        };
+        /**
+         * CharacterLeaderboardResponse
+         * @description One character's leaderboard page plus every stored division grid its rows' ``div`` refers to (none in the
+         *     all-workspaces read, whose ``div`` is on the game's native ladder).
+         */
+        "stats.CharacterLeaderboardResponse": {
+            /** Division Grids */
+            division_grids?: components["schemas"]["stats.DivisionGridVersionRead"][];
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["stats.CharacterLeaderboardEntry"][];
+            /** Total */
+            total: number;
+        };
+        /**
+         * CharacterPlaytime
+         * @description One character's share of the observed playtime (a fraction of the returned set), not a duration.
+         */
+        "stats.CharacterPlaytime": {
+            entity: components["schemas"]["stats.CatalogEntityRead"];
+            /** Playtime */
+            playtime: number;
+        };
+        /**
+         * CharacterRecord
+         * @description The player's career-best game on a character in the stat its class is judged by.
+         */
+        "stats.CharacterRecord": {
+            /** Encounter Id */
+            encounter_id: number;
+            /** Map Name */
+            map_name: string;
+            /** Stat */
+            stat: string;
+            /** Tournament Name */
+            tournament_name: string;
+            /** Value */
+            value: number;
+        };
+        /** CharacterStat */
+        "stats.CharacterStat": {
+            /** Avg 10 */
+            avg_10: number;
+            /** Avg 10 All */
+            avg_10_all: number;
+            best: components["schemas"]["stats.CharacterStatBest"];
+            best_all: components["schemas"]["stats.CharacterStatBest"] | null;
+            /** Name */
+            name: string;
+            /** Overall */
+            overall: number;
+        };
+        /** CharacterStatBest */
+        "stats.CharacterStatBest": {
+            /** Encounter Id */
+            encounter_id: number;
+            /** Map Image Path */
+            map_image_path: string;
+            /** Map Name */
+            map_name: string;
+            /** Player Name */
+            player_name: string;
+            /** Tournament Name */
+            tournament_name: string;
+            /** Value */
+            value: number;
+        };
+        /** CharacterWithUserStats */
+        "stats.CharacterWithUserStats": {
+            character: components["schemas"]["stats.CatalogEntityRead"];
+            /**
+             * Draw
+             * @default 0
+             */
+            draw: number;
+            /**
+             * Games
+             * @default 0
+             */
+            games: number;
+            /**
+             * Loss
+             * @default 0
+             */
+            loss: number;
+            /** @default null */
+            record: components["schemas"]["stats.CharacterRecord"] | null;
+            /** Stats */
+            stats: components["schemas"]["stats.CharacterStat"][];
+            /**
+             * Win
+             * @default 0
+             */
+            win: number;
+            /**
+             * Win Rate All
+             * @default null
+             */
+            win_rate_all: number | null;
+        };
         /** CurrentRank */
         "stats.CurrentRank": {
             /**
@@ -17433,6 +16196,104 @@ export interface components {
             ranks: components["schemas"]["stats.CurrentRank"][];
             /** User Id */
             user_id: number | null;
+        };
+        /** DivisionGridTierRead */
+        "stats.DivisionGridTierRead": {
+            /** Icon Url */
+            icon_url: string;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Number */
+            number: number;
+            /** Rank Max */
+            rank_max: number | null;
+            /** Rank Min */
+            rank_min: number;
+            /** Slug */
+            slug: string;
+            /** Sort Order */
+            sort_order: number;
+            /** Version Id */
+            version_id: number;
+        };
+        /** DivisionGridVersionRead */
+        "stats.DivisionGridVersionRead": {
+            /** Created From Version Id */
+            created_from_version_id: number | null;
+            /** Grid Id */
+            grid_id: number;
+            /** Id */
+            id: number;
+            /** Label */
+            label: string;
+            /** Published At */
+            published_at: string | null;
+            /** Status */
+            status: string;
+            /** Tiers */
+            tiers?: components["schemas"]["stats.DivisionGridTierRead"][];
+            /** Version */
+            version: number;
+        };
+        /**
+         * EncounterReadWithUserStats
+         * @description Encounter rendered on the user encounters page.
+         */
+        "stats.EncounterReadWithUserStats": {
+            /**
+             * Best Of
+             * @default 3
+             */
+            best_of: number;
+            /**
+             * Closeness
+             * @default null
+             */
+            closeness: number | null;
+            /** Discipline */
+            discipline: string;
+            /**
+             * Has Logs
+             * @default false
+             */
+            has_logs: boolean;
+            /** Id */
+            id: number;
+            /** Matches */
+            matches?: components["schemas"]["stats.MatchReadWithUserStats"][];
+            /** Name */
+            name: string;
+            /**
+             * Result Status
+             * @default none
+             */
+            result_status: string;
+            /** Round */
+            round: number;
+            /**
+             * Slot Count
+             * @default 2
+             */
+            slot_count: number;
+            /** @default null */
+            stage: components["schemas"]["stats.UserEncounterStageSummary"] | null;
+            /** @default null */
+            stage_item: components["schemas"]["stats.UserEncounterStageItemSummary"] | null;
+            /** Status */
+            status: string;
+            /** Teams */
+            teams?: components["schemas"]["stats.UserEncounterTeamSummary"][];
+            /** @default null */
+            tournament: components["schemas"]["stats.UserEncounterTournament"] | null;
+            /** Tournament Id */
+            tournament_id: number;
+            /**
+             * User Team Id
+             * @default null
+             */
+            user_team_id: number | null;
         };
         /**
          * IngestBinding
@@ -17515,6 +16376,66 @@ export interface components {
          * @enum {string}
          */
         "stats.IngestJobStatus": StatsIngestJobStatus;
+        /**
+         * LobbyLeaderboard
+         * @description Full ranked list of every player in a tournament for one stat.
+         *
+         *     Exposes the whole ranked population behind a single user's
+         *     ``UserTournamentWithStats.stats[stat].{rank,total}`` so the frontend can
+         *     render a per-stat "lobby leaderboard" modal.
+         */
+        "stats.LobbyLeaderboard": {
+            /** Entries */
+            entries: components["schemas"]["stats.LobbyLeaderboardEntry"][];
+            /** Stat */
+            stat: string;
+            /** Total Players */
+            total_players: number;
+        };
+        /**
+         * LobbyLeaderboardEntry
+         * @description One player's ranked value for a single stat inside a tournament lobby.
+         */
+        "stats.LobbyLeaderboardEntry": {
+            /** Name */
+            name: string;
+            /** Player Id */
+            player_id: number;
+            /** Rank */
+            rank: number;
+            /** Value */
+            value: number;
+        };
+        /**
+         * LogStatsName
+         * @enum {string}
+         */
+        "stats.LogStatsName": StatsLogStatsName;
+        /** MapModeStats */
+        "stats.MapModeStats": {
+            /** Games */
+            games: number;
+            /** Maps */
+            maps: components["schemas"]["stats.MapStat"][];
+            mode: components["schemas"]["stats.StatMapRef"] | null;
+        };
+        /** MapStat */
+        "stats.MapStat": {
+            /** Avg Duration S */
+            avg_duration_s: number | null;
+            /** Games */
+            games: number;
+            map: components["schemas"]["stats.StatMapRef"];
+            /** Share */
+            share: number;
+        };
+        /** MapStatsResponse */
+        "stats.MapStatsResponse": {
+            /** Modes */
+            modes: components["schemas"]["stats.MapModeStats"][];
+            /** Total Games */
+            total_games: number;
+        };
         /** MatchDoc */
         "stats.MatchDoc": {
             /** Discipline */
@@ -17660,6 +16581,90 @@ export interface components {
             /** Team */
             team: string;
         };
+        /** MatchParticipantRead */
+        "stats.MatchParticipantRead": {
+            /** Encounter Team Id */
+            encounter_team_id: number;
+            /** Name */
+            name: string;
+            result: components["schemas"]["stats.MatchResultRead"] | null;
+            /** Slot */
+            slot: number;
+            /** Source Position */
+            source_position: number;
+            /** Team Facts */
+            team_facts: {
+                [key: string]: number;
+            };
+            /** Tournament Team Id */
+            tournament_team_id: number | null;
+        };
+        /**
+         * MatchReadWithUserStats
+         * @description Match within a user-scoped encounter: the native header, the viewer's totals and every observed member's.
+         *
+         *     A discipline's renderer derives its per-match badges from ``viewer.facts`` against ``member_totals`` (every
+         *     member's segment-0, NULL-entity facts); no derived value rides on the wire. ``viewer`` is ``None`` for a match
+         *     the viewer's seat was a participant of without being observed.
+         */
+        "stats.MatchReadWithUserStats": {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Discipline */
+            discipline: string;
+            /** Duration S */
+            duration_s: number | null;
+            /** Encounter Game Id */
+            encounter_game_id: number | null;
+            /** Encounter Id */
+            encounter_id: number;
+            /** Id */
+            id: number;
+            /** Log Name */
+            log_name: string | null;
+            map: components["schemas"]["stats.CatalogEntityRead"];
+            /** Map Id */
+            map_id: number;
+            /** Map Index */
+            map_index: number | null;
+            /** Member Totals */
+            member_totals?: components["schemas"]["stats.NativeFact"][];
+            /** @default null */
+            mode: components["schemas"]["stats.CatalogEntityRead"] | null;
+            /**
+             * Mode Id
+             * @default null
+             */
+            mode_id: number | null;
+            /** Participants */
+            participants: components["schemas"]["stats.MatchParticipantRead"][];
+            /** Played At */
+            played_at: string | null;
+            /** Raw Available */
+            raw_available: boolean;
+            raw_status: components["schemas"]["stats.RawSourceStatus"] | null;
+            /** Updated At */
+            updated_at: string | null;
+            /** @default null */
+            viewer: components["schemas"]["stats.UserMatchViewer"] | null;
+            /** Workspace Id */
+            workspace_id: number;
+        };
+        /**
+         * MatchResultRead
+         * @description The official result, from the bound ``encounter.game_team``.
+         */
+        "stats.MatchResultRead": {
+            /** Placement */
+            placement: number | null;
+            /** Score */
+            score: number | null;
+            /** Starting Side */
+            starting_side: string | null;
+        };
         /** MatchSegmentDoc */
         "stats.MatchSegmentDoc": {
             /** Attrs */
@@ -17690,6 +16695,150 @@ export interface components {
              * @default null
              */
             placement: number | null;
+        };
+        /** NativeFact */
+        "stats.NativeFact": {
+            /** Encounter Team Id */
+            encounter_team_id: number;
+            /** Entity Id */
+            entity_id: number | null;
+            /** Segment */
+            segment: number;
+            /** Stat Code */
+            stat_code: string;
+            /** Value */
+            value: number;
+            /** Workspace Member Id */
+            workspace_member_id: number | null;
+        };
+        /** Paginated[AchievementEarned] */
+        "stats.Paginated_AchievementEarned_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["stats.AchievementEarned"][];
+            /** Total */
+            total: number;
+        };
+        /** Paginated[AchievementRead] */
+        "stats.Paginated_AchievementRead_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["stats.AchievementRead"][];
+            /** Total */
+            total: number;
+        };
+        /** Paginated[CharacterPlaytime] */
+        "stats.Paginated_CharacterPlaytime_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["stats.CharacterPlaytime"][];
+            /** Total */
+            total: number;
+        };
+        /** Paginated[CharacterWithUserStats] */
+        "stats.Paginated_CharacterWithUserStats_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["stats.CharacterWithUserStats"][];
+            /** Total */
+            total: number;
+        };
+        /** Paginated[EncounterReadWithUserStats] */
+        "stats.Paginated_EncounterReadWithUserStats_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["stats.EncounterReadWithUserStats"][];
+            /** Total */
+            total: number;
+        };
+        /** Paginated[PlayerLeaderboardRow] */
+        "stats.Paginated_PlayerLeaderboardRow_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["stats.PlayerLeaderboardRow"][];
+            /** Total */
+            total: number;
+        };
+        /** Paginated[PlayerStatistics] */
+        "stats.Paginated_PlayerStatistics_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["stats.PlayerStatistics"][];
+            /** Total */
+            total: number;
+        };
+        /** Paginated[UserBestTeammate] */
+        "stats.Paginated_UserBestTeammate_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["stats.UserBestTeammate"][];
+            /** Total */
+            total: number;
+        };
+        /** Paginated[UserMap] */
+        "stats.Paginated_UserMap_": {
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["stats.UserMap"][];
+            /** Total */
+            total: number;
+        };
+        /** PlayerLeaderboardRow */
+        "stats.PlayerLeaderboardRow": {
+            /** Id */
+            id: number;
+            /** Low Sample */
+            low_sample: boolean;
+            /** Maps Lost */
+            maps_lost: number;
+            /** Maps Won */
+            maps_won: number;
+            /** Name */
+            name: string;
+            /** Rank */
+            rank: number;
+            /** Titles */
+            titles: number;
+            /** Tournaments */
+            tournaments: number;
+            /** Winrate */
+            winrate: number | null;
+        };
+        /** PlayerStatistics */
+        "stats.PlayerStatistics": {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Value */
+            value: number;
         };
         /** RankHistoryPoint */
         "stats.RankHistoryPoint": {
@@ -17763,6 +16912,11 @@ export interface components {
             social_account_id: number;
         };
         /**
+         * RawSourceStatus
+         * @enum {string}
+         */
+        "stats.RawSourceStatus": StatsRawSourceStatus;
+        /**
          * RoleRef
          * @description ``role`` is the leaf an assignment names; ``parent`` is derived and ignored on input.
          */
@@ -17776,6 +16930,999 @@ export interface components {
             parent: string | null;
             /** Role */
             role: string;
+        };
+        /**
+         * SocialAccountRead
+         * @description Unified player social identity (battlenet/discord/twitch/boosty/vk/youtube/…).
+         */
+        "stats.SocialAccountRead": {
+            /** Id */
+            id: number;
+            /**
+             * Is Primary
+             * @default false
+             */
+            is_primary: boolean;
+            /**
+             * Is Verified
+             * @default false
+             */
+            is_verified: boolean;
+            /** Provider */
+            provider: string;
+            /**
+             * Url
+             * @default null
+             */
+            url: string | null;
+            /** User Id */
+            user_id: number;
+            /** Username */
+            username: string;
+            /**
+             * Visible Global
+             * @default true
+             */
+            visible_global: boolean;
+            /** Visible Workspace Ids */
+            visible_workspace_ids?: number[];
+        };
+        /**
+         * SortOrder
+         * @enum {string}
+         */
+        "stats.SortOrder": StatsSortOrder;
+        /** StatMapRef */
+        "stats.StatMapRef": {
+            /** Id */
+            id: number;
+            /** Image Path */
+            image_path: string | null;
+            /** Name */
+            name: string;
+            /** Slug */
+            slug: string;
+        };
+        /** StatRecord */
+        "stats.StatRecord": {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: StatsStatRecordCode;
+            /**
+             * Duration S
+             * @default null
+             */
+            duration_s: number | null;
+            /**
+             * Encounter Id
+             * @default null
+             */
+            encounter_id: number | null;
+            /**
+             * Ended At
+             * @default null
+             */
+            ended_at: string | null;
+            /** @default null */
+            map: components["schemas"]["stats.StatMapRef"] | null;
+            /**
+             * Match Id
+             * @default null
+             */
+            match_id: number | null;
+            /**
+             * Of Total
+             * @default null
+             */
+            of_total: number | null;
+            /** @default null */
+            opponent: components["schemas"]["stats.StatRef"] | null;
+            /** @default null */
+            player: components["schemas"]["stats.StatRef"] | null;
+            /**
+             * Relative
+             * @default null
+             */
+            relative: number | null;
+            /**
+             * Score
+             * @default null
+             */
+            score: [
+                number,
+                number
+            ] | null;
+            /**
+             * Started At
+             * @default null
+             */
+            started_at: string | null;
+            /** @default null */
+            team: components["schemas"]["stats.StatRef"] | null;
+            /** @default null */
+            tournament: components["schemas"]["stats.StatRef"] | null;
+            /** Value */
+            value: number;
+        };
+        /** StatRecords */
+        "stats.StatRecords": {
+            /** Records */
+            records: components["schemas"]["stats.StatRecord"][];
+        };
+        /** StatRef */
+        "stats.StatRef": {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        };
+        /**
+         * TournamentStatus
+         * @enum {string}
+         */
+        "stats.TournamentStatus": StatsTournamentStatus;
+        /** UserAchievementRead */
+        "stats.UserAchievementRead": {
+            /**
+             * Category
+             * @default null
+             */
+            category: string | null;
+            /**
+             * Condition Tree
+             * @default null
+             */
+            condition_tree: {
+                [key: string]: unknown;
+            } | null;
+            /** Count */
+            count: number;
+            /** Description En */
+            description_en: string;
+            /** Description Ru */
+            description_ru: string;
+            /** Discipline */
+            discipline: string;
+            entity: components["schemas"]["stats.CatalogEntityRead"] | null;
+            /** Entity Id */
+            entity_id: number | null;
+            /** Id */
+            id: number;
+            /** Image Url */
+            image_url: string | null;
+            /** Matches */
+            matches: components["schemas"]["stats.AchievementMatchLink"][];
+            /** Matches Ids */
+            matches_ids: number[];
+            /** Name */
+            name: string;
+            /** Rarity */
+            rarity: number;
+            /**
+             * Scope
+             * @default null
+             */
+            scope: string | null;
+            /** Slug */
+            slug: string;
+            /** Tournaments */
+            tournaments: components["schemas"]["stats.AchievementTournamentLink"][];
+            /** Tournaments Ids */
+            tournaments_ids: number[];
+        };
+        /** UserBestTeammate */
+        "stats.UserBestTeammate": {
+            /** Maps */
+            maps: number;
+            /** Stats */
+            stats: {
+                [key: string]: number | null;
+            };
+            /** Tournaments */
+            tournaments: number;
+            user: components["schemas"]["stats.UserRead"];
+            /** Winrate */
+            winrate: number;
+        };
+        /** UserCatalogEntry */
+        "stats.UserCatalogEntry": {
+            /** Achievements Count */
+            achievements_count: number;
+            /**
+             * Avatar Url
+             * @default null
+             */
+            avatar_url: string | null;
+            /** Avg Placement */
+            avg_placement: number | null;
+            /** Best Placement */
+            best_placement: number | null;
+            /** Disciplines */
+            disciplines?: string[];
+            /** Encounters Played */
+            encounters_played: number;
+            /** Id */
+            id: number;
+            /** Last Active At */
+            last_active_at: string | null;
+            /** Maps Lost */
+            maps_lost: number;
+            /** Maps Won */
+            maps_won: number;
+            /** Name */
+            name: string;
+            /** Roles */
+            roles: components["schemas"]["stats.UserOverviewRoleDivision"][];
+            /** Top Characters */
+            top_characters: components["schemas"]["stats.UserOverviewCharacter"][];
+            /** Tournaments Count */
+            tournaments_count: number;
+        };
+        /** UserCatalogLetter */
+        "stats.UserCatalogLetter": {
+            /** Count */
+            count: number;
+            /** Letter */
+            letter: string;
+            /** Users */
+            users: components["schemas"]["stats.UserCatalogEntry"][];
+        };
+        /** UserCatalogResponse */
+        "stats.UserCatalogResponse": {
+            /** Available Letters */
+            available_letters: string[];
+            /** Division Grids */
+            division_grids?: components["schemas"]["stats.DivisionGridVersionRead"][];
+            /** Letters */
+            letters: components["schemas"]["stats.UserCatalogLetter"][];
+            /** Total */
+            total: number;
+        };
+        /** UserCharacterCompareMetric */
+        "stats.UserCharacterCompareMetric": {
+            /** Better Worse */
+            better_worse: StatsUserCharacterCompareMetricBetter_worseAnyOf0 | null;
+            /** Delta */
+            delta: number;
+            /** Delta Percent */
+            delta_percent: number | null;
+            /** Higher Is Better */
+            higher_is_better: boolean;
+            /** Left Value */
+            left_value: number;
+            /** Right Value */
+            right_value: number;
+            /** Stat */
+            stat: string;
+        };
+        /** UserCharacterCompareResponse */
+        "stats.UserCharacterCompareResponse": {
+            baseline: components["schemas"]["stats.UserCompareBaselineInfo"];
+            /** Left Playtime Seconds */
+            left_playtime_seconds: number;
+            map: components["schemas"]["stats.CatalogEntityRead"] | null;
+            /** Metrics */
+            metrics: components["schemas"]["stats.UserCharacterCompareMetric"][];
+            /** Right Playtime Seconds */
+            right_playtime_seconds: number;
+            subject: components["schemas"]["stats.UserCompareUser"];
+            subject_character: components["schemas"]["stats.CatalogEntityRead"] | null;
+            target: components["schemas"]["stats.UserCompareUser"] | null;
+            target_character: components["schemas"]["stats.CatalogEntityRead"] | null;
+        };
+        /** UserCompareBaselineInfo */
+        "stats.UserCompareBaselineInfo": {
+            /** Div Max */
+            div_max: number | null;
+            /** Div Min */
+            div_min: number | null;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: StatsUserCompareBaselineInfoMode;
+            /** @default null */
+            role: components["schemas"]["stats.RoleRef"] | null;
+            /** Sample Size */
+            sample_size: number;
+            target_user: components["schemas"]["stats.UserCompareUser"] | null;
+        };
+        /** UserCompareMetric */
+        "stats.UserCompareMetric": {
+            /** Baseline Value */
+            baseline_value: number | null;
+            /** Better Worse */
+            better_worse: StatsUserCompareMetricBetter_worseAnyOf0 | null;
+            /** Delta */
+            delta: number | null;
+            /** Delta Percent */
+            delta_percent: number | null;
+            /** Higher Is Better */
+            higher_is_better: boolean;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Subject Percentile */
+            subject_percentile: number | null;
+            /** Subject Rank */
+            subject_rank: number | null;
+            /** Subject Value */
+            subject_value: number | null;
+        };
+        /** UserCompareResponse */
+        "stats.UserCompareResponse": {
+            baseline: components["schemas"]["stats.UserCompareBaselineInfo"];
+            /** Metrics */
+            metrics: components["schemas"]["stats.UserCompareMetric"][];
+            subject: components["schemas"]["stats.UserCompareUser"];
+        };
+        /** UserCompareUser */
+        "stats.UserCompareUser": {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        };
+        /**
+         * UserDraftCard
+         * @description Career summary rendered on the draft room's player island.
+         *
+         *     Leagues are excluded throughout (no placement, no bracket) so every number
+         *     on the card counts the same set of events. A player with no history is a
+         *     valid card of zeros and empty lists, never a 404.
+         */
+        "stats.UserDraftCard": {
+            /**
+             * Avg Placement
+             * @default null
+             */
+            avg_placement: number | null;
+            /**
+             * Best Placement
+             * @default null
+             */
+            best_placement: number | null;
+            /** Characters */
+            characters?: components["schemas"]["stats.UserDraftCardCharacter"][];
+            /** Maps */
+            maps: number;
+            /** Maps Lost */
+            maps_lost: number;
+            /** Maps Won */
+            maps_won: number;
+            /**
+             * Mvp Maps
+             * @default null
+             */
+            mvp_maps: number | null;
+            /** Recent Tournaments */
+            recent_tournaments?: components["schemas"]["stats.UserDraftCardTournament"][];
+            /** Roles */
+            roles?: components["schemas"]["stats.UserDraftCardRole"][];
+            /** Tournaments */
+            tournaments: number;
+            /** Tournaments Won */
+            tournaments_won: number;
+        };
+        /**
+         * UserDraftCardCharacter
+         * @description One of the player's signature characters on the draft-room player card.
+         */
+        "stats.UserDraftCardCharacter": {
+            character: components["schemas"]["stats.CatalogEntityRead"];
+            /** Maps */
+            maps: number;
+            /** Maps Won */
+            maps_won: number;
+        };
+        /**
+         * UserDraftCardRole
+         * @description One role's map record on the draft-room player card.
+         */
+        "stats.UserDraftCardRole": {
+            /** Maps */
+            maps: number;
+            /** Maps Won */
+            maps_won: number;
+            /** @default null */
+            role: components["schemas"]["stats.RoleRef"] | null;
+        };
+        /**
+         * UserDraftCardTournament
+         * @description One recent tournament row on the draft-room player card.
+         */
+        "stats.UserDraftCardTournament": {
+            /**
+             * Date
+             * @default null
+             */
+            date: string | null;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Placement
+             * @default null
+             */
+            placement: number | null;
+            /**
+             * Rank
+             * @default null
+             */
+            rank: number | null;
+            /** @default null */
+            role: components["schemas"]["stats.RoleRef"] | null;
+            /** Teams Count */
+            teams_count: number;
+        };
+        /**
+         * UserEncounterStageItemSummary
+         * @description Stage-item link inside `EncounterReadWithUserStats.stage_item`.
+         */
+        "stats.UserEncounterStageItemSummary": {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        };
+        /**
+         * UserEncounterStageSummary
+         * @description Stage link inside `EncounterReadWithUserStats.stage`.
+         */
+        "stats.UserEncounterStageSummary": {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+        };
+        /**
+         * UserEncounterTeamPlayerRef
+         * @description Roster member inside an encounter seat — minimal id+user_id+role.
+         *
+         *     Used only by the frontend to identify which seat the viewer played in
+         *     (`players.find(p => p.user_id === selfUserId)`). Renders nothing on its
+         *     own — for the full player card see `UserTournamentPlayer`. ``id`` is the
+         *     roster snapshot row, not a tournament player.
+         */
+        "stats.UserEncounterTeamPlayerRef": {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** @default null */
+            role: components["schemas"]["stats.RoleRef"] | null;
+            /** User Id */
+            user_id: number;
+        };
+        /**
+         * UserEncounterTeamSummary
+         * @description One live seat inside `EncounterReadWithUserStats.teams`.
+         *
+         *     ``id`` is the participation (``encounter.team``), ``team_id`` the source
+         *     tournament team -- ``None`` once that team is deleted; ``name`` is the
+         *     snapshot the encounter was played under, and ``players`` its roster snapshot.
+         */
+        "stats.UserEncounterTeamSummary": {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Placement
+             * @default null
+             */
+            placement: number | null;
+            /** Players */
+            players?: components["schemas"]["stats.UserEncounterTeamPlayerRef"][];
+            /**
+             * Score
+             * @default 0
+             */
+            score: number;
+            /** Slot */
+            slot: number;
+            /**
+             * Team Id
+             * @default null
+             */
+            team_id: number | null;
+        };
+        /**
+         * UserEncounterTournament
+         * @description Tournament link inside `EncounterReadWithUserStats.tournament`.
+         */
+        "stats.UserEncounterTournament": {
+            /** Id */
+            id: number;
+            /**
+             * Is Finished
+             * @default false
+             */
+            is_finished: boolean;
+            /** Is League */
+            is_league: boolean;
+            /** Name */
+            name: string;
+            /** @default null */
+            status: components["schemas"]["stats.TournamentStatus"] | null;
+        };
+        /**
+         * UserGameSummary
+         * @description One game of a cross-game profile: the player's roles on that game's grid, tournaments and wins in it.
+         */
+        "stats.UserGameSummary": {
+            /** Discipline */
+            discipline: string;
+            /** Roles */
+            roles: components["schemas"]["stats.UserRole"][];
+            /** Tournaments Count */
+            tournaments_count: number;
+            /** Tournaments Won */
+            tournaments_won: number;
+        };
+        /** UserMap */
+        "stats.UserMap": {
+            /**
+             * Character Stats
+             * @default null
+             */
+            character_stats: components["schemas"]["stats.UserMapCharacterStats"][] | null;
+            /** Characters */
+            characters: components["schemas"]["stats.CharacterPlaytime"][];
+            /** Count */
+            count: number;
+            /** Draw */
+            draw: number;
+            /** Loss */
+            loss: number;
+            map: components["schemas"]["stats.CatalogEntityRead"];
+            /** Win */
+            win: number;
+            /** Win Rate */
+            win_rate: number;
+        };
+        /** UserMapCharacterStats */
+        "stats.UserMapCharacterStats": {
+            character: components["schemas"]["stats.CatalogEntityRead"];
+            /** Draw */
+            draw: number;
+            /** Games */
+            games: number;
+            /** Loss */
+            loss: number;
+            /** Playtime Seconds */
+            playtime_seconds: number;
+            /** Playtime Share On Map */
+            playtime_share_on_map: number;
+            /** Win */
+            win: number;
+            /** Win Rate */
+            win_rate: number;
+        };
+        /** UserMapHighlight */
+        "stats.UserMapHighlight": {
+            /** Count */
+            count: number;
+            /** Draw */
+            draw: number;
+            /** Loss */
+            loss: number;
+            map: components["schemas"]["stats.CatalogEntityRead"];
+            /** Win */
+            win: number;
+            /** Win Rate */
+            win_rate: number;
+        };
+        /** UserMapsOverall */
+        "stats.UserMapsOverall": {
+            /** Draw */
+            draw: number;
+            /** Loss */
+            loss: number;
+            /** Total Games */
+            total_games: number;
+            /** Total Maps */
+            total_maps: number;
+            /** Win */
+            win: number;
+            /** Win Rate */
+            win_rate: number;
+        };
+        /** UserMapsSummary */
+        "stats.UserMapsSummary": {
+            best: components["schemas"]["stats.UserMapHighlight"] | null;
+            most_played: components["schemas"]["stats.UserMapHighlight"] | null;
+            overall: components["schemas"]["stats.UserMapsOverall"];
+            worst: components["schemas"]["stats.UserMapHighlight"] | null;
+        };
+        /**
+         * UserMatchViewer
+         * @description The viewer's own seat and whole-match totals in one match.
+         */
+        "stats.UserMatchViewer": {
+            /** Characters */
+            characters?: components["schemas"]["stats.CatalogEntityRead"][];
+            /** Encounter Team Id */
+            encounter_team_id: number;
+            /** Facts */
+            facts: {
+                [key: string]: number;
+            };
+            /** Workspace Member Id */
+            workspace_member_id: number;
+        };
+        /**
+         * UserMatchesSummary
+         * @description Aggregates for the Matches-tab sidebars, computed over ALL the user's
+         *     encounters (not just the current page): most-fought opponents + per-stage
+         *     win/loss record.
+         */
+        "stats.UserMatchesSummary": {
+            /** Opponents */
+            opponents: components["schemas"]["stats.UserOpponentStat"][];
+            /** Stages */
+            stages: {
+                [key: string]: components["schemas"]["stats.UserStageRecord"];
+            };
+        };
+        /** UserOpponentStat */
+        "stats.UserOpponentStat": {
+            /** Draws */
+            draws: number;
+            /** Losses */
+            losses: number;
+            /** Name */
+            name: string;
+            /** Wins */
+            wins: number;
+        };
+        /** UserOverviewAverages */
+        "stats.UserOverviewAverages": {
+            /** Avg Closeness */
+            avg_closeness: number | null;
+            /** Avg Group Placement */
+            avg_group_placement: number | null;
+            /** Avg Placement */
+            avg_placement: number | null;
+            /** Avg Playoff Placement */
+            avg_playoff_placement: number | null;
+        };
+        /** UserOverviewCharacter */
+        "stats.UserOverviewCharacter": {
+            character: components["schemas"]["stats.CatalogEntityRead"];
+            /** Playtime Seconds */
+            playtime_seconds: number;
+        };
+        /** UserOverviewDivisionCount */
+        "stats.UserOverviewDivisionCount": {
+            /** Count */
+            count: number;
+            /** Division */
+            division: number;
+        };
+        /**
+         * UserOverviewResponse
+         * @description Overview page plus every stored division grid its rows' divisions refer to (none in the all-workspaces read).
+         */
+        "stats.UserOverviewResponse": {
+            /** Division Grids */
+            division_grids?: components["schemas"]["stats.DivisionGridVersionRead"][];
+            /** Page */
+            page: number;
+            /** Per Page */
+            per_page: number;
+            /** Results */
+            results: components["schemas"]["stats.UserOverviewRow"][];
+            /** Total */
+            total: number;
+        };
+        /** UserOverviewRoleDivision */
+        "stats.UserOverviewRoleDivision": {
+            /** Division */
+            division: number | null;
+            /**
+             * Division Grid Version Id
+             * @default null
+             */
+            division_grid_version_id: number | null;
+            /** @default null */
+            role: components["schemas"]["stats.RoleRef"] | null;
+        };
+        /** UserOverviewRow */
+        "stats.UserOverviewRow": {
+            /** Achievements Count */
+            achievements_count: number;
+            /**
+             * Avatar Url
+             * @default null
+             */
+            avatar_url: string | null;
+            averages: components["schemas"]["stats.UserOverviewAverages"];
+            /** Best Placement */
+            best_placement: number | null;
+            /** Disciplines */
+            disciplines?: string[];
+            /** Encounters Played */
+            encounters_played: number;
+            /** Id */
+            id: number;
+            /** Last Active At */
+            last_active_at: string | null;
+            /** Maps Lost */
+            maps_lost: number;
+            /** Maps Won */
+            maps_won: number;
+            /** Name */
+            name: string;
+            /** Roles */
+            roles: components["schemas"]["stats.UserOverviewRoleDivision"][];
+            /** Top Characters */
+            top_characters: components["schemas"]["stats.UserOverviewCharacter"][];
+            /** Tournaments Count */
+            tournaments_count: number;
+        };
+        /** UserOverviewStats */
+        "stats.UserOverviewStats": {
+            /** Active Last 30D */
+            active_last_30d: number;
+            /** Active Last 30D Pct */
+            active_last_30d_pct: number;
+            /** Avg Tournaments Per Player */
+            avg_tournaments_per_player: number;
+            /** Division Counts */
+            division_counts?: components["schemas"]["stats.UserOverviewDivisionCount"][];
+            /** Flex Count */
+            flex_count: number;
+            /** Flex Declared Count */
+            flex_declared_count: number;
+            /** Median Tournaments Per Player */
+            median_tournaments_per_player: number;
+            /** Role Counts */
+            role_counts?: {
+                [key: string]: number;
+            };
+            /** Total Players */
+            total_players: number;
+            /** With Logs Count */
+            with_logs_count: number;
+            /** With Logs Pct */
+            with_logs_pct: number;
+        };
+        /** UserProfile */
+        "stats.UserProfile": {
+            /** Avg Closeness */
+            avg_closeness: number | null;
+            /** Avg Group Placement */
+            avg_group_placement: number | null;
+            /** Avg Placement */
+            avg_placement: number | null;
+            /** Avg Playoff Placement */
+            avg_playoff_placement: number | null;
+            /** Character Statistics */
+            character_statistics: components["schemas"]["stats.CharacterPlaytime"][];
+            /** Characters Count */
+            characters_count: number;
+            /** Games */
+            games?: components["schemas"]["stats.UserGameSummary"][];
+            /** Maps Total */
+            maps_total: number;
+            /** Maps Won */
+            maps_won: number;
+            most_played_character: components["schemas"]["stats.CatalogEntityRead"] | null;
+            /** Roles */
+            roles: components["schemas"]["stats.UserRole"][];
+            /** Tournaments */
+            tournaments: components["schemas"]["stats.UserTournamentSummary"][];
+            /** Tournaments Count */
+            tournaments_count: number;
+            /** Tournaments Won */
+            tournaments_won: number;
+        };
+        /** UserRead */
+        "stats.UserRead": {
+            /**
+             * Avatar Url
+             * @default null
+             */
+            avatar_url: string | null;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /**
+             * Social Accounts
+             * @default []
+             */
+            social_accounts: components["schemas"]["stats.SocialAccountRead"][];
+            /**
+             * Stream Visible
+             * @default true
+             */
+            stream_visible: boolean;
+        };
+        /** UserRole */
+        "stats.UserRole": {
+            /** Division */
+            division: number;
+            /** @default null */
+            division_grid_version: components["schemas"]["stats.DivisionGridVersionRead"] | null;
+            /** Maps */
+            maps: number;
+            /** Maps Won */
+            maps_won: number;
+            /** @default null */
+            role: components["schemas"]["stats.RoleRef"] | null;
+            /** Tournaments */
+            tournaments: number;
+        };
+        /** UserStageRecord */
+        "stats.UserStageRecord": {
+            /** L */
+            l: number;
+            /** W */
+            w: number;
+        };
+        /** UserTournament */
+        "stats.UserTournament": {
+            /** Closeness */
+            closeness: number;
+            /** Count Teams */
+            count_teams: number;
+            /** Discipline */
+            discipline: string;
+            /**
+             * Division
+             * @default null
+             */
+            division: number | null;
+            /** @default null */
+            division_grid_version: components["schemas"]["stats.DivisionGridVersionRead"] | null;
+            /** Draw */
+            draw: number;
+            /** Encounters */
+            encounters?: components["schemas"]["stats.EncounterReadWithUserStats"][];
+            /** Id */
+            id: number;
+            /** Is League */
+            is_league: boolean;
+            /** Lost */
+            lost: number;
+            /** Maps Lost */
+            maps_lost: number;
+            /** Maps Won */
+            maps_won: number;
+            /** Name */
+            name: string;
+            /** Placement */
+            placement: number | null;
+            /** Players */
+            players: components["schemas"]["stats.UserTournamentPlayer"][];
+            /** @default null */
+            role: components["schemas"]["stats.RoleRef"] | null;
+            /** Team */
+            team: string;
+            /** Team Id */
+            team_id: number;
+            /** Won */
+            won: number;
+            /** Workspace Id */
+            workspace_id: number;
+        };
+        /**
+         * UserTournamentPlayer
+         * @description Player card inside `UserTournament.players` (rendered by TournamentTeamTable).
+         *
+         *     Also populated inside `UserEncounterTeamSummary.players` when the
+         *     encounter view needs to identify the viewer's row (via `user_id`).
+         */
+        "stats.UserTournamentPlayer": {
+            /**
+             * Avg Mvp
+             * @default null
+             */
+            avg_mvp: number | null;
+            /** Characters */
+            characters?: components["schemas"]["stats.CatalogEntityRead"][];
+            /** Division */
+            division: number;
+            /** Id */
+            id: number;
+            /** Is Newcomer */
+            is_newcomer: boolean;
+            /** Is Newcomer Role */
+            is_newcomer_role: boolean;
+            /** Is Substitution */
+            is_substitution: boolean;
+            /** Name */
+            name: string;
+            /** Rank */
+            rank: number;
+            /**
+             * Related Player Id
+             * @default null
+             */
+            related_player_id: number | null;
+            /**
+             * Relative Player
+             * @default null
+             */
+            relative_player: number | null;
+            /** @default null */
+            role: components["schemas"]["stats.RoleRef"] | null;
+            /** User Id */
+            user_id: number;
+        };
+        /** UserTournamentStat */
+        "stats.UserTournamentStat": {
+            /** Rank */
+            rank: number;
+            /** Total */
+            total: number;
+            /** Value */
+            value: number;
+        };
+        /**
+         * UserTournamentSummary
+         * @description Tournament card shown in user profile / achievement filter lists.
+         *
+         *     Narrow projection of `models.Tournament` — only fields the frontend
+         *     actually consumes in user-scoped pages.
+         */
+        "stats.UserTournamentSummary": {
+            /** Discipline */
+            discipline: string;
+            /** @default null */
+            division_grid_version: components["schemas"]["stats.DivisionGridVersionRead"] | null;
+            /** Id */
+            id: number;
+            /**
+             * Is Finished
+             * @default false
+             */
+            is_finished: boolean;
+            /** Is League */
+            is_league: boolean;
+            /** Name */
+            name: string;
+            /** @default null */
+            status: components["schemas"]["stats.TournamentStatus"] | null;
+        };
+        /** UserTournamentWithStats */
+        "stats.UserTournamentWithStats": {
+            /** Closeness */
+            closeness: number;
+            /** Discipline */
+            discipline: string;
+            /** Division */
+            division: number;
+            /** @default null */
+            division_grid_version: components["schemas"]["stats.DivisionGridVersionRead"] | null;
+            /** Group Placement */
+            group_placement: number | null;
+            /** Id */
+            id: number;
+            /** Maps */
+            maps: number;
+            /** Maps Won */
+            maps_won: number;
+            /** Name */
+            name: string;
+            /** Playoff Placement */
+            playoff_placement: number | null;
+            /** Playtime */
+            playtime: number;
+            /** @default null */
+            role: components["schemas"]["stats.RoleRef"] | null;
+            /** Stats */
+            stats: {
+                [key: string]: components["schemas"]["stats.UserTournamentStat"];
+            };
+            /** Workspace Id */
+            workspace_id: number;
         };
         /**
          * StreamEntryRead
@@ -21112,21 +21259,6 @@ export interface components {
             /** Shift */
             shift: number;
         };
-        /** AdminDashboard */
-        "app.AdminDashboard": {
-            backlog: components["schemas"]["app.DashboardBacklog"];
-            /**
-             * Generated At
-             * Format: date-time
-             */
-            generated_at: string;
-            /** Issues */
-            issues: components["schemas"]["app.DashboardIssue"][];
-            /** Timeline */
-            timeline: components["schemas"]["app.DashboardTimelineEvent"][] | null;
-            /** Tournaments */
-            tournaments: components["schemas"]["app.DashboardTournamentCard"][];
-        };
         /**
          * AdminUserNotificationsRead
          * @description One *other* account's notification state, for the admin inspector.
@@ -21593,198 +21725,6 @@ export interface components {
              * @default null
              */
             slug: string | null;
-        };
-        /** DashboardBacklog */
-        "app.DashboardBacklog": {
-            /** Encounters Missing Logs */
-            encounters_missing_logs: number | null;
-            /** Rows */
-            rows: components["schemas"]["app.DashboardBacklogRow"][];
-            /** Stage Slots Empty */
-            stage_slots_empty: number | null;
-            /** Teams Without Players */
-            teams_without_players: number | null;
-            /** Tournaments Total */
-            tournaments_total: number;
-            /** Tournaments Without Stages */
-            tournaments_without_stages: number | null;
-            /** Users Without Identities */
-            users_without_identities: number | null;
-        };
-        /**
-         * DashboardBacklogRow
-         * @description One tournament without a card that has a visible non-zero issue.
-         */
-        "app.DashboardBacklogRow": {
-            /** Discipline */
-            discipline: string;
-            /** Encounters Missing Logs */
-            encounters_missing_logs: number | null;
-            /** Has Stages */
-            has_stages: boolean | null;
-            /** Stage Slots Empty */
-            stage_slots_empty: number | null;
-            /** Teams Without Players */
-            teams_without_players: number | null;
-            /** Tournament Id */
-            tournament_id: number;
-            /** Tournament Name */
-            tournament_name: string;
-        };
-        /** DashboardIssue */
-        "app.DashboardIssue": {
-            /** Count */
-            count: number | null;
-            /**
-             * Key
-             * @enum {string}
-             */
-            key: AppDashboardIssueKey;
-            /**
-             * Severity
-             * @enum {string}
-             */
-            severity: AppDashboardIssueSeverity;
-            /** Tournament Id */
-            tournament_id: number;
-            /** Tournament Name */
-            tournament_name: string;
-        };
-        /**
-         * DashboardPlay
-         * @description ``match.read``; the card's ``play`` is None without it.
-         */
-        "app.DashboardPlay": {
-            /** Encounters Completed */
-            encounters_completed: number;
-            /** Encounters Disputed */
-            encounters_disputed: number;
-            /** Encounters Live */
-            encounters_live: number;
-            /** Encounters Overdue */
-            encounters_overdue: number;
-            /** Encounters Pending Confirmation */
-            encounters_pending_confirmation: number;
-            /** Encounters Total */
-            encounters_total: number;
-        };
-        /** DashboardScheduleEntry */
-        "app.DashboardScheduleEntry": {
-            /** Ends At */
-            ends_at: string | null;
-            /**
-             * Starts At
-             * Format: date-time
-             */
-            starts_at: string;
-            /** Status */
-            status: string;
-        };
-        /** DashboardTimelineEvent */
-        "app.DashboardTimelineEvent": {
-            /**
-             * At
-             * Format: date-time
-             */
-            at: string;
-            /**
-             * Edge
-             * @enum {string}
-             */
-            edge: AppDashboardTimelineEventEdge;
-            /** Overdue */
-            overdue: boolean;
-            /** Status */
-            status: string;
-            /** Tournament Id */
-            tournament_id: number;
-            /** Tournament Name */
-            tournament_name: string;
-        };
-        /** DashboardTournamentCard */
-        "app.DashboardTournamentCard": {
-            /** Discipline */
-            discipline: string;
-            /** End Date */
-            end_date: string | null;
-            /** Finished At */
-            finished_at: string | null;
-            /** Has Challonge Source */
-            has_challonge_source: boolean;
-            /** Id */
-            id: number;
-            /** Is Hidden */
-            is_hidden: boolean;
-            /** Name */
-            name: string;
-            /** Next Deadline At */
-            next_deadline_at: string | null;
-            /**
-             * Phase
-             * @enum {string}
-             */
-            phase: AppDashboardTournamentCardPhase;
-            /** Phase Schedule */
-            phase_schedule: components["schemas"]["app.DashboardScheduleEntry"][];
-            play: components["schemas"]["app.DashboardPlay"] | null;
-            readiness: components["schemas"]["app.TournamentReadiness"];
-            /** Registration Closes At */
-            registration_closes_at: string | null;
-            /** Registrations Last 24H */
-            registrations_last_24h: number | null;
-            /** Start Date */
-            start_date: string | null;
-            /** Status */
-            status: string;
-            /** Team Formation */
-            team_formation: string;
-            wrap_up: components["schemas"]["app.DashboardWrapUp"] | null;
-        };
-        /** DashboardTrendPoint */
-        "app.DashboardTrendPoint": {
-            /** Discipline */
-            discipline: string;
-            /** Duel Encounters Total */
-            duel_encounters_total: number;
-            /** Duel Encounters With Logs */
-            duel_encounters_with_logs: number;
-            /** Median Confirm Seconds */
-            median_confirm_seconds: number | null;
-            /** Newcomers */
-            newcomers: number;
-            /** Participants */
-            participants: number;
-            /** Start Date */
-            start_date: string | null;
-            /** Tournament Id */
-            tournament_id: number;
-            /** Tournament Name */
-            tournament_name: string;
-        };
-        /** DashboardTrends */
-        "app.DashboardTrends": {
-            /** Points */
-            points: components["schemas"]["app.DashboardTrendPoint"][];
-        };
-        /**
-         * DashboardWrapUp
-         * @description Present only on a ``wrap_up`` card. ``done`` is computed on full data regardless of permissions.
-         */
-        "app.DashboardWrapUp": {
-            /** Achievements Status */
-            achievements_status: string | null;
-            /** Done */
-            done: boolean;
-            /** Duel Encounters Total */
-            duel_encounters_total: number | null;
-            /** Duel Encounters With Logs */
-            duel_encounters_with_logs: number | null;
-            /** Logs Used */
-            logs_used: boolean | null;
-            /** Results Open */
-            results_open: number | null;
-            /** Standings Recalc Pending */
-            standings_recalc_pending: boolean | null;
         };
         /** LookupItem */
         "app.LookupItem": {
@@ -22321,70 +22261,6 @@ export interface components {
              * @default 0
              */
             substitute_min: number;
-        };
-        /**
-         * TournamentReadiness
-         * @description Living-checklist aggregate for one tournament.
-         *
-         *     Field groups are masked by the caller's workspace permissions:
-         *     ``tournament.read`` gates the setup/bracket/logs/recalc fields, ``team.read``
-         *     the registration/pool/balance/draft fields, ``match.read`` the result backlog
-         *     and ``achievement.read`` the evaluation status — a missing group yields
-         *     ``None`` so the checklist renders "no-access" instead of zeros.
-         */
-        "app.TournamentReadiness": {
-            /** Achievements Status */
-            achievements_status: string | null;
-            /** Balance Exported At */
-            balance_exported_at: string | null;
-            /** Balance Saved */
-            balance_saved: boolean | null;
-            /** Bracket Generated */
-            bracket_generated: boolean | null;
-            /** Draft Session Status */
-            draft_session_status: string | null;
-            /** Duel Encounters Total */
-            duel_encounters_total: number | null;
-            /** Duel Encounters With Logs */
-            duel_encounters_with_logs: number | null;
-            /** Grid Selected */
-            grid_selected: boolean | null;
-            /** Logs Used */
-            logs_used: boolean | null;
-            /** Pool Need Fix */
-            pool_need_fix: number | null;
-            /** Pool Ready */
-            pool_ready: number | null;
-            /** Registration Form Configured */
-            registration_form_configured: boolean | null;
-            /** Registrations Approved */
-            registrations_approved: number | null;
-            /** Registrations Checked In */
-            registrations_checked_in: number | null;
-            /** Registrations Pending */
-            registrations_pending: number | null;
-            /** Registrations Ranked */
-            registrations_ranked: number | null;
-            /** Results Disputed */
-            results_disputed: number | null;
-            /** Results Overdue */
-            results_overdue: number | null;
-            /** Results Pending Confirmation */
-            results_pending_confirmation: number | null;
-            /** Schedule Configured */
-            schedule_configured: boolean | null;
-            /** Stage Slots Filled */
-            stage_slots_filled: boolean | null;
-            /** Stages Total */
-            stages_total: number | null;
-            /** Standings Recalc Pending */
-            standings_recalc_pending: boolean | null;
-            /** Status */
-            status: string;
-            /** Team Formation */
-            team_formation: string;
-            /** Tournament Id */
-            tournament_id: number;
         };
         /** UserAdminUpdate */
         "app.UserAdminUpdate": {
@@ -25448,11 +25324,6 @@ export interface components {
              */
             rate_limited: number;
         };
-        /**
-         * RawSourceStatus
-         * @enum {string}
-         */
-        "stats.RawSourceStatus": StatsRawSourceStatus;
         /** ReenableDisabledRequest */
         "stats.ReenableDisabledRequest": {
             /**
@@ -25503,11 +25374,6 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /**
-         * SortOrder
-         * @enum {string}
-         */
-        "stats.SortOrder": StatsSortOrder;
         /** SubscriptionCheckLogRead */
         "stats.SubscriptionCheckLogRead": {
             /**
@@ -25821,6 +25687,21 @@ export interface components {
         "stream.StreamRepollRead": {
             /** Tournament Id */
             tournament_id: number;
+        };
+        /** AdminDashboard */
+        "tournament.AdminDashboard": {
+            backlog: components["schemas"]["tournament.DashboardBacklog"];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Issues */
+            issues: components["schemas"]["tournament.DashboardIssue"][];
+            /** Timeline */
+            timeline: components["schemas"]["tournament.DashboardTimelineEvent"][] | null;
+            /** Tournaments */
+            tournaments: components["schemas"]["tournament.DashboardTournamentCard"][];
         };
         /**
          * AdminForfeitResult
@@ -27342,6 +27223,198 @@ export interface components {
              * @default null
              */
             value: unknown;
+        };
+        /** DashboardBacklog */
+        "tournament.DashboardBacklog": {
+            /** Encounters Missing Logs */
+            encounters_missing_logs: number | null;
+            /** Rows */
+            rows: components["schemas"]["tournament.DashboardBacklogRow"][];
+            /** Stage Slots Empty */
+            stage_slots_empty: number | null;
+            /** Teams Without Players */
+            teams_without_players: number | null;
+            /** Tournaments Total */
+            tournaments_total: number;
+            /** Tournaments Without Stages */
+            tournaments_without_stages: number | null;
+            /** Users Without Identities */
+            users_without_identities: number | null;
+        };
+        /**
+         * DashboardBacklogRow
+         * @description One tournament without a card that has a visible non-zero issue.
+         */
+        "tournament.DashboardBacklogRow": {
+            /** Discipline */
+            discipline: string;
+            /** Encounters Missing Logs */
+            encounters_missing_logs: number | null;
+            /** Has Stages */
+            has_stages: boolean | null;
+            /** Stage Slots Empty */
+            stage_slots_empty: number | null;
+            /** Teams Without Players */
+            teams_without_players: number | null;
+            /** Tournament Id */
+            tournament_id: number;
+            /** Tournament Name */
+            tournament_name: string;
+        };
+        /** DashboardIssue */
+        "tournament.DashboardIssue": {
+            /** Count */
+            count: number | null;
+            /**
+             * Key
+             * @enum {string}
+             */
+            key: TournamentDashboardIssueKey;
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: TournamentDashboardIssueSeverity;
+            /** Tournament Id */
+            tournament_id: number;
+            /** Tournament Name */
+            tournament_name: string;
+        };
+        /**
+         * DashboardPlay
+         * @description ``match.read``; the card's ``play`` is None without it.
+         */
+        "tournament.DashboardPlay": {
+            /** Encounters Completed */
+            encounters_completed: number;
+            /** Encounters Disputed */
+            encounters_disputed: number;
+            /** Encounters Live */
+            encounters_live: number;
+            /** Encounters Overdue */
+            encounters_overdue: number;
+            /** Encounters Pending Confirmation */
+            encounters_pending_confirmation: number;
+            /** Encounters Total */
+            encounters_total: number;
+        };
+        /** DashboardScheduleEntry */
+        "tournament.DashboardScheduleEntry": {
+            /** Ends At */
+            ends_at: string | null;
+            /**
+             * Starts At
+             * Format: date-time
+             */
+            starts_at: string;
+            /** Status */
+            status: string;
+        };
+        /** DashboardTimelineEvent */
+        "tournament.DashboardTimelineEvent": {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Edge
+             * @enum {string}
+             */
+            edge: TournamentDashboardTimelineEventEdge;
+            /** Overdue */
+            overdue: boolean;
+            /** Status */
+            status: string;
+            /** Tournament Id */
+            tournament_id: number;
+            /** Tournament Name */
+            tournament_name: string;
+        };
+        /** DashboardTournamentCard */
+        "tournament.DashboardTournamentCard": {
+            /** Discipline */
+            discipline: string;
+            /** End Date */
+            end_date: string | null;
+            /** Finished At */
+            finished_at: string | null;
+            /** Has Challonge Source */
+            has_challonge_source: boolean;
+            /** Id */
+            id: number;
+            /** Is Hidden */
+            is_hidden: boolean;
+            /** Name */
+            name: string;
+            /** Next Deadline At */
+            next_deadline_at: string | null;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: TournamentDashboardTournamentCardPhase;
+            /** Phase Schedule */
+            phase_schedule: components["schemas"]["tournament.DashboardScheduleEntry"][];
+            play: components["schemas"]["tournament.DashboardPlay"] | null;
+            readiness: components["schemas"]["tournament.TournamentReadiness"];
+            /** Registration Closes At */
+            registration_closes_at: string | null;
+            /** Registrations Last 24H */
+            registrations_last_24h: number | null;
+            /** Start Date */
+            start_date: string | null;
+            /** Status */
+            status: string;
+            /** Team Formation */
+            team_formation: string;
+            wrap_up: components["schemas"]["tournament.DashboardWrapUp"] | null;
+        };
+        /** DashboardTrendPoint */
+        "tournament.DashboardTrendPoint": {
+            /** Discipline */
+            discipline: string;
+            /** Duel Encounters Total */
+            duel_encounters_total: number;
+            /** Duel Encounters With Logs */
+            duel_encounters_with_logs: number;
+            /** Median Confirm Seconds */
+            median_confirm_seconds: number | null;
+            /** Newcomers */
+            newcomers: number;
+            /** Participants */
+            participants: number;
+            /** Start Date */
+            start_date: string | null;
+            /** Tournament Id */
+            tournament_id: number;
+            /** Tournament Name */
+            tournament_name: string;
+        };
+        /** DashboardTrends */
+        "tournament.DashboardTrends": {
+            /** Points */
+            points: components["schemas"]["tournament.DashboardTrendPoint"][];
+        };
+        /**
+         * DashboardWrapUp
+         * @description Present only on a ``wrap_up`` card. ``done`` is computed on full data regardless of permissions.
+         */
+        "tournament.DashboardWrapUp": {
+            /** Achievements Status */
+            achievements_status: string | null;
+            /** Done */
+            done: boolean;
+            /** Duel Encounters Total */
+            duel_encounters_total: number | null;
+            /** Duel Encounters With Logs */
+            duel_encounters_with_logs: number | null;
+            /** Logs Used */
+            logs_used: boolean | null;
+            /** Results Open */
+            results_open: number | null;
+            /** Standings Recalc Pending */
+            standings_recalc_pending: boolean | null;
         };
         /** DivisionGridActivationReadiness */
         "tournament.DivisionGridActivationReadiness": {
@@ -30482,6 +30555,70 @@ export interface components {
             url: string | null;
         };
         /**
+         * TournamentReadiness
+         * @description Living-checklist aggregate for one tournament.
+         *
+         *     Field groups are masked by the caller's workspace permissions:
+         *     ``tournament.read`` gates the setup/bracket/logs/recalc fields, ``team.read``
+         *     the registration/pool/balance/draft fields, ``match.read`` the result backlog
+         *     and ``achievement.read`` the evaluation status — a missing group yields
+         *     ``None`` so the checklist renders "no-access" instead of zeros.
+         */
+        "tournament.TournamentReadiness": {
+            /** Achievements Status */
+            achievements_status: string | null;
+            /** Balance Exported At */
+            balance_exported_at: string | null;
+            /** Balance Saved */
+            balance_saved: boolean | null;
+            /** Bracket Generated */
+            bracket_generated: boolean | null;
+            /** Draft Session Status */
+            draft_session_status: string | null;
+            /** Duel Encounters Total */
+            duel_encounters_total: number | null;
+            /** Duel Encounters With Logs */
+            duel_encounters_with_logs: number | null;
+            /** Grid Selected */
+            grid_selected: boolean | null;
+            /** Logs Used */
+            logs_used: boolean | null;
+            /** Pool Need Fix */
+            pool_need_fix: number | null;
+            /** Pool Ready */
+            pool_ready: number | null;
+            /** Registration Form Configured */
+            registration_form_configured: boolean | null;
+            /** Registrations Approved */
+            registrations_approved: number | null;
+            /** Registrations Checked In */
+            registrations_checked_in: number | null;
+            /** Registrations Pending */
+            registrations_pending: number | null;
+            /** Registrations Ranked */
+            registrations_ranked: number | null;
+            /** Results Disputed */
+            results_disputed: number | null;
+            /** Results Overdue */
+            results_overdue: number | null;
+            /** Results Pending Confirmation */
+            results_pending_confirmation: number | null;
+            /** Schedule Configured */
+            schedule_configured: boolean | null;
+            /** Stage Slots Filled */
+            stage_slots_filled: boolean | null;
+            /** Stages Total */
+            stages_total: number | null;
+            /** Standings Recalc Pending */
+            standings_recalc_pending: boolean | null;
+            /** Status */
+            status: string;
+            /** Team Formation */
+            team_formation: string;
+            /** Tournament Id */
+            tournament_id: number;
+        };
+        /**
          * TournamentScheduleEntryInput
          * @description One phase-schedule row in a full-replace schedule update.
          */
@@ -30708,7 +30845,7 @@ export interface operations {
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1AchievementsGetParametersQuerySort;
-                order?: components["schemas"]["app.SortOrder"];
+                order?: components["schemas"]["stats.SortOrder"];
                 discipline?: string | null;
             };
             header?: never;
@@ -30723,7 +30860,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.Paginated_AchievementRead_"];
+                    "application/json": components["schemas"]["stats.Paginated_AchievementRead_"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -30790,7 +30927,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.UserAchievementRead"][];
+                    "application/json": components["schemas"]["stats.UserAchievementRead"][];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -30853,7 +30990,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.AchievementRead"];
+                    "application/json": components["schemas"]["stats.AchievementRead"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -30918,7 +31055,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.Paginated_AchievementEarned_"];
+                    "application/json": components["schemas"]["stats.Paginated_AchievementEarned_"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -42816,7 +42953,7 @@ export interface operations {
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1StatisticsChampionGetParametersQuerySort;
-                order?: components["schemas"]["app.SortOrder"];
+                order?: components["schemas"]["stats.SortOrder"];
                 discipline?: string;
             };
             header?: never;
@@ -42831,7 +42968,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.Paginated_PlayerStatistics_"];
+                    "application/json": components["schemas"]["stats.Paginated_PlayerStatistics_"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -42880,7 +43017,7 @@ export interface operations {
                 page?: number;
                 per_page?: number;
                 sort?: PathsApiV1StatisticsPlayersGetParametersQuerySort;
-                order?: components["schemas"]["app.SortOrder"];
+                order?: components["schemas"]["stats.SortOrder"];
                 query?: string;
                 discipline?: string;
                 workspace_id?: number;
@@ -42897,7 +43034,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.Paginated_PlayerLeaderboardRow_"];
+                    "application/json": components["schemas"]["stats.Paginated_PlayerLeaderboardRow_"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -42958,7 +43095,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.StatRecords"];
+                    "application/json": components["schemas"]["stats.StatRecords"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -43009,7 +43146,7 @@ export interface operations {
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1StatisticsWinrateGetParametersQuerySort;
-                order?: components["schemas"]["app.SortOrder"];
+                order?: components["schemas"]["stats.SortOrder"];
                 discipline?: string;
             };
             header?: never;
@@ -43024,7 +43161,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.Paginated_PlayerStatistics_"];
+                    "application/json": components["schemas"]["stats.Paginated_PlayerStatistics_"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -43075,7 +43212,7 @@ export interface operations {
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1StatisticsDisciplineCharactersPlaytimeGetParametersQuerySort;
-                order?: components["schemas"]["app.SortOrder"];
+                order?: components["schemas"]["stats.SortOrder"];
                 user_id?: number | "all";
                 tournament_id?: number | null;
             };
@@ -43093,7 +43230,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.Paginated_CharacterPlaytime_"];
+                    "application/json": components["schemas"]["stats.Paginated_CharacterPlaytime_"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -43144,7 +43281,7 @@ export interface operations {
                 entities?: string[];
                 only_count?: boolean;
                 tournament_id?: number | null;
-                stat?: components["schemas"]["app.LogStatsName"];
+                stat?: components["schemas"]["stats.LogStatsName"];
             };
             header?: never;
             path: {
@@ -43161,7 +43298,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.CharacterLeaderboardResponse"];
+                    "application/json": components["schemas"]["stats.CharacterLeaderboardResponse"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -43223,7 +43360,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.MapStatsResponse"];
+                    "application/json": components["schemas"]["stats.MapStatsResponse"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -45476,10 +45613,10 @@ export interface operations {
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1UsersOverviewGetParametersQuerySort;
-                order?: components["schemas"]["app.SortOrder"];
+                order?: components["schemas"]["stats.SortOrder"];
                 query?: string;
                 fields?: string[];
-                role?: components["schemas"]["app.RoleRef"] | null;
+                role?: components["schemas"]["stats.RoleRef"] | null;
                 divisions?: number[];
                 has_logs?: boolean;
                 min_encounters?: number;
@@ -45497,7 +45634,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.UserOverviewResponse"];
+                    "application/json": components["schemas"]["stats.UserOverviewResponse"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -45543,7 +45680,7 @@ export interface operations {
     get__api_v1_users_overview_catalog: {
         parameters: {
             query?: {
-                role?: components["schemas"]["app.RoleRef"] | null;
+                role?: components["schemas"]["stats.RoleRef"] | null;
                 divisions?: number[];
                 has_logs?: boolean;
                 query?: string | null;
@@ -45564,7 +45701,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.UserCatalogResponse"];
+                    "application/json": components["schemas"]["stats.UserCatalogResponse"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -45610,7 +45747,7 @@ export interface operations {
     get__api_v1_users_overview_stats: {
         parameters: {
             query?: {
-                role?: components["schemas"]["app.RoleRef"] | null;
+                role?: components["schemas"]["stats.RoleRef"] | null;
                 divisions?: number[];
                 has_logs?: boolean;
                 query?: string | null;
@@ -45628,7 +45765,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.UserOverviewStats"];
+                    "application/json": components["schemas"]["stats.UserOverviewStats"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -45757,7 +45894,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.Paginated_CharacterWithUserStats_"];
+                    "application/json": components["schemas"]["stats.Paginated_CharacterWithUserStats_"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -45805,7 +45942,7 @@ export interface operations {
             query: {
                 baseline?: PathsApiV1UsersIdCompareGetParametersQueryBaseline;
                 target_user_id?: number | null;
-                role?: components["schemas"]["app.RoleRef"] | null;
+                role?: components["schemas"]["stats.RoleRef"] | null;
                 div_min?: number | null;
                 div_max?: number | null;
                 tournament_id?: number | null;
@@ -45825,7 +45962,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.UserCompareResponse"];
+                    "application/json": components["schemas"]["stats.UserCompareResponse"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -45876,7 +46013,7 @@ export interface operations {
                 left_entity_id?: number | null;
                 right_entity_id?: number | null;
                 map_id?: number | null;
-                role?: components["schemas"]["app.RoleRef"] | null;
+                role?: components["schemas"]["stats.RoleRef"] | null;
                 div_min?: number | null;
                 div_max?: number | null;
                 tournament_id?: number | null;
@@ -45897,7 +46034,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.UserCharacterCompareResponse"];
+                    "application/json": components["schemas"]["stats.UserCharacterCompareResponse"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -46023,7 +46160,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.UserDraftCard"];
+                    "application/json": components["schemas"]["stats.UserDraftCard"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -46074,7 +46211,7 @@ export interface operations {
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1UsersIdEncountersGetParametersQuerySort;
-                order?: components["schemas"]["app.SortOrder"];
+                order?: components["schemas"]["stats.SortOrder"];
                 discipline?: string;
                 result?: string;
                 stage?: string;
@@ -46096,7 +46233,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.Paginated_EncounterReadWithUserStats_"];
+                    "application/json": components["schemas"]["stats.Paginated_EncounterReadWithUserStats_"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -46147,7 +46284,7 @@ export interface operations {
                 entities?: string[];
                 only_count?: boolean;
                 sort?: string;
-                order?: components["schemas"]["app.SortOrder"];
+                order?: components["schemas"]["stats.SortOrder"];
                 query?: string;
                 fields?: string[];
                 min_count?: number | null;
@@ -46169,7 +46306,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.Paginated_UserMap_"];
+                    "application/json": components["schemas"]["stats.Paginated_UserMap_"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -46220,7 +46357,7 @@ export interface operations {
                 entities?: string[];
                 only_count?: boolean;
                 sort?: string;
-                order?: components["schemas"]["app.SortOrder"];
+                order?: components["schemas"]["stats.SortOrder"];
                 query?: string;
                 fields?: string[];
                 min_count?: number | null;
@@ -46242,7 +46379,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.UserMapsSummary"];
+                    "application/json": components["schemas"]["stats.UserMapsSummary"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -46305,7 +46442,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.UserMatchesSummary"];
+                    "application/json": components["schemas"]["stats.UserMatchesSummary"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -46368,7 +46505,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.UserProfile"];
+                    "application/json": components["schemas"]["stats.UserProfile"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -46487,7 +46624,7 @@ export interface operations {
                 entities?: string[];
                 only_count?: boolean;
                 sort?: PathsApiV1UsersIdTeammatesGetParametersQuerySort;
-                order?: components["schemas"]["app.SortOrder"];
+                order?: components["schemas"]["stats.SortOrder"];
                 discipline: string;
             };
             header?: never;
@@ -46504,7 +46641,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.Paginated_UserBestTeammate_"];
+                    "application/json": components["schemas"]["stats.Paginated_UserBestTeammate_"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -46567,7 +46704,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.UserTournament"][];
+                    "application/json": components["schemas"]["stats.UserTournament"][];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -46628,7 +46765,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.UserTournamentWithStats"];
+                    "application/json": components["schemas"]["stats.UserTournamentWithStats"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -46689,7 +46826,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.EncounterReadWithUserStats"][];
+                    "application/json": components["schemas"]["stats.EncounterReadWithUserStats"][];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -46752,7 +46889,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.LobbyLeaderboard"];
+                    "application/json": components["schemas"]["stats.LobbyLeaderboard"];
                 };
             };
             /** @description Not found (`not_found`). Unknown id, or an id outside this credential's workspace (no existence leak). */
@@ -52568,7 +52705,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.AdminDashboard"];
+                    "application/json": components["schemas"]["tournament.AdminDashboard"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -52647,7 +52784,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.DashboardTrends"];
+                    "application/json": components["schemas"]["tournament.DashboardTrends"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -61464,7 +61601,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["app.TournamentReadiness"];
+                    "application/json": components["schemas"]["tournament.TournamentReadiness"];
                 };
             };
             /** @description Not authenticated (`unauthorized`). Missing, invalid, or expired bearer. Session-only `/api/v1/auth` routes also return this for an API key. */
@@ -74388,8 +74525,8 @@ export interface operations {
                 layer?: string[];
                 author_user_id?: number[];
                 role?: string[];
-                rank_min?: number;
-                rank_max?: number;
+                div_min?: number;
+                div_max?: number;
                 differs_from_canon?: boolean;
                 date_from?: string;
                 date_to?: string;
@@ -79841,62 +79978,6 @@ export enum AppFormatDimensionWireMode {
     preference = "preference",
     enforced = "enforced"
 }
-export enum AppLogStatsName {
-    eliminations = "eliminations",
-    final_blows = "final_blows",
-    deaths = "deaths",
-    all_damage_dealt = "all_damage_dealt",
-    barrier_damage_dealt = "barrier_damage_dealt",
-    hero_damage_dealt = "hero_damage_dealt",
-    healing_dealt = "healing_dealt",
-    healing_received = "healing_received",
-    self_healing = "self_healing",
-    damage_taken = "damage_taken",
-    damage_blocked = "damage_blocked",
-    defensive_assists = "defensive_assists",
-    offensive_assists = "offensive_assists",
-    ultimates_earned = "ultimates_earned",
-    ultimates_used = "ultimates_used",
-    multikill_best = "multikill_best",
-    multikills = "multikills",
-    solo_kills = "solo_kills",
-    objective_kills = "objective_kills",
-    environmental_kills = "environmental_kills",
-    environmental_deaths = "environmental_deaths",
-    critical_hits = "critical_hits",
-    critical_hit_accuracy = "critical_hit_accuracy",
-    scoped_accuracy = "scoped_accuracy",
-    scoped_critical_hit_accuracy = "scoped_critical_hit_accuracy",
-    scoped_critical_hit_kills = "scoped_critical_hit_kills",
-    shots_fired = "shots_fired",
-    shots_hit = "shots_hit",
-    shots_missed = "shots_missed",
-    scoped_shots_fired = "scoped_shots_fired",
-    scoped_shots_hit = "scoped_shots_hit",
-    weapon_accuracy = "weapon_accuracy",
-    hero_time_played = "hero_time_played",
-    first_picks = "first_picks",
-    first_deaths = "first_deaths",
-    ultimate_kills = "ultimate_kills",
-    support_kills = "support_kills",
-    performance = "performance",
-    performance_points = "performance_points",
-    kd = "kd",
-    kda = "kda",
-    damage_delta = "damage_delta",
-    fbe = "fbe",
-    damage_fb = "damage_fb",
-    assists = "assists",
-    impact_points = "impact_points",
-    impact_rank = "impact_rank",
-    overperformance_score = "overperformance_score"
-}
-export enum AppRawSourceStatus {
-    available = "available",
-    missing = "missing",
-    conflict = "conflict",
-    unverified = "unverified"
-}
 export enum AppRoleDimensionReadSelection_mode {
     single = "single",
     multi = "multi"
@@ -79924,49 +80005,11 @@ export enum AppStatDefinitionValue_format {
     percent = "percent",
     duration = "duration"
 }
-export enum AppStatRecordCode {
-    win_streak = "win_streak",
-    biggest_upset = "biggest_upset",
-    underdog_champion = "underdog_champion",
-    closest_final = "closest_final",
-    hero_damage = "hero_damage",
-    healing = "healing",
-    eliminations = "eliminations",
-    damage_blocked = "damage_blocked",
-    solo_kills = "solo_kills",
-    most_mvps = "most_mvps",
-    longest_map = "longest_map"
-}
 export enum AppTeamFormatReadSource {
     tournament = "tournament",
     custom_game = "custom_game",
     workspace = "workspace",
     preset = "preset"
-}
-export enum AppTournamentStatus {
-    announcement = "announcement",
-    registration = "registration",
-    draft = "draft",
-    check_in = "check_in",
-    live = "live",
-    playoffs = "playoffs",
-    completed = "completed",
-    archived = "archived"
-}
-export enum AppUserCharacterCompareMetricBetter_worseAnyOf0 {
-    better = "better",
-    worse = "worse",
-    equal = "equal"
-}
-export enum AppUserCompareBaselineInfoMode {
-    target_user = "target_user",
-    global = "global",
-    cohort = "cohort"
-}
-export enum AppUserCompareMetricBetter_worseAnyOf0 {
-    better = "better",
-    worse = "worse",
-    equal = "equal"
 }
 export enum AppWorkspaceListItemNewcomer_scope {
     global = "global",
@@ -80075,12 +80118,115 @@ export enum IdentityTokenPayloadCredential_type {
     api_key = "api_key",
     discord = "discord"
 }
+export enum StatsCatalogEntityReadKind {
+    character = "character",
+    map = "map",
+    mode = "mode"
+}
 export enum StatsIngestJobStatus {
     pending = "pending",
     processing = "processing",
     awaiting_link = "awaiting_link",
     done = "done",
     failed = "failed"
+}
+export enum StatsLogStatsName {
+    eliminations = "eliminations",
+    final_blows = "final_blows",
+    deaths = "deaths",
+    all_damage_dealt = "all_damage_dealt",
+    barrier_damage_dealt = "barrier_damage_dealt",
+    hero_damage_dealt = "hero_damage_dealt",
+    healing_dealt = "healing_dealt",
+    healing_received = "healing_received",
+    self_healing = "self_healing",
+    damage_taken = "damage_taken",
+    damage_blocked = "damage_blocked",
+    defensive_assists = "defensive_assists",
+    offensive_assists = "offensive_assists",
+    ultimates_earned = "ultimates_earned",
+    ultimates_used = "ultimates_used",
+    multikill_best = "multikill_best",
+    multikills = "multikills",
+    solo_kills = "solo_kills",
+    objective_kills = "objective_kills",
+    environmental_kills = "environmental_kills",
+    environmental_deaths = "environmental_deaths",
+    critical_hits = "critical_hits",
+    critical_hit_accuracy = "critical_hit_accuracy",
+    scoped_accuracy = "scoped_accuracy",
+    scoped_critical_hit_accuracy = "scoped_critical_hit_accuracy",
+    scoped_critical_hit_kills = "scoped_critical_hit_kills",
+    shots_fired = "shots_fired",
+    shots_hit = "shots_hit",
+    shots_missed = "shots_missed",
+    scoped_shots_fired = "scoped_shots_fired",
+    scoped_shots_hit = "scoped_shots_hit",
+    weapon_accuracy = "weapon_accuracy",
+    hero_time_played = "hero_time_played",
+    first_picks = "first_picks",
+    first_deaths = "first_deaths",
+    ultimate_kills = "ultimate_kills",
+    support_kills = "support_kills",
+    performance = "performance",
+    performance_points = "performance_points",
+    kd = "kd",
+    kda = "kda",
+    damage_delta = "damage_delta",
+    fbe = "fbe",
+    damage_fb = "damage_fb",
+    assists = "assists",
+    impact_points = "impact_points",
+    impact_rank = "impact_rank",
+    overperformance_score = "overperformance_score"
+}
+export enum StatsRawSourceStatus {
+    available = "available",
+    missing = "missing",
+    conflict = "conflict",
+    unverified = "unverified"
+}
+export enum StatsSortOrder {
+    asc = "asc",
+    desc = "desc"
+}
+export enum StatsStatRecordCode {
+    win_streak = "win_streak",
+    biggest_upset = "biggest_upset",
+    underdog_champion = "underdog_champion",
+    closest_final = "closest_final",
+    hero_damage = "hero_damage",
+    healing = "healing",
+    eliminations = "eliminations",
+    damage_blocked = "damage_blocked",
+    solo_kills = "solo_kills",
+    most_mvps = "most_mvps",
+    longest_map = "longest_map"
+}
+export enum StatsTournamentStatus {
+    announcement = "announcement",
+    registration = "registration",
+    draft = "draft",
+    check_in = "check_in",
+    live = "live",
+    playoffs = "playoffs",
+    completed = "completed",
+    archived = "archived"
+}
+export enum StatsUserCharacterCompareMetricBetter_worseAnyOf0 {
+    better = "better",
+    worse = "worse",
+    equal = "equal"
+}
+export enum StatsUserCompareBaselineInfoMode {
+    target_user = "target_user",
+    global = "global",
+    cohort = "cohort"
+}
+export enum StatsUserCompareMetricBetter_worseAnyOf0 {
+    better = "better",
+    worse = "worse",
+    equal = "equal"
 }
 export enum StreamStreamEntryReadPlatform {
     twitch = "twitch",
@@ -80292,36 +80438,6 @@ export enum AppCatalogAliasMissReadKind {
     event = "event",
     role = "role"
 }
-export enum AppDashboardIssueKey {
-    results_disputed = "results_disputed",
-    results_overdue = "results_overdue",
-    results_pending_confirmation = "results_pending_confirmation",
-    phase_overdue = "phase_overdue",
-    registrations_pending = "registrations_pending",
-    pool_need_fix = "pool_need_fix",
-    ranks_missing = "ranks_missing",
-    balance_not_exported = "balance_not_exported",
-    stage_slots_empty = "stage_slots_empty",
-    logs_missing = "logs_missing",
-    achievements_pending = "achievements_pending",
-    standings_recalc_pending = "standings_recalc_pending"
-}
-export enum AppDashboardIssueSeverity {
-    critical = "critical",
-    warning = "warning",
-    info = "info"
-}
-export enum AppDashboardTimelineEventEdge {
-    start = "start",
-    end = "end"
-}
-export enum AppDashboardTournamentCardPhase {
-    preparation = "preparation",
-    registration = "registration",
-    formation = "formation",
-    live = "live",
-    wrap_up = "wrap_up"
-}
 export enum AppNotificationWorkspaceConfigUpdateLocale {
     ru = "ru",
     en = "en"
@@ -80437,16 +80553,6 @@ export enum StatsCatalogSyncStateStatus {
     done = "done",
     failed = "failed"
 }
-export enum StatsRawSourceStatus {
-    available = "available",
-    missing = "missing",
-    conflict = "conflict",
-    unverified = "unverified"
-}
-export enum StatsSortOrder {
-    asc = "asc",
-    desc = "desc"
-}
 export enum StreamStreamPollHealthReadStatusAnyOf0 {
     ok = "ok",
     empty = "empty",
@@ -80536,6 +80642,36 @@ export enum TournamentConditionOp {
     neq = "neq",
     in = "in",
     truthy = "truthy"
+}
+export enum TournamentDashboardIssueKey {
+    results_disputed = "results_disputed",
+    results_overdue = "results_overdue",
+    results_pending_confirmation = "results_pending_confirmation",
+    phase_overdue = "phase_overdue",
+    registrations_pending = "registrations_pending",
+    pool_need_fix = "pool_need_fix",
+    ranks_missing = "ranks_missing",
+    balance_not_exported = "balance_not_exported",
+    stage_slots_empty = "stage_slots_empty",
+    logs_missing = "logs_missing",
+    achievements_pending = "achievements_pending",
+    standings_recalc_pending = "standings_recalc_pending"
+}
+export enum TournamentDashboardIssueSeverity {
+    critical = "critical",
+    warning = "warning",
+    info = "info"
+}
+export enum TournamentDashboardTimelineEventEdge {
+    start = "start",
+    end = "end"
+}
+export enum TournamentDashboardTournamentCardPhase {
+    preparation = "preparation",
+    registration = "registration",
+    formation = "formation",
+    live = "live",
+    wrap_up = "wrap_up"
 }
 export enum TournamentDivisionGridImportJobReadStatus {
     pending = "pending",

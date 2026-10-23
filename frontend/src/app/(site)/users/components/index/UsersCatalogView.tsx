@@ -14,7 +14,7 @@ import { PlaceBadge } from "@/components/ui/place-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { UserCatalogEntry, UserOverviewRow } from "@/types/user.types";
-import type { DivisionGridVersion } from "@/types/workspace.types";
+import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 
 import { CompareCheckbox, GameMarks, LastActive, RolesCrests, WinrateCell } from "./users-index.atoms";
 import { ALPHABET } from "./users-index.model";
@@ -29,6 +29,7 @@ import type { UsersIndexParamControls } from "./useUsersIndexParams";
 export function PlayerCard({
   user,
   grids,
+  divisionGrid,
   game,
   minEncounters,
   compare,
@@ -36,6 +37,8 @@ export function PlayerCard({
 }: Readonly<{
   user: UserCatalogEntry | UserOverviewRow;
   grids: DivisionGridVersion[] | undefined;
+  /** The read's grid, for a role naming no version in `grids`. */
+  divisionGrid: DivisionGrid;
   /** The index's game and its role dictionary. */
   game: Pick<UsersIndexData, "discipline" | "ontology">;
   minEncounters: number;
@@ -68,7 +71,14 @@ export function PlayerCard({
             <GameMarks codes={user.disciplines} onSelect={onSelectGame} />
           ) : (
             <>
-              <RolesCrests roles={user.roles} grids={grids} discipline={game.discipline} ontology={game.ontology} size={26} />
+              <RolesCrests
+                roles={user.roles}
+                grids={grids}
+                divisionGrid={divisionGrid}
+                discipline={game.discipline}
+                ontology={game.ontology}
+                size={26}
+              />
               <CatalogEntityStrip entities={user.top_characters.slice(0, 3).map((entry) => entry.character)} limit={3} />
             </>
           )}
@@ -166,6 +176,7 @@ export function UsersCatalogView({
                     key={entry.id}
                     user={entry}
                     grids={catalogQuery.data?.division_grids}
+                    divisionGrid={controls.divisionGrid}
                     game={data}
                     minEncounters={minEncounters}
                     compare={compare}

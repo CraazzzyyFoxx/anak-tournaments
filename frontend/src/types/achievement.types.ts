@@ -48,7 +48,7 @@ export interface AchievementMatchLink {
   log_name: string | null;
   /** Seconds. The link carries no timestamp: a duration is never a date. */
   duration_s: number | null;
-  participants: Schema<"app.MatchParticipantRead">[];
+  participants: Schema<"stats.MatchParticipantRead">[];
 }
 
 export interface AchievementRarity extends Achievement {

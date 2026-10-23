@@ -192,10 +192,11 @@ tournament = models.Tournament(name="Tournament #1", slug="tournament-1")
   and import no Pydantic schema, cache client, outbox publisher or service settings. The full rule
   set, the two ratcheted exemption lists and why they exist:
   [`../docs/repository-boundaries.md`](../docs/repository-boundaries.md).
-- `app-service` additionally enforces a five-layer hierarchy *inside* its own `services/` package
-  with import-linter (`backend/app-service/.importlinter`; `analytics-service` has three flatter
+- `app-service` (`user` and `workspace` independent) and stats-service's public read surface
+  (`achievement_reads` → `user` → `hero | map | statistics`) additionally enforce sub-domain contracts
+  *inside* their `services/` package with import-linter (`analytics-service` has three flatter
   contracts of the same kind). Run from `backend/`:
-  `uv run lint-imports --config app-service/.importlinter`. The layers, the grandfathered
+  `uv run lint-imports --config <service>/.importlinter`. The layers, the grandfathered
   violations and how to place a new domain:
   [`../docs/architecture/layering.md`](../docs/architecture/layering.md). Note that these contracts
   are run locally, not in CI.

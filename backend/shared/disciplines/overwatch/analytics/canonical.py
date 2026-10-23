@@ -4,30 +4,12 @@ from __future__ import annotations
 
 import pandas as pd
 
-from shared.division_grid import DEFAULT_GRID, DivisionGrid
+from shared.division_grid import DEFAULT_GRID, DivisionGrid, canonical_division_number
 
 __all__ = (
-    "canonical_division_number",
     "canonical_div_for",
     "assign_canonical_division",
 )
-
-
-def canonical_division_number(source_grid: DivisionGrid, rank: int) -> int:
-    """Map ``rank`` on ``source_grid`` to a division number on ``DEFAULT_GRID``."""
-    tier = source_grid.resolve_division(int(rank))
-
-    if tier.native_rank_min is not None and tier.native_rank_max is not None:
-        low = min(int(tier.native_rank_min), int(tier.native_rank_max))
-        high = max(int(tier.native_rank_min), int(tier.native_rank_max))
-        return DEFAULT_GRID.resolve_division((low + high) // 2).number
-
-    n_min, n_max = source_grid.min_division, source_grid.max_division
-    m_min, m_max = DEFAULT_GRID.min_division, DEFAULT_GRID.max_division
-    if n_max <= n_min:
-        return m_min
-    frac = (tier.number - n_min) / (n_max - n_min)
-    return int(round(m_min + frac * (m_max - m_min)))
 
 
 def _grid_for(grids: dict[int, DivisionGrid], version_id: int | float | None) -> DivisionGrid:
@@ -46,7 +28,7 @@ def canonical_div_for(
     ``None``/unknown ``version_id`` falls back to the canonical grid (the rank is
     then treated as already on the OW SR scale).
     """
-    return canonical_division_number(_grid_for(grids, version_id), int(rank))
+    return canonical_division_number(_grid_for(grids, version_id), int(rank), DEFAULT_GRID)
 
 
 def assign_canonical_division(

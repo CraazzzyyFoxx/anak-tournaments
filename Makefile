@@ -43,8 +43,10 @@ BACKUP_COMPOSE = docker compose -f docker-compose.backup.yml --env-file $(BACKUP
 #
 # Sizes, calibrated by measured CPU per request (one faststream process = one
 # event loop = 1 core ceiling, ~0.85 usable): tournament ~46 ms/req on its
-# hottest uncacheable route (registration/form) = ~18 rps per replica, app-svc
-# ~20 ms on live routes plus ~107 ms per response-cache miss on user profiles,
+# hottest uncacheable route (registration/form) = ~18 rps per replica, the user
+# profile reads ~20 ms on live routes plus ~107 ms per response-cache miss
+# (measured on app-svc before the /users/* and statistics reads moved to
+# stats-svc, which now gets the replica counts app-svc had),
 # identity ~6-12 ms and bounded by SESSIONS, not rps (the gateway caches each
 # validate_token verdict for 30s). small = a 4 CPU / 8G box, large needs 8.
 # `make prod-up` / `make prod-scale` / GitHub release all honour PROD_SIZE so a
@@ -52,9 +54,9 @@ BACKUP_COMPOSE = docker compose -f docker-compose.backup.yml --env-file $(BACKUP
 # Override a size on the CLI, e.g. make prod-up PROD_SIZE=medium
 # or poke one service: make prod-up PROD_SCALE='app-svc=2 balancer-svc=2'
 PROD_SIZE ?= small
-PROD_SCALE_small  := app-svc=1 identity-svc=1 tournament-svc=2 frontend=2
-PROD_SCALE_medium := app-svc=2 identity-svc=1 tournament-svc=2 frontend=2
-PROD_SCALE_large  := app-svc=2 identity-svc=2 tournament-svc=4 frontend=3
+PROD_SCALE_small  := app-svc=1 stats-svc=1 identity-svc=1 tournament-svc=2 frontend=2
+PROD_SCALE_medium := app-svc=2 stats-svc=2 identity-svc=1 tournament-svc=2 frontend=2
+PROD_SCALE_large  := app-svc=2 stats-svc=2 identity-svc=2 tournament-svc=4 frontend=3
 PROD_SCALE ?= $(PROD_SCALE_$(PROD_SIZE))
 
 help:

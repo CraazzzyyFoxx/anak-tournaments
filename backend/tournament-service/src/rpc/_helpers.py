@@ -17,7 +17,10 @@ from typing import Any
 from pydantic import ValidationError
 
 from shared import models
+from shared.core import http_status as status
+from shared.core.errors import ApiExc, ApiHTTPException
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.disciplines import DISCIPLINES
 from shared.repository import UserRepository
 from shared.rpc.common import (
     actor as _identity,
@@ -54,6 +57,7 @@ __all__ = (
     "_bool",
     "_dump",
     "_identity",
+    "_optional_discipline",
     "_path_int",
     "_payload",
     "_q",
@@ -70,6 +74,23 @@ def _require_q1(data: dict[str, Any], key: str, cast: Callable[[str], Any] = str
     if val is None:
         raise HTTPException(status_code=422, detail=f"{key} is required")
     return val
+
+
+def _optional_discipline(data: dict[str, Any]) -> str | None:
+    """A list read's optional game (spec §8.1): ``?discipline=`` absent, empty or ``all`` is every game (``None``).
+
+    Any other value must be an installed game: an unknown code is a 404 ``discipline_not_installed``, never every
+    game's rows under a bogus label.
+    """
+    raw = _q1(data, "discipline", str, None)
+    if not isinstance(raw, str) or not raw.strip() or raw == "all":
+        return None
+    if raw not in DISCIPLINES:
+        raise ApiHTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=[ApiExc(code="discipline_not_installed", msg=f"Discipline {raw!r} is not installed")],
+        )
+    return raw
 
 
 _user_repo = UserRepository()

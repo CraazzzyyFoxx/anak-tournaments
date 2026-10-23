@@ -57,7 +57,7 @@ func Groups() (public, admin []openapi.Group) {
 		{Tag: "Tournaments", Description: "Public tournament, encounter, match & team reads + captain/registration actions + scrim rooms.",
 			Routes: concat(tournament.PublicReadRoutes, tournament.PublicWriteRoutes, tournament.RegistrationTeamSubtreeRoutes, tournament.ScrimRoutes)},
 		{Tag: "Game Data", Description: "Heroes, maps, gamemodes, achievements & statistics (public reads).",
-			Routes: concat(app.ReadRoutes, app.AchievementsSubtreeRoutes)},
+			Routes: concat(app.ReadRoutes, stats.PublicReadRoutes, stats.AchievementsSubtreeRoutes)},
 		{Tag: "Analytics", Description: "Analytics reads (v1 public; v2 require analytics.read).",
 			Routes: analytics.ReadRoutes},
 		{Tag: "Streams", Description: "Live stream channels for a tournament (public read).",
@@ -75,7 +75,7 @@ func Groups() (public, admin []openapi.Group) {
 	}
 	admin = []openapi.Group{
 		{Tag: "Admin: Tournaments", Description: "Tournament/team/player/encounter/standing CRUD, stages & bespoke admin actions.",
-			Routes: concat(tournament.AdminCrudRoutes, tournament.AdminMiscRoutes, tournament.StageSubtreeRoutes, tournament.BinaryDocRoutes, app.TournamentAdminRoutes)},
+			Routes: concat(tournament.AdminCrudRoutes, tournament.AdminMiscRoutes, tournament.StageSubtreeRoutes, tournament.BinaryDocRoutes, tournament.DashboardRoutes)},
 		{Tag: "Admin: Registration", Description: "Registration management & balancer statuses.",
 			Routes: tournament.RegistrationAdminRoutes},
 		{Tag: "Admin: Integrations", Description: "Challonge sync, Google Sheets, division grids.",

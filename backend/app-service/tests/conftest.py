@@ -161,10 +161,12 @@ def _drop_loop_bound_async_connections() -> Generator[None]:
 
 @pytest.fixture(scope="session")
 def rpc() -> RpcHarness:
-    """Session-scoped harness exposing every ``rpc.app.*`` read/aggregation handler.
+    """Session-scoped harness exposing the ``rpc.app.*`` read handlers.
 
-    The bespoke read modules plus the shared CRUD read engine are registered so
-    integration tests can dispatch ``harness.call("rpc.app.<topic>", envelope)``.
+    The users identity and catalog modules are registered so integration tests can dispatch
+    ``harness.call("rpc.app.<topic>", envelope)``; the public statistics reads
+    moved to stats-service (``rpc.stats.*``, see its ``tests/conftest.py``) and the
+    organizer dashboard to tournament-service (``rpc.tournament.*``).
 
     These are read-integration tests: the handlers open their own async session
     against whatever ``POSTGRES_*`` resolved to (a local ``.env`` or the
@@ -173,20 +175,6 @@ def rpc() -> RpcHarness:
     """
     ensure_test_postgres()
 
-    from src.rpc import (
-        achievements,
-        catalog,
-        reads_generic,
-        statistics,
-        users,
-    )
+    from src.rpc import catalog, users
 
-    harness = RpcHarness()
-    harness.register(
-        reads_generic,
-        users,
-        catalog,
-        achievements,
-        statistics,
-    )
-    return harness
+    return RpcHarness().register(users, catalog)

@@ -246,8 +246,18 @@ OPERATIONS: dict[str, Op] = {
             ),
             QueryParam("author_user_id", "integer", array=True, description="Repeatable. Only these authors/hosts."),
             QueryParam("role", array=True, description="Repeatable rated module role code; requires discipline."),
-            QueryParam("rank_min", "integer", description="Lowest rank_value kept; requires discipline."),
-            QueryParam("rank_max", "integer", description="Highest rank_value kept; requires discipline."),
+            QueryParam(
+                "div_min",
+                "integer",
+                description="Best division kept: a tier number on the workspace grid of the game, 1 = top, "
+                "inclusive; requires discipline.",
+            ),
+            QueryParam(
+                "div_max",
+                "integer",
+                description="Worst division kept: a tier number on the workspace grid of the game, 1 = top, "
+                "inclusive (ranks below the floor tier count in it); requires discipline. div_min > div_max is a 400.",
+            ),
             QueryParam(
                 "differs_from_canon",
                 "boolean",

@@ -21,6 +21,7 @@ from shared.core.errors import BaseAPIException as HTTPException
 from shared.core.pagination import paginated_dict
 from shared.disciplines import DISCIPLINES, DisciplineSpec
 from shared.repository import CatalogEntityRepository
+from shared.schemas.catalog import CatalogEntityRead
 from src import schemas
 
 __all__ = ("CatalogAdminService", "catalog", "check_attrs", "check_parent", "kind_spec", "to_read")
@@ -64,9 +65,9 @@ def check_parent(spec: DisciplineSpec, kind: str, parent_id: int | None) -> None
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Only a map has a parent")
 
 
-def to_read(entity: models.CatalogEntity) -> schemas.CatalogEntityRead:
+def to_read(entity: models.CatalogEntity) -> CatalogEntityRead:
     """``parent`` must be loaded (``_WITH_PARENT``): an async lazy load would raise."""
-    return schemas.CatalogEntityRead.from_entity(entity)
+    return CatalogEntityRead.from_entity(entity)
 
 
 class CatalogAdminService:

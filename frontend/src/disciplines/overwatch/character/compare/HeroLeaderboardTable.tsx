@@ -10,7 +10,7 @@ import { eyebrowClass } from "@/components/ui/eyebrow";
 import { SearchField } from "@/components/ui/search-field";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import type { DivisionGridVersion } from "@/types/workspace.types";
+import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 
 import type { RankedEntry } from "./board";
 import LeaderboardRow, { CELL, STICKY_PLAYER, STICKY_RANK, type StatCellSpec } from "./LeaderboardRow";
@@ -42,6 +42,8 @@ interface HeroLeaderboardTableProps {
   minGames: number;
   /** The grids the rows' divisions are numbers on (`division_grid_version_id`). */
   grids: readonly DivisionGridVersion[];
+  /** The read's own grid, for a row naming no version (the workspace's; the game's native ladder across workspaces). */
+  divisionGrid: DivisionGrid;
   query: string;
   onQueryChange: (value: string) => void;
   isLoading: boolean;
@@ -67,6 +69,7 @@ const HeroLeaderboardTable = ({
   hiddenCount,
   minGames,
   grids,
+  divisionGrid,
   query,
   onQueryChange,
   isLoading,
@@ -214,9 +217,9 @@ const HeroLeaderboardTable = ({
                   ranked={entry}
                   cells={cells}
                   grid={
-                    entry.entry.division_grid_version_id == null
-                      ? null
-                      : (gridById.get(entry.entry.division_grid_version_id) ?? null)
+                    (entry.entry.division_grid_version_id == null
+                      ? undefined
+                      : gridById.get(entry.entry.division_grid_version_id)) ?? divisionGrid
                   }
                   discipline={discipline}
                   isHighlighted={entry.entry.user_id === hoveredUserId}

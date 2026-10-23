@@ -1,28 +1,28 @@
 # Stats Service (stats-svc, stats-worker)
 
-Stats owns everything that turns raw Overwatch artefacts into domain data: match-log files
-uploaded from the tournament admin or dropped into a Discord channel, Overwatch rank telemetry
-polled from OverFast, the declarative achievement engine evaluated on top of parsed results, and
-the MVP impact scoring derived from match statistics. It also syncs discipline catalogs through
-their modules (OverFast for Overwatch, Data Dragon for LoL). It is a separate process because that work
-is minutes-long, IO-bound and bursty — one log parse holds a database session and one unacked
-delivery for as long as the file takes — and must never share a channel or a request path with
-interactive reads.
+Stats owns everything that turns raw match artefacts into domain data — match-log files uploaded
+from the tournament admin or dropped into a Discord channel, rank telemetry polled from each game's
+upstream, the declarative achievement engine evaluated on top of parsed results, and the MVP impact
+scoring derived from match statistics — and the public reads over that data: the statistics almanac,
+character and map statistics, the `/users/*` player statistics and the achievement reads. It also
+syncs discipline catalogs through their modules (OverFast for Overwatch, Data Dragon for LoL).
 
 It is two headless FastStream processes from one image (`owt-stats`), on RabbitMQ: no HTTP server,
 no uvicorn. The **RPC process** (`stats-svc`) answers request/reply RPC on `rpc.stats.<method>`,
 published by the Go gateway (the only process speaking HTTP to the outside) under `/api/v1` with an
 `x-deadline-ms` budget, with an `{ok, data, error}` envelope. The **worker** (`stats-worker`) runs
-every durable queue consumer and every schedule and answers no RPC, so a minutes-long decode never
-delays an RPC reply and exactly one process family owns the schedules.
+every durable queue consumer and every schedule and answers no RPC. Ingest work is minutes-long,
+IO-bound and bursty — one log parse holds a database session and one unacked delivery for as long as
+the file takes — so it lives only in the worker: a decode never delays an RPC reply, the interactive
+reads never share a channel with it, and exactly one process family owns the schedules.
 
 | | `stats-svc` | `stats-worker` |
 | --- | --- | --- |
 | Compose service | `stats-svc` | `stats-worker` |
 | Entry point | `serve_rpc.py` | `serve_worker.py` |
 | Run command | `faststream run serve_rpc:app` | `faststream run serve_worker:app` |
-| Registers | typed `rpc.stats.*` handlers only | `stats.ingest.<discipline>` (selected) + upload/tournament fanout, achievements, `tournament_encounter_completed`, `discord_member_changed`, the selected disciplines' own jobs (rank fetch + both registration rank checks: OverFast for Overwatch, Riot API for LoL, deadlock-api for Deadlock) |
-| Schedules | outbox drain | rank collection, stall reaper (selected disciplines), failed-log retention, match fetch (selected disciplines), subscription collection, outbox drain |
+| Registers | typed `rpc.stats.*` handlers only; the public reads on a channel of their own | `stats.ingest.<discipline>` (selected) + upload/tournament fanout, achievements, `tournament_encounter_completed`, `discord_member_changed`, the `cache.invalidated` consumer, the selected disciplines' own jobs (rank fetch + both registration rank checks: OverFast for Overwatch, Riot API for LoL, deadlock-api for Deadlock) |
+| Schedules | outbox drain | rank collection, stall reaper (selected disciplines), failed-log retention, match fetch (selected disciplines), subscription collection, outbox drain; the debounced `stats.mv_entity_global_stats` refresh |
 | Health | `GET :9100/health` | `GET :9100/health` |
 
 Both share `src/core/lifecycle.py` (broker/cache/realtime/quota wiring, observability, client
@@ -64,6 +64,11 @@ System overview: [`../../docs/architecture.md`](../../docs/architecture.md). Cod
 - **Subscription entitlement collection** — periodic and on-demand re-checks of Boosty (Discord
   roles, asked of discord-service over RabbitMQ) and Twitch subscription entitlements used as a
   registration admission condition.
+- **Public reads** — the statistics almanac (champion/winrate boards, players table, all-time
+  records), one game's character playtime, leaderboard and maps, the `/users/*` player statistics
+  (overview grid, profile, draft card, tournament/encounter/map/character/teammate/match histories,
+  comparisons) and the achievement reads, with their Redis read caches, the `cache.invalidated`
+  consumer that keeps them fresh and the global character-stats materialized view.
 - **Global settings.** The per-tournament Discord channel binding (`stats.discord_channel`) is
   discord-service's (`rpc.discord.channel.*`).
 
@@ -81,9 +86,81 @@ RPC namespace: `rpc.stats.*` (single namespace, registered in `src/rpc/`).
 | `rpc.stats.impact.*` | Superuser recompute of the impact-scoring baselines |
 | `rpc.stats.catalog.sync`, `rpc.stats.catalog.sync_status` | Superuser `POST`/`GET /api/v1/admin/catalog-sync/{discipline}`: POST starts a background sync through `shared.disciplines` from that module's source (OverFast, Data Dragon or deadlock-api) and returns its first snapshot, 409 `catalog_sync_running` while one runs; GET reads the snapshot from Redis (`catalog_sync:{discipline}`, `null` when none). Stage changes are published to the starter's `user:{id}:catalog-sync` topic (`src/services/catalog_sync.py`) |
 | `rpc.stats.settings.*` | Superuser global settings CRUD (`public.settings`) |
+| `rpc.stats.statistics.*` | Public statistics: `character_playtime`, `character_leaderboard`, `maps`, `champion`, `winrate`, `players`, `records` (see [Public reads](#public-reads)) |
+| `rpc.stats.users.*` | Public `/users/*` player statistics: `overview`, `overview_stats`, `overview_catalog`, `compare`, `compare_characters`, `get_profile`, `draft_card`, `tournaments`, `tournament`, `tournament_encounters`, `tournament_leaderboard`, `maps`, `maps_summary`, `encounters`, `matches_summary`, `characters`, `teammates`. The player directory, search and name lookup stay app-service's (`rpc.app.users.{list,search,by_name}`) |
+| `rpc.stats.achievements.*` | Public achievement reads: `list`, `get`, `user` (a user's earned/locked achievements), `users` (the earner list of one achievement). Not to be confused with the `rpc.stats.ach.*` rules admin |
 
 The full method list with request/response schemas is published at `/api/docs`, generated from
 `src/openapi_schemas.py` (`OPERATIONS`) and `src/openapi_docs.py` (`DOCS`).
+
+### Public reads
+
+| HTTP (`GET /api/v1/…`) | Subject |
+| --- | --- |
+| `statistics/{discipline}/characters/playtime`, `statistics/{discipline}/characters/{entity_id}/leaderboard`, `statistics/{discipline}/maps` | `rpc.stats.statistics.{character_playtime,character_leaderboard,maps}` |
+| `statistics/champion`, `statistics/winrate`, `statistics/players`, `statistics/records` | `rpc.stats.statistics.{champion,winrate,players,records}` |
+| `users/overview`, `users/overview/stats`, `users/overview/catalog` | `rpc.stats.users.{overview,overview_stats,overview_catalog}` |
+| `users/{id}/profile`, `users/{id}/draft-card` | `rpc.stats.users.{get_profile,draft_card}` |
+| `users/{id}/compare`, `users/{id}/compare/characters` | `rpc.stats.users.{compare,compare_characters}` |
+| `users/{id}/tournaments`, `users/{id}/tournaments/{tournament_id}`, `…/encounters`, `…/leaderboard` | `rpc.stats.users.{tournaments,tournament,tournament_encounters,tournament_leaderboard}` |
+| `users/{id}/maps`, `users/{id}/maps/summary`, `users/{id}/encounters`, `users/{id}/matches/summary`, `users/{id}/characters`, `users/{id}/teammates` | `rpc.stats.users.{maps,maps_summary,encounters,matches_summary,characters,teammates}` |
+| `achievements`, `achievements/{id}`, `achievements/{id}/users`, `achievements/user/{user_id}` | `rpc.stats.achievements.{list,get,users,user}` |
+
+Gateway route tables: `gateway/internal/stats/routes.go` (`PublicReadRoutes`, `AchievementsSubtreeRoutes`); the
+anonymous response-cache allowlist is `PublicCacheableReads` (`cacheable.go`). Handlers: `src/rpc/statistics.py`,
+`src/rpc/users.py`, `src/rpc/achievement_reads.py`, over `src/services/{statistics,hero,map,user,achievement_reads}`
+(layering enforced by the `read-services-layers` contract in `.importlinter`).
+
+**Disciplines.** Every game-shaped statistics read names its `discipline` (422 absent, 404 `discipline_not_installed`),
+except the champion/winrate boards, the players table and the records, where it is optional (absent or `all`: every
+game; the parsed-log records then are left out). Every `/users/*` statistics read takes a required `discipline`, except
+the tournaments and encounters tabs, where it is optional (absent or `all`: every game, each row naming its own
+`discipline`; `mvp1` then is a 422); the per-tournament reads use their tournament's own game. Readers use native
+`stats.fact`/`stats.stat_def` queries bound to the request's explicit discipline (`UserService.of(code)`,
+`HeroQueries.of(code)`) and workspace-member ownership; historical observations survive membership removal. The
+per-user maps read filters by `mode_id` and expands `parent` / `character_stats`. GET role filters carry JSON
+`RoleRef`s: on overview, overview stats and overview catalog reads omission means no filter, while explicit
+`role=null` selects no rated-role assignment (the UI's Flex chip); compare controls do not offer Flex.
+
+**Semantics.** Profile and achievement match expansions bulk-load bound games and their historical participant slots:
+home/away means slots 1/2, never ingestion source order or today's active seats. `map_index` is the game's position.
+Hidden-tournament policies, strict >60-second character qualification, the 600-second leaderboard threshold, rank
+ties and null handling are preserved. Profile/comparison per-10 denominators are match duration; character
+leaderboards use character playtime. MVP placement prefers ImpactRank over Performance. See
+[player statistics semantics](../../docs/users-identity.md#93-public-player-app-service-identity-stats-service-statistics).
+Native floating-point reductions have a fixed observation order: match and historical workspace member, then
+character/stat identity when a group spans them; rolled-up character totals use character identity order. A last-bit
+difference against the legacy executor can move a displayed total by 0.01 at a rounding boundary; the P4 parity
+policy proves these changes bit-for-bit from the frozen operands.
+
+**Channel.** `serve_rpc.py` registers the three read modules on `_PUBLIC_READS_CHANNEL`, a channel of their own with
+`RPC_PREFETCH_COUNT`, so a burst of cold 20–30 s compare reads and the admin/ingest RPC handlers never share one QoS
+window.
+
+**Read caches.** The `/users/*`, map and achievement-rarity reads are cashews caches declared with
+`shared.services.cache_generations.versioned` on Redis `/4` (prefix `backend:`; `lock:`, `LOCK` and `PING` are
+registered there too for stampede protection, `src/core/caching.py`). Their keys carry the
+`shared.services.user_cache` generations: `TOURNAMENT_DATA` (every tournament write `emit`s it), the subject user's
+generation (bumped by app-service profile/identity edits) and, for the compare reads, any user's. Nothing is
+invalidated by pattern; the TTLs (`USERS_CACHE_TTL`, `USER_PROFILE_CACHE_TTL`, `ACHIEVEMENTS_CACHE_TTL`) are the
+safety net. The RPC process FLUSHDBs `/4` at startup, so a redeploy never serves entries written by the previous
+image's serializers (app-svc's startup flushes the same database).
+
+**Invalidation consumer (worker).** `cache_invalidation_stats_service` (`CACHE_INVALIDATION_STATS_QUEUE`), bound to
+the `cache.invalidation` exchange (`cache.invalidated.#`), on its own channel (prefetch 4). A service whose write
+stales a tournament resource enqueues a `CacheInvalidatedEvent` through the transactional outbox
+(`shared.services.realtime.enqueue_invalidation_outbox`). On each event (`shared/services/realtime/consumer.py`) the
+worker re-bumps the event's generations — the writer's commit already bumped them; this is the durable retry — and,
+on `tournament.standings`, requests the materialized-view refresh below. Worker replicas share the queue; no other
+service may consume it.
+
+**`stats.mv_entity_global_stats` refresh (worker).** `src/services/hero_stats_refresh.py`, requested at worker startup
+and on every `tournament.standings` invalidation. Debounced to one run per hour by the Redis key
+`backend:hero_global_stats:refresh_cooldown` (`SET NX EX`, shared by every replica), guarded by a Postgres advisory
+lock, executed with `statement_timeout` disabled and `work_mem` raised, as a background task that never blocks the
+consumer. `stats01` populates the view during migration; runtime refreshes use `CONCURRENTLY`, an explicitly
+unpopulated rebuild a first plain refresh. Unpopulated reads and refresh failures are errors, not empty statistics.
+The refresher role must own this MV and have SELECT on its native sources; ordinary readers need only SELECT on it.
 
 ### Queues consumed (worker)
 
@@ -104,6 +181,7 @@ The full method list with request/response schemas is published at `/api/docs`, 
 | `deadlock_rank_fetch`, `deadlock_rank_fetch_priority` | `DeadlockFetchRequest` (up to 1000 Steam accounts) | One deadlock-api `/v1/players/rank` request per batch; shared channel with prefetch 1 |
 | `deadlock_rank_registration_approved`, `deadlock_rank_registration_rank_check` | — | Bound to the same exchange (routing keys `tournament.registration.approved` / `.rank_check_requested`); priority-fetch the Steam accounts of an approved Deadlock registrant, or of one asking for a re-check |
 | `discord_member_changed` | `DiscordMemberChangedEvent` | Re-resolves the member's Boosty entitlement in every workspace bound to the guild (`subscription_collection/member_events.py`); own channel, prefetch 2; the scheduled sweep stays the slow reconciliation |
+| `cache_invalidation_stats_service` | `CacheInvalidatedEvent` | Bound to the `cache.invalidation` exchange; re-bumps the event's cache generations and, on `tournament.standings`, requests the debounced MV refresh (see [Public reads](#public-reads)); own channel, prefetch 4 |
 
 Every one of those queues carries `x-dead-letter-exchange=dlx` and an `x-message-ttl`; the worker
 declares and binds its own DLQs at startup, so an expired or rejected job is visible in
@@ -381,7 +459,7 @@ Writes:
 - `rank` — `account_state`, `rank_snapshot`, `fetch_log` (every game; `discipline` names it).
 - `achievements` — `rule`, `evaluation_result`, `evaluation_run`, `override`.
 - `catalog` — `alias_miss` for unresolved Overwatch log names, plus `entity` aliases and rows
-  written by each discipline module's sync; app-service owns the public reads and generic admin CRUD.
+  written by each discipline module's sync; app-service owns the public catalog reads and generic admin CRUD.
   No runtime access to the legacy `overwatch` schema remains.
 - `subscriptions` — `entitlement`, `check_log` (shared with tournament-service, which owns
   requirements).
@@ -389,9 +467,12 @@ Writes:
 - As a side effect of ingestion: `players.social_account` for battlenet renames and
   `encounter.team_member` snapshots for real workspace members observed as substitutes.
 - `public.audit_log` and `public.event_outbox` for transactional evidence and follow-up delivery.
+- `stats.mv_entity_global_stats` — refreshed by the worker (see [Public reads](#public-reads)).
 
 Reads: native `encounter.*` encounters, participations and games; `tournament.*` bracket/team/player
-data; `public.workspace`, `public.workspace_member`, the division grid and actor identities.
+data; `public.workspace`, `public.workspace_member`, the division grid and actor identities; for the public reads
+also `players.user` and its social accounts, `achievements.*` effective sets (`shared.services.achievement_effective`)
+and the MV.
 No runtime reads or writes of the retired `matches` or `log_processing` schemas are needed.
 
 No service ships its own migrations — there is one Alembic project at
@@ -406,7 +487,8 @@ No service ships its own migrations — there is one Alembic project at
 - **RabbitMQ** — RPC transport, durable job queues, the tournament event exchange, the match-log
   result queue and the DLQs.
 - **Redis** — scheduler leader locks, rank-collection dedup/rate-limit/cooldown keys, the cashews
-  cache for impact baselines, and the realtime publish channel.
+  cache on `/4` (public read caches and their stampede locks, impact baselines, the MV refresh cooldown),
+  and the realtime publish channel and cache generations.
 - **S3** — new raw logs at `logs/{tournament_id}/{content_hash}` (imported keys remain unchanged)
   and catalog images at `assets/{discipline}/{kind}/{slug}.{ext}`; an image already stored survives sync.
 - **OverFast API** (self-hosted on the production host, called directly) — player career
@@ -443,6 +525,10 @@ to a matching discipline and kind and closes the miss in one request.
 `backend/env/stats.env`, layered on `backend/env/common.env` (see
 [`stats.env.example`](../env/stats.env.example)); both processes read it. Settings that actually change behaviour:
 
+- **Public read caches** — `USERS_CACHE_TTL` (300 s, the tournament-derived `/users/*` caches),
+  `USER_PROFILE_CACHE_TTL` (60 s) and `ACHIEVEMENTS_CACHE_TTL` (300 s, the per-workspace rarity
+  aggregate). The profile TTL is short on purpose: identity-service avatar/name edits have no
+  cross-service invalidation hook, so that TTL is the only bound on their staleness.
 - **Disciplines** — `STATS_DISCIPLINES` (see above).
 - **Ingestion caps** — `MAX_MATCH_LOG_BYTES` (25 MiB); `MAX_MATCH_LOG_LINES` (500k) is read by the Overwatch decoder (`shared/disciplines/overwatch/ingest.py`).
 - **Stall reaper** — `LOG_REAPER_ENABLED`, `LOG_REAPER_TICK_SECONDS`,
@@ -508,12 +594,14 @@ deployment slice: its schedules are Redis leader-locked, so extra replicas are s
   every other consumer shares.
 - **DLQs.** The worker declares `upload_match_log.dlq`, `stats.ingest.<discipline>.dlq` and
   `stats.ingest.<discipline>.replay.dlq` (selected disciplines), `process_tournament_logs.dlq`, `achievement_evaluate.dlq`,
-  `achievement_evaluate.deferred.dlq`, `tournament_encounter_completed.dlq` and `discord_member_changed.dlq`; the Overwatch module
+  `achievement_evaluate.deferred.dlq`, `tournament_encounter_completed.dlq`, `discord_member_changed.dlq` and
+  `cache_invalidation_stats_service.dlq`; the Overwatch module
   declares its own (`rank_fetch.dlq`, `rank_fetch_priority.dlq`, `tournament_registration_approved.dlq`,
   `tournament_registration_rank_check.dlq`) from its `start_jobs` hook, and so does the LoL module
   (`lol_rank_fetch.dlq`, `lol_rank_fetch_priority.dlq`, `lol_rank_registration_approved.dlq`,
   `lol_rank_registration_rank_check.dlq`). An achievement
-  evaluation that raises is rejected without requeue straight into its DLQ.
+  evaluation that raises is rejected without requeue straight into its DLQ. An invalidation lost to
+  `cache_invalidation_stats_service.dlq` is only repaired by the next event or by the cache TTL.
 - **A stuck "Queued" record is a reaper question, not a queue question.** The row, not the message,
   is the source of truth; check `attempts` and the reaper settings before republishing by hand.
 - **Rank fetches are scheduler-retried, not broker-retried.** A transient OverFast failure is
@@ -528,5 +616,8 @@ deployment slice: its schedules are Redis leader-locked, so extra replicas are s
 - **Replicas are safe.** All three schedulers are leader-locked in Redis, and rank enqueue plus
   match-log parsing are deduped (Redis keys and content hash respectively), so scaling the worker
   horizontally does not duplicate work.
+- **Cache invalidation is broad on purpose.** A `cache.invalidated` event carries no user list, so every
+  `/users/*` and rarity key misses after any tournament write. Expect a cold-cache burst of heavy
+  aggregation queries on stats-svc right after tournament ingestion.
 - **`ortools` is declared in `pyproject.toml` but never imported** — there is no OR-Tools
   optimisation in this service.

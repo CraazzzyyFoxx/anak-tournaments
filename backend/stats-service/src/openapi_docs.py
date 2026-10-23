@@ -218,4 +218,181 @@ DOCS: dict[str, dict] = {
         "summary": "Upsert global setting",
         "description": "Permission: superuser. Creates or updates a global setting by key, stamping the updating user.",
     },
+    # ── public reads: statistics, /users/* and achievements ───────────────────
+    "rpc.stats.statistics.character_playtime": {
+        "summary": "Character playtime shares",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns one discipline's paginated character playtime shares (fractions of the returned set, not seconds), optionally scoped to a user, tournament and workspace. 404 `discipline_not_installed` for an unknown game.",
+    },
+    "rpc.stats.statistics.character_leaderboard": {
+        "summary": "Character leaderboard",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a paginated player leaderboard for one character of the path discipline, resolved against the workspace context and its division grid. In a scoped read a row's `div` is a number on the workspace grid named by its `division_grid_version_id`, returned once in `division_grids`; with `workspace_id=all` it is the canonical number on the game's native ladder (`null` for a game without one), `division_grid_version_id` is `null` and `division_grids` empty. 404 when the id is not a character of that discipline.",
+    },
+    "rpc.stats.statistics.champion": {
+        "summary": "Most-champion players",
+        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by tournaments won, across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
+    },
+    "rpc.stats.statistics.winrate": {
+        "summary": "Top winrate players",
+        "description": "Permission: public; no authentication required. Returns paginated, sortable players ranked by win rate (players with more than three tournaments), across every game or only the optional `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped.",
+    },
+    "rpc.stats.statistics.players": {
+        "summary": "Players almanac table",
+        "description": (
+            "Permission: public; no authentication required. Returns every player with at least one public,"
+            " non-league tournament (substitute entries excluded), across every game or only the optional"
+            " `discipline` (404 `discipline_not_installed` for an unknown code), optionally workspace-scoped: titles,"
+            " tournaments, maps won/lost, map win rate (null without maps) and `low_sample` (three tournaments or"
+            " fewer). `sort` = `titles` (default) | `tournaments` | `maps_won` | `winrate` (only players above the"
+            " low-sample threshold), `order` = `desc` (default) | `asc`. `rank` is the competition rank (1, 2, 2, 4) over"
+            " the whole population; the optional case-insensitive name search `query` filters the page without"
+            " renumbering it, and `total` counts the filtered rows. Ties: win rate desc (null last), then name."
+        ),
+    },
+    "rpc.stats.statistics.records": {
+        "summary": "All-time records",
+        "description": (
+            "Permission: public; no authentication required. Returns the all-time records of public, non-league"
+            " tournaments (mixes never count), optionally workspace-scoped, in a fixed order; a record with no data is"
+            " omitted. Always: `win_streak` (most consecutive series won by a player's team), `biggest_upset` (series"
+            " won by the roster with the lower average SR, largest gap relative to the loser's), `underdog_champion`"
+            " (champion with the lowest roster SR rank within its own tournament: `value` = rank, `of_total` = rated"
+            " teams) and `closest_final` (a finished tournament's final with the highest closeness). With a"
+            " `discipline` (404 `discipline_not_installed` for an unknown code) also the parsed-log records the game"
+            " has: the highest single-map player `hero_damage`, `healing`, `eliminations`, `damage_blocked` and"
+            " `solo_kills`, `most_mvps` (maps at impact rank 1) and `longest_map`."
+        ),
+    },
+    "rpc.stats.statistics.maps": {
+        "summary": "Map statistics",
+        "description": (
+            "Permission: public; no authentication required. Returns the path discipline's maps (404"
+            " `discipline_not_installed` for an unknown game) grouped by the mode each game was played in (the game's"
+            " or parsed map's own mode, not the map's catalog parent, so one map can sit under several modes; games"
+            " without a mode in a last null bucket), optionally workspace-scoped, most played first. A game is one of"
+            " a completed series of a public, non-league tournament: the series' confirmed games with a map when it has"
+            " any, else its parsed maps, so nothing counts twice. `share` is a map's games over its mode's;"
+            " `avg_duration_s` averages the parsed maps of that map and mode (null when none)."
+        ),
+    },
+    "rpc.stats.users.get_profile": {
+        "summary": "User profile",
+        "description": "Permission: public; no authentication required. Returns a player's profile resolved against the workspace context. With `discipline` it is that game's profile (its tournaments, roles and characters on that game's division grid) and `games` is empty. Without it the header aggregates span every game, `roles`/`character_statistics` are empty, `most_played_character` is null, and `games` lists one summary per game played (`discipline`, that game's `roles`, `tournaments_count`, `tournaments_won`), most tournaments first, ties in installed order. Every `tournaments[]` entry carries its `discipline`.",
+    },
+    "rpc.stats.users.draft_card": {
+        "summary": "User draft card",
+        "description": "Permission: public; no authentication required. Returns the draft room's player card for a user in the required `discipline`: career record, per-role and per-character map records, MVP maps and the last five tournaments, scoped to the workspace.",
+    },
+    "rpc.stats.users.overview": {
+        "summary": "Users overview",
+        "description": (
+            "Permission: public; no authentication required. Returns a paginated, workspace-normalized "
+            "player overview table built from the workspace grid. `workspace_id=all` reads across every "
+            "workspace instead: divisions (the `divisions` filter and every role's `division`) are then canonical "
+            "numbers on the game's native ladder, each rank resolved on its own tournament's grid first; "
+            "`division_grid_version_id` is `null`, `division_grids` is empty, and for a game without a native "
+            "ladder `division` is `null` and `divisions` is a 422 `division_grid_required`. A missing `workspace_id` is a 400. The optional "
+            "`discipline` narrows every aggregate to one game; without it the aggregates span every game, "
+            "`roles` and `top_characters` are empty and `role`/`divisions` are a 422 (`<param> requires "
+            "discipline`). Every row lists the games the player played in `disciplines`."
+        ),
+    },
+    "rpc.stats.users.overview_stats": {
+        "summary": "Users overview stats",
+        "description": (
+            "Permission: public; no authentication required. Returns aggregate statistics for the "
+            "players-overview table computed against the workspace grid, or across every workspace "
+            "with `workspace_id=all` (`division_counts` then on the game's native ladder: empty for a game without "
+            "one, where `divisions` is a 422 `division_grid_required`). Without the optional `discipline` "
+            "the counts span every game and `role_counts`, `flex_count`, `flex_declared_count` and "
+            "`division_counts` are empty; `role`/`divisions` are then a 422."
+        ),
+    },
+    "rpc.stats.users.overview_catalog": {
+        "summary": "Users overview catalog",
+        "description": (
+            "Permission: public; no authentication required. Returns the A-Z player catalog for the "
+            "players-overview table from the workspace grid, or across every workspace with "
+            "`workspace_id=all` (native-ladder divisions, as in the overview). Without the optional `discipline` the cards span every "
+            "game with empty `roles`/`top_characters`; every card lists its `disciplines`; `role`/`divisions` "
+            "are then a 422."
+        ),
+    },
+    "rpc.stats.users.compare": {
+        "summary": "Compare users",
+        "description": (
+            "Permission: public; no authentication required, though a hidden tournament 404s unless the "
+            "optional identity may view it. Returns a head-to-head comparison between the given user and "
+            "others, resolved against the `workspace_id` workspace's division grid and tournaments, or "
+            "across every workspace with `workspace_id=all` (the default), where `div_min`/`div_max` are canonical "
+            "numbers on the game's native ladder (a 422 `division_grid_required` for a game without one)."
+        ),
+    },
+    "rpc.stats.users.compare_characters": {
+        "summary": "Compare user characters",
+        "description": (
+            "Permission: public; no authentication required, though a hidden tournament 404s unless the "
+            "optional identity may view it. Returns a per-character head-to-head comparison for the given user "
+            "against others in the required `discipline`, resolved against the `workspace_id` workspace's division "
+            "grid and tournaments, or across every workspace with `workspace_id=all` (the default; `div_min`/`div_max` "
+            "then on the game's native ladder, a 422 `division_grid_required` without one). A character or "
+            "map id of another game is a 404; a `stats` code the game does not declare as a character stat is a 422 "
+            "`stat_not_declared`."
+        ),
+    },
+    "rpc.stats.users.tournaments": {
+        "summary": "User tournaments",
+        "description": "Permission: public; no authentication required. Returns the tournaments a player participated in — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code) — scoped to the workspace context and grid; each row names its own `discipline`.",
+    },
+    "rpc.stats.users.tournament": {
+        "summary": "User tournament stats",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's participation and stats for one tournament, resolved against that tournament's division grid.",
+    },
+    "rpc.stats.users.tournament_encounters": {
+        "summary": "User tournament encounters",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's encounters (with per-match stats) within one tournament — the lazy detail behind the Tournaments-tab dossier, fetched only for the tournament currently open in the UI. Each match carries its `map` and its own `mode` (null when none).",
+    },
+    "rpc.stats.users.tournament_leaderboard": {
+        "summary": "Tournament stat leaderboard",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns every player in a tournament ranked by a single stat — the full ranked list behind a user's per-stat rank/total on the tournament-stats page. Inverse stats like Deaths rank ascending. The `stat` must be one of the ranked tournament stats.",
+    },
+    "rpc.stats.users.maps": {
+        "summary": "User maps",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated, sortable per-map record (win/loss/draw/winrate), optionally workspace-scoped. `mode_id` counts only the matches played in that mode (the match's own mode, not the map's catalog parent).",
+    },
+    "rpc.stats.users.maps_summary": {
+        "summary": "User maps summary",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns aggregate totals for a player's per-map record, optionally workspace-scoped; `mode_id` filters by the match's own mode as in the per-map list.",
+    },
+    "rpc.stats.users.encounters": {
+        "summary": "User encounters",
+        "description": "Permission: public; no authentication required. Returns a player's paginated encounters — every game's, or only the optional `discipline`'s (404 `discipline_not_installed` for an unknown code), each naming its own `discipline` — filterable by result, stage, MVP (`mvp1` needs `discipline`, else 422), log availability, and opponent. Each match carries its `map` and its own `mode` (null when none).",
+    },
+    "rpc.stats.users.matches_summary": {
+        "summary": "User matches summary",
+        "description": "Permission: public; no authentication required. Returns aggregate match totals for a player, optionally workspace-scoped.",
+    },
+    "rpc.stats.users.characters": {
+        "summary": "User characters",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's paginated per-character stats in the required `discipline` for the requested stat names, optionally scoped to a tournament and workspace; rejects invalid stat values with 422. Each row also carries the player's scoped map record on the character (`games`/`win`/`loss`/`draw`; a draw is a game, not a win), every player's discipline-wide `win_rate_all` (unscoped, like `avg_10_all`) and the player's career-best game (`record`) in the stat the character's class is judged by.",
+    },
+    "rpc.stats.users.teammates": {
+        "summary": "User best teammates",
+        "description": "Permission: public; no authentication required. Returns a player's paginated, sortable best teammates by winrate and shared tournaments, optionally workspace-scoped.",
+    },
+    "rpc.stats.achievements.get": {
+        "summary": "Get achievement",
+        "description": "Permission: public; no authentication required. Returns a single achievement rule by id (with its `discipline`/`entity_id`; `entities=entity` expands the character), 404 if not found. Pooled numbers use the rule's own discipline.",
+    },
+    "rpc.stats.achievements.list": {
+        "summary": "List achievements",
+        "description": "Permission: public; no authentication required. Returns a paginated, sortable list of achievements optionally filtered by workspace. Each rule carries its `discipline` and `entity_id`; `entities=entity` expands the linked character. The cross-workspace view lists one rule per (discipline, slug) and divides earners by that discipline's players.",
+    },
+    "rpc.stats.achievements.user": {
+        "summary": "User achievements",
+        "description": "Permission: public; no authentication required, though a hidden tournament 404s unless the optional identity may view it. Returns a player's earned (and optionally locked) achievements, scoped by tournament or without-tournament and workspace, and optionally to one game's rules (`discipline`; unknown code 404 discipline_not_installed); rejects combining tournament_id with without_tournament=true.",
+    },
+    "rpc.stats.achievements.users": {
+        "summary": "Achievement earners",
+        "description": "Permission: public; no authentication required. Returns a paginated list of players who earned a given achievement.",
+    },
 }

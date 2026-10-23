@@ -97,8 +97,8 @@ export const parseDivisions = (value: string | null): number[] => {
 
 /**
  * The grid version a row's division number belongs to, from the grids the
- * response shipped alongside the rows. `null` means "fall back to the
- * workspace grid" — the only possibility before the backend sends ids.
+ * response shipped alongside the rows. `null`: the number is on the read's own
+ * grid (the workspace's; the game's native ladder across workspaces).
  */
 export function gridForRole(
   role: UserOverviewRoleDivision,

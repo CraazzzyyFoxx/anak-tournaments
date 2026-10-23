@@ -1390,8 +1390,7 @@
         "layer": "Слой",
         "author": "Автор",
         "role": "Роль",
-        "divisionMin": "Дивизион от",
-        "divisionMax": "Дивизион до",
+        "divisions": "Дивизионы",
         "differsFromCanon": "Отличается от канона",
         "dateRange": "Любая дата"
       },

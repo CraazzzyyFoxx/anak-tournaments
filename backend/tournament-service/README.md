@@ -43,6 +43,9 @@ layering.
 - **Pick/ban.** The generic pick-ban engine over map and hero pools: configs, sessions, opener
   election, acting, undo, and admin overrides.
 - **Standings.** Standing computation jobs and the recalculation triggered by results.
+- **Organizer dashboard.** The workspace admin dashboard, its trends and the per-tournament readiness
+  checklist (moved from app-service on 2026-10-23,
+  [release note](../../docs/releases/2026-10-23-tournament-owns-organizer-dashboard.md)).
 - **Integrations.** Challonge (fetch, import, export, push result, auto-sync) and Google Sheets
   registration feeds (mapping catalog, suggestion, preview, sync, export).
 - **Division grids.** Rank-to-division grid versions, publishing/activation, portable import/export
@@ -80,9 +83,39 @@ Method groups:
 | Challonge | `challonge_*` | Fetch, import, export, push result, team preview/apply, sync log |
 | Google Sheets | `sheet_*` | Feed config, mapping catalog/suggestion/preview, sync, player export |
 | Division grids | `grid_*` | Grid and version CRUD, publish/activate, portable and marketplace import |
+| Organizer dashboard | `admin_dashboard`, `admin_dashboard_trends`, `tournament_readiness` | The workspace admin dashboard, its trends and the readiness checklist (see below) |
 
 The full method list with request/response schemas is published at `/api/docs`, generated from
 `src/openapi_schemas.py` (`OPERATIONS`) and `src/openapi_docs.py` (`DOCS`).
+
+### Organizer dashboard
+
+Three authenticated reads (`src/rpc/dashboard.py` over `src/services/dashboard/`), routed by the gateway's
+`tournament.DashboardRoutes` (`gateway/internal/tournament/dashboard_routes.go`):
+
+| HTTP | Subject | Gate |
+| --- | --- | --- |
+| `GET /api/v1/admin/dashboard?workspace_id=` | `rpc.tournament.admin_dashboard` | Any of `tournament.read`, `team.read`, `match.read`, `user.read`, `achievement.read` in the workspace; `workspace_id` is required even for a superuser (422 absent) |
+| `GET /api/v1/admin/dashboard/trends?workspace_id=[&discipline=]` | `rpc.tournament.admin_dashboard_trends` | `tournament.read` in the workspace; `discipline` optional (absent or `all`: every game, an unknown code is 404 `discipline_not_installed`) |
+| `GET /api/v1/admin/tournaments/{id}/readiness` | `rpc.tournament.tournament_readiness` | `tournament.read` or `team.read` in the tournament's workspace; no hidden-tournament gate |
+
+Each granted permission unmasks its field group and a missing one yields `null`, never zero:
+`tournament.read` the setup, bracket, log and recalculation fields (and the dashboard timeline), `team.read` the
+registration, pool, balance and draft fields, `match.read` the result backlog and log coverage, `achievement.read` the
+evaluation status.
+
+- **Dashboard** (`overview.py`): one card per unfinished tournament plus each completed one still inside its 14-day
+  wrap-up window whose wrap-up is not done, the schedule boundaries of the next 7 days and every overdue phase
+  start, the work queue derived from the masked cards, and the backlog of the other tournaments. Whether a wrap-up
+  is done is decided on unmasked data, so a card does not depend on who is looking.
+- **Trends** (`trends.py`): the workspace's last 10 finished, public, non-league tournaments, one point each.
+- **Readiness** (`readiness.py`): the hub's living checklist for one tournament, in up to three round trips.
+
+Besides this service's own schemas they read `achievements.evaluation_run` (the newest run's status) and
+`achievements.rule` (whether the tournament's game has an enabled rule), log coverage through `encounter.has_logs`,
+which is derived from game-bound `stats.match` observations (only duels count: a lobby never produces a match log),
+`balancer.balance`, `draft.session`, and the roster's player identities (`players.user`, `players.social_account`,
+`public.workspace_member`).
 
 ### Durable queues consumed
 
@@ -370,7 +403,9 @@ project at [`../migrations/`](../migrations/).
 **Reads only:** `players` (player identity behind rosters and registrations), `auth` (actor columns
 on audit rows), `public.workspace` / `public.workspace_member` (tenancy anchors), `catalog.entity`
 (characters and maps for pick/ban), `catalog.discipline` / `catalog.role_dimension` (the owner's
-ontology), `matches` (parsed match rows surfaced by the admin match reads). Legacy
+ontology), `matches` (parsed match rows surfaced by the admin match reads), and for the organizer
+dashboard `achievements.evaluation_run` / `achievements.rule`, `stats.match` (log coverage),
+`balancer.balance` and `draft.session`. Legacy
 `tournament.player_sub_role` and role columns have no runtime readers or writers.
 
 Entity diagrams: [tournament](../../docs/database_erd.md#tournament--tournament-casual),

@@ -1,11 +1,10 @@
 // @vitest-environment happy-dom
 //
 // The pieces of this table that are not the shared `DataTable`:
-//  1. the division chips are the rank-range filter, mapped through the
-//     workspace grid, and the top tier is open-ended (`rank_max: null`), which
-//     means "no ceiling" rather than "max 0";
+//  1. the division range is sent as tier numbers on the workspace grid
+//     (`divMin`/`divMax`); the server maps them onto ranks;
 //  2. the game chip leads the bar, and a game change drops the old game's role,
-//     rank range and rank order.
+//     division range and rank order.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -36,14 +35,13 @@ vi.mock("@/lib/datetime/client", () => ({
   useFormatter: () => ({ dateTime: (value: Date) => value.toISOString() })
 }));
 
-// The grid the division chips are mapped through. Gold is open-ended, which is
-// the case the range mapping gets wrong if it reads `rank_max` as a number.
+// The workspace grid the division picker draws.
 vi.mock("@/hooks/useCurrentWorkspace", () => ({
   useDivisionGrid: () => ({
     tiers: [
-      { number: 1, name: "Bronze", rank_min: 500, rank_max: 999, icon_url: "" },
-      { number: 2, name: "Silver", rank_min: 1000, rank_max: 1499, icon_url: "" },
-      { number: 3, name: "Gold", rank_min: 1500, rank_max: null, icon_url: "" }
+      { number: 1, name: "Bronze", rank_min: 500, rank_max: 999, icon_url: "/bronze.png" },
+      { number: 2, name: "Silver", rank_min: 1000, rank_max: 1499, icon_url: "/silver.png" },
+      { number: 3, name: "Gold", rank_min: 1500, rank_max: null, icon_url: "/gold.png" }
     ]
   })
 }));
@@ -175,18 +173,22 @@ describe("rank overview table", () => {
     expect(container.querySelector('a[href="/admin/people/42"]')).not.toBeNull();
   });
 
-  it("turns the division chips into a rank range on the workspace grid", async () => {
-    await render("?div_min=1&div_max=2");
-
-    expect(lastParams().rankMin).toBe(500);
-    expect(lastParams().rankMax).toBe(1499);
-  });
-
-  it("leaves the range open-ended when the top division has no ceiling", async () => {
+  it("sends the URL's division range as tier numbers, leaving the rank mapping to the server", async () => {
     await render("?div_min=2&div_max=3");
 
-    expect(lastParams().rankMin).toBe(1000);
-    expect(lastParams().rankMax).toBeUndefined();
+    expect(lastParams()).toMatchObject({ divMin: 2, divMax: 3 });
+  });
+
+  it("writes a range picked in the division picker to the URL as div_min/div_max", async () => {
+    await render("");
+    expect(lastParams().divMin).toBeUndefined();
+
+    await click(container.querySelector('button[aria-label^="filters.divisions"]'));
+    await click(document.querySelector('button[aria-label="Gold"]'));
+    await click(document.querySelector('button[aria-label="Silver"]'));
+
+    const search = new URLSearchParams(window.location.search);
+    expect([search.get("div_min"), search.get("div_max")]).toEqual(["2", "3"]);
   });
 
   it("passes the layer, author and canon-diff filters the URL carries", async () => {

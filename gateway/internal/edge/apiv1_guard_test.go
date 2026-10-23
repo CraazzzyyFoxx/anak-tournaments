@@ -61,31 +61,33 @@ func buildGuardedMux(t *testing.T) *http.ServeMux {
 	d.Register(mux, tournament.PublicReadRoutes)
 	d.Register(mux, tournament.AdminCrudRoutes)
 	d.Register(mux, tournament.AdminMiscRoutes)
+	d.Register(mux, tournament.DashboardRoutes)
 	d.Register(mux, tournament.RegistrationAdminRoutes)
 	d.Register(mux, tournament.IntegrationsRoutes)
 	d.Register(mux, tournament.PublicWriteRoutes)
 	d.Register(mux, tournament.ScrimRoutes)
 	mux.Handle("/api/v1/division-grids/", d.Subtree(tournament.DivisionGridRoutes))
 	mux.Handle("/api/v1/admin/stages/", d.Subtree(tournament.StageSubtreeRoutes))
-	// app-service typed routes (reads + workspace/metadata/users admin) + the
-	// achievements get subtree. Registering these must NOT panic — /users/{name}
-	// vs /users/{id}/... and the achievements /{id}/users vs /user/{user_id}
-	// ambiguity are the cases that would conflict.
+	// app-service typed routes (reads + workspace/metadata/users admin).
+	// Registering these must NOT panic — /users/{name} vs stats' /users/{id}/...
+	// is the case that would conflict.
 	d.Register(mux, app.ReadRoutes)
 	d.Register(mux, app.WorkspaceWriteRoutes)
 	d.Register(mux, app.MetadataAdminRoutes)
 	d.Register(mux, app.UsersAdminRoutes)
-	d.Register(mux, app.TournamentAdminRoutes)
 	d.Register(mux, app.NotificationRoutes)
 	d.Register(mux, app.AnnouncementPublicRoutes)
 	d.Register(mux, app.AnnouncementAdminRoutes)
 	d.Register(mux, app.NotificationAdminRoutes)
 	d.Register(mux, app.NotificationUserAdminRoutes)
-	mux.Handle("/api/v1/achievements/", d.Subtree(app.AchievementsSubtreeRoutes))
-	// stats domains folded into /api/v1. The achievement-rule admin subtree mounts
-	// at the shared /api/v1/admin/ws/ prefix; tournament's balancer-statuses routes
-	// there are more specific and win, so registering both must not panic.
+	// stats domains folded into /api/v1, plus the public player statistics/profile
+	// reads and the achievements get subtree (/{id}/users vs /user/{user_id}
+	// ambiguity). The achievement-rule admin subtree mounts at the shared
+	// /api/v1/admin/ws/ prefix; tournament's balancer-statuses routes there are
+	// more specific and win, so registering both must not panic.
 	d.Register(mux, stats.Routes)
+	d.Register(mux, stats.PublicReadRoutes)
+	mux.Handle("/api/v1/achievements/", d.Subtree(stats.AchievementsSubtreeRoutes))
 	mux.Handle("/api/v1/admin/ws/", d.Subtree(stats.AchievementAdminRoutes))
 	// discord-svc: the discord-channel routes share /api/v1/admin/tournaments/{id}/...
 	// with the tournament admin routes, and the pickers share
@@ -386,6 +388,15 @@ func TestApiV1_MigratedReadsHitDispatcher(t *testing.T) {
 		// app-service (was /api/v1/core)
 		"/api/v1/catalog/overwatch/character",
 		"/api/v1/catalog/lol/character/5",
+		"/api/v1/users",
+		"/api/v1/users/search",
+		"/api/v1/users/someblizzname",
+		"/api/v1/admin/dashboard",
+		"/api/v1/admin/dashboard/trends",
+		"/api/v1/workspaces",
+		"/api/v1/workspaces/5",
+		"/api/v1/matches/9/log",
+		// stats-service: player statistics, profile and achievement reads (moved from app; paths unchanged)
 		"/api/v1/statistics/overwatch/characters/5/leaderboard",
 		"/api/v1/statistics/overwatch/characters/playtime",
 		"/api/v1/users/5/characters",
@@ -394,22 +405,14 @@ func TestApiV1_MigratedReadsHitDispatcher(t *testing.T) {
 		"/api/v1/achievements/5",
 		"/api/v1/achievements/5/users",
 		"/api/v1/achievements/user/7",
-		"/api/v1/users",
-		"/api/v1/users/search",
 		"/api/v1/users/overview",
 		"/api/v1/users/overview/stats",
 		"/api/v1/users/5/profile",
 		"/api/v1/users/5/tournaments/9",
 		"/api/v1/users/5/maps/summary",
-		"/api/v1/users/someblizzname",
-		"/api/v1/admin/dashboard",
-		"/api/v1/admin/dashboard/trends",
 		"/api/v1/statistics/players",
 		"/api/v1/statistics/records",
 		"/api/v1/statistics/overwatch/maps",
-		"/api/v1/workspaces",
-		"/api/v1/workspaces/5",
-		"/api/v1/matches/9/log",
 		// stats-service (was /api/parser), folded into /api/v1
 		"/api/v1/users/5/rank-history",
 		"/api/v1/users/5/current-ranks",

@@ -26,9 +26,9 @@ async def enqueue_match_scores_changed(session: AsyncSession, tournament_id: int
     # A parsed log adds or replaces one map's observation under the encounter
     # (``has_logs``, the per-map reads). It does not move the encounter's score:
     # EncounterGame and finalize own that. Both halves of the
-    # invalidation: emit() for the clients and this service's own caches, the
-    # outbox row for tournament-service and app-service, which cache the same
-    # reads and cannot rely on Redis pub/sub's at-most-once delivery.
+    # invalidation: emit() for the clients and the shared cache generations, the
+    # outbox row for the tournament-service and stats-worker consumers, which re-bump
+    # them durably and cannot rely on Redis pub/sub's at-most-once delivery.
     invalidated = (Resource.TOURNAMENT_ENCOUNTERS, Resource.TOURNAMENT_STANDINGS)
     scope = Scope.tournament(tournament_id)
     await emit(session, scope=scope, invalidates=list(invalidated), entity_ids={"encounter_ids": [encounter_id]})

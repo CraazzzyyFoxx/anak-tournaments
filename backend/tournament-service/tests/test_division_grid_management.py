@@ -232,7 +232,7 @@ def test_draft_minor_edit_preserves_tier_ids_and_mapping_rules() -> None:
             icon_url="https://cdn.example/champion-1.png",
         )
         tier.id = 91
-        version = SimpleNamespace(id=11, status="draft", tiers=[tier])
+        version = SimpleNamespace(id=11, status="draft", tiers=[tier], grid=SimpleNamespace(discipline="overwatch"))
         session = SimpleNamespace(
             add=Mock(),
             delete=AsyncMock(),

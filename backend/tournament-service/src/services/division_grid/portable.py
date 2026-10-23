@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.division_grid import stamp_canonical_numbers
 from shared.repository import (
     DivisionGridRepository,
     DivisionGridTierRepository,
@@ -231,6 +232,7 @@ class PortableService:
                 )
                 for portable_tier in sorted(portable_version.tiers, key=lambda item: item.sort_order)
             ]
+            stamp_canonical_numbers([tier for _, tier in pending_tiers], document.discipline)
             # One INSERT batch per version instead of a flush per tier.
             await self.tier_repo.create_many(session, [tier for _, tier in pending_tiers])
             for slug, tier in pending_tiers:

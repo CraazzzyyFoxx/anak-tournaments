@@ -1,9 +1,10 @@
 """The stats worker process: every consumer and schedule, and no RPC handler.
 
 Consumes ``stats.ingest.<discipline>`` for the disciplines ``STATS_DISCIPLINES`` selects (every installed one when
-unset), the upload/tournament fanout, achievement evaluation, ``tournament.encounter.completed``, Discord member changes
-and each selected discipline module's own jobs (the OverFast rank collector), and runs the reaper, failed-log retention,
-match-fetch (import by external id), subscription and outbox-drain schedules. Run: ``faststream run serve_worker:app``.
+unset), the upload/tournament fanout, achievement evaluation, ``tournament.encounter.completed``, Discord member changes,
+``cache.invalidated`` (the public read caches and the hero-stats materialized view) and each selected discipline
+module's own jobs (the OverFast rank collector), and runs the reaper, failed-log retention, match-fetch (import by
+external id), subscription and outbox-drain schedules. Run: ``faststream run serve_worker:app``.
 """
 
 from collections.abc import Awaitable
@@ -17,6 +18,9 @@ from shared.messaging.config import (
     ACHIEVEMENT_EVALUATE_DEFERRED_QUEUE,
     ACHIEVEMENT_EVALUATE_DLQ,
     ACHIEVEMENT_EVALUATE_QUEUE,
+    CACHE_INVALIDATION_EXCHANGE,
+    CACHE_INVALIDATION_STATS_DLQ,
+    CACHE_INVALIDATION_STATS_QUEUE,
     DISCORD_MEMBER_CHANGED_DLQ,
     PROCESS_TOURNAMENT_LOGS_DLQ,
     TOURNAMENT_ENCOUNTER_COMPLETED_DLQ,
@@ -27,10 +31,14 @@ from shared.messaging.config import (
 from shared.messaging.outbox import drain_outbox
 from shared.messaging.topology import declare_dead_letter_queue
 from shared.observability import observe_message_processing
+from shared.schemas.events import CacheInvalidatedEvent
+from shared.services.realtime import Resource
+from shared.services.realtime.consumer import register_invalidation_consumer
 from shared.services.scheduler import IntervalScheduler
 from src.core import config, db
 from src.core.clients import realtime_redis, s3_client
 from src.core.lifecycle import Readiness, close_clients, create_process, start_clients, start_observability
+from src.services import hero_stats_refresh
 from src.services.achievement.engine.consumer import (
     handle_achievement_evaluate,
     handle_achievement_evaluate_deferred,
@@ -57,6 +65,8 @@ _JOBS_CHANNEL = Channel(prefetch_count=2)
 # Deferred achievement recompute for unverified workspaces: a full-history run an operator asked for, on a workspace
 # nobody has vouched for. One at a time, so it can never crowd out the parse-driven evaluations on _JOBS_CHANNEL.
 _ACHIEVEMENT_DEFERRED_CHANNEL = Channel(prefetch_count=1)
+# Cache-invalidation bursts must not compete with the jobs channels.
+_INVALIDATION_CHANNEL = Channel(prefetch_count=4)
 
 # Dead-letter queues this worker owns. Every queue it consumes carries x-dead-letter-exchange=dlx plus an x-message-ttl,
 # but RabbitMQ creates nothing for the dead-letter routing key: without a declared, bound DLQ an expired job (a log the
@@ -71,6 +81,7 @@ _OWNED_DLQS = (
     ACHIEVEMENT_EVALUATE_DEFERRED_DLQ,
     TOURNAMENT_ENCOUNTER_COMPLETED_DLQ,
     DISCORD_MEMBER_CHANGED_DLQ,
+    CACHE_INVALIDATION_STATS_DLQ,
 )
 
 # stop_jobs() awaitables handed back at shutdown start, awaited once the consumers have drained.
@@ -81,6 +92,28 @@ discipline_jobs.register_jobs(
 member_events.register(broker, logger)
 ingest_consumers.register(broker, logger, disciplines=SELECTED)
 match_log_consumers.register(broker, logger, channel=_JOBS_CHANNEL)
+
+
+async def _refresh_hero_stats(event: CacheInvalidatedEvent) -> None:
+    """Debounced refresh of the global hero-stats materialized view.
+
+    Gated on ``tournament.standings`` — the resource that carries "match data
+    moved".
+    """
+    if Resource.TOURNAMENT_STANDINGS in event.resources:
+        hero_stats_refresh.hero_stats_refresh_service.request_refresh(db.async_session_maker, logger)
+
+
+# Worker replicas share CACHE_INVALIDATION_STATS_QUEUE: each message re-bumps the shared generations once, wherever it
+# lands. No other service may consume it.
+register_invalidation_consumer(
+    broker,
+    logger,
+    queue=CACHE_INVALIDATION_STATS_QUEUE,
+    exchange=CACHE_INVALIDATION_EXCHANGE,
+    channel=_INVALIDATION_CHANNEL,
+    on_event=_refresh_hero_stats,
+)
 # Publishes every committed event_outbox row (this worker's ingest requests, achievement runs, ...) once a second.
 _outbox_scheduler = IntervalScheduler(job_id="event_outbox_drain", label="Outbox drain", logger=logger)
 
@@ -105,6 +138,8 @@ async def start_worker() -> None:
     # Pull the selected disciplines' matches requested by external id (a no-op without a module fetcher).
     match_fetch.start_scheduler(redis=realtime_redis, s3=s3_client, disciplines=[spec.code for spec in SELECTED])
     subscription_scheduler.start_scheduler()
+    # Initial build of the hero global-stats materialized view: a debounced background task that never blocks startup.
+    hero_stats_refresh.hero_stats_refresh_service.request_refresh(db.async_session_maker, logger)
     _outbox_scheduler.start(drain_outbox, seconds=1, args=(db.async_session_maker, broker))
     readiness.bind()
 

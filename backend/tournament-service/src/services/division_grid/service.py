@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from shared import models
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.division_grid import stamp_canonical_numbers
 from shared.repository import (
     DivisionGridMappingRepository,
     DivisionGridMappingRuleRepository,
@@ -374,24 +375,23 @@ class DivisionGridService:
             ),
         )
 
-        await self.tier_repo.create_many(
-            session,
-            [
-                models.DivisionGridTier(
-                    version_id=version.id,
-                    slug=tier.slug,
-                    number=tier.number,
-                    name=tier.name,
-                    sort_order=tier.sort_order,
-                    rank_min=tier.rank_min,
-                    rank_max=tier.rank_max,
-                    icon_url=tier.icon_url,
-                    native_rank_min=tier.native_rank_min,
-                    native_rank_max=tier.native_rank_max,
-                )
-                for tier in data.tiers
-            ],
-        )
+        tiers = [
+            models.DivisionGridTier(
+                version_id=version.id,
+                slug=tier.slug,
+                number=tier.number,
+                name=tier.name,
+                sort_order=tier.sort_order,
+                rank_min=tier.rank_min,
+                rank_max=tier.rank_max,
+                icon_url=tier.icon_url,
+                native_rank_min=tier.native_rank_min,
+                native_rank_max=tier.native_rank_max,
+            )
+            for tier in data.tiers
+        ]
+        stamp_canonical_numbers(tiers, grid.discipline)
+        await self.tier_repo.create_many(session, tiers)
 
         created = await self.get_version(session, version.id)
         await division_grid_cache.invalidate_grid_version(created.id)
@@ -513,6 +513,9 @@ class DivisionGridService:
                 existing.native_rank_min = tier_data.native_rank_min
                 existing.native_rank_max = tier_data.native_rank_max
 
+            stamp_canonical_numbers(
+                [existing_by_id[tier_id] for tier_id in payload_ids] + added_tiers, version.grid.discipline
+            )
             if added_tiers:
                 await self.tier_repo.create_many(session, added_tiers)
 
@@ -794,6 +797,7 @@ class DivisionGridService:
         session: AsyncSession,
         version: models.DivisionGridVersion,
         payload_tiers: list[schemas.DivisionGridTierWrite],
+        discipline: str,
     ) -> None:
         """Apply cosmetic-only tier edits in place (no rank/count changes)."""
         by_id = {tier.id: tier for tier in version.tiers}
@@ -808,6 +812,7 @@ class DivisionGridService:
             tier.icon_url = payload_tier.icon_url
             tier.native_rank_min = payload_tier.native_rank_min
             tier.native_rank_max = payload_tier.native_rank_max
+        stamp_canonical_numbers(version.tiers, discipline)
         await session.flush()
         await division_grid_cache.invalidate_grid_version(version.id)
 
@@ -836,7 +841,7 @@ class DivisionGridService:
         change = "structural" if active is None else _classify_tier_change(active.tiers, data.tiers)
 
         if change == "cosmetic" and active is not None:
-            await self._apply_cosmetic(session, active, data.tiers)
+            await self._apply_cosmetic(session, active, data.tiers, grid.discipline)
             saved_version_id = active.id
             mode = "in_place"
         else:

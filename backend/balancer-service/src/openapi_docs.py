@@ -729,9 +729,9 @@ DOCS: dict[str, dict] = {
             "sorting, the exact total and the page all run in the database. "
             "Optional `discipline` reads one enabled game (422 `discipline_not_enabled` for another); without it "
             "the rows are the union over every game the workspace runs, each tagged with its `discipline`, and "
-            "`role`, `rank_min`, `rank_max` and `sort=rank_value|division` are a 422 (`<param> requires "
+            "`role`, `div_min`, `div_max` and `sort=rank_value|division` are a 422 (`<param> requires "
             "discipline`): those values live on different grids. A game with no grid here lists its rows with a "
-            "null `division`."
+            "null `division`, and a `div_min`/`div_max` on it is a 422 `division_grid_required`."
         ),
     },
     "rpc.balancer.teams.export_registered": {

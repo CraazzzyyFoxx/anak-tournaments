@@ -1,7 +1,8 @@
 """Source-grid snapshot loading for canonical division normalization.
 
-The canonical numerical mapping itself belongs to the discipline's analytics module (reached through
-``src.core.analytics_exports``); this module owns only the session-taking snapshot loader.
+The canonical numerical mapping itself is ``shared.division_grid.canonical_division_number``, applied by the
+discipline's analytics module (reached through ``src.core.analytics_exports``); this module owns only the
+session-taking snapshot loader.
 """
 
 from __future__ import annotations

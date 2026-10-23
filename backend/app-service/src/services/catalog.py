@@ -16,6 +16,7 @@ from shared import models
 from shared.core import http_status as status
 from shared.core.errors import ApiExc, ApiHTTPException
 from shared.repository import CatalogEntityRepository
+from shared.schemas.catalog import CatalogEntityRead
 from src import schemas
 from src.services.admin.catalog import catalog as admin_catalog
 from src.services.admin.catalog import kind_spec, to_read
@@ -34,7 +35,7 @@ async def list_entities(
     return await admin_catalog.list(session, discipline, kind, params)
 
 
-async def get_entity(session: AsyncSession, discipline: str, kind: str, entity_id: int) -> schemas.CatalogEntityRead:
+async def get_entity(session: AsyncSession, discipline: str, kind: str, entity_id: int) -> CatalogEntityRead:
     """One row with its parent expanded; inactive rows are readable (a stored reference may point at one)."""
     kind_spec(discipline, kind)
     entity = await CatalogEntityRepository(kind, discipline=discipline).get(session, entity_id, options=_WITH_PARENT)

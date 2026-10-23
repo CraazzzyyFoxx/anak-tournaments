@@ -1,6 +1,6 @@
 """Typed-RPC handlers for the achievement engine + rules admin, gated by the workspace ``achievement.<action>`` permission.
 
-Achievement *reads* (a user's earned achievements) are owned by app-service; only the rules engine + admin live here.
+The public achievement reads (catalogue, a user's earned achievements, earners) are ``achievement_reads.py``.
 ``export`` returns the JSON payload as data; the frontend builds its own download.
 """
 

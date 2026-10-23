@@ -46,6 +46,7 @@ from src.core.caching import configure_cache
 from src.core.redis import close_realtime_redis
 from src.rpc import (
     admin_misc,
+    dashboard,
     ffa,
     integrations,
     match_import,
@@ -125,6 +126,8 @@ rpc_reads.register(broker, logger)
 admin_registry.register(broker)
 # Bespoke admin + integrations + division-grid typed RPC.
 admin_misc.register(broker, logger)
+# Organizer dashboard: readiness checklist, workspace dashboard and its trends.
+dashboard.register(broker, logger)
 registration_admin.register(broker, logger)
 integrations.register(broker, logger)
 stage_admin.register(broker, logger)

@@ -72,7 +72,7 @@ it("loads the selected game's own modes for the create dialog and files the map 
     path: "/api/v1/admin/catalog/overwatch/map",
     options: {
       method: "POST",
-      body: { name: "Ilios", aliases: [], active: true, parent_id: 907, attrs: { in_competitive: true } }
+      body: { name: "Ilios", image_path: null, aliases: [], active: true, parent_id: 907, attrs: { in_competitive: true } }
     }
   });
 });
@@ -109,6 +109,6 @@ it("for a game without modes asks for no modes and files a map under nothing", a
 
   expect(calls).toContainEqual({
     path: "/api/v1/admin/catalog/lol/map",
-    options: { method: "POST", body: { name: "Summoner's Rift", aliases: [], active: true } }
+    options: { method: "POST", body: { name: "Summoner's Rift", image_path: null, aliases: [], active: true } }
   });
 });

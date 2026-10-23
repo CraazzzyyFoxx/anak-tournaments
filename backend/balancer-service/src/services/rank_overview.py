@@ -31,7 +31,7 @@ from shared.core.errors import BaseAPIException
 from shared.core.social import SocialProvider
 from shared.disciplines import discipline as discipline_spec
 from shared.disciplines import rated_role_codes
-from shared.division_grid import DivisionGrid, division_case_expr, ladder_grid
+from shared.division_grid import DivisionGrid, division_case_expr, division_filter_predicates, ladder_grid
 from shared.domain.player_sub_roles import REGISTRATION_ROLE_CODES
 from shared.models.ranks.rank import RankAccountState, UserRankSnapshot
 from shared.repository import CatalogRoleRepository, CustomGameRoundRepository
@@ -63,8 +63,9 @@ class RankOverviewFilters:
     layers: tuple[str, ...] = CURRENT_LAYERS
     author_user_ids: tuple[int, ...] = ()
     roles: tuple[str, ...] = ()
-    rank_min: int | None = None
-    rank_max: int | None = None
+    #: Tier numbers on the game's workspace grid, 1 = top, inclusive; game-bound (one discipline).
+    div_min: int | None = None
+    div_max: int | None = None
     differs_from_canon: bool = False
     date_from: datetime | None = None
     date_to: datetime | None = None
@@ -550,10 +551,6 @@ def _predicates(rows: Any, filters: RankOverviewFilters) -> list[sa.ColumnElemen
         preds.append(rows.c.author_user_id.in_(filters.author_user_ids))
     if filters.roles:
         preds.append(rows.c.role.in_(filters.roles))
-    if filters.rank_min is not None:
-        preds.append(rows.c.rank_value >= filters.rank_min)
-    if filters.rank_max is not None:
-        preds.append(rows.c.rank_value <= filters.rank_max)
     if filters.differs_from_canon:
         # Only the author layer has a canon to differ from; "no canon at all"
         # counts as a difference, which is what IS DISTINCT FROM 0 says.
@@ -621,12 +618,18 @@ def _dump(row: Any, providers: dict[str, str | None], author_names: dict[int, st
     }
 
 
-async def _game_grid(session: AsyncSession, workspace_id: int, discipline: str) -> DivisionGrid | None:
-    """The game's workspace grid; ``None`` when the game has none here (its rows then carry no division)."""
+async def _game_grid(
+    session: AsyncSession, workspace_id: int, discipline: str, *, required: bool
+) -> DivisionGrid | None:
+    """The game's workspace grid; ``None`` when the game has none here (its rows then carry no division).
+
+    ``required`` (a division bound is set) lets the loader's ``division_grid_required`` 422 through: a bound on a grid
+    the game does not have is an error, not an empty page.
+    """
     try:
         return await get_effective_division_grid(session, workspace_id, discipline=discipline)
     except BaseAPIException as exc:
-        if "division_grid_required" not in str(exc.detail):
+        if required or "division_grid_required" not in str(exc.detail):
             raise
         return None
 
@@ -652,7 +655,9 @@ class RankOverviewQueries:
         providers: dict[str, str | None] = {}
         games: list[Any] = []
         for code in disciplines:
-            grid = await _game_grid(session, workspace_id, code)
+            grid = await _game_grid(
+                session, workspace_id, code, required=filters.div_min is not None or filters.div_max is not None
+            )
             providers[code] = discipline_spec(code).identity_provider
             members = _members_cte(workspace_id, providers[code], filters, code)
             branches = _branches(
@@ -676,7 +681,12 @@ class RankOverviewQueries:
                 if grid is not None and grid.tiers
                 else _null(sa.Integer)
             )
-            games.append(sa.select(game_rows, sa.literal(code).label("discipline"), division.label("division")))
+            game_select = sa.select(game_rows, sa.literal(code).label("discipline"), division.label("division"))
+            if grid is not None:
+                game_select = game_select.where(
+                    *division_filter_predicates(game_rows.c.rank_value, filters.div_min, filters.div_max, grid)
+                )
+            games.append(game_select)
         if not games:
             return [], 0
 

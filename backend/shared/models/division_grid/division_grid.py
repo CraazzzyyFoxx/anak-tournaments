@@ -140,6 +140,9 @@ class DivisionGridTier(db.TimeStampIntegerMixin):
     icon_url: Mapped[str] = mapped_column(String(), nullable=False)
     native_rank_min: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
     native_rank_max: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
+    # The tier's number on the game's native ladder (``shared.division_grid.stamp_canonical_numbers``); NULL for a
+    # game without one.
+    canonical_number: Mapped[int | None] = mapped_column(BigInteger(), nullable=True)
 
     version: Mapped[DivisionGridVersion] = relationship(back_populates="tiers")
 

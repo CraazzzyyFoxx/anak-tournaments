@@ -13,13 +13,13 @@ export interface CharacterPlaytime {
 }
 
 /** A stat's best single-match value, with where it happened. */
-export type CharacterStatBest = Schema<"app.CharacterStatBest">;
+export type CharacterStatBest = Schema<"stats.CharacterStatBest">;
 
 /** One stat of one character for a player: career total, best match and per-10 averages (player and everyone). */
-type CharacterStat = Schema<"app.CharacterStat">;
+type CharacterStat = Schema<"stats.CharacterStat">;
 
 /** A character's career-best game in its class's headline stat (tank: blocked, damage: hero damage, support: healing). */
-type CharacterRecord = Schema<"app.CharacterRecord">;
+type CharacterRecord = Schema<"stats.CharacterRecord">;
 
 export interface CharacterWithUserStats {
   character: CatalogEntityRead;
@@ -180,7 +180,7 @@ interface UserEncounterTeamSummary {
 }
 
 /** One native observation of a stat; `segment` 0 with null member/entity is a member's whole-match total when `workspace_member_id` is set. */
-type UserNativeFact = Schema<"app.NativeFact">;
+type UserNativeFact = Schema<"stats.NativeFact">;
 
 /** The viewer's own seat and whole-match totals in one match; absent when the viewer's seat was not observed. */
 interface UserMatchViewer {
@@ -199,7 +199,7 @@ interface UserMatchViewer {
  * `member_totals`.
  */
 export interface MatchWithUserStats
-  extends Omit<Schema<"app.MatchReadWithUserStats">, "map" | "raw_status" | "viewer" | "member_totals"> {
+  extends Omit<Schema<"stats.MatchReadWithUserStats">, "map" | "raw_status" | "viewer" | "member_totals"> {
   raw_status: RawSourceStatus | null;
   /** Always expanded, with its catalog mode as `map.parent`; the match's own mode is `mode`. */
   map: CatalogEntityRead;
@@ -398,12 +398,12 @@ export interface MinimizedUser {
 
 export interface UserOverviewRoleDivision {
   role: RoleRef | null;
-  division: number;
+  /** `null` in the all-workspaces read of a game without a native ladder: no division to show. */
+  division: number | null;
   /**
-   * The grid version `division` belongs to — the workspace's target grid in
-   * workspace scope, the tournament's own effective grid in all-workspaces
-   * scope (where ranks are never normalized across grids). Resolve it against
-   * the response's `division_grids`.
+   * The grid version `division` belongs to (the workspace's target grid in workspace scope); resolve it against
+   * the response's `division_grids`. `null` in the all-workspaces read: `division` is then a number on the game's
+   * native ladder (`metadata.native_ladder`), each tournament's own tier mapped onto it.
    */
   division_grid_version_id: number | null;
 }
@@ -464,7 +464,7 @@ export interface UserOverviewStats {
   flex_count: number;
   /** Users the open-slot (`role=flex`) chip itself matches, under the other filters. */
   flex_declared_count: number;
-  /** Per division, ignoring the `divisions` filter so the facet stays usable. */
+  /** Per division, ignoring the `divisions` filter so the facet stays usable; native-ladder numbers across workspaces. */
   division_counts: UserOverviewDivisionCount[];
 }
 
@@ -482,11 +482,11 @@ export interface UserCatalogResponse {
   letters: UserCatalogLetter[];
   total: number;
   available_letters: string[];
-  /** Every grid version referenced by a role in this response, once. */
+  /** Every grid version referenced by a role in this response, once; empty in the all-workspaces read. */
   division_grids: DivisionGridVersion[];
 }
 
-/** The users index page, plus the grid versions its role divisions point at. */
+/** The users index page, plus the grid versions its role divisions point at (none in the all-workspaces read). */
 export interface UserOverviewResponse extends PaginatedResponse<UserOverviewRow> {
   division_grids: DivisionGridVersion[];
 }

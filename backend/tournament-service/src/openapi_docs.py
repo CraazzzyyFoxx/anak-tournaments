@@ -1628,4 +1628,41 @@ DOCS: dict[str, dict] = {
         "summary": "Delete saved view",
         "description": "Permission: authenticated member of the workspace named by `workspace_id` (403 otherwise); self-service — only the caller's own view is deleted. Deletes the calling user's saved encounter view by id in a workspace (204 no body).",
     },
+    # ── organizer dashboard ──────────────────────────────────────────────────
+    "rpc.tournament.admin_dashboard": {
+        "summary": "Organizer dashboard",
+        "description": (
+            "Permission: any of workspace `tournament.read`, `team.read`, `match.read`, `user.read` or"
+            " `achievement.read`. Returns the organizer home of one workspace: one card per tournament that is not"
+            " finished (hidden ones included) plus completed tournaments within 14 days of finishing whose wrap-up"
+            " (results confirmed, duel logs, achievements, standings) is not done; the next 7 days of phase-schedule"
+            " boundaries plus every overdue phase start; the work queue of those cards ordered by severity; and the"
+            " backlog of every other tournament with a data-quality issue. Each field group is null when the caller"
+            " lacks the permission that gates it, never zero. 422 without `workspace_id`, 403 without any of the"
+            " permissions."
+        ),
+    },
+    "rpc.tournament.admin_dashboard_trends": {
+        "summary": "Organizer dashboard trends",
+        "description": (
+            "Permission: workspace `tournament.read`. Returns participants, newcomers, duel log coverage and the"
+            " median match-end-to-confirmation time of the workspace's last 10 finished, non-league, non-hidden"
+            " tournaments, oldest first, optionally narrowed to one installed `discipline` (404"
+            " `discipline_not_installed` for an unknown code). 422 without `workspace_id`."
+        ),
+    },
+    "rpc.tournament.tournament_readiness": {
+        "summary": "Tournament readiness checklist",
+        "description": (
+            "Permission: workspace `tournament.read` or `team.read` on the tournament's own workspace. Returns the"
+            " living readiness checklist for one tournament, telling its organisers what is still missing before it can"
+            " run: schedule/grid/stage-slot configuration, bracket, duel log coverage and pending standings"
+            " recalculation (`tournament.read`); the registration, pool, balance and draft state (`team.read`); the"
+            " overdue, pending-confirmation and disputed results (`match.read`); and the achievement evaluation status"
+            " (`achievement.read`). Each group of fields is masked to null when the caller lacks the permission that"
+            " gates it, so a partial reader sees no-access rather than zeros. 403 without `tournament.read` or"
+            " `team.read`, 404 if the tournament is unknown; hidden tournaments of the caller's own workspace are"
+            " visible."
+        ),
+    },
 }

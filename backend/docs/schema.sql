@@ -1892,6 +1892,7 @@ CREATE TABLE division_grid_tier (
 	icon_url VARCHAR NOT NULL,
 	native_rank_min BIGINT,
 	native_rank_max BIGINT,
+	canonical_number BIGINT,
 	PRIMARY KEY (id),
 	UNIQUE (version_id, slug),
 	UNIQUE (version_id, sort_order),

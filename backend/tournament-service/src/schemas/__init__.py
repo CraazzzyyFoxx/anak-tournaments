@@ -25,3 +25,6 @@ from .admin.standing import *
 from .admin.team import *
 from .admin.tournament import *
 from .admin.tournament_link import *
+from .readiness import *
+from .dashboard import *
+from .dashboard_trends import *

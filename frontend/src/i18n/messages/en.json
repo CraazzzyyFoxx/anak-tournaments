@@ -1390,8 +1390,7 @@
         "layer": "Layer",
         "author": "Author",
         "role": "Role",
-        "divisionMin": "Division from",
-        "divisionMax": "Division to",
+        "divisions": "Divisions",
         "differsFromCanon": "Differs from canon",
         "dateRange": "Any date"
       },

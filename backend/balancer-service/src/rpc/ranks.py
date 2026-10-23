@@ -16,6 +16,7 @@ from faststream.rabbit import RabbitMessage
 
 from shared.core import http_status as status
 from shared.core import pagination
+from shared.core.errors import ApiExc, ApiHTTPException
 from shared.core.errors import BaseAPIException as HTTPException
 from shared.disciplines import rated_role_codes
 from shared.repository import WorkspaceRepository
@@ -77,6 +78,13 @@ def _filters(data: dict[str, Any], disciplines: list[str]) -> RankOverviewFilter
     sort = str(c.q1(data, "sort") or "display_name")
     order = str(c.q1(data, "order") or "asc").lower()
     query = str(c.q1(data, "q") or "").strip()
+    div_min = _int(data, "div_min")
+    div_max = _int(data, "div_max")
+    if div_min is not None and div_max is not None and div_min > div_max:
+        raise ApiHTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=[ApiExc(code="invalid_filter", msg="div_min must be less than or equal to div_max.")],
+        )
     return RankOverviewFilters(
         player_id=_int(data, "player_id"),
         query=query or None,
@@ -87,8 +95,8 @@ def _filters(data: dict[str, Any], disciplines: list[str]) -> RankOverviewFilter
             for role in (c.q(data, "role") or [])
             if any(role in rated_role_codes(discipline) for discipline in disciplines)
         ),
-        rank_min=_int(data, "rank_min"),
-        rank_max=_int(data, "rank_max"),
+        div_min=div_min,
+        div_max=div_max,
         differs_from_canon=_bool(data, "differs_from_canon"),
         date_from=_when(data, "date_from"),
         date_to=_when(data, "date_to"),
@@ -100,7 +108,7 @@ def _filters(data: dict[str, Any], disciplines: list[str]) -> RankOverviewFilter
 
 
 #: Filters and sorts that only mean something on one game's roles and grid (spec §6.8).
-_GAME_BOUND_FILTERS = ("role", "rank_min", "rank_max")
+_GAME_BOUND_FILTERS = ("role", "div_min", "div_max")
 _GAME_BOUND_SORTS = ("rank_value", "division")
 
 

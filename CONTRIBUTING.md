@@ -52,7 +52,7 @@ rpc → services → domain → repository → models
   [`backend/docs/repository-boundaries.md`](./backend/docs/repository-boundaries.md):
   repositories take an `AsyncSession`, return ORM rows, flush but never commit, and import no
   Pydantic schema, cache client, outbox publisher, or service settings.
-- `app-service` additionally enforces a sub-domain hierarchy through import-linter — see
+- `app-service` and `stats-service` (its public read surface) additionally enforce a sub-domain hierarchy through import-linter — see
   [`backend/docs/architecture/layering.md`](./backend/docs/architecture/layering.md).
 - The gateway is the only HTTP/WebSocket surface. A new REST route is a route entry plus an
   RPC method, never a new listening port; see [`gateway/README.md`](./gateway/README.md).

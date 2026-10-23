@@ -12,29 +12,14 @@ root_packages =
     src
 
 # ----------------------------------------------------------------------------
-# Contract 1: layered hierarchy inside src.services.
-#
-# Layers (high -> low):
-#   - achievements: aggregates user/encounter/tournament behaviour
-#   - dashboard, user: cross-domain read APIs
-#   - hero, map, statistics, workspace: leaf/core domains
+# Contract 1: identity and tenancy stay independent inside src.services.
 # ----------------------------------------------------------------------------
-[importlinter:contract:services-layers]
-name = src.services layered hierarchy
-type = layers
-layers =
-    achievements
-    dashboard | user
-    hero | map | statistics | workspace
-containers =
-    src.services
-ignore_imports =
-    # ---- Known debt: map -> hero ----
-    src.services.map.service -> src.services.hero.queries
-    src.services.map.service -> src.services.hero.service
-
-    # ---- Known debt: lower layers reaching into user ----
-    src.services.map.service -> src.services.user.service
+[importlinter:contract:services-independence]
+name = src.services user and workspace stay independent
+type = independence
+modules =
+    src.services.user
+    src.services.workspace
 
 
 # ----------------------------------------------------------------------------
@@ -51,40 +36,3 @@ source_modules =
     src.rpc
 forbidden_modules =
     src.services.user.queries
-    src.services.hero.queries
-    src.services.statistics.queries
-    src.services.achievements.queries
-
-# ----------------------------------------------------------------------------
-# Contract 3: private mappers / query packages stay inside their domain.
-#
-# Each consumer of tournament-flow data owns its own queries + mappers. A third
-# consumer gets its own, so the consumers can evolve independently.
-# ----------------------------------------------------------------------------
-[importlinter:contract:user-privates]
-name = user/ private modules belong to user/
-type = forbidden
-allow_indirect_imports = True
-source_modules =
-    src.services.dashboard
-    src.services.statistics
-    src.services.hero
-    src.services.map
-    src.services.workspace
-forbidden_modules =
-    src.services.user.queries
-    src.services.user._mappers
-
-[importlinter:contract:achievements-privates]
-name = achievements/ private modules belong to achievements/
-type = forbidden
-allow_indirect_imports = True
-source_modules =
-    src.services.user
-    src.services.dashboard
-    src.services.statistics
-    src.services.hero
-    src.services.map
-    src.services.workspace
-forbidden_modules =
-    src.services.achievements._mappers

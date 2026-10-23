@@ -52,10 +52,10 @@ from shared.messaging.rpc import request_rpc
 from shared.rpc.identity import ensure_workspace_permission
 from shared.rpc.query import build_query_model
 from shared.schemas.user_merge_auth import AuthMergeFinalizationRequest, AuthMergeResult
+from shared.services import user_cache
 from shared.services.audit import record_admin_audit
 from src import schemas
 from src.core import clients, db
-from src.services import user_cache
 from src.services.admin.favorites import favorites as favorites_service
 from src.services.admin.user import users as admin_users
 from src.services.admin.user_merge import merges as merge_service
@@ -126,7 +126,7 @@ async def _envelope_and_invalidate(logger: Any, label: str, op: Any, data: dict)
 
     Profile/identity edits (name, avatar, socials) move no tournament resource,
     so no ``CacheInvalidatedEvent`` drops these keys; without this the subject's
-    cached profile/heroes/encounters/etc. would serve stale data until
+    cached profile/heroes/encounters/etc. (stats-service's read caches) would serve stale data until
     ``users_cache_ttl`` elapses.
     Runs after the DB session closes and only on ``ok`` — a failed write leaves
     the cache untouched. Cross-user cosmetic staleness (this user's name/avatar

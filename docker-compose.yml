@@ -82,9 +82,9 @@ services:
           cpus: '0.05'
           memory: 128M
 
-  # Headless RPC worker for app-service: serves ALL of /api/v1/core (rpc.app.*
-  # reads/writes/binary) behind the gateway + owns the tournament_changed
-  # cache-invalidation consumer. Replaces the former HTTP `backend` service.
+  # Headless RPC worker for app-service (rpc.app.*: catalog, player identity,
+  # workspaces, notifications, audit, binary assets) behind
+  # the gateway. Replaces the former HTTP `backend` service.
   app-svc:
     image: registry.craazzzyyfoxx.me/owt-app:dev
     build:
@@ -128,10 +128,11 @@ services:
 
   # stats-service (formerly parser-service) is two headless FastStream processes from one image:
   # stats-svc serves the typed RPC domains (match-log, canonical ingest, OverFast rank admin,
-  # achievement engine + rules admin, metadata sync, settings) behind the gateway;
-  # stats-worker runs every consumer and schedule (stats.ingest.<discipline>, achievements, rank
-  # collection, reaper, retention, subscription collection). The bot uploads logs over RabbitMQ; the
-  # SSE log monitor moved to the gateway WS hub.
+  # achievement engine + rules admin, metadata sync, settings, and the public statistics, /users/*
+  # and achievement reads) behind the gateway; stats-worker runs every consumer and schedule
+  # (stats.ingest.<discipline>, achievements, rank collection, reaper, retention, subscription
+  # collection, the cache.invalidated consumer). The bot uploads logs over RabbitMQ; the SSE log
+  # monitor moved to the gateway WS hub.
 
   # realtime-service decommissioned: WebSockets are now served by the Go gateway
   # (gateway/internal/ws), which consumes the same `realtime:*` Redis channels and

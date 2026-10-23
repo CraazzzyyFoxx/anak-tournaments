@@ -92,9 +92,11 @@ class CharacterLeaderboardEntry(BaseModel):
     username: str
     player_name: str
     role: RoleRef | None = None
-    div: int
-    #: Which grid ``div`` is a number on: the request's workspace grid in a scoped read, the player's own latest
-    #: tournament grid in the all-workspaces read. The grids ship once per page in ``division_grids``.
+    #: The workspace grid's tier number in a scoped read; in the all-workspaces read the canonical number on the
+    #: game's native ladder (``None`` for a game without one).
+    div: int | None
+    #: Which stored grid ``div`` is a number on (scoped reads; those grids ship once per page in ``division_grids``).
+    #: ``None`` in the all-workspaces read: the native ladder is in-code.
     division_grid_version_id: int | None = None
     team: str | None = None
     team_id: int | None = None

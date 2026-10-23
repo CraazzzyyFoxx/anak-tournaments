@@ -59,6 +59,21 @@ class AppConfig(BaseServiceSettings):
     # Subscription resolution credentials (Boosty asks discord-service over the broker)
     twitch_client_id: str | None = None
 
+    # Read-cache TTLs of the public reads (rpc/statistics.py, rpc/users.py, rpc/achievement_reads.py).
+    # ``users_cache_ttl`` covers the *tournament-derived* /users/* read caches
+    # (tournaments, tournament_stats, heroes, encounters, maps, teammates,
+    # matches_summary, compare, ...). Every one is keyed by the tournament-data
+    # generations (``shared.services.user_cache``), which every tournament write bumps; the TTL is a safety net.
+    users_cache_ttl: int = 60 * 5
+    # ``user_profile`` is *identity-derived* (name/avatar/socials). App-side
+    # profile edits invalidate it precisely (``shared.services.user_cache``), but
+    # identity-service self-service avatar/name edits propagate to the player
+    # WITHOUT a cross-service invalidation hook, so this TTL is the only bound on
+    # that staleness. Kept short deliberately — do not fold it into
+    # ``users_cache_ttl`` without wiring identity-service invalidation first.
+    user_profile_cache_ttl: int = 60
+    achievements_cache_ttl: int = 60 * 5
+
     # RabbitMQ
     rabbitmq_url: str | None = None
 

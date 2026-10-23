@@ -18,10 +18,10 @@ directory; each service still keeps its own `pyproject.toml` as a workspace memb
 
 | Service dir | Compose service | Kind | Purpose |
 | --- | --- | --- | --- |
-| [`app-service`](./app-service/README.md) | `app-svc` | RPC worker | Core public read/data API + workspace/user/metadata admin + binary assets |
+| [`app-service`](./app-service/README.md) | `app-svc` | RPC worker | Game catalog, player identity (directory/search, admin, merge), workspaces, notifications, audit, binary assets |
 | [`identity-service`](./identity-service/README.md) | `identity-svc` | RPC worker | AuthN/AuthZ: JWT, Discord OAuth, RBAC, workspace membership, custom domains/subdomains, API keys, player linking, service tokens, SSO |
-| [`tournament-service`](./tournament-service/README.md) | `tournament-svc` | RPC + scheduler | Tournament lifecycle: CRUD, registration, brackets/standings, Challonge + Google Sheets sync, map veto, state machine; drains its own outbox rows (as every producing service does) |
-| [`stats-service`](./stats-service/README.md) | `stats-svc` | RPC + scheduler | Match-log ingestion/parsing, OverFast rank fetch (leader-locked), achievement evaluation, MVP-impact backfill |
+| [`tournament-service`](./tournament-service/README.md) | `tournament-svc` | RPC + scheduler | Tournament lifecycle: CRUD, registration, brackets/standings, Challonge + Google Sheets sync, map veto, state machine, the organizer dashboard and tournament readiness; drains its own outbox rows (as every producing service does) |
+| [`stats-service`](./stats-service/README.md) | `stats-svc` + `stats-worker` | RPC process + worker | Match-log ingestion/parsing, rank fetch (leader-locked), achievement evaluation, MVP-impact backfill; the public statistics, `/users/*` player-statistics and achievement reads with their read caches |
 | [`balancer-service`](./balancer-service/README.md) | `balancer-svc` | RPC worker | Genetic team balancing + live draft; heavy solve in native Rust `tournament_balancer` (NSGA multi-objective) |
 | [`analytics-service`](./analytics-service/README.md) | `analytics-svc` + `analytics-worker` | RPC worker + compute worker | Post-tournament analytics, split into two processes: `analytics-svc` (light RPC reads/mutations/job-control) and `analytics-worker` (heavy ML: LightGBM/XGBoost + Bayesian + Monte Carlo) |
 | [`stream-service`](./stream-service/README.md) | `stream-svc` | RPC + scheduler | Tournament stream live-status: Twitch Helix `GET /streams` poll tick under an app token (leader-locked, admin-settings-gated) + public `rpc.stream.*` reads. Owns no Postgres schema — live state lives in Redis under a TTL |

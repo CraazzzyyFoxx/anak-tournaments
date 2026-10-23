@@ -357,7 +357,7 @@ export interface TournamentStatusTransitionInput {
 
 /**
  * Readiness aggregate for the hub living checklist (D13, §7.1).
- * Mirrors backend/app-service/src/services/dashboard/readiness.py. Field
+ * Mirrors backend/tournament-service/src/services/dashboard/readiness.py. Field
  * groups are masked by the caller's permissions: `tournament.read` gates the
  * setup/bracket/logs/standings group, `team.read` the registration/pool/
  * balance/draft group, `match.read` the result counts, `achievement.read` the

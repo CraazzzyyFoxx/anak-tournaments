@@ -146,16 +146,17 @@ is that service's `services/` file, and the second consumer should call it over 
 
 ## Concrete shape of a layer
 
-**`rpc/<domain>.py`** (`app-service/src/rpc/statistics.py`):
+**`rpc/<domain>.py`** (`stats-service/src/rpc/statistics.py`):
 
 ```python
-def register(broker: Any, logger: Any) -> None:
-    @broker.subscriber("rpc.app.statistics.character_leaderboard")
+def register(broker: Any, logger: Any, *, channel: Any) -> None:
+    @broker.subscriber("rpc.stats.statistics.character_leaderboard", channel=channel)
     async def _character_leaderboard(data: dict, msg: RabbitMessage) -> dict:
         async def op(session: Any) -> Any:
             discipline = c.require_discipline(data, in_path=True)
             await c.gate_tournament(session, data, c.q1(data, "tournament_id", int))
-            ws = await resolve_workspace_context(session, c.q_workspace_scope(data), discipline=discipline)
+            # Analytics reads: a scoped read resolves its workspace grid; `workspace_id=all` reads the native ladder.
+            ws = await c.analytics_context(session, c.q_workspace_scope(data), discipline)
             return await character_service.get_hero_leaderboard(
                 session, discipline=discipline, entity_id=c.require_id(data), params=..., grid=ws.grid
             )
@@ -163,7 +164,7 @@ def register(broker: Any, logger: Any) -> None:
         return await c.envelope(logger, "statistics.character_leaderboard", op, session_factory=_SF)
 ```
 
-**`services/<domain>/service.py`** (`app-service/src/services/hero/service.py`):
+**`services/<domain>/service.py`** (`stats-service/src/services/hero/service.py`):
 
 ```python
 class HeroService:
@@ -438,12 +439,13 @@ layers, checked by `uv run --project .. lint-imports` from the service directory
   pulls in the ORM either);
 - `services-dont-import-rpc`.
 
-`app-service` adds a `services-layers` contract because it alone has a multi-level hierarchy
-(`services.achievements` → `services.{dashboard,user}` → `services.{hero,map,statistics,workspace}`);
-it grandfathers three pre-existing imports by name so they cannot grow silently. A flat service
-needs nothing beyond the three above. `backend/.importlinter` covers the `shared` kernel
-(`shared.*` never imports a discipline module directly). A new service copies
-`stats-service/.importlinter`.
+`app-service` adds a `services-independence` contract (`services.user` and `services.workspace` never
+import each other), and `stats-service` a `read-services-layers` contract for its public
+read surface (`services.achievement_reads` → `services.user` → `services.{hero,map,statistics}`),
+which grandfathers three pre-existing `map.service` imports by name so they cannot grow silently. A
+flat service needs nothing beyond the three above. `backend/.importlinter` covers the `shared` kernel
+(`shared.*` never imports a discipline module directly). A new service copies the first three
+contracts of `stats-service/.importlinter`.
 
 ## What actually lives in `serve.py`
 

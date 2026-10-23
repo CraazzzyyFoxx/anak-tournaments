@@ -323,19 +323,20 @@ CACHE_INVALIDATION_TOURNAMENT_DLQ = RabbitQueue(
     durable=True,
 )
 
-CACHE_INVALIDATION_APP_QUEUE = RabbitQueue(
-    "cache_invalidation_app_service",
+# stats-service owns the public read caches (statistics, /users/*, achievements) and the hero-stats materialized view.
+CACHE_INVALIDATION_STATS_QUEUE = RabbitQueue(
+    "cache_invalidation_stats_service",
     durable=True,
     routing_key="cache.invalidated.#",
     arguments={
         "x-dead-letter-exchange": "dlx",
-        "x-dead-letter-routing-key": "cache_invalidation_app_service.dlq",
+        "x-dead-letter-routing-key": "cache_invalidation_stats_service.dlq",
         "x-message-ttl": 300000,  # 5 minutes
     },
 )
 
-CACHE_INVALIDATION_APP_DLQ = RabbitQueue(
-    "cache_invalidation_app_service.dlq",
+CACHE_INVALIDATION_STATS_DLQ = RabbitQueue(
+    "cache_invalidation_stats_service.dlq",
     durable=True,
 )
 

@@ -198,7 +198,7 @@ func TestRoutesRegisterWithoutConflict(t *testing.T) {
 	dummy := func(http.ResponseWriter, *http.Request) {}
 
 	for _, set := range [][]edge.RouteSpec{
-		PublicReadRoutes, PublicWriteRoutes, AdminCrudRoutes, AdminMiscRoutes,
+		PublicReadRoutes, PublicWriteRoutes, AdminCrudRoutes, AdminMiscRoutes, DashboardRoutes,
 		RegistrationAdminRoutes, IntegrationsRoutes, ScrimRoutes,
 	} {
 		for _, s := range set {

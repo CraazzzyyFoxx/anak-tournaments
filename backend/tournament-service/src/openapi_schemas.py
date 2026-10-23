@@ -41,6 +41,9 @@ from src.services.encounter import room_journal
 # Reusable ad-hoc query params (handlers read these via _q/_q1, no query model).
 _ENTITIES = QueryParam("entities", array=True)
 _WS = QueryParam("workspace_id", "integer")
+_WS_REQUIRED = QueryParam("workspace_id", "integer", required=True)
+# A list read's optional game (spec §8.1): absent or "all" is every game.
+_OPTIONAL_DISCIPLINE = QueryParam("discipline", description='Installed discipline code; absent or "all": every game')
 
 OPERATIONS: dict[str, Op] = {
     # ── public reads (single object) ───────────────────────────────────────
@@ -560,4 +563,10 @@ OPERATIONS: dict[str, Op] = {
         query=schemas.AdminMatchesQueryParams,
     ),
     "rpc.tournament.admin_match_get": Op(response=schemas.AdminMatchDetail),
+    # ── organizer dashboard ──────────────────────────────────────────────────
+    "rpc.tournament.admin_dashboard": Op(response=schemas.AdminDashboard, query_params=(_WS_REQUIRED,)),
+    "rpc.tournament.admin_dashboard_trends": Op(
+        response=schemas.DashboardTrends, query_params=(_WS_REQUIRED, _OPTIONAL_DISCIPLINE)
+    ),
+    "rpc.tournament.tournament_readiness": Op(response=schemas.TournamentReadiness),
 }

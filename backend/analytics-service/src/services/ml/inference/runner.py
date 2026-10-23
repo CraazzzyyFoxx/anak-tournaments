@@ -14,6 +14,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import models
+from shared.division_grid import DEFAULT_GRID, canonical_division_number
 from shared.domain.analytics import PerformanceModel, ShiftModel, StandingsModel
 from shared.services.workspace_scope import get_division_grid, get_tournament_workspace_id
 from src.core.analytics_exports import tournament_module
@@ -168,7 +169,7 @@ async def run_performance_for_tournament(
     source_grid = await get_division_grid(session, workspace_id, tournament_id=tournament_id)
     player_ranks = feature_frame.groupby("player_id", dropna=False)["rank"].first().to_dict()
     per_player["division"] = per_player["player_id"].map(
-        lambda player_id: exports.canonical_division_number(source_grid, int(player_ranks.get(player_id, 0) or 0))
+        lambda player_id: canonical_division_number(source_grid, int(player_ranks.get(player_id, 0) or 0), DEFAULT_GRID)
     )
     per_player = exports.attach_local_performance(per_player)
     # Small (tournament, role) cohorts get a smooth normal-CDF impact score

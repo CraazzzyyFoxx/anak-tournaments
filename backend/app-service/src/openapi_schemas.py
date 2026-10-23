@@ -10,14 +10,9 @@ dicts / None (204) are omitted (generic object in the docs).
 
 from __future__ import annotations
 
-import typing
-
-from shared.core.pagination import (
-    Paginated,
-    PaginationQueryParams,
-    PaginationSortQueryParams,
-)
+from shared.core.pagination import Paginated
 from shared.rpc.openapi import Op, QueryParam
+from shared.schemas.catalog import CatalogEntityRead
 from shared.schemas.quota import (
     QuotaOperationRead,
     QuotaOperationWrite,
@@ -30,155 +25,28 @@ from shared.schemas.team_format import TeamFormatRead, TeamFormatWrite
 from src import schemas
 from src.schemas.discipline import DisciplineDescriptor, DisciplineMetadata
 
-# Sort-field whitelists mirror the read handlers' Literal constraints (used to
-# build the generic query-param aliases below). Drift only affects the `sort`
-# enum shown in docs.
-_USER_SORT = typing.Literal["id", "name", "similarity:name"]
-_STAT_SORT = typing.Literal["id", "name", "value"]
-_ENC_SORT = typing.Literal["id", "name", "closeness", "round", "played_at"]
-_MATE_SORT = typing.Literal["id", "name", "winrate", "tournaments"]
-
 # Reusable ad-hoc query params (handlers read these via c.q/c.q1, no query model).
-_ENTITIES = QueryParam("entities", array=True)
 _WS = QueryParam("workspace_id", "integer")
-_WS_REQUIRED = QueryParam("workspace_id", "integer", required=True)
 # The discipline reads take an explicit scope: a workspace id or the literal "all" (global view), so not an integer.
 _WS_OR_ALL = QueryParam(
     "workspace_id", "string", description='Workspace id (positive integer) or the literal "all" for the global view'
 )
-_TID = QueryParam("tournament_id", "integer")
-# Every statistics read names its game explicitly (no default, no fallback).
-_DISCIPLINE = QueryParam("discipline", required=True, description="Installed discipline code")
-# A list read's optional game (spec §8.1): absent or "all" is every game.
-_OPTIONAL_DISCIPLINE = QueryParam("discipline", description='Installed discipline code; absent or "all": every game')
 
 OPERATIONS: dict[str, Op] = {
     "rpc.app.workspaces.team_format_get": Op(response=TeamFormatRead),
     "rpc.app.workspaces.team_format_put": Op(request=TeamFormatWrite, response=TeamFormatRead),
-    # ── generic CRUD read engine (rpc.app.read.{get,list}#<entity>) ────────
-    "rpc.app.read.get#achievement": Op(response=schemas.AchievementRead),
-    "rpc.app.read.list#achievement": Op(
-        response=Paginated[schemas.AchievementRead], query=schemas.AchievementListQueryParams
-    ),
     # ── public native catalog ──────────────────────────────────────────────
-    "rpc.app.catalog.list": Op(
-        response=Paginated[schemas.CatalogEntityRead], query=schemas.CatalogEntityListQueryParams
-    ),
-    "rpc.app.catalog.get": Op(response=schemas.CatalogEntityRead),
+    "rpc.app.catalog.list": Op(response=Paginated[CatalogEntityRead], query=schemas.CatalogEntityListQueryParams),
+    "rpc.app.catalog.get": Op(response=CatalogEntityRead),
     "rpc.app.disciplines.list": Op(response=DisciplineDescriptor, response_array=True, query_params=(_WS_OR_ALL,)),
     "rpc.app.disciplines.metadata": Op(response=DisciplineMetadata, query_params=(_WS_OR_ALL,)),
-    # ── statistics ─────────────────────────────────────────────────────────
-    "rpc.app.statistics.character_playtime": Op(
-        response=Paginated[schemas.CharacterPlaytime], query=schemas.CharacterPlaytimeQueryPaginationParams
-    ),
-    "rpc.app.statistics.character_leaderboard": Op(
-        response=schemas.CharacterLeaderboardResponse, query=schemas.CharacterLeaderboardQueryParams
-    ),
-    "rpc.app.statistics.admin_dashboard": Op(response=schemas.AdminDashboard, query_params=(_WS_REQUIRED,)),
-    "rpc.app.statistics.admin_dashboard_trends": Op(
-        response=schemas.DashboardTrends, query_params=(_WS_REQUIRED, _OPTIONAL_DISCIPLINE)
-    ),
-    "rpc.app.statistics.champion": Op(
-        response=Paginated[schemas.PlayerStatistics],
-        query=PaginationSortQueryParams[_STAT_SORT],
-        query_params=(_OPTIONAL_DISCIPLINE,),
-    ),
-    "rpc.app.statistics.winrate": Op(
-        response=Paginated[schemas.PlayerStatistics],
-        query=PaginationSortQueryParams[_STAT_SORT],
-        query_params=(_OPTIONAL_DISCIPLINE,),
-    ),
-    "rpc.app.statistics.players": Op(
-        response=Paginated[schemas.PlayerLeaderboardRow],
-        query=schemas.PlayerLeaderboardQueryParams,
-        query_params=(_OPTIONAL_DISCIPLINE, _WS),
-    ),
-    "rpc.app.statistics.records": Op(response=schemas.StatRecords, query_params=(_OPTIONAL_DISCIPLINE, _WS)),
-    "rpc.app.statistics.maps": Op(response=schemas.MapStatsResponse, query_params=(_WS,)),
-    "rpc.app.statistics.tournament_readiness": Op(response=schemas.TournamentReadiness),
-    # ── users (bespoke reads) ──────────────────────────────────────────────
-    "rpc.app.users.get_profile": Op(response=schemas.UserProfile, query_params=(_OPTIONAL_DISCIPLINE, _WS)),
-    "rpc.app.users.draft_card": Op(response=schemas.UserDraftCard, query_params=(_DISCIPLINE, _WS)),
+    # ── users (identity reads) ─────────────────────────────────────────────
     "rpc.app.users.search": Op(
         response=schemas.UserSearch,
         response_array=True,
         query_params=(QueryParam("query"),),
     ),
-    "rpc.app.users.overview": Op(
-        response=schemas.UserOverviewResponse,
-        query=schemas.UserOverviewQueryParams,
-        query_params=(_OPTIONAL_DISCIPLINE,),
-    ),
-    "rpc.app.users.overview_stats": Op(
-        response=schemas.UserOverviewStats,
-        query=schemas.UserOverviewStatsQueryParams,
-        query_params=(_OPTIONAL_DISCIPLINE,),
-    ),
-    "rpc.app.users.overview_catalog": Op(
-        response=schemas.UserCatalogResponse,
-        query=schemas.UserCatalogQueryParams,
-        query_params=(_OPTIONAL_DISCIPLINE,),
-    ),
-    "rpc.app.users.compare": Op(
-        response=schemas.UserCompareResponse, query=schemas.UserCompareQueryParams, query_params=(_DISCIPLINE,)
-    ),
-    "rpc.app.users.compare_characters": Op(
-        response=schemas.UserCharacterCompareResponse,
-        query=schemas.UserCharacterCompareQueryParams,
-        query_params=(_DISCIPLINE,),
-    ),
     "rpc.app.users.by_name": Op(response=schemas.UserRead),
-    "rpc.app.users.tournaments": Op(
-        response=schemas.UserTournament, response_array=True, query_params=(_OPTIONAL_DISCIPLINE, _WS)
-    ),
-    "rpc.app.users.tournament": Op(response=schemas.UserTournamentWithStats),
-    "rpc.app.users.tournament_encounters": Op(response=schemas.EncounterReadWithUserStats, response_array=True),
-    "rpc.app.users.tournament_leaderboard": Op(response=schemas.LobbyLeaderboard, query_params=(QueryParam("stat"),)),
-    "rpc.app.users.maps": Op(
-        response=Paginated[schemas.UserMap], query=schemas.UserMapsSearchQueryParams, query_params=(_DISCIPLINE,)
-    ),
-    "rpc.app.users.maps_summary": Op(
-        response=schemas.UserMapsSummary, query=schemas.UserMapsSearchQueryParams, query_params=(_DISCIPLINE,)
-    ),
-    "rpc.app.users.encounters": Op(
-        response=Paginated[schemas.EncounterReadWithUserStats],
-        query=PaginationSortQueryParams[_ENC_SORT],
-        query_params=(
-            _OPTIONAL_DISCIPLINE,
-            QueryParam("result"),
-            QueryParam("stage"),
-            QueryParam("mvp1", "boolean"),
-            QueryParam("has_logs", "boolean"),
-            QueryParam("opponent"),
-        ),
-    ),
-    "rpc.app.users.matches_summary": Op(response=schemas.UserMatchesSummary, query_params=(_DISCIPLINE, _WS)),
-    "rpc.app.users.characters": Op(
-        response=Paginated[schemas.CharacterWithUserStats],
-        query=PaginationQueryParams,
-        query_params=(_DISCIPLINE, QueryParam("stats", array=True), _TID, _WS),
-    ),
-    "rpc.app.users.teammates": Op(
-        response=Paginated[schemas.UserBestTeammate],
-        query=PaginationSortQueryParams[_MATE_SORT],
-        query_params=(_DISCIPLINE,),
-    ),
-    # ── achievements (bespoke) ─────────────────────────────────────────────
-    "rpc.app.achievements.user": Op(
-        response=schemas.UserAchievementRead,
-        response_array=True,
-        query_params=(
-            _TID,
-            QueryParam("without_tournament", "boolean"),
-            _ENTITIES,
-            _WS,
-            QueryParam("include_locked", "boolean"),
-            QueryParam(
-                "discipline", description="Installed discipline code: only that game's rules (earned and locked)"
-            ),
-        ),
-    ),
-    "rpc.app.achievements.users": Op(response=Paginated[schemas.AchievementEarned], query=PaginationQueryParams),
     # ── workspaces ─────────────────────────────────────────────────────────
     "rpc.app.workspaces.get": Op(response=schemas.WorkspaceRead),
     "rpc.app.workspaces.staff": Op(response=schemas.WorkspaceStaffMember, response_array=True),
@@ -239,14 +107,12 @@ OPERATIONS: dict[str, Op] = {
     "rpc.app.quota.operation_upsert": Op(request=QuotaOperationWrite, response=QuotaOperationRead),
     "rpc.app.quota.workspace_usage": Op(response=QuotaUsageRead, query_params=(_WS,)),
     # ── game catalog admin (catalog.entity) ─────────────────────────────────
-    "rpc.app.catalog.admin_list": Op(
-        response=Paginated[schemas.CatalogEntityRead], query=schemas.CatalogEntityListQueryParams
-    ),
+    "rpc.app.catalog.admin_list": Op(response=Paginated[CatalogEntityRead], query=schemas.CatalogEntityListQueryParams),
     "rpc.app.catalog.workspace_characters": Op(
-        response=Paginated[schemas.CatalogEntityRead], query=schemas.CatalogEntityListQueryParams
+        response=Paginated[CatalogEntityRead], query=schemas.CatalogEntityListQueryParams
     ),
-    "rpc.app.catalog.admin_create": Op(request=schemas.CatalogEntityCreate, response=schemas.CatalogEntityRead),
-    "rpc.app.catalog.admin_update": Op(request=schemas.CatalogEntityUpdate, response=schemas.CatalogEntityRead),
+    "rpc.app.catalog.admin_create": Op(request=schemas.CatalogEntityCreate, response=CatalogEntityRead),
+    "rpc.app.catalog.admin_update": Op(request=schemas.CatalogEntityUpdate, response=CatalogEntityRead),
     "rpc.app.catalog.admin_delete": Op(),
     # ── metadata admin: catalog alias-miss queue ───────────────────────────
     "rpc.app.catalog_aliases.misses_list": Op(

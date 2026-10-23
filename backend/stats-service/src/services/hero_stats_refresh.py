@@ -1,0 +1,111 @@
+"""Out-of-band refresh of the ``stats.mv_entity_global_stats`` materialized view.
+
+The global per-(hero, stat) comparison on ``GET /users/{id}/heroes`` is
+precomputed into a materialized view (see migration ``stats01``). The heavy
+aggregation runs here, off the request path: inside a web request it blows past
+``statement_timeout`` on a cache miss.
+
+Trigger model — debounced, event-driven:
+  * stats-worker startup fires a best-effort initial populate;
+  * every ``tournament.standings`` invalidation requests a refresh, throttled to at most
+    one per cooldown window so a burst of events coalesces into a single refresh.
+
+The refresh is scheduled as a background task (never blocks the event consumer),
+runs with ``statement_timeout`` disabled and ``work_mem`` raised for its
+transaction, and is guarded by a Postgres advisory lock so two refreshers never
+collide. The debounce window lives in Redis (via cashews) so it holds across
+scaled-out replicas, not just inside one process.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from contextlib import suppress
+from typing import Any
+
+import sqlalchemy as sa
+from cashews import cache
+
+__all__ = ("HeroStatsRefresher", "hero_stats_refresh_service")
+
+_MV_QUALNAME = "stats.mv_entity_global_stats"
+# Arbitrary constant advisory-lock key, unique to this refresh.
+_ADVISORY_LOCK_KEY = 0x6865726F5F6756
+# Debounce window: collapse a burst of change events into a single refresh.
+# Global per-hero stats do not need minute-level freshness.
+_REFRESH_COOLDOWN_SECONDS = 3600
+# Cooldown marker. The ``backend:`` prefix routes to Redis (see ``core.caching``),
+# so the window is shared by every stats-worker replica — a
+# module-level timestamp would debounce inside one process only.
+_COOLDOWN_KEY = "backend:hero_global_stats:refresh_cooldown"
+
+# Keep references to in-flight refresh tasks so they aren't garbage-collected.
+# Process-wide on purpose: the anchor must outlive any single refresher instance.
+_background_tasks: set[asyncio.Task[Any]] = set()
+
+
+class HeroStatsRefresher:
+    async def refresh(self, session: Any) -> bool:
+        """Run ``REFRESH MATERIALIZED VIEW`` for the hero global-stats view.
+
+        Returns ``True`` if this call performed the refresh, ``False`` if another
+        refresh already held the advisory lock. Uses ``CONCURRENTLY`` once the view
+        is populated (no read lock). Migration populates it initially; a runtime
+        rebuild marked ``WITH NO DATA`` needs a plain refresh before concurrent
+        refreshes can resume. Missing views and refresh failures propagate.
+        """
+        # Heavy offline aggregation — lift the per-statement timeout for this txn.
+        # All values interpolated below are module constants (never user input);
+        # they are inlined rather than bound because ``:name::cast`` confuses the
+        # text() bind-parser and ``to_regclass`` returns NULL (not an error) when the
+        # view has not been created yet.
+        await session.execute(sa.text("SET LOCAL statement_timeout = 0"))
+        # ``work_mem`` caps each plan node separately, and the sort and the
+        # materialization over the ~4.3M-row ``eligible`` CTE each need ~300-400 MB
+        # in memory; 768 MB keeps both resident. Only one such transaction runs at a
+        # time (advisory lock below), so it cannot multiply across sessions the way a
+        # global bump would.
+        await session.execute(sa.text("SET LOCAL work_mem = '768MB'"))
+        # Keep the offline aggregation's hash-join policy local to this transaction.
+        await session.execute(sa.text("SET LOCAL enable_nestloop = off"))
+        got_lock = (await session.execute(sa.text(f"SELECT pg_try_advisory_xact_lock({_ADVISORY_LOCK_KEY})"))).scalar()
+        if not got_lock:
+            return False
+        populated = (
+            await session.execute(
+                sa.text(f"SELECT relispopulated FROM pg_class WHERE oid = to_regclass('{_MV_QUALNAME}')")
+            )
+        ).scalar()
+        concurrently = "CONCURRENTLY " if populated else ""
+        await session.execute(sa.text(f"REFRESH MATERIALIZED VIEW {concurrently}{_MV_QUALNAME}"))
+        await session.commit()
+        return True
+
+    async def _run_refresh(self, session_maker: Any, logger: Any) -> None:
+        try:
+            # Cross-replica debounce: atomic SET NX EX, first claimant in the window wins.
+            if not await cache.set(_COOLDOWN_KEY, 1, expire=_REFRESH_COOLDOWN_SECONDS, exist=False):
+                return
+            async with session_maker() as session:
+                await self.refresh(session)
+        except Exception:
+            logger.exception("hero global-stats materialized view refresh failed")
+            # Release the window so a transient failure retries on the next event
+            # instead of leaving the view stale for a full cooldown.
+            with suppress(Exception):
+                await cache.delete(_COOLDOWN_KEY)
+
+    def request_refresh(self, session_maker: Any, logger: Any) -> None:
+        """Debounced, non-blocking refresh request (call on data-change events / startup).
+
+        Runs as a background task so it never blocks the caller (the event consumer).
+        The task claims the cooldown window in Redis first, so a burst of events —
+        across every replica — coalesces into a single refresh; the advisory lock in
+        :meth:`refresh` is the final guard against overlap.
+        """
+        task = asyncio.create_task(self._run_refresh(session_maker, logger))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+
+
+hero_stats_refresh_service = HeroStatsRefresher()

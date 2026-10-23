@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import functools
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -156,6 +156,62 @@ def ladder_grid(discipline_code: str) -> DivisionGrid | None:
             for tier in ladder
         ),
     )
+
+
+def canonical_tier_number(tier: DivisionTier, source_grid: DivisionGrid, ladder: DivisionGrid) -> int:
+    """``tier`` of ``source_grid`` as a division number on ``ladder`` (the game's native ladder).
+
+    A tier with a native range lands on the ladder tier holding the range's midpoint; any other is placed
+    proportionally by its position between the source grid's first and last division.
+    """
+    if tier.native_rank_min is not None and tier.native_rank_max is not None:
+        low = min(int(tier.native_rank_min), int(tier.native_rank_max))
+        high = max(int(tier.native_rank_min), int(tier.native_rank_max))
+        return ladder.resolve_division((low + high) // 2).number
+
+    n_min, n_max = source_grid.min_division, source_grid.max_division
+    m_min, m_max = ladder.min_division, ladder.max_division
+    if n_max <= n_min:
+        return m_min
+    frac = (tier.number - n_min) / (n_max - n_min)
+    return int(round(m_min + frac * (m_max - m_min)))
+
+
+def canonical_division_number(source_grid: DivisionGrid, rank: int, ladder: DivisionGrid) -> int:
+    """``rank`` on ``source_grid`` as a division number on ``ladder``."""
+    return canonical_tier_number(source_grid.resolve_division(int(rank)), source_grid, ladder)
+
+
+def stamp_canonical_numbers(tiers: Sequence[Any], discipline: str) -> None:
+    """Set ``canonical_number`` on every tier of one grid version: its division on the game's native ladder.
+
+    ``tiers`` is the version's full tier set (stored rows or look-alikes with ``number``/``rank_min``/``rank_max``/
+    ``native_rank_min``/``native_rank_max``); a game without a native ladder stores ``None``.
+    """
+    ladder = ladder_grid(discipline)
+    if ladder is None:
+        for tier in tiers:
+            tier.canonical_number = None
+        return
+    source = DivisionGrid(
+        version_id=None,
+        tiers=tuple(
+            DivisionTier(
+                id=None,
+                slug=None,
+                number=int(tier.number),
+                name="",
+                rank_min=int(tier.rank_min),
+                rank_max=None if tier.rank_max is None else int(tier.rank_max),
+                icon_url="",
+                native_rank_min=None if tier.native_rank_min is None else int(tier.native_rank_min),
+                native_rank_max=None if tier.native_rank_max is None else int(tier.native_rank_max),
+            )
+            for tier in tiers
+        ),
+    )
+    for tier, runtime in zip(tiers, source.tiers, strict=True):
+        tier.canonical_number = canonical_tier_number(runtime, source, ladder)
 
 
 def load_runtime_grid(

@@ -4,13 +4,67 @@
 //
 // Stats-unique domains are folded into the unified /api/v1/* namespace (match-log
 // admin, OverFast rank, subscription collection, achievement engine + rules admin,
-// catalog sync, settings, bootstrap importers). The
-// worker's RPC queues are path-independent, so the external paths are clean
-// /api/v1/* with no /api/stats prefix. Un-migrated stats endpoints still proxy
-// to stats-service on their original addresses.
+// catalog sync, settings, bootstrap importers), as are the public player
+// statistics, profile and achievement reads (PublicReadRoutes,
+// AchievementsSubtreeRoutes). The worker's RPC queues are path-independent, so
+// the external paths are clean /api/v1/* with no /api/stats prefix. Un-migrated
+// stats endpoints still proxy to stats-service on their original addresses.
 package stats
 
 import "github.com/CraazzzyyFoxx/anak-tournaments/gateway/internal/edge"
+
+// PublicReadRoutes are the flat (non-ambiguous) public player statistics,
+// profile and achievement reads. Achievements' get surface is in
+// AchievementsSubtreeRoutes (ServeMux can't disambiguate /{id}/users vs
+// /user/{user_id}); the achievements *list* stays here.
+var PublicReadRoutes = []edge.RouteSpec{
+	// --- one discipline's character and map statistics (the catalog reads are app-service's native /api/v1/catalog routes).
+	// Four to six segments: no clash with the three-segment /statistics/{champion,winrate,players,records} literals. ---
+	{Method: "GET", Pattern: "/api/v1/statistics/{discipline}/characters/playtime", Queue: "rpc.stats.statistics.character_playtime", Path: []string{"discipline"}, AllQuery: true, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/statistics/{discipline}/characters/{entity_id}/leaderboard", Queue: "rpc.stats.statistics.character_leaderboard", IDParam: "entity_id", Path: []string{"discipline"}, AllQuery: true, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/statistics/{discipline}/maps", Queue: "rpc.stats.statistics.maps", Path: []string{"discipline"}, Query: []string{"workspace_id"}, Auth: edge.AuthNone},
+	// --- achievements (list only; get surface is the subtree) ---------------
+	{Method: "GET", Pattern: "/api/v1/achievements", Queue: "rpc.stats.achievements.list", AllQuery: true, Auth: edge.AuthNone},
+	// --- statistics ---------------------------------------------------------
+	{Method: "GET", Pattern: "/api/v1/statistics/champion", Queue: "rpc.stats.statistics.champion", AllQuery: true, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/statistics/winrate", Queue: "rpc.stats.statistics.winrate", AllQuery: true, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/statistics/players", Queue: "rpc.stats.statistics.players", AllQuery: true, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/statistics/records", Queue: "rpc.stats.statistics.records", Query: []string{"discipline", "workspace_id"}, Auth: edge.AuthNone},
+	// --- users (literals + /{id}/...; the directory and the bare /{name} slug resolution are app-service's
+	// app.ReadRoutes, whose /{name} the /overview literals out-rank by ServeMux specificity) ---
+	{Method: "GET", Pattern: "/api/v1/users/overview", Queue: "rpc.stats.users.overview", AllQuery: true, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/users/overview/stats", Queue: "rpc.stats.users.overview_stats", AllQuery: true, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/users/overview/catalog", Queue: "rpc.stats.users.overview_catalog", AllQuery: true, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/compare", Queue: "rpc.stats.users.compare", IDParam: "id", AllQuery: true, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/compare/characters", Queue: "rpc.stats.users.compare_characters", IDParam: "id", AllQuery: true, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/profile", Queue: "rpc.stats.users.get_profile", IDParam: "id", Query: []string{"workspace_id", "discipline"}, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/draft-card", Queue: "rpc.stats.users.draft_card", IDParam: "id", Query: []string{"workspace_id", "discipline"}, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/tournaments", Queue: "rpc.stats.users.tournaments", IDParam: "id", Query: []string{"workspace_id", "discipline"}, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/tournaments/{tournament_id}", Queue: "rpc.stats.users.tournament", IDParam: "id", Path: []string{"tournament_id"}, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/tournaments/{tournament_id}/encounters", Queue: "rpc.stats.users.tournament_encounters", IDParam: "id", Path: []string{"tournament_id"}, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/tournaments/{tournament_id}/leaderboard", Queue: "rpc.stats.users.tournament_leaderboard", IDParam: "id", Path: []string{"tournament_id"}, Query: []string{"stat"}, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/maps", Queue: "rpc.stats.users.maps", IDParam: "id", AllQuery: true, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/maps/summary", Queue: "rpc.stats.users.maps_summary", IDParam: "id", AllQuery: true, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/encounters", Queue: "rpc.stats.users.encounters", IDParam: "id", AllQuery: true, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/matches/summary", Queue: "rpc.stats.users.matches_summary", IDParam: "id", Query: []string{"workspace_id", "discipline"}, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/characters", Queue: "rpc.stats.users.characters", IDParam: "id", AllQuery: true, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/users/{id}/teammates", Queue: "rpc.stats.users.teammates", IDParam: "id", AllQuery: true, Auth: edge.AuthNone},
+}
+
+// AchievementsSubtreeRoutes is mounted at /api/v1/achievements/ via the
+// ordered edge.Subtree matcher. Plain Register would panic: /{id}/users and
+// /user/{user_id} are both 2-segment and cross-specific (neither is uniformly
+// more specific), which the stdlib ServeMux rejects. First-match-wins order
+// mirrors FastAPI declaration order (literal-bearing patterns before the bare
+// {id} get).
+//
+// The achievements *list* (/api/v1/achievements, no trailing slash) is a
+// flat PublicReadRoutes entry — the subtree mount only covers /achievements/*.
+var AchievementsSubtreeRoutes = []edge.RouteSpec{
+	{Method: "GET", Pattern: "/api/v1/achievements/user/{user_id}", Queue: "rpc.stats.achievements.user", IDParam: "user_id", AllQuery: true, Auth: edge.AuthOptional},
+	{Method: "GET", Pattern: "/api/v1/achievements/{id}/users", Queue: "rpc.stats.achievements.users", IDParam: "id", AllQuery: true, Auth: edge.AuthNone},
+	{Method: "GET", Pattern: "/api/v1/achievements/{id}", Queue: "rpc.stats.achievements.get", IDParam: "id", Query: []string{"entities", "workspace_id"}, Auth: edge.AuthNone},
+}
 
 // Routes are the migrated stats endpoints (typed RPC). Permission gating is
 // enforced in the worker handlers; AuthRequired here injects identity + rejects

@@ -22,16 +22,16 @@ export const PLAYER_SORTS = ["titles", "tournaments", "maps_won", "winrate"] as 
 export type PlayerSort = (typeof PLAYER_SORTS)[number];
 
 /** One row of the all-time players table. `rank` is over the whole population; a search never renumbers it. */
-export type PlayerLeaderboardRow = Schema<"app.PlayerLeaderboardRow">;
+export type PlayerLeaderboardRow = Schema<"stats.PlayerLeaderboardRow">;
 
 /** The generated enum, as the literal union every caller already spells. */
-export type StatRecordCode = `${Schema<"app.StatRecord">["code"]}`;
+export type StatRecordCode = `${Schema<"stats.StatRecord">["code"]}`;
 
 /** One all-time record: its holder, the value and where it happened. A record with no data is absent, never null. */
-export type StatRecord = Omit<Schema<"app.StatRecord">, "code"> & { code: StatRecordCode };
+export type StatRecord = Omit<Schema<"stats.StatRecord">, "code"> & { code: StatRecordCode };
 
 /** One game's finished games per map, grouped by mode (a `null` mode last), most played first. */
-export type MapStatsResponse = Schema<"app.MapStatsResponse">;
+export type MapStatsResponse = Schema<"stats.MapStatsResponse">;
 
 export interface TournamentOverall {
   tournaments: number;
@@ -55,6 +55,9 @@ export interface UserTournamentStat {
 }
 
 /** One player's row on a character's leaderboard (per-10 averages over the player's eligible matches). */
-export type CharacterLeaderboardEntry = Schema<"app.CharacterLeaderboardEntry">;
-/** A leaderboard page plus every division grid its rows' `div` is a number on (`division_grid_version_id`). */
-export type CharacterLeaderboardResponse = Schema<"app.CharacterLeaderboardResponse">;
+export type CharacterLeaderboardEntry = Schema<"stats.CharacterLeaderboardEntry">;
+/**
+ * A leaderboard page plus every division grid its rows' `div` is a number on (`division_grid_version_id`). Across
+ * workspaces none: `div` is then a number on the game's native ladder (`null` for a game without one).
+ */
+export type CharacterLeaderboardResponse = Schema<"stats.CharacterLeaderboardResponse">;

@@ -35,9 +35,9 @@ from shared.repository import SocialAccountRepository, UserMergeAuditRepository,
 from shared.repository.stats import StatsMatchRepository
 from shared.schemas.events import WorkspaceMemberChangedEvent
 from shared.schemas.user_merge_auth import AuthMergeResult
+from shared.services import user_cache
 from shared.services.stats_evidence import capture_stats_evidence, owner_scopes, stage_stats_evidence
 from src import schemas
-from src.services import user_cache
 from src.services.admin.auth_merge import apply_auth_merge, preview_auth_merge
 
 __all__ = ("UserMergeService", "merges")

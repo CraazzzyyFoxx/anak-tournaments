@@ -37,7 +37,7 @@ The system as it is. These are updated in the same commit as the change they des
 | Backend, all services | [`../backend/README.md`](../backend/README.md) |
 | Backend code layering (`rpc → services → domain → repository → models`) | [`../backend/ARCHITECTURE.md`](../backend/ARCHITECTURE.md) |
 | Repository-layer rules | [`../backend/docs/repository-boundaries.md`](../backend/docs/repository-boundaries.md) |
-| `app-service` sub-domain hierarchy (import-linter enforced) | [`../backend/docs/architecture/layering.md`](../backend/docs/architecture/layering.md) |
+| `app-service` and `stats-service` read-surface sub-domain hierarchies (import-linter enforced) | [`../backend/docs/architecture/layering.md`](../backend/docs/architecture/layering.md) |
 | Shared kernel — models, tenancy, RBAC, messaging, observability | [`../backend/shared/README.md`](../backend/shared/README.md) |
 | Gateway — routes, JWT, RPC dispatch, realtime hub, caching | [`../gateway/README.md`](../gateway/README.md) |
 | Frontend — conventions, scripts, structure | [`../frontend/README.md`](../frontend/README.md) |

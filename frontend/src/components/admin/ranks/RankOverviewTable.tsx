@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import DivisionIcon from "@/components/DivisionIcon";
+import { DivisionRangePicker } from "@/components/DivisionRangePicker";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { gameFilterDefs } from "@/components/admin/game-filter";
 import { DataTable, columnMeta } from "@/components/data-table";
@@ -39,7 +40,7 @@ import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 import { useFormatter } from "@/lib/datetime/client";
 import { ALL_DISCIPLINES, type WorkspaceAxis } from "@/lib/site/discipline-scope";
-import { getDivisionLabel, getDivisionOptions } from "@/lib/divisions/grid";
+import { getDivisionLabel } from "@/lib/divisions/grid";
 import { findRole, ratedDimension, registrationRoles } from "@/lib/roster/ontology";
 import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 import {
@@ -79,10 +80,10 @@ const GAME_BOUND_SORTS: readonly string[] = ["rank_value", "division"];
 
 /**
  * The workspace's rank values (spec §6.8, a multi surface on `/admin/ranks`). The game is the bar's first chip
- * (`?discipline=`). Under a game: that game's rows, its role and rank-range filters and every sort. Under "all games":
- * every enabled game's rows with a game column; role and division stay in each row (facts of the record, drawn on the
- * row's own game), the role and rank-range filters and the rank sorts step aside. An invalid or empty resolution reads
- * nothing. Switching game remounts the rows, so no row of the previous one lingers.
+ * (`?discipline=`). Under a game: that game's rows, its role and division-range filters and every sort. Under "all
+ * games": every enabled game's rows with a game column; role and division stay in each row (facts of the record, drawn
+ * on the row's own game), the role and division-range filters and the rank sorts step aside. An invalid or empty
+ * resolution reads nothing. Switching game remounts the rows, so no row of the previous one lingers.
  */
 export function RankOverviewTable() {
   const t = useTranslations("admin.rankOverview");
@@ -221,7 +222,6 @@ function RankOverviewRows({
 }>) {
   const t = useTranslations("admin.rankOverview");
   const tGame = useTranslations("common.discipline");
-  const tBracket = useTranslations("adminBracket");
   const slotLabel = useSlotLabel(ontology);
   const format = useFormatter();
   const allGames = discipline === null;
@@ -241,17 +241,8 @@ function RankOverviewRows({
     staleTime: 60_000,
   });
 
-  const divisionOptions = useMemo(
-    () =>
-      getDivisionOptions(grid).map((division) => ({
-        value: String(division),
-        label: getDivisionLabel(grid, division) ?? tBracket("labels.divisionFallback", { number: division }),
-      })),
-    [grid, tBracket],
-  );
-
   const defs = useMemo<FilterDef[]>(() => {
-    // A game change strands the old game's role, rank range and rank order (DataTable's `sort`/`dir`).
+    // A game change strands the old game's role, division range and rank order (DataTable's `sort`/`dir`).
     const game = gameFilterDefs(games, tGame("column"), () =>
       GAME_BOUND_SORTS.includes(sortParam) ? [...RANK_GAME_PARAMS, "sort", "dir"] : RANK_GAME_PARAMS,
     );
@@ -275,7 +266,7 @@ function RankOverviewRows({
       })),
     };
     const differs: FilterDef = { key: "differs", label: t("filters.differsFromCanon"), kind: "toggle" };
-    // Role and rank range are one game's: offered once a game is picked, and the URL's are unread under "all games".
+    // Role is one game's: offered once a game is picked, and the URL's is unread under "all games".
     if (ontology === null) return [...game, layer, author, differs];
     return [
       ...game,
@@ -287,14 +278,9 @@ function RankOverviewRows({
         kind: "multi",
         options: registrationRoles(ontology).map((role) => ({ value: role.code, label: slotLabel(role.code) })),
       },
-      // A division band IS a rank range, and the workspace grid is the only
-      // honest mapping between them — two numeric inputs would ask the operator
-      // to remember that Diamond starts at 3500.
-      { key: "div_min", label: t("filters.divisionMin"), kind: "single", options: divisionOptions },
-      { key: "div_max", label: t("filters.divisionMax"), kind: "single", options: divisionOptions },
       differs,
     ];
-  }, [t, tGame, slotLabel, ontology, hasNativeRank, authorsQuery.data, divisionOptions, games, sortParam]);
+  }, [t, tGame, slotLabel, ontology, hasNativeRank, authorsQuery.data, games, sortParam]);
 
   const filters = useFilters(defs);
   const layerFilter = filters.values.layer as string[];
@@ -302,11 +288,10 @@ function RankOverviewRows({
   // Absent from `defs` under "all games", so these read nothing there.
   const roleFilter = (filters.values.role as string[] | undefined) ?? [];
   const differsFilter = filters.values.differs === true;
-  const minTier = grid.tiers.find((tier) => String(tier.number) === filters.values.div_min);
-  const maxTier = grid.tiers.find((tier) => String(tier.number) === filters.values.div_max);
-  const rankMin = minTier?.rank_min;
-  // The top tier is open-ended (`rank_max: null`), which is "no ceiling", not 0.
-  const rankMax = maxTier?.rank_max ?? undefined;
+  // The division range lives outside `useFilters` like the dates: tier numbers on the game's workspace grid, sent as
+  // they are (the server owns the tier→rank mapping). One game's, so unread under "all games".
+  const divMin = allGames ? undefined : Number(searchParams?.get("div_min")) || undefined;
+  const divMax = allGames ? undefined : Number(searchParams?.get("div_max")) || undefined;
 
   const columns = useMemo<ColumnDef<RankOverviewRow>[]>(() => {
     const player: ColumnDef<RankOverviewRow> = {
@@ -451,7 +436,15 @@ function RankOverviewRows({
     return [player, ...game, ...rest];
   }, [t, tGame, format, allGames, axis]);
 
-  const activeKey = [filters.filterKey, dateFrom, dateTo].filter(Boolean).join("&");
+  const activeKey = [
+    filters.filterKey,
+    dateFrom,
+    dateTo,
+    divMin && `div_min=${divMin}`,
+    divMax && `div_max=${divMax}`,
+  ]
+    .filter(Boolean)
+    .join("&");
 
   return (
     <DataTable<RankOverviewRow>
@@ -475,8 +468,8 @@ function RankOverviewRows({
           layer: layerFilter,
           authorUserId: authorFilter.map(Number),
           role: roleFilter,
-          rankMin,
-          rankMax,
+          divMin,
+          divMax,
           differsFromCanon: differsFilter || undefined,
           dateFrom: dateFrom || undefined,
           dateTo: dateTo || undefined,
@@ -498,16 +491,29 @@ function RankOverviewRows({
           defs={defs}
           filters={filters}
           trailing={
-            <div className="w-64">
-              <DateRangePicker
-                startDate={dateFrom || undefined}
-                endDate={dateTo || undefined}
-                placeholder={t("filters.dateRange")}
-                onChange={(from, to) =>
-                  setParams({ [DATE_PARAMS.from]: from || null, [DATE_PARAMS.to]: to || null })
-                }
-              />
-            </div>
+            <>
+              {allGames ? null : (
+                <div className="w-64">
+                  <DivisionRangePicker
+                    grid={grid}
+                    min={divMin}
+                    max={divMax}
+                    onChange={(min, max) => setParams({ div_min: min, div_max: max })}
+                    ariaLabel={t("filters.divisions")}
+                  />
+                </div>
+              )}
+              <div className="w-64">
+                <DateRangePicker
+                  startDate={dateFrom || undefined}
+                  endDate={dateTo || undefined}
+                  placeholder={t("filters.dateRange")}
+                  onChange={(from, to) =>
+                    setParams({ [DATE_PARAMS.from]: from || null, [DATE_PARAMS.to]: to || null })
+                  }
+                />
+              </div>
+            </>
           }
         />
       }

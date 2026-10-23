@@ -274,6 +274,7 @@ func run() error {
 	respcache.RegisterCached(mux, tournamentEdge, tournament.PublicReadRoutes, tournament.PublicCacheableReads, respCache)
 	tournamentEdge.Register(mux, tournament.AdminCrudRoutes)
 	tournamentEdge.Register(mux, tournament.AdminMiscRoutes)
+	tournamentEdge.Register(mux, tournament.DashboardRoutes)
 	tournamentEdge.Register(mux, tournament.RegistrationAdminRoutes)
 	tournamentEdge.Register(mux, tournament.IntegrationsRoutes)
 	// PublicWriteRoutes are mostly writes (never cached), but the public
@@ -305,6 +306,13 @@ func run() error {
 	// importers), served as typed RPC.
 	statsEdge := edge.New(rpcClient, logger, resolver.Resolve)
 	statsEdge.Register(mux, stats.Routes)
+	// Public player statistics, /users/[slug] profile and achievement reads.
+	// Home-page aggregates and profile reads go through the same anonymous
+	// response cache as the tournament page (mostly TTL-only — no per-user
+	// realtime signal exists; see stats.PublicCacheableReads).
+	respcache.RegisterCached(mux, statsEdge, stats.PublicReadRoutes, stats.PublicCacheableReads, respCache)
+	// achievements get surface: ambiguous (/{id}/users vs /user/{user_id}) -> subtree.
+	mux.Handle("/api/v1/achievements/", statsEdge.Subtree(stats.AchievementsSubtreeRoutes))
 	// Multipart match-log upload (files[] -> base64 RPC body) the JSON dispatcher
 	// can't handle.
 	statsBinary := stats.NewBinary(rpcClient, resolver.Resolve, logger)
@@ -323,25 +331,20 @@ func run() error {
 	// the bot token, so guild reads land on it directly.
 	discordEdge := edge.New(rpcClient, logger, resolver.Resolve)
 	discordEdge.Register(mux, discord.Routes)
-	// app-service: typed RPC public reads.
-	// hero/map/gamemode/achievement get+list use the shared CRUD read engine.
-	// Home-page aggregates and /users/[slug] profile reads go through the same
-	// anonymous response cache as the tournament page (mostly TTL-only — no
-	// per-user realtime signal exists; see app.PublicCacheableReads).
+	// app-service: typed RPC public reads (catalog, disciplines, workspaces, the
+	// users directory). The workspace directory/staff and /users/{name} slug
+	// resolution ride the anonymous response cache (see app.PublicCacheableReads).
 	appEdge := edge.New(rpcClient, logger, resolver.Resolve)
 	respcache.RegisterCached(mux, appEdge, app.ReadRoutes, app.PublicCacheableReads, respCache)
 	appEdge.Register(mux, app.WorkspaceWriteRoutes)
 	appEdge.Register(mux, app.MetadataAdminRoutes)
 	appEdge.Register(mux, app.UsersAdminRoutes)
-	appEdge.Register(mux, app.TournamentAdminRoutes)
 	appEdge.Register(mux, app.QuotaAdminRoutes)
 	appEdge.Register(mux, app.NotificationRoutes)
 	appEdge.Register(mux, app.AnnouncementPublicRoutes)
 	appEdge.Register(mux, app.AnnouncementAdminRoutes)
 	appEdge.Register(mux, app.NotificationAdminRoutes)
 	appEdge.Register(mux, app.NotificationUserAdminRoutes)
-	// achievements get surface: ambiguous (/{id}/users vs /user/{user_id}) -> subtree.
-	mux.Handle("/api/v1/achievements/", appEdge.Subtree(app.AchievementsSubtreeRoutes))
 	// Binary/multipart endpoints the JSON dispatcher can't handle: icon + asset
 	// uploads (multipart -> base64 RPC) and the match-log download (base64 -> bytes).
 	// The match-log link is browser-navigated, so its credential may arrive in the

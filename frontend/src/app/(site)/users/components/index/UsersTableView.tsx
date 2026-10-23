@@ -18,7 +18,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { formatOptional } from "@/app/(site)/users/components/shared/list-utils";
 import { cn } from "@/lib/utils";
 import type { UserOverviewRow } from "@/types/user.types";
-import type { DivisionGridVersion } from "@/types/workspace.types";
+import type { DivisionGrid, DivisionGridVersion } from "@/types/workspace.types";
 
 import { PlayerCard } from "./UsersCatalogView";
 import { UserExpandedRow } from "./UserExpandedRow";
@@ -143,6 +143,7 @@ export function UsersTableView({
             key={user.id}
             user={user}
             grids={response.division_grids}
+            divisionGrid={controls.divisionGrid}
             game={data}
             minEncounters={minEncounters}
             compare={compare}
@@ -198,6 +199,7 @@ export function UsersTableView({
                 <PlayerRow
                   user={user}
                   grids={response.division_grids}
+                  divisionGrid={controls.divisionGrid}
                   game={data}
                   rank={firstRank + index}
                   minEncounters={minEncounters}
@@ -268,6 +270,7 @@ export function UsersTableView({
 function PlayerRow({
   user,
   grids,
+  divisionGrid,
   game,
   rank,
   minEncounters,
@@ -278,6 +281,7 @@ function PlayerRow({
 }: Readonly<{
   user: UserOverviewRow;
   grids: DivisionGridVersion[] | undefined;
+  divisionGrid: DivisionGrid;
   game: Pick<UsersIndexData, "discipline" | "ontology">;
   rank: number;
   minEncounters: number;
@@ -316,7 +320,13 @@ function PlayerRow({
         {allGames ? (
           <GameMarks codes={user.disciplines} onSelect={onSelectGame} />
         ) : (
-          <RolesCrests roles={user.roles} grids={grids} discipline={game.discipline} ontology={game.ontology} />
+          <RolesCrests
+            roles={user.roles}
+            grids={grids}
+            divisionGrid={divisionGrid}
+            discipline={game.discipline}
+            ontology={game.ontology}
+          />
         )}
       </td>
       <td className="px-2 py-2 text-center tabular-nums">{user.tournaments_count}</td>

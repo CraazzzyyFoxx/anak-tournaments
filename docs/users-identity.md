@@ -724,11 +724,13 @@ The access token still returns `linked_players` as an array of length 0 or 1 (`L
 
 `WorkspaceMemberCreate`: `auth_user_id` plus an optional `role` (`owner|admin|member`) or `role_ids`.
 
-### 9.3. Public player (app-service)
+### 9.3. Public player (app-service identity, stats-service statistics)
 
-`UserRead` = `players.user` plus social accounts (plus visibility in the admin UI). This is the `/users/:id` page, not the account.
+`UserRead` = `players.user` plus social accounts (plus visibility in the admin UI), served by app-service
+(`rpc.app.users.{list,search,by_name}`). This is the `/users/:id` page, not the account.
 
-Profile, hero, map and tournament-stat readers consume native `stats.fact` observations through the match's
+Profile, hero, map and tournament-stat readers (stats-service, `rpc.stats.users.*` and `rpc.stats.statistics.*`)
+consume native `stats.fact` observations through the match's
 workspace member and bound encounter game. Removed memberships and inactive historical game participants retain
 their observations; no current-roster activation is required to read a recorded fact. OW statistics explicitly
 select the Overwatch discipline, and workspace-scoped aggregates cannot combine another membership's facts.

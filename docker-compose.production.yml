@@ -211,7 +211,8 @@ services:
   # The former HTTP `backend` service was decommissioned.
 
   # stats-service (formerly parser-service) is two headless FastStream processes from one image: stats-svc serves
-  # its domains as typed RPC behind the gateway, stats-worker runs every consumer and schedule.
+  # its domains as typed RPC behind the gateway, the public statistics, /users/* and achievement reads included;
+  # stats-worker runs every consumer and schedule, the cache.invalidated consumer included.
   # The bot uploads logs over RabbitMQ; the SSE log monitor moved to the WS hub.
 
   # realtime-service decommissioned: WebSockets are now served by the Go gateway
@@ -339,14 +340,17 @@ services:
   stats-svc:
     image: ghcr.io/craazzzyyfoxx/owt-stats:${IMAGE_TAG:-latest}
     logging: *log-rotate
+    # Serves the public statistics, /users/* and achievement reads (the hottest anonymous traffic; cold compare reads
+    # run 20-30 s) since 2026-10-23, so it carries the read-path sizing app-svc had. Single event loop per process:
+    # raise the CPU ceiling AND scale replicas (`make prod-scale`) for real throughput.
     deploy:
       resources:
         limits:
-          cpus: '0.500'
-          memory: 256M
+          cpus: '2.00'
+          memory: 1G
         reservations:
-          cpus: '0.10'
-          memory: 128M
+          cpus: '0.75'
+          memory: 512M
     build:
       context: ./backend
       args:
@@ -484,9 +488,11 @@ services:
   app-svc:
     image: ghcr.io/craazzzyyfoxx/owt-app:${IMAGE_TAG:-latest}
     logging: *log-rotate
-    # Hottest read/write path (all of /api/v1/core). Single event loop per
-    # process, so raise the CPU ceiling AND scale replicas (`make prod-scale`)
-    # for real throughput — the two are complementary.
+    # Sized when it served the public statistics and /users/* reads, which moved
+    # to stats-svc on 2026-10-23 (it still serves /users/{name}, the catalog and the
+    # workspace directory). Single event loop per process, so raise the CPU
+    # ceiling AND scale replicas (`make prod-scale`) for real throughput — the
+    # two are complementary.
     deploy:
       resources:
         limits:

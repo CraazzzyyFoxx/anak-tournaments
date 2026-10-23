@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 from shared import models
 from shared.clients import S3Client
 from shared.core.errors import BaseAPIException as HTTPException
+from shared.division_grid import stamp_canonical_numbers
 from shared.repository import (
     DivisionGridMappingRepository,
     DivisionGridRepository,
@@ -873,6 +874,7 @@ class MarketplaceService:
                             )
                         )
 
+                    stamp_canonical_numbers([tier for tier, _ in pending_tiers], target_grid.discipline)
                     # One INSERT batch per version instead of a flush per tier.
                     await self.tier_repo.create_many(session, [tier for tier, _ in pending_tiers])
                     for target_tier, source_tier_id in pending_tiers:

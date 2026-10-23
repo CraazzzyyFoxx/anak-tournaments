@@ -1746,6 +1746,7 @@ Table division_grid_tier {
   icon_url VARCHAR [not null]
   native_rank_min bigint
   native_rank_max bigint
+  canonical_number bigint
   indexes {
     (version_id, slug) [unique]
     (version_id, sort_order) [unique]
