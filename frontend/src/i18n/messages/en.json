@@ -8223,7 +8223,10 @@
       "flexOff": "Drag below to set who the balancer seats first.",
       "flexFor": "Full flex for {name}",
       "reorder": "Reorder {role} for {name}",
+      "first": "First",
       "roleFor": "{role} for {name}",
+      "active": "Active",
+      "off": "Off",
       "rankHint": "The rank the balancer uses for this role"
     },
     "teams": {
