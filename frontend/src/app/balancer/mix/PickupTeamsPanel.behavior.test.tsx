@@ -333,6 +333,12 @@ function panel(current: CustomGame | undefined, props: PanelOptions) {
       balancing={false}
       activeCount={props.activeCount ?? 10}
       onBalance={onBalance}
+      drafting={false}
+      onDraft={vi.fn()}
+      replacingCaptain={false}
+      addingDraftPlayer={false}
+      onReplaceDraftCaptain={vi.fn()}
+      onAddDraftPlayer={vi.fn()}
       startingMatch={false}
       onBansComplete={vi.fn()}
       onStartMatch={onStartMatch}

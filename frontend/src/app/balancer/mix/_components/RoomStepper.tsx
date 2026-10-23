@@ -9,17 +9,24 @@ import { cn } from "@/lib/utils";
 import type { MixLobbyState } from "@/services/custom-game.service";
 
 /**
- * A lobby's stage (spec §5): where it is, and -- once its match has started -- for how long. There is no automatic
- * timeout, so the elapsed minutes are how a host notices a match nobody recorded. Pre-game shows only where a match
- * bans.
+ * A lobby's stage (spec §5): where it is, and -- once its match or its draft has started -- for how long. There is no
+ * automatic timeout, so the elapsed minutes are how a host notices a match nobody recorded. Pre-game shows only where a
+ * match bans; the draft steps only where the lobby drafts.
  */
 export function RoomStepper({
   state,
   startedAt,
   bans,
-}: Readonly<{ state: MixLobbyState; startedAt: string | null; bans: boolean }>) {
+  draft,
+}: Readonly<{ state: MixLobbyState; startedAt: string | null; bans: boolean; draft: boolean }>) {
   const t = useTranslations("mixes.room");
-  const steps: readonly MixLobbyState[] = bans ? ["idle", "ready", "pregame", "live"] : ["idle", "ready", "live"];
+  const steps: readonly MixLobbyState[] = [
+    "idle",
+    ...(draft ? (["draft_setup", "draft_live"] as const) : []),
+    "ready",
+    ...(bans ? (["pregame"] as const) : []),
+    "live",
+  ];
   const current = steps.indexOf(state);
   const minutes = useLiveMinutes(state, startedAt);
   return (
@@ -34,8 +41,8 @@ export function RoomStepper({
           )}
         >
           <StatusDot
-            tone={index === current ? (step === "live" ? "danger" : "accent") : "neutral"}
-            pulse={index === current && step === "live"}
+            tone={index === current ? (step === "live" || step === "draft_live" ? "danger" : "accent") : "neutral"}
+            pulse={index === current && (step === "live" || step === "draft_live")}
             className="size-2"
           />
           <span>{t(`state.${step}`)}</span>

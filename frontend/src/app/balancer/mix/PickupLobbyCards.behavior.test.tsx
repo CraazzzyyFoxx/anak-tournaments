@@ -7,7 +7,9 @@
 //  4. a viewer gets every lobby's stage and the way into its room, and no action;
 //  5. Shuffle all lobbies goes straight through over recorded lineups, and asks first while any lobby's lineup is
 //     unrecorded;
-//  6. beside the cards, who waits for a seat, who is away and who sits on the bench, each in its own group.
+//  6. beside the cards, who waits for a seat, who is away and who sits on the bench, each in its own group;
+//  7. in draft mode an idle card drafts (the balancer one menu away), Split pool replaces Shuffle all, and a drafting
+//     card reads its stage and, once the draft runs, its elapsed time.
 import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -54,6 +56,8 @@ const onBalance = vi.fn();
 const onStartMatch = vi.fn();
 const onRecordOutcome = vi.fn();
 const onShuffleAll = vi.fn();
+const onDraft = vi.fn();
+const onSplitPool = vi.fn();
 
 function lobby(index: number, overrides: Partial<CustomGameLobby> = {}): CustomGameLobby {
   return {
@@ -115,6 +119,8 @@ function game(lobbies: CustomGameLobby[]): CustomGame {
     self_role_edit: false,
     general_voice_channel_id: null,
     players: [],
+    team_formation: "balance",
+    draft_pick_seconds: 30,
   };
 }
 
@@ -148,6 +154,10 @@ async function mount(
         onStartMatch={onStartMatch}
         onRecordOutcome={onRecordOutcome}
         onShuffleAll={onShuffleAll}
+        drafting={null}
+        onDraft={onDraft}
+        splitting={false}
+        onSplitPool={onSplitPool}
       />,
     );
   });
@@ -179,7 +189,7 @@ function group(scope: ParentNode, name: string) {
 
 beforeEach(() => {
   document.body.innerHTML = "";
-  for (const fn of [onBalance, onStartMatch, onRecordOutcome, onShuffleAll]) fn.mockReset();
+  for (const fn of [onBalance, onStartMatch, onRecordOutcome, onShuffleAll, onDraft, onSplitPool]) fn.mockReset();
 });
 
 describe("PickupLobbyCards", () => {
@@ -278,6 +288,44 @@ describe("PickupLobbyCards", () => {
     await click(byName(document, "shuffleConfirm"));
 
     expect(onShuffleAll).toHaveBeenCalledTimes(1);
+  });
+
+  it("drafts an idle lobby of a draft-mode mix and keeps the balancer one menu away", async () => {
+    const scope = await mount({ ...game([lobby(0, { state: "idle" }), lobby(1, { state: "idle" })]), team_formation: "draft" });
+    const [firstCard] = scope.querySelectorAll("li");
+
+    await click(byName(firstCard, "draft"));
+
+    expect(onDraft).toHaveBeenCalledWith(0);
+    expect(byName(firstCard, "balance")).toBeNull();
+    expect(firstCard.querySelector('button[aria-haspopup="menu"]')).not.toBeNull();
+  });
+
+  it("splits the pool instead of shuffling all lobbies in draft mode", async () => {
+    const scope = await mount({ ...game([lobby(0, { state: "ready" }), lobby(1, { state: "ready" })]), team_formation: "draft" });
+
+    expect(byName(scope, "shuffleAll")).toBeNull();
+    await click(byName(scope, "splitPool"));
+
+    expect(onSplitPool).toHaveBeenCalledTimes(1);
+  });
+
+  it("times a running draft from its first pick, and never reads a drafting lobby as short of seats", async () => {
+    // On a minute boundary, so the card's minute clock reads exactly seven.
+    const startedAt = new Date(Math.floor(Date.now() / 60_000) * 60_000 - 7 * 60_000).toISOString();
+    const scope = await mount(
+      {
+        ...game([lobby(0, { state: "draft_setup" }), lobby(1, { state: "draft_live", live_started_at: startedAt })]),
+        team_formation: "draft",
+      },
+      { rows: TEN.slice(0, 4) },
+    );
+    const [setup, live] = scope.querySelectorAll("li");
+
+    expect(setup.textContent).toContain("state.draft_setup");
+    expect(live.textContent).toContain("state.draft_live");
+    expect(live.textContent).toContain("elapsed:7");
+    expect(scope.textContent).not.toContain("shortSeats");
   });
 
   it("lists who waits for a seat, who is away and who sits on the bench", async () => {

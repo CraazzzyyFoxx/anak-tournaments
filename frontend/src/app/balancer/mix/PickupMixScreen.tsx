@@ -211,6 +211,10 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
     setSelfService,
     setBanPreset,
     setDraftSettings,
+    seedDraft,
+    splitPool,
+    replaceDraftCaptain,
+    addDraftPlayer,
     postSignup,
     deleteDiscordPost,
     voiceOptionsQuery,
@@ -328,6 +332,14 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
         balancing={balance.isPending}
         activeCount={summarizeLineup(rows, owner.roles).active}
         onBalance={() => balance.mutate({ scope: "lobby", lobbyIndex: shownLobby })}
+        drafting={seedDraft.isPending}
+        onDraft={() => seedDraft.mutate(shownLobby)}
+        replacingCaptain={replaceDraftCaptain.isPending}
+        addingDraftPlayer={addDraftPlayer.isPending}
+        onReplaceDraftCaptain={(teamId, playerId) =>
+          replaceDraftCaptain.mutate({ lobbyIndex: shownLobby, teamId, playerId })
+        }
+        onAddDraftPlayer={(workspaceMemberId) => addDraftPlayer.mutate({ lobbyIndex: shownLobby, workspaceMemberId })}
         variantIndex={lobby?.selected_variant_index ?? 0}
         onVariantIndexChange={(index) => setVariantIndex.mutate({ lobbyIndex: shownLobby, variantIndex: index })}
         startingMatch={startMatch.isPending}
@@ -584,6 +596,10 @@ function PickupMixDetail({ initialGame, roomLobby }: Readonly<{ initialGame: Cus
                   onStartMatch={(lobbyIndex, flipOpener) => startMatch.mutate({ lobbyIndex, flipOpener })}
                   onRecordOutcome={(input) => recordOutcome.mutate(input)}
                   onShuffleAll={() => balance.mutate({ scope: "all" })}
+                  drafting={seedDraft.isPending ? (seedDraft.variables ?? null) : null}
+                  onDraft={(lobbyIndex) => seedDraft.mutate(lobbyIndex)}
+                  splitting={splitPool.isPending}
+                  onSplitPool={() => splitPool.mutate()}
                 />
                 {matches.length > 0 ? (
                   <Card variant="flat" className="px-4 py-3">

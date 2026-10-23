@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { ChevronDown, DoorOpen, Shuffle } from "lucide-react";
+import { ChevronDown, DoorOpen, MoreHorizontal, Shuffle, Users } from "lucide-react";
 
 import { CAPTION_CLASS, lobbyLetter, teamAccent } from "@/app/balancer/mix/pickup-chrome";
 import { useLiveMinutes } from "@/app/balancer/mix/_hooks/useLiveMinutes";
@@ -49,22 +49,38 @@ type PickupLobbyCardsProps = {
   onStartMatch: (lobbyIndex: number, flipOpener: boolean) => void;
   onRecordOutcome: (input: PickupRecordOutcomeInput) => void;
   onShuffleAll: () => void;
+  /** The lobby whose Draft is in flight (`null` while none), so only its button spins. */
+  drafting: number | null;
+  onDraft: (lobbyIndex: number) => void;
+  splitting: boolean;
+  onSplitPool: () => void;
 };
 
-const STATE_TONE = { idle: "neutral", ready: "accent", pregame: "accent", live: "danger" } as const;
+const STATE_TONE = {
+  idle: "neutral",
+  ready: "accent",
+  pregame: "accent",
+  live: "danger",
+  draft_setup: "accent",
+  draft_live: "danger",
+} as const;
 
 /**
  * The overview of a mix running several lobbies (spec §7.5, A1): one card per lobby with its stage, one line about
- * it and the one action that stage calls for -- Balance, Start match or Record -- plus the way into its room. A
- * card's Balance is off, with the reason, while the lobby cannot fill its seats. Shuffle all lobbies re-forms every
- * lobby at once, so it waits while any match is live (the server refuses it too). Beside the cards, the players no
- * lobby seats: waiting for a seat, away, or on the bench. A one-lobby mix renders nothing: its room is the overview.
+ * it and the one action that stage calls for -- Balance (Draft in draft mode, the balancer one menu away), Start match
+ * or Record -- plus the way into its room. A card's Balance is off, with the reason, while the lobby cannot fill its
+ * seats. Shuffle all lobbies (Split pool in draft mode) re-forms every lobby at once, so it waits while any match is
+ * live (the server refuses it too). Beside the cards, the players no lobby seats: waiting for a seat, away, or on the
+ * bench. A one-lobby mix renders nothing: its room is the overview.
  */
 export function PickupLobbyCards(props: Readonly<PickupLobbyCardsProps>) {
-  const { game, rows, owner, canWrite, shufflingAll, onShuffleAll } = props;
+  const { game, rows, owner, canWrite, shufflingAll, onShuffleAll, splitting, onSplitPool } = props;
   const t = useTranslations("mixes.lobbies");
   const [shuffleOpen, setShuffleOpen] = useState(false);
   if (game.lobby_count < 2) return null;
+  const drafts = game.team_formation === "draft";
+  const pending = drafts ? splitting : shufflingAll;
+  const reform = drafts ? onSplitPool : onShuffleAll;
   const anyLive = game.lobbies.some((lobby) => lobby.live_encounter_id != null);
   const anyUnrecorded = game.lobbies.some((lobby) => lobby.lineup_recorded === false);
   return (
@@ -74,29 +90,31 @@ export function PickupLobbyCards(props: Readonly<PickupLobbyCardsProps>) {
           <Button
             type="button"
             variant="outline"
-            disabled={shufflingAll || anyLive}
-            onClick={() => (anyUnrecorded ? setShuffleOpen(true) : onShuffleAll())}
+            disabled={pending || anyLive}
+            onClick={() => (anyUnrecorded ? setShuffleOpen(true) : reform())}
           >
-            {shufflingAll ? (
+            {pending ? (
               <Spinner className="mr-1.5 size-3.5" />
+            ) : drafts ? (
+              <Users className="mr-1.5 size-3.5" aria-hidden="true" />
             ) : (
               <Shuffle className="mr-1.5 size-3.5" aria-hidden="true" />
             )}
-            {t("shuffleAll")}
+            {t(drafts ? "splitPool" : "shuffleAll")}
           </Button>
           <ConfirmDialog
             open={shuffleOpen}
             onOpenChange={setShuffleOpen}
             intent={{
-              title: t("shuffleTitle"),
-              description: t("shuffleDescription"),
-              confirmLabel: t("shuffleConfirm"),
+              title: t(drafts ? "splitTitle" : "shuffleTitle"),
+              description: t(drafts ? "splitDescription" : "shuffleDescription"),
+              confirmLabel: t(drafts ? "splitConfirm" : "shuffleConfirm"),
               tone: "danger",
             }}
-            pending={shufflingAll}
+            pending={pending}
             onConfirm={() => {
               setShuffleOpen(false);
-              onShuffleAll();
+              reform();
             }}
           />
         </div>
@@ -120,9 +138,11 @@ function LobbyCard({
   balancingLobby,
   startingLobby,
   recordingLobby,
+  drafting,
   onBalance,
   onStartMatch,
   onRecordOutcome,
+  onDraft,
 }: Readonly<PickupLobbyCardsProps & { lobby: CustomGameLobby }>) {
   const t = useTranslations("mixes.room");
   const tLobby = useTranslations("mixes.lobbies");
@@ -152,18 +172,19 @@ function LobbyCard({
   ];
   const minutes = useLiveMinutes(state, lobby.live_started_at);
   const gap = variant?.stats.ratingGap ?? null;
+  // A running match, its bans or a running draft: its minutes. A draft in setup reads its stage only, and only an idle
+  // lobby can be short of seats.
   const detail =
-    state === "live" || state === "pregame"
-      ? minutes == null
-        ? null
-        : t("elapsed", { minutes })
+    minutes != null
+      ? t("elapsed", { minutes })
       : state === "ready"
         ? gap == null
           ? null
           : t("gap", { gap: Math.round(gap) })
-        : need == null
-          ? null
-          : t("shortSeats", { count: candidates, need });
+        : state === "idle" && need != null
+          ? t("shortSeats", { count: candidates, need })
+          : null;
+  const shortTitle = short && need != null ? t("shortSeats", { count: candidates, need }) : undefined;
 
   return (
     <Card variant="flat" asChild>
@@ -177,19 +198,41 @@ function LobbyCard({
             {tLobby("tab", { letter })}
           </span>
           <span className="ml-auto flex items-center gap-1.5 text-caption text-[color:var(--aqt-fg-muted)]">
-            <StatusDot tone={STATE_TONE[state]} pulse={state === "live"} className="size-2" />
+            <StatusDot tone={STATE_TONE[state]} pulse={state === "live" || state === "draft_live"} className="size-2" />
             {t(`state.${state}`)}
           </span>
         </div>
         {detail ? <p className={CAPTION_CLASS}>{detail}</p> : null}
         <div className="flex flex-wrap items-center gap-2">
-          {canWrite && state === "idle" ? (
+          {canWrite && state === "idle" && game.team_formation === "draft" ? (
+            <>
+              <Button type="button" disabled={short || drafting === index} title={shortTitle} onClick={() => onDraft(index)}>
+                {drafting === index ? (
+                  <Spinner className="mr-1.5 size-3.5" />
+                ) : (
+                  <Users className="mr-1.5 size-3.5" aria-hidden="true" />
+                )}
+                {t("draft")}
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon" aria-label={t("moreActions")}>
+                    <MoreHorizontal className="size-4" aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  <DropdownMenuItem disabled={short || balancingLobby === index} onSelect={() => onBalance(index)}>
+                    {t("buildWithBalancer")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </>
+          ) : null}
+          {canWrite && state === "idle" && game.team_formation !== "draft" ? (
             <Button
               type="button"
               disabled={short || balancingLobby === index}
-              title={
-                short && need != null ? t("shortSeats", { count: candidates, need }) : undefined
-              }
+              title={shortTitle}
               onClick={() => onBalance(index)}
             >
               {balancingLobby === index ? (
