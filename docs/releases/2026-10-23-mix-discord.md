@@ -30,16 +30,36 @@ allows one notification per room and captain. Spec: `docs/superpowers/specs/2026
 
 There is no migration and no new queue. tournament-service becomes a second producer of the existing
 `pickup_mix_changed` queue: a mix match's hero room completing, being cancelled, reopened or reset queues it, so the
-card follows Pre-game ↔ Live. Deploy balancer-service, tournament-service, app-service, discord-service and the
-frontend **from one SHA**. If the deploy is staggered, deploy discord-service and app-service before balancer-service:
-they must know the new notification kinds before balancer-service writes one. Otherwise app-service never DMs the row,
-or the bot cannot render it.
+card follows Pre-game ↔ Live.
+
+The deploy is a coordinated cutover, never a staggered one. The new bot renders a signup card from the `discipline`
+the new `discord_view` returns; against the old balancer-service it gets none, and every signup card fails to render.
+The old bot cannot render the new notification kinds either. So:
+
+1. Build and push every image from one SHA first, so the bot is down only for the rollouts below.
+2. Stop `discord-worker`.
+3. Deploy `app-svc`, `balancer-svc`, `tournament-svc` and `frontend` from that SHA, app-service first: an app-service
+   that does not know the new kinds skips their DM.
+4. Start the new `discord-worker` from the same SHA.
+
+What is produced between steps 2 and 4 waits for the bot: both queues it needs are durable, and the outbox publishes
+persistent messages. `pickup_mix_changed` has no TTL, so every card change queued meanwhile re-renders when the bot
+starts. `discord_commands` (posts, deletes and DMs, the captain notifications included) keeps a command for 5 minutes
+(`x-message-ttl`): keep steps 2 to 4 under that. A command that waited longer is dead-lettered to
+`discord_commands.dlq`, and its `discord_message` row reads `lost`.
 
 At deploy, two kinds of open Discord element stop answering, because their `custom_id` format changed: the «Edit
 roles» button of a seat panel opened before the deploy, and a seat form open at that moment. Clicking either answers
 "this button no longer works"; opening My seat again gives a working panel. The panels' other buttons keep working.
 Signup cards already in channels keep their three buttons until the mix next changes. The re-render then adds Away,
 Back and the lobby stages.
+
+The manual Discord smoke was not run in development; run it on staging before production:
+
+- [ ] Post a signup card for an Overwatch, a League of Legends and a Deadlock mix: role counters, footer provider, five
+  buttons. Join, My seat → Edit roles → save, then Away and Back: the card follows each.
+- [ ] Start draft, and Start match with a ban preset: the captain gets the bell row and the DM, and both links open the
+  lobby's room, the bell's from another community's host too. Settle the hero room: the card goes Pre-game → Live.
 
 ## Wire changes
 
