@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 import { mixRoomHref, playsInRoom } from "@/app/balancer/mix/pickup-chrome";
+import { navigateRoom } from "@/app/balancer/mix/_room/room-navigation";
 import type { CustomGameLobby } from "@/services/custom-game.service";
 
 /**
@@ -32,6 +33,6 @@ export function useRoomAutoOpen(gameId: number, lobby: CustomGameLobby | undefin
       // Storage blocked: nothing would stop the bounce on the way back, so the player stays on the overview.
       return;
     }
-    router.push(mixRoomHref(gameId, lobbyIndex));
+    navigateRoom("enter", lobbyIndex, () => router.push(mixRoomHref(gameId, lobbyIndex)));
   }, [gameId, lobbyIndex, phase, router]);
 }

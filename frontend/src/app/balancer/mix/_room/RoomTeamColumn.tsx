@@ -16,17 +16,7 @@ import { useSlotLabel } from "@/hooks/useSlotLabel";
 import { OPEN_SLOT_CODE } from "@/lib/roster/shape";
 import { cn } from "@/lib/utils";
 
-import type { RoomSeat, RoomTeam } from "./room-model";
-
-/** The view-transition name a player wears wherever they stand: a pool card, then a slot. */
-export function playerTransitionName(seatKey: string) {
-  return `mix-p-${seatKey}`;
-}
-
-/** The view-transition name a hero wears off the grid: in a ban row, or beside its player. */
-export function heroTransitionName(heroId: number) {
-  return `mix-h-${heroId}`;
-}
+import { heroTransitionName, playerTransitionName, type RoomSeat, type RoomTeam } from "./room-model";
 
 /**
  * One team of the room: its name and side, its bans, then a slot per seat of the lobby's shape. A slot is a player

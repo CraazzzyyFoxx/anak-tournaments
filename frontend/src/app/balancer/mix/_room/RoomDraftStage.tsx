@@ -27,8 +27,7 @@ import type { CustomGamePlayer } from "@/services/custom-game.service";
 import type { DraftBoard, DraftPickOptionsResponse } from "@/types/draft.types";
 import type { RealtimeConnectionState } from "@/types/realtime.types";
 
-import { playerTransitionName } from "./RoomTeamColumn";
-import { draftPlayerName, poolPlayers, type PoolPlayer } from "./room-model";
+import { draftPlayerName, playerTransitionName, poolPlayers, type PoolPlayer } from "./room-model";
 
 const NONE = "none";
 const ALL = "all";

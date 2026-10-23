@@ -49,6 +49,29 @@
   }
 }
 
+/*
+ * Between the mix page and a room (`room-navigation.tsx`, which sets `data-mix-nav` while it runs): both pages are
+ * captured and crossfade, the lobby grows into its room (320ms) and shrinks back into its card or desk (260ms).
+ * `html` outranks the room's own `:root:has()` rule above.
+ */
+html[data-mix-nav]:root {
+  view-transition-name: root;
+}
+
+html[data-mix-nav]:root::view-transition {
+  pointer-events: none;
+}
+
+html[data-mix-nav="enter"]:root::view-transition-group(*) {
+  animation-duration: 320ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+html[data-mix-nav="leave"]:root::view-transition-group(*) {
+  animation-duration: 260ms;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   :root:has([data-mix-room])::view-transition-group(*),
   :root:has([data-mix-room])::view-transition-old(*),

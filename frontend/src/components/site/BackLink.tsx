@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import type { ReactNode } from "react";
+import type { MouseEventHandler, ReactNode } from "react";
 
 import { eyebrowClass } from "@/components/ui/eyebrow";
 import { cn } from "@/lib/utils";
@@ -9,11 +9,19 @@ import { cn } from "@/lib/utils";
 export function BackLink({
   href,
   children,
-  className
-}: Readonly<{ href: string; children: ReactNode; className?: string }>) {
+  className,
+  onClick
+}: Readonly<{
+  href: string;
+  children: ReactNode;
+  className?: string;
+  /** Runs before the navigation; `preventDefault()` takes it over (the mix room animates its way out). */
+  onClick?: MouseEventHandler<HTMLAnchorElement>;
+}>) {
   return (
     <Link
       href={href}
+      onClick={onClick}
       className={cn(
         eyebrowClass(),
         "inline-flex items-center gap-1.5 transition-colors hover:text-[color:var(--aqt-teal)]",

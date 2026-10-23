@@ -58,6 +58,22 @@ function memberSeatKey(memberId: number | null, fallback: string): string {
   return memberId != null ? `m${memberId}` : fallback;
 }
 
+/** A lineup seat's identity in the room: its uuid is the workspace member's id on a mix lineup. */
+export function lineupSeatKey(uuid: string): string {
+  const memberId = Number(uuid);
+  return memberSeatKey(Number.isSafeInteger(memberId) ? memberId : null, `u${uuid}`);
+}
+
+/** The view-transition name a player wears wherever they stand: a desk row, a pool card, then a slot. */
+export function playerTransitionName(seatKey: string) {
+  return `mix-p-${seatKey}`;
+}
+
+/** The view-transition name a hero wears off the grid: in a ban row, or beside its player. */
+export function heroTransitionName(heroId: number) {
+  return `mix-h-${heroId}`;
+}
+
 /**
  * The draft's two rosters laid over the lobby's shape, in pick position order: the captain on top, every pick in the
  * slot its role takes, open slots still empty. Names are positional (`teamNames[i]`), the lineup the draft writes
@@ -108,7 +124,7 @@ export function lineupRoomTeams(variant: PickupVariant): RoomTeam[] {
         key: `${index}:${seat.uuid}`,
         role: seat.role === OPEN_SLOT_CODE ? null : seat.role,
         seat: {
-          key: memberSeatKey(known, `u${seat.uuid}`),
+          key: lineupSeatKey(seat.uuid),
           memberId: known,
           name: seat.name,
           role: seat.role,

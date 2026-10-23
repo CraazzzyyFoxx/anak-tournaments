@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 import adminService from "@/services/admin.service";
 import type { PickBanAction, PickBanResolvedStep, PickBanState } from "@/types/tournament.types";
 
-import { heroTransitionName } from "./RoomTeamColumn";
+import { heroTransitionName } from "./room-model";
 
 /**
  * A live match's hero bans and picks in the room's centre (spec §8, §11): the steps in order, the hero grid (or the

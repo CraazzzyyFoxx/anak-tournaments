@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 
@@ -18,6 +17,7 @@ import {
   Users
 } from "lucide-react";
 
+import { RoomLink } from "@/app/balancer/mix/_room/room-navigation";
 import { CAPTION_CLASS, CARD_TITLE_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import { PickupResultControls } from "@/app/balancer/mix/PickupResultControls";
 import { ConfirmDialog } from "@/components/kit/ConfirmDialog";
@@ -336,16 +336,16 @@ export function PickupTeamsPanel({
     // 1440p-and-wider screen an uncapped column stretched two five-man
     // rosters across an arm's length of desk, so reading "who is on my team"
     // became a head turn.
-    <div className="flex w-full min-w-0 flex-col gap-3.5">
+    <div data-mix-lobby={lobbyIndex} className="flex w-full min-w-0 flex-col gap-3.5">
       {drafts ? (
         <Card variant="flat" className="flex flex-col items-start gap-3 px-4 py-3.5">
           <h2 className={CARD_TITLE_CLASS}>{tRoom("draftInRoom")}</h2>
           <p className={CAPTION_CLASS}>{tRoom("draftInRoomHint")}</p>
           <Button asChild variant="accent" size="sm">
-            <Link href={roomHref}>
+            <RoomLink href={roomHref}>
               <DoorOpen className="size-3.5" aria-hidden="true" />
               {tRoom("openRoom")}
-            </Link>
+            </RoomLink>
           </Button>
         </Card>
       ) : gamesError ? (
@@ -447,10 +447,10 @@ export function PickupTeamsPanel({
                     <p className={CAPTION_CLASS}>{tRoom("frozen")}</p>
                     {pregame ? <p className={CAPTION_CLASS}>{tRoom("bansInRoom")}</p> : null}
                     <Button asChild variant={pregame ? "accent" : "outline"} size="sm" className="ml-auto">
-                      <Link href={roomHref}>
+                      <RoomLink href={roomHref}>
                         <DoorOpen className="size-3.5" aria-hidden="true" />
                         {tRoom("openRoom")}
-                      </Link>
+                      </RoomLink>
                     </Button>
                     {canWrite ? (
                       <>

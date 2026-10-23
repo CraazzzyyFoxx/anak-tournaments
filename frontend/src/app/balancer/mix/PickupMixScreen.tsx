@@ -16,6 +16,7 @@ import { PickupVoicePanel } from "@/app/balancer/mix/PickupVoicePanel";
 import { MatchHistoryList } from "@/app/balancer/mix/_components/MatchHistoryList";
 import { useRoomAutoOpen } from "@/app/balancer/mix/_hooks/useRoomAutoOpen";
 import { lobbyIndexFromLetter, lobbyLetter, mixRoomHref, playsInRoom } from "@/app/balancer/mix/pickup-chrome";
+import { navigateRoom } from "@/app/balancer/mix/_room/room-navigation";
 import {
   canWriteMix,
   buildMixOwner,
@@ -254,7 +255,9 @@ function PickupMixDetail({ initialGame }: Readonly<{ initialGame: CustomGame }>)
   };
   // A host's Draft opens the lobby's room, where the captains pick.
   const draft = (lobbyIndex: number) =>
-    seedDraft.mutate(lobbyIndex, { onSuccess: () => router.push(mixRoomHref(pickedGameId, lobbyIndex)) });
+    seedDraft.mutate(lobbyIndex, {
+      onSuccess: () => navigateRoom("enter", lobbyIndex, () => router.push(mixRoomHref(pickedGameId, lobbyIndex)))
+    });
 
   const togglePoolMember = (memberId: number) => {
     if (selectedGameId == null) return;

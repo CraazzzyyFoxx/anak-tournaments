@@ -4,6 +4,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { useTranslations } from "next-intl";
 import { AlertCircle, Crown } from "lucide-react";
 
+import { lineupSeatKey, playerTransitionName } from "@/app/balancer/mix/_room/room-model";
 import { AWAY_CHIP_CLASS } from "@/app/balancer/mix/pickup-chrome";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
 import { RankCrest } from "@/components/RankCrest";
@@ -66,6 +67,8 @@ export function SeatRow({
       }}
       {...draggable.attributes}
       {...draggable.listeners}
+      // The same name the player wears in the room, so entering it flies them from this row to their side.
+      style={{ viewTransitionName: playerTransitionName(lineupSeatKey(seat.uuid)) }}
       className={cn(
         "flex items-center gap-3 rounded-lg border px-3.5 py-3 transition-colors",
         canDrag && "touch-none active:cursor-grabbing",

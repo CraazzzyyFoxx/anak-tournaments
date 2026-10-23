@@ -402,6 +402,10 @@ system.
   beside its player, and the centre hands over to the next phase (the old
   one lifts away in 180ms, the new one rises in 320ms). Only named elements
   animate; the page itself is never captured, so it stays clickable.
+  Going in from the mix page, the lobby's card (its desk, while open) grows
+  into the room in 320ms and a player on the desk flies to their side;
+  "Back to the mix" shrinks the room back into it in 260ms, and the pages
+  crossfade. The browser's own back is not animated.
 - No hover that changes size or shifts layout.
 - The one press: every `Button` sinks 1px while pressed (`translate-y-px`,
   `motion-safe` only), the same on every width; the `inline` and `label`

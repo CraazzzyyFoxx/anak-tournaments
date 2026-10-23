@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { ChevronDown, DoorOpen, MoreHorizontal, Shuffle, Users } from "lucide-react";
@@ -29,6 +28,7 @@ import {
 import { Eyebrow } from "@/components/ui/eyebrow";
 import { Spinner } from "@/components/ui/spinner";
 import { slotCodeOrder } from "@/lib/roster/ontology";
+import { RoomLink } from "@/app/balancer/mix/_room/room-navigation";
 import { cn } from "@/lib/utils";
 import type { CustomGame, CustomGameLobby, CustomGamePlayer } from "@/services/custom-game.service";
 
@@ -195,7 +195,7 @@ function LobbyCard({
 
   return (
     <Card variant="flat" asChild className={cn(selected && "border-[color:var(--aqt-teal)]")}>
-      <li className="flex flex-col gap-3 px-4 py-3.5">
+      <li data-mix-lobby={selected ? undefined : index} className="flex flex-col gap-3 px-4 py-3.5">
         <div className="flex items-center gap-2">
           <span
             aria-hidden="true"
@@ -302,10 +302,10 @@ function LobbyCard({
             {tLobby("desk")}
           </Button>
           <Button asChild variant={playsInRoom(state) ? "accent" : "outline"} size="sm">
-            <Link href={mixRoomHref(game.id, index)}>
+            <RoomLink href={mixRoomHref(game.id, index)}>
               <DoorOpen className="size-3.5" aria-hidden="true" />
               {t("openRoom")}
-            </Link>
+            </RoomLink>
           </Button>
         </div>
       </li>

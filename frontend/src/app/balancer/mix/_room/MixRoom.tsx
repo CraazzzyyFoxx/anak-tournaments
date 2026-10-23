@@ -39,6 +39,7 @@ import { RoomHostMenu } from "./RoomHostMenu";
 import { RoomMatchStage } from "./RoomMatchStage";
 import { RoomTeamColumn } from "./RoomTeamColumn";
 import { draftPlayerName, draftRoomTeams, lineupRoomTeams, roomPhase, withHeroRoom, type RoomTeam } from "./room-model";
+import { useRoomLinkClick } from "./room-navigation";
 import { useViewTransitionState } from "./useViewTransitionState";
 import "./room-transitions.css";
 
@@ -66,6 +67,8 @@ export function MixRoom({ initialGame, lobbyIndex }: Readonly<{ initialGame: Cus
   const { user } = useAuthProfile();
   const { isSuperuser } = usePermissions();
   const sideLabelOf = useSideLabel();
+  const mixHref = `/balancer/mix/${initialGame.id}`;
+  const leaveRoom = useRoomLinkClick("leave", lobbyIndex, mixHref);
 
   const mix = usePickupMix(workspaceId, initialGame.id, {
     seatEnabled: isSignedIn,
@@ -277,7 +280,9 @@ export function MixRoom({ initialGame, lobbyIndex }: Readonly<{ initialGame: Cus
   return (
     <div data-mix-room className="mx-auto flex w-full min-w-0 max-w-[1440px] flex-col gap-4 pb-40 sm:pb-28">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <BackLink href={`/balancer/mix/${game.id}`}>{t("back")}</BackLink>
+        <BackLink href={mixHref} onClick={leaveRoom}>
+          {t("back")}
+        </BackLink>
         <h1 className="min-w-0 truncate font-display text-heading font-bold text-[color:var(--aqt-fg)]">
           {`${game.name} · ${tLobbies("tab", { letter: lobbyLetter(lobbyIndex) })}`}
         </h1>

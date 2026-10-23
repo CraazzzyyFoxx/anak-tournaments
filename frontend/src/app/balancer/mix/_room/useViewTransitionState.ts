@@ -3,11 +3,15 @@
 import { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 
+import { roomNavigationActive } from "./room-navigation";
+
 function canAnimate(): boolean {
   return (
     typeof document !== "undefined" &&
     typeof document.startViewTransition === "function" &&
-    !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches &&
+    // A second transition would cut the navigation's short: a change landing while it runs just lands.
+    !roomNavigationActive()
   );
 }
 

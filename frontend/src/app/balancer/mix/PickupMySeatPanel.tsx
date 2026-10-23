@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { Fragment, useState } from "react";
 import { useTranslations } from "next-intl";
 import { Coffee, Crown, DoorOpen, Headphones, LogIn, LogOut } from "lucide-react";
 
 import { PickupRoleOrderEditor } from "@/app/balancer/mix/PickupRoleOrderEditor";
+import { RoomLink } from "@/app/balancer/mix/_room/room-navigation";
 import { CAPTION_CLASS, CARD_TITLE_CLASS, lobbyLetter } from "@/app/balancer/mix/pickup-chrome";
 import { HandleLabel } from "@/components/HandleLabel";
 import PlayerRoleIcon from "@/components/PlayerRoleIcon";
@@ -216,10 +216,10 @@ export function PickupMySeatPanel({
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {roomHref != null ? (
             <Button asChild variant="accent" size="sm">
-              <Link href={roomHref}>
+              <RoomLink href={roomHref}>
                 <DoorOpen aria-hidden="true" />
                 {tRoom("openRoom")}
-              </Link>
+              </RoomLink>
             </Button>
           ) : null}
           {policy.can_join ? (
