@@ -404,6 +404,28 @@ def test_too_many_must_play_players_raises_a_clear_error() -> None:
         _prepare_balance_context(payload, None, None, role_mask={"tank": 2})
 
 
+def test_overflow_trim_benches_a_surplus_role_not_a_needed_one() -> None:
+    # A tournament pool keyed by registration id: 11 players for two 1/2/2 teams,
+    # roles tank/damage/damage/support/support by id. The loader reads them in
+    # string order ("1", "10", "11", "2", ...), so "9" -- the fourth support --
+    # sorts last; trimming it would leave 3 supports for 4 support seats. The
+    # last tank in that order ("6", the third tank) sits out instead.
+    roles = ("Tank", "Damage", "Damage", "Support", "Support")
+    payload = {
+        "players": {
+            str(index): _node(f"Player {index}", {roles[(index - 1) % 5]: _class(2000 + index, 0)})
+            for index in range(1, 12)
+        }
+    }
+
+    context = _prepare_balance_context(payload, None, None, role_mask=ROLE_MASK)
+
+    assert context.num_teams == 2
+    assert len(context.players) == 10
+    assert [player.uuid for player in context.overflow_benched] == ["6"]
+    assert sum(player.can_play("support") for player in context.players) == 4
+
+
 # ---------------------------------------------------------------------------
 # 'max_teams' -- backends pinned to a team-count ceiling (mix_balancer) cap
 # the natural team count and bench the surplus, same as an uneven remainder

@@ -101,6 +101,18 @@ def test_five_tank_only_players_do_not_fit_four_tank_slots() -> None:
     assert exc.value.code == "roles_infeasible"
 
 
+def test_the_player_whose_role_is_full_waits_not_the_last_one() -> None:
+    """Девять на восемь мест: ждёт пятый «только танк», а не последний дамагер,
+    без которого роли двух лобби не закрыть."""
+    candidates = [_candidate(member_id, 3000 - member_id, roles=("tank",)) for member_id in (1, 2, 3, 4, 5)]
+    candidates += [_candidate(member_id, 2000 - member_id, roles=("damage",)) for member_id in (6, 7, 8, 9)]
+
+    split = split_into_lobbies(candidates, mask=MASK_TANK_DAMAGE)
+
+    assert split.waiting == (5,)
+    assert sorted(split.lobbies[0] + split.lobbies[1]) == [1, 2, 3, 4, 6, 7, 8, 9]
+
+
 def test_must_play_takes_a_seat_over_a_rested_pool() -> None:
     candidates = [
         _candidate(1, 3000, rotation_priority=-5.0),

@@ -177,8 +177,10 @@ def _prepare_balance_context(
     # front before the tail is cut, so trimming reaches an optional player first
     # unless there are more must-play players than slots; among optional players
     # ``rotation_priority`` (ascending) breaks the tie, and input order -- the
-    # loader's uuid order -- after it. ``seated_set`` is that one rule, shared with
-    # the lobby splitter and a mix draft's seated set.
+    # loader's uuid order -- after it. A player the seats' roles can no longer
+    # take sits out instead of the next one in that order, so a pool that can
+    # fill the teams is never refused for whoever sorts last. ``seated_set`` is
+    # that one rule, shared with the lobby splitter and a mix draft's seated set.
     usable_count = num_teams * players_per_team
     if usable_count < len(valid_players):
         must_play_players = [player for player in valid_players if player.must_play]
@@ -188,7 +190,9 @@ def _prepare_balance_context(
                 f"{usable_count} team slots exist for {len(valid_players)} players. "
                 f"Unflag {len(must_play_players) - usable_count} of them or add more players."
             )
-        valid_players, overflow_benched = seated_set(valid_players, usable_count)
+        valid_players, overflow_benched = seated_set(
+            valid_players, [role for role, count in mask.items() for _ in range(count * num_teams)]
+        )
         valid_players, role_capable_counts = _filter_valid_players_and_role_counts(valid_players, needed_roles)
         logger.info(
             f"{len(overflow_benched)} player(s) sit out: only {usable_count} of "

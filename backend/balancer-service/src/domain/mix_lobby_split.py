@@ -81,18 +81,39 @@ def _slots(mask: Mapping[str, int], lobby_count: int) -> tuple[_Slot, ...]:
     )
 
 
-def seated_set[T: Any](players: Sequence[T], seats: int) -> tuple[list[T], list[T]]:
-    """Кто играет, когда игроков больше, чем ``seats``, и кто ждёт (spec §9.3).
+def seated_set[T: Any](players: Sequence[T], slots: Sequence[str]) -> tuple[list[T], list[T]]:
+    """Кто играет, когда игроков больше, чем мест, и кто ждёт (spec §9.3). ``slots`` -- роль каждого места.
 
-    Сначала ``must_play`` во входном порядке, затем остальные по
-    ``rotation_priority`` по возрастанию, ничья -- входной порядок; первые
-    ``seats`` играют. Одно правило на всех: обрезка лишних в самом балансере
-    (``runtime._prepare_balance_context``), делитель лобби и драфт -- поэтому
-    драфт сажает ровно тех, кого посадил бы баланс при том же входном порядке.
+    Право на место: сначала ``must_play`` во входном порядке, затем остальные по
+    ``rotation_priority`` по возрастанию, ничья -- входной порядок. Места раздаются
+    в этом порядке, но игрок, с которым роли мест уже не закрыть, ждёт (жадный
+    выбор по паросочетанию): 11 игроков на две команды 1/2/2 с тремя танками
+    отпускают лишнего танка, а не четвёртую поддержку, оказавшуюся в хвосте.
+    Если роли не закрыть вообще или без кого-то из ``must_play``, места берут
+    первые ``len(slots)`` -- отказ формулирует вызывающий. Одно правило на всех:
+    обрезка лишних в самом балансере (``runtime._prepare_balance_context``),
+    делитель лобби и драфт -- поэтому драфт сажает ровно тех, кого посадил бы
+    баланс при том же входном порядке.
     """
     owed = sorted((player for player in players if not player.must_play), key=lambda player: player.rotation_priority)
     ordered = [player for player in players if player.must_play] + owed
-    return ordered[:seats], ordered[seats:]
+    seats = len(slots)
+    # Кандидаты идут по порядку права, и сопоставитель никого из уже усаженных не
+    # снимает: кто не нашёл пути к свободному месту, тот и ждёт.
+    seated = maximum_bipartite_matching(
+        candidates=range(len(ordered)),
+        slots=range(seats),
+        eligible_slots={
+            index: [slot for slot, role in enumerate(slots) if role == FLEX_SLOT_CODE or role in player.ratings]
+            for index, player in enumerate(ordered)
+        },
+    ).candidate_to_slot
+    if len(seated) < seats or any(player.must_play and index not in seated for index, player in enumerate(ordered)):
+        return ordered[:seats], ordered[seats:]
+    return (
+        [player for index, player in enumerate(ordered) if index in seated],
+        [player for index, player in enumerate(ordered) if index not in seated],
+    )
 
 
 def _eligible(candidate: SplitCandidate, slot: _Slot, lobby: int | None) -> bool:
@@ -147,9 +168,9 @@ def split_into_lobbies(
     """Разделить пул на ``lobby_count`` лобби по ``mask`` слотов на команду.
 
     1. Кто играет: ``seated_set`` (``must_play`` -> ``rotation_priority`` по
-       возрастанию -> входной порядок); первые ``lobby_count * seats`` играют,
-       остальные ждут. Обещанных мест (``must_play``) больше, чем мест вообще --
-       отказ целиком.
+       возрастанию -> входной порядок); первые ``lobby_count * seats``, с кем
+       роли всех лобби ещё закрываются, играют, остальные ждут. Обещанных мест
+       (``must_play``) больше, чем мест вообще -- отказ целиком.
     2. Закреплённые садятся в своё лобби.
     3. Остальные по убыванию силы -- в самое лёгкое лобби со свободным местом,
        если после хода роли всех лобби ещё заполнимы.
@@ -169,7 +190,8 @@ def split_into_lobbies(
         # отправить часть обещанных в ``waiting`` -- сломать само обещание.
         raise LobbySplitError("too_many_must_play")
 
-    playing, _waiting = seated_set(playable, total_seats)
+    slots = _slots(mask, lobby_count)
+    playing, _waiting = seated_set(playable, [role for _lobby, role, _position in slots])
     seated_ids = {candidate.member_id for candidate in playing}
     waiting = tuple(candidate.member_id for candidate in candidates if candidate.member_id not in seated_ids)
 
@@ -185,7 +207,6 @@ def split_into_lobbies(
         counts[candidate.pin] += 1
         totals[candidate.pin] += candidate.strength
 
-    slots = _slots(mask, lobby_count)
     rest = sorted(
         (candidate for candidate in playing if candidate.member_id not in assignment),
         key=lambda candidate: (-candidate.strength, order[candidate.member_id]),
