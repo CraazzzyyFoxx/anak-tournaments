@@ -956,6 +956,10 @@ services:
       - "${APP_BIND:-127.0.0.1}:${APP_PORT}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # Maintenance page and its switch files (nginx.conf, "Maintenance mode").
+      # A directory mount, unlike nginx.conf: files created or replaced on the
+      # host are visible at once, which is what `make maint-on|eta|off` rely on.
+      - ./nginx/maintenance:/etc/nginx/maintenance:ro
       # Structured JSON access log + error log, tailed by Promtail into Loki
       # (promtail mounts ./logs as /var/log/app). Mounting over /var/log/nginx
       # replaces the image's stdout symlinks with real files, so `docker logs

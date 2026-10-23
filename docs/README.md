@@ -81,6 +81,7 @@ Procedures for an operator. Commands are meant to be run verbatim.
 | [`releases/2026-10-23-valorant.md`](./releases/2026-10-23-valorant.md) | Shipping VALORANT as a base module: the `valorant` discipline (valorant-api.com catalog, 25-tier ladder, organizer-entered ranks, Riot ID, one role, 5v5, the VCT Bo1 map veto preset), `valorant01`, operator steps and what is deferred (native ranks, match import, Bo3 sides) |
 | [`releases/2026-10-21-rank-mapping-removal.md`](./releases/2026-10-21-rank-mapping-removal.md) | Removing the Overwatch rank mapping: `parser.rank_mapping` and the collector's Mapping tab gone, ranks always valued on the ladder, `owmapdrop01` recomputes overridden snapshots, collapses repeats and drops the setting |
 | [`releases/2026-10-21-division-grid-defaults.md`](./releases/2026-10-21-division-grid-defaults.md) | A default division grid per game in every workspace (`defgrid01` backfill, provisioning on create/enable, the activation rule), create-from-version and `tournament_count` on the grid API, and the divisions page: all-games summary, New grid, the grid menu with detach-and-delete, game-aware copy |
+| [`releases/2026-10-23-prod-cutover.md`](./releases/2026-10-23-prod-cutover.md) | Taking production from v1.48.1 through every cutover above in one maintenance window: the nginx maintenance page (`make maint-on/eta/off`, bypass cookie), pre-window checks and the step timings measured on dev, drain/backup/migrate/proof/start order, point of no return and restore |
 
 ## Designs, plans and reviews
 

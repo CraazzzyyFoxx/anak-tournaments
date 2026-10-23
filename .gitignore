@@ -34,6 +34,10 @@ ops/backup/s3.env
 ops/backup/backup.env
 ops/backup/tmp/
 !ops/backup/s3.env.example
+# Maintenance switch state on the host (`make maint-on`): flag, ETA, bypass secret.
+nginx/maintenance/on
+nginx/maintenance/maintenance.json
+nginx/maintenance/bypass.conf
 monitoring/secrets/*
 !monitoring/secrets/.gitkeep
 !monitoring/secrets/*.example

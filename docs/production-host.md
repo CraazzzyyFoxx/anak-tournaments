@@ -133,6 +133,9 @@ docker exec -i owt-postgres-1 pg_restore -U owt -d owt --no-owner --no-acl < <du
   from the root `.env`, migrations reach Postgres through `DATABASE_URL`. Compose recreates
   `postgres` only when its own config changes (image, memory knobs) — a few seconds of
   database downtime that the service pools reconnect through.
+- A release that cannot migrate under live traffic goes behind the maintenance page:
+  `make maint-on MIN=<minutes>` / `maint-eta` / `maint-off` (nginx answers 503 with an ETA countdown, `/health`
+  stays live). Runbook: [`releases/2026-10-23-prod-cutover.md`](./releases/2026-10-23-prod-cutover.md).
 - psql: `docker compose -f docker-compose.production.yml exec postgres psql -U owt -d owt`.
 - The image tag pins the major version on purpose. The volume holds a PostgreSQL 18
   cluster; moving to 19 is a dump and restore into a fresh volume, not a tag bump.

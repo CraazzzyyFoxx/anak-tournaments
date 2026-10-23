@@ -1,5 +1,6 @@
 .PHONY: help dev-build dev-up dev-up-full dev-down dev-restart dev-logs dev-ps dev-health dev-rebuild \
 	prod-build prod-pull prod-migrate prod-discord-emoji prod-up prod-down prod-logs prod-scale prod-small prod-medium prod-large migrate discord-emoji test clean \
+	maint-on maint-eta maint-off \
 	build up down restart logs ps health build-prod up-prod down-prod logs-prod \
 	app-logs identity-logs stats-logs frontend-logs discord-logs balancer-logs stream-logs \
 	app-restart identity-restart stats-restart frontend-restart \
@@ -81,6 +82,9 @@ help:
 	@echo "  make prod-small     - Scale production to small (1 tournament/app/identity/frontend)"
 	@echo "  make prod-medium    - Scale production to medium (2 of each)"
 	@echo "  make prod-large     - Scale production to large (4 tournament, 3 frontend)"
+	@echo "  make maint-on       - Show the maintenance page, ETA in MIN minutes (default 180)"
+	@echo "  make maint-eta      - Move the maintenance ETA to MIN minutes from now"
+	@echo "  make maint-off      - Hide the maintenance page"
 	@echo ""
 	@echo "  make monitoring-up  - Start the monitoring stack (on home, see monitoring/README.md)"
 	@echo "  make monitoring-down- Stop monitoring stack"
@@ -176,6 +180,32 @@ prod-medium:
 
 prod-large:
 	$(MAKE) prod-scale PROD_SIZE=large
+
+# Maintenance page (nginx.conf, "Maintenance mode"; runbook
+# docs/releases/2026-10-23-prod-cutover.md). maint-on writes the ETA and the
+# flag, creates the bypass secret on first use and recreates nginx only when the
+# running one predates the mechanism (or the secret is new), so it is safe to
+# repeat. MIN = minutes from now to the expected end. GNU date: host only.
+MAINT_DIR = nginx/maintenance
+MIN ?= 180
+
+maint-on: maint-eta
+	@touch $(MAINT_DIR)/on
+	@if [ -f $(MAINT_DIR)/bypass.conf ]; then \
+		$(PROD_COMPOSE) up -d --no-deps nginx; \
+	else \
+		printf '"%s" 1;\n' "$$(openssl rand -hex 16)" > $(MAINT_DIR)/bypass.conf; \
+		$(PROD_COMPOSE) up -d --no-deps --force-recreate nginx; \
+	fi
+	@echo "Bypass, in the browser console on the site:"
+	@echo "  document.cookie = \"owt_maint=$$(cut -d'"' -f2 $(MAINT_DIR)/bypass.conf); path=/; max-age=43200; secure\""
+
+maint-eta:
+	@printf '{"until":"%s"}\n' "$$(date -u -d '+$(MIN) min' +%Y-%m-%dT%H:%M:%SZ)" > $(MAINT_DIR)/maintenance.json
+	@cat $(MAINT_DIR)/maintenance.json
+
+maint-off:
+	rm -f $(MAINT_DIR)/on $(MAINT_DIR)/maintenance.json
 
 # Dev stack. The production one is `prod-migrate`: it runs alembic in a one-off
 # container off the NEW image, which is what makes the schema land before the
